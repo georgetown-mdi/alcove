@@ -27,7 +27,10 @@
 #                 token, or with a wrong one, is refused and writes nothing, and
 #                 a registration and a revocation with it reach the mapping and
 #                 the table, through the front where the registrar has a name
-#                 of its own. Skipped, and said so, where the host holds none
+#                 of its own. Where enrollment without a token is on, such an
+#                 enrollment naming another key for the registered id is
+#                 answered 409, and one naming its key 200. Skipped, and said
+#                 so, where the host holds no token
 #
 # internal-peer is the one that cannot be inferred from allocation: a relay that
 # allocates is working, and a relay that allocates toward its own VPC and the
@@ -458,6 +461,15 @@ else
   expect_status "a registration with no token" 401 "$(registrar_status PUT "" "$OTHER_BODY")"
   expect_status "a registration with a wrong token" 401 "$(registrar_status PUT "$(openssl rand -hex 32)" "$OTHER_BODY")"
   expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
+  # Where enrollment without a token is on, it cannot take an id another key
+  # holds, and repeating the held key changes nothing. Each counts against the
+  # rate limit for this host's own address.
+  if [ "${ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT:-off}" = on ] && [ "$REGISTERED" -eq 0 ]; then
+    expect_status "an enrollment without a token naming another key" 409 \
+      "$(registrar_status POST "" "{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": null}")"
+    expect_status "an enrollment without a token naming the registered key" 200 \
+      "$(registrar_status POST "" "{\"key\": \"$KEY_R\", \"maxAgeDays\": null}")"
+  fi
   READ_BACK=0; registrar_read_back || READ_BACK=$?
   if [ "$READ_BACK" -eq "$REGISTERED" ]; then
     report pass "the refused calls left the mapping and the secrets table unchanged"

@@ -9,13 +9,20 @@ Every request but a CORS preflight holds one of two credentials in its
 Authorization header: "Bearer <token>", the relay-owner token, which enrolls
 (POST) and is the operator's recovery route on PUT and DELETE; or
 "Alcove-Relay-Proof ts=<unix-seconds>,mac=<hex64>", a proof of holding the key
-the exchange has registered, which rotates (PUT) and revokes (DELETE). Any other
-request is answered 401 before its body is parsed. Authentication reads that
-header and nothing else, and no answer allows credentials, so a browser's
-cookies never authenticate a call. A write is one transaction through
-relay_table.py beside this file, the secrets table's one write path.
-infra/relay/README.md, The registrar, is the contract, and
+the exchange has registered, which rotates (PUT) and revokes (DELETE). Where
+ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is "on", a POST with no
+Authorization header enrolls too, under a per-address rate limit and a lapse
+the registrar fixes. Any other request is answered 401 before its body is
+parsed. Authentication reads that header and nothing else, and no answer allows
+credentials, so a browser's cookies never authenticate a call. A write is one
+transaction through relay_table.py beside this file, the secrets table's one
+write path. infra/relay/README.md, The registrar, is the contract, and
 docs/spec/PROTOCOL.md, The registrar request proof, the proof's format.
+
+Listens on ALCOVE_RELAY_REGISTRAR_PORT on every address, and, where the
+registrar has a name the 443 front routes to it, on 127.0.0.1 at
+ALCOVE_RELAY_REGISTRAR_FRONT_PORT, where each connection starts with the
+front's PROXY protocol header naming the client's address.
 
 Runs as the relay image's account, which owns the table, and reads the token and
 certificate from the credentials systemd hands the unit.
@@ -23,11 +30,14 @@ certificate from the credentials systemd hands the unit.
 Python 3.9 standard library only: the version Amazon Linux 2023 ships.
 """
 
+import collections
 import hashlib
 import hmac
 import http.client
 import http.server
+import ipaddress
 import json
+import math
 import os
 import re
 import socket
@@ -36,6 +46,7 @@ import ssl
 import sys
 import threading
 import time
+import types
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +61,10 @@ TOKEN_FILE = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKEN_FILE") or (
 CERT_DIR = os.environ.get("ALCOVE_RELAY_CERT_DIR") or (CREDENTIALS or ETC + "/certs")
 PORT = os.environ.get("ALCOVE_RELAY_REGISTRAR_PORT") or "8443"
 REALM = os.environ.get("ALCOVE_RELAY_REALM") or ""
+NAME = os.environ.get("ALCOVE_RELAY_REGISTRAR_NAME") or ""
+FRONT_PORT = os.environ.get("ALCOVE_RELAY_REGISTRAR_FRONT_PORT") or "8445"
+TOKENLESS_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT") or "off"
+COUNTERS_FILE = os.path.join(os.path.dirname(relay_table.TURNDB), "registrar-counters")
 
 PREFIX = "/exchanges/"
 MAX_BODY_BYTES = 1024
@@ -97,6 +112,32 @@ TOKEN = "token"
 ISSUANCE_LINE = "credential issuance: exchange=%s time=%s outcome=%s authority=%s\n"
 AUTHORITY_TOKEN = "relay-owner-token"
 AUTHORITY_PROOF = "proof"
+AUTHORITY_NONE = "none"
+# Enrollment without a token; README.md, The registrar, derives each value. The
+# lapse outlasts the web app's 10-minute wait for its partner followed by the
+# 3600 s credential minted when the partner arrives.
+TOKENLESS_LIFETIME_SECONDS = 4200
+# Arbitrary working values, raised on request.
+TOKENLESS_ENROLLMENTS_PER_WINDOW = 20
+TOKENLESS_WINDOW_SECONDS = 600
+MAX_TRACKED_ADDRESSES = 4096
+COUNTERS_WRITE_SECONDS = 10
+PROXY_HEADER_SECONDS = 5
+# The longest PROXY protocol version 1 header, its CRLF included.
+PROXY_HEADER_BYTES = 107
+PROXY_HEADER = re.compile(r"PROXY (TCP4|TCP6) (\S+) (\S+) ([0-9]{1,5}) ([0-9]{1,5})\r\n|PROXY UNKNOWN[^\r\n]*\r\n")
+UNKNOWN_CLIENT = "unknown"
+TOKENLESS_MAX_AGE_REFUSAL = (
+    'an enrollment without a token sends "maxAgeDays": null; the registrar sets its lapse, which the '
+    "answer's lapsesAt states"
+)
+TOKENLESS_LIMIT_REFUSAL = (
+    "this address has sent %d enrollment requests without a token within %d minutes; try again in %d s"
+)
+TOKENLESS_FULL_REFUSAL = (
+    "the registrar is answering enrollments without a token from as many addresses as it can; try again in %d s"
+)
+COUNTER_NAMES = ("tokenless_enrollments", "rate_limit_refusals")
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
 
@@ -156,6 +197,133 @@ class Proof:
     def made_under(self, relay_key, method, exchange_id, body):
         expected = proof_mac(relay_key, method, exchange_id, body, self.timestamp)
         return hmac.compare_digest(expected.encode("ascii"), self.mac.encode("ascii"))
+
+
+class ProxyHeaderError(Exception):
+    """A connection on the front's port that did not start with a well-formed
+    PROXY header; the message never holds the bytes received."""
+
+
+def read_proxy_header(sock, deadline):
+    """The client address the PROXY protocol version 1 header at the start of
+    `sock` names, UNKNOWN_CLIENT for a header naming none, read by the byte so
+    nothing past it is consumed. `deadline` is a time.monotonic() value."""
+    header = b""
+    while not header.endswith(b"\r\n"):
+        if len(header) >= PROXY_HEADER_BYTES:
+            raise ProxyHeaderError("the 443 front's PROXY header is over %d bytes" % PROXY_HEADER_BYTES)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("the 443 front's PROXY header did not arrive in time")
+        sock.settimeout(remaining)
+        byte = sock.recv(1)
+        if not byte:
+            raise ProxyHeaderError("the connection closed before the 443 front's PROXY header ended")
+        header += byte
+    match = PROXY_HEADER.fullmatch(header.decode("ascii", "replace"))
+    if match is None:
+        raise ProxyHeaderError("the 443 front's PROXY header is malformed")
+    if match.group(1) is None:
+        return UNKNOWN_CLIENT
+    try:
+        address = ipaddress.ip_address(match.group(2))
+        ipaddress.ip_address(match.group(3))
+    except ValueError:
+        raise ProxyHeaderError("the 443 front's PROXY header names a malformed address")
+    if address.version != (4 if match.group(1) == "TCP4" else 6):
+        raise ProxyHeaderError("the 443 front's PROXY header names an address of the wrong family")
+    return str(address)
+
+
+def client_key(address):
+    """The key the rate limit counts `address` under: an IPv4 address, or the
+    /64 holding an IPv6 one, since one host commonly holds a whole /64."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return UNKNOWN_CLIENT
+    if parsed.version == 6 and parsed.ipv4_mapped is not None:
+        return str(parsed.ipv4_mapped)
+    if parsed.version == 6:
+        return str(ipaddress.ip_network((parsed, 64), strict=False))
+    return str(parsed)
+
+
+class EnrollmentLimiter:
+    """At most TOKENLESS_ENROLLMENTS_PER_WINDOW enrollments without a token
+    for each client key in a window of TOKENLESS_WINDOW_SECONDS from its first,
+    holding at most MAX_TRACKED_ADDRESSES windows. Held in memory only."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        # Ordered by when each window started, so the ended ones are first.
+        self.windows = collections.OrderedDict()
+
+    def admit(self, key, now):
+        """None when the request is admitted and counted; otherwise the whole
+        seconds until `key` may try again, and whether every window is taken."""
+        with self.lock:
+            while self.windows:
+                started = next(iter(self.windows.values()))[0]
+                if now - started < TOKENLESS_WINDOW_SECONDS:
+                    break
+                self.windows.popitem(last=False)
+            window = self.windows.get(key)
+            if window is None:
+                if len(self.windows) >= MAX_TRACKED_ADDRESSES:
+                    started = next(iter(self.windows.values()))[0]
+                    return self.wait(started, now), True
+                self.windows[key] = [now, 1]
+                return None
+            if window[1] >= TOKENLESS_ENROLLMENTS_PER_WINDOW:
+                return self.wait(window[0], now), False
+            window[1] += 1
+            return None
+
+    @staticmethod
+    def wait(started, now):
+        return max(1, math.ceil(started + TOKENLESS_WINDOW_SECONDS - now))
+
+
+class Counters:
+    """Counts since the registrar started, written to COUNTERS_FILE as
+    name=value lines at most every COUNTERS_WRITE_SECONDS, and only when one
+    changed (README.md, The registrar, What it counts)."""
+
+    def __init__(self, path, started):
+        self.path = path
+        self.started = relay_table.iso_time(started)
+        self.lock = threading.Lock()
+        self.counts = dict.fromkeys(COUNTER_NAMES, 0)
+        self.changed = True
+
+    def add(self, name):
+        with self.lock:
+            self.counts[name] += 1
+            self.changed = True
+
+    def write(self, now):
+        with self.lock:
+            if not self.changed:
+                return
+            counts = dict(self.counts)
+            self.changed = False
+        lines = ["started=%s" % self.started, "updated=%s" % relay_table.iso_time(now)]
+        lines += ["%s=%d" % (name, counts[name]) for name in COUNTER_NAMES]
+        partial = self.path + ".partial"
+        try:
+            with open(partial, "w", encoding="ascii") as handle:
+                handle.write("\n".join(lines) + "\n")
+            os.replace(partial, self.path)
+        except OSError as error:
+            with self.lock:
+                self.changed = True
+            sys.stderr.write("could not write the counters file %s: %s\n" % (self.path, error))
+
+    def run(self):
+        while True:
+            time.sleep(COUNTERS_WRITE_SECONDS)
+            self.write(time.time())
 
 
 class DeadlineSocket(ssl.SSLSocket):
@@ -319,6 +487,10 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         for name, value in extra_headers:
             self.send_header(name, value)
+        # A browser's script reads only the headers CORS lets it, and
+        # Retry-After is not one of the defaults.
+        if any(name == "Retry-After" for name, _ in extra_headers):
+            self.send_header("Access-Control-Expose-Headers", "Retry-After")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(payload)
@@ -510,6 +682,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         )
 
     def do_POST(self):
+        if self.server.tokenless and "Authorization" not in self.headers:
+            self.enroll_without_token()
+            return
         credential = self.credential()
         if credential is None:
             return
@@ -534,6 +709,44 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         )
         if enrollment is not None:
             self.answer_registration(AUTHORITY_TOKEN, enrollment, now)
+
+    def enroll_without_token(self):
+        # Counted before the id or body is read, so every attempt costs one,
+        # including one probing whether an id is held.
+        refused = self.server.limiter.admit(client_key(self.client_address[0]), time.monotonic())
+        if refused is not None:
+            wait, every_window_taken = refused
+            self.server.counters.add("rate_limit_refusals")
+            if every_window_taken:
+                message = TOKENLESS_FULL_REFUSAL % wait
+            else:
+                message = TOKENLESS_LIMIT_REFUSAL % (
+                    TOKENLESS_ENROLLMENTS_PER_WINDOW,
+                    max(1, TOKENLESS_WINDOW_SECONDS // 60),
+                    wait,
+                )
+            self.refuse(429, message, (("Retry-After", str(wait)),))
+            return
+        exchange_id = self.target("enroll")
+        if exchange_id is None:
+            return
+        registration = self.read_registration(exchange_id)
+        if registration is None:
+            return
+        _, key, max_age_days = registration
+        if max_age_days is not None:
+            self.send_json(400, {"error": TOKENLESS_MAX_AGE_REFUSAL})
+            return
+        now = time.time()
+        fixed_lapse_at = int(now) + TOKENLESS_LIFETIME_SECONDS
+        enrollment = self.write_table(
+            lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, None, now, True, fixed_lapse_at)
+        )
+        if enrollment is None:
+            return
+        if enrollment["outcome"] == "registered":
+            self.server.counters.add("tokenless_enrollments")
+        self.answer_registration(AUTHORITY_NONE, enrollment, now)
 
     def do_PUT(self):
         credential = self.credential()
@@ -627,12 +840,23 @@ class BusyHandler(RegistrarHandler):
 
 
 class RegistrarServer(http.server.ThreadingHTTPServer):
+    """One listener. Both listeners share `shared`: the token, the table lock,
+    the connection slots, the rate limit and the counters. With `tls`, the
+    listening socket is plain and each connection starts with the front's PROXY
+    header, read before the TLS handshake."""
+
     daemon_threads = True
 
-    def __init__(self, *args, **kwargs):
-        self.handler_slots = threading.BoundedSemaphore(MAX_HANDLERS)
-        self.busy_slots = threading.BoundedSemaphore(MAX_BUSY_ANSWERS)
-        super().__init__(*args, **kwargs)
+    def __init__(self, address, handler_class, shared, tls=None):
+        self.token = shared.token
+        self.table_lock = shared.table_lock
+        self.handler_slots = shared.handler_slots
+        self.busy_slots = shared.busy_slots
+        self.limiter = shared.limiter
+        self.counters = shared.counters
+        self.tokenless = shared.tokenless
+        self.tls = tls
+        super().__init__(address, handler_class)
 
     def process_request(self, request, client_address):
         if self.handler_slots.acquire(blocking=False):
@@ -653,6 +877,9 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
 
     def serve_connection(self, request, client_address, handler_class, slot):
         try:
+            if self.tls is not None:
+                client_address = (read_proxy_header(request, time.monotonic() + PROXY_HEADER_SECONDS), 0)
+                request = self.tls.wrap_socket(request, server_side=True, do_handshake_on_connect=False)
             handler_class(request, client_address, self)
         except Exception:
             self.handle_error(request, client_address)
@@ -673,11 +900,35 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
         sys.stderr.write("connection ended: %s\n" % error)
 
 
+def shared_state(token, tokenless, started):
+    """What every RegistrarServer of one process shares."""
+    return types.SimpleNamespace(
+        token=token,
+        table_lock=threading.Lock(),
+        handler_slots=threading.BoundedSemaphore(MAX_HANDLERS),
+        busy_slots=threading.BoundedSemaphore(MAX_BUSY_ANSWERS),
+        limiter=EnrollmentLimiter(),
+        counters=Counters(COUNTERS_FILE, started),
+        tokenless=tokenless,
+    )
+
+
 def main():
     if not PORT.isdigit() or int(PORT) > 65535:
         fail_start("ALCOVE_RELAY_REGISTRAR_PORT is '%s'; set it to a port number" % PORT)
     if not REALM:
         fail_start("ALCOVE_RELAY_REALM is unset; the unit reads it from /etc/alcove-relay/relay.env")
+    if TOKENLESS_SETTING not in ("on", "off"):
+        fail_start(
+            "ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is '%s'; set it to on or off in /etc/alcove-relay/relay.env"
+            % TOKENLESS_SETTING
+        )
+    # Port 0, which the tests use, asks the system for a free port on each.
+    if NAME and (not FRONT_PORT.isdigit() or int(FRONT_PORT) > 65535 or (FRONT_PORT == PORT and PORT != "0")):
+        fail_start(
+            "ALCOVE_RELAY_REGISTRAR_FRONT_PORT is '%s'; set it to a port number other than the registrar's port"
+            % FRONT_PORT
+        )
     token = read_token()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -685,15 +936,34 @@ def main():
         context.load_cert_chain(os.path.join(CERT_DIR, "fullchain.pem"), os.path.join(CERT_DIR, "privkey.pem"))
     except (OSError, ssl.SSLError) as error:
         fail_start("could not load the certificate in %s: %s" % (CERT_DIR, error))
+    context.sslsocket_class = DeadlineSocket
 
+    started = time.time()
+    shared = shared_state(token, TOKENLESS_SETTING == "on", started)
     try:
-        server = RegistrarServer(("", int(PORT)), RegistrarHandler)
+        server = RegistrarServer(("", int(PORT)), RegistrarHandler, shared)
     except OSError as error:
         fail_start("could not listen on port %s: %s" % (PORT, error))
-    server.token = token
-    server.table_lock = threading.Lock()
-    context.sslsocket_class = DeadlineSocket
     server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+    front = None
+    if NAME:
+        try:
+            front = RegistrarServer(("127.0.0.1", int(FRONT_PORT)), RegistrarHandler, shared, context)
+        except OSError as error:
+            fail_start("could not listen on 127.0.0.1 port %s for the 443 front: %s" % (FRONT_PORT, error))
+
+    shared.counters.write(started)
+    threading.Thread(target=shared.counters.run, daemon=True).start()
+    if front is not None:
+        threading.Thread(target=front.serve_forever, daemon=True).start()
+        sys.stdout.write(
+            "Alcove relay registrar listening for the 443 front on 127.0.0.1 port %d\n" % front.server_address[1]
+        )
+    if shared.tokenless:
+        sys.stdout.write(
+            "enrollment without a token is on: %d per address in %d s, each lapsing %d s after it is made\n"
+            % (TOKENLESS_ENROLLMENTS_PER_WINDOW, TOKENLESS_WINDOW_SECONDS, TOKENLESS_LIFETIME_SECONDS)
+        )
     sys.stdout.write("Alcove relay registrar listening on port %d\n" % server.server_address[1])
     sys.stdout.flush()
     server.serve_forever()

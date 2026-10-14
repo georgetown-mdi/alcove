@@ -1,12 +1,14 @@
 #!/bin/bash
-# Print front.conf.tmpl with this host's routes written into its map, for
+# Print front.conf.tmpl with this host's routes written into its maps, for
 # install.sh to check and write over /etc/alcove-relay/front.conf.
 #
 # A route sends one TLS server name to one port on 127.0.0.1: the registrar's
-# name (ALCOVE_RELAY_REGISTRAR_NAME) to the registrar's port, and each
-# name=port pair in ALCOVE_RELAY_FRONT_ROUTES to its port. Every other
-# connection goes to coturn. A route never names another host, so the front
-# reaches nothing but this host's own loopback services.
+# name (ALCOVE_RELAY_REGISTRAR_NAME) to the registrar's front port
+# (ALCOVE_RELAY_REGISTRAR_FRONT_PORT), with the PROXY header naming the
+# client, and each name=port pair in ALCOVE_RELAY_FRONT_ROUTES to its port,
+# through the front's second hop. Every other connection goes to coturn. A
+# route never names another host, so the front reaches nothing but this host's
+# own loopback services.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -30,11 +32,14 @@ REALM="$(lowercase "$REALM")"
 [ -n "$REALM" ] || die "ALCOVE_RELAY_REALM is unset in $ENV_FILE; refusing to guess a realm"
 
 ROUTES=()
+REGISTRAR_ROUTES=()
 SEEN=" $REALM "
-# Each loopback port a route or the registrar takes, and what takes it: two
-# services cannot both listen on one.
-PORT_NUMBERS=()
-PORT_OWNERS=()
+# Each loopback port a route, the registrar or the front's second hop takes,
+# and what takes it: two services cannot both listen on one. The hop's port is
+# the one front.conf.tmpl's second server listens on.
+HOP_PORT=5348
+PORT_NUMBERS=("$HOP_PORT")
+PORT_OWNERS=("the front's second hop")
 claim_port() {
   local name="$1" port="$2" source="$3" i
   for i in ${PORT_NUMBERS[@]+"${!PORT_NUMBERS[@]}"}; do
@@ -44,8 +49,10 @@ claim_port() {
   PORT_NUMBERS+=("$port")
   PORT_OWNERS+=("$name")
 }
+# The fourth argument picks the map: "registrar" for the first hop's, anything
+# else for the second hop's.
 add_route() {
-  local name="${1%.}" port="$2" source="$3"
+  local name="${1%.}" port="$2" source="$3" map="${4:-}"
   # Lowercase DNS names only, so a value cannot end the map entry it is
   # written into and one name has one spelling.
   [[ "$name" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] \
@@ -65,21 +72,31 @@ add_route() {
   esac
   SEEN="$SEEN$name "
   claim_port "$name" "$port" "$source"
-  ROUTES+=("    $name 127.0.0.1:$port;")
+  if [ "$map" = registrar ]; then
+    REGISTRAR_ROUTES+=("    $name 127.0.0.1:$port;")
+  else
+    ROUTES+=("    $name 127.0.0.1:$port;")
+  fi
 }
 
 # The registrar listens on its port on every address wherever the host holds
-# its token, so that port is taken whether or not the registrar has a name.
+# its token, or has a name, so that port is taken either way; with a name it
+# also listens on its front port on loopback.
 REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
 REGISTRAR_NAME="${REGISTRAR_NAME%.}"
 REGISTRAR_NAME="$(lowercase "$REGISTRAR_NAME")"
 REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
+REGISTRAR_FRONT_PORT="${ALCOVE_RELAY_REGISTRAR_FRONT_PORT:-8445}"
 REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-/etc/alcove-relay/registrar-token}"
+if [ -n "$REGISTRAR_NAME" ] || [ -f "$REGISTRAR_TOKEN_FILE" ]; then
+  [[ "$REGISTRAR_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$REGISTRAR_PORT" -le 65535 ] \
+    || die "ALCOVE_RELAY_REGISTRAR_PORT is '$REGISTRAR_PORT', which is not a port number"
+  claim_port "the registrar (ALCOVE_RELAY_REGISTRAR_PORT)" "$REGISTRAR_PORT" ALCOVE_RELAY_REGISTRAR_PORT
+fi
 if [ -n "$REGISTRAR_NAME" ]; then
-  add_route "$REGISTRAR_NAME" "$REGISTRAR_PORT" ALCOVE_RELAY_REGISTRAR_NAME
-elif [ -f "$REGISTRAR_TOKEN_FILE" ]; then
-  PORT_NUMBERS+=("$REGISTRAR_PORT")
-  PORT_OWNERS+=("the registrar (ALCOVE_RELAY_REGISTRAR_PORT)")
+  [ "$REGISTRAR_FRONT_PORT" != "$REGISTRAR_PORT" ] \
+    || die "ALCOVE_RELAY_REGISTRAR_FRONT_PORT is $REGISTRAR_FRONT_PORT, the registrar's own port (ALCOVE_RELAY_REGISTRAR_PORT); give it another"
+  add_route "$REGISTRAR_NAME" "$REGISTRAR_FRONT_PORT" ALCOVE_RELAY_REGISTRAR_NAME registrar
 fi
 read -r -a PAIRS <<< "${ALCOVE_RELAY_FRONT_ROUTES:-}"
 for pair in ${PAIRS[@]+"${PAIRS[@]}"}; do
@@ -90,12 +107,17 @@ for pair in ${PAIRS[@]+"${PAIRS[@]}"}; do
 done
 
 FOUND=0
+FOUND_REGISTRAR=0
 while IFS= read -r line || [ -n "$line" ]; do
   if [ "$line" = "    __ROUTES__" ]; then
     FOUND=1
     [ "${#ROUTES[@]}" -eq 0 ] || printf '%s\n' "${ROUTES[@]}"
+  elif [ "$line" = "    __REGISTRAR_ROUTE__" ]; then
+    FOUND_REGISTRAR=1
+    [ "${#REGISTRAR_ROUTES[@]}" -eq 0 ] || printf '%s\n' "${REGISTRAR_ROUTES[@]}"
   else
     printf '%s\n' "$line"
   fi
 done < "$TMPL"
 [ "$FOUND" = 1 ] || die "$TMPL has no __ROUTES__ line for the routes"
+[ "$FOUND_REGISTRAR" = 1 ] || die "$TMPL has no __REGISTRAR_ROUTE__ line for the registrar's route"

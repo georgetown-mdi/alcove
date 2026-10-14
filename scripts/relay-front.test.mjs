@@ -68,48 +68,64 @@ const render = (envLines, { registrarToken = false, realm = REALM } = {}) => {
   });
 };
 
-/** The map's entries in a rendered configuration, as [name, target] pairs. */
-const mapEntries = (rendered) => {
-  const map = rendered.slice(
-    rendered.indexOf("map $ssl_preread_server_name"),
-    rendered.indexOf("}", rendered.indexOf("map $ssl_preread_server_name")),
-  );
+/**
+ * The entries of the map setting `variable` in a rendered configuration, as
+ * [name, target] pairs: `$alcove_hop`, the first hop's, or `$alcove_route`,
+ * the second hop's.
+ */
+const mapEntries = (rendered, variable) => {
+  const start = rendered.indexOf(`map $ssl_preread_server_name ${variable} {`);
+  expect(start, variable).toBeGreaterThanOrEqual(0);
+  const map = rendered.slice(start, rendered.indexOf("}", start));
   return settings(map)
     .slice(1)
     .map((line) => line.replace(/;$/, "").split(/\s+/));
 };
+const hopEntries = (rendered) => mapEntries(rendered, "$alcove_hop");
+const routeEntries = (rendered) => mapEntries(rendered, "$alcove_route");
+
+// The second hop's port, render-front.sh's HOP_PORT.
+const HOP = "127.0.0.1:5348";
 
 describe("render-front.sh", () => {
-  it("sends every connection to coturn when the host routes no name", () => {
+  it("sends every connection to coturn through the second hop when the host routes no name", () => {
     const result = render([]);
     expect(result.status, result.stderr).toBe(0);
-    expect(mapEntries(result.stdout)).toEqual([["default", "127.0.0.1:5349"]]);
+    expect(hopEntries(result.stdout)).toEqual([["default", HOP]]);
+    expect(routeEntries(result.stdout)).toEqual([
+      ["default", "127.0.0.1:5349"],
+    ]);
     expect(result.stdout).not.toContain("__ROUTES__");
+    expect(result.stdout).not.toContain("__REGISTRAR_ROUTE__");
   });
 
-  it("routes the registrar's name to its port and each listed name to its own", () => {
+  it("routes the registrar's name to its front port at the first hop and each listed name to its own at the second", () => {
     const result = render([
       "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
       "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+      "ALCOVE_RELAY_REGISTRAR_FRONT_PORT=8446",
       'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443  ws.example.org=9500"',
     ]);
     expect(result.status, result.stderr).toBe(0);
-    expect(mapEntries(result.stdout)).toEqual([
+    expect(hopEntries(result.stdout)).toEqual([
+      ["default", HOP],
+      ["registrar.example.org", "127.0.0.1:8446"],
+    ]);
+    expect(routeEntries(result.stdout)).toEqual([
       ["default", "127.0.0.1:5349"],
-      ["registrar.example.org", "127.0.0.1:8444"],
       ["signal.example.org", "127.0.0.1:8443"],
       ["ws.example.org", "127.0.0.1:9500"],
     ]);
   });
 
-  it("routes the registrar's name to 8443 when its port is unset", () => {
+  it("routes the registrar's name to 8445 when its front port is unset", () => {
     const result = render([
       "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
     ]);
     expect(result.status, result.stderr).toBe(0);
-    expect(mapEntries(result.stdout)).toContainEqual([
+    expect(hopEntries(result.stdout)).toContainEqual([
       "registrar.example.org",
-      "127.0.0.1:8443",
+      "127.0.0.1:8445",
     ]);
   });
 
@@ -175,23 +191,49 @@ describe("render-front.sh", () => {
       "ALCOVE_RELAY_FRONT_ROUTES routes ws.example.org to port 9500, which signal.example.org also uses",
     ],
     [
-      "a listed route and the registrar's name",
+      "a listed route and the registrar's port on a host naming the registrar",
       [
         "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
         "ALCOVE_RELAY_REGISTRAR_PORT=8444",
         'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8444"',
       ],
       {},
-      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8444, which registrar.example.org also uses",
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8444, which the registrar (ALCOVE_RELAY_REGISTRAR_PORT) also uses",
     ],
     [
-      "a listed route and the registrar's name on its unset port",
+      "a listed route and the registrar's unset port on a host naming the registrar",
       [
         "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
         'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
       ],
       {},
-      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8443, which registrar.example.org also uses",
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8443, which the registrar (ALCOVE_RELAY_REGISTRAR_PORT) also uses",
+    ],
+    [
+      "a listed route and the registrar's unset front port",
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8445"',
+      ],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8445, which registrar.example.org also uses",
+    ],
+    [
+      "the registrar's port and its front port",
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+        "ALCOVE_RELAY_REGISTRAR_FRONT_PORT=8444",
+      ],
+      {},
+      "ALCOVE_RELAY_REGISTRAR_FRONT_PORT is 8444, the registrar's own port (ALCOVE_RELAY_REGISTRAR_PORT); give it another",
+    ],
+    [
+      "a listed route and the front's second hop",
+      ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=5348"'],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 5348, which the front's second hop also uses",
     ],
     [
       "a listed route and a registrar with no name on a host holding its token",
@@ -261,7 +303,7 @@ describe("render-front.sh", () => {
       'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org.=8443"',
     ]);
     expect(result.status, result.stderr).toBe(0);
-    expect(mapEntries(result.stdout)).toContainEqual([
+    expect(routeEntries(result.stdout)).toContainEqual([
       "signal.example.org",
       "127.0.0.1:8443",
     ]);
@@ -282,9 +324,9 @@ describe("render-front.sh", () => {
       "ALCOVE_RELAY_REGISTRAR_PORT=8444",
     ]);
     expect(alone.status, alone.stderr).toBe(0);
-    expect(mapEntries(alone.stdout)).toContainEqual([
+    expect(hopEntries(alone.stdout)).toContainEqual([
       "registrar.example.org",
-      "127.0.0.1:8444",
+      "127.0.0.1:8445",
     ]);
   });
 
@@ -293,7 +335,7 @@ describe("render-front.sh", () => {
       'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
     ]);
     expect(result.status, result.stderr).toBe(0);
-    expect(mapEntries(result.stdout)).toContainEqual([
+    expect(routeEntries(result.stdout)).toContainEqual([
       "signal.example.org",
       "127.0.0.1:8443",
     ]);
@@ -350,6 +392,35 @@ describe("front.conf.tmpl", () => {
       ),
     ).toBe(false);
     expect(template.some((line) => /^http\b/.test(line))).toBe(false);
+  });
+
+  // nginx sends a PROXY header for a whole server block or not at all, so the
+  // first hop sends it on every connection and only the registrar's front
+  // port and the second hop, on loopback, read it.
+  it("sends the PROXY header from 443 and reads it at the second hop on loopback", () => {
+    const text = read("front.conf.tmpl");
+    const servers = text
+      .split(/^ {2}server \{$/m)
+      .slice(1)
+      .map((block) => settings(block.slice(0, block.indexOf("\n  }"))));
+    expect(servers).toHaveLength(2);
+    const [first, second] = servers;
+    expect(first).toContain("listen 443;");
+    expect(first).toContain("proxy_protocol on;");
+    expect(first).toContain("proxy_pass $alcove_hop;");
+    const hopPort = /^HOP_PORT=(\d+)$/m.exec(read("render-front.sh"))[1];
+    expect(second).toContain(`listen 127.0.0.1:${hopPort} proxy_protocol;`);
+    expect(second).toContain("ssl_preread on;");
+    expect(second).toContain("proxy_pass $alcove_route;");
+    expect(second.some((line) => line.startsWith("proxy_protocol "))).toBe(
+      false,
+    );
+    expect(template).toContain(`default 127.0.0.1:${hopPort};`);
+    for (const server of servers) {
+      expect(server).toContain("preread_timeout 10s;");
+      expect(server).toContain("proxy_connect_timeout 5s;");
+      expect(server).toContain("proxy_timeout 900s;");
+    }
   });
 
   it("bounds a connection's wait for its first bytes and its idle time", () => {

@@ -1407,7 +1407,7 @@ A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locato
 
 ### The registrar request proof
 
-The reference relay's registrar (`infra/relay/registrar.py`; its contract is `infra/relay/README.md`, The registrar) takes one of two credentials in the `Authorization` header. The relay-owner token, under `Bearer`, enrolls an exchange (`POST /exchanges/<exchange-id>`) and is the relay operator's recovery route on `PUT` and `DELETE`. A rotation (`PUT`) or revocation (`DELETE`) otherwise proves the caller holds the relay key the registrar has registered for the exchange:
+The reference relay's registrar (`infra/relay/registrar.py`; its contract is `infra/relay/README.md`, The registrar) takes one of two credentials in the `Authorization` header. The relay-owner token, under `Bearer`, enrolls an exchange (`POST /exchanges/<exchange-id>`) and is the relay operator's recovery route on `PUT` and `DELETE`. A registrar whose operator allows it also enrolls on a `POST` with no `Authorization` header ([Enrolling without a token](#enrolling-without-a-token)). A rotation (`PUT`) or revocation (`DELETE`) otherwise proves the caller holds the relay key the registrar has registered for the exchange:
 
 ```
 proof_key = HKDF-SHA-256(ikm = unhex(relay_key), salt = 0x00 * 32, info = "alcove-relay-registrar-v2:proof-key", 32)
@@ -1444,6 +1444,16 @@ body_sha256   = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 mac           = f62d215cae1ac9c3dfdc844bb0cd4cc5758c362398c7986d39ce3da1a57ebe4b
 authorization = Alcove-Relay-Proof ts=1767225600,mac=f62d215cae1ac9c3dfdc844bb0cd4cc5758c362398c7986d39ce3da1a57ebe4b
 ```
+
+### Enrolling without a token
+
+A registrar whose operator turns it on (`infra/relay/README.md`, Enrollment without a token) also enrolls an exchange on a `POST /exchanges/<exchange_id>` that holds no `Authorization` header, so a party holding no relay-owner token can enroll the relay key it relays under. The token and proof routes above are unchanged by it.
+
+- **The request.** The body is `{"key": <relay key>, "maxAgeDays": null}`. A body naming any other `maxAgeDays` is answered 400 and nothing is written: the caller does not choose the lapse.
+- **The lapse.** The registrar fixes it at 4200 s (70 minutes) after the enrollment, the web application's 10-minute wait for its partner followed by one credential's `ttl` of 3600 s, and states it in the answer: `maxAgeDays` is `null` and `lapsesAt` is that time. A `PUT` under a proof on such a row, a renewal or a rotation, keeps that lapse whatever `maxAgeDays` its body names, so a row enrolled without a token never outlives it; only the relay-owner token's `PUT`, the operator's recovery route, replaces it.
+- **The same key, and another.** An enrollment naming the key the id already holds is answered 200 with the registration as held, its lapse unchanged, so either party, each deriving the key from the same secret, may enroll it. An enrollment naming another key is answered 409, as for the token's, so a caller cannot replace or revoke an exchange whose key it does not hold.
+- **The rate limit.** The registrar limits enrollments without a token from each client address within a window, and answers one past the limit 429 with `Retry-After`, the seconds until the window ends, writing nothing. Its values are the registrar's (`infra/relay/README.md`, Enrollment without a token).
+- **The exchange id.** Any id in the registrar's id alphabet. Since any caller may enroll, a third party that learns or guesses an id before the exchange's own party enrolls it can hold it under another key, and that party's enrollment is then answered 409; an id derived from a secret only the parties hold leaves nothing to guess.
 
 ### Registering the rotated relay key
 

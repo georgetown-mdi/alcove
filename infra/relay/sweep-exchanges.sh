@@ -6,7 +6,9 @@
 # A row registered with a max-age-days lapses that many days after its
 # registration; the exchange's next registration replaces the row and restarts
 # the count, so an exchange that keeps running is never swept. A row registered
-# with none never lapses. alcove-relay-sweep.timer runs the same sweep hourly.
+# with none never lapses. A row enrolled without a token lapses at the time its
+# enrollment fixed. alcove-relay-sweep.timer runs the same sweep every ten
+# minutes.
 # One transaction, so a registration cannot land between finding a lapsed row
 # and revoking it.
 set -euo pipefail

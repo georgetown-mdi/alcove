@@ -454,6 +454,9 @@ if [ "$REGISTRAR" = 1 ]; then
   else
     log "alcove-relay-registrar.service started on port ${ALCOVE_RELAY_REGISTRAR_PORT:-8443}; set ALCOVE_RELAY_REGISTRAR_NAME to reach it on 443"
   fi
+  if [ "${ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT:-off}" = on ]; then
+    log "the registrar enrolls an exchange without a token, under its rate limit; set ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=off in $ENV_FILE to require the token"
+  fi
 else
   systemctl disable --now alcove-relay-registrar.service 2>/dev/null || true
   log "no $REGISTRAR_TOKEN_FILE, so the registrar is not running"
