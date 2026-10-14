@@ -14,7 +14,6 @@ import { Link } from "@tanstack/react-router";
 import {
   DEFAULT_PEER_TIMEOUT_MS,
   describeEntityClusters,
-  describeResolvedMatching,
   formatCount,
   replaceControlCharactersForDisplay,
 } from "@alcove/core";
@@ -347,17 +346,13 @@ export function completionClusterReport(
 }
 
 /** The completion panel: the big "Exchange complete" line naming whatever this run
- * produced ({@link completionOutcome}), what the two parties' agreed
- * `deduplicate` values resolved to, and the finished-at timestamp. It takes the
- * whole outputs shape rather than a bare number so the three outcomes cannot
+ * produced ({@link completionOutcome}) and the finished-at timestamp. It takes
+ * the whole outputs shape rather than a bare number so the three outcomes cannot
  * collapse into one another here.
  *
- * The matching statement is core's own composition
- * (`describeResolvedMatching`), the same sentence the CLI seat states and the
- * same one a browser-conducted run already showed on its running screen, so no
- * two sinks drift on what a run resolved to. It is omitted where the outputs
- * hold no resolved matching, rather than standing in a default for a pair this
- * seat did not read.
+ * The two parties' `deduplicate` values are not stated here: they are shown
+ * where a party agrees to the exchange, and a deduplicating pair raises its
+ * cardinality notice through the run's warnings.
  *
  * The entity-cluster line beneath it is {@link completionClusterReport}. */
 export function DonePanel({
@@ -387,11 +382,6 @@ export function DonePanel({
           </>
         )}
       </p>
-      {outputs?.matching !== undefined && (
-        <p className={`${styles.small} ${styles.sub}`}>
-          {describeResolvedMatching(outputs.matching)}
-        </p>
-      )}
       {clusters !== undefined && (
         <p className={`${styles.small} ${styles.sub}`}>{clusters}</p>
       )}

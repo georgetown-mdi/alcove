@@ -216,13 +216,6 @@ interface ExchangeOutputsBase {
    * and a helper alike -- the helper's record is produced even though it does not
    * bind the result table. */
   record?: RecordDownloads;
-  /** What the two parties' agreed `deduplicate` values resolved to
-   * ({@link ExchangeResult.matching}), so the completion panel states the
-   * partner's value and the cardinality the pair gave this run. A console seat
-   * takes it off the run's relayed `result` event; it is absent there only
-   * when the relayed object fails the shape check, and the panel then states
-   * no matching rather than a label this build does not define. */
-  matching?: ResolvedMatching;
 }
 
 /** The name a result download is saved under where its outputs state none: an
