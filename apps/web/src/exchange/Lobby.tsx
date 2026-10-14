@@ -161,8 +161,7 @@ export function Lobby() {
               aria-label="Invitation"
               description="Paste the invitation your partner sent to you"
               placeholder="https://...#... or the invitation text"
-              autosize
-              minRows={2}
+              rows={2}
               value={invitation}
               error={invitationError}
               errorProps={{ role: "alert" }}
