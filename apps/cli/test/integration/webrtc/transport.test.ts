@@ -17,6 +17,7 @@ import {
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
   FinalFrameUnconfirmedError,
   openWebRtcMessageConnection,
+  webRtcMessageConnection,
 } from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
   describeSelectedCandidatePair,
@@ -37,6 +38,7 @@ import { startRefusingStunServer } from "./refusingStunServer";
 
 import type { BrokerLocation } from "../../../src/connection/webrtc/brokerClient";
 import type { RTCIceServer } from "werift";
+import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
 import type { BrokerProcess } from "../../signaling/brokerProcess";
 import type { RefusingStunServer } from "./refusingStunServer";
 import type { MessageConnection } from "@alcove/core";
@@ -119,6 +121,41 @@ async function connectedPair(): Promise<{
   ]);
   openConnections.push(inviter, acceptor);
   return { inviter, acceptor };
+}
+
+/**
+ * Drop every datagram this peer sends from now on. werift's peer-connection
+ * close tells the remote side, which closes its data channel at once, so a
+ * test that must tell another close apart from that one cuts it off first.
+ */
+function cutOutboundTraffic(session: WebRtcPeerSession): void {
+  const protocols = (
+    session.channel as unknown as {
+      sctp: {
+        transport: {
+          iceTransport: {
+            connection: {
+              protocols: Array<{ transport: { send: () => Promise<void> } }>;
+            };
+          };
+        };
+      };
+    }
+  ).sctp.transport.iceTransport.connection.protocols;
+  expect(protocols.length).toBeGreaterThan(0);
+  for (const protocol of protocols)
+    protocol.transport.send = () => Promise.resolve();
+}
+
+/** `session`, cut off from the network as its peer connection is torn down. */
+function silentOnTeardown(session: WebRtcPeerSession): WebRtcPeerSession {
+  return {
+    ...session,
+    close: async () => {
+      cutOutboundTraffic(session);
+      await session.close();
+    },
+  };
 }
 
 const sha256 = (bytes: Uint8Array): string =>
@@ -614,14 +651,18 @@ test("an over-cap inbound frame fails the connection closed", async () => {
 
 test("a peer that reads the in-band close closes the channel behind it", async () => {
   // What a browser partner is waiting on: PeerJS reads delivery off its own
-  // channel closing, so answering the sentinel by tearing the peer connection
-  // down would leave that partner waiting out ICE instead. Driven from a raw
-  // session, so the close observed here is the reader's own.
+  // channel closing. Driven from a raw session, and the reader is cut off from
+  // the network as its peer connection is torn down, so the close observed
+  // here can only be the reader's channel close.
   const common = partyOptions(generateSharedSecret());
-  const [watcher, reader] = await Promise.all([
+  const [watcher, readerSession] = await Promise.all([
     openWebRtcPeerSession({ ...common, role: "inviter" }),
-    openWebRtcMessageConnection({ ...common, role: "acceptor" }),
+    openWebRtcPeerSession({ ...common, role: "acceptor" }),
   ]);
+  const reader = webRtcMessageConnection(
+    silentOnTeardown(readerSession),
+    common,
+  );
   openConnections.push(reader);
   try {
     watcher.channel.send(Buffer.from(packCloseSentinel()));
@@ -641,14 +682,18 @@ test("a peer that reads the in-band close closes the channel behind it", async (
 
 test("a clean close of this side's own closes the channel too", async () => {
   // The other half of the same signal. Handing the sentinel to the wire is not
-  // the peer having it -- a peer connection torn down behind it reaches the
-  // partner as neither a sentinel nor a close -- so the channel's own close is
-  // what the partner ends its wait on.
+  // the peer having it, so the channel's own close is what the partner ends
+  // its wait on. The closer is cut off as its peer connection is torn down, as
+  // above, so the watcher's channel closes only on the closer's channel close.
   const common = partyOptions(generateSharedSecret());
-  const [watcher, closer] = await Promise.all([
+  const [watcher, closerSession] = await Promise.all([
     openWebRtcPeerSession({ ...common, role: "inviter" }),
-    openWebRtcMessageConnection({ ...common, role: "acceptor" }),
+    openWebRtcPeerSession({ ...common, role: "acceptor" }),
   ]);
+  const closer = webRtcMessageConnection(
+    silentOnTeardown(closerSession),
+    common,
+  );
   openConnections.push(closer);
   try {
     await closer.send({ tag: "final" });
@@ -669,9 +714,10 @@ test("closing after the partner has vanished ends on the flush ceiling and repor
   // what ends the close instead of the peer-loss signal, and the close says
   // the frame was not confirmed rather than reporting a clean close.
   //
-  // The partner is torn down at the session, not through its message
-  // connection, so no close sentinel reaches this side -- otherwise the peer
-  // would not have vanished at all.
+  // The partner is cut off from the network before it is torn down, and torn
+  // down at the session rather than through its message connection: werift's
+  // close tells the remote side, as a close sentinel would, and a peer that
+  // says it is going has not vanished.
   const common = partyOptions(generateSharedSecret());
   const [vanishing, acceptor] = await Promise.all([
     openWebRtcPeerSession({ ...common, role: "inviter" }),
@@ -687,6 +733,7 @@ test("closing after the partner has vanished ends on the flush ceiling and repor
     tag: "stranded",
     body: new Uint8Array(4 * 1024 * 1024),
   });
+  cutOutboundTraffic(vanishing);
   await vanishing.close();
 
   const started = Date.now();

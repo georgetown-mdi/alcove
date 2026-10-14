@@ -64,9 +64,9 @@ attempt, below), since the ID-taken retry window, the registration and the
 channel-open budget can all pass after the credential is minted. It also equals the default rendezvous budget and the
 browser's own wait, so a run at the default makes exactly one attempt and
 behaves as before, and it is the cadence the load figure above was scaled to.
-At that length the refresh timers and relay allocations a wait holds are
+At that length the relay allocations a wait holds are
 bounded by the attempt count: one or two while attempts run their full length,
-more when a partner restarts attempts sooner (below). Shorter attempts would multiply both, and the boundary cost below,
+more when a partner restarts attempts sooner (below). Shorter attempts would multiply them, and the boundary cost below,
 for no gain the measurement showed.
 
 **The last attempt stretches by up to half.** A remainder under half an
@@ -135,7 +135,7 @@ offer-following without rebuilding anything in place.
   acceptor's unreported-offer re-send (30 s) recovers it; a browser
   acceptor's dial fails at its 30 s open timeout instead.
 - Every relayed attempt leaves its allocation on the relay for its granted
-  lifetime and one werift timer armed until it fires. A fired timer is not
-  armed again (held by `webrtcTurnRefreshTimer.test.ts`), which is what keeps
-  them from accumulating; retiring them needs a werift release that disarms
-  the timer ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+  lifetime. The werift refresh timer the measurement above found armed per
+  attempt is disarmed by the close on the pinned werift (held by
+  `webrtcTurnRefreshTimer.test.ts`;
+  [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).

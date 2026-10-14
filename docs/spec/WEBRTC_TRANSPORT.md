@@ -1022,30 +1022,16 @@ broker socket and the peer connection on it, so a party that interrupts while
 waiting for its partner exits at once rather than at the end of the rendezvous
 budget.
 
-A configured relay leaves one timer armed that this transport cannot release.
-werift keeps a TURN allocation alive by re-sending refresh on a timer armed from
-the lifetime the relay granted, and tearing the peer connection down leaves a
-timer that is already waiting armed; a waiting timer holds the event loop, for
-five sixths of the granted lifetime -- about 500 s where a relay grants the
-usual 600 s. Everything the exchange owes is complete before that wait begins:
-the result, the exchange record and the receipt are written, the channel and
-the broker socket are closed, and nothing crosses the wire during it. So what
-the timer holds is the loop rather than the run, and the return budget above is
-what ends the process, naming the kinds of handle still armed as it goes.
-Nothing werift exposes releases the timer, so it is a stated limit rather than
-a budget this transport sets; the measurement, and the release paths that were
-driven against it, are in
-[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions).
-
-A CLI wait of several connection attempts leaves one such timer for each
-attempt that allocated against a relay. A timer that fires is not armed again,
-so the timers armed at once are bounded by the attempt count within about
-500 s, not by the wait's length: one while attempts run the 10-minute attempt
-budget, more when a partner restarting under new connection ids starts them
-sooner. The relay likewise holds each attempt's allocation until the lifetime
-it granted ends, about 600 s, since no teardown releases it: one or two at a
-time while attempts run their budget, and otherwise one for each attempt
-started within that lifetime.
+A configured relay leaves no timer behind on this side. werift keeps a TURN
+allocation alive by re-sending refresh on a timer armed from the lifetime the
+relay granted, and tearing the peer connection down disarms it, so a relayed
+run returns as an unrelayed one does
+([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)). The
+relay holds each allocation until the lifetime it granted ends, about 600 s,
+since no teardown releases it: a CLI wait of several connection attempts leaves
+one or two at a time while attempts run the 10-minute attempt budget, and
+otherwise one for each attempt started within that lifetime, as when a partner
+restarting under new connection ids starts them sooner.
 
 Three CLI bounds are memory rather than time, all on inbound signaling: a
 signaling frame is refused above 256 KiB of UTF-8 before it is parsed; at

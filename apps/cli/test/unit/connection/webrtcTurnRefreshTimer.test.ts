@@ -10,11 +10,13 @@ import { expect, test } from "vitest";
 
 /**
  * The TURN allocation refresh timer, pinned because the CLI's teardown cannot
- * reach it: werift re-arms REFRESH from the granted lifetime and nothing it
- * exposes disarms the timer after `close()`, so an exchange with a `turn`
- * block configured returns only when the timer fires -- about five sixths of
- * the granted lifetime. This is a stated limit (docs/spec/WEBRTC_TRANSPORT.md);
- * a werift release that disarms the timer should fail this test too.
+ * reach it: werift re-arms REFRESH from the granted lifetime, and a timer left
+ * armed after `close()` holds the event loop for about five sixths of that
+ * lifetime past the end of a relayed exchange. Held here: a live allocation
+ * draws a REFRESH at five sixths of the grant; the allocation arms one timer,
+ * which `close()` removes from Node's active timers; and no REFRESH follows
+ * the close (docs/spec/DEPENDENCY_PINS.md). A release that leaves the timer
+ * armed fails here. It observes the timer, not a whole run's exit.
  */
 
 type Address = ConstructorParameters<typeof TurnProtocol>[0];
@@ -34,6 +36,10 @@ const REQUESTED_LIFETIME = 600;
 const GRANTED_LIFETIME = 1;
 /** Five sixths of the grant, less the slack a loaded machine takes. */
 const EARLIEST_REFRESH_MS = 700;
+
+/** The timers armed in this process, by Node's own count of its resources. */
+const armedTimeouts = (): number =>
+  process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
 
 interface ScriptedRelay {
   transport: IceTransport;
@@ -103,7 +109,9 @@ function scriptedRelay(): ScriptedRelay {
   };
 }
 
-test("close leaves the TURN refresh timer armed, at five sixths of the granted lifetime", async () => {
+test("an open allocation refreshes at five sixths of the granted lifetime", async () => {
+  // The control for the test below: this relay does draw a REFRESH from a
+  // live allocation, so its absence after the close is the timer disarmed.
   const relay = scriptedRelay();
   const turn = new TurnProtocol(
     SERVER,
@@ -115,20 +123,21 @@ test("close leaves the TURN refresh timer armed, at five sixths of the granted l
 
   await turn.connectionMade();
   expect(turn.relayedAddress).toEqual(RELAYED_ADDRESS);
+  const allocatedAt = Date.now();
 
-  const closedAt = Date.now();
-  await turn.close();
-
-  // Armed from the granted second, not the requested ten minutes: five sixths
-  // of the request would land far outside this budget.
-  await relay.awaitRequest(methods.REFRESH, 10_000);
-  expect(Date.now() - closedAt).toBeGreaterThanOrEqual(EARLIEST_REFRESH_MS);
+  try {
+    // Armed from the granted second, not the requested ten minutes: five
+    // sixths of the request would land far outside this budget.
+    await relay.awaitRequest(methods.REFRESH, 10_000);
+    expect(Date.now() - allocatedAt).toBeGreaterThanOrEqual(
+      EARLIEST_REFRESH_MS,
+    );
+  } finally {
+    await turn.close();
+  }
 }, 15_000);
 
-test("a closed allocation's refresh timer fires once and is not armed again", async () => {
-  // What bounds the timers a wait of many relayed connection attempts holds:
-  // each discarded attempt leaves one, retired when it fires, so a wait holds
-  // about five sixths of the granted lifetime divided by the attempt length.
+test("close disarms the TURN refresh timer", async () => {
   const relay = scriptedRelay();
   const turn = new TurnProtocol(
     SERVER,
@@ -137,12 +146,16 @@ test("a closed allocation's refresh timer fires once and is not armed again", as
     REQUESTED_LIFETIME,
     relay.transport,
   );
+  const beforeAllocation = armedTimeouts();
   await turn.connectionMade();
+  // The allocation arms exactly one timer, the refresh, and the close takes it
+  // off the event loop rather than leaving it to fire.
+  expect(armedTimeouts()).toBe(beforeAllocation + 1);
   await turn.close();
-  await relay.awaitRequest(methods.REFRESH, 10_000);
+  expect(armedTimeouts()).toBe(beforeAllocation);
 
-  // Armed again, it would fire within another five sixths of the grant.
+  // Still armed, it would fire within five sixths of the grant.
   await expect(
     relay.awaitRequest(methods.REFRESH, 3 * GRANTED_LIFETIME * 1000),
   ).rejects.toThrow(/no REFRESH within/);
-}, 20_000);
+}, 10_000);
