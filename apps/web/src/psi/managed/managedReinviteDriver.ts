@@ -17,6 +17,7 @@
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
+import { enrollAtDefaultRelay } from "../transport/defaultRelay";
 import { invitationLocation } from "../invitationLocation";
 import { relayForRun } from "../transport/ownRelaySetting";
 
@@ -24,6 +25,7 @@ import { composeManagedReinvite } from "./managedReinvite";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
 import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
+import type { DefaultRelayEnrollment } from "../transport/defaultRelay";
 import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
@@ -46,6 +48,8 @@ interface ManagedReinviteDriverDeps {
   /** Read the relay the invitation names: the one this inviter's own run
    * gathers against. */
   ownRelay: () => RelayUrls | undefined;
+  /** Enroll the fresh secret's relay key at the build's default relay. */
+  enrollDefaultRelay: (sharedSecret: string) => Promise<DefaultRelayEnrollment>;
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -57,6 +61,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: () => relayForRun(),
+  enrollDefaultRelay: (sharedSecret) => enrollAtDefaultRelay(sharedSecret),
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -96,6 +101,7 @@ export async function reinviteManagedExchange(
     encode: deps.encode,
     now: deps.now,
     ownRelay: deps.ownRelay(),
+    enrollDefaultRelay: deps.enrollDefaultRelay,
   });
   const persisted = await deps.persistRotation(
     record.id,

@@ -1,7 +1,6 @@
 import {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
-  MAX_RELAY_LOCATOR_URLS,
   assertFanOutImplemented,
   assertInvitationLifetimeSeconds,
   assertPayloadSendDisclosed,
@@ -30,7 +29,7 @@ import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
 import {
   enrollAtDefaultRelay,
-  withDefaultRelay,
+  invitationRelayWithDefault,
 } from "./transport/defaultRelay";
 
 import type {
@@ -275,9 +274,9 @@ export type ConnectionEndpointRequest =
  * Resolve a request to the token's endpoint. This app's own webrtc locator
  * names the relay this inviter's own run uses ({@link relayForRun}) and the
  * build's default relay once the registrar has enrolled the relay key
- * `sharedSecret` derives ({@link enrollAtDefaultRelay}); a default relay that
- * would take the locator past {@link MAX_RELAY_LOCATOR_URLS} TURN urls is left
- * out. A webrtc endpoint naming its host is taken as given.
+ * `sharedSecret` derives ({@link enrollAtDefaultRelay}), where the locator
+ * has room for it ({@link invitationRelayWithDefault}). A webrtc endpoint
+ * naming its host is taken as given.
  */
 async function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
@@ -290,14 +289,12 @@ async function resolveConnectionEndpoint(
   // A build with no signaling address refuses here, before the registrar is
   // contacted for an invitation it cannot mint.
   invitationSignalingAddress(location);
-  const ownRelay = relayForRun();
   const enrollment = await enrollAtDefaultRelay(sharedSecret, defaultRelay);
-  const named =
-    (ownRelay?.turn.length ?? 0) < MAX_RELAY_LOCATOR_URLS
-      ? withDefaultRelay(ownRelay, enrollment)
-      : ownRelay;
   return {
-    endpoint: invitationWebrtcEndpoint(location, named),
+    endpoint: invitationWebrtcEndpoint(
+      location,
+      invitationRelayWithDefault(relayForRun(), enrollment),
+    ),
     defaultRelayNotEnrolled: enrollment.kind === "not-enrolled",
   };
 }

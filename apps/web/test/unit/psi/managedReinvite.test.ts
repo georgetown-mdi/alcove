@@ -6,7 +6,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
@@ -84,7 +84,10 @@ const seams = {
   encode: encodeInvitation,
   now: () => NOW,
   ownRelay: undefined,
+  enrollDefaultRelay: () => Promise.resolve({ kind: "none" as const }),
 };
+
+const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
 
 describe("composeManagedReinvite", () => {
   test("mints a fresh secret and reuses the stored document's terms verbatim", async () => {
@@ -151,6 +154,39 @@ describe("composeManagedReinvite", () => {
     const token = await decodeInvitation(
       (await composeManagedReinvite(inviterRecord(), location, seams)).encoded,
     );
+    expect(token.connectionEndpoint).not.toHaveProperty("relay");
+  });
+
+  test("names the build's default relay after the own relay once the fresh secret's key is enrolled", async () => {
+    const ownRelay = { turn: ["turns:relay.example.org:443?transport=tcp"] };
+    const enrollDefaultRelay = vi.fn(() =>
+      Promise.resolve({
+        kind: "enrolled" as const,
+        turnUrl: DEFAULT_RELAY_TURN_URL,
+      }),
+    );
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      ownRelay,
+      enrollDefaultRelay,
+    });
+    expect(enrollDefaultRelay).toHaveBeenCalledExactlyOnceWith(FRESH_SECRET);
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      relay: { turn: [...ownRelay.turn, DEFAULT_RELAY_TURN_URL] },
+    });
+  });
+
+  test("withholds the build's default relay when the enrollment did not confirm", async () => {
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      enrollDefaultRelay: () =>
+        Promise.resolve({
+          kind: "not-enrolled" as const,
+          turnUrl: DEFAULT_RELAY_TURN_URL,
+        }),
+    });
+    const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).not.toHaveProperty("relay");
   });
 

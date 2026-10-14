@@ -522,4 +522,42 @@ describe("beginManagedRendezvous: relay", () => {
 
     expect(acceptorCalls[0].options?.relay).toBeUndefined();
   });
+
+  test.each(["inviter", "acceptor"] as const)(
+    "the %s's flow starts without the default relay once a registrar that never answers has had the dial's wait",
+    async (side) => {
+      stubAppLocation();
+      const relays: Array<unknown> = [];
+      const flows: ManagedRendezvousFlows = {
+        listenAsInviter: (_secret, options) => {
+          relays.push(options?.relay);
+          return Promise.resolve(fakePeer("inviter"));
+        },
+        dialAsAcceptor: (_secret, _endpoint, options) => {
+          relays.push(options?.relay);
+          return Promise.resolve([fakePeer("acceptor"), fakeConn()]);
+        },
+      };
+
+      const acquisition = await begin(
+        side,
+        generateSharedSecret(),
+        exchangeFile(),
+        {
+          flows,
+          defaultRelay: {
+            setting: () => ({
+              turnUrl: "turns:turn.example.org:443?transport=tcp",
+              registrarUrl: "https://registrar.example.org",
+            }),
+            enroll: () => new Promise<never>(() => {}),
+            dialWaitMs: 50,
+          },
+        },
+      );
+
+      expect(relays).toEqual([undefined]);
+      expect(acquisition.defaultRelayNotEnrolled).toBe(true);
+    },
+  );
 });
