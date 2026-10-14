@@ -55,8 +55,8 @@ describe("deriveRelayKey", () => {
 });
 
 // Computed outside this code, by OpenSSL 3.0, as FIXED_RELAY_KEY with
-// -keylen 16 and -kdfopt info:alcove-relay-exchange-id-v1.
-const FIXED_RELAY_EXCHANGE_ID = "6ca2d911f5f27da95df0b014a8b2b014";
+// -keylen 16 and -kdfopt info:alcove-relay-exchange-id-v2.
+const FIXED_RELAY_EXCHANGE_ID = "ef946df1a03b076bd042fa7cf3cea8ed";
 
 describe("deriveRelayExchangeId", () => {
   test("matches the known-answer id for a fixed secret", async () => {

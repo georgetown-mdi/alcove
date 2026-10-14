@@ -22,7 +22,7 @@ const RELAY_KEY_BYTES = 32;
  * HKDF info label for the exchange id a relay key is enrolled under without a
  * token, a single fixed label in the same label space as {@link RELAY_KEY_INFO}.
  */
-const RELAY_EXCHANGE_ID_INFO = "alcove-relay-exchange-id-v1";
+const RELAY_EXCHANGE_ID_INFO = "alcove-relay-exchange-id-v2";
 
 const RELAY_EXCHANGE_ID_BYTES = 16;
 
