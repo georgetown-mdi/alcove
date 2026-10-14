@@ -2051,16 +2051,16 @@ describe("inviter screen", () => {
         kind: "matched" as const,
         resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
         matchedRecordCount: 12,
-        matching,
       },
       TEST_RUN_COMPLETION,
     );
 
-    // The completion panel takes the sentence over, so it still stands once.
+    // The sentence leaves with the running screen: the completion panel does
+    // not state it.
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange complete");
-    await vi.waitFor(() => expect(paragraphsSaying(sentence)).toHaveLength(1));
+    expect(paragraphsSaying(sentence)).toHaveLength(0);
     expect(
       page.getByText("The exchange reported a warning").query(),
     ).toBeNull();
@@ -2072,16 +2072,16 @@ describe("inviter screen", () => {
     call.onStages(stagesFor(preparedWith("cascade", 2)));
     call.onStage("waiting for peer");
     call.onStage("confirming protocol");
+    call.onResolvedMatching!({
+      localDeduplicate: false,
+      partnerDeduplicate: true,
+      cardinality: "one-to-many",
+    });
     call.onResult(
       {
         kind: "matched" as const,
         resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
         matchedRecordCount: 1847,
-        matching: {
-          localDeduplicate: false,
-          partnerDeduplicate: true,
-          cardinality: "one-to-many" as const,
-        },
         record: {
           recordUrl: URL.createObjectURL(new Blob(["{}"])),
           recordFileName: "alcove-record-2026-07-08T14-32.json",
@@ -2098,18 +2098,8 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByText(/1,847.*matched records/))
       .toBeInTheDocument();
-    // The partner's own deduplicate value and the cardinality the pair resolved
-    // to: this seat consented to no document of its partner's, so the completion
-    // panel is where it reads what the partner presented.
-    await expect
-      .element(
-        page.getByText(
-          "Deduplication as agreed at the terms exchange: you declared " +
-            "deduplicate false, your partner declared deduplicate true. This " +
-            "run matches one-to-many.",
-        ),
-      )
-      .toBeInTheDocument();
+    // The panel states no deduplicate pair, a deduplicating one included.
+    expect(page.getByText(/Deduplication as agreed/).query()).toBeNull();
     await expect.element(page.getByText(/^Finished /)).toBeInTheDocument();
     // The status label's live region reaches the final "Done".
     expect(document.querySelector(`.${styles.stageLabel}`)?.textContent).toBe(

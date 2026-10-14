@@ -1,5 +1,4 @@
 import {
-  LINKAGE_CARDINALITIES,
   ProcessState,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   failureCauseFromUntrusted,
@@ -45,7 +44,6 @@ import type {
   Metadata,
   OwnColumnSelection,
   PayloadColumnsChange,
-  ResolvedMatching,
   Standardization,
   TermsDelta,
 } from "@alcove/core";
@@ -1075,29 +1073,6 @@ function countOnlyResultCount(event: RelayEvent): number | undefined {
     : undefined;
 }
 
-/** What the agreed `deduplicate` pair resolved to, read off a `result` relay
- * event, or undefined when the run reported nothing this build can read. The
- * relay forwards the CLI's own fields verbatim (docs/spec/CLI_EVENTS.md,
- * `result`), so the shape is checked here rather than assumed: both values
- * must be booleans and the label one of the closed set, and anything else
- * leaves the console's panel stating no matching at all rather than a label
- * this build does not define. */
-function resolvedMatchingOf(event: RelayEvent): ResolvedMatching | undefined {
-  const matching = event.matching;
-  if (matching === null || typeof matching !== "object") return undefined;
-  const { localDeduplicate, partnerDeduplicate, cardinality } = matching as {
-    localDeduplicate?: unknown;
-    partnerDeduplicate?: unknown;
-    cardinality?: unknown;
-  };
-  const label = LINKAGE_CARDINALITIES.find((known) => known === cardinality);
-  return typeof localDeduplicate === "boolean" &&
-    typeof partnerDeduplicate === "boolean" &&
-    label !== undefined
-    ? { localDeduplicate, partnerDeduplicate, cardinality: label }
-    : undefined;
-}
-
 /** One count read off a relay frame, or undefined for anything outside the
  * non-negative safe integers. Every figure of a cluster summary is one of the
  * running party's own counts, so a value outside that range is a malformed
@@ -1199,12 +1174,9 @@ function entityClusterSummaryOf(
  * other two arms hold none. `countReportedByPartner` caveats
  * the count only on a literal `true`; anything else -- omitted, or a
  * non-boolean -- is treated as this party's own count, per the contract. The
- * resolved matching rides all three outcomes, since the console seat states
- * what the pair resolved to whatever this party received. The result's save
- * name is the file name the event's `resultPath` ends on, where it ends on a
- * result name. */
+ * result's save name is the file name the event's `resultPath` ends on, where
+ * it ends on a result name. */
 function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
-  const matching = resolvedMatchingOf(event);
   const resultStamp = stampOfResultPath(event.resultPath);
   if (event.resultWritten !== false)
     return {
@@ -1213,7 +1185,6 @@ function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
       ...(resultStamp !== null
         ? { resultFileName: runArtifactNames(resultStamp).result }
         : {}),
-      matching,
       entityClusters: entityClusterSummaryOf(event),
     };
   const intersectionCount = countOnlyResultCount(event);
@@ -1222,9 +1193,8 @@ function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
         kind: "counted",
         intersectionCount,
         countReportedByPartner: event.countReportedByPartner === true,
-        matching,
       }
-    : { kind: "withheld", matching };
+    : { kind: "withheld" };
 }
 
 /** Attach the record-pair downloads to the base outputs, pointed at the

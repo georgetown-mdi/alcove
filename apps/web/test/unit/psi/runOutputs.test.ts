@@ -158,27 +158,6 @@ describe("buildRunOutputs", () => {
     ).toMatchObject({ kind: "counted", countReportedByPartner: true });
   });
 
-  test("every outcome states what the agreed deduplicate pair resolved to", () => {
-    // The completion panel states the partner's value and the resolved
-    // cardinality whatever this party received, so a helper that got no result
-    // and a count-only party read them too.
-    const matching = {
-      localDeduplicate: false,
-      partnerDeduplicate: true,
-      cardinality: "one-to-many" as const,
-    };
-    for (const result of [
-      receivedResult(true),
-      withheldResult(),
-      countOnlyResult("receiver"),
-    ]) {
-      const { urls } = recordingUrls();
-      expect(
-        buildRunOutputs({ ...result, matching }, prepared, urls).matching,
-      ).toEqual(matching);
-    }
-  });
-
   test("a matched result includes the run's own entity-cluster summary", () => {
     // The completion panel states how the closure grouped the pairs, so the
     // summary is written on the matched outputs rather than recomputed there. A
