@@ -79,9 +79,11 @@ TODAY="$(date -u +%F)"
 # replaces whole.
 CURRENT="$(head -c 4096 "$COUNTERS_FILE")"
 STARTED="$(field "$CURRENT" started "$STARTED_PATTERN" "$COUNTERS_FILE" "a UTC time")"
-declare -A NOW
+# NOW[i] is the count named COUNTS[i]: bash 3.2, the test platform's, has no
+# associative arrays.
+NOW=()
 for name in "${COUNTS[@]}"; do
-  NOW[$name]="$(field "$CURRENT" "$name" "$COUNT_PATTERN" "$COUNTERS_FILE" "a whole number")"
+  NOW+=("$(field "$CURRENT" "$name" "$COUNT_PATTERN" "$COUNTERS_FILE" "a whole number")")
 done
 
 # The UTC day of the last heartbeat published, empty before the first.
@@ -94,7 +96,7 @@ record() {
   tmp="$(mktemp "$dir/.published.XXXXXX")"
   {
     printf 'started=%s\n' "$STARTED"
-    for name in "${COUNTS[@]}"; do printf '%s=%s\n' "$name" "${NOW[$name]}"; done
+    for i in "${!COUNTS[@]}"; do printf '%s=%s\n' "${COUNTS[$i]}" "${NOW[$i]}"; done
     printf 'heartbeat=%s\n' "$HEARTBEAT"
   } > "$tmp"
   mv "$tmp" "$STATE_FILE"
@@ -110,13 +112,14 @@ else
   REMEDY="delete it, and the next run records the counts again"
   LAST_STARTED="$(field "$LAST" started "$STARTED_PATTERN" "$STATE_FILE" "a UTC time; $REMEDY")"
   HEARTBEAT="$(field "$LAST" heartbeat "$HEARTBEAT_PATTERN" "$STATE_FILE" "a UTC date; $REMEDY")"
-  for name in "${COUNTS[@]}"; do
+  for i in "${!COUNTS[@]}"; do
+    name="${COUNTS[$i]}"
     last=0
     # A changed start means the registrar restarted and its counts began again at 0.
     if [ "$LAST_STARTED" = "$STARTED" ]; then
       last="$(field "$LAST" "$name" "$COUNT_PATTERN" "$STATE_FILE" "a whole number; $REMEDY")"
     fi
-    now="${NOW[$name]}"
+    now="${NOW[$i]}"
     if [ "$((10#$now))" -lt "$((10#$last))" ]; then
       last=0
     fi

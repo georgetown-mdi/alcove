@@ -3944,7 +3944,7 @@ describe.skipIf(runningAsRoot)(
         registrarLines
           .split("\n")
           .map((line) => line.trim())
-          .filter((line) => line.startsWith("PASS")),
+          .filter((line) => /^(PASS|FAIL|UNCLEAR)/.test(line)),
       ).toEqual(expected);
       expect(registrarLines).not.toMatch(/FAIL|UNCLEAR/);
       for (const stream of [result.stdout, result.stderr]) {
@@ -3979,7 +3979,7 @@ describe.skipIf(runningAsRoot)(
         registrarLines
           .split("\n")
           .map((line) => line.trim())
-          .filter((line) => line.startsWith("PASS")),
+          .filter((line) => /^(PASS|FAIL|UNCLEAR)/.test(line)),
       ).toEqual([
         "PASS     a registration with the token was answered 200",
         "PASS     the registration is in the mapping and the secrets table",

@@ -494,11 +494,13 @@ else
   # rate limit for this host's own address. Sent to loopback, directly or with
   # the front's PROXY header naming it, because the registrar admits a verify
   # id without a token only from this host.
+  ENROLL_OTHER_BODY="{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": null}"
+  ENROLL_OWN_BODY="{\"key\": \"$KEY_R\", \"maxAgeDays\": null}"
   if [ "${ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT:-off}" = on ] && [ "$REGISTERED" -eq 0 ]; then
     expect_status "an enrollment without a token naming another key" 409 \
-      "$(registrar_status POST "" "{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": null}" 127.0.0.1)" 127.0.0.1
+      "$(registrar_status POST "" "$ENROLL_OTHER_BODY" 127.0.0.1)" 127.0.0.1
     expect_status "an enrollment without a token naming the registered key" 200 \
-      "$(registrar_status POST "" "{\"key\": \"$KEY_R\", \"maxAgeDays\": null}" 127.0.0.1)" 127.0.0.1
+      "$(registrar_status POST "" "$ENROLL_OWN_BODY" 127.0.0.1)" 127.0.0.1
   fi
   READ_BACK=0; registrar_read_back || READ_BACK=$?
   if [ "$READ_BACK" -eq "$REGISTERED" ]; then
