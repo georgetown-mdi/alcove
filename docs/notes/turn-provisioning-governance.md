@@ -459,10 +459,12 @@ browser's relay entry can come only from the deployment.
   server is. A command line party can check the egress question at onboarding
   with `alcove doctor relay`, which dials each relay the configuration lists
   from the operator's host. It is opt-in: a plain `alcove doctor` contacts no
-  relay, and the check names every relay before it contacts one
-  ([CLI.md](../CLI.md#checking-the-relay-of-a-webrtc-exchange)). It contacts
-  no registrar, so the relay an invitation names refuses its credential until a
-  run has enrolled the exchange's relay key there
+  relay, and the check names every host before it contacts one
+  ([CLI.md](../CLI.md#checking-the-relay-of-a-webrtc-exchange)). Where the
+  invitation's relay names a registrar, the check first enrolls the exchange's
+  relay key there as a run does before it connects, so the relay an invitation
+  names is asked after the enrollment a run makes, and a failed enrollment is
+  reported on its own line
   ([CLI_DOCTOR.md](../spec/CLI_DOCTOR.md#the-relay-check)).
 
 ## What this record leaves to separate work

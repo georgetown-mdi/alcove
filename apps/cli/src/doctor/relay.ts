@@ -1,4 +1,8 @@
-import { selectRunRelay, UsageError } from "@alcove/core";
+import {
+  InternalConsistencyError,
+  selectRunRelay,
+  UsageError,
+} from "@alcove/core";
 import type {
   ConnectionConfig,
   RelayCredential,
@@ -15,6 +19,13 @@ import {
   ICE_PROVISION_REFUSAL,
   turnIceServer,
 } from "../connection/webrtc/weriftPeer";
+import {
+  enrollAtInvitationRelay,
+  INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+  invitationRelayEnrolledNotice,
+  invitationRelayNotEnrolledStatement,
+} from "../invitationRelayEnrollment";
+import type { InvitationRelayEnrollment } from "../invitationRelayEnrollment";
 import type {
   DoctorCheckRecord,
   DoctorReport,
@@ -23,10 +34,12 @@ import type {
 import { fail, ok } from "./verdict";
 
 // `alcove doctor relay`: whether this host reaches each TURN relay a webrtc
-// run lists, asked as the run's ICE gathering asks. It contacts those relays
-// and nothing else -- no registrar, no coordination server -- and runs only
-// when the operator names it. Contract: docs/spec/CLI_DOCTOR.md; operator
-// page: docs/CLI.md, Checking the relay of a WebRTC exchange.
+// run lists, asked as the run's ICE gathering asks. Before it asks them it
+// enrolls at the registrar the invitation's relay names, as a run does before
+// it dials; it contacts nothing else -- not connection.relay_registrar, where
+// a run registers the key a rotation makes, and no coordination server -- and
+// runs only when the operator names it. Contract: docs/spec/CLI_DOCTOR.md;
+// operator page: docs/CLI.md, Checking the relay of a WebRTC exchange.
 
 /**
  * The one bound on the whole check: every relay is asked at once, and one
@@ -130,24 +143,103 @@ function sourceLabel(server: RunTurnServer): string {
 
 /**
  * The lines printed before any request: every host the check contacts, and
- * what it does and does not do there. Raw: the urls are configuration text,
- * escaped where the lines are shown.
+ * what it does and does not do there. `registrar` is the one the
+ * configuration's `invitation_relay` names, if any. Raw: the urls are
+ * configuration text, escaped where the lines are shown.
  */
 export function relayHostStatement(
   targets: ReadonlyArray<RelayCheckTarget>,
+  registrar: string | undefined,
 ): string[] {
-  return [
-    "This check contacts these relays and nothing else, asking each for a " +
-      "relay address as an exchange run does:",
+  const relays = [
+    "This check contacts these relays, asking each for a relay address as " +
+      "an exchange run does:",
     ...targets.map(
       ({ server, transport }) =>
         `  ${server.url} over ${TRANSPORT_LABEL[transport]}, ${sourceLabel(server)}`,
     ),
-    "It sends each relay the credential a run sends. It contacts no relay " +
-      "registrar and enrolls nothing: a run enrolls just before it connects, " +
-      "and this check asks only whether each relay answers.",
+    "It sends each relay the credential a run sends.",
+  ];
+  if (registrar === undefined)
+    return [
+      ...relays,
+      "It contacts nothing else. This configuration's invitation_relay " +
+        "names no relay registrar, so it contacts none and enrolls nothing.",
+      "",
+    ];
+  return [
+    ...relays,
+    "Before it asks them, it enrolls this exchange's relay key at the relay " +
+      "registrar your partner's invitation names, as a run does just before " +
+      "it connects:",
+    `  ${registrar}`,
+    "Whoever runs that registrar learns this machine's network address. " +
+      "It contacts nothing else.",
     "",
   ];
+}
+
+/** The id of the enrollment's check line. */
+export const ENROLLMENT_CHECK_ID = "enrollment";
+
+/**
+ * The enrollment the check made at the invitation relay's registrar before
+ * it asked the relays. Never cancelled: the check passes no signal.
+ */
+export interface RelayCheckEnrollment {
+  registrar: string;
+  outcome: Exclude<InvitationRelayEnrollment, { kind: "cancelled" }>;
+}
+
+/**
+ * Enroll at `registrar` as a run does before it dials
+ * ({@link enrollAtInvitationRelay}): one attempt without a token, under the
+ * run's wait.
+ */
+export async function enrollBeforeRelayChecks(
+  registrar: string,
+  sharedSecret: string,
+  fetch: typeof globalThis.fetch | undefined,
+): Promise<RelayCheckEnrollment> {
+  const outcome = await enrollAtInvitationRelay(
+    registrar,
+    sharedSecret,
+    fetch === undefined ? {} : { fetch },
+  );
+  if (outcome.kind === "cancelled")
+    throw new InternalConsistencyError(
+      "the relay check's enrollment was cancelled with no signal to cancel it",
+    );
+  return { registrar, outcome };
+}
+
+const ENROLLMENT_FAILED_MEANING =
+  "a run sends this same enrollment just before it connects. Until the " +
+  "exchange's relay key is enrolled there, by a run on either side, the " +
+  "relay that registrar serves refuses the credential derived from the " +
+  "exchange's shared secret.";
+
+/** The check line of the enrollment, in the run's own wording. */
+export function enrollmentCheckRecord(
+  enrollment: RelayCheckEnrollment,
+): DoctorCheckRecord {
+  const { registrar, outcome } = enrollment;
+  if (outcome.kind === "enrolled")
+    return ok(
+      ENROLLMENT_CHECK_ID,
+      `${invitationRelayEnrolledNotice(registrar, outcome.lapsesAt)}.`,
+      {
+        registrar,
+        ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
+      },
+    );
+  return fail(
+    ENROLLMENT_CHECK_ID,
+    invitationRelayNotEnrolledStatement(registrar, outcome.detail),
+    ENROLLMENT_FAILED_MEANING,
+    INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+    { registrar },
+  );
 }
 
 const NOT_REACHED_MEANING =
@@ -155,27 +247,46 @@ const NOT_REACHED_MEANING =
   "credential, or it presented a certificate this host does not trust; " +
   "the reason is not reported, so the check cannot tell which.";
 
-function notReachedMeaning(server: RunTurnServer): string {
+function notReachedMeaning(
+  server: RunTurnServer,
+  enrollment: RelayCheckEnrollment | undefined,
+): string {
   if (server.credential !== undefined) return NOT_REACHED_MEANING;
-  return server.source === "invitation"
-    ? `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
-        "from the exchange's shared secret until a run has enrolled the " +
-        "exchange's relay key there, which it does just before it connects."
-    : `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
-        "from the exchange's shared secret until the exchange's relay key " +
-        "is enrolled there with alcove enroll-relay.";
+  if (server.source !== "invitation")
+    return (
+      `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
+      "from the exchange's shared secret until the exchange's relay key " +
+      "is enrolled there with alcove enroll-relay."
+    );
+  if (enrollment === undefined)
+    return (
+      `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
+      "from the exchange's shared secret until the exchange's relay key " +
+      "is enrolled there."
+    );
+  if (enrollment.outcome.kind === "enrolled") return NOT_REACHED_MEANING;
+  return (
+    `${NOT_REACHED_MEANING} The likely cause is the failed enrollment ` +
+    "above: this relay refuses the credential derived from the exchange's " +
+    "shared secret until the exchange's relay key is enrolled at its " +
+    "registrar."
+  );
 }
 
 function boundSeconds(boundMs: number): string {
   return `${Math.round(boundMs / 1000)} s`;
 }
 
-/** The check record for one url, given whether a relay candidate came back. */
+/**
+ * The check record for one url, given whether a relay candidate came back and
+ * the enrollment made before it was asked, if any.
+ */
 export function relayCheckRecord(
   target: RelayCheckTarget,
   index: number,
   relayGathered: boolean,
   boundMs: number = RELAY_CHECK_BOUND_MS,
+  enrollment?: RelayCheckEnrollment,
 ): DoctorCheckRecord {
   const id = `turn_${index + 1}`;
   const { server, transport } = target;
@@ -188,7 +299,7 @@ export function relayCheckRecord(
   return fail(
     id,
     `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`,
-    notReachedMeaning(server),
+    notReachedMeaning(server, enrollment),
     RELAY_NOT_REACHED_REMEDY,
     located,
   );
@@ -196,12 +307,13 @@ export function relayCheckRecord(
 
 /**
  * Ask every target at once under the one bound, and report each in the run's
- * order.
+ * order, after the line of the enrollment made before them, if any.
  */
 export async function runRelayChecks(
   targets: ReadonlyArray<RelayCheckTarget>,
   gather: RelayCandidateGathering,
   boundMs: number = RELAY_CHECK_BOUND_MS,
+  enrollment?: RelayCheckEnrollment,
 ): Promise<DoctorReport> {
   const bound = new AbortController();
   const timer = setTimeout(() => bound.abort(), boundMs);
@@ -211,9 +323,20 @@ export async function runRelayChecks(
     );
     return {
       mode: "relay",
-      checks: targets.map((target, index) =>
-        relayCheckRecord(target, index, gathered[index] === true, boundMs),
-      ),
+      checks: [
+        ...(enrollment === undefined
+          ? []
+          : [enrollmentCheckRecord(enrollment)]),
+        ...targets.map((target, index) =>
+          relayCheckRecord(
+            target,
+            index,
+            gathered[index] === true,
+            boundMs,
+            enrollment,
+          ),
+        ),
+      ],
     };
   } finally {
     clearTimeout(timer);

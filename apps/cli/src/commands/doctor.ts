@@ -11,6 +11,7 @@ import { runMountChecks } from "../doctor/mount";
 import { runProbe } from "../doctor/probe";
 import type { RelayCandidateGathering } from "../doctor/relay";
 import {
+  enrollBeforeRelayChecks,
   relayCheckSelection,
   relayCheckTargets,
   relayHostStatement,
@@ -80,6 +81,8 @@ export interface RelayCheckOptions {
   /** Writes one line of the host statement, before any request is made. */
   writeStatementLine: (line: string) => void;
   gather?: RelayCandidateGathering;
+  /** The fetch the enrollment at the invitation relay's registrar sends with. */
+  fetch?: typeof globalThis.fetch;
   now?: Date;
   boundMs?: number;
 }
@@ -87,8 +90,9 @@ export interface RelayCheckOptions {
 /**
  * Run `doctor relay` against the exchange a configuration and key file
  * describe: refuse a configuration the check does not apply to, state every
- * host it contacts, then ask each TURN url the run lists, presenting what the
- * run presents.
+ * host it contacts, enroll at the registrar the invitation's relay names as a
+ * run does, then ask each TURN url the run lists, presenting what the run
+ * presents.
  *
  * @internal exported for testing
  */
@@ -108,12 +112,22 @@ export async function checkRelay(
       options.now ?? new Date(),
     ),
   );
-  for (const line of relayHostStatement(targets))
+  const registrar = connection.invitationRelay?.registrar;
+  for (const line of relayHostStatement(targets, registrar))
     options.writeStatementLine(line);
+  const enrollment =
+    registrar === undefined
+      ? undefined
+      : await enrollBeforeRelayChecks(
+          registrar,
+          authentication.sharedSecret,
+          options.fetch,
+        );
   return runRelayChecks(
     targets,
     options.gather ?? gatherRelayCandidate,
     options.boundMs,
+    enrollment,
   );
 }
 
@@ -183,9 +197,10 @@ export function builder(cmd: Argv): Argv {
           .usage("Usage: $0 doctor relay [options]")
           .epilog(
             "Asks each TURN relay the configuration lists for a relay " +
-              "address, as an exchange run does, after naming every relay " +
-              "it contacts. Contacts no relay registrar. See docs/CLI.md, " +
-              "Checking the relay of a WebRTC exchange.",
+              "address, as an exchange run does, after naming every host " +
+              "it contacts. Where the invitation's relay names a registrar, " +
+              "first enrolls the exchange's relay key there, as a run does. " +
+              "See docs/CLI.md, Checking the relay of a WebRTC exchange.",
           ),
       relayHandler,
     )

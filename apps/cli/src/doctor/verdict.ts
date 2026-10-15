@@ -61,6 +61,13 @@ export type DoctorCheck = {
   url?: string;
   /** The transport that url names. */
   transport?: RelayTransport;
+  /**
+   * The registrar a `relay` run's enrollment check enrolled at, as the
+   * configuration's `invitation_relay` names it.
+   */
+  registrar?: string;
+  /** When that enrollment lapses, as the registrar stated it. */
+  lapses_at?: string;
 };
 
 /**
@@ -185,6 +192,12 @@ export function verdictOf(report: DoctorReport): DoctorVerdict {
           ...(check.url !== undefined ? { url: check.url } : {}),
           ...(check.transport !== undefined
             ? { transport: check.transport }
+            : {}),
+          ...(check.registrar !== undefined
+            ? { registrar: check.registrar }
+            : {}),
+          ...(check.lapses_at !== undefined
+            ? { lapses_at: check.lapses_at }
             : {}),
         }) satisfies DoctorCheck,
     ),

@@ -3,29 +3,39 @@
 - `mode` | string | `probe` or `mount` | Which checks produced the verdict, matching the subcommand that ran. -> `mode` | string | `probe`, `mount` or `relay` | Which checks produced the verdict, matching the subcommand that ran.
 - - -> `url` | string | `relay` mode only | The TURN url the check asked, as the run lists it.
 - - -> `transport` | string | `relay` mode only | The transport that url names: `udp`, `tcp` or `tls`.
-- - -> In a `relay` verdict, each check's `url` is configuration text, and a url from `invitation_relay` was chosen by the partner's invitation.
+- - -> `registrar` | string | `relay` mode's `enrollment` check only | The registrar the check enrolled at, as `invitation_relay` names it.
+- - -> `lapses_at` | string | `relay` mode's `enrollment` check, `ok` only | When the enrollment lapses, as the registrar stated it: a UTC timestamp, `YYYY-MM-DDTHH:MM:SSZ`. Omitted when the registrar states no lapse.
+- - -> In a `relay` verdict, each check's `url` is configuration text, and a url from `invitation_relay` was chosen by the partner's invitation, as the `enrollment` check's `registrar` was.
+- - -> Its `lapses_at` is the registrar's text, read only where it is a UTC timestamp, so it is ASCII by construction.
 - The id set per mode is fixed and ordered. -> The id sets of `probe` and `mount` are fixed and ordered.
 - - -> Id | What a passing check establishes
-- - -> `relay` -- one check per TURN url a run of the configuration lists, in the order the run lists them (`selectRunRelay`: the connection's own `turn` entries, then the `invitation_relay` turn urls no own entry already names):
+- - -> `relay` -- one check per TURN url a run of the configuration lists, in the order the run lists them (`selectRunRelay`: the connection's own `turn` entries, then the `invitation_relay` turn urls no own entry already names), preceded by the `enrollment` check where `invitation_relay` names a `registrar`:
+- - -> `enrollment` | The registrar `invitation_relay` names enrolled the exchange's relay key, as it does for a run before it dials. Present, and first, only where `invitation_relay` names a `registrar`.
 - - -> `turn_1`, `turn_2`, ... | The relay at the check's `url` gave this host a relay candidate, over the transport the url names. The number is the url's 1-based position in the run's list, so the id set is as long as that list, and a consumer reads `url` for which relay a check is about.
 - - -> The relay check
 - - -> `doctor relay` runs only when it is named: `doctor probe` and `doctor mount` contact no relay and no registrar.
 - - -> **Refusals.**
 - - -> A configuration whose `connection.channel` is not `webrtc`, one that configures `ice_provision`, and one that lists no TURN url are each a usage error (exit 64), refused before anything is contacted.
 - - -> **The host statement.**
-- - -> Before its first request, the check prints every TURN url it will ask, with the transport each names and whether it came from `connection.turn` or the invitation, and states that it contacts no relay registrar and enrolls nothing.
+- - -> Before its first request, the check prints every TURN url it will ask, with the transport each names and whether it came from `connection.turn` or the invitation.
+- - -> Where `invitation_relay` names a `registrar`, it also prints that registrar, and states that it enrolls this exchange's relay key there as a run does and that whoever runs the registrar learns this machine's network address; where it names none, the statement says the check contacts no registrar and enrolls nothing.
 - - -> It prints them to the destination the human check lines use -- stderr, or the `--log-file` -- with or without `--json`, under `--log-level` as those lines are.
-- - -> It contacts those urls alone: no registrar, no coordination server, and no STUN server.
+- - -> It contacts those urls and that registrar alone: not `connection.relay_registrar`, no coordination server, and no STUN server.
+- - -> **The enrollment.**
+- - -> Where `invitation_relay` names a `registrar`, the check enrolls the exchange's relay key there before it asks any relay, through the call a run makes before it dials (`enrollAtInvitationRelay`; [PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)): one attempt without a token, under the run's wait.
+- - -> Its outcome is the `enrollment` check: `ok` with the lapse the registrar states, or `fail` with the run's warning split in two, its first sentence, holding the registrar's answer, as the summary and its second as the `action`.
+- - -> The answer is the registrar's text, so it stays in the summary the JSON withholds.
+- - -> A `fail` does not stop the check: every url is still asked.
 - - -> **The request.**
 - - -> For each url the check builds the werift peer connection a run builds, with `ice_transport_policy` `relay` and that url as its only ICE server, presenting what the run presents there: the entry's own `username` and `credential`, or the credential the run mints from the shared secret (`relayCredentialForRun`).
 - - -> It creates a data channel and a local offer, and waits for gathering to complete.
 - - -> **The bound.**
-- - -> Every url is asked at once under one timer of 30 seconds, an arbitrary working value.
+- - -> Every url is asked at once under one timer of 30 seconds, an arbitrary working value, started once the enrollment has ended.
 - - -> A url whose gathering has not completed when it expires is reported as not reached.
 - - -> **The outcomes.**
 - - -> `ok` when a relay candidate is among this side's candidates (the same reading of the ICE statistics a run's failure diagnosis makes), and `fail` otherwise, with `no relay candidate gathered` in the summary and the remedy a run's relay failure has in [CLI.md](../CLI.md#when-a-webrtc-exchange-does-not-connect) as the `action`.
 - - -> werift reports no per-server error from the peer connection, so a relay that refused the allocation, one that never answered, and one whose certificate did not verify are one outcome, and the `meaning` says the reason is not reported.
-- - -> A relay that has not enrolled the exchange's relay key refuses the minted credential, so before a run has enrolled it at the invitation's relay, that url's check is a `fail` on any network.
+- - -> A relay that has not enrolled the exchange's relay key refuses the minted credential, so where the enrollment failed and no run on either side has enrolled the key, an invitation url's check is a `fail` on any network, and its `meaning` names the failed enrollment as the likely cause.
 - - -> **Rollup.**
 - - -> Any `fail` makes `overall` `fix_and_retry`; the check reports no `warn`, `skipped` or `fatal`.
 - A usage error -- a missing or malformed input, or a bad flag -- is not in that set: it exits 64 (`EX_USAGE`) and prints no verdict on either stream, because the checks never ran. -> A usage error -- a missing or malformed input, a bad flag, or a configuration `doctor relay` refuses -- is not in that set: it exits 64 (`EX_USAGE`) and prints no verdict on either stream, because the checks never ran.
