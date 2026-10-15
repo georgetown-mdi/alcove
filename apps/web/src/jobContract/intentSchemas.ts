@@ -137,7 +137,7 @@ export interface JobExchangeOptions {
   retainFiles?: boolean;
   unexpectedFiles?: "error" | "warn" | "ignore";
   connectionPerPoll?: boolean;
-  publishWithoutRename?: boolean;
+  writeWithoutRenaming?: boolean;
 }
 
 /**
@@ -179,7 +179,7 @@ const jobExchangeOptionsFields = {
     .refine(isAdmissiblePeerId, { message: PEER_ID_SHAPE_MESSAGE })
     .optional(),
   retainFiles: z.boolean().optional(),
-  publishWithoutRename: z.boolean().optional(),
+  writeWithoutRenaming: z.boolean().optional(),
 };
 
 // Neither has a CLI flag, so only a configured run admits them.

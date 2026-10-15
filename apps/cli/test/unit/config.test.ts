@@ -222,28 +222,28 @@ describe("connectionPerPoll", () => {
   });
 });
 
-// --- publishWithoutRename override (--publish-without-rename) ----------------
+// --- writeWithoutRenaming override (--write-without-renaming) ----------------
 
-describe("publishWithoutRename", () => {
+describe("writeWithoutRenaming", () => {
   test("override is applied on sftp and filedrop", () => {
     const sftp = applyConnectionOverrides(baseSFTP, {
-      options: { publishWithoutRename: true },
+      options: { writeWithoutRenaming: true },
     }) as SFTPConnectionConfig;
-    expect(sftp.options?.publishWithoutRename).toBe(true);
+    expect(sftp.options?.writeWithoutRenaming).toBe(true);
     const base: ConnectionConfig = { channel: "filedrop", path: "/mnt/drop" };
     const filedrop = applyConnectionOverrides(base, {
-      options: { publishWithoutRename: true },
+      options: { writeWithoutRenaming: true },
     }) as FileDropConnectionConfig;
-    expect(filedrop.options?.publishWithoutRename).toBe(true);
+    expect(filedrop.options?.writeWithoutRenaming).toBe(true);
   });
 
   test("override is dropped on webrtc", () => {
     const result = applyConnectionOverrides(baseWebRTC, {
-      options: { publishWithoutRename: true },
+      options: { writeWithoutRenaming: true },
     });
     expect(
       (result.options as Record<string, unknown> | undefined)?.[
-        "publishWithoutRename"
+        "writeWithoutRenaming"
       ],
     ).toBeUndefined();
   });

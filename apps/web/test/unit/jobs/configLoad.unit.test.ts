@@ -1133,7 +1133,7 @@ describe("a setting inside a block the composition writes", () => {
       },
     ],
   ])(
-    "publish_without_rename on %s is adopted into the file-handling card",
+    "write_without_renaming on %s is adopted into the file-handling card",
     (_channel, document) => {
       const connection = document.connection as Record<string, unknown>;
       const response = loadDocument({
@@ -1142,17 +1142,17 @@ describe("a setting inside a block the composition writes", () => {
           ...connection,
           options: {
             ...(connection.options as object | undefined),
-            publish_without_rename: true,
+            write_without_renaming: true,
           },
         },
       });
       expect(response.carriedThrough).toEqual([]);
-      expect(response.document?.options?.publishWithoutRename).toBe(true);
+      expect(response.document?.options?.writeWithoutRenaming).toBe(true);
       if (response.document === undefined)
         throw new Error("the load disclosed no document");
       expect(
         authoringStateFromDocument(response.document).exchangeFiles
-          .publishWithoutRename,
+          .writeWithoutRenaming,
       ).toBe(true);
     },
   );
@@ -1252,7 +1252,7 @@ describe("the disclosed projection", () => {
           retainFiles: true,
           unexpectedFiles: "warn",
           connectionPerPoll: true,
-          publishWithoutRename: true,
+          writeWithoutRenaming: true,
         },
       },
       linkageTerms: terms(),
@@ -1270,7 +1270,7 @@ describe("the disclosed projection", () => {
         "retainFiles",
         "unexpectedFiles",
         "connectionPerPoll",
-        "publishWithoutRename",
+        "writeWithoutRenaming",
       ].sort(),
     );
   });

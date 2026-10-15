@@ -49,7 +49,7 @@ const UNEXPECTED_FILES_CHOICES: ReadonlyArray<{
 function draftSummary(draft: ExchangeFilesDraft): string {
   const named = [
     ...(draft.retainFiles ? ["Keeping every file"] : []),
-    ...(draft.publishWithoutRename ? ["Writing without renaming"] : []),
+    ...(draft.writeWithoutRenaming ? ["Writing without renaming"] : []),
   ];
   return named.length === 0 ? "Default" : named.join(", ");
 }
@@ -206,9 +206,9 @@ export function ExchangeFilesCard({
         )}
 
         <Checkbox
-          checked={draft.publishWithoutRename}
+          checked={draft.writeWithoutRenaming}
           onChange={(event) =>
-            set("publishWithoutRename", event.currentTarget.checked)
+            set("writeWithoutRenaming", event.currentTarget.checked)
           }
           label="Write files without renaming them"
           description={
@@ -220,7 +220,7 @@ export function ExchangeFilesCard({
           }
         />
 
-        {draft.publishWithoutRename && (
+        {draft.writeWithoutRenaming && (
           <Alert
             color="yellow"
             icon={<IconAlertTriangle aria-hidden />}

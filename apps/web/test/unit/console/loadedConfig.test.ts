@@ -230,6 +230,13 @@ describe("the file-handling draft a loaded options block seeds", () => {
     expect(exchangeFilesFromOptions({}).timestampInFilename).toBe("auto");
   });
 
+  test("a loaded writeWithoutRenaming opens the write-without-renaming toggle on", () => {
+    expect(
+      exchangeFilesFromOptions({ writeWithoutRenaming: true })
+        .writeWithoutRenaming,
+    ).toBe(true);
+  });
+
   test("the round trip through the composition it inverts is the identity", () => {
     const stated = {
       retainFiles: true,
@@ -237,7 +244,7 @@ describe("the file-handling draft a loaded options block seeds", () => {
       locklessRendezvous: true,
       peerId: "county",
       unexpectedFiles: "warn" as const,
-      publishWithoutRename: true,
+      writeWithoutRenaming: true,
     };
     expect(exchangeFilesOptions(exchangeFilesFromOptions(stated))).toEqual(
       stated,

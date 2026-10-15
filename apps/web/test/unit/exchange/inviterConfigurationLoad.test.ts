@@ -109,7 +109,7 @@ function sftpDocument(
       locklessRendezvous: true,
       peerId: "county",
       unexpectedFiles: "warn",
-      publishWithoutRename: true,
+      writeWithoutRenaming: true,
     },
     linkageTerms: getDefaultLinkageTerms("County Health"),
     includeOwnColumns: "all",
@@ -319,7 +319,7 @@ describe("every step the document covers is filled in", () => {
       locklessRendezvous: "on",
       peerId: "county",
       unexpectedFiles: "warn",
-      publishWithoutRename: true,
+      writeWithoutRenaming: true,
     });
   });
 
@@ -877,7 +877,7 @@ describe("a run started from a loaded configuration composes what a hand-authore
         locklessRendezvous: "on",
         peerId: "county",
         unexpectedFiles: "warn",
-        publishWithoutRename: true,
+        writeWithoutRenaming: true,
       },
     });
     return inviterScreenReducer(authored, {

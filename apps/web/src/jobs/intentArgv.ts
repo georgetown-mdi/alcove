@@ -177,7 +177,7 @@ export function zeroSetupOptionsArgv(
   if (options.maxReconnectAttempts !== undefined)
     argv.push(`--max-reconnect-attempts=${options.maxReconnectAttempts}`);
   if (options.connectionPerPoll === true) argv.push("--connection-per-poll");
-  if (options.publishWithoutRename === true)
-    argv.push("--publish-without-rename");
+  if (options.writeWithoutRenaming === true)
+    argv.push("--write-without-renaming");
   return argv;
 }

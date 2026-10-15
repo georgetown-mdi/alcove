@@ -580,6 +580,42 @@ test("a filedrop connection stating server.provision is refused: the channel has
   expect(issue?.message).toBe('Unrecognized key: "server"');
 });
 
+test("connection.options reads write_without_renaming on sftp and filedrop", () => {
+  const connections = [
+    {
+      channel: "filedrop",
+      path: "/mnt/share/drop",
+      options: { write_without_renaming: true },
+    },
+    {
+      channel: "sftp",
+      server: { host: "sftp.example.org", username: "alcove" },
+      options: { write_without_renaming: true },
+    },
+  ];
+  for (const connection of connections) {
+    const spec = parseExchangeSpec({ ...minimalSpec, connection });
+    const options = spec.connection.options as
+      { writeWithoutRenaming?: boolean } | undefined;
+    expect(options?.writeWithoutRenaming, connection.channel).toBe(true);
+  }
+});
+
+test("connection.options refuses publish_without_rename as an unread key", () => {
+  const result = safeParseExchangeSpec({
+    ...minimalSpec,
+    connection: {
+      channel: "filedrop",
+      path: "/mnt/share/drop",
+      options: { publish_without_rename: true },
+    },
+  });
+  expect(result.success).toBe(false);
+  const issue = result.error?.issues[0];
+  expect(issue?.code).toBe("unrecognized_keys");
+  expect(issue?.message).toBe('Unrecognized key: "publish_without_rename"');
+});
+
 test("an unread key is named in the spelling the file writes, not snake_case", () => {
   // Both spellings reach the schema, so an operator's own key arrives here as
   // the case conversion left it. Converting that name back to snake_case names

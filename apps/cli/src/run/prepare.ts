@@ -689,12 +689,12 @@ export async function prepareTransport(
     if (checked.runRelayCredential !== undefined)
       log.info(relayCredentialNotice(connection, checked.runRelayCredential));
   } else {
-    const publishWithoutRename =
-      connection.options?.publishWithoutRename === true;
-    if (publishWithoutRename) {
+    const writeWithoutRenaming =
+      connection.options?.writeWithoutRenaming === true;
+    if (writeWithoutRenaming) {
       log.warn(PUBLISH_WITHOUT_RENAME_WARNING);
       emit((e) =>
-        e.warning("publishWithoutRename", PUBLISH_WITHOUT_RENAME_WARNING),
+        e.warning("writeWithoutRenaming", PUBLISH_WITHOUT_RENAME_WARNING),
       );
     }
     const client =

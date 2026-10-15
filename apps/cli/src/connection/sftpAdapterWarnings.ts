@@ -454,8 +454,9 @@ export function indeterminatePublishError(
   toPath: string,
 ): TransportPublishIndeterminateError {
   return new TransportPublishIndeterminateError(
-    `the publish may or may not have reached the partner: it was cut off ` +
-      `mid-operation and could not be confirmed afterwards. ` +
+    `the file may or may not have reached the partner: the operation was ` +
+      `cut off before the server answered and could not be confirmed ` +
+      `afterwards. ` +
       // eslint-disable-next-line no-restricted-syntax -- the destination is partner-derived on the ack and rendezvous paths, as the header states, so it keeps the escape.
       `Destination: ${toPath}`,
     { cause: error },

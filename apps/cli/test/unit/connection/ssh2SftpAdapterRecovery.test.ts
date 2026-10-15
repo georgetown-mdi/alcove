@@ -1093,7 +1093,7 @@ describe("session recovery", () => {
     );
     const [publishLink, ...causeLinks] = rendered.split("\ncaused by: ");
     expect(publishLink).toContain(
-      "the publish may or may not have reached the partner",
+      "the file may or may not have reached the partner",
     );
     // The truncation the cap does impose falls on the destination, which trails
     // the sentence rather than preceding it.
@@ -1120,7 +1120,7 @@ describe("session recovery", () => {
     expect(rendered).toContain("x1b[31mid");
     expect(rendered).toContain("x0a2026-01-01");
     expect(rendered).toContain(
-      "the publish may or may not have reached the partner",
+      "the file may or may not have reached the partner",
     );
   });
 

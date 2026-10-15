@@ -12,7 +12,7 @@ import { inProcessOnly } from "../sftpBackendGate";
 import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // A put whose reply a dropped session lost, against the real SSH/SFTP stack. With
-// publish_without_rename on, a put to the final name is the publish, so the
+// write_without_renaming on, a put to the final name is the publish, so the
 // recovery re-dial does not re-issue it blind: it reads what the destination
 // holds (docs/spec/SFTP_SESSION_RECOVERY.md, "Re-issuing an operation"). A put
 // to a protocol temp keeps its verbatim re-issue. The drop is staged by the

@@ -295,30 +295,30 @@ test("warnOptionsOverridesIgnoredOffline: names --connection-per-poll when set",
   expect(log.messages[0]).toContain("--connection-per-poll");
 });
 
-// --- --publish-without-rename --------------------------------------------------
+// --- --write-without-renaming --------------------------------------------------
 
-test("connectionOverridesFrom: fans publishWithoutRename into the options override block", () => {
-  const overrides = connectionOverridesFrom({ publishWithoutRename: true });
-  expect(overrides.options?.publishWithoutRename).toBe(true);
+test("connectionOverridesFrom: fans writeWithoutRenaming into the options override block", () => {
+  const overrides = connectionOverridesFrom({ writeWithoutRenaming: true });
+  expect(overrides.options?.writeWithoutRenaming).toBe(true);
 });
 
-test("warnUnsupportedFileSyncFlags: --publish-without-rename warns on webrtc only", () => {
+test("warnUnsupportedFileSyncFlags: --write-without-renaming warns on webrtc only", () => {
   for (const channel of ["sftp", "filedrop"] as const) {
     const log = warnCollector();
-    warnUnsupportedFileSyncFlags(channel, { publishWithoutRename: true }, log);
+    warnUnsupportedFileSyncFlags(channel, { writeWithoutRenaming: true }, log);
     expect(log.messages).toHaveLength(0);
   }
   const log = warnCollector();
-  warnUnsupportedFileSyncFlags("webrtc", { publishWithoutRename: true }, log);
+  warnUnsupportedFileSyncFlags("webrtc", { writeWithoutRenaming: true }, log);
   expect(log.messages).toHaveLength(1);
-  expect(log.messages[0]).toContain("--publish-without-rename");
+  expect(log.messages[0]).toContain("--write-without-renaming");
 });
 
-test("warnOptionsOverridesIgnoredOffline: names --publish-without-rename when set", () => {
+test("warnOptionsOverridesIgnoredOffline: names --write-without-renaming when set", () => {
   const log = warnCollector();
-  warnOptionsOverridesIgnoredOffline({ publishWithoutRename: true }, log);
+  warnOptionsOverridesIgnoredOffline({ writeWithoutRenaming: true }, log);
   expect(log.messages).toHaveLength(1);
-  expect(log.messages[0]).toContain("--publish-without-rename");
+  expect(log.messages[0]).toContain("--write-without-renaming");
 });
 
 // --- serverProvisionFlag -------------------------------------------------------

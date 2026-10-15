@@ -105,6 +105,23 @@ test("an unknown option with nothing close is named without a suggestion", async
   expect(stderr).not.toContain("did you mean");
 });
 
+test("--publish-without-rename is refused as an unknown option", async () => {
+  const { exit, stderr } = await parse([
+    "exchange",
+    "in.csv",
+    "--publish-without-rename",
+  ]);
+  expect(exit).toBe("exit:64");
+  expect(stderr).toContain("Unknown option --publish-without-rename");
+});
+
+test("exchange --help lists --write-without-renaming", async () => {
+  const { exit, stdout } = await parse(["exchange", "--help"]);
+  expect(exit).toBe("exit:0");
+  expect(stdout).toContain("--write-without-renaming");
+  expect(stdout).not.toContain("--publish-without-rename");
+});
+
 test("a bare `alcove` prints the common tasks and exits 64", async () => {
   const { exit, stderr } = await parse([]);
   expect(exit).toBe("exit:64");

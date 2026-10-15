@@ -77,7 +77,7 @@ function fileSyncOptions(variant: Variant) {
     peerId: text(variant, "county"),
     unexpectedFiles: pick(variant, "warn", "ignore"),
     connectionPerPoll: flipped(variant, false),
-    publishWithoutRename: flipped(variant, true),
+    writeWithoutRenaming: flipped(variant, true),
   };
 }
 
@@ -264,3 +264,17 @@ test.each([
     expect(load()).not.toEqual(document(0));
   },
 );
+
+test("a saved file-sync configuration spells the option write_without_renaming", () => {
+  const configPath = path.join(dir, "alcove.yaml");
+  saveConfig(
+    configPath,
+    parseExchangeSpec({
+      connection: filedropConnection(0),
+      ...documentSettings(0),
+    }),
+  );
+  const saved = fs.readFileSync(configPath, "utf8");
+  expect(saved).toContain("write_without_renaming: true");
+  expect(saved).not.toContain("publish_without_rename");
+});

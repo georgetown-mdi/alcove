@@ -744,10 +744,10 @@ const IceProvisionSchema: z.ZodType<IceProvision> = z.object({
 export const INACTIVITY_TIMEOUT_KEY = "inactivity_timeout_ms";
 
 /**
- * The config key the operator sets {@link FileSyncOptions.publishWithoutRename}
+ * The config key the operator sets {@link FileSyncOptions.writeWithoutRenaming}
  * by, as written in the configuration file.
  */
-export const PUBLISH_WITHOUT_RENAME_KEY = "publish_without_rename";
+export const PUBLISH_WITHOUT_RENAME_KEY = "write_without_renaming";
 
 /**
  * Channel-agnostic tuning parameters shared by all connection types.
@@ -1022,9 +1022,9 @@ export interface FileSyncOptions extends SharedOptions {
    *
    * **Local, not bilateral.** Not advertised in the hello or the invitation:
    * the directory holds the same final names either way. See
-   * docs/spec/FILE_SYNC.md, Publishing without rename.
+   * docs/spec/FILE_SYNC.md, Writing without renaming.
    */
-  publishWithoutRename?: boolean;
+  writeWithoutRenaming?: boolean;
 }
 
 /**
@@ -1074,7 +1074,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     retainFiles: z.boolean().optional(),
     unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
     connectionPerPoll: z.boolean().optional(),
-    publishWithoutRename: z.boolean().optional(),
+    writeWithoutRenaming: z.boolean().optional(),
   })
   .refine((opts) => !opts.peerId || opts.timestampInFilename === true, {
     message:

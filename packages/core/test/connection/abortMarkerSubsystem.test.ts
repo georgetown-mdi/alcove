@@ -69,7 +69,7 @@ function armed(
   opts: {
     writeDir?: string | null;
     deps?: Partial<Deps>;
-    publishWithoutRename?: boolean;
+    writeWithoutRenaming?: boolean;
   } = {},
 ) {
   const made = makeDeps(opts.deps);
@@ -80,7 +80,7 @@ function armed(
     SELF_ID,
     opts.writeDir === null ? undefined : (opts.writeDir ?? DIR),
     client,
-    opts.publishWithoutRename,
+    opts.writeWithoutRenaming,
   );
   return { subsystem, ...made };
 }
@@ -311,9 +311,9 @@ test("writeMarker on a stalled rename rejects with the budget error naming the f
   expect(debug).not.toHaveBeenCalled();
 });
 
-test("writeMarker with publishWithoutRename puts straight to the final path with the write options and issues no rename", async () => {
+test("writeMarker with writeWithoutRenaming puts straight to the final path with the write options and issues no rename", async () => {
   const client = makeClient();
-  const { subsystem, debug } = armed(client, { publishWithoutRename: true });
+  const { subsystem, debug } = armed(client, { writeWithoutRenaming: true });
   await subsystem.writeMarker();
 
   const finalPath = `${DIR}/${SELF_ID}-abort.json`;
@@ -329,10 +329,10 @@ test("writeMarker with publishWithoutRename puts straight to the final path with
   );
 });
 
-test("writeMarker with publishWithoutRename on a stalled put rejects with the budget error naming the final path", async () => {
+test("writeMarker with writeWithoutRenaming on a stalled put rejects with the budget error naming the final path", async () => {
   const client = makeClient();
   const { subsystem, stalledError, debug } = armed(client, {
-    publishWithoutRename: true,
+    writeWithoutRenaming: true,
     deps: {
       runBudgeted: (_op, _budgetMs, makeError) => Promise.reject(makeError()),
     },

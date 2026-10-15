@@ -13,7 +13,7 @@ import {
 import { LocalFSClient } from "../../../src/connection/localFSClient";
 import { preparedFor } from "../../support";
 
-// Publishing without rename on the filedrop channel: the switch is in core's
+// Writing without renaming on the filedrop channel: the switch is in core's
 // connection, so a shared folder reached through LocalFSClient follows it
 // with no transport change. Two whole runProtocol parties over one real
 // folder complete an exchange while LocalFSClient.rename refuses every call,
@@ -39,7 +39,7 @@ afterEach(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("a filedrop exchange publishing without rename completes with no rename and no temporary name", async () => {
+test("a filedrop exchange writing without renaming completes with no rename and no temporary name", async () => {
   const renames: string[] = [];
   vi.spyOn(LocalFSClient.prototype, "rename").mockImplementation(
     async (fromPath: string) => {
@@ -66,7 +66,7 @@ test("a filedrop exchange publishing without rename completes with no rename and
       pollIntervalMs: 50,
       peerTimeoutMs: PEER_TIMEOUT_MS,
       inactivityTimeoutMs: PEER_TIMEOUT_MS,
-      publishWithoutRename: true,
+      writeWithoutRenaming: true,
     },
   };
   const outA = path.join(work, "a");

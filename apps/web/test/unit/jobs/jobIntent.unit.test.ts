@@ -918,27 +918,27 @@ describe("the sftp intent arm", () => {
     expect(doc.connection.options?.connection_per_poll).toBe(true);
   });
 
-  test("publishWithoutRename is admitted on sftp and filedrop, and refused on webrtc", () => {
+  test("writeWithoutRenaming is admitted on sftp and filedrop, and refused on webrtc", () => {
     for (const intent of [
-      validSftpIntent({ options: { publishWithoutRename: true } }),
-      validIntent({ options: { publishWithoutRename: true } }),
+      validSftpIntent({ options: { writeWithoutRenaming: true } }),
+      validIntent({ options: { writeWithoutRenaming: true } }),
     ])
       expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
     expect(
       jobExchangeIntentSchema.safeParse(
-        validWebrtcIntent({ options: { publishWithoutRename: true } }),
+        validWebrtcIntent({ options: { writeWithoutRenaming: true } }),
       ).success,
     ).toBe(false);
   });
 
-  test("publishWithoutRename reaches the composed sftp and filedrop configs", () => {
+  test("writeWithoutRenaming reaches the composed sftp and filedrop configs", () => {
     const composed = [
       composeSftpConfigDocument(
-        validSftpIntent({ options: { publishWithoutRename: true } }),
+        validSftpIntent({ options: { writeWithoutRenaming: true } }),
         testSftpServerEntry(),
       ),
       composeConfigDocument(
-        validIntent({ options: { publishWithoutRename: true } }),
+        validIntent({ options: { writeWithoutRenaming: true } }),
         "/data/rendezvous",
       ),
     ];
@@ -946,7 +946,7 @@ describe("the sftp intent arm", () => {
       const doc = parseYaml(yaml) as {
         connection: { options?: Record<string, unknown> };
       };
-      expect(doc.connection.options?.publish_without_rename).toBe(true);
+      expect(doc.connection.options?.write_without_renaming).toBe(true);
     }
   });
 });
@@ -1203,11 +1203,11 @@ describe("zeroSetupOptionsArgv", () => {
     expect(zeroSetupOptionsArgv({ connectionPerPoll: false })).toEqual([]);
   });
 
-  test("emits the publish-without-rename flag only when it is on", () => {
-    expect(zeroSetupOptionsArgv({ publishWithoutRename: true })).toEqual([
-      "--publish-without-rename",
+  test("emits the write-without-renaming flag only when it is on", () => {
+    expect(zeroSetupOptionsArgv({ writeWithoutRenaming: true })).toEqual([
+      "--write-without-renaming",
     ]);
-    expect(zeroSetupOptionsArgv({ publishWithoutRename: false })).toEqual([]);
+    expect(zeroSetupOptionsArgv({ writeWithoutRenaming: false })).toEqual([]);
   });
 });
 
@@ -1574,10 +1574,10 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
     ).toBe(true);
   });
 
-  test("accepts publishWithoutRename on both arms", () => {
+  test("accepts writeWithoutRenaming on both arms", () => {
     for (const intent of [
-      validZeroSetupSftpIntent({ options: { publishWithoutRename: true } }),
-      validZeroSetupIntent({ options: { publishWithoutRename: true } }),
+      validZeroSetupSftpIntent({ options: { writeWithoutRenaming: true } }),
+      validZeroSetupIntent({ options: { writeWithoutRenaming: true } }),
     ])
       expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(true);
   });

@@ -187,31 +187,31 @@ Which release outcome each reading comes from, and what session each leaves behi
 **Per-operation idempotency, applied only on the re-issue.**
 The relaxations below never touch the first attempt, so genuine lock-conflict and absence detection are unchanged.
 `list`/`get`/`exists` re-issue verbatim, and so does a `put` to a protocol temp (`temp-<uuid>.tmp` or `temp-hello-<uuid>.tmp`): its `flags:"w"` truncate-overwrite is effect-idempotent, no reader acts on a temp, and its bounded source is rebuilt from the retained Buffer/chunk list; a one-shot stream source is never re-issued.
-A `put` to any other name is a direct publish, whose re-issue is below.
+A `put` to any other name is a direct write, whose re-issue is below.
 `delete` maps a source-absent re-issue (`SSH_FX_NO_SUCH_FILE`) to success, since a pre-drop delete that landed reports the source gone.
 `rename` treats a re-issue whose source is gone (or a code-4 dest-exists) as success when `exists(dest)` confirms the destination, sound because every rename destination is self-prefixed and so unambiguously this party's own landed attempt.
 The converse does not hold and is not relied on: an absent destination is not evidence the rename failed.
-In delete mode the partner's consume-delete removes exactly this party's own self-prefixed publish, so a rename that landed durably and was consumed inside the recovery window reports the state a rename that never landed reports -- source gone, destination absent, `SSH_FX_NO_SUCH_FILE` -- and no reading the adapter can take separates them (see "A publish the transport cannot resolve" below).
+In delete mode the partner's consume-delete removes exactly this party's own self-prefixed write, so a rename that landed durably and was consumed inside the recovery window reports the state a rename that never landed reports -- source gone, destination absent, `SSH_FX_NO_SUCH_FILE` -- and no reading the adapter can take separates them (see "A write the transport cannot resolve" below).
 `createExclusive` resolves its own normalized `EEXIST` on re-issue as success, reusing the existing code-11 / code-4-via-`exists()` normalization; the narrow rendezvous-phase "two winners" race this admits is documented at the call site and verified benign (roles commit from hello-filename order before the lock, which only gates eager cleanup).
 
-**A publish the transport cannot resolve is rejected as undetermined, never as a determined non-delivery.**
+**A write the transport cannot resolve is rejected as undetermined, never as a determined non-delivery.**
 One state survives the recovery above unresolved.
-A `rename` torn after its filesystem work landed at the server but before its reply was written is a durable publish the sender never learned of.
-If the partner consumes it inside the sender's recovery window -- in delete mode, the consume-delete of a message is the partner's normal receipt path -- the re-issue then reports `SSH_FX_NO_SUCH_FILE` over an absent destination, which is exactly what a publish that never landed reports.
-A source still on the server is the one signal that does separate them, and the adapter probes for it: a re-issue whose source survived is a publish that never landed, classified determinately.
+A `rename` torn after its filesystem work landed at the server but before its reply was written is a durable write the sender never learned of.
+If the partner consumes it inside the sender's recovery window -- in delete mode, the consume-delete of a message is the partner's normal receipt path -- the re-issue then reports `SSH_FX_NO_SUCH_FILE` over an absent destination, which is exactly what a write that never landed reports.
+A source still on the server is the one signal that does separate them, and the adapter probes for it: a re-issue whose source survived is a write that never landed, classified determinately.
 Once the source is gone the two converge, and measurement found no adapter-observable signal that separates them there.
 The torn first attempt's error text and code are identical either way, the re-issue's SFTP status is `SSH_FX_NO_SUCH_FILE` in both, `exists(destination)` is false in both, and the consumption leaves no durable trace in delete mode (after the remove the receiver writes nothing).
 Probing earlier within recovery does not help either, since the replacement session's first operation is a full SSH handshake behind the consumption, and the adapter's own knowledge that a drop occurred with a rename in flight identifies the class, not the outcome.
-The runs behind that reach the source-absent state by the landed-and-consumed route; a never-landed publish whose source some third party then removed is the same state by another route, and is not staged.
-Separating them would take a durable artifact created by the publish or by the consumption -- a change to the publish shape or the protocol, not to this recovery.
-So the adapter rejects that state with a distinct error type (`TransportPublishIndeterminateError`) with the re-issue's own error as its `cause`, rather than resolving it (which would report an unpublished message as sent) or propagating the raw `SSH_FX_NO_SUCH_FILE` (which states a non-delivery it cannot know).
+The runs behind that reach the source-absent state by the landed-and-consumed route; a never-landed write whose source some third party then removed is the same state by another route, and is not staged.
+Separating them would take a durable artifact created by the write or by the consumption -- a change to the write shape or the protocol, not to this recovery.
+So the adapter rejects that state with a distinct error type (`TransportPublishIndeterminateError`) with the re-issue's own error as its `cause`, rather than resolving it (which would report a message that never landed as sent) or propagating the raw `SSH_FX_NO_SUCH_FILE` (which states a non-delivery it cannot know).
 Every neighbouring state is unchanged: a confirmed destination resolves, a re-issue failing with the source still on the server propagates its own error, and a non-`SSH_FX_NO_SUCH_FILE` failure -- including the code-4 generic failure, the server's answer that the rename did not take effect -- propagates unchanged.
 A server reporting a missing rename source as code 4 rather than `SSH_FX_NO_SUCH_FILE` would therefore be classified determinate; the pinned stack does not (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)).
-The rejection is caller-neutral by design: `rename` is shared machinery, and four publishes reach it -- the message loop's `send()`, its ack, the rendezvous `joining` -> `hello` rename, and the abort marker -- which share no recovery.
-So its message names a *publish* rather than a message, prescribes no next step, and is not marked with `markStatesItsOwnNextStep`; a caller whose recovery is established restates it as its own marked error holding this one as the `cause`.
-The consumer-side consequence is in [FILE_SYNC.md](FILE_SYNC.md) (I8): the sequence number such a publish spent is not reusable, the next `send()` is refused rather than writing a second message under a sequence number the peer may already have delivered one under, and `send()` is the one caller that does restate this rejection with a remedy.
-A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put` to the final name, and a reply lost to a drop is resolved by probing that destination, never by re-issuing the `put` blind.
-A destination present at the source's full byte length is the publish landed, and the `put` resolves without a re-issue.
+The rejection is caller-neutral by design: `rename` is shared machinery, and four writes reach it -- the message loop's `send()`, its ack, the rendezvous `joining` -> `hello` rename, and the abort marker -- which share no recovery.
+So its message names the *file* rather than a message, prescribes no next step, and is not marked with `markStatesItsOwnNextStep`; a caller whose recovery is established restates it as its own marked error holding this one as the `cause`.
+The consumer-side consequence is in [FILE_SYNC.md](FILE_SYNC.md) (I8): the sequence number such a write spent is not reusable, the next `send()` is refused rather than writing a second message under a sequence number the peer may already have delivered one under, and `send()` is the one caller that does restate this rejection with a remedy.
+A party [writing without renaming](FILE_SYNC.md#writing-without-renaming) issues no `rename`, so neither arm above runs for it: each write is a `put` to the final name, and a reply lost to a drop is resolved by probing that destination, never by re-issuing the `put` blind.
+A destination present at the source's full byte length is the write landed, and the `put` resolves without a re-issue.
 A destination present but shorter is a `put` that stopped short, on which no reader has acted (a message reader waits for the byte count its name declares, the hello reader retries a short read, an ack is zero-length, and the sentinel is matched by name and never read), so the truncate-overwrite `put` is re-issued once.
 A destination absent, longer than the source, or that the probe could not read is rejected as `TransportPublishIndeterminateError`: in delete mode the partner may already have consumed it, and nothing the adapter can read separates that from a `put` that never landed.
 A message whose `put` rejects spends its sequence number the same way.
@@ -305,7 +305,7 @@ Both directions are pinned by adapter unit tests, so a change to either fails a 
 A third departure is the recovery arm, which the same span covers rather than a second one nested inside it.
 The span opens where the operation is issued and closes when it finally settles, so the first attempt, the re-dial, the re-issue and (for `rename()`) the destination probe that confirms a landed pre-drop rename all fall within one span, while the per-attempt heartbeat brackets open and close inside it.
 There is therefore no point in an operation's life at which the count reads it settled while it is not.
-Each of the two boundaries that would cost a landed publish is covered by construction rather than by placement: between the re-issued attempt's rejection and the probe it drives, where a boundary would tear the probe and an unanswered probe confirms nothing, so a rename that did land would be reported as the undetermined outcome above.
+Each of the two boundaries that would cost a landed write is covered by construction rather than by placement: between the re-issued attempt's rejection and the probe it drives, where a boundary would tear the probe and an unanswered probe confirms nothing, so a rename that did land would be reported as the undetermined outcome above.
 And between the re-dial and the re-issue, where a boundary would close the very session the re-dial established and the re-issue would reject with a dead-session error that no per-operation resolver reads at all.
 Both are pinned by adapter unit tests that sweep a boundary across the whole arm rather than placing it at one named point, since with one span there is no reading of the count that names either boundary.
 
@@ -326,13 +326,13 @@ It is re-issued at the tail of each re-establishment (`ensureConnected`), with t
 A re-issue that fails is offered back to the record -- so a server briefly unreachable at one boundary is swept at the next -- against a bounded per-recording budget rather than for the life of the run, and on the same cap the first record ran.
 It is not retain-gated and must not become so: a `temp-*.tmp` is a failed in-flight write and never transcript, so a retain-mode run leaves none behind either.
 
-**Only the protocol's own in-flight temp shapes -- `temp-<uuidv4()>.tmp` and the hello publish's `temp-hello-<uuidv4()>.tmp` -- are admitted to the record, and that is what makes deferral sound.**
+**Only the protocol's own in-flight temp shapes -- `temp-<uuidv4()>.tmp` and the hello write's `temp-hello-<uuidv4()>.tmp` -- are admitted to the record, and that is what makes deferral sound.**
 `safeDelete` is a general transport method: core calls it with the shared rendezvous lock path, and with names read back from a listing of the directory the peer writes into.
 A record is keyed on a path and re-issued at an arbitrary later point, so admitting one of those would let a transiently-failed delete remove whatever has since come to occupy that name -- a fresh authenticated abort marker the peer wrote in the interim, say, turning a fast `PeerAbortError` into a wait to the peer-inactivity ceiling.
 Both temp shapes have a per-file v4 UUID, so the path a re-issue reaches is the file it was issued for or nothing at all.
 The recognizer is core's own (`isProtocolTempName`, which spans both shapes), not a copy in the transport, so the two cannot drift; the basename is what decides.
 (The entry sweep applies a narrower predicate -- it excludes the hello shape, which may belong to a concurrently starting peer; see [FILE_SYNC.md](FILE_SYNC.md).
-So the only hello temp that ever reaches this record is one this party wrote itself, from the publish's own failure path, never a name read back from a listing.)
+So the only hello temp that ever reaches this record is one this party wrote itself, from the write's own failure path, never a name read back from a listing.)
 Every other path `safeDelete` is handed keeps the plain best-effort behavior -- issued once, never recorded -- which is also what bounds what an adversary can do to the record: the only names that consume it are protocol temps.
 
 **Each re-issue has a teardown-scale deadline, and that is what bounds the whole drain.**
@@ -348,7 +348,7 @@ Of the round trips this mode leaves the adapter waiting on, every one but the dr
 The third unbracketed round trip is not this case: the best-effort handle close a listing fires once the listing has already settled, which a boundary falling there tears too, at the cost a withheld close callback has anyway -- a handle leaked until session teardown, which under `connection_per_poll` is that boundary.
 Already-settled work needs nothing from the release's guarantee; the re-issue is the round trip for which that guarantee had to be reasoned about at all.
 Counted, a re-issue against a server that accepts DELETE and withholds its callback would hold every idle boundary for its whole bound -- and a boundary that closes nothing leaves the session live, so the next re-establishment finds one, re-runs the drain and regenerates the operation, `connection_per_poll` silently reverting to a held session for the rest of the run.
-That needs no failed publish to reach: the entry sweep hands every listed `temp-<uuidv4()>.tmp` from a server-supplied listing to the cleanup delete.
+That needs no failed write to reach: the entry sweep hands every listed `temp-<uuidv4()>.tmp` from a server-supplied listing to the cleanup delete.
 Two properties make the tear sound.
 The record survives it -- the torn delete rejects, which offers the path back to the record -- so the release defers the work rather than losing it, which is the very thing the record exists to do.
 And a torn DELETE of this party's own temp leaves no state its re-issue can misread: the server either performed the unlink or did not, and the re-issue reads the first as the success it is (`notFoundOK`).

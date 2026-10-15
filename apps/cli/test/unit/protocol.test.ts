@@ -8168,10 +8168,10 @@ test("runProtocol leaves ephemeralSessions unset when connection_per_poll is abs
   ).toBeUndefined();
 });
 
-// --- publish_without_rename is announced before the run connects -------------
+// --- write_without_renaming is announced before the run connects -------------
 
-for (const publishWithoutRename of [true, false])
-  test(`runProtocol ${publishWithoutRename ? "warns once naming the assumption" : "raises no publish warning"} with publish_without_rename ${publishWithoutRename ? "on" : "off"}`, async () => {
+for (const writeWithoutRenaming of [true, false])
+  test(`runProtocol ${writeWithoutRenaming ? "warns once naming the assumption" : "raises no publish warning"} with write_without_renaming ${writeWithoutRenaming ? "on" : "off"}`, async () => {
     mockState.warnings.length = 0;
     await runProtocol({
       connection: {
@@ -8180,7 +8180,7 @@ for (const publishWithoutRename of [true, false])
           host: "sftp.example.org",
           hostKeyFingerprint: "SHA256:" + "A".repeat(43),
         },
-        options: { publishWithoutRename },
+        options: { writeWithoutRenaming },
       },
       auth: null,
       prepared: minimalPrepared,
@@ -8189,10 +8189,10 @@ for (const publishWithoutRename of [true, false])
       loggerName: "test",
     }).catch(() => undefined);
     const notices = mockState.warnings.filter((m) =>
-      m.includes("Publishing without rename"),
+      m.includes("Writing without renaming"),
     );
-    expect(notices.length).toBe(publishWithoutRename ? 1 : 0);
-    if (publishWithoutRename)
+    expect(notices.length).toBe(writeWithoutRenaming ? 1 : 0);
+    if (writeWithoutRenaming)
       expect(notices[0]).toContain(
         "never passes a file to your partner while it is still being written",
       );

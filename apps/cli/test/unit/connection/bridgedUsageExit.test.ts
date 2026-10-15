@@ -205,6 +205,6 @@ test("a send on a spent sequence number exits 64 through the bridge", async () =
   const err = await rejection(fromEventConnection(connA).send({ n: 2 }));
   expectBridgedUsageExit(
     err,
-    /was spent on a publish the transport could not confirm/,
+    /was spent on a write the transport could not confirm/,
   );
 });

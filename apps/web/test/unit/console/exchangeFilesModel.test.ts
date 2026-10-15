@@ -100,20 +100,20 @@ describe("the authored draft becomes an option block", () => {
     ).toEqual({ peerId: "clinic-a", timestampInFilename: true });
   });
 
-  test("publishing without rename reaches the composed config and the zero-setup command line", () => {
-    const authored = draft({ publishWithoutRename: true });
+  test("writing without renaming reaches the composed config and the zero-setup command line", () => {
+    const authored = draft({ writeWithoutRenaming: true });
     expect(exchangeFilesOptions(authored)).toEqual({
-      publishWithoutRename: true,
+      writeWithoutRenaming: true,
     });
     expect(exchangeFilesProblems(authored)).toEqual([]);
     expect(composedOptions(authored)).toMatchObject({
-      publish_without_rename: true,
+      write_without_renaming: true,
     });
     expect(
       zeroSetupOptionsArgv(
         exchangeFilesOptions(authored, ZERO_SETUP_EXCHANGE_FILES),
       ),
-    ).toEqual(["--publish-without-rename"]);
+    ).toEqual(["--write-without-renaming"]);
   });
 
   test("the foreign-file policy is withheld from a zero-setup run", () => {

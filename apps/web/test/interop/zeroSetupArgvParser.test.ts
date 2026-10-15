@@ -206,14 +206,14 @@ describe(
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
 
-    test("the publish-without-rename token survives a real parse", async () => {
+    test("the write-without-renaming token survives a real parse", async () => {
       const optionArgs = zeroSetupOptionsArgv(
         exchangeFilesOptions(
-          { ...EXCHANGE_FILES_DEFAULT, publishWithoutRename: true },
+          { ...EXCHANGE_FILES_DEFAULT, writeWithoutRenaming: true },
           ZERO_SETUP_EXCHANGE_FILES,
         ),
       );
-      expect(optionArgs).toEqual(["--publish-without-rename"]);
+      expect(optionArgs).toEqual(["--write-without-renaming"]);
       const { argv, dir } = await captureFiledropArgv(optionArgs);
 
       const parsed = parseWithRealCli(argv, dir);

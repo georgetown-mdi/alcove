@@ -87,11 +87,11 @@ export interface ConnectionOptionsOverrides {
    */
   connectionPerPoll?: boolean;
   /**
-   * The `--publish-without-rename` override, feeding the connection's
-   * `publishWithoutRename`. A FileSyncOptions field, applied on `sftp` and
+   * The `--write-without-renaming` override, feeding the connection's
+   * `writeWithoutRenaming`. A FileSyncOptions field, applied on `sftp` and
    * `filedrop`.
    */
-  publishWithoutRename?: boolean;
+  writeWithoutRenaming?: boolean;
 }
 
 /**
@@ -225,7 +225,7 @@ export function applyConnectionOverrides(
       optionsOverrides.peerId !== undefined ||
       optionsOverrides.retainFiles !== undefined ||
       optionsOverrides.timestampInFilename !== undefined ||
-      optionsOverrides.publishWithoutRename !== undefined)
+      optionsOverrides.writeWithoutRenaming !== undefined)
   ) {
     result.options = withRetainModeImplications({
       ...result.options,
@@ -244,8 +244,8 @@ export function applyConnectionOverrides(
       ...(optionsOverrides.timestampInFilename !== undefined && {
         timestampInFilename: optionsOverrides.timestampInFilename,
       }),
-      ...(optionsOverrides.publishWithoutRename !== undefined && {
-        publishWithoutRename: optionsOverrides.publishWithoutRename,
+      ...(optionsOverrides.writeWithoutRenaming !== undefined && {
+        writeWithoutRenaming: optionsOverrides.writeWithoutRenaming,
       }),
     });
 

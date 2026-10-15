@@ -426,7 +426,7 @@ test("no name in the display puts a control character or a digest line into the 
   expect(recorded).not.toBe(forged);
 });
 
-test("a file-sync run publishing without rename says so on the display, and only then", () => {
+test("a file-sync run writing without renaming says so on the display, and only then", () => {
   const shownFor = (connection: ProtocolConnectionConfig): string => {
     const stdio = captureStdio();
     const metadata = metadataDisclosing([]);
@@ -448,9 +448,9 @@ test("a file-sync run publishing without rename says so on the display, and only
   };
   const line =
     "exchange files written directly under their final names, without a " +
-    "rename: yes (publish_without_rename)";
+    "rename: yes (write_without_renaming)";
   expect(
-    shownFor({ ...TEST_CONNECTION, options: { publishWithoutRename: true } }),
+    shownFor({ ...TEST_CONNECTION, options: { writeWithoutRenaming: true } }),
   ).toContain(line);
   expect(shownFor(TEST_CONNECTION)).not.toContain(line);
 });

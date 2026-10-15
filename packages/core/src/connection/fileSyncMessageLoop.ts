@@ -136,7 +136,7 @@ export function resolveUnexpectedFilesPolicy(options: {
 // token -- a message byte count (own writes only; a peer message is taken by
 // the scan above) or `ack` (either writer's rendezvous or message ack).
 // Both parties' `<id>-joining.json` are recognized by exact name: a lock
-// joiner publishing without rename deletes its sentinel only after its hello
+// joiner writing without renaming deletes its sentinel only after its hello
 // is written, so the peer's sentinel can still be listed once this party's
 // loop has started, and this party's own outlives a delete that failed until
 // cleanup() removes it.
@@ -268,7 +268,7 @@ export interface MessageLoopOptions {
   pollingFrequency: number;
   unexpectedFiles?: "error" | "warn" | "ignore";
   inactivityTimeoutGuidance?: string;
-  publishWithoutRename?: boolean;
+  writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
 }
 
@@ -412,7 +412,7 @@ export class FileSyncMessageLoop {
       throw markStatesItsOwnNextStep(
         new UsageError(
           `cannot send: sequence number ${this.indeterminatePublish.seq} was ` +
-            `spent on a publish the transport could not confirm, so the partner ` +
+            `spent on a write the transport could not confirm, so the partner ` +
             `may already hold a message under it. ` +
             CLEAN_DIRECTORY_RESTART_REMEDY,
           { cause: this.indeterminatePublish.error },
@@ -569,7 +569,7 @@ export class FileSyncMessageLoop {
           `[${deps.role()}] message seq=${seq}, type=${type}, ` +
             `${byteLength} bytes`,
         );
-      if (deps.options().publishWithoutRename) {
+      if (deps.options().writeWithoutRenaming) {
         await this.publishDirect(header, payloadBytes, outPath, outName, seq);
         return;
       }
@@ -608,9 +608,10 @@ export class FileSyncMessageLoop {
         // stays as the `cause`, rendered on its own line under its own cap.
         throw markStatesItsOwnNextStep(
           new TransportPublishIndeterminateError(
-            `the message may or may not have reached the partner: the publish ` +
-              `was cut off mid-operation and could not be confirmed ` +
-              `afterwards. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
+            `the message may or may not have reached the partner: renaming ` +
+              `its file into place was cut off before the server answered ` +
+              `and could not be confirmed afterwards. ` +
+              CLEAN_DIRECTORY_RESTART_REMEDY,
             { cause: renameErr },
           ),
         );
@@ -625,13 +626,13 @@ export class FileSyncMessageLoop {
       // if close() aborts the wait. safeDelete is idempotent over an absent
       // file, so the sweep needs no record of whether the put ran. A direct
       // publish names no temp at all.
-      if (!deps.options().publishWithoutRename)
+      if (!deps.options().writeWithoutRenaming)
         await deps.client().safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));
     }
   }
 
-  // send()'s publish under publishWithoutRename: the message is written
+  // send()'s publish under writeWithoutRenaming: the message is written
   // straight to its final name, tracked first in delete mode (I4a) because a
   // put that throws can leave that name on disk. A throwing put is an
   // unsettled publish, as an undetermined rename is: the file may be on disk

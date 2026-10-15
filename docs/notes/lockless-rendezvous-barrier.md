@@ -19,7 +19,7 @@ its own hello, so a completed rendezvous puts two hellos and two acks on the
 directory. The leaner shape folds one of the acks into the message that follows
 it:
 
-- Both parties publish their hello, unchanged.
+- Both parties write their hello, unchanged.
 - Roles come from lexicographic hello-filename order, which is already how the
   lockless path assigns them.
 - The lexicographic loser writes one barrier file and goes to receive.
