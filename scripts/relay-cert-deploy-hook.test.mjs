@@ -30,7 +30,7 @@ const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 const HOOK = resolve(repoRoot, "infra/relay/certs/deploy-hook.sh");
 
 const OWN_UID = execFileSync("id", ["-u"], { encoding: "utf8" }).trim();
-const OTHER_UID = OWN_UID === "65534" ? "65533" : "65534";
+const OWN_GID = execFileSync("id", ["-g"], { encoding: "utf8" }).trim();
 
 const tmpDirs = [];
 
@@ -45,7 +45,7 @@ const writeStub = (path, body) => {
   chmodSync(path, 0o755);
 };
 
-const fixtureHost = ({ imageUid = OWN_UID } = {}) => {
+const fixtureHost = () => {
   const root = mkdtempSync(join(tmpdir(), "relay-cert-hook-"));
   tmpDirs.push(root);
   const bin = join(root, "bin");
@@ -65,7 +65,7 @@ const fixtureHost = ({ imageUid = OWN_UID } = {}) => {
   );
   writeStub(join(bin, "chown"), `printf 'chown %s\\n' "$*" >> '${calls}'`);
   const envFile = join(root, "relay.env");
-  writeFileSync(envFile, `ALCOVE_RELAY_IMAGE_UID=${imageUid}\n`);
+  writeFileSync(envFile, "ALCOVE_RELAY_REALM=relay.example\n");
   const crt = join(acme, "relay.example.crt");
   const key = join(acme, "relay.example.key");
   const dest = join(root, "certs");
@@ -92,7 +92,13 @@ const fixtureHost = ({ imageUid = OWN_UID } = {}) => {
       expect(result.status, `the hook failed with:\n${result.stderr}`).toBe(0);
       const lines = readFileSync(calls, "utf8").split("\n");
       return {
-        restarted: lines.includes("systemctl restart alcove-relay.service"),
+        restarted: lines.includes(
+          "systemctl restart alcove-relay-front.service",
+        ),
+        coturnRestarted: lines.some((line) =>
+          /^systemctl \S*restart alcove-relay\.service$/.test(line),
+        ),
+        chowned: lines.filter((line) => line.startsWith("chown ")),
         registrarRestarted: lines.includes(
           "systemctl try-restart alcove-relay-registrar.service",
         ),
@@ -105,10 +111,12 @@ const fixtureHost = ({ imageUid = OWN_UID } = {}) => {
 };
 
 describe("the relay certificate deploy hook", () => {
-  it("restarts a running relay onto a first certificate", () => {
+  it("restarts a running front onto a first certificate", () => {
     const host = fixtureHost();
     host.issue(1);
-    expect(host.run().restarted).toBe(true);
+    const run = host.run();
+    expect(run.restarted).toBe(true);
+    expect(run.coturnRestarted).toBe(false);
     expect(readFileSync(join(host.dest, "fullchain.pem"), "utf8")).toBe(
       "certificate 1\n",
     );
@@ -117,7 +125,18 @@ describe("the relay certificate deploy hook", () => {
     );
   });
 
-  it("leaves the relay running on a day the client renewed nothing", () => {
+  // The front's nginx master reads the key as root with every capability
+  // dropped, so the files are owned by the account running the hook, root on
+  // the relay host.
+  it("gives the files to the account that runs it", () => {
+    const host = fixtureHost();
+    host.issue(1);
+    expect(host.run().chowned).toEqual([
+      `chown ${OWN_UID}:${OWN_GID} ${join(host.dest, "privkey.pem")} ${join(host.dest, "fullchain.pem")}`,
+    ]);
+  });
+
+  it("leaves the front running on a day the client renewed nothing", () => {
     const host = fixtureHost();
     host.issue(1);
     host.run();
@@ -126,7 +145,7 @@ describe("the relay certificate deploy hook", () => {
     expect(noop.stderr).toContain("unchanged");
   });
 
-  it("says the relay is not running on a no-op day while it is stopped", () => {
+  it("says the front is not running on a no-op day while it is stopped", () => {
     const host = fixtureHost();
     host.issue(1);
     host.run();
@@ -136,7 +155,7 @@ describe("the relay certificate deploy hook", () => {
     expect(noop.stderr).toContain("not running");
   });
 
-  it("restarts the relay once the client renews the certificate", () => {
+  it("restarts the front once the client renews the certificate", () => {
     const host = fixtureHost();
     host.issue(1);
     host.run();
@@ -154,7 +173,7 @@ describe("the relay certificate deploy hook", () => {
     expect(host.run().registrarRestarted).toBe(false);
   });
 
-  it("restarts the relay when only the key changed", () => {
+  it("restarts the front when only the key changed", () => {
     const host = fixtureHost();
     host.issue(1);
     host.run();
@@ -162,16 +181,7 @@ describe("the relay certificate deploy hook", () => {
     expect(host.run().restarted).toBe(true);
   });
 
-  it("restarts the relay while the deployed files are not owned by the image's account", () => {
-    // The chown stub leaves the files owned by the test's own uid, so a
-    // different image uid is a deployed copy that never reached that account.
-    const host = fixtureHost({ imageUid: OTHER_UID });
-    host.issue(1);
-    host.run();
-    expect(host.run().restarted).toBe(true);
-  });
-
-  it("starts nothing on a first install, before the relay is running", () => {
+  it("starts nothing on a first install, before the front is running", () => {
     const host = fixtureHost();
     host.stopService();
     host.issue(1);

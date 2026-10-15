@@ -12,7 +12,7 @@
 # together. That file's header carries the directive-to-flag mapping.
 
 [Unit]
-Description=alcove WebRTC relay (coturn, TURNS on loopback behind the 443 front)
+Description=alcove WebRTC relay (coturn, TURN on loopback behind the 443 front)
 Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
 After=network-online.target
 Wants=network-online.target
@@ -32,12 +32,11 @@ Image=localhost/alcove-relay:installed
 Network=host
 
 # The rendered configuration can hold the static authentication secret and is
-# mounted read-only. The certificate directory is what the ACME deploy hook
-# writes and what coturn re-reads on restart. The data directory holds the
-# per-exchange secrets table, which register-exchange.sh and revoke-exchange.sh
+# mounted read-only. coturn terminates no TLS, so no certificate is mounted:
+# the 443 front holds it. The data directory holds the per-exchange secrets
+# table, which register-exchange.sh and revoke-exchange.sh
 # edit while the relay runs.
 Volume=/etc/alcove-relay/turnserver.conf:/etc/coturn/turnserver.conf:ro
-Volume=/etc/alcove-relay/certs:/etc/coturn/certs:ro
 Volume=/var/lib/alcove-relay:/var/lib/coturn
 
 Exec=-c /etc/coturn/turnserver.conf

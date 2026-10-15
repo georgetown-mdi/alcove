@@ -56,8 +56,11 @@ Inbound, in the instance's security group:
 Outbound: unrestricted, or at minimum UDP to the relay range and TCP/443 to the
 ACME authority and the DNS provider's API.
 
-No plain TURN listener is configured, so 3478 stays closed. Nothing in the
-configuration listens on it.
+No other port is opened, 3478 among them. coturn listens on `127.0.0.1` only
+(`listening-ip` in `turnserver.conf.tmpl`), on the plain TURN over TCP port
+the front passes TURN to (5350), and the front's own servers behind 443 (5347,
+5348) bind `127.0.0.1` too, so none is in the group, and none would be
+reachable from outside if one were added.
 
 ## The instance role
 
