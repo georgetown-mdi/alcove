@@ -489,7 +489,10 @@ describe("with the mode off, a refused rename names the option", () => {
       () => undefined,
       (e: unknown) => e as Error,
     );
-    expect(err?.message).toContain(`${ID_A}-hello.json could not be written`);
+    expect(err?.message).toContain(
+      `${ID_A}-hello.json was written under a temporary name but could not ` +
+        "be renamed into place",
+    );
     expect(err?.message).toContain("The server may not allow renames.");
     expect(err?.message).toContain(DEFAULT_RENAME_REFUSED_GUIDANCE);
     expect((err?.cause as { code?: unknown }).code).toBe(2);
@@ -507,7 +510,7 @@ describe("with the mode off, a refused rename names the option", () => {
     conn.peerId = ID_B;
 
     await expect(conn.send({ m: 1 })).rejects.toThrow(
-      /could not be written: .*The server may not allow renames\. Pass --example-flag\.$/,
+      /could not be renamed into place: .*The server may not allow renames\. Pass --example-flag\.$/,
     );
   });
 
@@ -545,7 +548,7 @@ describe("with the mode off, a refused rename names the option", () => {
         (e: unknown) => e as Error,
       );
       expect(err?.message).toContain(
-        `renaming the temporary file this party had just written failed ${quoted}. ` +
+        `could not be renamed into place: the rename failed ${quoted}. ` +
           "The server may not allow renames.",
       );
       expect(err?.message).toContain(DEFAULT_RENAME_REFUSED_GUIDANCE);

@@ -63,8 +63,8 @@ export async function renameOwnTemp(
     )
       throw err;
     throw new Error(
-      `${redactPrivateKeyMaterial(finalName)} could not be written: ` +
-        "renaming the temporary file this party had just written failed " +
+      `${redactPrivateKeyMaterial(finalName)} was written under a temporary ` +
+        "name but could not be renamed into place: the rename failed " +
         `${describeRenameFailure(err)}. The server may not allow renames. ` +
         (guidance ?? DEFAULT_RENAME_REFUSED_GUIDANCE),
       { cause: err },

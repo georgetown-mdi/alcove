@@ -608,9 +608,10 @@ export class FileSyncMessageLoop {
         // stays as the `cause`, rendered on its own line under its own cap.
         throw markStatesItsOwnNextStep(
           new TransportPublishIndeterminateError(
-            `the message may or may not have reached the partner: the write ` +
-              `was cut off mid-operation and could not be confirmed ` +
-              `afterwards. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
+            `the message may or may not have reached the partner: renaming ` +
+              `its file into place was cut off before the server answered ` +
+              `and could not be confirmed afterwards. ` +
+              CLEAN_DIRECTORY_RESTART_REMEDY,
             { cause: renameErr },
           ),
         );

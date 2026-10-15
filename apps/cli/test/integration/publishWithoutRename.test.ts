@@ -184,7 +184,7 @@ describe("against a server that refuses every rename", () => {
         });
         for (const party of [run.a, run.b]) {
           expect(party.ok).toBe(false);
-          expect(party.rendered).toContain("could not be written");
+          expect(party.rendered).toContain("could not be renamed into place");
           expect(party.rendered).toContain("The server may not allow renames.");
           expect(party.rendered).toContain("--write-without-renaming");
         }
