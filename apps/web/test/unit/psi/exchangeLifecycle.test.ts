@@ -958,6 +958,59 @@ describe("runExchangeLifecycle", () => {
     await expect(secure.receive()).rejects.toMatchObject({ kind: "security" });
   });
 
+  test.each([
+    {
+      name: "a replayed envelope",
+      frames: (first: Uint8Array, second: Uint8Array) => [first, first, second],
+      delivered: [{ round: 1 }],
+    },
+    {
+      name: "a malformed envelope, too short for its header and tag",
+      frames: (first: Uint8Array, second: Uint8Array) => [
+        first.slice(0, 28),
+        second,
+      ],
+      delivered: [],
+    },
+  ])(
+    "$name ends the run as category 'security' and nothing after it is processed",
+    async ({ frames, delivered }) => {
+      const { mc } = makeFakeMc();
+      mockedOpen.mockResolvedValue(mc);
+      const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+      mockedAuthenticate.mockResolvedValue(authenticatedOver(secure));
+      const processed: Array<unknown> = [];
+      mockedRunExchange.mockImplementation(async (connection) => {
+        for (;;) processed.push(await connection.receive());
+      });
+      const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+      for (const frame of frames(first, second)) await partnerRaw.send(frame);
+      const { acquired } = makeResources();
+      const s = seams();
+
+      await runExchangeLifecycle({
+        acquire: () => Promise.resolve(acquired),
+        exchangeRole: "initiator",
+        signal: new AbortController().signal,
+        ...s,
+      });
+
+      const securityFailure = expect.objectContaining({
+        name: "ConnectionError",
+        kind: "security",
+      }) as unknown;
+      expect(s.onError.mock.calls).toEqual([
+        [{ category: "security", error: securityFailure }],
+      ]);
+      expect(processed).toEqual(delivered);
+      expect(s.generateOutput).not.toHaveBeenCalled();
+      expect(s.onResult).not.toHaveBeenCalled();
+      await expect(secure.receive()).rejects.toMatchObject({
+        kind: "security",
+      });
+    },
+  );
+
   test("a generateOutput failure is category 'output' (the exchange succeeded)", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);

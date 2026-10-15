@@ -808,6 +808,47 @@ describe("runManagedExchangeInBrowser", () => {
     await expect(secure.receive()).rejects.toBe(rejection);
   });
 
+  test.each([
+    {
+      name: "a replayed envelope",
+      frames: (first: Uint8Array, second: Uint8Array) => [first, first, second],
+      delivered: [{ round: 1 }],
+    },
+    {
+      name: "a malformed envelope, too short for its header and tag",
+      frames: (first: Uint8Array, second: Uint8Array) => [
+        first.slice(0, 28),
+        second,
+      ],
+      delivered: [],
+    },
+  ])(
+    "$name ends the run with the security failure and nothing after it is processed",
+    async ({ frames, delivered }) => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources();
+      const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+      mockedAuthenticate.mockResolvedValueOnce(wrappedHandshake(secure));
+      const processed: Array<unknown> = [];
+      mockedRunExchange.mockImplementationOnce(async (connection) => {
+        for (;;) processed.push(await connection.receive());
+      });
+      const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+      for (const frame of frames(first, second)) await partnerRaw.send(frame);
+
+      const rejection = await runDriver(new AbortController().signal).catch(
+        (error: unknown) => error,
+      );
+
+      expect(rejection).toBeInstanceOf(ConnectionError);
+      expect((rejection as ConnectionError).kind).toBe("security");
+      expect(processed).toEqual(delivered);
+      expect(mockedBuildRunOutputs).not.toHaveBeenCalled();
+      await expect(secure.receive()).rejects.toBe(rejection);
+    },
+  );
+
   test("a cancel during the exchange closes the AEAD-wrapped connection", async () => {
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
