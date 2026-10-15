@@ -24,14 +24,14 @@
         "localPeerId": "462918072826141db59f6a4564b622e1",
         "remotePeerId": "9b1ad70d47d352cbbf44f5f5360203da",
         "handshakeRole": "responder",
-        "requestEncryption": false
+        "requestEncryption": true
       },
       {
         "side": "acceptor",
         "localPeerId": "9b1ad70d47d352cbbf44f5f5360203da",
         "remotePeerId": "462918072826141db59f6a4564b622e1",
         "handshakeRole": "initiator",
-        "requestEncryption": false
+        "requestEncryption": true
       }
     ]
   },

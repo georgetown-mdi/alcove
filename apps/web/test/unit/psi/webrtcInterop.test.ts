@@ -329,10 +329,6 @@ describe("the handshake role and encryption request the web app puts on the wire
       );
   });
 
-  // The vectors' request-encryption flag is the CLI's, `false` on both sides;
-  // the web app requests the AEAD wrap from either side, and the decision is
-  // the OR of the two requests (docs/spec/CHANNEL_SECURITY.md, "Which channels
-  // request it").
   test("the acceptor's role sends the first message, requesting the AEAD wrap", async () => {
     const acceptor = sideVector("acceptor");
     const scripted = scriptedConnection();
@@ -344,7 +340,7 @@ describe("the handshake role and encryption request the web app puts on the wire
     await vi.waitFor(() => expect(scripted.sent.length).toBe(1));
     expect(scripted.sent[0]).toMatchObject({
       kexMsg: "1",
-      reqEnc: true,
+      reqEnc: acceptor.requestEncryption,
     });
     scripted.end();
     await expect(run).rejects.toThrow();
@@ -371,7 +367,7 @@ describe("the handshake role and encryption request the web app puts on the wire
     await vi.waitFor(() => expect(scripted.sent.length).toBe(1));
     expect(scripted.sent[0]).toMatchObject({
       kexMsg: "2",
-      reqEnc: true,
+      reqEnc: inviter.requestEncryption,
     });
     scripted.end();
     await expect(run).rejects.toThrow();

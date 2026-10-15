@@ -99,18 +99,17 @@ describe("rendezvous peer ids", () => {
 });
 
 describe("the two sides take complementary key-exchange roles", () => {
-  test("one initiator, one responder, and the CLI asks for no AEAD wrap", () => {
+  test("one initiator, one responder, and both ask for the AEAD wrap", () => {
     // The pairing itself, held here so both apps assert the same table rather
-    // than each app's own reading of it. The request-encryption flag is the
-    // CLI's, which requests no application-layer AEAD on a data channel; the
-    // web app requests it on every webrtc exchange.
+    // than each app's own reading of it. Both apps request the
+    // application-layer AEAD from either side on every webrtc exchange.
     expect(
       vectors.rendezvous.sides.map((s) => [s.side, s.handshakeRole]),
     ).toEqual([
       ["inviter", "responder"],
       ["acceptor", "initiator"],
     ]);
-    expect(vectors.rendezvous.sides.every((s) => !s.requestEncryption)).toBe(
+    expect(vectors.rendezvous.sides.every((s) => s.requestEncryption)).toBe(
       true,
     );
   });

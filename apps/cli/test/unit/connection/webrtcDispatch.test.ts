@@ -19,7 +19,7 @@ import type {
  * observable here is what the dispatch itself decides: that it dials rather than
  * opening a file-sync connection, what it hands the rendezvous, which handshake
  * role each party takes from its configured one, and that the exchange runs
- * unwrapped over the channel's own confidentiality. The two parties run against
+ * inside the application-layer AEAD wrap. The two parties run against
  * each other over a pair of in-memory connections, so the key exchange those
  * decisions feed is the real one.
  */
@@ -33,14 +33,14 @@ const mockState = vi.hoisted(() => ({
     role: string;
     requestEncryption: boolean;
   }>,
+  /** When set, the handshake result reports the application-layer encryption as not applied. */
+  reportEncryptionOff: false,
   /** The connection each party's runExchange was handed. */
   exchangeConnections: [] as Array<unknown>,
   /** Every `log.info` line the run emitted, with its arguments joined as a console joins them. */
   logLines: [] as Array<string>,
   /** Every `log.warn` line, joined the same way. */
   warnLines: [] as Array<string>,
-  /** A side whose key exchange asks for the AEAD layer, as a partner may. */
-  encryptionRequestedBy: undefined as "inviter" | "acceptor" | undefined,
 }));
 
 vi.mock("@openmined/psi.js", () => ({
@@ -79,12 +79,15 @@ vi.mock("@alcove/core", async (importActual) => {
         // it -- the argument list itself has no party name.
         const side = connection === pair.inviter ? "inviter" : "acceptor";
         mockState.handshakes.push({ side, role, requestEncryption });
-        return actual.authenticateConnection(
+        const result = await actual.authenticateConnection(
           connection,
           params,
           role,
-          requestEncryption || mockState.encryptionRequestedBy === side,
+          requestEncryption,
         );
+        return mockState.reportEncryptionOff
+          ? { ...result, applyEncryption: false }
+          : result;
       },
     ),
     runExchange: vi.fn(async (connection: unknown) => {
@@ -163,6 +166,7 @@ const {
 } = await import("../../../src/connection/webrtc/webrtcMessageConnection");
 const {
   DISPLAY_TRUNCATION_MARKER,
+  EncryptedMessageConnection,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   UsageError,
   RoundSetLimitError,
@@ -251,9 +255,9 @@ beforeEach(() => {
   mockState.dials.length = 0;
   mockState.handshakes.length = 0;
   mockState.exchangeConnections.length = 0;
+  mockState.reportEncryptionOff = false;
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
-  mockState.encryptionRequestedBy = undefined;
 });
 
 afterEach(() => {
@@ -334,18 +338,17 @@ test("the configured role fixes the handshake role, complementary across the pai
   ]);
 });
 
-test("neither party asks for the application-layer AEAD, and neither wraps", async () => {
+test("both parties ask for the application-layer AEAD, and both wrap", async () => {
   await Promise.all([runParty("inviter"), runParty("acceptor")]);
-  // A data channel is already end-to-end confidential under DTLS, and a browser
-  // peer refuses a partner that requests the wrap, so asking would cost the
-  // exchange rather than protect it.
-  expect(mockState.handshakes.every((h) => !h.requestEncryption)).toBe(true);
-  // And the negotiated decision is what the exchange actually ran under: the
-  // connection handed to runExchange is the transport itself, not a decorator
-  // over it.
+  expect(mockState.handshakes).toHaveLength(2);
+  expect(mockState.handshakes.every((h) => h.requestEncryption)).toBe(true);
+  // The negotiated decision is what the exchange ran under: the connection
+  // handed to runExchange is the AEAD decorator, not the transport itself.
   expect(mockState.exchangeConnections).toHaveLength(2);
-  for (const connection of mockState.exchangeConnections)
-    expect([pair.inviter, pair.acceptor]).toContain(connection);
+  for (const connection of mockState.exchangeConnections) {
+    expect(connection).toBeInstanceOf(EncryptedMessageConnection);
+    expect([pair.inviter, pair.acceptor]).not.toContain(connection);
+  }
 });
 
 test("each party's role and encryption request match the shared interop vectors", async () => {
@@ -463,27 +466,39 @@ function captureSignalExit(): {
   return { exit, exited };
 }
 
-test.each([
-  ["", undefined],
-  [" through the encrypted layer", "acceptor"],
-] as const)(
-  "a finished exchange whose last message the partner never confirmed warns the operator once%s",
-  async (_label, encryptionRequestedBy) => {
-    mockState.encryptionRequestedBy = encryptionRequestedBy;
-    pair.inviter.close = async () => {
-      throw new FinalFrameUnconfirmedError(
-        FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
-      );
-    };
-    await Promise.all([runParty("inviter"), runParty("acceptor")]);
-    const warning = sanitizeErrorForDisplay(
-      new FinalFrameUnconfirmedError(FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE),
+test("a finished exchange whose last message the partner never confirmed warns the operator once", async () => {
+  pair.inviter.close = async () => {
+    throw new FinalFrameUnconfirmedError(
+      FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
     );
-    expect(mockState.warnLines.filter((line) => line === warning)).toHaveLength(
-      1,
+  };
+  await Promise.all([runParty("inviter"), runParty("acceptor")]);
+  const warning = sanitizeErrorForDisplay(
+    new FinalFrameUnconfirmedError(FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE),
+  );
+  expect(mockState.warnLines.filter((line) => line === warning)).toHaveLength(
+    1,
+  );
+});
+
+test("a handshake that completes without the encryption is refused and no exchange runs", async () => {
+  mockState.reportEncryptionOff = true;
+  const { ConnectionError } = await import("@alcove/core");
+  const outcomes = await Promise.allSettled([
+    runParty("inviter"),
+    runParty("acceptor"),
+  ]);
+  for (const outcome of outcomes) {
+    expect(outcome.status).toBe("rejected");
+    const reason = (outcome as PromiseRejectedResult).reason;
+    expect(reason).toBeInstanceOf(ConnectionError);
+    expect(reason.kind).toBe("usage");
+    expect(reason.message).toContain(
+      "without the application-layer encryption",
     );
-  },
-);
+  }
+  expect(mockState.exchangeConnections).toHaveLength(0);
+});
 
 test("any other close failure of a finished exchange is not raised to the operator", async () => {
   const { ConnectionError } = await import("@alcove/core");

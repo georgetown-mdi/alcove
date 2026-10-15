@@ -218,13 +218,15 @@ Per-field detail: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#connectionstun);
 
 Browser runtimes cannot open raw TCP connections and must use WebSockets instead, so a browser reaching a service that speaks TCP natively -- an SFTP server -- needs a proxy translating between the two protocols. **No such transport is built,** and no connection setting names one: the browser conducts WebRTC exchanges only, and the console profile runs a file-sync exchange through its job API, where the CLI opens the socket itself. No reference proxy configuration ships in this release ([DEPLOYMENT.md](DEPLOYMENT.md#websocket-to-tcp-proxy)).
 
-The shape would be a property of the client's runtime environment rather than the server: a browser-based party would need a proxy, while a CLI party connects natively, so the two parties' connections would differ even to the same underlying server. No setting names a proxy today. Such a leg would also be the one case that puts an intermediary inside a channel the transport is otherwise trusted to protect end to end, which is why it would change the CLI's no-wrap posture on the WebRTC channel ([CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#which-channels-request-it)).
+The shape would be a property of the client's runtime environment rather than the server: a browser-based party would need a proxy, while a CLI party connects natively, so the two parties' connections would differ even to the same underlying server. No setting names a proxy today. Such a leg would put an intermediary inside the channel; every WebRTC exchange already applies the application-layer encryption, so it would see ciphertext ([CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#which-channels-request-it)).
 
 ### Coordination server
 
 Establishing a WebRTC connection requires a signaling step in which both parties exchange session descriptions and ICE candidates before a direct channel can be opened. The project uses the PeerJS protocol for this: each party registers with a PeerJS-compatible server under a token-derived peer ID and then locates their partner using the complementary ID. The same protocol also frames the chunked data transfer over the established connection, so signaling and data transport are not independently separable.
 
 Two implementations speak it, and either can be on either end of an exchange. The web application runs the PeerJS client library in the browser. The CLI has no browser to run it in, so it drives a Node WebRTC stack directly and speaks the same signaling and framing itself; the wire both must match is specified in [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md).
+
+The coordination server sees the signaling it relays and no exchange content: both applications request and apply the application-layer encryption on every WebRTC exchange, keyed by the parties' authenticated key exchange, which the server cannot complete ([SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)).
 
 The coordination server is well-suited to lifecycle provisioning. It is only needed during the brief signaling phase before the WebRTC data channel is established, after which the two peers communicate directly. Hosting it as a serverless WebSocket function - for example on AWS Lambda with API Gateway or Cloudflare Workers - allows it to cold-start on demand and go idle between exchanges with no standing cost.
 

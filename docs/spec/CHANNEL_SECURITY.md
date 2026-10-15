@@ -48,16 +48,14 @@ Because the type tag is encrypted, the file-sync transport beneath the AEAD laye
 
 ## Which channels request it
 
-The wrap is applied when the key exchange's transcript-bound decision says so, and that decision is the OR of the two parties' requests: either party asking for it turns it on for both. What each party asks for is fixed by the channel and the application, not configurable.
+The wrap is applied when the key exchange's transcript-bound decision says so, and that decision is the OR of the two parties' requests: either party asking for it turns it on for both. What each party asks for is fixed by the channel, not configurable.
 
 | Channel | Requests the wrap | Why |
 | ------- | ----------------- | --- |
 | `sftp`, `filedrop` | yes | The exchange sits in a server's or a share's filesystem. Its administrator can read and alter every frame, so the confidentiality and integrity have to come from a layer above the transport. |
-| `webrtc` | no from the CLI; yes from the web application | A data channel is end-to-end confidential and integrity-protected under DTLS between the two parties. The signaling server introduces them and sees no exchange content, and a TURN relay forwards ciphertext. |
+| `webrtc` | yes, from the CLI and from the web application | A coordination server controls the signaling it relays and could otherwise place itself between the two parties, so the wrap, keyed by the authenticated key exchange that server cannot complete, is what keeps exchange content from it. |
 
-The one case that would change the CLI's `webrtc` request is a transport leg an intermediary terminates -- concretely, a WebSocket-to-TCP proxy relaying a party's traffic, which would put a third party inside the confidential channel. No such transport exists. If one lands, the request bit is how the party behind it asks for the wrap. No negotiation mechanism is built for that case in advance.
-
-The web application requests the wrap on every `webrtc` exchange (`apps/web/src/psi/authenticateExchange.ts`), so every exchange with a browser party is wrapped. The limit is a stated one: a web application or CLI build from before the web application requested the wrap cannot complete a `webrtc` exchange with a current build, and a recurring exchange run across such a pair is set up again from a new invitation.
+The CLI (`apps/cli/src/protocol.ts`) and the web application (`apps/web/src/psi/authenticateExchange.ts`) request the wrap on every `webrtc` exchange, so every `webrtc` exchange is wrapped. The limit is a stated one: a web application build from before the web application requested the wrap cannot complete a `webrtc` exchange with a current web application or CLI build, and a recurring exchange run across such a pair is set up again from a new invitation.
 
 ## IV construction and SP 800-38D conformance
 
