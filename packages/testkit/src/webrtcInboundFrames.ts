@@ -15,11 +15,10 @@
 //
 // The set lives here rather than in either test tree because both apps need it and
 // neither may import the other, and rather than behind `@alcove/core/testing`
-// because it is built with the real `peerjs-js-binarypack` packer, which
-// `packages/core` does not declare in its `dependencies` -- putting it there would
-// inline a copy of the wire codec into core's published `dist/testing.*`
-// (docs/TESTING.md, Shared test material). What each transport contributes is the
-// half that cannot move: the assertion that drives its own reassembler.
+// because the CLI parity test and the web app's wrap both consume it from here, and
+// moving it into core's testing entry is a change of its own (docs/TESTING.md,
+// Shared test material). What each transport contributes is the half that cannot
+// move: the assertion that drives its own reassembler.
 //
 // Every frame is the real packer's output. The three shapes that packer never emits
 // -- a container declaring more elements than the bytes behind it, nested containers
