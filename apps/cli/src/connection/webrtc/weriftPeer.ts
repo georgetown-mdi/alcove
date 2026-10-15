@@ -857,7 +857,8 @@ async function closePeer(peer: RTCPeerConnection): Promise<void> {
  * Ask one TURN server for a relay address the way a run's ICE gathering does:
  * a peer connection listing `server` alone, under the relay-only policy,
  * gathering for a local offer. Resolves whether a relay candidate is among
- * this side's once gathering completes or `signal` aborts.
+ * this side's once gathering completes or `signal` aborts, and closes the
+ * peer connection either way, so an abort ends a gather still in progress.
  *
  * werift reports no per-server error, so a relay that refused the allocation
  * and one that never answered both resolve `false`.
@@ -872,17 +873,27 @@ export async function gatherRelayCandidate(
   );
   let onAbort: (() => void) | undefined;
   try {
-    const gatheringEnded = new Promise<void>((resolve) => {
-      onAbort = resolve;
+    const aborted = new Promise<"aborted">((resolve) => {
+      onAbort = () => resolve("aborted");
       signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const gatheringEnded = new Promise<"gathered">((resolve) => {
       peer.onicegatheringstatechange = () => {
-        if (peer.iceGatheringState === "complete") resolve();
+        if (peer.iceGatheringState === "complete") resolve("gathered");
       };
     });
     peer.createDataChannel("relay-check");
-    await peer.setLocalDescription(await peer.createOffer());
-    if (peer.iceGatheringState !== "complete" && !signal.aborted)
-      await gatheringEnded;
+    // werift gathers inside setLocalDescription, so it is raced against the
+    // abort; once the bound has cut it short, its settling is ignored.
+    const described = peer
+      .setLocalDescription(await peer.createOffer())
+      .then(() => "described" as const);
+    described.catch(() => undefined);
+    if (
+      (await Promise.race([described, aborted])) === "described" &&
+      peer.iceGatheringState !== "complete"
+    )
+      await Promise.race([gatheringEnded, aborted]);
     const report = await readIceStats(peer);
     return report?.localRelayGathered === true;
   } finally {

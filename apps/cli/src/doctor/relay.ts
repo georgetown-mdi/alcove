@@ -11,10 +11,7 @@ import type {
 } from "@alcove/core";
 import type { RTCIceServer } from "werift";
 
-import {
-  NO_RELAY_CANDIDATE_GATHERED,
-  RELAY_NOT_REACHED_REMEDY,
-} from "../connection/webrtc/iceDiagnostics";
+import { NO_RELAY_CANDIDATE_GATHERED } from "../connection/webrtc/iceDiagnostics";
 import {
   ICE_PROVISION_REFUSAL,
   turnIceServer,
@@ -48,6 +45,13 @@ import { fail, ok } from "./verdict";
  * check.
  */
 export const RELAY_CHECK_BOUND_MS = 30_000;
+
+/**
+ * What to do when no relay candidate was gathered from a configured relay,
+ * as docs/CLI.md, When a WebRTC exchange does not connect, states it.
+ */
+export const RELAY_NOT_REACHED_REMEDY =
+  "Fix the relay, or arrange a direct path; waiting longer changes nothing.";
 
 /** The refusal of a configuration whose channel is not webrtc. */
 export const RELAY_CHECK_WEBRTC_ONLY =
@@ -293,9 +297,11 @@ export function relayCheckRecord(
   const heading = `${server.url} over ${TRANSPORT_LABEL[transport]}`;
   const located = { url: server.url, transport };
   if (relayGathered)
-    return ok(id, `${heading}: reached; the relay gave a relay address.`, {
-      ...located,
-    });
+    return ok(
+      id,
+      `${heading}: reached; the relay gave a relay address.`,
+      located,
+    );
   return fail(
     id,
     `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`,
@@ -340,5 +346,6 @@ export async function runRelayChecks(
     };
   } finally {
     clearTimeout(timer);
+    bound.abort();
   }
 }

@@ -12,16 +12,16 @@ import {
   mountHandler,
   relayHandler,
 } from "../../../src/commands/doctor";
-import {
-  NO_RELAY_CANDIDATE_GATHERED,
-  RELAY_NOT_REACHED_REMEDY,
-} from "../../../src/connection/webrtc/iceDiagnostics";
+import { NO_RELAY_CANDIDATE_GATHERED } from "../../../src/connection/webrtc/iceDiagnostics";
 import { runProbe } from "../../../src/doctor/probe";
 import type { ProbeDeps } from "../../../src/doctor/probe";
 import {
   ENROLLMENT_CHECK_ID,
   RELAY_CHECK_NO_TURN_URL,
   RELAY_CHECK_WEBRTC_ONLY,
+  RELAY_NOT_REACHED_REMEDY,
+  relayCheckTargets,
+  runRelayChecks,
   turnUrlTransport,
 } from "../../../src/doctor/relay";
 import type { RelayCandidateGathering } from "../../../src/doctor/relay";
@@ -414,6 +414,34 @@ test("a relay that has not answered when the bound expires is reported not reach
     summary: `${OWN_TURN} over TCP: ${NO_RELAY_CANDIDATE_GATHERED} within 0 s.`,
   });
   expect(checkFor(report, OWN_TURN).meaning).toContain("alcove enroll-relay");
+});
+
+test("a gather that rejects stops the other relays' gathers", async () => {
+  const signals: Array<AbortSignal> = [];
+  const targets = relayCheckTargets(
+    [
+      { source: "own", url: OWN_TURN, username: "u", credential: "c" },
+      { source: "own", url: STATIC_TURN, username: "u", credential: "c" },
+    ],
+    undefined,
+  );
+
+  const checked = runRelayChecks(
+    targets,
+    (server, signal) => {
+      signals.push(signal);
+      if (server.urls === OWN_TURN)
+        return Promise.reject(new Error("gather failed"));
+      return new Promise((resolve) =>
+        signal.addEventListener("abort", () => resolve(false)),
+      );
+    },
+    60_000,
+  );
+
+  await expect(checked).rejects.toThrow("gather failed");
+  expect(signals).toHaveLength(2);
+  expect(signals.every((signal) => signal.aborted)).toBe(true);
 });
 
 test("an invitation relay with no registrar that gives none names the missing enrollment", async () => {
