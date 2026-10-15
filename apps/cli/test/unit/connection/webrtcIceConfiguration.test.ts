@@ -280,7 +280,9 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
   expect(relayCredentialNotice({ turn: URL_ONLY_TURN }, RUN_CREDENTIAL)).toBe(
     "relaying through turns:minted.example:443?transport=tcp, with a " +
       "credential derived from the exchange's shared secret that is valid " +
-      "for 60 minutes and expires at 2026-01-01T01:00:00.000Z",
+      "for 60 minutes and expires at 2026-01-01T01:00:00.000Z. The run " +
+      "allocates its relay on your own TURN server at " +
+      "turns:minted.example:443?transport=tcp.",
   );
   expect(
     relayCredentialNotice(
@@ -294,8 +296,15 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
     { turn: [...OWN_TURN, ...URL_ONLY_TURN] },
     RUN_CREDENTIAL,
   );
-  expect(mixed).toContain("turns:minted.example:443?transport=tcp");
-  expect(mixed).not.toContain("own.example");
+  expect(mixed).toMatch(
+    /^relaying through turns:minted\.example:443\?transport=tcp, with/,
+  );
+  expect(mixed).toContain(
+    "The run allocates its relay on your own TURN server at " +
+      "turns:own.example:443?transport=tcp, with that entry's own " +
+      "credential; the urls listed take this credential, but the run " +
+      "allocates no relay on them.",
+  );
   expect(
     relayCredentialNotice(
       { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
@@ -303,6 +312,36 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
     ),
   ).toMatch(
     /^relaying through turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named, with/,
+  );
+});
+
+test("the notice names the url the run allocates on: an own turn entry before the invitation's relay", () => {
+  expect(
+    relayCredentialNotice(
+      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
+      RUN_CREDENTIAL,
+    ),
+  ).toMatch(
+    /\. The run allocates its relay on your own TURN server at turns:minted\.example:443\?transport=tcp only; the other urls listed take the credential, but the run allocates no relay on them\.$/,
+  );
+});
+
+test("the notice names the url the run allocates on: the invitation's first, with no turn entry of its own", () => {
+  expect(
+    relayCredentialNotice(
+      { invitationRelay: INVITATION_RELAY },
+      RUN_CREDENTIAL,
+    ),
+  ).toMatch(
+    /\. The run allocates its relay on the first TURN server your partner's invitation named, at turns:partner\.example:443\?transport=tcp only; the other urls listed take the credential, but the run allocates no relay on them\.$/,
+  );
+  expect(
+    relayCredentialNotice(
+      { invitationRelay: { turn: ["turns:partner.example:443\u001b[2J"] } },
+      RUN_CREDENTIAL,
+    ),
+  ).toMatch(
+    /The run allocates its relay on the first TURN server your partner's invitation named, at turns:partner\.example:443\\x1b\[2J\.$/,
   );
 });
 

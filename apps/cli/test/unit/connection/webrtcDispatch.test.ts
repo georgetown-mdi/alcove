@@ -1067,9 +1067,15 @@ test("an unset ice_transport_policy leaves the transport's own default", () => {
 
 const INVITATION_REGISTRAR = "https://default-relay.example.net";
 
+const OWN_TURN_URL = "turns:own-relay.example.org:443?transport=tcp";
+
 /** Run the pair, the acceptor's connection naming an invitation relay with a
- * registrar, against a registrar that answers with `answers`. */
-async function runPairEnrollingAt(answers: Response[]) {
+ * registrar and, with `ownTurn`, a url-only `turn` entry of its own, against a
+ * registrar that answers with `answers`. */
+async function runPairEnrollingAt(
+  answers: Response[],
+  { ownTurn = false }: { ownTurn?: boolean } = {},
+) {
   const registrar = fakeRegistrar(answers);
   const acceptorDialsAtEachRequest: number[] = [];
   vi.stubGlobal("fetch", (async (...args: Parameters<typeof fetch>) => {
@@ -1086,6 +1092,7 @@ async function runPairEnrollingAt(answers: Response[]) {
       runProtocol({
         connection: {
           ...webrtcConnection("acceptor"),
+          ...(ownTurn && { turn: [{ url: OWN_TURN_URL }] }),
           invitationRelay: {
             turn: ["turns:default-relay.example.net:443?transport=tcp"],
             registrar: INVITATION_REGISTRAR,
@@ -1133,6 +1140,52 @@ test("a run whose invitation relay names a registrar enrolls there once, without
       ),
     ),
   ).toBe(true);
+  expect(
+    mockState.logLines.some((line) =>
+      line.endsWith(
+        "The run allocates its relay on the first TURN server your " +
+          "partner's invitation named, at " +
+          "turns:default-relay.example.net:443?transport=tcp.",
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("a run with a turn entry of its own contacts no invitation registrar and says why", async () => {
+  const { requests } = await runPairEnrollingAt([], { ownTurn: true });
+  expect(requests).toHaveLength(0);
+  expect(mockState.logLines).toContain(
+    "the relay registrar that your partner's invitation names was not " +
+      "contacted, because this run allocates its relay on your own TURN " +
+      `server at ${OWN_TURN_URL}`,
+  );
+  expect(
+    mockState.logLines.some(
+      (line) =>
+        line.includes(INVITATION_REGISTRAR) ||
+        line.includes("default-relay.example.net"),
+    ),
+  ).toBe(false);
+  expect(
+    mockState.logLines.some((line) =>
+      line.endsWith(
+        `The run allocates its relay on your own TURN server at ${OWN_TURN_URL} ` +
+          "only; the other urls listed take the credential, but the run " +
+          "allocates no relay on them.",
+      ),
+    ),
+  ).toBe(true);
+  const acceptorDial = mockState.dials.find((dial) => dial.role === "acceptor");
+  expect(
+    (acceptorDial?.iceServers as Array<{ urls: unknown }>).map(
+      ({ urls }) => urls,
+    ),
+  ).toEqual(
+    expect.arrayContaining([
+      OWN_TURN_URL,
+      "turns:default-relay.example.net:443?transport=tcp",
+    ]),
+  );
 });
 
 test("a refused enrollment is warned about and the run goes on to dial", async () => {

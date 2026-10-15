@@ -45,6 +45,7 @@ import type { SignalingCertificateProbe } from "./signalingTls";
 import type {
   RelayCredential,
   RendezvousRole,
+  RunTurnServer,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 import type {
@@ -714,15 +715,16 @@ function waitSoFar(ms: number): string {
 
 /**
  * The line a run prints when it presents a minted TURN credential: which
- * relay it goes to, and the credential's lifetime and expiry.
+ * relays take it, the credential's lifetime and expiry, and the one TURN url
+ * the run allocates on, werift's first. An invitation's url is the partner's
+ * text, so it is named escaped.
  */
 export function relayCredentialNotice(
   connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
   credential: RelayCredential,
 ): string {
-  const takesMinted = (selectRunRelay(connection).turn ?? []).filter(
-    (server) => server.credential === undefined,
-  );
+  const turn = selectRunRelay(connection).turn ?? [];
+  const takesMinted = turn.filter((server) => server.credential === undefined);
   const own = takesMinted
     .filter((server) => server.source === "own")
     .map((server) => server.url);
@@ -739,8 +741,37 @@ export function relayCredentialNotice(
     `relaying through ${relay}, with a credential derived from the ` +
     "exchange's shared secret that is valid for " +
     `${RELAY_CREDENTIAL_MAX_TTL_SECONDS / 60} minutes and expires at ` +
-    credential.expiresAt.toISOString()
+    `${credential.expiresAt.toISOString()}. ${allocationSentence(turn, takesMinted)}`
   );
+}
+
+/** Which TURN url a run allocates on, and that the others take no allocation. */
+function allocationSentence(
+  turn: RunTurnServer[],
+  takesMinted: RunTurnServer[],
+): string {
+  const allocating = turn[0];
+  if (allocating === undefined)
+    throw new InternalConsistencyError(
+      "relayCredentialNotice: a minted credential with no TURN url listed",
+    );
+  const named =
+    allocating.source === "own"
+      ? `your own TURN server at ${allocating.url}`
+      : "the first TURN server your partner's invitation named, at " +
+        redactAndSanitizeForDisplay(allocating.url);
+  if (allocating.credential !== undefined)
+    return (
+      `The run allocates its relay on ${named}, with that entry's own ` +
+      "credential; the urls listed take this credential, but the run " +
+      "allocates no relay on them."
+    );
+  if (takesMinted.length > 1)
+    return (
+      `The run allocates its relay on ${named} only; the other urls listed ` +
+      "take the credential, but the run allocates no relay on them."
+    );
+  return `The run allocates its relay on ${named}${turn.length > 1 ? " only" : ""}.`;
 }
 
 /** The `RTCConfiguration` fields the peer connection is constructed with. */

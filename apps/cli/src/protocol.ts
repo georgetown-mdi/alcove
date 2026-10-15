@@ -28,6 +28,7 @@ import {
   redactAndSanitizeForDisplay,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  selectRunRelay,
   NEW_INVITATION_REMEDY,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   markStatesItsOwnNextStep,
@@ -695,9 +696,22 @@ async function openRunTransport(params: {
         "the webrtc rendezvous was not resolved",
       );
     // Once per run, before the first connection attempt: the attempts after
-    // it reuse the key this enrolls, which only a rotation changes.
+    // it reuse the key this enrolls, which only a rotation changes. werift
+    // allocates on the first TURN url alone, so the registrar is contacted
+    // only when that url is the invitation's.
     const invitationRegistrar = connection.invitationRelay?.registrar;
-    if (invitationRegistrar !== undefined) {
+    const allocatingTurn = selectRunRelay(connection).turn?.[0];
+    if (invitationRegistrar !== undefined && allocatingTurn?.source === "own")
+      log.info(
+        "the relay registrar that your partner's invitation names was not " +
+          "contacted, because this run allocates its relay on your own TURN " +
+          "server at",
+        redactAndSanitizeForDisplay(allocatingTurn.url),
+      );
+    if (
+      invitationRegistrar !== undefined &&
+      allocatingTurn?.source === "invitation"
+    ) {
       const enrollment = await enrollAtInvitationRelay(
         invitationRegistrar,
         build.webRtcDial.options.sharedSecret,
