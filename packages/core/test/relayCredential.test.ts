@@ -7,6 +7,7 @@ import {
   mintRunRelayCredential,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   RUN_RELAY_CREDENTIAL_LABEL,
+  runEnrollsAtInvitationRegistrar,
   selectRunRelay,
 } from "../src/relayCredential";
 import {
@@ -290,6 +291,59 @@ describe("selectRunRelay", () => {
         invitationRelay: { turn: [ownMinted.url] },
       }),
     ).toEqual({ turn: [{ source: "own", ...ownMinted }] });
+  });
+});
+
+describe("runEnrollsAtInvitationRegistrar", () => {
+  const invitationTurn = "turns:partner.example:443?transport=tcp";
+  const invitationRelay = {
+    turn: [invitationTurn],
+    registrar: "https://registrar.partner.example",
+  };
+
+  test("an own entry with a different url first: no enrollment", () => {
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        turn: [{ url: "turn:own-minted.example:3478" }],
+        invitationRelay,
+      }),
+    ).toBe(false);
+  });
+
+  test("no own entry: the run allocates on the invitation's url and enrolls", () => {
+    expect(runEnrollsAtInvitationRegistrar({ invitationRelay })).toBe(true);
+  });
+
+  test("an own url-only entry naming the invitation's url: enrollment, by the url", () => {
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        turn: [{ url: invitationTurn }],
+        invitationRelay,
+      }),
+    ).toBe(true);
+  });
+
+  test("an own entry with a static pair naming the invitation's url: no enrollment", () => {
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        turn: [
+          {
+            url: invitationTurn,
+            username: "operator",
+            credential: "own-secret",
+          },
+        ],
+        invitationRelay,
+      }),
+    ).toBe(false);
+  });
+
+  test("an invitation relay naming no registrar: no enrollment", () => {
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        invitationRelay: { turn: [invitationTurn] },
+      }),
+    ).toBe(false);
   });
 });
 

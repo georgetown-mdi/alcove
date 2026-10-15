@@ -278,9 +278,10 @@ test("an own url-only turn entry with no minted credential is a fault, not an un
 
 test("the minted credential's notice names the relay, its lifetime, and its expiry", () => {
   expect(relayCredentialNotice({ turn: URL_ONLY_TURN }, RUN_CREDENTIAL)).toBe(
-    "relaying through turns:minted.example:443?transport=tcp, with a " +
-      "credential derived from the exchange's shared secret that is valid " +
-      "for 60 minutes and expires at 2026-01-01T01:00:00.000Z. The run " +
+    "presenting the run's credential to " +
+      "turns:minted.example:443?transport=tcp: it is derived from the " +
+      "exchange's shared secret, valid for 60 minutes, and expires at " +
+      "2026-01-01T01:00:00.000Z. The run " +
       "allocates its relay on your own TURN server at " +
       "turns:minted.example:443?transport=tcp.",
   );
@@ -290,14 +291,14 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
       RUN_CREDENTIAL,
     ),
   ).toMatch(
-    /^relaying through the TURN server your partner's invitation named/,
+    /^presenting the run's credential to the TURN server your partner's invitation named:/,
   );
   const mixed = relayCredentialNotice(
     { turn: [...OWN_TURN, ...URL_ONLY_TURN] },
     RUN_CREDENTIAL,
   );
   expect(mixed).toMatch(
-    /^relaying through turns:minted\.example:443\?transport=tcp, with/,
+    /^presenting the run's credential to turns:minted\.example:443\?transport=tcp: it/,
   );
   expect(mixed).toContain(
     "The run allocates its relay on your own TURN server at " +
@@ -311,7 +312,7 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
       RUN_CREDENTIAL,
     ),
   ).toMatch(
-    /^relaying through turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named, with/,
+    /^presenting the run's credential to turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named: it/,
   );
 });
 

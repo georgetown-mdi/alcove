@@ -738,9 +738,9 @@ export function relayCredentialNotice(
       : []),
   ].join(", ");
   return (
-    `relaying through ${relay}, with a credential derived from the ` +
-    "exchange's shared secret that is valid for " +
-    `${RELAY_CREDENTIAL_MAX_TTL_SECONDS / 60} minutes and expires at ` +
+    `presenting the run's credential to ${relay}: it is derived from the ` +
+    "exchange's shared secret, valid for " +
+    `${RELAY_CREDENTIAL_MAX_TTL_SECONDS / 60} minutes, and expires at ` +
     `${credential.expiresAt.toISOString()}. ${allocationSentence(turn, takesMinted)}`
   );
 }

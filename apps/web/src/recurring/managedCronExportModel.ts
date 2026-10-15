@@ -18,7 +18,11 @@
  * hand-off does ({@link ./scheduledRunCommand.ts}).
  */
 
-import { sanitizeErrorForDisplay, sanitizeForDisplay } from "@alcove/core";
+import {
+  runEnrollsAtInvitationRegistrar,
+  sanitizeErrorForDisplay,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import {
   composeManagedCronExport,
@@ -46,6 +50,7 @@ import type {
   ShownRunLines,
   WithheldRunLines,
 } from "./scheduledRunCommand";
+import type { ConnectionConfig } from "@alcove/core";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RunSchedule } from "./scheduleTemplates";
 
@@ -63,25 +68,29 @@ import type { RunSchedule } from "./scheduleTemplates";
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
 /**
- * The line an export shows where the exported connection's `invitation_relay`
- * names a registrar, which a command-line run enrolls at before it connects
- * only when the export lists no `turn` entry of its own (a managed export with
- * a relay registrar of its own writes such entries); `undefined` where it
- * names none. The registrar is the partner's choice, so it is escaped.
+ * The line an export shows where `connection`, the connection the export
+ * writes, has an `invitation_relay` naming a registrar: whether a
+ * command-line run of it enrolls there, as the CLI decides it
+ * ({@link runEnrollsAtInvitationRegistrar}); `undefined` where it names none.
+ * The registrar is the partner's choice, so it is escaped.
  */
 export function invitationRegistrarExportLine(
-  record: ManagedExchangeRecord,
+  connection: ConnectionConfig,
 ): string | undefined {
-  const connection = record.exchangeFile.connection;
   if (connection.channel !== "webrtc") return undefined;
   const registrar = connection.invitationRelay?.registrar;
   if (registrar === undefined) return undefined;
+  if (runEnrollsAtInvitationRegistrar(connection))
+    return (
+      "A command-line run of this exchange registers at " +
+      `${sanitizeForDisplay(registrar)} before it connects, and whoever ` +
+      "runs that registrar then learns the network address of the machine " +
+      "it runs on."
+    );
   return (
-    "A command-line run of this exchange registers at " +
-    `${sanitizeForDisplay(registrar)} before it connects only when the ` +
-    "exported configuration lists no turn entry of its own, and whoever " +
-    "runs that registrar then learns the network address of the machine it " +
-    "runs on."
+    "A command-line run of this exchange does not contact the registrar at " +
+    `${sanitizeForDisplay(registrar)}: it allocates its relay on this ` +
+    "party's own relay."
   );
 }
 

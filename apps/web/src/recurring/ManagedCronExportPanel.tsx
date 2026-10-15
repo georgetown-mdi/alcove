@@ -113,7 +113,10 @@ export function ManagedCronExportPanel({
       state: managedCronExportPanelState(record, () => read),
     };
   }, [record]);
-  const invitationRegistrarLine = invitationRegistrarExportLine(record);
+  const invitationRegistrarLine =
+    state.kind === "exportable"
+      ? invitationRegistrarExportLine(state.composed.connection)
+      : undefined;
 
   // A run holds the hand-off back: the polled reading, or the spend's own refusal
   // at a click the poll's last reading was too old to hold back.

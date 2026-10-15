@@ -227,7 +227,7 @@ describe("the command-line export hands over two files", () => {
 describe("the registrar the invitation's relay names", () => {
   const REGISTRAR_LINE = "A command-line run of this exchange registers at";
 
-  test("is named on the panel, with the condition under which a command-line run enrolls there", async () => {
+  test("is named on the panel, saying a command-line run of the exported configuration enrolls there", async () => {
     const created = await createManagedExchange(
       newExchange({
         side: "acceptor",
@@ -251,9 +251,8 @@ describe("the registrar the invitation's relay names", () => {
       .element(
         page.getByText(
           `${REGISTRAR_LINE} https://registrar.partner.example.org before ` +
-            "it connects only when the exported configuration lists no turn " +
-            "entry of its own, and whoever runs that registrar then learns " +
-            "the network address of the machine it runs on.",
+            "it connects, and whoever runs that registrar then learns the " +
+            "network address of the machine it runs on.",
         ),
       )
       .toBeInTheDocument();

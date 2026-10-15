@@ -272,15 +272,18 @@ describe("the line naming the invitation relay's registrar", () => {
     };
   }
 
+  const PARTNER_REGISTRAR = "https://registrar.partner.example.org";
+
   test("escapes the control characters a registrar holds and keeps markup as text", () => {
     const registrar =
       "https://registrar.example.org\u001b[2J\r\n\u202e<img src=x onerror=alert(1)>\u0000";
-    const line = invitationRegistrarExportLine(withRegistrar(registrar));
+    const line = invitationRegistrarExportLine(
+      withRegistrar(registrar).exchangeFile.connection,
+    );
 
     expect(line).toBe(
       "A command-line run of this exchange registers at " +
-        `${sanitizeForDisplay(registrar)} before it connects only when the ` +
-        "exported configuration lists no turn entry of its own, and whoever " +
+        `${sanitizeForDisplay(registrar)} before it connects, and whoever ` +
         "runs that registrar then learns the network address of the machine " +
         "it runs on.",
     );
@@ -291,8 +294,49 @@ describe("the line naming the invitation relay's registrar", () => {
     expect(line).not.toMatch(/[\p{Cc}\u202e]/u);
   });
 
+  test("says a run registers where the exported configuration writes no turn entry of its own", () => {
+    const { composed } = exportableState(withRegistrar(PARTNER_REGISTRAR));
+    expect(invitationRegistrarExportLine(composed.connection)).toBe(
+      "A command-line run of this exchange registers at " +
+        `${PARTNER_REGISTRAR} before it connects, and whoever runs that ` +
+        "registrar then learns the network address of the machine it runs on.",
+    );
+  });
+
+  test("says a run does not contact the registrar where the export writes this party's own relay first", () => {
+    const record = {
+      ...withRegistrar(PARTNER_REGISTRAR),
+      relayRegistrar: {
+        url: "https://relay.example.org:8443",
+        exchangeId: "riverbend-q3",
+      },
+    };
+    const state = managedCronExportPanelState(
+      record,
+      () => ({
+        kind: "set",
+        relay: {
+          turn: ["turns:relay.example.org:443?transport=tcp"],
+          stun: [],
+        },
+      }),
+      IMAGE,
+    );
+    if (state.kind !== "exportable")
+      throw new Error(
+        `the model refused an exportable record: ${state.reason}`,
+      );
+    expect(invitationRegistrarExportLine(state.composed.connection)).toBe(
+      "A command-line run of this exchange does not contact the registrar " +
+        `at ${PARTNER_REGISTRAR}: it allocates its relay on this party's own ` +
+        "relay.",
+    );
+  });
+
   test("is absent where the invitation's relay names no registrar", () => {
-    expect(invitationRegistrarExportLine(managedRecord())).toBeUndefined();
+    expect(
+      invitationRegistrarExportLine(managedRecord().exchangeFile.connection),
+    ).toBeUndefined();
   });
 });
 

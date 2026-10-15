@@ -166,9 +166,8 @@ describe("the export's line naming the invitation relay's registrar", () => {
       .element(
         page.getByText(
           `${REGISTRAR_LINE} https://registrar.partner.example.org before ` +
-            "it connects only when the exported configuration lists no turn " +
-            "entry of its own, and whoever runs that registrar then learns " +
-            "the network address of the machine it runs on.",
+            "it connects, and whoever runs that registrar then learns the " +
+            "network address of the machine it runs on.",
         ),
       )
       .toBeInTheDocument();

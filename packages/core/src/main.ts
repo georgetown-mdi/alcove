@@ -849,6 +849,7 @@ export {
   mintRelayCredential,
   mintRunRelayCredential,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
+  runEnrollsAtInvitationRegistrar,
   selectRunRelay,
 } from "./relayCredential";
 export type {
