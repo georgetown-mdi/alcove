@@ -6,7 +6,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
@@ -84,7 +84,7 @@ const seams = {
   encode: encodeInvitation,
   now: () => NOW,
   ownRelay: undefined,
-  enrollDefaultRelay: () => Promise.resolve({ kind: "none" as const }),
+  defaultRelayTurnUrl: undefined,
 };
 
 const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
@@ -157,37 +157,28 @@ describe("composeManagedReinvite", () => {
     expect(token.connectionEndpoint).not.toHaveProperty("relay");
   });
 
-  test("names the build's default relay after the own relay once the fresh secret's key is enrolled", async () => {
+  test("names the build's default relay after the own relay", async () => {
     const ownRelay = { turn: ["turns:relay.example.org:443?transport=tcp"] };
-    const enrollDefaultRelay = vi.fn(() =>
-      Promise.resolve({
-        kind: "enrolled" as const,
-        turnUrl: DEFAULT_RELAY_TURN_URL,
-      }),
-    );
     const reinvite = await composeManagedReinvite(inviterRecord(), location, {
       ...seams,
       ownRelay,
-      enrollDefaultRelay,
+      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
     });
-    expect(enrollDefaultRelay).toHaveBeenCalledExactlyOnceWith(FRESH_SECRET);
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toMatchObject({
       relay: { turn: [...ownRelay.turn, DEFAULT_RELAY_TURN_URL] },
     });
   });
 
-  test("withholds the build's default relay when the enrollment did not confirm", async () => {
+  test("names the build's default relay alone when this browser has no relay", async () => {
     const reinvite = await composeManagedReinvite(inviterRecord(), location, {
       ...seams,
-      enrollDefaultRelay: () =>
-        Promise.resolve({
-          kind: "not-enrolled" as const,
-          turnUrl: DEFAULT_RELAY_TURN_URL,
-        }),
+      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
     });
     const token = await decodeInvitation(reinvite.encoded);
-    expect(token.connectionEndpoint).not.toHaveProperty("relay");
+    expect(token.connectionEndpoint).toMatchObject({
+      relay: { turn: [DEFAULT_RELAY_TURN_URL] },
+    });
   });
 
   test("the deep link contains the encoded token in its fragment", async () => {

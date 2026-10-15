@@ -358,9 +358,6 @@ export function InviterExchangeSection({
         !recovering && (
           <>
             <h2>Share this invitation</h2>
-            {invitation.defaultRelayNotEnrolled === true && (
-              <DefaultRelayNotNamedAlert />
-            )}
             {shareLink && (
               <LimitedReachAlert
                 link={invitation.deepLink}
@@ -547,34 +544,6 @@ function LimitedReachAlert({
         : reach === "thisComputer"
           ? "This page runs on your own computer, so a partner on another computer cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."
           : "This page runs on an address only your network reaches, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}
-    </Alert>
-  );
-}
-
-/**
- * What the inviter is told when the build's default relay did not enroll the
- * invitation's relay key, so the invitation names no default relay.
- *
- * @internal exported for testing
- */
-export const DEFAULT_RELAY_NOT_NAMED_COPY = {
-  title: "The relay server is not in this invitation",
-  message:
-    "The relay server could not be set up for this invitation. On most " +
-    "networks the exchange connects without it. If the connection does not " +
-    "open, start over with a fresh invitation.",
-};
-
-function DefaultRelayNotNamedAlert() {
-  return (
-    <Alert
-      color="yellow"
-      icon={<IconAlertTriangle aria-hidden />}
-      title={DEFAULT_RELAY_NOT_NAMED_COPY.title}
-      role="status"
-      mb="md"
-    >
-      {DEFAULT_RELAY_NOT_NAMED_COPY.message}
     </Alert>
   );
 }

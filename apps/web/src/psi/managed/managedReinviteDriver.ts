@@ -17,7 +17,8 @@
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
-import { enrollAtDefaultRelay } from "../transport/defaultRelay";
+import { defaultRelaySetting } from "@utils/clientConfig";
+
 import { invitationLocation } from "../invitationLocation";
 import { relayForRun } from "../transport/ownRelaySetting";
 
@@ -25,7 +26,6 @@ import { composeManagedReinvite } from "./managedReinvite";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
 import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
-import type { DefaultRelayEnrollment } from "../transport/defaultRelay";
 import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
@@ -45,11 +45,11 @@ interface ManagedReinviteDriverDeps {
   registerRelayKey: typeof registerReinvitedManagedRelayKey;
   /** The moment the setup lifetime and the record's max-age stamp count from. */
   now: () => number;
-  /** Read the relay the invitation names: the one this inviter's own run
-   * gathers against. */
+  /** Read this browser's own relay, which the invitation names. */
   ownRelay: () => RelayUrls | undefined;
-  /** Enroll the fresh secret's relay key at the build's default relay. */
-  enrollDefaultRelay: (sharedSecret: string) => Promise<DefaultRelayEnrollment>;
+  /** Read the TURN url of the build's default relay, which the invitation
+   * also names. */
+  defaultRelayTurnUrl: () => string | undefined;
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -61,7 +61,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: () => relayForRun(),
-  enrollDefaultRelay: (sharedSecret) => enrollAtDefaultRelay(sharedSecret),
+  defaultRelayTurnUrl: () => defaultRelaySetting()?.turnUrl,
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -101,7 +101,7 @@ export async function reinviteManagedExchange(
     encode: deps.encode,
     now: deps.now,
     ownRelay: deps.ownRelay(),
-    enrollDefaultRelay: deps.enrollDefaultRelay,
+    defaultRelayTurnUrl: deps.defaultRelayTurnUrl(),
   });
   const persisted = await deps.persistRotation(
     record.id,

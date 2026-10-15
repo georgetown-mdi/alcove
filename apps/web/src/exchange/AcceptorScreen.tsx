@@ -44,7 +44,6 @@ import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
 import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
-import { startDefaultRelayEnrollment } from "@psi/transport/defaultRelay";
 
 import {
   CSV_DELIMITER_LOCAL_NOTICE,
@@ -333,10 +332,6 @@ function AcceptorInvitationScreen({
         const invitation = await prepareAcceptedInvitation(encoded, {
           profile: deploymentProfile(),
         });
-        // A browser accept dials later; enrolling now keeps a slow registrar
-        // off that dial.
-        if (!consoleBuild && invitation.endpoint.channel === "webrtc")
-          startDefaultRelayEnrollment(invitation.token.sharedSecret);
         // Learn the rendezvous state before revealing the terms so the review step
         // decides a console filedrop accept's runnability with the mount known,
         // rather than flashing "unavailable" while a fetch settles.

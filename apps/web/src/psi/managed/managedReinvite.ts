@@ -28,9 +28,8 @@
  *   not the document's stored `server` locator: the inviter derives its rendezvous
  *   from this app's signaling address on the re-run path, so the stored locator is
  *   inert (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field").
- *   It names the inviter's own relay, passed in by the host, and the build's
- *   default relay once the fresh secret's key is enrolled there, as a new
- *   invitation does.
+ *   It names the inviter's own relay and the build's default relay, both passed
+ *   in by the host, as a new invitation does.
  * - `sharedSecret` -- a fresh setup secret, superseding the desynced one.
  * - `expires` -- a fresh bounded setup lifetime on the TOKEN (the invitation-in-
  *   transit bound). The RECORD's own `expires` is re-derived from the max-age policy,
@@ -55,11 +54,7 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
-import {
-  deepLinkFor,
-  invitationSignalingAddress,
-  invitationWebrtcEndpoint,
-} from "../invitation";
+import { deepLinkFor, invitationWebrtcEndpoint } from "../invitation";
 import { invitationRelayWithDefault } from "../transport/defaultRelay";
 import { rotationWriteBack } from "./managedRunRotate";
 
@@ -67,7 +62,6 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
-import type { DefaultRelayEnrollment } from "../transport/defaultRelay";
 import type { InvitationLocation } from "../invitation";
 import type { InvitationToken } from "@alcove/core";
 import type { RelayUrls } from "../transport/ownRelaySetting";
@@ -168,10 +162,9 @@ interface ManagedReinviteSeams {
   /** This browser's own relay, which the invitation names; `undefined` names
    * none. */
   ownRelay: RelayUrls | undefined;
-  /** Enroll the fresh secret's relay key at the build's default relay
-   * (`enrollAtDefaultRelay`); the invitation names that relay only once
-   * enrolled. */
-  enrollDefaultRelay: (sharedSecret: string) => Promise<DefaultRelayEnrollment>;
+  /** The TURN url of the build's default relay, which the invitation names
+   * after the own relay; `undefined` names none. */
+  defaultRelayTurnUrl: string | undefined;
 }
 
 /**
@@ -209,16 +202,12 @@ export async function composeManagedReinvite(
   const now = seams.now();
   const freshSecret = seams.generateSecret();
   const tokenExpires = invitationExpires(lifetimeSeconds, now);
-  // A build with no signaling address refuses here, before the registrar is
-  // contacted for an invitation it cannot mint.
-  invitationSignalingAddress(location);
-  const enrollment = await seams.enrollDefaultRelay(freshSecret);
   const token = buildReinviteToken(
     record,
     location,
     freshSecret,
     tokenExpires,
-    invitationRelayWithDefault(seams.ownRelay, enrollment),
+    invitationRelayWithDefault(seams.ownRelay, seams.defaultRelayTurnUrl),
   );
   const encoded = await seams.encode(token);
   return {

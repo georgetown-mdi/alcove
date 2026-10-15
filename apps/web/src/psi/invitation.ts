@@ -20,6 +20,8 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
+import { defaultRelaySetting } from "@utils/clientConfig";
+
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
@@ -27,10 +29,7 @@ import { ownColumnsField } from "./ownColumnsModel";
 import { relayForRun } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
-import {
-  enrollAtDefaultRelay,
-  invitationRelayWithDefault,
-} from "./transport/defaultRelay";
+import { invitationRelayWithDefault } from "./transport/defaultRelay";
 
 import type {
   CSVRow,
@@ -45,7 +44,7 @@ import type {
   WebRTCEndpoint,
 } from "@alcove/core";
 
-import type { DefaultRelayDependencies } from "./transport/defaultRelay";
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { LinkageRefusal } from "./linkageRefusal";
 import type { OwnColumnsChoice } from "./ownColumnsModel";
 import type { RelayUrls } from "./transport/ownRelaySetting";
@@ -146,12 +145,6 @@ export interface GeneratedInvitation {
   includeOwnColumns?: OwnColumnSelection;
   /** Where the token sends the partner: the endpoint inside {@link encoded}. */
   connectionEndpoint?: ConnectionEndpoint;
-  /**
-   * Set when the build names a default relay and its registrar did not enroll
-   * this invitation's relay key, so the invitation does not name that relay.
-   * Never in the token.
-   */
-  defaultRelayNotEnrolled?: true;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -272,31 +265,22 @@ export type ConnectionEndpointRequest =
 
 /**
  * Resolve a request to the token's endpoint. This app's own webrtc locator
- * names the relay this inviter's own run uses ({@link relayForRun}) and the
- * build's default relay once the registrar has enrolled the relay key
- * `sharedSecret` derives ({@link enrollAtDefaultRelay}), where the locator
- * has room for it ({@link invitationRelayWithDefault}). A webrtc endpoint
- * naming its host is taken as given.
+ * names this browser's own relay ({@link relayForRun}) and the build's
+ * default relay, where the locator has room for it
+ * ({@link invitationRelayWithDefault}); no registrar is contacted. A webrtc
+ * endpoint naming its host is taken as given.
  */
-async function resolveConnectionEndpoint(
+function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
-  sharedSecret: string,
-  defaultRelay: DefaultRelayDependencies | undefined,
-): Promise<{ endpoint: ConnectionEndpoint; defaultRelayNotEnrolled: boolean }> {
-  if (request.channel !== "webrtc" || "host" in request)
-    return { endpoint: request, defaultRelayNotEnrolled: false };
-  // A build with no signaling address refuses here, before the registrar is
-  // contacted for an invitation it cannot mint.
-  invitationSignalingAddress(location);
-  const enrollment = await enrollAtDefaultRelay(sharedSecret, defaultRelay);
-  return {
-    endpoint: invitationWebrtcEndpoint(
+  readDefaultRelay: () => DefaultRelaySetting | undefined,
+): ConnectionEndpoint {
+  if (request.channel === "webrtc" && !("host" in request))
+    return invitationWebrtcEndpoint(
       location,
-      invitationRelayWithDefault(relayForRun(), enrollment),
-    ),
-    defaultRelayNotEnrolled: enrollment.kind === "not-enrolled",
-  };
+      invitationRelayWithDefault(relayForRun(), readDefaultRelay()?.turnUrl),
+    );
+  return request;
 }
 
 /**
@@ -370,9 +354,9 @@ export async function generateInvitation(params: {
   /** Which of the inviter's own columns its result file includes, narrowed
    * against the emitted terms and returned. Omitted on the quick path. */
   includeOwnColumns?: OwnColumnsChoice;
-  /** How the default relay is read and enrolled; the build's own when
+  /** Reads the build's default relay; {@link defaultRelaySetting} when
    * omitted. */
-  defaultRelay?: DefaultRelayDependencies;
+  defaultRelay?: () => DefaultRelaySetting | undefined;
 }): Promise<GeneratedInvitation> {
   const {
     inviterName,
@@ -517,13 +501,11 @@ export async function generateInvitation(params: {
     connectionEndpoint,
     retainsFiles,
   });
-  const { endpoint: resolvedEndpoint, defaultRelayNotEnrolled } =
-    await resolveConnectionEndpoint(
-      connectionEndpoint,
-      location,
-      sharedSecret,
-      params.defaultRelay,
-    );
+  const resolvedEndpoint = resolveConnectionEndpoint(
+    connectionEndpoint,
+    location,
+    params.defaultRelay ?? defaultRelaySetting,
+  );
   const token: InvitationToken = {
     version: "1",
     linkageTerms,
@@ -547,6 +529,5 @@ export async function generateInvitation(params: {
     // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
     connectionEndpoint: resolvedEndpoint,
-    ...(defaultRelayNotEnrolled ? { defaultRelayNotEnrolled: true } : {}),
   };
 }

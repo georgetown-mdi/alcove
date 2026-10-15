@@ -23,10 +23,6 @@ import {
 } from "@alcove/core/testing";
 
 import {
-  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-  startDefaultRelayEnrollment,
-} from "../../../src/psi/transport/defaultRelay.js";
-import {
   DISCLOSURE_NOT_FILED_WARNING,
   DISCLOSURE_RECORD_UNBUILT_WARNING,
   STOPPED_DISCLOSURE_NOT_FILED_WARNING,
@@ -49,6 +45,7 @@ import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
@@ -142,13 +139,6 @@ vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
 }));
-vi.mock(
-  "../../../src/psi/transport/defaultRelay.js",
-  async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    startDefaultRelayEnrollment: vi.fn(),
-  }),
-);
 vi.mock("../../../src/psi/transport/peerMessageConnection.js", () => ({
   openPeerMessageConnection: vi.fn(),
 }));
@@ -525,26 +515,6 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(rejection).toBe(noShow);
     expect(peer.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  test("starts the default relay enrollment when the run starts, before its rendezvous", async () => {
-    acquireResources("inviter");
-    mockedWaitForIncoming.mockRejectedValue(new PartnerNoShowError("absent"));
-    const controller = new AbortController();
-
-    await runDriver(
-      controller.signal,
-      undefined,
-      recordForSide("inviter"),
-    ).catch(() => undefined);
-
-    const mockedStart = vi.mocked(startDefaultRelayEnrollment);
-    expect(mockedStart).toHaveBeenCalledExactlyOnceWith(RECORD.sharedSecret, {
-      signal: controller.signal,
-    });
-    expect(mockedStart.mock.invocationCallOrder[0]).toBeLessThan(
-      mockedRendezvous.mock.invocationCallOrder[0],
-    );
   });
 
   test.each<[string, Error, ReadonlyArray<ReadonlyArray<string>>]>([

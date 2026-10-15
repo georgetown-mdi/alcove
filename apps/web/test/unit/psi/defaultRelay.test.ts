@@ -10,19 +10,15 @@ import {
   DEFAULT_RELAY_DIAL_WAIT_MS,
   DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   connectNoticingDefaultRelay,
-  enrollAtDefaultRelay,
   invitationRelayWithDefault,
   relayWithDefaultForRun,
-  startDefaultRelayEnrollment,
 } from "../../../src/psi/transport/defaultRelay.js";
 import { PartnerNoShowError } from "../../../src/psi/transport/waitForConnection.js";
-import { RELAY_CREDENTIAL_TTL_SECONDS } from "../../../src/psi/transport/relayCredentialTtl.js";
 
 import type { RelayRegistrationOutcome } from "@alcove/core";
 
-// The enrollment each browser run lists the default relay under, with the
-// registrar client mocked: core's suite holds the request it sends and its
-// retries.
+// The enrollment each browser run makes right before it connects, with the
+// registrar client mocked: core's suite holds the request it sends.
 
 const DEFAULT_RELAY = {
   turnUrl: "turns:turn.example.org:443?transport=tcp",
@@ -34,81 +30,10 @@ const OWN = {
   stun: [],
 };
 
-function answering(outcome: RelayRegistrationOutcome) {
-  return vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
-    Promise.resolve(outcome),
-  );
-}
-
-describe("relayWithDefaultForRun", () => {
-  test("with no enrollment on this page makes one attempt bounded by the dial's wait, and lists the relay once enrolled", async () => {
-    const secret = generateSharedSecret();
-    const signal = new AbortController().signal;
-    const enroll = answering({
-      kind: "registered",
-      maxAgeDays: null,
-      lapsesAt: "2026-10-15T13:10:00Z",
-    });
-    const run = await relayWithDefaultForRun(secret, OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll,
-      signal,
-    });
-    expect(enroll).toHaveBeenCalledExactlyOnceWith(
-      { registrarUrl: DEFAULT_RELAY.registrarUrl, sharedSecret: secret },
-      {
-        signal,
-        timeoutMs: DEFAULT_RELAY_DIAL_WAIT_MS,
-        retryDelaysMs: [],
-      },
-    );
-    expect(run).toEqual({
-      relay: { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] },
-      defaultRelayNotEnrolled: false,
-    });
-  });
-
-  test.each<[string, RelayRegistrationOutcome]>([
-    ["a 409", { kind: "refused", status: 409, reason: "held" }],
-    ["a 429", { kind: "unavailable", status: 429, reason: "too many" }],
-    ["no answer", { kind: "unavailable", reason: "it could not be reached" }],
-  ])(
-    "after %s dials with the relay it had, and marks the enrollment failed",
-    async (_case, outcome) => {
-      const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
-        setting: () => DEFAULT_RELAY,
-        enroll: answering(outcome),
-      });
-      expect(run).toEqual({ relay: OWN, defaultRelayNotEnrolled: true });
-    },
-  );
-
-  test("contacts no registrar when the build names no default relay", async () => {
-    const enroll = answering({ kind: "refused", status: 409 });
-    const run = await relayWithDefaultForRun(
-      generateSharedSecret(),
-      undefined,
-      {
-        setting: () => undefined,
-        enroll,
-      },
-    );
-    expect(enroll).not.toHaveBeenCalled();
-    expect(run).toEqual({ relay: undefined, defaultRelayNotEnrolled: false });
-  });
-});
-
-// A registrar that never answers.
-function neverAnswering() {
-  return vi.fn<typeof enrollRelayKeyWithoutToken>(
-    () => new Promise<never>(() => {}),
-  );
-}
-
 const REGISTERED: RelayRegistrationOutcome = {
   kind: "registered",
   maxAgeDays: null,
-  lapsesAt: null,
+  lapsesAt: "2026-10-15T13:10:00Z",
 };
 
 const SHORT_WAIT_MS = 50;
@@ -119,6 +44,19 @@ const WITH_DEFAULT = {
   relay: { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] },
   defaultRelayNotEnrolled: false,
 };
+
+function answering(outcome: RelayRegistrationOutcome) {
+  return vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
+    Promise.resolve(outcome),
+  );
+}
+
+// A registrar that never answers.
+function neverAnswering() {
+  return vi.fn<typeof enrollRelayKeyWithoutToken>(
+    () => new Promise<never>(() => {}),
+  );
+}
 
 async function untilCalled(enroll: {
   mock: { calls: ReadonlyArray<unknown> };
@@ -131,38 +69,120 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the dial's wait for the default relay enrollment", () => {
-  test("an inviter's dial reuses the enrollment its invitation confirmed and contacts the registrar no more", async () => {
+describe("relayWithDefaultForRun", () => {
+  test("makes one attempt bounded by the dial's wait, and lists the relay once enrolled", async () => {
     const secret = generateSharedSecret();
-    await enrollAtDefaultRelay(secret, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering(REGISTERED),
-    });
-    const atDial = neverAnswering();
+    const signal = new AbortController().signal;
+    const enroll = answering(REGISTERED);
     const run = await relayWithDefaultForRun(secret, OWN, {
       setting: () => DEFAULT_RELAY,
-      enroll: atDial,
-      dialWaitMs: 60_000,
+      enroll,
+      signal,
     });
-    expect(atDial).not.toHaveBeenCalled();
+    expect(enroll).toHaveBeenCalledExactlyOnceWith(
+      { registrarUrl: DEFAULT_RELAY.registrarUrl, sharedSecret: secret },
+      { signal, timeoutMs: DEFAULT_RELAY_DIAL_WAIT_MS, retryDelaysMs: [] },
+    );
     expect(run).toEqual(WITH_DEFAULT);
   });
 
-  test("an inviter's dial with no confirmed enrollment dials without the relay once its one attempt's wait passes", async () => {
-    const enroll = neverAnswering();
+  test("enrolls again on every dial, and a same-key repeat lists the relay", async () => {
+    const secret = generateSharedSecret();
+    const enroll = answering(REGISTERED);
+    const dial = { setting: () => DEFAULT_RELAY, enroll };
+    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
+      WITH_DEFAULT,
+    );
+    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
+      WITH_DEFAULT,
+    );
+    expect(enroll).toHaveBeenCalledTimes(2);
+  });
+
+  test("lists the default relay alone when the run has no other", async () => {
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      undefined,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering(REGISTERED),
+      },
+    );
+    expect(run).toEqual({
+      relay: { turn: [DEFAULT_RELAY.turnUrl], stun: [] },
+      defaultRelayNotEnrolled: false,
+    });
+  });
+
+  test("lists the default relay once, last, when the invitation already names it", async () => {
+    const invited = {
+      turn: [DEFAULT_RELAY.turnUrl, ...OWN.turn],
+      stun: ["stun:stun.example.org:3478"],
+    };
+    const run = await relayWithDefaultForRun(generateSharedSecret(), invited, {
+      setting: () => DEFAULT_RELAY,
+      enroll: answering(REGISTERED),
+    });
+    expect(run.relay).toEqual({
+      turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
+      stun: invited.stun,
+    });
+  });
+
+  test.each<[string, RelayRegistrationOutcome]>([
+    ["a 409", { kind: "refused", status: 409, reason: "held" }],
+    ["a 429", { kind: "unavailable", status: 429, reason: "too many" }],
+    ["an unreachable registrar", { kind: "unavailable", reason: "no route" }],
+  ])(
+    "after %s dials with its other relays, and marks the enrollment failed",
+    async (_case, outcome) => {
+      const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering(outcome),
+      });
+      expect(run).toEqual(WITHOUT_DEFAULT);
+    },
+  );
+
+  test("a registrar client that throws leaves the relay out", async () => {
     const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
       setting: () => DEFAULT_RELAY,
-      enroll,
-      dialWaitMs: SHORT_WAIT_MS,
-    });
-    expect(enroll).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
-      timeoutMs: SHORT_WAIT_MS,
-      retryDelaysMs: [],
+      enroll: vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
+        Promise.reject(new TypeError("failed to fetch")),
+      ),
     });
     expect(run).toEqual(WITHOUT_DEFAULT);
   });
 
-  test("through the registrar client, a registrar that never answers costs the dial one request", async () => {
+  test("leaves out the default relay an invitation names when this run could not enroll", async () => {
+    const invited = { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] };
+    const run = await relayWithDefaultForRun(generateSharedSecret(), invited, {
+      setting: () => DEFAULT_RELAY,
+      enroll: answering({ kind: "refused", status: 409 }),
+    });
+    expect(run).toEqual(WITHOUT_DEFAULT);
+  });
+
+  test("contacts no registrar and lists nothing more when the build names no default relay", async () => {
+    const enroll = answering(REGISTERED);
+    expect(
+      await relayWithDefaultForRun(generateSharedSecret(), undefined, {
+        setting: () => undefined,
+        enroll,
+      }),
+    ).toEqual({ relay: undefined, defaultRelayNotEnrolled: false });
+    expect(
+      await relayWithDefaultForRun(generateSharedSecret(), OWN, {
+        setting: () => undefined,
+        enroll,
+      }),
+    ).toEqual({ relay: OWN, defaultRelayNotEnrolled: false });
+    expect(enroll).not.toHaveBeenCalled();
+  });
+});
+
+describe("the dial's wait for the enrollment", () => {
+  test("a registrar that never answers costs the dial its wait and one request", async () => {
     const hangingFetch = vi.fn<typeof fetch>(
       (_input, init) =>
         new Promise<never>((_resolve, reject) => {
@@ -181,104 +201,8 @@ describe("the dial's wait for the default relay enrollment", () => {
     expect(run).toEqual(WITHOUT_DEFAULT);
   });
 
-  test("an acceptor's dial waits for the enrollment started when it opened the invitation, then dials without the relay", async () => {
-    const secret = generateSharedSecret();
-    const opened = neverAnswering();
-    startDefaultRelayEnrollment(secret, {
-      setting: () => DEFAULT_RELAY,
-      enroll: opened,
-    });
-    await untilCalled(opened);
-    const atDial = neverAnswering();
-    const run = await relayWithDefaultForRun(secret, OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: atDial,
-      dialWaitMs: SHORT_WAIT_MS,
-    });
-    expect(opened).toHaveBeenCalledExactlyOnceWith(
-      { registrarUrl: DEFAULT_RELAY.registrarUrl, sharedSecret: secret },
-      {},
-    );
-    expect(atDial).not.toHaveBeenCalled();
-    expect(run).toEqual(WITHOUT_DEFAULT);
-  });
-
-  test("an enrollment that confirms after a dial's wait is listed by the next dial", async () => {
-    const secret = generateSharedSecret();
-    let confirm: (outcome: RelayRegistrationOutcome) => void = () => {};
-    const opened = vi.fn<typeof enrollRelayKeyWithoutToken>(
-      () =>
-        new Promise((resolve) => {
-          confirm = resolve;
-        }),
-    );
-    startDefaultRelayEnrollment(secret, {
-      setting: () => DEFAULT_RELAY,
-      enroll: opened,
-    });
-    await untilCalled(opened);
-    const dial = {
-      setting: () => DEFAULT_RELAY,
-      enroll: neverAnswering(),
-      dialWaitMs: SHORT_WAIT_MS,
-    };
-    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
-      WITHOUT_DEFAULT,
-    );
-    confirm(REGISTERED);
-    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
-      WITH_DEFAULT,
-    );
-    expect(dial.enroll).not.toHaveBeenCalled();
-  });
-
-  test("an enrollment that lapsed is made again", async () => {
-    const secret = generateSharedSecret();
-    await enrollAtDefaultRelay(secret, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering({
-        kind: "registered",
-        maxAgeDays: null,
-        lapsesAt: "2020-01-01T00:00:00Z",
-      }),
-    });
-    const atDial = neverAnswering();
-    await relayWithDefaultForRun(secret, OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: atDial,
-      dialWaitMs: SHORT_WAIT_MS,
-    });
-    expect(atDial).toHaveBeenCalledOnce();
-  });
-
-  test.each<[string, number, number]>([
-    ["lapses a run's credential lifetime from now is reused", 0, 0],
-    ["lapses a moment sooner is made again", -1, 1],
-  ])("an enrollment that %s", async (_case, offsetMs, enrollmentsAtDial) => {
-    const now = Date.parse("2026-10-14T12:00:00Z");
-    vi.useFakeTimers({ toFake: ["Date"], now });
-    const secret = generateSharedSecret();
-    await enrollAtDefaultRelay(secret, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering({
-        kind: "registered",
-        maxAgeDays: null,
-        lapsesAt: new Date(
-          now + RELAY_CREDENTIAL_TTL_SECONDS * 1000 + offsetMs,
-        ).toISOString(),
-      }),
-    });
-    const atDial = answering(REGISTERED);
-    const run = await relayWithDefaultForRun(secret, OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: atDial,
-      dialWaitMs: SHORT_WAIT_MS,
-    });
-    expect(atDial).toHaveBeenCalledTimes(enrollmentsAtDial);
-    expect(run).toEqual(WITH_DEFAULT);
-  });
-
   test("by default a dial waits DEFAULT_RELAY_DIAL_WAIT_MS and no longer", async () => {
+    expect(DEFAULT_RELAY_DIAL_WAIT_MS).toBe(3_000);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const enroll = neverAnswering();
     let settled = false;
@@ -297,62 +221,82 @@ describe("the dial's wait for the default relay enrollment", () => {
 
   test("a cancelled run stops waiting", async () => {
     const cancel = new AbortController();
+    const enroll = neverAnswering();
     const pending = relayWithDefaultForRun(generateSharedSecret(), OWN, {
       setting: () => DEFAULT_RELAY,
-      enroll: neverAnswering(),
+      enroll,
       signal: cancel.signal,
       dialWaitMs: 60_000,
     });
+    await untilCalled(enroll);
     cancel.abort();
     await expect(pending).resolves.toEqual(WITHOUT_DEFAULT);
+  });
+
+  test("a run cancelled before it dials contacts no registrar", async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    const enroll = answering(REGISTERED);
+    await expect(
+      relayWithDefaultForRun(generateSharedSecret(), OWN, {
+        setting: () => DEFAULT_RELAY,
+        enroll,
+        signal: cancel.signal,
+      }),
+    ).resolves.toEqual(WITHOUT_DEFAULT);
+    expect(enroll).not.toHaveBeenCalled();
   });
 });
 
 describe("invitationRelayWithDefault", () => {
-  const enrolled = {
-    kind: "enrolled",
-    turnUrl: DEFAULT_RELAY.turnUrl,
-  } as const;
-
-  test("names the default relay after the own relay once enrolled", () => {
-    expect(invitationRelayWithDefault(OWN, enrolled)).toEqual({
+  test("names the default relay after the own relay", () => {
+    expect(invitationRelayWithDefault(OWN, DEFAULT_RELAY.turnUrl)).toEqual({
       turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
       stun: [],
     });
-    expect(invitationRelayWithDefault(undefined, enrolled)).toEqual({
-      turn: [DEFAULT_RELAY.turnUrl],
-    });
   });
 
-  test("withholds it when not enrolled or when the locator is full", () => {
+  test("names the default relay alone when there is no own relay", () => {
     expect(
-      invitationRelayWithDefault(OWN, {
-        kind: "not-enrolled",
-        turnUrl: DEFAULT_RELAY.turnUrl,
-      }),
-    ).toBe(OWN);
+      invitationRelayWithDefault(undefined, DEFAULT_RELAY.turnUrl),
+    ).toEqual({ turn: [DEFAULT_RELAY.turnUrl] });
+  });
+
+  test("names it once when the own relay already names it", () => {
+    const own = { turn: [DEFAULT_RELAY.turnUrl] };
+    expect(invitationRelayWithDefault(own, DEFAULT_RELAY.turnUrl)).toBe(own);
+  });
+
+  test("names only the own relay when the build names no default relay", () => {
+    expect(invitationRelayWithDefault(OWN, undefined)).toBe(OWN);
+    expect(invitationRelayWithDefault(undefined, undefined)).toBeUndefined();
+  });
+
+  test("withholds it when the locator is full", () => {
     const full = {
       turn: Array.from(
         { length: MAX_RELAY_LOCATOR_URLS },
         (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
       ),
     };
-    expect(invitationRelayWithDefault(full, enrolled)).toBe(full);
+    expect(invitationRelayWithDefault(full, DEFAULT_RELAY.turnUrl)).toBe(full);
   });
 });
 
 describe("connectNoticingDefaultRelay", () => {
   const failing = () => Promise.reject(new Error("timed out"));
 
-  test("shows the notice when a run whose enrollment failed does not connect", async () => {
+  test("shows the notice once when a run whose enrollment failed does not connect", async () => {
     const onRunNotice = vi.fn();
+    const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
+      setting: () => DEFAULT_RELAY,
+      enroll: answering({ kind: "unavailable", reason: "no route" }),
+    });
+    const connect = vi.fn(failing);
     await expect(
-      connectNoticingDefaultRelay(
-        { defaultRelayNotEnrolled: true },
-        { onRunNotice },
-        failing,
-      ),
+      connectNoticingDefaultRelay(run, { onRunNotice }, connect),
     ).rejects.toThrow("timed out");
+    expect(connect).toHaveBeenCalledOnce();
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );

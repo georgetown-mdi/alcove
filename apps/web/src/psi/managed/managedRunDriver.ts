@@ -48,7 +48,6 @@ import { undeclaredColumnsRunNotice } from "../runWarnings";
 import {
   DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   showsDefaultRelayNotice,
-  startDefaultRelayEnrollment,
 } from "../transport/defaultRelay";
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
 import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
@@ -238,10 +237,6 @@ export function runManagedExchangeInBrowser(
     peerWaitTimeoutMs,
     decideTermsChange,
   } = config;
-
-  // Started now so the input read and the lock overlap it; the dial waits for
-  // it only up to its bound.
-  startDefaultRelayEnrollment(record.sharedSecret, { signal });
 
   // Two gates on the notices this run's close can raise. This run's own outputs
   // must be built: both notices speak for a completed exchange, and the failed
