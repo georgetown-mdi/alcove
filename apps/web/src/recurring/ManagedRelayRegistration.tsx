@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import {
   Alert,
@@ -27,7 +27,6 @@ import {
   stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
-import { managedExchangeRelaysThroughPartner } from "@psi/managed/managedExchangeRecord";
 
 import styles from "@styles/app.module.css";
 
@@ -42,19 +41,12 @@ const RELAY_REGISTRATION_TEXT =
   "If the relay in this browser's relay settings runs the Alcove relay " +
   "registrar, enroll this exchange there once. Each run that relays through " +
   "that relay then registers the relay key derived from the exchange's new " +
-  "shared secret, so the relay accepts only the current key. A run relaying " +
-  "through a relay your partner's invitation named registers nothing.";
+  "shared secret, so the relay accepts only the current key.";
 
 const TOKEN_TEXT =
   "The relay-owner token is sent to the registrar with this one request and " +
   "is not kept. Leave it empty when the registrar already holds this " +
   "exchange's current key, as after enrolling it from the command line.";
-
-/** Why an exchange relaying through its partner's relay offers no
- * enrollment. */
-export const PARTNER_RELAY_TEXT =
-  "This exchange relays through the relay your partner's invitation named, " +
-  "and your partner registers its key there, so it cannot be enrolled here.";
 
 const STOPPED_TEXT =
   "Runs of this exchange no longer register a relay key. The registrar " +
@@ -106,11 +98,9 @@ export function ManagedRelayRegistration({
   const [exchangeIdProblems, setExchangeIdProblems] = useState<Array<string>>(
     [],
   );
-  const partnerRelayTextId = useId();
 
   const enrolled = record.relayRegistrar;
   const pendingLine = relayRegistrationPendingLine(record);
-  const relaysThroughPartner = managedExchangeRelaysThroughPartner(record);
 
   const changeOwnerToken = (value: string) => {
     setOwnerToken(value);
@@ -211,18 +201,6 @@ export function ManagedRelayRegistration({
           A run of this exchange is under way. Change its relay registration
           once the run ends.
         </p>
-      ) : relaysThroughPartner ? (
-        <Stack gap="xs">
-          <p id={partnerRelayTextId} className={styles.small}>
-            {PARTNER_RELAY_TEXT}
-          </p>
-          <Group gap="sm">
-            <Button disabled aria-describedby={partnerRelayTextId}>
-              Enroll
-            </Button>
-            {stopButton}
-          </Group>
-        </Stack>
       ) : (
         <Stack gap="xs">
           <TextInput
@@ -274,9 +252,7 @@ export function ManagedRelayRegistration({
       )}
       {outcome?.kind === "removed" && (
         <p className={styles.small}>
-          {relaysThroughPartner
-            ? STOPPED_TEXT
-            : `${STOPPED_TEXT} ${STOPPED_OWN_RELAY_TEXT}`}
+          {STOPPED_TEXT} {STOPPED_OWN_RELAY_TEXT}
         </p>
       )}
       {outcome?.kind === "failed" && (

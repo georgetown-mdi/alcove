@@ -495,7 +495,7 @@ describe("beginManagedRendezvous: relay", () => {
     },
   );
 
-  test("an acceptor's record passes the relay its invitation named", async () => {
+  test("an acceptor's record lists this browser's own relay, then the one its invitation named", async () => {
     stubAppLocation();
     stubOwnRelay();
     const named = {
@@ -511,7 +511,50 @@ describe("beginManagedRendezvous: relay", () => {
       { flows },
     );
 
-    expect(acceptorCalls[0].options?.relay).toEqual(named);
+    expect(acceptorCalls[0].options?.relay).toEqual({
+      turn: [...ownRelay.turn, ...named.turn],
+      stun: named.stun,
+    });
+  });
+
+  test("an acceptor's record lists the build's default relay last once this run enrolled there", async () => {
+    stubAppLocation();
+    stubOwnRelay();
+    const defaultTurnUrl = "turns:turn.example.org:443?transport=tcp";
+    const named = {
+      turn: [
+        "turns:partner-relay.example.org:443?transport=tcp",
+        defaultTurnUrl,
+      ],
+    };
+    const { flows, acceptorCalls } = recordingFlows();
+
+    const acquisition = await begin(
+      "acceptor",
+      generateSharedSecret(),
+      exchangeFile({ ...webrtcLocator, relay: named }),
+      {
+        flows,
+        defaultRelay: {
+          setting: () => ({
+            turnUrl: defaultTurnUrl,
+            registrarUrl: "https://registrar.example.org",
+          }),
+          enroll: () =>
+            Promise.resolve({
+              kind: "registered",
+              maxAgeDays: null,
+              lapsesAt: null,
+            }),
+        },
+      },
+    );
+
+    expect(acceptorCalls[0].options?.relay).toEqual({
+      turn: [...ownRelay.turn, named.turn[0], defaultTurnUrl],
+      stun: [],
+    });
+    expect(acquisition.defaultRelayNotEnrolled).toBe(false);
   });
 
   test("with no own relay the flows get none", async () => {

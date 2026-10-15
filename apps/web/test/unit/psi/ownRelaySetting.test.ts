@@ -144,20 +144,21 @@ describe("relayForRun", () => {
     stun: [],
   };
 
-  test("prefers the invitation's relay over the own setting", () => {
+  test("lists the own setting's urls, then the invitation's, per kind", () => {
     const named: RelayLocator = {
       turn: ["turns:partner-relay.example.org:443"],
       stun: ["stun:partner-relay.example.org:3478"],
     };
-    expect(relayForRun(named, () => ({ kind: "set", relay: OWN }))).toEqual(
-      named,
-    );
+    expect(relayForRun(named, () => ({ kind: "set", relay: OWN }))).toEqual({
+      turn: [...OWN.turn, ...named.turn],
+      stun: [...OWN.stun, ...named.stun],
+    });
   });
 
-  test("chooses per kind: a kind the invitation leaves unnamed is the own setting's", () => {
+  test("keeps the own setting's kind the invitation leaves unnamed", () => {
     expect(
       relayForRun(invitation, () => ({ kind: "set", relay: OWN })),
-    ).toEqual({ turn: invitation.turn, stun: OWN.stun });
+    ).toEqual({ turn: [...OWN.turn, ...invitation.turn], stun: OWN.stun });
     expect(
       relayForRun({ stun: ["stun:partner-relay.example.org:3478"] }, () => ({
         kind: "set",
@@ -165,8 +166,12 @@ describe("relayForRun", () => {
       })),
     ).toEqual({
       turn: OWN.turn,
-      stun: ["stun:partner-relay.example.org:3478"],
+      stun: [...OWN.stun, "stun:partner-relay.example.org:3478"],
     });
+  });
+
+  test("lists a url both name once", () => {
+    expect(relayForRun(OWN, () => ({ kind: "set", relay: OWN }))).toEqual(OWN);
   });
 
   test("uses the invitation's relay alone with no own setting", () => {

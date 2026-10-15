@@ -207,10 +207,11 @@ type ManagedRendezvousAcquisition = (
  * scheduled attempt near its window's close cannot sit on a silent signaling
  * server past that close. Absent, both flows keep their shared defaults.
  *
- * Both flows gather against the relay {@link relayForRun} selects from the
- * stored connection's `invitationRelay` and this browser's own setting, read at
+ * Both flows gather against the relays {@link relayForRun} lists from this
+ * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
- * enrolled there (`relayWithDefaultForRun`). A failed enrollment is returned
+ * enrolled there, right before it connects (`relayWithDefaultForRun`). A
+ * failed enrollment is returned
  * as `defaultRelayNotEnrolled`, and reported through `onRunNotice` when the
  * flow itself fails.
  */

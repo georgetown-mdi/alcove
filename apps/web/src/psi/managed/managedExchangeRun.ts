@@ -70,11 +70,8 @@ import {
   persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "./managedExchangeStore";
-import {
-  managedExchangeRelaysThroughPartner,
-  runnableManagedExchangeOrRefuse,
-} from "./managedExchangeRecord";
 import { getManagedLocalState } from "./managedLocalState";
+import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
@@ -312,8 +309,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
           persistRotation(
             record.id,
             writeBack,
-            current.relayRegistrar !== undefined &&
-              !managedExchangeRelaysThroughPartner(current)
+            current.relayRegistrar !== undefined
               ? new Date(now()).toISOString()
               : undefined,
           ),

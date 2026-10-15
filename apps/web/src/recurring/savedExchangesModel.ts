@@ -9,7 +9,6 @@
 
 import {
   channelThisAppDoesNotRun,
-  managedExchangeRelaysThroughPartner,
   raisedStandingCondition,
   runnableManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
@@ -136,14 +135,13 @@ export interface SavedExchangeRow {
  * it. An enrolled record whose registration a run can still confirm names the
  * retry before the next run, and the step if the registrar refuses; one whose
  * re-invite's registration was not confirmed, and one naming no registrar,
- * name enrollment. A record relaying through its partner's relay shows none.
+ * name enrollment.
  */
 export function relayRegistrationPendingLine(
   record: ManagedExchangeRecord,
 ): string | undefined {
   const pendingSince = record.relayRegistrationPendingSince;
-  if (pendingSince === undefined || managedExchangeRelaysThroughPartner(record))
-    return undefined;
+  if (pendingSince === undefined) return undefined;
   const since = dateTimeLabel(new Date(pendingSince));
   if (record.relayRegistrar === undefined)
     return (

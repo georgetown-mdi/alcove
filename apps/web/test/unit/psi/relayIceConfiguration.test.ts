@@ -13,12 +13,12 @@ import {
 } from "@alcove/core";
 
 import {
+  RELAY_CREDENTIAL_TTL_SECONDS,
   buildIceServers,
   dialAsAcceptor,
   listenAsInviter,
 } from "../../../src/psi/transport/rendezvous.js";
 import { DEFAULT_PEER_WAIT_TIMEOUT_MS } from "../../../src/psi/transport/waitForConnection.js";
-import { RELAY_CREDENTIAL_TTL_SECONDS } from "../../../src/psi/transport/relayCredentialTtl.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
 import { relayForRun } from "../../../src/psi/transport/ownRelaySetting.js";
 import { relayWithDefaultForRun } from "../../../src/psi/transport/defaultRelay.js";
@@ -239,8 +239,8 @@ describe.each([
   });
 });
 
-// The acceptor seat dials the invitation's endpoint with the relay
-// `relayForRun(endpoint.relay)` selects (useAcceptorExchange, managed re-run).
+// The acceptor seat dials the invitation's endpoint with the relays
+// `relayForRun(endpoint.relay)` lists (useAcceptorExchange, managed re-run).
 describe("the acceptor seat's dial of an invitation endpoint", () => {
   const OWN: RelayLocator = {
     turn: ["turns:own-relay.example.org:443?transport=tcp"],
@@ -265,7 +265,8 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
     return options.config as RTCConfiguration;
   }
 
-  test("prefers the invitation's relay over this browser's own", async () => {
+  test("lists this browser's own relay, then the invitation's, under one credential", async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
     stubWindow();
     const secret = generateSharedSecret();
     const config = await dialConfig(
@@ -276,11 +277,14 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
       }),
       secret,
     );
-    const urls = config.iceServers?.flatMap((server) => server.urls);
-    expect(urls).toEqual([
-      ...DEFAULT_STUN_ENTRY.urls,
-      ...NAMED.stun,
-      ...NAMED.turn,
+    const expected = await mintRunRelayCredential(secret, NOW);
+    expect(config.iceServers).toEqual([
+      { urls: [...DEFAULT_STUN_ENTRY.urls, ...OWN.stun, ...NAMED.stun] },
+      {
+        urls: [...OWN.turn, ...NAMED.turn],
+        username: expected.username,
+        credential: expected.credential,
+      },
     ]);
   });
 
@@ -417,6 +421,20 @@ describe("the ICE list of a build naming a default relay", () => {
     const { urls } = await iceList(NAMED, { kind: "none" }, DEFAULT_RELAY);
     expect(urls).toEqual([
       ...DEFAULT_STUN_ENTRY.urls,
+      ...NAMED.turn,
+      DEFAULT_RELAY.turnUrl,
+    ]);
+  });
+
+  test("holds this browser's own relay, the invitation's, and the default relay, in that order", async () => {
+    const { urls } = await iceList(
+      NAMED,
+      { kind: "set", relay: OWN },
+      DEFAULT_RELAY,
+    );
+    expect(urls).toEqual([
+      ...DEFAULT_STUN_ENTRY.urls,
+      ...OWN.turn,
       ...NAMED.turn,
       DEFAULT_RELAY.turnUrl,
     ]);

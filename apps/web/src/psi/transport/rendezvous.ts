@@ -2,6 +2,7 @@ import Peer from "peerjs";
 
 import {
   ConnectionError,
+  RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   deriveRelayKey,
   deriveRendezvousPeerId,
   getLogger,
@@ -27,7 +28,6 @@ import {
   resolvePeerDebugLevel,
 } from "./peerLogging";
 import { watchIceGathering, withIceServerFailure } from "./iceGathering";
-import { RELAY_CREDENTIAL_TTL_SECONDS } from "./relayCredentialTtl";
 import { boundPeerSignaling } from "./signalingBounds";
 
 import type { DataConnection, PeerOptions } from "peerjs";
@@ -113,7 +113,8 @@ interface SignalingLocation {
  * secret ({@link buildIceServers}).
  */
 export interface RelayLocator {
-  /** `turn:` / `turns:` urls, served by one relay under one credential. */
+  /** `turn:` / `turns:` urls, of one relay or several, every one keyed from
+   * the exchange's relay key and so taking one credential. */
   turn: ReadonlyArray<string>;
   /** `stun:` / `stuns:` urls, listed beside the default STUN server. */
   stun: ReadonlyArray<string>;
@@ -122,14 +123,23 @@ export interface RelayLocator {
 /** The STUN server every run lists, whatever relay it also lists. */
 const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
 
+/**
+ * Lifetime of the relay credential a run mints. It must outlast the peer wait
+ * ({@link DEFAULT_PEER_WAIT_TIMEOUT_MS}) and the exchange after it, and core
+ * refuses anything over one hour, so it is that ceiling.
+ */
+export const RELAY_CREDENTIAL_TTL_SECONDS = RELAY_CREDENTIAL_MAX_TTL_SECONDS;
+
 /** The label in a minted credential's username, `<expiry>:<label>`. */
 const RELAY_CREDENTIAL_LABEL = "alcove";
 
 /**
  * The ICE server list for one run: one STUN entry, the default STUN server
  * followed by any STUN url the relay names, and, when the relay names TURN
- * urls, one entry of them holding a credential minted at `now` from the relay
- * key the exchange's shared secret derives. The default STUN server stays
+ * urls, one entry of them all holding a credential minted at `now` from the
+ * relay key the exchange's shared secret derives. Every relay a browser run
+ * lists, its own, the invitation's and the build's default, is keyed from that
+ * relay key, so the one credential serves each. The default STUN server stays
  * beside any relay, unlike the CLI's rule, where a configured list replaces
  * the default: a party whose relay fails still offers a server-reflexive
  * candidate. Nothing minted or derived outlives the returned list.

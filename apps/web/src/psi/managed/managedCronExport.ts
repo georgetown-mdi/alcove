@@ -49,9 +49,9 @@
  *   run here registers for, and one the command line requires beside a
  *   registrar -- and a pending registration as the key file's own marker,
  *   which the command line's next run retries before it dials. A record whose
- *   runs relay through the partner's relay
- *   ({@link managedExchangeRelaysThroughPartner}) registers nothing, so it
- *   exports neither. A registrar with no own TURN url to write, and a
+ *   command-line runs would relay through the relay its invitation named
+ *   ({@link commandLineRelaysThroughInvitation}) register nothing there, so
+ *   it exports neither. A registrar with no own TURN url to write, and a
  *   registration a re-invite left pending, which no run can confirm, are
  *   refused.
  *
@@ -83,7 +83,6 @@ import {
 } from "./managedCommandLineDocument";
 import { MANAGED_RELAY_REENROLLMENT_STEP } from "./managedRelayRegistration";
 import { keyFileFieldsFromRecord } from "./managedExchangeArtifact";
-import { managedExchangeRelaysThroughPartner } from "./managedExchangeRecord";
 
 import { MANAGED_INPUT_FILE_NAME } from "./managedInputHandle";
 import { shellJoinCommand } from "./recurringHandoff";
@@ -211,6 +210,23 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
 }
 
 /**
+ * Whether a command-line run of `record` relays through the relay the
+ * invitation named rather than its own: the command line takes an
+ * invitation's TURN urls in place of its own `turn` entries
+ * (`selectRunRelay` in core) and then registers nothing, so the export
+ * writes no registrar for it. A browser run lists both relays, and registers.
+ */
+function commandLineRelaysThroughInvitation(
+  record: Pick<ManagedExchangeRecord, "exchangeFile">,
+): boolean {
+  const connection = record.exchangeFile.connection;
+  return (
+    connection.channel === "webrtc" &&
+    (connection.invitationRelay?.turn ?? []).length > 0
+  );
+}
+
+/**
  * The connection fields that register the relay key at `registrar`: the
  * registrar, and this browser's own TURN urls as entries whose credential
  * each run mints, which the command line requires beside a registrar and
@@ -275,7 +291,7 @@ function exportedConnection(
     ...connection,
     role: record.side,
     ...(record.relayRegistrar !== undefined &&
-    !managedExchangeRelaysThroughPartner(record)
+    !commandLineRelaysThroughInvitation(record)
       ? relayRegistrationConnectionFields(record.relayRegistrar, readOwn)
       : {}),
   };
@@ -467,11 +483,11 @@ export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedCronExport {
-  const relaysThroughPartner = managedExchangeRelaysThroughPartner(record);
-  if (!relaysThroughPartner) assertNoReinviteRegistrationPending(record);
+  const relaysThroughInvitation = commandLineRelaysThroughInvitation(record);
+  if (!relaysThroughInvitation) assertNoReinviteRegistrationPending(record);
   const commandLine = composeManagedCronExportConfig(record, readOwn);
   const keyFields = keyFileFieldsFromRecord(record);
-  if (relaysThroughPartner) delete keyFields.relayRegistrationPendingSince;
+  if (relaysThroughInvitation) delete keyFields.relayRegistrationPendingSince;
   return {
     ...commandLine,
     key: {

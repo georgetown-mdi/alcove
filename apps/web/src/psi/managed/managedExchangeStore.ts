@@ -38,7 +38,6 @@ import {
   buildManagedExchangeRecord,
   clearHandedOffLastRun,
   diagnoseManagedExchangeRecord,
-  managedExchangeRelaysThroughPartner,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   runnableManagedExchangeOrRefuse,
@@ -1302,16 +1301,12 @@ export async function persistManagedExchangeReinvite(
 
 /**
  * Whether a re-invite of `record` replaces the secret whose relay key its
- * registrar holds: the record names a registrar, and its runs relay through
- * this browser's relay rather than one the invitation named.
+ * registrar holds: the record names a registrar.
  */
 function reinviteLosesRegistrarKey(
   record: RunnableManagedExchangeRecord,
 ): boolean {
-  return (
-    record.relayRegistrar !== undefined &&
-    !managedExchangeRelaysThroughPartner(record)
-  );
+  return record.relayRegistrar !== undefined;
 }
 
 /**
