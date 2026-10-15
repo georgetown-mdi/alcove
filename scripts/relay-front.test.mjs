@@ -682,6 +682,18 @@ describe("install.sh and the front", () => {
     expect(install).not.toMatch(/chown "\$IMAGE_UID" "\$ETC\/certs/);
   });
 
+  // An interrupted run must leave a front.conf the front can start on: the
+  // key it reads as root is re-owned before the new configuration goes live.
+  it("gives root an existing key before the new front.conf goes live", () => {
+    const chown = install.indexOf(
+      'chown 0:0 "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem"',
+    );
+    const live = install.indexOf('mv "$FRONT_CANDIDATE" "$FRONT_CONF"');
+    expect(chown).toBeGreaterThan(0);
+    expect(live).toBeGreaterThan(chown);
+    expect(install.split('chown 0:0 "$ETC/certs"')).toHaveLength(2);
+  });
+
   it("installs the client-address probe verify.sh runs", () => {
     expect(install).toContain('"$HERE/stun-binding.py"');
     expect(read("verify.sh")).toContain('"$HERE/stun-binding.py"');
