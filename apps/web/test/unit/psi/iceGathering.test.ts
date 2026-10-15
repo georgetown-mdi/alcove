@@ -187,11 +187,31 @@ describe("relayFailureMessage", () => {
     expect(message).toContain("and 1 more");
   });
 
+  test("names a relay once with each distinct error code in first-seen order", () => {
+    const { pc, conn } = relayConn();
+    watchIceGathering(conn);
+    pc.fail(RELAY_URL, 401, "Unauthorized");
+    pc.fail(RELAY_URL, 701, "TURN allocate request timed out");
+    pc.fail(RELAY_URL, 401, "Unauthorized again");
+    pc.fail(RELAY_URL, 438, "");
+    const record = iceGatheringRecordFor(conn);
+    if (record === undefined) throw new Error("no record");
+    expect(record.turnErrors).toHaveLength(3);
+    const message = relayFailureMessage(record, true) ?? "";
+    expect(message).toContain("reported errors for relay server");
+    expect(message).not.toContain("reported an error");
+    expect(message).toContain(
+      `${RELAY_URL} (error 401: Unauthorized; error 701: TURN allocate request timed out; error 438)`,
+    );
+    expect(message.match(/error 401/g)).toHaveLength(1);
+    expect(message).not.toContain("Unauthorized again");
+  });
+
   test("keeps at most the bounded number of errors", () => {
     const { pc, conn } = relayConn();
     watchIceGathering(conn);
     for (let index = 0; index < MAX_RECORDED_ICE_ERRORS + 5; index += 1)
-      pc.fail(RELAY_URL, 701, `timed out ${String(index)}`);
+      pc.fail(RELAY_URL, 700 + index, `timed out ${String(index)}`);
     expect(iceGatheringRecordFor(conn)?.turnErrors).toHaveLength(
       MAX_RECORDED_ICE_ERRORS,
     );

@@ -29,7 +29,7 @@ export interface IceGatheringRecord {
   relayGathered: boolean;
   /** Whether gathering finished. */
   gatheringComplete: boolean;
-  /** Errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
+  /** Distinct url and code errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
   turnErrors: Array<IceServerError>;
 }
 
@@ -104,10 +104,17 @@ export function watchIceGathering(conn: DataConnection): void {
     const { url, errorCode, errorText } = event;
     if (typeof url !== "string" || !isConfiguredTurnUrl(url, record.turnUrls))
       return;
+    const code = typeof errorCode === "number" ? errorCode : 0;
+    if (
+      record.turnErrors.some(
+        (error) => error.url === url && error.errorCode === code,
+      )
+    )
+      return;
     if (record.turnErrors.length >= MAX_RECORDED_ICE_ERRORS) return;
     record.turnErrors.push({
       url,
-      errorCode: typeof errorCode === "number" ? errorCode : 0,
+      errorCode: code,
       errorText: typeof errorText === "string" ? errorText : "",
     });
   });
@@ -120,11 +127,29 @@ export function iceGatheringRecordFor(
   return records.get(conn);
 }
 
-function describeError(error: IceServerError): string {
+function describeCode(error: IceServerError): string {
   const text = error.errorText.trim().slice(0, MAX_ERROR_TEXT_LENGTH);
   return text === ""
-    ? `${error.url} (error ${error.errorCode})`
-    : `${error.url} (error ${error.errorCode}: ${text})`;
+    ? `error ${error.errorCode}`
+    : `error ${error.errorCode}: ${text}`;
+}
+
+function describeFailures(
+  errors: ReadonlyArray<IceServerError>,
+): Array<string> {
+  const byUrl = new Map<string, Map<number, string>>();
+  for (const error of errors) {
+    let codes = byUrl.get(error.url);
+    if (codes === undefined) {
+      codes = new Map();
+      byUrl.set(error.url, codes);
+    }
+    if (!codes.has(error.errorCode))
+      codes.set(error.errorCode, describeCode(error));
+  }
+  return [...byUrl].map(
+    ([url, codes]) => `${url} (${[...codes.values()].join("; ")})`,
+  );
 }
 
 function listNamed(items: ReadonlyArray<string>): string {
@@ -158,15 +183,13 @@ export function relayFailureMessage(
   if (record.turnUrls.length === 0 || record.relayGathered) return undefined;
   const lead = "The connection did not open: no relay candidate was gathered.";
   if (record.turnErrors.length > 0) {
-    const failures = [
-      ...new Map(
-        record.turnErrors.map((error) => [error.url, describeError(error)]),
-      ).values(),
-    ];
+    const failures = describeFailures(record.turnErrors);
     const subject =
-      failures.length === 1
+      record.turnErrors.length === 1
         ? `The browser reported an error for relay server ${failures[0]}.`
-        : `The browser reported errors for relay servers ${listNamed(failures)}.`;
+        : failures.length === 1
+          ? `The browser reported errors for relay server ${failures[0]}.`
+          : `The browser reported errors for relay servers ${listNamed(failures)}.`;
     return `${lead} ${subject} ${RELAY_REMEDY}`;
   }
   if (!timedOut && !record.gatheringComplete) return undefined;
