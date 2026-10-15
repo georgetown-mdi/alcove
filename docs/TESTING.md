@@ -99,7 +99,7 @@ paths. The in-process backend adds two surfaces a real `sshd` cannot offer:
   request is counted and defer it, so whether that request's filesystem work ran
   before the connection went is a race; these cut at a named point inside the
   RENAME handler instead -- before any filesystem work, or from inside the
-  `fs.rename` callback with the publish durably in place and the reply never
+  `fs.rename` callback with the write durably in place and the reply never
   written. The landed destination can be removed at the tear (standing in for a
   partner that consumed it), and a STAT/LSTAT of it can be held until it has been
   REMOVEd, which orders a real partner's consume-delete strictly before the

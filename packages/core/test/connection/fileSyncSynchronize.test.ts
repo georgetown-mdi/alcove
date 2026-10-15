@@ -1198,7 +1198,7 @@ test("synchronize() lock starter: aborts with a distinct transport error within 
   // Describes the mid-arrival failure without pinning it to a single step (the
   // crash can be on either side of the joiner's delete).
   expect((err as Error).message).toMatch(
-    /failed after announcing its arrival but before publishing its hello/,
+    /failed after announcing its arrival but before writing its hello/,
   );
   expect((err as Error).message).toMatch(/^The partner began arriving/);
   // Transport failure (CLI exit 69), not a usage error (exit 64).
@@ -1257,7 +1257,7 @@ test("synchronize() lock starter: aborts on a stuck sentinel even while its own 
   // Does NOT assert the delete already happened, since in state (a)
   // it has not. The reworded message brackets both sub-windows.
   expect((err as Error).message).toMatch(
-    /failed after announcing its arrival but before publishing its hello/,
+    /failed after announcing its arrival but before writing its hello/,
   );
   expect((err as Error).message).toMatch(/^The partner began arriving/);
   // Bounded by the recovery window, far below the 5 s TTL.
@@ -1335,7 +1335,7 @@ test("synchronize() lock starter: a private-key-shaped sentinel name does not ta
   expect(rendered).toContain("[redacted private key]");
   expect(rendered).toMatch(/the exchange timed out before it completed/);
   expect(rendered).toMatch(
-    /failed after announcing its arrival but before publishing its hello/,
+    /failed after announcing its arrival but before writing its hello/,
   );
   expect(rendered).toContain("Retry the exchange.");
 });

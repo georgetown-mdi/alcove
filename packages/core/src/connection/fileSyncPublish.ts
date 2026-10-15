@@ -1,6 +1,6 @@
 // How this party puts an exchange file under its final name: written to a temp
-// name and renamed into place, or, with `publishWithoutRename` on, written to
-// the final name directly. docs/spec/FILE_SYNC.md, Publishing without rename.
+// name and renamed into place, or, with `writeWithoutRenaming` on, written to
+// the final name directly. docs/spec/FILE_SYNC.md, Writing without renaming.
 
 import { PUBLISH_WITHOUT_RENAME_KEY } from "../config/connection";
 import {
@@ -63,7 +63,7 @@ export async function renameOwnTemp(
     )
       throw err;
     throw new Error(
-      `${redactPrivateKeyMaterial(finalName)} could not be published: ` +
+      `${redactPrivateKeyMaterial(finalName)} could not be written: ` +
         "renaming the temporary file this party had just written failed " +
         `${describeRenameFailure(err)}. The server may not allow renames. ` +
         (guidance ?? DEFAULT_RENAME_REFUSED_GUIDANCE),

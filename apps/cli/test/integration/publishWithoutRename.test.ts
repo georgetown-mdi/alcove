@@ -14,7 +14,7 @@ import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
 import { preparedFor } from "../support";
 
-// Publishing without rename against a server that refuses every RENAME, the
+// Writing without renaming against a server that refuses every RENAME, the
 // deployment the option exists for: two whole runProtocol parties over the
 // real SSH/SFTP stack, in each rendezvous and retention mode. With the option
 // on, the exchange completes, no RENAME reaches the server and no temporary
@@ -143,7 +143,7 @@ describe("against a server that refuses every rename", () => {
     { name: "retain mode", options: RETAIN },
   ]) {
     inProcessOnly(
-      `${mode.name}: both parties publishing without rename complete, ` +
+      `${mode.name}: both parties writing without renaming complete, ` +
         "issuing no rename and opening no temporary name",
       async () => {
         srv.inject.refuseEveryRename = true;
@@ -151,7 +151,7 @@ describe("against a server that refuses every rename", () => {
         srv.inject.pathsOpenedForWrite = [];
         try {
           const tag = mode.name.replace(/[^a-z]+/g, "-");
-          const options = { ...mode.options, publishWithoutRename: true };
+          const options = { ...mode.options, writeWithoutRenaming: true };
           const run = await runPair(tag, { a: options, b: options });
 
           expect(run.a).toEqual({ ok: true });
@@ -184,9 +184,9 @@ describe("against a server that refuses every rename", () => {
         });
         for (const party of [run.a, run.b]) {
           expect(party.ok).toBe(false);
-          expect(party.rendered).toContain("could not be published");
+          expect(party.rendered).toContain("could not be written");
           expect(party.rendered).toContain("The server may not allow renames.");
-          expect(party.rendered).toContain("--publish-without-rename");
+          expect(party.rendered).toContain("--write-without-renaming");
         }
       } finally {
         srv.inject.refuseEveryRename = false;
@@ -197,13 +197,13 @@ describe("against a server that refuses every rename", () => {
 });
 
 inProcessOnly(
-  "a lock-path joiner publishing without rename and a partner without it " +
+  "a lock-path joiner writing without renaming and a partner without it " +
     "complete the exchange",
   async () => {
     srv.inject.renamesReceived = 0;
     srv.inject.pathsOpenedForWrite = [];
     const run = await runPair("mixed", {
-      a: { publishWithoutRename: true },
+      a: { writeWithoutRenaming: true },
       b: {},
       bFirst: true,
     });

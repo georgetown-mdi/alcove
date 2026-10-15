@@ -469,7 +469,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
       // Caller-neutral, as the transport raises it: it names a publish, prescribes
       // no step, and holds no tag.
       throw new TransportPublishIndeterminateError(
-        `the publish may or may not have reached the partner: it was cut off ` +
+        `the write may or may not have reached the partner: it was cut off ` +
           `mid-operation and could not be confirmed afterwards. ` +
           `Destination: ${to}`,
         { cause: new Error("_rename: No such file or directory") },

@@ -51,7 +51,7 @@ export interface ExchangeFilesDraft {
   locklessRendezvous: FileSyncToggle;
   peerId: string;
   unexpectedFiles: UnexpectedFilesChoice;
-  publishWithoutRename: boolean;
+  writeWithoutRenaming: boolean;
 }
 
 /** The card's starting state: retain mode off and every other choice left to
@@ -62,13 +62,13 @@ export const EXCHANGE_FILES_DEFAULT: ExchangeFilesDraft = {
   locklessRendezvous: "auto",
   peerId: "",
   unexpectedFiles: "auto",
-  publishWithoutRename: false,
+  writeWithoutRenaming: false,
 };
 
 /**
- * What the card states while publishing without rename is on: the assumption
+ * What the card states while writing without renaming is on: the assumption
  * the CLI's start warning names (docs/EXCHANGE_REFERENCE.md,
- * publish_without_rename), shown while the operator can still turn it off.
+ * write_without_renaming), shown while the operator can still turn it off.
  */
 export const PUBLISH_WITHOUT_RENAME_NOTICE =
   "Each exchange file is written directly under its final name, so it is " +
@@ -128,7 +128,7 @@ export function exchangeFilesOptions(
     ...(capabilities.unexpectedFiles && draft.unexpectedFiles !== "auto"
       ? { unexpectedFiles: draft.unexpectedFiles }
       : {}),
-    ...(draft.publishWithoutRename ? { publishWithoutRename: true } : {}),
+    ...(draft.writeWithoutRenaming ? { writeWithoutRenaming: true } : {}),
   };
   const resolved = withRetainModeImplications(stated);
   return Object.keys(resolved).length === 0 ? undefined : resolved;

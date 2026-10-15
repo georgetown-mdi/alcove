@@ -543,14 +543,14 @@ describe("the settings a loaded configuration keeps in the export", () => {
     });
   });
 
-  test("publish_without_rename survives the load, the run and the hand-off", () => {
+  test("write_without_renaming survives the load, the run and the hand-off", () => {
     const document = openedThroughTheConsole(
       {},
       {
         connection: {
           channel: "filedrop",
           path: MOUNTED_RENDEZVOUS_PATH,
-          options: { publishWithoutRename: true },
+          options: { writeWithoutRenaming: true },
         },
       },
     );
@@ -559,7 +559,7 @@ describe("the settings a loaded configuration keeps in the export", () => {
       disclosedDocument(document),
     );
     const options = exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES);
-    expect(options).toEqual({ publishWithoutRename: true });
+    expect(options).toEqual({ writeWithoutRenaming: true });
 
     const run = parseExchangeSpec(
       parseSensitiveYaml(
@@ -571,12 +571,12 @@ describe("the settings a loaded configuration keeps in the export", () => {
       ),
     );
     expect(run.connection).toMatchObject({
-      options: { publishWithoutRename: true },
+      options: { writeWithoutRenaming: true },
     });
     expect(
       exportedValue(
         exportOver(document, { options }),
-        "connection.options.publish_without_rename",
+        "connection.options.write_without_renaming",
       ),
     ).toBe(true);
   });

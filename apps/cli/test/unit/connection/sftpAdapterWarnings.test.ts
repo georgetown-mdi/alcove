@@ -416,7 +416,7 @@ describe("the undetermined publish", () => {
     );
     expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
     expect(err.message).toBe(
-      "the publish may or may not have reached the partner: it was cut off " +
+      "the write may or may not have reached the partner: it was cut off " +
         "mid-operation and could not be confirmed afterwards. " +
         "Destination: /remote/id-hello.json",
     );

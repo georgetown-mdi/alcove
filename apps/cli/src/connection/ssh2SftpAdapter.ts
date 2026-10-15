@@ -2985,7 +2985,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       );
     // A put to a protocol temp is re-issued verbatim: no reader acts on a temp,
     // and the rename that follows is the publish. A put to any other name is
-    // itself the publish (publish_without_rename), which a partner may already
+    // itself the publish (write_without_renaming), which a partner may already
     // have read or consumed, so its re-issue is decided by what the destination
     // holds: docs/spec/SFTP_SESSION_RECOVERY.md, "Re-issuing an operation".
     if (isProtocolTempName(dest.slice(dest.lastIndexOf("/") + 1)))

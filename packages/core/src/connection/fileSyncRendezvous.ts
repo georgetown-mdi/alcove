@@ -264,7 +264,7 @@ export async function readControlFileWithGate(
           "left over. Re-run; remove only if it persists and no other " +
           `exchange uses this path: ${filePath}`
       : "peer hello never became readable; it appeared during this run, so a " +
-          "peer may still be publishing. Re-run; remove only if it persists: " +
+          "peer may still be writing it. Re-run; remove only if it persists: " +
           `${filePath}`,
   );
 }
@@ -652,7 +652,7 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
-  publishWithoutRename?: boolean;
+  writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
 }
 
@@ -778,7 +778,7 @@ export class FileSyncRendezvous {
   // caller tracks the final name immediately after this resolves, with no
   // throwable statement between it and the rename (I4a).
   //
-  // With publishWithoutRename on, the body is written straight to `dir/name`,
+  // With writeWithoutRenaming on, the body is written straight to `dir/name`,
   // and where the caller tracks the name (`track`) it is added to
   // responsibleFiles first in delete mode: a put that throws can leave the
   // final name on disk, the case the lock's pre-track covers (I4a).
@@ -790,7 +790,7 @@ export class FileSyncRendezvous {
     const { deps } = this;
     const finalPath = joinFileSyncPath(dir, name);
     const body = serializeEnvelope(helloEnvelope(deps.options()));
-    if (deps.options().publishWithoutRename) {
+    if (deps.options().writeWithoutRenaming) {
       if (track && !deps.options().retainFiles) deps.responsibleFiles.add(name);
       await deps
         .client()
@@ -1148,7 +1148,7 @@ export class FileSyncRendezvous {
         .log()
         .info(
           `[${deps.id()}] tolerating ${helloTempFiles.length} in-flight hello ` +
-            "publish(es) left in place (a concurrently starting peer's write, " +
+            "write(s) left in place (a concurrently starting peer's write, " +
             "or a file left over from an earlier run that crashed): " +
             `${helloTempFiles
               .map((f) => redactAndSanitizeForDisplay(f.name))
@@ -1450,7 +1450,7 @@ export class FileSyncRendezvous {
   //   A list
   //   A delete B hello
   //
-  // This is B. With publishWithoutRename on, the rename step becomes
+  // This is B. With writeWithoutRenaming on, the rename step becomes
   // "B hello" (written directly) then "B delete joining", so A may list the
   // sentinel beside B's hello, or after its own loop has started.
   private async rendezvousAsLockJoiner(
@@ -1549,7 +1549,7 @@ export class FileSyncRendezvous {
       if (!deps.options().retainFiles)
         deps.responsibleFiles.delete(joiningName);
 
-      if (deps.options().publishWithoutRename) {
+      if (deps.options().writeWithoutRenaming) {
         // The hello is written beside the sentinel (pre-tracked, so a put
         // that throws leaves it to cleanup() while the untracked sentinel
         // stays as the peer's recovery signal), and only then is the
@@ -1776,7 +1776,7 @@ export class FileSyncRendezvous {
             // A direct write can leave the ack on disk when it throws, so its
             // path is known to the outer catch's sweep before the write, as
             // lockPath is before createExclusive.
-            if (deps.options().publishWithoutRename)
+            if (deps.options().writeWithoutRenaming)
               ackPath = joinFileSyncPath(
                 outboundPath,
                 ackMarkerName(deps.id(), peerHelloStem),
@@ -2003,7 +2003,7 @@ export class FileSyncRendezvous {
                   `(${redactPrivateKeyMaterial(joiningName)}) but did ` +
                   "not complete within the recovery window; it appears to " +
                   "have failed after announcing its arrival but before " +
-                  "publishing its hello. Retry the exchange.",
+                  "writing its hello. Retry the exchange.",
               );
             }
           } else {
@@ -2024,7 +2024,7 @@ export class FileSyncRendezvous {
         // rename is mid-propagation on a sync-mediated transport, so its
         // `<peerId>-joining.json` and `<peerId>-hello.json` momentarily
         // coexist (the rename is atomic at the SFTP layer, not necessarily
-        // at the sync-tool layer), or the peer publishes without rename and
+        // at the sync-tool layer), or the peer writes without renaming and
         // deletes its sentinel only after writing its hello. That same-id
         // sentinel is the peer we are about to rendezvous with, so tolerate
         // it. A sentinel whose id
@@ -2417,7 +2417,7 @@ export class FileSyncRendezvous {
           `The partner began arriving ` +
             `(${redactPrivateKeyMaterial(joiningSeenName)}) but the ` +
             "exchange timed out before it completed; it appears to have " +
-            "failed after announcing its arrival but before publishing its " +
+            "failed after announcing its arrival but before writing its " +
             "hello. Retry the exchange.",
         );
       }

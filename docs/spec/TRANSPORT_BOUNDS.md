@@ -209,7 +209,7 @@ Every exchange file is a regular file, and `openNoFollow` holds its opens to tha
 Each open also passes `O_NONBLOCK`, which is absent on Windows and has no effect on a regular file.
 After the open, `openNoFollow` `fstat`s the handle, and when the handle is not a regular file it closes the handle and refuses with a `UsageError`.
 The read path therefore applies the listing's `isFile()` filter a second time on the handle it actually reads.
-The lock joiner's `<id>-joining.json` sentinel is published temp-then-rename, the same as the hello (see [FILE_SYNC.md](FILE_SYNC.md)).
+The lock joiner's `<id>-joining.json` sentinel is written temp-then-rename, the same as the hello (see [FILE_SYNC.md](FILE_SYNC.md)).
 
 The control is scoped to the local-filesystem adapter.
 The SFTP adapter resolves every path on the server, where the server admin is already the in-scope adversary with full control of the files it serves (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)), so a server-side symlink grants no capability the threat model does not already cede.

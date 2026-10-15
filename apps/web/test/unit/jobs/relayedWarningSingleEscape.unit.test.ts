@@ -113,8 +113,8 @@ const CLI_WARNING_TEXT: ReadonlyArray<[string, () => string]> = [
   ["logFileLoss", () => `log lines lost [logFileLoss]: ${PARTNER_VALUE}`],
   ["memoryShortfall", () => `memory [memoryShortfall]: ${PARTNER_VALUE}`],
   [
-    "publishWithoutRename",
-    () => `no rename [publishWithoutRename]: ${PARTNER_VALUE}`,
+    "writeWithoutRenaming",
+    () => `no rename [writeWithoutRenaming]: ${PARTNER_VALUE}`,
   ],
 ];
 

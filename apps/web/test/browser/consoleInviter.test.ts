@@ -834,7 +834,7 @@ describe("console inviter file-handling gate", () => {
     const intent = JSON.parse(post?.body ?? "{}") as {
       options?: Record<string, unknown>;
     };
-    expect(intent.options?.publishWithoutRename).toBe(true);
+    expect(intent.options?.writeWithoutRenaming).toBe(true);
     expect(intent.options?.retainFiles).toBeUndefined();
   });
 

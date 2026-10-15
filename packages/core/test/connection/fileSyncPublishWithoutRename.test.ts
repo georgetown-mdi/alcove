@@ -1,5 +1,5 @@
-// Publishing without rename (docs/spec/FILE_SYNC.md, Publishing without
-// rename): with the option on, every publish site writes its final name
+// Writing without renaming (docs/spec/FILE_SYNC.md, Writing without
+// renaming): with the option on, every write site writes its final name
 // directly, pre-tracks it in delete mode, and issues no rename; with it off,
 // a rename the server refuses ends the run naming the option.
 
@@ -146,13 +146,13 @@ function expectNoRenameOrTemp(ops: string[]): void {
   expect(ops.filter((op) => op.includes("temp-"))).toEqual([]);
 }
 
-describe("both parties publish without rename", () => {
+describe("both parties write without renaming", () => {
   test("lock path: the joiner writes its sentinel, deletes the peer hello, writes its hello, then deletes the sentinel", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files);
     const b = recordingClient(files);
-    const connA = party(ID_A, a.client, { publishWithoutRename: true });
-    const connB = party(ID_B, b.client, { publishWithoutRename: true });
+    const connA = party(ID_A, a.client, { writeWithoutRenaming: true });
+    const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
 
     const syncA = connA.synchronize();
     await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
@@ -175,7 +175,7 @@ describe("both parties publish without rename", () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files);
     const b = recordingClient(files);
-    const opts = { publishWithoutRename: true, locklessRendezvous: true };
+    const opts = { writeWithoutRenaming: true, locklessRendezvous: true };
     const connA = party(ID_A, a.client, opts);
     const connB = party(ID_B, b.client, opts);
 
@@ -192,7 +192,7 @@ describe("both parties publish without rename", () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files);
     const b = recordingClient(files);
-    const opts = { publishWithoutRename: true, ...RETAIN };
+    const opts = { writeWithoutRenaming: true, ...RETAIN };
     const connA = party(ID_A, a.client, opts);
     const connB = party(ID_B, b.client, opts);
 
@@ -212,7 +212,7 @@ describe("both parties publish without rename", () => {
   test("the abort marker is written to its final name", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files);
-    const conn = party(ID_A, a.client, { publishWithoutRename: true });
+    const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
     conn.peerId = ID_B;
     conn.armAbort(new Uint8Array(32).fill(1), new Uint8Array(32).fill(2));
     await conn.writeAbortMarker();
@@ -221,7 +221,7 @@ describe("both parties publish without rename", () => {
   });
 });
 
-describe("a lock joiner publishing without rename, against a peer without the mode", () => {
+describe("a lock joiner writing without renaming, against a peer without the mode", () => {
   test("the peer completes rendezvous and runs its loop while the joiner's sentinel is still listed", async () => {
     const files = new Map<string, Buffer>();
     let releaseSentinelDelete!: () => void;
@@ -234,7 +234,7 @@ describe("a lock joiner publishing without rename, against a peer without the mo
         name === `${ID_B}-joining.json` ? sentinelDeleteHeld : undefined,
     });
     const connA = party(ID_A, a.client, {});
-    const connB = party(ID_B, b.client, { publishWithoutRename: true });
+    const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
     const errorsA: unknown[] = [];
     connA.on("error", (err) => errorsA.push(err));
 
@@ -282,7 +282,7 @@ test("a lock joiner whose sentinel delete fails after its hello is written compl
   // The parties are built inside the capture so their loggers bind to it.
   const [, logs] = await withCapturedLogs(async () => {
     const connA = party(ID_A, a.client, {});
-    const connB = party(ID_B, b.client, { publishWithoutRename: true });
+    const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
     connB.on("error", (err) => errorsB.push(err));
     const syncA = connA.synchronize();
     await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
@@ -320,7 +320,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     const a = recordingClient(files, {
       failPutTo: (name) => name === helloName,
     });
-    const conn = party(ID_A, a.client, { publishWithoutRename: true });
+    const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
 
     await expect(conn.synchronize()).rejects.toThrow(/connection lost/);
     expect(responsibleFilesOf(conn).has(helloName)).toBe(true);
@@ -338,7 +338,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     );
     const sentinel = `${ID_B}-joining.json`;
     const b = recordingClient(files, { failPutTo: (n) => n === sentinel });
-    const conn = party(ID_B, b.client, { publishWithoutRename: true });
+    const conn = party(ID_B, b.client, { writeWithoutRenaming: true });
 
     await expect(conn.synchronize()).rejects.toThrow(/connection lost/);
     expect(responsibleFilesOf(conn).has(sentinel)).toBe(true);
@@ -357,7 +357,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     );
     const helloName = `${ID_B}-hello.json`;
     const b = recordingClient(files, { failPutTo: (n) => n === helloName });
-    const conn = party(ID_B, b.client, { publishWithoutRename: true });
+    const conn = party(ID_B, b.client, { writeWithoutRenaming: true });
 
     await expect(conn.synchronize()).rejects.toThrow(/connection lost/);
     expect(responsibleFilesOf(conn).has(helloName)).toBe(true);
@@ -372,7 +372,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     const ackName = `${ID_A}-${ID_B}-hello-ack.json`;
     const a = recordingClient(files, { failPutTo: (n) => n === ackName });
     const b = recordingClient(files);
-    const opts = { publishWithoutRename: true, locklessRendezvous: true };
+    const opts = { writeWithoutRenaming: true, locklessRendezvous: true };
     const connA = party(ID_A, a.client, opts);
     const connB = party(ID_B, b.client, {
       ...opts,
@@ -394,7 +394,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     const a = recordingClient(files, {
       failPutTo: (n) => n.startsWith(`${ID_A}-`) && n !== `${ID_A}-hello.json`,
     });
-    const conn = party(ID_A, a.client, { publishWithoutRename: true });
+    const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
     conn.peerId = ID_B;
 
     const err = await conn.send({ m: 1 }).then(
@@ -417,12 +417,12 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
 
 describe("a payload send whose put throws, through the message bridge", () => {
   async function payloadSendReport(
-    publishWithoutRename: boolean,
+    writeWithoutRenaming: boolean,
     failPutTo: (name: string) => boolean,
   ): Promise<{ raised: unknown; reported: number }> {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files, { failPutTo });
-    const conn = party(ID_A, a.client, { publishWithoutRename });
+    const conn = party(ID_A, a.client, { writeWithoutRenaming });
     conn.peerId = ID_B;
     const messages = fromEventConnection(conn);
     let reported = 0;
@@ -489,7 +489,7 @@ describe("with the mode off, a refused rename names the option", () => {
       () => undefined,
       (e: unknown) => e as Error,
     );
-    expect(err?.message).toContain(`${ID_A}-hello.json could not be published`);
+    expect(err?.message).toContain(`${ID_A}-hello.json could not be written`);
     expect(err?.message).toContain("The server may not allow renames.");
     expect(err?.message).toContain(DEFAULT_RENAME_REFUSED_GUIDANCE);
     expect((err?.cause as { code?: unknown }).code).toBe(2);
@@ -507,7 +507,7 @@ describe("with the mode off, a refused rename names the option", () => {
     conn.peerId = ID_B;
 
     await expect(conn.send({ m: 1 })).rejects.toThrow(
-      /could not be published: .*The server may not allow renames\. Pass --example-flag\.$/,
+      /could not be written: .*The server may not allow renames\. Pass --example-flag\.$/,
     );
   });
 
@@ -573,10 +573,10 @@ describe("with the mode off, a refused rename names the option", () => {
 });
 
 test("the mode is not advertised: the hello is byte-for-byte the same with it on or off", async () => {
-  const helloBody = async (publishWithoutRename: boolean): Promise<Buffer> => {
+  const helloBody = async (writeWithoutRenaming: boolean): Promise<Buffer> => {
     const a = recordingClient(new Map<string, Buffer>());
     const conn = party(ID_A, a.client, {
-      publishWithoutRename,
+      writeWithoutRenaming,
       timeToLive: new Date(Date.now() + 30),
     });
     await conn.synchronize().catch(() => {});

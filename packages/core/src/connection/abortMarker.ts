@@ -79,7 +79,7 @@ interface AbortWriteInputs {
   client: FileTransportClient;
   // Write the marker straight to its final name, with no temp and no rename.
   // A torn body fails the peer's verification and reads as no marker.
-  publishWithoutRename: boolean;
+  writeWithoutRenaming: boolean;
 }
 
 // The transport-budget primitives the subsystem borrows from FileSyncConnection,
@@ -176,7 +176,7 @@ export class AbortMarkerSubsystem {
     id: string,
     writeDir: string | undefined,
     rawClient: FileTransportClient,
-    publishWithoutRename = false,
+    writeWithoutRenaming = false,
   ): void {
     this.selfAbortToken = selfToken;
     this.peerAbortToken = peerToken;
@@ -209,7 +209,7 @@ export class AbortMarkerSubsystem {
               "utf-8",
             ),
             client: rawClient,
-            publishWithoutRename,
+            writeWithoutRenaming,
           };
   }
 
@@ -241,7 +241,7 @@ export class AbortMarkerSubsystem {
   }
 
   // The actual temp-then-rename write (atomic appearance), or the direct write
-  // publishWithoutRename asks for, short-bounded on every op so a sick
+  // writeWithoutRenaming asks for, short-bounded on every op so a sick
   // directory cannot hang teardown. The marker is not
   // tracked in responsibleFiles, so this party's own cleanup() never sweeps
   // it and it persists for the peer to read. On timeout/failure (put
@@ -263,7 +263,7 @@ export class AbortMarkerSubsystem {
     // a transport that does not implement it.
     inputs.client.beginTeardown?.();
     const finalPath = joinFileSyncPath(inputs.path, inputs.finalName);
-    if (inputs.publishWithoutRename) {
+    if (inputs.writeWithoutRenaming) {
       await this.deps.runBudgeted(
         inputs.client.put(inputs.body, finalPath, {
           flags: "w",

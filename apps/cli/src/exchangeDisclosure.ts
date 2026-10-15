@@ -57,12 +57,12 @@ const DISCLOSURE_HEADING =
   "What this exchange sends and matches on. Nothing has been sent yet:";
 
 /**
- * The line the display ends with on a file-sync run publishing without
- * rename, so the mode is on the record of what the run was set to do.
+ * The line the display ends with on a file-sync run writing without
+ * renaming, so the mode is on the record of what the run was set to do.
  */
 const PUBLISH_WITHOUT_RENAME_LINE =
   "  exchange files written directly under their final names, without a " +
-  "rename: yes (publish_without_rename)";
+  "rename: yes (write_without_renaming)";
 
 /** The label the outbound column list holds, spelled the way the acceptance
  * display and the outbound-payload confirmation both spell this same fact. */
@@ -423,7 +423,7 @@ function showDisclosure(params: {
   render((line) => lines.push(line));
   if (
     (connection.channel === "sftp" || connection.channel === "filedrop") &&
-    connection.options?.publishWithoutRename === true
+    connection.options?.writeWithoutRenaming === true
   )
     lines.push(PUBLISH_WITHOUT_RENAME_LINE);
   const digest = disclosureDigest(lines, linkageTerms, connection);

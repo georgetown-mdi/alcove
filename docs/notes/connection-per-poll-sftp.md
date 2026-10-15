@@ -390,16 +390,16 @@ guard and directory sweep must run exactly once, never re-entered on a later cyc
 unclean, or a re-run sweep would delete the party's own just-written files); and no
 reconnect may reset the in-memory session state.
 
-Where the boundary and a publish meet, the poll loop's own publishes are safe and a
-concurrent send's are not. Each publish is a contiguous run of ops with no idle
+Where the boundary and a write meet, the poll loop's own writes are safe and a
+concurrent send's are not. Each write is a contiguous run of ops with no idle
 wait in the middle -- a message is a temp write then an atomic rename; an ack is a
 zero-length put then a rename; the joiner sentinel is a put, a delete, then a
 rename; the hello is written directly to its final name and relies on the reader's
 partial-sync gate rather than a rename; a lock is a single atomic exclusive create
-call to the transport. None of them straddles an idle wait, so a publish the POLL
+call to the transport. None of them straddles an idle wait, so a write the POLL
 LOOP itself performs cannot be torn by the boundary that follows it. The boundary
 is not a global idle point, though: `send()` has no mutual exclusion with `poll()`,
-so a release can fall while a send's publish is in flight. An op that reaches the
+so a release can fall while a send's write is in flight. An op that reaches the
 transport at or after the release is serialized against it at the adapter's
 recovery chokepoint, which re-establishes the session before the op's first attempt
 -- queued behind the release on the transition lock, so it runs on the far side of
@@ -442,7 +442,7 @@ sweep would cost this mode: against a server that accepts DELETE and never
 answers it, a counted re-issue is outstanding at every boundary, every boundary
 therefore closes nothing, and every live session left behind is another
 re-establishment that drains and re-issues again -- the per-cycle session the mode
-exists for, gone for the rest of the run, and reachable without a failed publish
+exists for, gone for the rest of the run, and reachable without a failed write
 at all, since the entry sweep hands the cleanup delete every temp-shaped name a
 server-supplied listing offers. Uncounted, the release simply closes over the
 re-issue; the torn delete rejects, which offers the path back to the record, and the
@@ -629,7 +629,7 @@ that the adapter placement satisfies by keeping the teardown ordering in `close(
 The critical factual claims underneath the decision -- the operative dialing-retry
 default of three, the surrounding bounds that terminate genuine failures, the
 recovery's then-absent default-verbosity signal, the sticky `closing` latch, the
-drain-budget exposure, and the publish-shape safety of an idle-aligned boundary --
+drain-budget exposure, and the write-shape safety of an idle-aligned boundary --
 were then adversarially verified against the tree as it stood.
 
 ## See also
