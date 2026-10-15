@@ -48,7 +48,6 @@ This changelog is a reader's summary of what Alcove does and how that changes pe
 - BREAKING: `alcove verify-receipt` exits 65 (`EX_DATAERR`) on a definite verification failure instead of 1, so a script can tell a bad receipt from an uncaught fault, which still exits 1. See `docs/CLI.md`.
 - BREAKING: the dual-signed receipt format moves to `alcove-signed-receipt/v4`, which holds the partner's linkage terms beside the signed content -- so `alcove verify-receipt` and the web "Verify a receipt" page re-derive the agreed-terms hash from the receipt and your own terms, with no partner terms document kept beside them. A receipt in an earlier format is refused rather than read, with no migration: verify a run written before this change from its exchange record, passing the partner's terms with `--partner-terms`. See `docs/spec/EXCHANGE_RECORD.md`.
 - BREAKING: the web app and the CLI request and apply application-layer encryption on every WebRTC exchange, as the CLI does on its other channels. A web app build from before this change cannot complete a WebRTC exchange with a current CLI or web app, and a recurring exchange run across such a pair is set up again from a new invitation. See `docs/spec/CHANNEL_SECURITY.md`.
-- BREAKING: a `relay_registrar.url`, in the CLI configuration and in a saved web exchange, is accepted only when written as its origin (no trailing slash, no explicit port 443, lower-case host); a value in another form is refused and is rewritten by hand. See `docs/EXCHANGE_REFERENCE.md`.
 
 ### Security
 

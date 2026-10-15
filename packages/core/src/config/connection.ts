@@ -1136,8 +1136,8 @@ export interface RelayLocator {
   /**
    * The `https://` address of a registrar, naming only a host and an optional
    * port, where a run enrolls the exchange's relay key without a token before
-   * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Present
-   * only beside `turn`.
+   * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Held as
+   * its origin; present only beside `turn`.
    */
   registrar?: string;
 }
@@ -1184,7 +1184,8 @@ const relayLocatorRegistrarSchema = z
         code: "custom",
         message: `a relay locator's registrar ${problem}`,
       });
-  });
+  })
+  .transform(relayRegistrarOrigin);
 
 /**
  * Build the strict {@link RelayLocator} schema. Every key outside
@@ -1244,7 +1245,7 @@ const ConnectionRelayLocatorSchema = relayLocatorSchema(
  * exchange is enrolled and is never stored.
  */
 export interface RelayRegistrar {
-  /** The registrar's `https://` address: a host and an optional port. */
+  /** The registrar's `https://` address, held as its origin. */
   url: string;
   /** The exchange id the registrar holds this exchange's relay key under. */
   exchangeId: string;
@@ -1257,44 +1258,46 @@ export const MAX_RELAY_REGISTRAR_URL_LENGTH = 1024;
 // own verify.sh (infra/relay/README.md, Per-exchange keys).
 const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
 
-const RELAY_REGISTRAR_URL_EXAMPLE = "https://registrar.example.org";
+const RELAY_REGISTRAR_URL_FORM =
+  "an https:// url naming only a host and an optional port from 1 to 65535, " +
+  "for example https://registrar.example.org";
 
-// Why `url` cannot name a registrar, or undefined when it can: a registrar url
-// is accepted only when it is exactly its own origin, on https and not port 0.
-// The url is never repeated, since one holding a user may hold a password.
+// Why `url` cannot name a registrar, or undefined when it can: it may differ
+// from its origin only by letter case, an explicit port 443 and one trailing
+// slash. The url is never repeated, since one holding a user may hold a
+// password.
 function relayRegistrarUrlProblem(url: string): string | undefined {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return `is not a url; write it as ${RELAY_REGISTRAR_URL_EXAMPLE}`;
+    return `is not a url; write it as ${RELAY_REGISTRAR_URL_FORM}`;
   }
   if (parsed.protocol !== "https:")
-    return `must be an https:// url, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`;
+    return `must be ${RELAY_REGISTRAR_URL_FORM}`;
   if (parsed.username !== "" || parsed.password !== "")
-    return (
-      "names a user before its host; the relay-owner token is asked for " +
-      "when you enroll the exchange and is never written to the configuration"
-    );
-  if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "")
-    return (
-      "must name only a host and an optional port, with no path, query, or " +
-      `fragment, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
-    );
-  if (parsed.port === "0") return "must not name port 0; a port is 1-65535";
-  // An empty `?` or `#`, a trailing slash, an upper-case host and port 443
-  // leave the parsed fields clean but would reach the invitation as written.
-  if (parsed.origin !== url)
-    return (
-      "must be written as https://, a lower-case host and an optional port " +
-      `other than 443, with nothing after them, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
-    );
+    return `names a user; write it as ${RELAY_REGISTRAR_URL_FORM}`;
+  if (parsed.port === "0")
+    return `names port 0; write it as ${RELAY_REGISTRAR_URL_FORM}`;
+  // `href` keeps an empty `?` or `#`, which leave `search` and `hash` empty.
+  if (parsed.href !== `${parsed.origin}/`)
+    return `has a path, query or fragment; write it as ${RELAY_REGISTRAR_URL_FORM}`;
+  const written = (url.endsWith("/") ? url.slice(0, -1) : url).toLowerCase();
+  if (written !== parsed.origin && written !== `${parsed.origin}:443`)
+    return `must be written as ${RELAY_REGISTRAR_URL_FORM}`;
   return undefined;
+}
+
+// A registrar url as its origin: lower-case host, no default port and no
+// trailing slash. Applied only to a url relayRegistrarUrlProblem accepts.
+function relayRegistrarOrigin(url: string): string {
+  return new URL(url).origin;
 }
 
 /**
  * The validator of a {@link RelayRegistrar}: an `https://` url naming only a
- * host and an optional port, and an exchange id the registrar takes.
+ * host and an optional port, parsed to its origin, and an exchange id the
+ * registrar takes.
  */
 export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
   {
@@ -1314,7 +1317,8 @@ export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
             code: "custom",
             message: `relay_registrar.url ${problem}`,
           });
-      }),
+      })
+      .transform(relayRegistrarOrigin),
     exchangeId: z
       .string()
       .refine(isRelayRegistrarExchangeId, {

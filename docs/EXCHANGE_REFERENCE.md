@@ -848,7 +848,7 @@ connection:
 *Required:* no  
 *Applies to:* `webrtc`
 
-The relay the invitation you accepted named: your partner's TURN and STUN urls, written here by `alcove accept` and kept by the web app with a saved exchange. An acceptance that keeps an existing configuration refreshes this block from the invitation it accepts -- set to the relay that invitation names, removed when it names none -- and leaves the rest of the connection block as it is. It holds urls only -- `turn` and `stun`, each a list in the grammar of [`connection.turn`](#connectionturn)'s `url` and [`connection.stun`](#connectionstun), and `registrar`, one `https://` address in the grammar of [`relay_registrar`](#connectionrelay_registrar)'s `url`, present only beside `turn` -- and a `username`, `credential`, or any other key is refused.
+The relay the invitation you accepted named: your partner's TURN and STUN urls, written here by `alcove accept` and kept by the web app with a saved exchange. An acceptance that keeps an existing configuration refreshes this block from the invitation it accepts -- set to the relay that invitation names, removed when it names none -- and leaves the rest of the connection block as it is. It holds urls only -- `turn` and `stun`, each a list in the grammar of [`connection.turn`](#connectionturn)'s `url` and [`connection.stun`](#connectionstun), and `registrar`, one `https://` address naming a host and an optional port, in the grammar of [`relay_registrar`](#connectionrelay_registrar)'s `url`, present only beside `turn` -- and a `username`, `credential`, or any other key is refused.
 
 A run lists it beside your own settings: its `turn` urls after your [`turn`](#connectionturn) entries, and its `stun` urls after your [`stun`](#connectionstun) list, a url both name listed once, as yours. Each run signs in to the invitation's TURN urls with a credential it derives from the exchange's current shared secret, valid for an hour and derived again for each ten-minute connection attempt while the partner has not connected; nothing is stored. Its TURN urls also satisfy [`ice_transport_policy: relay`](#connectionice_transport_policy).
 
@@ -892,7 +892,7 @@ It holds no credential. The relay-owner token is asked for once, by `alcove enro
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | yes | The registrar's `https://` address, written as its origin: a lower-case host and an optional port other than 0 or 443, with no user and nothing after them, not even a trailing `/`, `?` or `#` |
+| `url` | string | yes | The registrar's `https://` address: a host and an optional port. Host case, a default port (`:443`) and a trailing `/` are normalized away; a path, query, fragment, user or port 0 is refused, an empty `?` or `#` included |
 | `exchange_id` | string | yes | The id the registrar holds this exchange's key under: 1 to 128 of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, not starting with `-`, not starting with `alcove-verify-`, and holding no run of 64 hex characters. The registrar's refusals let anyone learn whether an id is enrolled, so choose one that reveals nothing about either party |
 
 It requires a `turn` entry that sets no `username` or `credential`. A run registers here whether or not it also lists the relay an invitation named ([`invitation_relay`](#connectioninvitation_relay)), since it lists your own `turn` entries either way.

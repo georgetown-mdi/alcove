@@ -850,7 +850,7 @@ describe("the enrollment form's address problems", () => {
   test.each([
     ["relay.example.org", "is not a url"],
     ["http://relay.example.org", "must be an https:// url"],
-    ["https://relay.example.org/register", "no path, query, or fragment"],
+    ["https://relay.example.org/register", "has a path, query or fragment"],
   ])("%s is refused in the schema's own words", (url, rule) => {
     const parsed = RelayRegistrarSchema.safeParse({
       url,

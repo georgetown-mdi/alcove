@@ -34,8 +34,10 @@ const baseTerms = {
 };
 
 const REGISTRAR = "https://registrar.example.org:8443";
-const ONLY_HOST_AND_PORT = "must name only a host and an optional port";
-const EXACT_ORIGIN = "must be written as https://, a lower-case host";
+const REGISTRAR_FORM =
+  "an https:// url naming only a host and an optional port from 1 to 65535, " +
+  "for example https://registrar.example.org";
+const PATH_QUERY_OR_FRAGMENT = `has a path, query or fragment; write it as ${REGISTRAR_FORM}`;
 
 const RELAY = {
   turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -231,18 +233,26 @@ describe("the invitation's relay locator", () => {
   });
 
   test.each([
-    ["an http url", "http://SECRETHOST.example.org", "must be an https:// url"],
+    [
+      "an http url",
+      "http://SECRETHOST.example.org",
+      `must be ${REGISTRAR_FORM}`,
+    ],
     [
       "a url with a path",
       "https://registrar.example.org/SECRETPATH",
-      "must name only a host and an optional port",
+      PATH_QUERY_OR_FRAGMENT,
     ],
     [
       "a url naming a user",
       "https://SECRETUSER@registrar.example.org",
-      "names a user before its host",
+      `names a user; write it as ${REGISTRAR_FORM}`,
     ],
-    ["text that is no url", "SECRET registrar", "is not a url"],
+    [
+      "text that is no url",
+      "SECRET registrar",
+      `is not a url; write it as ${REGISTRAR_FORM}`,
+    ],
   ])(
     "a registrar that is %s is refused at decode without its value",
     async (_, registrar, refusal) => {
@@ -263,17 +273,25 @@ describe("the invitation's relay locator", () => {
   );
 
   test.each([
-    ["a query", "https://hidden-host.example.org?a=1", ONLY_HOST_AND_PORT],
-    ["a bare ?", "https://hidden-host.example.org?", EXACT_ORIGIN],
-    ["a fragment", "https://hidden-host.example.org#x", ONLY_HOST_AND_PORT],
-    ["a bare #", "https://hidden-host.example.org#", EXACT_ORIGIN],
+    ["a query", "https://hidden-host.example.org?a=1", PATH_QUERY_OR_FRAGMENT],
+    ["a bare ?", "https://hidden-host.example.org?", PATH_QUERY_OR_FRAGMENT],
+    ["a fragment", "https://hidden-host.example.org#x", PATH_QUERY_OR_FRAGMENT],
+    ["a bare #", "https://hidden-host.example.org#", PATH_QUERY_OR_FRAGMENT],
     [
       "an empty query and fragment",
       "https://hidden-host.example.org/?#",
-      EXACT_ORIGIN,
+      PATH_QUERY_OR_FRAGMENT,
     ],
-    ["a trailing slash", "https://hidden-host.example.org/", EXACT_ORIGIN],
-    ["port 0", "https://hidden-host.example.org:0", "must not name port 0"],
+    [
+      "two trailing slashes",
+      "https://hidden-host.example.org//",
+      PATH_QUERY_OR_FRAGMENT,
+    ],
+    [
+      "port 0",
+      "https://hidden-host.example.org:0",
+      `names port 0; write it as ${REGISTRAR_FORM}`,
+    ],
   ])(
     "a registrar url with %s is refused at decode and at mint without its value",
     async (_, registrar, refusal) => {
@@ -298,31 +316,27 @@ describe("the invitation's relay locator", () => {
   );
 
   test.each([
-    ["an explicit port 443", "https://hidden-host.example.org:443"],
-    ["an upper-case host", "https://Hidden-Host.example.org"],
+    ["an explicit port 443", "https://registrar.example.org:443"],
+    ["an upper-case host", "https://Registrar.Example.ORG"],
+    ["a trailing slash", "https://registrar.example.org/"],
+    ["all three", "https://Registrar.example.org:443/"],
   ])(
-    "a registrar url with %s is refused at decode and at mint without its value",
+    "a registrar url with %s is minted and decoded as its origin",
     async (_, registrar) => {
       const token = tokenWithEndpoint({
         channel: "webrtc",
         host: "signal.example",
         relay: { ...RELAY, registrar },
       });
-      const decodeError: unknown = await decodeInvitation(
-        await encodeRawInvitation(token),
-      ).catch((caught: unknown) => caught);
-      const mintError: unknown = await encodeInvitation(token).catch(
-        (caught: unknown) => caught,
-      );
-      for (const error of [decodeError, mintError]) {
-        expect(error).toBeInstanceOf(ZodError);
-        const message = (error as ZodError).message;
-        expect(message).toContain(
-          `a relay locator's registrar ${EXACT_ORIGIN}`,
-        );
-        expect(message).not.toContain("hidden-host");
-        expect(message).not.toContain("Hidden-Host");
-      }
+      const expected = {
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar: "https://registrar.example.org" },
+      };
+      const minted = await decodeInvitation(await encodeInvitation(token));
+      expect(minted.connectionEndpoint).toEqual(expected);
+      const decoded = await decodeInvitation(await encodeRawInvitation(token));
+      expect(decoded.connectionEndpoint).toEqual(expected);
     },
   );
 
@@ -572,6 +586,13 @@ describe("the accepting side's connection", () => {
         invitation_relay: { ...relay, registrar: "http://r.example.org" },
       }),
     ).toThrow(/registrar must be an https:\/\/ url/);
+    expect(
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: { ...relay, registrar: `${REGISTRAR}/` },
+      }),
+    ).toMatchObject({ invitationRelay: relay });
   });
 
   test("a relay-only policy is satisfied by the invitation's TURN urls", () => {
