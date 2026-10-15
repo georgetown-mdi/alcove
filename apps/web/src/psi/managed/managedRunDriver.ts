@@ -320,6 +320,7 @@ export function runManagedExchangeInBrowser(
 
         const acquisition = await beginManagedRendezvous(current, {
           signal,
+          onRunNotice: emitRunNotice,
           ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
         });
         let peer: Peer;

@@ -14,7 +14,6 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import { managedExchangeRelaysThroughPartner } from "@psi/managed/managedExchangeRecord";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { heldSettingsSentence } from "./managedConfigurationModel";
@@ -160,14 +159,13 @@ export interface PairImportDropped {
 
 /** The line saying a pair naming a relay registrar registers nothing from
  * this browser until its Relay server page names a TURN url, or `undefined`
- * where it names one or the record registers nothing here anyway. */
+ * where it names one or the record names no registrar. */
 function noOwnTurnSentence(
   record: ManagedExchangeRecord,
   own: OwnRelayRead,
 ): string | undefined {
   const registrar = record.relayRegistrar;
-  if (registrar === undefined || managedExchangeRelaysThroughPartner(record))
-    return undefined;
+  if (registrar === undefined) return undefined;
   if (own.kind === "set" && own.relay.turn.length > 0) return undefined;
   const at = sanitizeForDisplay(relayRegistrarLabel(registrar));
   return own.kind === "unreadable"

@@ -1076,9 +1076,8 @@ After that, each run that relays through this browser's own relay registers the
 key derived from the new secret, signed with the key being replaced, before it
 lets the exchange go. A fresh invitation from here does the same for the secret
 it replaces, before it shows you the invitation. An exchange accepted from an
-invitation that named your partner's relay cannot be enrolled here: your
-partner, who supplies that relay, registers at it, and the Relay registration
-section says so in place of the form.
+invitation that named your partner's relay is enrolled and registers the same
+way: each of its runs lists your relay beside your partner's.
 
 A registration the registrar does not confirm is kept on the exchange and tried
 again before the next run connects. If the registrar still does not confirm, the
@@ -1099,7 +1098,10 @@ with the TURN urls from this browser's relay settings that the command line
 registers for, and a pending registration into `.alcove.key`, which the first
 command-line run tries again before it dials. It refuses while a fresh
 invitation's registration is pending, since no command-line run can confirm
-that one: enroll the exchange again first.
+that one: enroll the exchange again first. The export leaves out the site's
+[default relay](DEPLOYMENT.md#the-default-relay), which an invitation from
+this site names, since a command-line run does not enroll there: a command-line
+run relays as it would had the invitation not named it.
 
 ### Bringing a command-line configuration back
 

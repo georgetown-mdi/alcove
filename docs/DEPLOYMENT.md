@@ -45,6 +45,24 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 
 How the address is resolved, and what the invitation endpoint states: [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address).
 
+## The default relay
+
+A web application build can name a TURN relay that every browser exchange it runs lists, so a party on a network that blocks direct paths still connects. Set two variables when building, both or neither:
+
+```sh
+VITE_DEFAULT_RELAY_TURN_URL=turns:relay.example.org:443?transport=tcp \
+VITE_DEFAULT_RELAY_REGISTRAR_URL=https://registrar.example.org \
+VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web
+```
+
+- **`VITE_DEFAULT_RELAY_TURN_URL`** is one `turn:` or `turns:` url, in the grammar of [`connection.turn`](EXCHANGE_REFERENCE.md#connectionturn).
+- **`VITE_DEFAULT_RELAY_REGISTRAR_URL`** is the `https://` address of that relay's [registrar](../infra/relay/README.md#the-registrar), which must take an enrollment without a token ([PROTOCOL.md](spec/PROTOCOL.md#enrolling-at-a-default-relay)).
+- **What each run does.** Right before it connects, each browser run enrolls the relay key derived from the exchange's current shared secret at the registrar, under an exchange id derived from the same secret ([PROTOCOL.md](spec/PROTOCOL.md#relay-credential-derivation)), waiting a few seconds at most, and lists the relay beside any relay the invitation or the browser's own setting names. A run whose enrollment fails says so as it fails, and connects with its other relays.
+- **What each invitation names.** Every browser invitation the build creates names the relay, after the inviter's own relay, without contacting the registrar, so a command-line partner relays through it too once the inviter's run has enrolled the key.
+- **What the relay's operator learns.** Each party's network address on every browser exchange, whether or not traffic is relayed ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); the registrar also sees each party's address when it enrolls. A deployment that names a default relay states this in its privacy statement, as [PRIVACY.md](../PRIVACY.md#hosted-web-application) does for the project's.
+- **A misconfiguration stops the build.** One variable set without the other, or a value that is not a url of its kind, is refused by the build and by the page at load.
+- **Unset,** the build names no default relay, and each run lists the default STUN server and any relay the invitation or the browser's own setting names.
+
 ### Hardening the coordination server
 
 The coordination server is untrusted by design: the rendezvous ids are derived from the out-of-band invitation secret and the two browsers run an authenticated key exchange directly between themselves, so the server only relays opaque setup messages and never sees exchange data (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)). The residual exposure on its WebSocket upgrade surface is therefore resource exhaustion and nuisance, not access to any party's data. The standalone coordination server enforces several defense-in-depth guards itself, unconditionally and regardless of deployment:
@@ -113,7 +131,7 @@ The web application builds only as a static site: `npm run build -w apps/web` wr
 - **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps `apps/web/dist/hosted/` as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
 - **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). It and the project site's upload job ([The project site](#the-project-site)) are the only jobs in any workflow that hold the deploy credentials, and neither runs repository code; the same check holds both.
 
-It reads two secrets and two variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` is read by the gate's build, which runs in no environment, so it is a repository variable, under Settings -> Secrets and variables -> Actions.
+It reads two secrets and four variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` and the two default relay variables are read by the gate's build, which runs in no environment, so they are repository variables, under Settings -> Secrets and variables -> Actions.
 
 | Name | Kind | Set on | What it is |
 | ---- | ---- | ------ | ---------- |
@@ -121,6 +139,8 @@ It reads two secrets and two variables. The upload job runs in the GitHub enviro
 | `CLOUDFLARE_ACCOUNT_ID` | Secret | Environments `Production` and `Staging` | The Cloudflare account the project is in |
 | `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
 | `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site |
+| `VITE_DEFAULT_RELAY_TURN_URL` | Variable | Repository | The project relay's TURN url, `turns:turn.data-bridge.org:443?transport=tcp`, built into the site as [the default relay](#the-default-relay); unset, the site names none |
+| `VITE_DEFAULT_RELAY_REGISTRAR_URL` | Variable | Repository | That relay's registrar, `https://registrar.data-bridge.org`; set with the variable above or not at all |
 
 ### Custom domains and zone settings
 

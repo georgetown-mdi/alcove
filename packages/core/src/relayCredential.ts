@@ -19,6 +19,14 @@ const RELAY_KEY_INFO = "alcove-relay-key-v2";
 const RELAY_KEY_BYTES = 32;
 
 /**
+ * HKDF info label for the exchange id a relay key is enrolled under without a
+ * token, a single fixed label in the same label space as {@link RELAY_KEY_INFO}.
+ */
+const RELAY_EXCHANGE_ID_INFO = "alcove-relay-exchange-id-v2";
+
+const RELAY_EXCHANGE_ID_BYTES = 16;
+
+/**
  * The longest lifetime, in seconds, {@link mintRelayCredential} gives a relay
  * credential: one hour, the default of the relay's own `mint-credential.sh`.
  */
@@ -46,18 +54,52 @@ export interface RelayCredential {
  * @throws {Error} if `sharedSecret` is not a base64url-encoded 32-byte value.
  */
 export async function deriveRelayKey(sharedSecret: string): Promise<string> {
-  if (!SHARED_SECRET_REGEX.test(sharedSecret)) {
-    throw new InternalConsistencyError(
-      "deriveRelayKey: sharedSecret must be a base64url-encoded 32-byte value " +
-        "matching SHARED_SECRET_REGEX",
-    );
-  }
-  const bytes = await hkdfDerive(
-    fromBase64Url(sharedSecret),
+  return deriveHexFromSecret(
+    "deriveRelayKey",
+    sharedSecret,
     RELAY_KEY_INFO,
     RELAY_KEY_BYTES,
   );
-  return toHex(bytes);
+}
+
+/**
+ * Derive the exchange id a party enrolls the exchange's relay key under at a
+ * registrar that takes an enrollment without a token. Both parties compute the
+ * same id from the exchange's current shared secret, and nobody without the
+ * secret can predict it, so nobody else can enroll the id first. The
+ * construction: docs/spec/PROTOCOL.md, "Relay credential derivation".
+ *
+ * @param sharedSecret  The exchange's current base64url-encoded 32-byte shared
+ *                      secret, matching {@link SHARED_SECRET_REGEX}.
+ * @returns The 16-byte id as 32 lowercase hex characters.
+ * @throws {Error} if `sharedSecret` is not a base64url-encoded 32-byte value.
+ */
+export async function deriveRelayExchangeId(
+  sharedSecret: string,
+): Promise<string> {
+  return deriveHexFromSecret(
+    "deriveRelayExchangeId",
+    sharedSecret,
+    RELAY_EXCHANGE_ID_INFO,
+    RELAY_EXCHANGE_ID_BYTES,
+  );
+}
+
+async function deriveHexFromSecret(
+  caller: string,
+  sharedSecret: string,
+  info: string,
+  lengthBytes: number,
+): Promise<string> {
+  if (!SHARED_SECRET_REGEX.test(sharedSecret)) {
+    throw new InternalConsistencyError(
+      `${caller}: sharedSecret must be a base64url-encoded 32-byte value ` +
+        "matching SHARED_SECRET_REGEX",
+    );
+  }
+  return toHex(
+    await hkdfDerive(fromBase64Url(sharedSecret), info, lengthBytes),
+  );
 }
 
 /** Arguments to {@link mintRelayCredential}. */

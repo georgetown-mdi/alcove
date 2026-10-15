@@ -3,9 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   RELAY_REGISTRATION_CANCELLED_REASON,
   REMOVED_CREDENTIAL_TEXT,
+  enrollRelayKeyWithoutToken,
   registerRelayKey,
   sendRelayRegistration,
 } from "../src/relayRegistrarClient";
+import { deriveRelayExchangeId, deriveRelayKey } from "../src/relayCredential";
 import { generateSharedSecret } from "../src/config/connection";
 import type { RelayRegistrar } from "../src/config/connection";
 
@@ -398,5 +400,124 @@ describe("registerRelayKey", () => {
       reason: RELAY_REGISTRATION_CANCELLED_REASON,
     });
     expect(fetch.authorizations).toHaveLength(1);
+  });
+});
+
+describe("enrollRelayKeyWithoutToken", () => {
+  // What the registrar answers an enrollment without a token: the lapse is
+  // its own (infra/relay/README.md, Enrollment without a token).
+  const TOKENLESS_ANSWER = {
+    message: "registered",
+    maxAgeDays: null,
+    lapsesAt: "2026-10-15T13:10:00Z",
+  };
+
+  function recording(answers: Array<[number, unknown]>) {
+    const queue = [...answers];
+    const requests: Array<{
+      url: string;
+      method: string | undefined;
+      body: unknown;
+      authorization: string | null;
+    }> = [];
+    const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        method: init?.method,
+        body: init?.body,
+        authorization: new Headers(init?.headers).get("Authorization"),
+      });
+      const next = queue.shift();
+      if (next === undefined)
+        return Promise.reject(new TypeError("unreachable"));
+      return Promise.resolve(
+        new Response(JSON.stringify(next[1]), { status: next[0] }),
+      );
+    }) as typeof globalThis.fetch;
+    return { fetch, requests };
+  }
+
+  const noWait = { retryDelaysMs: [1, 1], sleep: () => Promise.resolve() };
+
+  test("posts the derived key under the derived id with no Authorization header", async () => {
+    const secret = generateSharedSecret();
+    const { fetch, requests } = recording([[200, TOKENLESS_ANSWER]]);
+    const outcome = await enrollRelayKeyWithoutToken(
+      { registrarUrl: "https://registrar.example.org", sharedSecret: secret },
+      { fetch, ...noWait },
+    );
+    expect(outcome).toEqual({
+      kind: "registered",
+      maxAgeDays: null,
+      lapsesAt: "2026-10-15T13:10:00Z",
+    });
+    expect(requests).toEqual([
+      {
+        url: `https://registrar.example.org/exchanges/${await deriveRelayExchangeId(secret)}`,
+        method: "POST",
+        body: JSON.stringify({
+          key: await deriveRelayKey(secret),
+          maxAgeDays: null,
+        }),
+        authorization: null,
+      },
+    ]);
+  });
+
+  test("a 409, the id held under another key, is final", async () => {
+    const { fetch, requests } = recording([
+      [409, { error: "exchange holds another key" }],
+    ]);
+    const outcome = await enrollRelayKeyWithoutToken(
+      {
+        registrarUrl: "https://registrar.example.org",
+        sharedSecret: generateSharedSecret(),
+      },
+      { fetch, ...noWait },
+    );
+    expect(outcome).toEqual({
+      kind: "refused",
+      status: 409,
+      reason: "exchange holds another key",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test("a 429 is tried again, three attempts in all", async () => {
+    const { fetch, requests } = recording([
+      [429, { error: "too many enrollments" }],
+      [429, { error: "too many enrollments" }],
+      [429, { error: "too many enrollments" }],
+    ]);
+    const outcome = await enrollRelayKeyWithoutToken(
+      {
+        registrarUrl: "https://registrar.example.org",
+        sharedSecret: generateSharedSecret(),
+      },
+      { fetch, ...noWait },
+    );
+    expect(outcome).toMatchObject({ kind: "unavailable", status: 429 });
+    expect(requests).toHaveLength(3);
+  });
+
+  test("an unanswered request is tried again and may then confirm", async () => {
+    let calls = 0;
+    const flaky = (() => {
+      calls++;
+      return calls === 1
+        ? Promise.reject(new TypeError("network down"))
+        : Promise.resolve(
+            new Response(JSON.stringify(TOKENLESS_ANSWER), { status: 200 }),
+          );
+    }) as typeof globalThis.fetch;
+    const outcome = await enrollRelayKeyWithoutToken(
+      {
+        registrarUrl: "https://registrar.example.org",
+        sharedSecret: generateSharedSecret(),
+      },
+      { fetch: flaky, ...noWait },
+    );
+    expect(outcome.kind).toBe("registered");
+    expect(calls).toBe(2);
   });
 });

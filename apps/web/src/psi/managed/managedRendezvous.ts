@@ -37,6 +37,10 @@ import {
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayForRun } from "../transport/ownRelaySetting";
 
+import { relayWithDefaultForRun } from "../transport/defaultRelay";
+
+import type { DefaultRelayDependencies } from "../transport/defaultRelay";
+
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
@@ -195,9 +199,12 @@ type ManagedRendezvousAcquisition =
  * scheduled attempt near its window's close cannot sit on a silent signaling
  * server past that close. Absent, both flows keep their shared defaults.
  *
- * Both flows gather against the relay {@link relayForRun} selects from the
- * stored connection's `invitationRelay` and this browser's own setting, read at
- * the start of each run.
+ * Both flows gather against the relays {@link relayForRun} lists from this
+ * browser's own setting and the stored connection's `invitationRelay`, read at
+ * the start of each run, and the build's default relay once this run's key is
+ * enrolled there, right before it connects (`relayWithDefaultForRun`). A
+ * failed enrollment is reported through `onRunNotice` as it happens, and the
+ * flow starts without the default relay.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -205,6 +212,8 @@ export async function beginManagedRendezvous(
     signal?: AbortSignal;
     flows?: ManagedRendezvousFlows;
     peerWaitTimeoutMs?: number;
+    defaultRelay?: DefaultRelayDependencies;
+    onRunNotice?: (message: string) => void;
   } = {},
 ): Promise<ManagedRendezvousAcquisition> {
   const flows = options.flows ?? defaultFlows;
@@ -214,8 +223,18 @@ export async function beginManagedRendezvous(
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
   const connection = exchangeFile.connection;
-  const relay = relayForRun(
-    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+  const relay = await relayWithDefaultForRun(
+    sharedSecret,
+    relayForRun(
+      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    ),
+    {
+      ...options.defaultRelay,
+      ...(signal !== undefined ? { signal } : {}),
+      ...(options.onRunNotice !== undefined
+        ? { onRunNotice: options.onRunNotice }
+        : {}),
+    },
   );
   const peerWaitTimeoutMs = options.peerWaitTimeoutMs;
   const registrationBound =

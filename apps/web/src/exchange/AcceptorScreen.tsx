@@ -148,6 +148,7 @@ import { useBeforeUnloadPrompt, useUnloadGuard } from "./useUnloadGuard";
 import { AcceptorCleaningStep } from "./AcceptorCleaningStep";
 import { AcceptorColumnsStep } from "./AcceptorColumnsStep";
 import { AcceptorExchangeSection } from "./AcceptorExchangeSection";
+import { DefaultRelayNotice } from "./DefaultRelayNotice";
 import { WorkShell } from "./WorkShell";
 
 import { Ledger } from "./Ledger";
@@ -1321,6 +1322,10 @@ function AcceptorInvitationScreen({
             {acceptSignaling !== undefined && (
               <AcceptorSignalingServerNotice accepted={acceptSignaling} />
             )}
+            {!consoleBuild &&
+              decode.invitation.endpoint.channel === "webrtc" && (
+                <DefaultRelayNotice />
+              )}
             {/* This console cannot run this endpoint's shape, or no acceptance
                 can run these terms: stop here, before consent or intake, with a
                 state naming what the operator can do rather than a doomed

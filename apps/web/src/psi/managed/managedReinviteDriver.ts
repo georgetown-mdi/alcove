@@ -17,6 +17,8 @@
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
+import { defaultRelaySetting } from "@utils/clientConfig";
+
 import { invitationLocation } from "../invitationLocation";
 import { relayForRun } from "../transport/ownRelaySetting";
 
@@ -43,9 +45,11 @@ interface ManagedReinviteDriverDeps {
   registerRelayKey: typeof registerReinvitedManagedRelayKey;
   /** The moment the setup lifetime and the record's max-age stamp count from. */
   now: () => number;
-  /** Read the relay the invitation names: the one this inviter's own run
-   * gathers against. */
+  /** Read this browser's own relay, which the invitation names. */
   ownRelay: () => RelayUrls | undefined;
+  /** Read the TURN url of the build's default relay, which the invitation
+   * also names. */
+  defaultRelayTurnUrl: () => string | undefined;
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -57,6 +61,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: () => relayForRun(),
+  defaultRelayTurnUrl: () => defaultRelaySetting()?.turnUrl,
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -96,6 +101,7 @@ export async function reinviteManagedExchange(
     encode: deps.encode,
     now: deps.now,
     ownRelay: deps.ownRelay(),
+    defaultRelayTurnUrl: deps.defaultRelayTurnUrl(),
   });
   const persisted = await deps.persistRotation(
     record.id,

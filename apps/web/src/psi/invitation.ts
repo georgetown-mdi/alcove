@@ -20,12 +20,16 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
+import { defaultRelaySetting } from "@utils/clientConfig";
+
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
 import { ownColumnsField } from "./ownColumnsModel";
 import { relayForRun } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
+
+import { invitationRelayWithDefault } from "./transport/defaultRelay";
 
 import type {
   CSVRow,
@@ -40,6 +44,7 @@ import type {
   WebRTCEndpoint,
 } from "@alcove/core";
 
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { LinkageRefusal } from "./linkageRefusal";
 import type { OwnColumnsChoice } from "./ownColumnsModel";
 import type { RelayUrls } from "./transport/ownRelaySetting";
@@ -258,15 +263,23 @@ export function tokenFromInput(input: string): string {
 export type ConnectionEndpointRequest =
   { channel: "webrtc" } | WebRTCEndpoint | SFTPEndpoint | FileDropEndpoint;
 
-/** Resolve a request to the token's endpoint; this app's own webrtc locator
- * names the relay this inviter's own run uses ({@link relayForRun}), and a
- * webrtc endpoint naming its host is taken as given. */
+/**
+ * Resolve a request to the token's endpoint. This app's own webrtc locator
+ * names this browser's own relay ({@link relayForRun}) and the build's
+ * default relay, where the locator has room for it
+ * ({@link invitationRelayWithDefault}); no registrar is contacted. A webrtc
+ * endpoint naming its host is taken as given.
+ */
 function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
+  readDefaultRelay: () => DefaultRelaySetting | undefined,
 ): ConnectionEndpoint {
   if (request.channel === "webrtc" && !("host" in request))
-    return invitationWebrtcEndpoint(location, relayForRun());
+    return invitationWebrtcEndpoint(
+      location,
+      invitationRelayWithDefault(relayForRun(), readDefaultRelay()?.turnUrl),
+    );
   return request;
 }
 
@@ -341,6 +354,9 @@ export async function generateInvitation(params: {
   /** Which of the inviter's own columns its result file includes, narrowed
    * against the emitted terms and returned. Omitted on the quick path. */
   includeOwnColumns?: OwnColumnsChoice;
+  /** Reads the build's default relay; {@link defaultRelaySetting} when
+   * omitted. */
+  defaultRelay?: () => DefaultRelaySetting | undefined;
 }): Promise<GeneratedInvitation> {
   const {
     inviterName,
@@ -488,6 +504,7 @@ export async function generateInvitation(params: {
   const resolvedEndpoint = resolveConnectionEndpoint(
     connectionEndpoint,
     location,
+    params.defaultRelay ?? defaultRelaySetting,
   );
   const token: InvitationToken = {
     version: "1",

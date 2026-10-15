@@ -13,7 +13,7 @@ import {
   type FailureCauseOfKind,
   type RelayRegistrarUnreachableFailure,
 } from "./failureCause.js";
-import { deriveRelayKey } from "./relayCredential.js";
+import { deriveRelayExchangeId, deriveRelayKey } from "./relayCredential.js";
 import { relayRegistrarAuthorization } from "./relayRegistrarProof.js";
 import { readBoundedJsonBody } from "./utils/boundedJsonBody.js";
 import { enc } from "./utils/crypto.js";
@@ -63,8 +63,13 @@ function utf8Base64(value: string): string {
  * and of its credential after the scheme, replaced by
  * {@link REMOVED_CREDENTIAL_TEXT}: as sent, URL-encoded, and base64-encoded,
  * so a registrar or proxy that echoes the header repeats no credential.
+ * `text` unchanged for a request that carried no `Authorization` header.
  */
-function withCredentialRemoved(text: string, authorization: string): string {
+function withCredentialRemoved(
+  text: string,
+  authorization: string | undefined,
+): string {
+  if (authorization === undefined) return text;
   const space = authorization.indexOf(" ");
   const values =
     space === -1
@@ -228,7 +233,7 @@ interface RegistrarAnswerBody {
 async function readAnswerBody(
   response: Response,
   signal: AbortSignal,
-  authorization: string,
+  authorization: string | undefined,
 ): Promise<RegistrarAnswerBody> {
   let read: Awaited<ReturnType<typeof readBoundedJsonBody>>;
   try {
@@ -276,14 +281,15 @@ async function readAnswerBody(
  * only when its body is the registrar's answer to a registration -- a JSON
  * object, within the answer bound, stating `maxAgeDays` and `lapsesAt`; any
  * other 2xx is `unavailable` with a fixed reason, and so is a request
- * `transport.signal` cancelled.
+ * `transport.signal` cancelled. With `authorization` unset the request has no
+ * `Authorization` header: an enrollment without a token.
  */
 export async function sendRelayRegistration(
   request: {
     registrar: RelayRegistrar;
     method: "POST" | "PUT";
     body: string;
-    authorization: string;
+    authorization?: string;
   },
   transport: RelayRegistrarTransport = {},
 ): Promise<RelayRegistrarAnswer> {
@@ -301,7 +307,9 @@ export async function sendRelayRegistration(
         method: request.method,
         redirect: "manual",
         headers: {
-          Authorization: request.authorization,
+          ...(request.authorization !== undefined && {
+            Authorization: request.authorization,
+          }),
           "Content-Type": "application/json",
         },
         body: request.body,
@@ -555,5 +563,54 @@ export async function registerRelayKey(
       continue;
     }
     return answer;
+  }
+}
+
+/**
+ * Enroll the exchange at a registrar that takes an enrollment without a token
+ * (infra/relay/README.md, Enrollment without a token): a `POST` with no
+ * `Authorization` header registering the relay key derived from
+ * `sharedSecret` under the exchange id derived from it
+ * ({@link deriveRelayExchangeId}), with `maxAgeDays` `null`, since the
+ * registrar fixes the lapse. Either party may send it: the same key on the same
+ * id is answered as registered. Retried as {@link registerRelayKey} is; a 401
+ * or 409 is final.
+ */
+export async function enrollRelayKeyWithoutToken(
+  params: { registrarUrl: string; sharedSecret: string },
+  env: RelayRegistrationEnvironment = {},
+): Promise<RelayRegistrationOutcome> {
+  const sleep = env.sleep ?? defaultSleep;
+  const delays = env.retryDelaysMs ?? RELAY_REGISTRATION_RETRY_DELAYS_MS;
+  const registrar: RelayRegistrar = {
+    url: params.registrarUrl,
+    exchangeId: await deriveRelayExchangeId(params.sharedSecret),
+  };
+  const body = relayRegistrationBody(
+    await deriveRelayKey(params.sharedSecret),
+    null,
+  );
+  for (let attempt = 0; ; attempt++) {
+    if (env.signal?.aborted === true)
+      return {
+        kind: "unavailable",
+        reason: RELAY_REGISTRATION_CANCELLED_REASON,
+      };
+    const answer = await sendRelayRegistration(
+      { registrar, method: "POST", body },
+      env,
+    );
+    if (answer.kind === "clock-skew")
+      return { kind: "refused", status: 401, reason: answer.reason };
+    if (
+      answer.kind !== "unavailable" ||
+      attempt >= delays.length ||
+      env.lastAttemptSignal?.aborted === true
+    )
+      return answer;
+    await sleepUnlessCancelled(sleep, delays[attempt]!, [
+      env.signal,
+      env.lastAttemptSignal,
+    ]);
   }
 }

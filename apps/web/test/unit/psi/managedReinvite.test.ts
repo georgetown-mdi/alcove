@@ -84,7 +84,10 @@ const seams = {
   encode: encodeInvitation,
   now: () => NOW,
   ownRelay: undefined,
+  defaultRelayTurnUrl: undefined,
 };
+
+const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
 
 describe("composeManagedReinvite", () => {
   test("mints a fresh secret and reuses the stored document's terms verbatim", async () => {
@@ -152,6 +155,30 @@ describe("composeManagedReinvite", () => {
       (await composeManagedReinvite(inviterRecord(), location, seams)).encoded,
     );
     expect(token.connectionEndpoint).not.toHaveProperty("relay");
+  });
+
+  test("names the build's default relay after the own relay", async () => {
+    const ownRelay = { turn: ["turns:relay.example.org:443?transport=tcp"] };
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      ownRelay,
+      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
+    });
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      relay: { turn: [...ownRelay.turn, DEFAULT_RELAY_TURN_URL] },
+    });
+  });
+
+  test("names the build's default relay alone when this browser has no relay", async () => {
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
+    });
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      relay: { turn: [DEFAULT_RELAY_TURN_URL] },
+    });
   });
 
   test("the deep link contains the encoded token in its fragment", async () => {

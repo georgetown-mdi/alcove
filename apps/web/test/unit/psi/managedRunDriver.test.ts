@@ -45,6 +45,7 @@ import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
@@ -511,6 +512,39 @@ describe("runManagedExchangeInBrowser", () => {
     expect(peer.destroy).toHaveBeenCalledTimes(1);
   });
 
+  test.each(["inviter", "acceptor"] as const)(
+    "the %s's notice that the default relay could not be set up is shown once, and a later connection failure adds nothing",
+    async (side) => {
+      const { peer, conn } = acquireResources(side);
+      mockedRendezvous.mockImplementation((_record, options) => {
+        options?.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+        return Promise.resolve(
+          side === "inviter"
+            ? { side, peer: peer as unknown as Peer }
+            : {
+                side,
+                peer: peer as unknown as Peer,
+                conn: conn as unknown as DataConnection,
+              },
+        );
+      });
+      const failure = new Error("the data channel did not open");
+      mockedOpen.mockRejectedValue(failure);
+      const onWarning = vi.fn();
+
+      const rejection = await runDriver(
+        new AbortController().signal,
+        onWarning,
+        recordForSide(side),
+      ).catch((error: unknown) => error);
+
+      expect(rejection).toBe(failure);
+      expect(onWarning.mock.calls).toEqual([
+        [DEFAULT_RELAY_NOT_ENROLLED_NOTICE],
+      ]);
+    },
+  );
+
   test("records a receive list the terms exchange fills, then says which columns were taken", async () => {
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
@@ -953,6 +987,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
+      onRunNotice: expect.any(Function),
     });
     expect(rendezvousOptions().inboundWait).toEqual({
       signal: controller.signal,
@@ -977,6 +1012,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
+      onRunNotice: expect.any(Function),
       peerWaitTimeoutMs: 90_000,
     });
     expect(rendezvousOptions().inboundWait).toEqual({

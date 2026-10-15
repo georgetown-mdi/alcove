@@ -674,10 +674,16 @@ describe("the pending relay key registration", () => {
     ).toBe(line);
   });
 
-  test("a confirmed registration, or an exchange relaying through its partner's relay, shows nothing", () => {
+  test("a confirmed registration shows nothing", () => {
     expect(
       relayRegistrationPendingLine(record({ relayRegistrar: REGISTRAR })),
     ).toBeUndefined();
+    expect(savedExchangeRow(record(), undefined, NOW)).not.toHaveProperty(
+      "relayRegistrationLine",
+    );
+  });
+
+  test("an exchange whose invitation named a relay shows its pending registration all the same", () => {
     expect(
       relayRegistrationPendingLine(
         record({
@@ -693,9 +699,6 @@ describe("the pending relay key registration", () => {
           }),
         }),
       ),
-    ).toBeUndefined();
-    expect(savedExchangeRow(record(), undefined, NOW)).not.toHaveProperty(
-      "relayRegistrationLine",
-    );
+    ).toMatch(/^Relay key registration pending since /);
   });
 });

@@ -14,6 +14,7 @@ import viteReact from "@vitejs/plugin-react";
 
 import { ConfigManager } from "./src/utils/serverConfig.ts";
 import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
+import { defaultRelayConfigProblems } from "./src/utils/defaultRelayConfig.ts";
 
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
@@ -128,6 +129,29 @@ export function requireHostedSignalingServer({
   if (signalingServerUrl === undefined || signalingServerUrl.trim() === "")
     throw new Error(
       "VITE_SIGNALING_SERVER_URL is not set. A hosted build needs the address of the standalone peer-coordination broker, because the app's own origin serves no signaling. Set it to the broker's ws: or wss: URL and rebuild.",
+    );
+}
+
+/**
+ * Refuses a `vite build` whose default relay variables the page would refuse
+ * at load ({@link defaultRelayConfigProblems}): one set without the other, or
+ * either not a url of its kind.
+ */
+export function requireValidDefaultRelay({
+  command,
+  mode,
+}: Pick<ConfigEnv, "command" | "mode">): void {
+  if (command !== "build") return;
+  const env = loadEnv(mode, import.meta.dirname, "VITE_");
+  const problems = defaultRelayConfigProblems(
+    (env["VITE_DEFAULT_RELAY_TURN_URL"] ?? "").trim(),
+    (env["VITE_DEFAULT_RELAY_REGISTRAR_URL"] ?? "").trim(),
+  );
+  if (problems.length > 0)
+    throw new Error(
+      `The default relay is misconfigured: ${problems
+        .map(({ variable, message }) => `VITE_${variable} ${message}`)
+        .join("; ")}. Correct the variables and rebuild.`,
     );
 }
 
@@ -275,6 +299,7 @@ function failOnDependencyReload(): Plugin {
 
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
+  requireValidDefaultRelay(configEnv);
   return {
     // Under Vitest, no HTML fallback: it answers a component's unrouted
     // `/api/` fetch with index.html, whose pre-transform pulls the whole route

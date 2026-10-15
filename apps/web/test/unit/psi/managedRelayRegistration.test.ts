@@ -193,25 +193,18 @@ describe("which runs register", () => {
     ).toEqual(REGISTRAR);
   });
 
-  test("a run relaying through the invitation's relay registers nothing", () => {
+  test("a run whose invitation named a relay registers at its own relay all the same, since it lists both", () => {
     const accepted = record({
       relayRegistrar: REGISTRAR,
       side: "acceptor",
-      exchangeFile: composeManagedExchangeFile({
-        connection: {
-          channel: "webrtc",
-          host: "signaling.example.org",
-          relay: { turn: ["turns:partner.example.org:443"] },
-        },
-        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-      }),
+      exchangeFile: partnerRelayedExchange(),
     });
     expect(
       managedRelayRegistrarForRun(
         accepted,
         ownRelay(["turns:relay.example.org:443"]),
       ),
-    ).toBeUndefined();
+    ).toEqual(REGISTRAR);
   });
 
   test("a browser with no relay of its own, or an exchange not enrolled, registers nothing", () => {
@@ -257,13 +250,37 @@ describe("the rotation write", () => {
     );
   });
 
-  test("stores none on an exchange relaying through its partner's relay, which is never enrolled here", async () => {
+  test("stores it on an exchange whose invitation named a relay as well", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record({
       relayRegistrar: REGISTRAR,
       side: "acceptor",
       exchangeFile: partnerRelayedExchange(),
     });
+    await runManagedRerun(
+      storedRecord.value,
+      {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () =>
+          Promise.resolve({
+            rotatedSecret: generateSharedSecret(),
+            handshake: "carried",
+          }),
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { now: () => NOW.getTime() },
+    );
+    const rotation = vi.mocked(persistManagedExchangeRotation).mock
+      .calls[0]?.[1];
+    expect(rotation).toHaveProperty(
+      "relayRegistrationPendingSince",
+      NOW.toISOString(),
+    );
+  });
+
+  test("stores none on an exchange that names no registrar", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({});
     await runManagedRerun(storedRecord.value, {
       acquireInput: () => Promise.resolve("rows"),
       handshake: () =>

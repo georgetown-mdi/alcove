@@ -11,6 +11,8 @@ describe("parseClientConfig", () => {
       DEPLOYMENT_PROFILE: "hosted",
       ALCOVE_VERSION: "",
       SIGNALING_SERVER_URL: undefined,
+      DEFAULT_RELAY_TURN_URL: "",
+      DEFAULT_RELAY_REGISTRAR_URL: "",
     });
   });
 
@@ -34,6 +36,8 @@ describe("parseClientConfig", () => {
         port: 8443,
         path: "/broker/",
       },
+      DEFAULT_RELAY_TURN_URL: "",
+      DEFAULT_RELAY_REGISTRAR_URL: "",
     });
   });
 
@@ -181,5 +185,45 @@ describe("parseClientConfig", () => {
 
   test("ignores keys it does not define", () => {
     expect(parseClientConfig({ OTHER: "1" })).toEqual(parseClientConfig({}));
+  });
+
+  test("reads the default relay's two values together", () => {
+    const config = parseClientConfig({
+      DEFAULT_RELAY_TURN_URL: " turns:turn.example.org:443?transport=tcp ",
+      DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org",
+    });
+    expect(config.DEFAULT_RELAY_TURN_URL).toBe(
+      "turns:turn.example.org:443?transport=tcp",
+    );
+    expect(config.DEFAULT_RELAY_REGISTRAR_URL).toBe(
+      "https://registrar.example.org",
+    );
+  });
+
+  test.each([
+    [
+      { DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443" },
+      /VITE_DEFAULT_RELAY_REGISTRAR_URL: is not set/,
+    ],
+    [
+      { DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org" },
+      /VITE_DEFAULT_RELAY_TURN_URL: is not set/,
+    ],
+    [
+      {
+        DEFAULT_RELAY_TURN_URL: "stun:stun.example.org:3478",
+        DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org",
+      },
+      /VITE_DEFAULT_RELAY_TURN_URL: must be one turn: or turns: url/,
+    ],
+    [
+      {
+        DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+        DEFAULT_RELAY_REGISTRAR_URL: "http://registrar.example.org/path",
+      },
+      /VITE_DEFAULT_RELAY_REGISTRAR_URL: must be an https:\/\/ url/,
+    ],
+  ])("refuses the default relay %j", (data, message) => {
+    expect(() => parseClientConfig(data)).toThrow(message);
   });
 });

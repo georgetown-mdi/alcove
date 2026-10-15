@@ -165,11 +165,12 @@ export interface RelayUrls {
 }
 
 /**
- * The relay a run's peer connection gathers against, chosen per kind as the
- * command line chooses (`selectRunRelay` in core): the invitation's TURN urls
- * when it names any, else this browser's own; likewise for STUN. With no
- * invitation relay it is this browser's own setting, and with neither it is
- * none. A stored setting this build cannot read is no relay, and is logged.
+ * The relay a run's peer connection gathers against: every relay it may use,
+ * this browser's own and the invitation's. Its TURN urls are this browser's
+ * own followed by the invitation's, each listed once, and its STUN urls
+ * likewise. With neither it is none. A stored setting this build cannot read
+ * adds nothing, and is logged. The command line instead chooses one per kind
+ * (`selectRunRelay` in core).
  */
 export function relayForRun(
   invitationRelay?: RelayUrls,
@@ -182,13 +183,11 @@ export function relayForRun(
         "of its own; set it again in Relay settings",
     );
   const ownRelay = own.kind === "set" ? own.relay : undefined;
-  const invitationTurn = invitationRelay?.turn ?? [];
-  const invitationStun = invitationRelay?.stun ?? [];
-  if (invitationTurn.length + invitationStun.length === 0) return ownRelay;
-  return {
-    turn:
-      invitationTurn.length > 0 ? [...invitationTurn] : (ownRelay?.turn ?? []),
-    stun:
-      invitationStun.length > 0 ? [...invitationStun] : (ownRelay?.stun ?? []),
-  };
+  const turn = [
+    ...new Set([...(ownRelay?.turn ?? []), ...(invitationRelay?.turn ?? [])]),
+  ];
+  const stun = [
+    ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
+  ];
+  return turn.length + stun.length === 0 ? undefined : { turn, stun };
 }

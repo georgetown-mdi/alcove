@@ -12,7 +12,6 @@ import "@mantine/core/styles.css";
 
 import {
   ManagedRelayRegistration,
-  PARTNER_RELAY_TEXT,
   STOPPED_OWN_RELAY_TEXT,
 } from "@recurring/ManagedRelayRegistration";
 import {
@@ -34,9 +33,9 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { RelayRegistrar } from "@alcove/core";
 
-// The Relay registration section of a saved exchange's page: the withheld
-// enrollment of an exchange relaying through its partner's relay, the
-// enrollment form's field problems, the replace choice following the token,
+// The Relay registration section of a saved exchange's page: the
+// enrollment offered whatever relay the invitation named, the enrollment
+// form's field problems, the replace choice following the token,
 // what stopping registration says, and the unconfirmed registration of an
 // exchange enrolled nowhere.
 
@@ -96,19 +95,17 @@ const replaceChoice = () =>
   });
 
 describe("the relay registration section", () => {
-  test("an exchange relaying through its partner's relay withholds enrollment and says why", async () => {
+  test("an exchange whose invitation named a relay offers enrollment", async () => {
     renderSection(
       runnableManagedExchangeOrRefuse(
         buildManagedExchangeRecord(newExchange(true)),
       ),
     );
 
-    const enroll = page.getByRole("button", { name: "Enroll" });
-    await expect.element(enroll).toBeDisabled();
     await expect
-      .element(enroll)
-      .toHaveAccessibleDescription(PARTNER_RELAY_TEXT);
-    await expect.element(addressField()).not.toBeInTheDocument();
+      .element(page.getByRole("button", { name: "Enroll" }))
+      .toBeEnabled();
+    await expect.element(addressField()).toBeInTheDocument();
   });
 
   test("a field the registrar schema refuses is marked invalid and described by the schema's reason", async () => {

@@ -25,17 +25,14 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import { readOwnRelaySetting, relayForRun } from "../transport/ownRelaySetting";
+import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
 import {
   clearManagedExchangeRelayRegistrationPending,
   getManagedExchange,
   persistManagedExchangeRelayRegistrar,
 } from "./managedExchangeStore";
-import {
-  managedExchangeRelaysThroughPartner,
-  runnableManagedExchangeOrRefuse,
-} from "./managedExchangeRecord";
+import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
@@ -66,24 +63,21 @@ export const MANAGED_RELAY_REENROLLMENT_STEP =
 
 /**
  * The registrar a run of `record` registers at: the one the record was
- * enrolled at, when the run relays through this browser's own relay -- the
- * invitation the record was accepted from names no TURN url, and this
- * browser's relay setting names at least one, each minted from the shared
- * secret. `undefined` otherwise: the party that supplies a relay is the one
- * that registers at it.
+ * enrolled at, when the run relays through this browser's own relay -- this
+ * browser's relay setting names at least one TURN url, each minted from the
+ * shared secret. `undefined` otherwise. Whatever relay the invitation names
+ * is listed beside it and decides nothing here.
  */
 export function managedRelayRegistrarForRun(
-  record: Pick<ManagedExchangeRecord, "relayRegistrar" | "exchangeFile">,
+  record: Pick<ManagedExchangeRecord, "relayRegistrar">,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): RelayRegistrar | undefined {
   const registrar = record.relayRegistrar;
-  if (registrar === undefined || managedExchangeRelaysThroughPartner(record))
-    return undefined;
-  const connection = record.exchangeFile.connection;
-  const invitationRelay =
-    connection.channel === "webrtc" ? connection.invitationRelay : undefined;
-  const relay = relayForRun(invitationRelay, readOwn);
-  return relay !== undefined && relay.turn.length > 0 ? registrar : undefined;
+  if (registrar === undefined) return undefined;
+  const own = readOwn();
+  return own.kind === "set" && own.relay.turn.length > 0
+    ? registrar
+    : undefined;
 }
 
 function failureDetail(outcome: RelayRegistrationFailure): string {

@@ -7,6 +7,7 @@ import {
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
   MAX_NAME_LENGTH,
+  MAX_RELAY_LOCATOR_URLS,
   assertPayloadSendDisclosed,
   decodeInvitation,
   deriveAcceptedLinkageTerms,
@@ -248,6 +249,111 @@ describe("generateInvitation", () => {
         path: "/api/",
         relay: ownRelay,
       });
+    });
+  });
+
+  describe("with a default relay in the build", () => {
+    const DEFAULT_RELAY = {
+      turnUrl: "turns:turn.example.org:443?transport=tcp",
+      registrarUrl: "https://registrar.example.org",
+    };
+    const WEBRTC_ENDPOINT = {
+      channel: "webrtc",
+      host: "example.org",
+      port: 8443,
+      path: "/api/",
+    };
+
+    function stubOwnRelay(ownRelay: {
+      turn: Array<string>;
+      stun: Array<string>;
+    }) {
+      const values = new Map<string, string>();
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+        removeItem: (key: string) => void values.delete(key),
+      });
+      writeOwnRelaySetting(ownRelay);
+    }
+
+    async function mintedEndpoint(
+      setting: () => typeof DEFAULT_RELAY | undefined,
+    ) {
+      const { encoded } = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: setting,
+      });
+      return (await decodeInvitation(encoded)).connectionEndpoint;
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    test("names the default relay alone, and contacts no registrar", async () => {
+      const fetchSpy = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", fetchSpy);
+      expect(await mintedEndpoint(() => DEFAULT_RELAY)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: { turn: [DEFAULT_RELAY.turnUrl] },
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    test("names the own relay's TURN urls, then the default relay's, then the own STUN urls", async () => {
+      const ownRelay = {
+        turn: ["turns:relay.example.org:443?transport=tcp"],
+        stun: ["stun:relay.example.org:3478"],
+      };
+      stubOwnRelay(ownRelay);
+      expect(await mintedEndpoint(() => DEFAULT_RELAY)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: {
+          turn: [...ownRelay.turn, DEFAULT_RELAY.turnUrl],
+          stun: ownRelay.stun,
+        },
+      });
+    });
+
+    test("names no relay when the build names none and this browser has none", async () => {
+      expect(await mintedEndpoint(() => undefined)).toStrictEqual(
+        WEBRTC_ENDPOINT,
+      );
+    });
+
+    test("leaves the default relay out when the own relay fills the locator", async () => {
+      const ownRelay = {
+        turn: Array.from(
+          { length: MAX_RELAY_LOCATOR_URLS },
+          (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
+        ),
+        stun: [],
+      };
+      stubOwnRelay(ownRelay);
+      expect(await mintedEndpoint(() => DEFAULT_RELAY)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: { turn: ownRelay.turn },
+      });
+    });
+
+    test("names nothing in an sftp invitation", async () => {
+      const connectionEndpoint = {
+        channel: "sftp",
+        host: "sftp.example.org",
+      } as const;
+      const { encoded } = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        connectionEndpoint,
+        defaultRelay: () => DEFAULT_RELAY,
+      });
+      expect(
+        (await decodeInvitation(encoded)).connectionEndpoint,
+      ).toStrictEqual(connectionEndpoint);
     });
   });
 

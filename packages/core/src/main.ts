@@ -844,6 +844,7 @@ export {
 } from "./webAppSignaling";
 export type { ResolveWebAppSignalingServerOptions } from "./webAppSignaling";
 export {
+  deriveRelayExchangeId,
   deriveRelayKey,
   mintRelayCredential,
   mintRunRelayCredential,
@@ -853,6 +854,7 @@ export {
 export type { RelayCredential } from "./relayCredential";
 export {
   enrollRelayKey,
+  enrollRelayKeyWithoutToken,
   registerRelayKey,
   RELAY_REGISTRAR_REQUEST_TIMEOUT_MS,
   RELAY_REGISTRATION_RETRY_DELAYS_MS,

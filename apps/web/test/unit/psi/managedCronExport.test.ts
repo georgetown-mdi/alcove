@@ -905,4 +905,109 @@ describe("the relay key registration", () => {
       );
     });
   });
+
+  describe("an enrolled record whose invitation named the build's default relay", () => {
+    const DEFAULT_TURN = "turns:turn.example.org:443?transport=tcp";
+    const PARTNER_TURN = "turns:partner-relay.example.org:443?transport=tcp";
+    const defaultRelay = () => ({
+      turnUrl: DEFAULT_TURN,
+      registrarUrl: "https://registrar.example.org",
+    });
+
+    function invitedRecord(
+      relay: { turn?: Array<string>; stun?: Array<string> },
+      overrides: Partial<NewManagedExchange> = {},
+    ): RunnableManagedExchangeRecord {
+      return managedRecord({
+        side: "acceptor",
+        exchangeFile: composeManagedDocument(
+          { side: "acceptor", linkageTerms },
+          webrtcLocatorFromEndpoint({
+            channel: "webrtc",
+            host: "signaling.example.org",
+            relay,
+          }),
+        ),
+        relayRegistrar: REGISTRAR,
+        ...overrides,
+      });
+    }
+
+    function exported(record: RunnableManagedExchangeRecord) {
+      const composed = composeManagedCronExport(
+        record,
+        ownRelay([OWN_TURN]),
+        defaultRelay,
+      );
+      const connection = parseExchangeSpec(
+        parseSensitiveYaml(composed.config.text, "exported alcove.yaml"),
+      ).connection;
+      if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+      return {
+        connection,
+        text: composed.config.text,
+        key: KeyFileSchema.parse(JSON.parse(composed.key.text)),
+      };
+    }
+
+    test("one naming only the default relay keeps the registrar and own TURN url, and writes no invitation_relay", () => {
+      const { connection, text, key } = exported(
+        invitedRecord(
+          { turn: [DEFAULT_TURN] },
+          { relayRegistrationPendingSince: PENDING_SINCE },
+        ),
+      );
+      expect(connection.relayRegistrar).toEqual(REGISTRAR);
+      expect(connection.turn).toEqual([{ url: OWN_TURN }]);
+      expect(connection.invitationRelay).toBeUndefined();
+      expect(text).not.toContain("invitation_relay");
+      expect(text).not.toContain(DEFAULT_TURN);
+      expect(selectRunRelay(connection).turn?.source).toBe("own");
+      expect(key.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    });
+
+    test("one naming the default relay beside a STUN url keeps the STUN url alone", () => {
+      const { connection } = exported(
+        invitedRecord({
+          turn: [DEFAULT_TURN],
+          stun: ["stun:stun.example.org:3478"],
+        }),
+      );
+      expect(connection.invitationRelay).toEqual({
+        stun: ["stun:stun.example.org:3478"],
+      });
+      expect(connection.relayRegistrar).toEqual(REGISTRAR);
+    });
+
+    test("one naming the default relay beside the inviter's writes the inviter's alone and drops the registrar", () => {
+      const { connection, text, key } = exported(
+        invitedRecord(
+          { turn: [PARTNER_TURN, DEFAULT_TURN] },
+          { relayRegistrationPendingSince: PENDING_SINCE },
+        ),
+      );
+      expect(connection.invitationRelay).toEqual({ turn: [PARTNER_TURN] });
+      expect(text).not.toContain(DEFAULT_TURN);
+      expect(connection.relayRegistrar).toBeUndefined();
+      expect(connection.turn).toBeUndefined();
+      expect(key).not.toHaveProperty("relayRegistrationPendingSince");
+    });
+
+    test("a build naming no default relay counts every url the invitation names", () => {
+      const record = invitedRecord({ turn: [DEFAULT_TURN] });
+      const connection = parseExchangeSpec(
+        parseSensitiveYaml(
+          composeManagedCronExport(
+            record,
+            ownRelay([OWN_TURN]),
+            () => undefined,
+          ).config.text,
+          "exported alcove.yaml",
+        ),
+      ).connection;
+      if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+      expect(connection.invitationRelay).toEqual({ turn: [DEFAULT_TURN] });
+      expect(connection.relayRegistrar).toBeUndefined();
+    });
+  });
 });

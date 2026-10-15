@@ -16,6 +16,7 @@ import {
   managedAcceptorSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
 import { BROKER_REGISTRATION_TIMEOUT_MS } from "@psi/transport/rendezvous";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import type {
@@ -495,7 +496,7 @@ describe("beginManagedRendezvous: relay", () => {
     },
   );
 
-  test("an acceptor's record passes the relay its invitation named", async () => {
+  test("an acceptor's record lists this browser's own relay, then the one its invitation named", async () => {
     stubAppLocation();
     stubOwnRelay();
     const named = {
@@ -511,7 +512,52 @@ describe("beginManagedRendezvous: relay", () => {
       { flows },
     );
 
-    expect(acceptorCalls[0].options?.relay).toEqual(named);
+    expect(acceptorCalls[0].options?.relay).toEqual({
+      turn: [...ownRelay.turn, ...named.turn],
+      stun: named.stun,
+    });
+  });
+
+  test("an acceptor's record lists the build's default relay last once this run enrolled there", async () => {
+    stubAppLocation();
+    stubOwnRelay();
+    const defaultTurnUrl = "turns:turn.example.org:443?transport=tcp";
+    const named = {
+      turn: [
+        "turns:partner-relay.example.org:443?transport=tcp",
+        defaultTurnUrl,
+      ],
+    };
+    const { flows, acceptorCalls } = recordingFlows();
+    const onRunNotice = vi.fn();
+
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      exchangeFile({ ...webrtcLocator, relay: named }),
+      {
+        flows,
+        onRunNotice,
+        defaultRelay: {
+          setting: () => ({
+            turnUrl: defaultTurnUrl,
+            registrarUrl: "https://registrar.example.org",
+          }),
+          enroll: () =>
+            Promise.resolve({
+              kind: "registered",
+              maxAgeDays: null,
+              lapsesAt: null,
+            }),
+        },
+      },
+    );
+
+    expect(acceptorCalls[0].options?.relay).toEqual({
+      turn: [...ownRelay.turn, named.turn[0], defaultTurnUrl],
+      stun: [],
+    });
+    expect(onRunNotice).not.toHaveBeenCalled();
   });
 
   test("with no own relay the flows get none", async () => {
@@ -522,4 +568,40 @@ describe("beginManagedRendezvous: relay", () => {
 
     expect(acceptorCalls[0].options?.relay).toBeUndefined();
   });
+
+  test.each(["inviter", "acceptor"] as const)(
+    "the %s's run says once, before its flow starts, that the default relay could not be set up when its registrar never answers",
+    async (side) => {
+      stubAppLocation();
+      const events: Array<unknown> = [];
+      const flows: ManagedRendezvousFlows = {
+        listenAsInviter: (_secret, options) => {
+          events.push({ relay: options?.relay });
+          return Promise.resolve(fakePeer("inviter"));
+        },
+        dialAsAcceptor: (_secret, _endpoint, options) => {
+          events.push({ relay: options?.relay });
+          return Promise.resolve([fakePeer("acceptor"), fakeConn()]);
+        },
+      };
+
+      await begin(side, generateSharedSecret(), exchangeFile(), {
+        flows,
+        onRunNotice: (message) => events.push(message),
+        defaultRelay: {
+          setting: () => ({
+            turnUrl: "turns:turn.example.org:443?transport=tcp",
+            registrarUrl: "https://registrar.example.org",
+          }),
+          enroll: () => new Promise<never>(() => {}),
+          dialWaitMs: 50,
+        },
+      });
+
+      expect(events).toEqual([
+        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+        { relay: undefined },
+      ]);
+    },
+  );
 });

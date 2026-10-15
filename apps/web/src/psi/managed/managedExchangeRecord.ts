@@ -1213,21 +1213,6 @@ export function applyManagedExchangeRelayRegistrar(
 }
 
 /**
- * Whether the invitation `record` was accepted from names a TURN relay. Its
- * runs then relay through the partner's relay, which the partner registers
- * at, so this browser registers nothing for it.
- */
-export function managedExchangeRelaysThroughPartner(
-  record: Pick<ManagedExchangeRecord, "exchangeFile">,
-): boolean {
-  const connection = record.exchangeFile.connection;
-  return (
-    connection.channel === "webrtc" &&
-    (connection.invitationRelay?.turn ?? []).length > 0
-  );
-}
-
-/**
  * Drop the pending relay key registration once the registrar confirmed it
  * holds the key derived from `confirmedSecret`. A record holding another
  * secret, or no pending registration, comes back unchanged, the same object.
