@@ -62,6 +62,10 @@ your own environment:
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
   [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
+- [The counts publisher, the alarms and the runbook's `nft`
+  block](#monitoring) have not yet run on the project's relay host; its tests
+  drive the publisher against a stubbed `aws` and hold its timer out of the
+  busy hours.
 
 The measurement this reference implements, and the shapes it rules out, are in
 [`docs/notes/webrtc-relay-deployment.md`](../../docs/notes/webrtc-relay-deployment.md);
@@ -98,8 +102,9 @@ other repository-level coupling is the docker Dependabot entry for
 4. Run `install.sh` as root. It adds [`/swapfile`](#os-updates) where it is not
    set up, installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
-   renders the configuration, installs the unit and the three timers, and on
-   Amazon Linux 2023 the [OS update](#os-updates) timer,
+   renders the configuration, installs the unit and the three timers, on
+   Amazon Linux 2023 the [OS update](#os-updates) timer, where `relay.env`
+   names a metrics region the [counts publisher](#monitoring)'s timer,
    starts the relay, starts the registrar where the host holds its token, and
    runs `verify.sh`.
 5. Read `verify.sh`'s output. A relay that starts and cannot allocate looks
@@ -143,7 +148,8 @@ when its operator runs `install.sh` from that commit's checkout.
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
-| `aws/` | The AWS-specific half: instance provisioning, the IMDSv2 external-address helper, and the demo box's stop/start scripts |
+| `aws/` | The AWS-specific half: instance provisioning, the IMDSv2 external-address helper, the registrar's counts publisher, and the demo box's stop/start scripts |
+| `aws/publish-metrics.sh`, `aws/alcove-relay-metrics.service`, `.timer` | Publishes the registrar's counts to CloudWatch every 5 minutes outside the host's busy hours, where `relay.env` names a region. See [Monitoring](#monitoring) |
 
 ## Per-exchange keys
 
@@ -982,10 +988,190 @@ a disk swapfile before it installs anything:
   `/sys/fs/cgroup/system.slice/alcove-relay-os-update.service/` while it runs;
   the measured upgrade peaked at 141 MB of memory and 285 MB of swap there.
 
+## Monitoring
+
+CloudWatch alarms email the owner when the relay's traffic, the account's
+spend, or the registrar's enrollments without a token rise past a threshold
+derived below, and when the publisher of those counts stops publishing. They are created by hand and recorded, for the relay's
+OpenTofu root to import, in [aws/provision.md](aws/provision.md), Alarms.
+
+### Publishing the registrar's counts
+
+`aws/publish-metrics.sh`, run by `alcove-relay-metrics.timer`, reads the
+counters file the registrar writes ([The registrar](#the-registrar), What it
+counts) and publishes how much each count rose since its last publish, as a
+metric of the same name in the namespace `Alcove/Relay`, with `aws cloudwatch
+put-metric-data` under the instance role.
+
+- **Where.** Only where `relay.env` sets `ALCOVE_RELAY_METRICS_REGION`;
+  `install.sh` leaves the timer disabled elsewhere. The instance role needs
+  the permission [aws/provision.md](aws/provision.md), The instance role,
+  names.
+- **When.** Every 5 minutes, except in hours 08 to 10 UTC, when the daily
+  jobs run ([The daily schedule](#the-daily-schedule)): dnf alone ran this
+  instance out of memory before it had disk swap. A rise in those hours is
+  published by the 11:00 run, so that datapoint can hold three hours of
+  counts, which [the enrollment alarm](#the-alarms) allows for.
+- **No maintenance lock.** The publisher is not a daily job and restarts
+  nothing, so it does not take [the maintenance
+  lock](#the-daily-schedule); the timer keeps it out of the jobs' hours, and
+  a run held behind a job would fail after two hours.
+- **The heartbeat.** The first run of each UTC day that reads the counters
+  file also publishes `publisher_heartbeat`, value 1, in the same call as any
+  rise, so [an alarm](#the-alarms) can tell a publisher that fails from a
+  quiet relay. A run that fails, or finds no counters file, sends none.
+- **At install.** Where it enables the timer, `install.sh` first runs
+  `publish-metrics.sh --heartbeat`, one test publish of a heartbeat, and stops
+  naming the cause where there is no `aws` command or CloudWatch refuses it.
+- **What it costs.** A run where no count rose, past the day's first, reads
+  one small file and starts no `aws` process. A run that publishes starts one
+  for a few seconds, niced, idle-class for I/O, and stopped after 2 minutes;
+  its peak memory on the project's host is not yet measured.
+- **What it keeps.** The counts it last published and the UTC day of the last
+  heartbeat, in `/var/lib/alcove-relay-metrics/published`. The first run
+  records the counts and publishes none of them; a changed `started` in the
+  counters file counts from 0; a failed publish keeps the old record, so the
+  next run publishes the rise, and the heartbeat, again. A run writes one line
+  to `journalctl -u alcove-relay-metrics.service` when it publishes, records
+  the first counts, fails, or finds no counters file, and none on a run where
+  nothing was published.
+
+### The alarms
+
+Each alarm notifies an SNS topic the owner's email subscribes to:
+`alcove-relay-alarms` in the instance's region, and `alcove-billing-alarms`
+in us-east-1, the one region AWS publishes billing metrics in. For the
+alarms in the table, missing data is not breaching: the publisher sends
+nothing on a quiet run.
+
+| alarm | metric, statistic and period | fires when it exceeds |
+| --- | --- | --- |
+| `alcove-account-estimated-charges`, us-east-1 | `AWS/Billing` `EstimatedCharges`, `Currency=USD`, maximum over 6 hours | the last full month's bill times 31, divided by that month's days |
+| `alcove-relay-network-out` | `AWS/EC2` `NetworkOut` of the relay instance, sum over 1 hour | the largest hourly sum in the last full month |
+| `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 30 times `ALCOVE_RELAY_TOTAL_QUOTA` |
+| `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
+
+`alcove-relay-publisher-heartbeat` watches the publisher itself:
+`Alcove/Relay` `publisher_heartbeat`, sum over 1 day, firing when two
+consecutive days hold no datapoint. For it alone, missing data is breaching.
+
+How each threshold is derived:
+
+- **Spend.** A month spending at the last full month's daily rate stays
+  under it, even at 31 days. It fires only once this month's total passes a
+  full 31-day month at that rate, so a month spending faster than the last
+  trips it before the month ends, not early in it. The 6 hours
+  are an arbitrary working value longer than the
+  billing metric's update interval.
+- **Traffic.** No hour of the last full month sent as many bytes. Read it
+  from the instance's own `NetworkOut` history, at a 1-hour period.
+- **Enrollments.** At `ALCOVE_RELAY_TOTAL_QUOTA` allocations, two to an
+  exchange, each held about 600 s, the relay at full use starts
+  `ALCOVE_RELAY_TOTAL_QUOTA` x 3 exchanges an hour, each enrolled once
+  ([The registrar](#the-registrar), Enrollment without a token, The
+  ceiling). More enrollments than that are more exchanges than the relay
+  could carry if every one relayed. A 6-hour sum holds at most 6 hours of
+  enrollments plus the longest gap between the publisher's runs, 07:55 to
+  11:00 UTC (3 hours 5 minutes), which the 11:00 run publishes as one
+  datapoint: under 9 hours 5 minutes in all, which is under 10 hours. So the
+  threshold is 10 hours at full use, 30 times the quota, and ordinary
+  enrollments in the jobs' hours do not trip it at 11:00. The cost is slower
+  detection: an hourly sum would fire within the hour enrollments pass full
+  use, while this one fires up to 6 hours later, and only once they average
+  five thirds of full use over the 6 hours. Change the threshold with the
+  quota.
+- **Heartbeat.** A working publisher puts one heartbeat in each UTC day,
+  whatever the relay's traffic, at the day's first run, normally 00:00 UTC,
+  or 11:00 or later where the runs before the skipped hours failed. Two days
+  rather than one, so the day in progress, before its first run, is not taken
+  for a publisher that fails. It fires within about three days of the
+  publisher's last success.
+- **Refusals.** Each bound the registrar refuses at is sized to admit
+  legitimate use ([The registrar](#the-registrar), Enrollment without a
+  token), so a refusal is a client past it. A ceiling refusal also refuses
+  every other new enrollment without a token.
+- **Again after the default.** Where the month a baseline came from preceded
+  the web app's default use of this relay, record both baselines again a
+  month after that default reached production, since it changes the relay's
+  normal traffic and spend.
+
+### When an alarm fires
+
+On the relay host, as root. What is happening now, for any alarm:
+
+```sh
+cat /var/lib/alcove-relay/registrar-counters
+# Client connections on 443 by address, most first.
+ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*$//' | sort | uniq -c | sort -rn | head
+```
+
+- **`alcove-relay-network-out`.** `ss -tin state established '( sport = :443 )'`
+  lists each client connection with `bytes_acked`, the bytes sent to it; the
+  addresses holding most of them are where the traffic goes. coturn logs no
+  line for an allocation and no byte count
+  ([the deployment record](../../docs/notes/webrtc-relay-deployment.md#what-the-relay-host-keeps)),
+  so its journal cannot trace the traffic to an exchange; `journalctl -u
+  alcove-relay.service --since -1h | grep -c 'are wrong'` counts failed
+  authentications, a client guessing credentials. The front's journal
+  (`journalctl -u alcove-relay-front.service`) names a client address beside
+  the service port when a service refused or reset it. Block the addresses
+  sending most of the traffic; revoke an exchange known to be theirs.
+- **`alcove-relay-tokenless-enrollments` and the three refusal alarms.** The
+  registrar's journal (`journalctl -u alcove-relay-registrar.service --since
+  -1h`) has one line per request, naming its method, path and status, and a
+  `credential issuance:` line for each exchange written. It logs no address,
+  so an address that keeps appearing in the connection count above while the
+  counts rise is the likeliest source: block it. Enrollments above the
+  threshold from many addresses, or any ceiling refusal, mean turning
+  enrollment without a token off.
+- **`alcove-account-estimated-charges`.** The month's cost by usage type:
+  `aws ce get-cost-and-usage --time-period Start=<first of the month>,End=<tomorrow>
+  --granularity MONTHLY --metrics UnblendedCost --group-by
+  Type=DIMENSION,Key=USAGE_TYPE`, from a machine holding the account's
+  credentials. Data transfer out of the instance is the relay's traffic: as
+  for `alcove-relay-network-out`. Anything else is not the relay's.
+- **`alcove-relay-publisher-heartbeat`.** The publisher has sent nothing for
+  two UTC days, so the alarms on the registrar's counts would not fire either.
+  `journalctl -u alcove-relay-metrics.service --since -3days` names the cause
+  on its last lines: CloudWatch refusing the publish (the instance role's
+  permission, or the network), a counters file it cannot read or that is
+  malformed, or no counters file, where the registrar is not running.
+  `systemctl list-timers alcove-relay-metrics.timer` shows whether the timer
+  still runs. After the fix, `systemctl start alcove-relay-metrics.service`
+  runs it once, and the alarm returns to OK at the next day's heartbeat.
+
+The responses:
+
+- **Revoke an exchange.** `revoke-exchange.sh <exchange-id>`
+  ([Per-exchange keys](#per-exchange-keys)). An allocation already open is not
+  cut, so block its client's address too.
+- **Block an address at the 443 front.** With `nft`, which Amazon Linux 2023
+  uses for its firewall rules:
+
+  ```sh
+  nft add table inet alcove_block
+  nft add chain inet alcove_block input '{ type filter hook input priority 0; }'
+  nft add rule inet alcove_block input ip saddr <address> tcp dport 443 drop
+  ```
+
+  The first two lines change nothing where the table and chain exist; use
+  `ip6 saddr` for an IPv6 address. A new connection from it is dropped; an
+  open one gets nothing more through, and the front closes it after 900 s
+  idle ([The 443 front](#the-443-front), Bounds). The rules last until a
+  reboot. `nft -a list table inet alcove_block` lists them with their
+  handles; `nft delete rule inet alcove_block input handle <handle>` removes
+  one, and `nft delete table inet alcove_block` removes them all.
+- **Turn enrollment without a token off.** Set
+  `ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=off` in `relay.env`, then
+  `systemctl restart alcove-relay-registrar.service`
+  ([The registrar](#the-registrar), Enrollment without a token). A browser run
+  then enrolls nothing and dials without the default relay, by STUN alone,
+  until it is turned back on; rows already enrolled lapse within 70 minutes.
+
 ## Portability
 
 The core of this directory is cloud-neutral. Moving it to Azure, to another
-provider, or on-prem changes three things and nothing else:
+provider, or on-prem changes four things and nothing else:
 
 - **The external address.** `render-config.sh` calls whatever
   `ALCOVE_RELAY_EXTERNAL_IP_HELPER` names and requires only that it print
@@ -996,10 +1182,14 @@ provider, or on-prem changes three things and nothing else:
 - **OS updates.** [The update unit](#os-updates) is
   installed only on Amazon Linux 2023; elsewhere the distribution's own
   automatic updates take its place.
+- **Monitoring.** [The counts publisher](#monitoring) calls CloudWatch, and
+  runs only where `ALCOVE_RELAY_METRICS_REGION` is set; elsewhere leave it
+  unset and read the counters file with that provider's own tooling.
 
 The image, the configuration, the units, the credential model, and the
 verification are the same everywhere. Neither `install.sh`'s `dnf` lines nor the
-`aws/` directory is reached by anything else here; on a distribution without
+`aws/` directory is reached by anything else here, but for the publisher's
+timer, which stays disabled without that setting; on a distribution without
 `dnf`, install podman or docker with that distribution's own package manager and
 `install.sh` uses what it finds.
 

@@ -10,7 +10,8 @@
 # creates the data directory that holds the per-exchange secrets table, installs
 # the scripts under /opt, obtains a certificate if none is present, renders
 # coturn's configuration, installs the units and the three timers, on Amazon
-# Linux 2023 the OS update timer too, and starts the relay, the front,
+# Linux 2023 the OS update timer too, where relay.env names a metrics region
+# the counts publisher's timer, and starts the relay, the front,
 # and the registrar where the host holds its token. It then runs verify.sh,
 # which is the only step that says whether the result carries an exchange.
 #
@@ -304,7 +305,7 @@ install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential
   "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
-install -m 755 "$HERE/aws/external-ip.sh" "$LIBEXEC/aws/"
+install -m 755 "$HERE/aws/external-ip.sh" "$HERE/aws/publish-metrics.sh" "$LIBEXEC/aws/"
 install -m 755 "$HERE/certs/renew.sh" "$HERE/certs/deploy-hook.sh" "$LIBEXEC/certs/"
 
 # --- the certificate --------------------------------------------------------
@@ -364,6 +365,7 @@ systemd-tmpfiles --create /etc/tmpfiles.d/alcove-maintenance.conf \
 install -m 644 "$HERE/certs/alcove-relay-cert.service" "$HERE/certs/alcove-relay-cert.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-verify.service" "$HERE/alcove-relay-verify.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-sweep.timer" "$UNIT_DIR/"
+install -m 644 "$HERE/aws/alcove-relay-metrics.service" "$HERE/aws/alcove-relay-metrics.timer" "$UNIT_DIR/"
 # The update unit passes --releasever=latest, a release name Amazon Linux 2023's
 # versioned repositories define, so it is installed only there; elsewhere the
 # distribution's own automatic updates are the operator's to set up.
@@ -408,6 +410,22 @@ if [ "$OS_UPDATES" = 1 ]; then
 else
   systemctl disable --now alcove-relay-os-update.timer 2>/dev/null || true
   log "WARNING: not Amazon Linux 2023, so no automatic OS updates are set up; configure the distribution's own"
+fi
+
+# The publish calls CloudWatch under the instance role, so it runs only where
+# the operator named the region, having granted the role its permission
+# (aws/provision.md, The instance role).
+if [ -n "${ALCOVE_RELAY_METRICS_REGION:-}" ]; then
+  # A publisher that always fails sends no datapoint, which every alarm but
+  # the heartbeat's treats as a quiet relay; one test publish finds that here.
+  ALCOVE_RELAY_ENV_FILE="$ENV_FILE" "$LIBEXEC/aws/publish-metrics.sh" --heartbeat \
+    || die "the test publish to CloudWatch failed (above), so no alarm would see the registrar's counts; fix the cause and run again, or unset ALCOVE_RELAY_METRICS_REGION in $ENV_FILE"
+  systemctl enable --now alcove-relay-metrics.timer \
+    || die "alcove-relay-metrics.timer did not start; no alarm would see the registrar's counts. journalctl -u alcove-relay-metrics.timer"
+  log "the registrar's counts are published to CloudWatch in $ALCOVE_RELAY_METRICS_REGION every 5 minutes outside hours 08 to 10 UTC"
+else
+  systemctl disable --now alcove-relay-metrics.timer 2>/dev/null || true
+  log "ALCOVE_RELAY_METRICS_REGION is unset in $ENV_FILE, so the registrar's counts are not published"
 fi
 
 if [ "$RUNTIME" = docker ]; then

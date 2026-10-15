@@ -1,0 +1,48 @@
+# Publishes the registrar's counts to CloudWatch (README.md, Monitoring).
+# install.sh installs it on every host and enables its timer only where
+# relay.env sets ALCOVE_RELAY_METRICS_REGION. The aws process takes its
+# credentials from the instance role (aws/provision.md, The instance role).
+
+[Unit]
+Description=Publish the Alcove relay registrar's counts to CloudWatch
+Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/alcove-relay/aws/publish-metrics.sh
+StandardInput=null
+# Bounds a stalled publish, so a run started in the last allowed slot ends
+# before the busy hours the timer keeps out of. An arbitrary working value.
+TimeoutStartSec=2min
+Nice=19
+IOSchedulingClass=idle
+StateDirectory=alcove-relay-metrics
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/alcove-relay-metrics
+
+# Root, which owns relay.env, holding only the capability that reads the
+# counters file in the relay account's mode-700 directory.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
