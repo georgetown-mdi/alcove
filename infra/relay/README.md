@@ -66,10 +66,10 @@ your own environment:
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
   [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
-- [The counts publisher, the alarms and the runbook's `nft`
-  block](#monitoring) have not yet run on the project's relay host; its tests
-  drive the publisher against a stubbed `aws` and hold its timer out of the
-  busy hours.
+- [The counts publisher and the alarms](#monitoring) ran on the project's
+  relay host on 2026-10-15; [the runbook's block
+  command](#when-an-alarm-fires) has not yet run there. The tests drive the
+  publisher against a stubbed `aws` and hold its timer out of the busy hours.
 
 The measurement this reference implements, and the shapes it rules out, are in
 [`docs/notes/webrtc-relay-deployment.md`](../../docs/notes/webrtc-relay-deployment.md);
@@ -1191,22 +1191,21 @@ The responses:
 - **Revoke an exchange.** `revoke-exchange.sh <exchange-id>`
   ([Per-exchange keys](#per-exchange-keys)). An allocation already open is not
   cut, so block its client's address too.
-- **Block an address at the 443 front.** With `nft`, which Amazon Linux 2023
-  uses for its firewall rules:
+- **Block an address at the 443 front.** Insert a rule that drops its
+  traffic to port 443:
 
   ```sh
-  nft add table inet alcove_block
-  nft add chain inet alcove_block input '{ type filter hook input priority 0; }'
-  nft add rule inet alcove_block input ip saddr <address> tcp dport 443 drop
+  iptables -I INPUT -s <address> -p tcp --dport 443 -j DROP
   ```
 
-  The first two lines change nothing where the table and chain exist; use
-  `ip6 saddr` for an IPv6 address. A new connection from it is dropped; an
+  Use `ip6tables` for an IPv6 address. A new connection from it is dropped; an
   open one gets nothing more through, and the front closes it after 900 s
   idle ([The 443 front](#the-443-front), Bounds). The rules last until a
-  reboot. `nft -a list table inet alcove_block` lists them with their
-  handles; `nft delete rule inet alcove_block input handle <handle>` removes
-  one, and `nft delete table inet alcove_block` removes them all.
+  reboot. `iptables -L INPUT -n --line-numbers` lists them with their numbers;
+  `iptables -D INPUT <number>` removes one. On a host that has `nft` instead,
+  `nft add rule` into an `input` chain with `ip saddr <address> tcp dport 443
+  drop` does the same, and `nft -a list ruleset` shows the handle that
+  `nft delete rule` takes.
 - **Turn enrollment without a token off.** Set
   `ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=off` in `relay.env`, then
   `systemctl restart alcove-relay-registrar.service`
