@@ -982,6 +982,10 @@ class RoundGrouping implements RoundGroupingExchange {
  *   passed. Invoked under `"many-to-many"` alone, the one cardinality that
  *   forms blocks; every other cardinality leaves it uncalled, having no
  *   grouping beyond the table's own shape.
+ * @param reportRoundOfPair - Optional callback handed, once the table is
+ *   built, the 0-based linkage-key round each pair of the returned table was
+ *   matched in, entry for entry. Each party counts its own rounds, so the
+ *   value is this party's local knowledge and nothing extra is exchanged.
  * @returns An {@link AssociationTable}: `[0]` holds the local matched row
  *   indices ascending, `[1]` the corresponding partner row indices in the
  *   same pairing order. The local half is STRICTLY ascending except where
@@ -1002,6 +1006,7 @@ export async function linkViaPSI(
   verbosity: number = 0,
   setStage?: (id: string) => void,
   reportEntityClusters?: (summary: EntityClusterSummary) => void,
+  reportRoundOfPair?: (roundOfPair: Array<number>) => void,
 ) {
   if (participant.config.role === "either")
     throw new InternalConsistencyError("the participant's role is unresolved");
@@ -1670,8 +1675,8 @@ export async function linkViaPSI(
       returnedListRules(sentGroups),
     );
 
-  if (!sides.partnerKeepsDuplicates)
-    return identifiedIndexMap.reduce(
+  if (!sides.partnerKeepsDuplicates) {
+    const table = identifiedIndexMap.reduce(
       (acc, x, i) => {
         acc[0].push(originalIndices[i]);
         acc[1].push(x.theirIndex);
@@ -1679,6 +1684,11 @@ export async function linkViaPSI(
       },
       [[], []] as [Array<number>, Array<number>],
     );
+    reportRoundOfPair?.(
+      identifiedIndexIterationMap.map((entry) => entry.iteration),
+    );
+    return table;
+  }
 
   // Our own list came back EXPANDED: our matched records in the order we
   // sent them, each followed by the partner rows of the group it matched.
@@ -1690,7 +1700,8 @@ export async function linkViaPSI(
   // the round's own blocks below. Only that cardinality forms them: where one
   // side keeps its distinctness a cluster is one record of that side with the
   // group facing it, which the table's own shape already gives.
-  const roundOfPair: Array<number> | undefined = bothSided ? [] : undefined;
+  const roundOfPair: Array<number> | undefined =
+    bothSided || reportRoundOfPair !== undefined ? [] : undefined;
   const table: [Array<number>, Array<number>] = [[], []];
   let cursor = 0;
   for (let i = 0; i < originalIndices.length; ++i) {
@@ -1710,6 +1721,7 @@ export async function linkViaPSI(
     );
     reportEntityClusters?.(clusters);
   }
+  if (roundOfPair) reportRoundOfPair?.(roundOfPair);
   return table;
 }
 

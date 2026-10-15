@@ -189,6 +189,15 @@ export interface PreparedExchange {
    * changes with it.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /**
+   * Whether this party's result names the linkage key each pair matched on,
+   * passed to {@link buildOutputTable} as {@link ExchangeResult.matchedKeyOfPair}.
+   * Local to this party like `includeOwnColumns`: each party counts its own
+   * cascade rounds, so nothing is exchanged for it and no commitment binds it.
+   * Set by the caller, not {@link prepareForExchange}, and only on a `cascade`
+   * `psi` run: the PSI phase refuses it on any other.
+   */
+  includeMatchingKey?: boolean;
   dataset: StandardizedDataset;
   /**
    * This party's own `signing` block, taken from the exchange spec so the
@@ -964,6 +973,13 @@ export interface ExchangeResult {
    * front ends render from it.
    */
   entityClusters?: EntityClusterSummary;
+  /**
+   * The name of the linkage key each pair of {@link associationTable} was
+   * matched on, entry for entry, for {@link buildOutputTable} to write. Present
+   * only where the caller set {@link PreparedExchange.includeMatchingKey} and
+   * under the same withholding gate the table takes.
+   */
+  matchedKeyOfPair?: Array<string>;
   /** Linkage terms received from the partner during the handshake. */
   partnerTerms: LinkageTerms;
   /**
@@ -1775,29 +1791,34 @@ export async function runExchange(
       );
   }
 
-  const { associationTable, intersectionCount, entityClusters } =
-    await runPsiPhase({
-      conn,
-      psiLibrary,
-      psiEngineFactory: options.psiEngineFactory,
-      isReceiver,
-      countOnly,
-      verbosity,
-      elementBounds,
-      onPsiProgress: options.onPsiProgress,
-      roundsSentInParts,
-      localReceiveCeiling,
-      partnerReceiveCeiling,
-      linkageKeyIterables,
-      linkageTerms,
-      partnerTerms,
-      rowCount,
-      partnerRecordCount,
-      cardinality,
-      singlePassBounds,
-      withholdSenderTable,
-      onStage,
-    });
+  const {
+    associationTable,
+    intersectionCount,
+    entityClusters,
+    matchedKeyOfPair,
+  } = await runPsiPhase({
+    conn,
+    psiLibrary,
+    psiEngineFactory: options.psiEngineFactory,
+    isReceiver,
+    countOnly,
+    verbosity,
+    elementBounds,
+    onPsiProgress: options.onPsiProgress,
+    roundsSentInParts,
+    localReceiveCeiling,
+    partnerReceiveCeiling,
+    linkageKeyIterables,
+    linkageTerms,
+    partnerTerms,
+    rowCount,
+    partnerRecordCount,
+    cardinality,
+    singlePassBounds,
+    withholdSenderTable,
+    onStage,
+    reportMatchedKeys: prepared.includeMatchingKey === true,
+  });
 
   // One entry per matched PAIR, in this party's own ascending row order, is what
   // every reader below assumes of the table -- the payload's transmitted rows, the
@@ -2035,6 +2056,11 @@ export async function runExchange(
     // The key is left off where there is no summary, so a result the caller
     // spreads or compares holds it only for the runs that composed one.
     ...(heldResult && entityClusters !== undefined ? { entityClusters } : {}),
+    // This party's own round count, under the same entitlement gate as the
+    // table it labels, and present only where the caller asked for it.
+    ...(heldResult && matchedKeyOfPair !== undefined
+      ? { matchedKeyOfPair }
+      : {}),
     partnerTerms,
     matching,
     resolvedRole,

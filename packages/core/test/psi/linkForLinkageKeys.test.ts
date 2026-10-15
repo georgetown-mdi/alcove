@@ -172,3 +172,98 @@ test("rules match in order", async () => {
     [0, 1],
   ]);
 });
+
+test("each matched pair reports the round of the key it matched on", async () => {
+  const [starterConn, joinerConn] = createMessagePipe();
+  const starter = makeParticipant(psiLibrary, "starter");
+  const joiner = makeParticipant(psiLibrary, "joiner");
+
+  // Starter row 0 and joiner row 1 agree on every field, so they pair on the
+  // first key. Starter row 1 and joiner row 2 differ on date of birth alone,
+  // so they pair on the second.
+  const starterRows = [
+    {
+      id: "a",
+      first_name: "James",
+      last_name: "HEARD",
+      ssn: "559811301",
+      date_of_birth: "19750716",
+    },
+    {
+      id: "b",
+      first_name: "Albert",
+      last_name: "IORIO",
+      ssn: "322842281",
+      date_of_birth: "19750817",
+    },
+  ];
+  const joinerRows = [
+    {
+      id: "x",
+      first_name: "Maria",
+      last_name: "LOPEZ",
+      ssn: "111223333",
+      date_of_birth: "19800101",
+    },
+    {
+      id: "y",
+      first_name: "Jim",
+      last_name: "HEARD",
+      ssn: "559811301",
+      date_of_birth: "19750716",
+    },
+    {
+      id: "z",
+      first_name: "Albert",
+      last_name: "IORIO",
+      ssn: "322842281",
+      date_of_birth: "19750818",
+    },
+  ];
+
+  const starterKeys = makeIterables(starterRows);
+  const joinerKeys = makeIterables(joinerRows);
+  let starterRounds: Array<number> | undefined;
+  let joinerRounds: Array<number> | undefined;
+
+  const [starterTable, joinerTable] = await Promise.all([
+    linkViaPSI(
+      { cardinality: "one-to-one" },
+      starter,
+      starterConn,
+      starterKeys,
+      fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
+      -1,
+      undefined,
+      undefined,
+      (rounds) => {
+        starterRounds = rounds;
+      },
+    ),
+    linkViaPSI(
+      { cardinality: "one-to-one" },
+      joiner,
+      joinerConn,
+      joinerKeys,
+      fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
+      -1,
+      undefined,
+      undefined,
+      (rounds) => {
+        joinerRounds = rounds;
+      },
+    ),
+  ]);
+
+  expect(starterTable).toEqual([
+    [0, 1],
+    [1, 2],
+  ]);
+  expect(joinerTable).toEqual([
+    [1, 2],
+    [0, 1],
+  ]);
+  // Both parties count the same rounds, entry for entry with their own table.
+  expect(starterRounds).toEqual([0, 1]);
+  expect(joinerRounds).toEqual([0, 1]);
+});

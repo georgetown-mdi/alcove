@@ -856,6 +856,12 @@ function quoteCsvField(value: string, delimiter: string): string {
     : value;
 }
 
+/**
+ * The header of the result column naming the linkage key each pair was
+ * matched on, written when the caller asks for it ({@link buildOutputTable}).
+ */
+export const MATCHED_KEY_COLUMN = "matched_on_key";
+
 // Pick a column name not already taken, starting from `base` and falling back to
 // a prefixed (then numbered) variant. Every result header goes through here
 // against the headers already assigned, so no two columns of the file share a
@@ -920,10 +926,17 @@ function uniqueColumnName(
  * These columns are local: no frame, consent display, or commitment holds
  * them, and the partner's own result is untouched by them.
  *
+ * `matchedKeyOfPair`, when given, adds a last column,
+ * {@link MATCHED_KEY_COLUMN}, holding the name of the linkage key each pair
+ * was matched on, one entry per association-table pair. It is local in the
+ * same way as the own columns, and last so the leading columns a re-supplied
+ * result is read by keep their positions.
+ *
  * Every header is assigned against those already taken, so no two share a
  * name: our first column takes its name first, then the own columns keep
  * their input names, then each partner payload column takes its own name
- * unless something already holds it, and last the partner row-index column.
+ * unless something already holds it, then the partner row-index column, and
+ * last the matching-key column.
  * A name already taken falls back to a prefixed then numbered variant --
  * `their_` for one of the partner's columns, `own_` for one of ours.
  */
@@ -935,6 +948,7 @@ export function buildOutputTable(
   includeOwnColumns?: OwnColumnSelection,
   undeclaredColumns: ReadonlyArray<string> = [],
   delimiter: string = DEFAULT_CSV_DELIMITER,
+  matchedKeyOfPair?: ReadonlyArray<string>,
 ): { headers: string[]; rows: Array<Array<string>> } {
   // The escaping holds only against a single character: a caller that passed a
   // party's choice unresolved -- the reserved detect word above all -- would
@@ -949,6 +963,15 @@ export function buildOutputTable(
     throw new InternalConsistencyError(
       "association table arrays have different lengths: " +
         `${associationTable[0].length} vs ${associationTable[1].length}`,
+    );
+  }
+  if (
+    matchedKeyOfPair !== undefined &&
+    matchedKeyOfPair.length !== associationTable[0].length
+  ) {
+    throw new InternalConsistencyError(
+      "the matching-key list does not have one entry per matched pair: " +
+        `${matchedKeyOfPair.length} vs ${associationTable[0].length}`,
     );
   }
 
@@ -1038,12 +1061,18 @@ export function buildOutputTable(
     return header;
   });
   const partnerIndexHeader = uniqueColumnName("row_id", taken);
+  taken.add(partnerIndexHeader);
+  const matchedKeyHeaders =
+    matchedKeyOfPair === undefined
+      ? []
+      : [uniqueColumnName(MATCHED_KEY_COLUMN, taken, "own_")];
 
   const headers = [
     quote(ourBaseName),
     quote(partnerIndexHeader),
     ...valueHeaders.map(quote),
     ...ownHeaders.map(quote),
+    ...matchedKeyHeaders.map(quote),
   ];
 
   const theirIdxToPayloadPos = new ShardedMap<number, number>();
@@ -1095,9 +1124,11 @@ export function buildOutputTable(
     const ownValues = ownColumns.map((name) =>
       quote((ourRow ? readRowColumn(ourRow, name) : undefined) ?? ""),
     );
+    const matchedKeyValues =
+      matchedKeyOfPair === undefined ? [] : [quote(matchedKeyOfPair[i])];
 
     if (!hasPartnerCols) {
-      return [ourId, partnerIndexCell, ...ownValues];
+      return [ourId, partnerIndexCell, ...ownValues, ...matchedKeyValues];
     }
 
     const partnerRow = partnerPayload.rows[theirIdxToPayloadPos.get(theirIdx)!];
@@ -1105,7 +1136,13 @@ export function buildOutputTable(
       quote(partnerRow[colIdx] ?? ""),
     );
 
-    return [ourId, partnerIndexCell, ...theirValues, ...ownValues];
+    return [
+      ourId,
+      partnerIndexCell,
+      ...theirValues,
+      ...ownValues,
+      ...matchedKeyValues,
+    ];
   });
 
   return { headers, rows };

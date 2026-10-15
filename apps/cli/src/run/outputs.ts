@@ -76,6 +76,7 @@ export async function writeExchangeOutputs(params: {
     associationTable,
     intersectionCount,
     entityClusters,
+    matchedKeyOfPair,
     resolvedRole,
     partnerPayload,
     audit,
@@ -148,6 +149,7 @@ export async function writeExchangeOutputs(params: {
         prepared.includeOwnColumns,
         undeclaredColumnsForOwnResult(prepared),
         resultDelimiter,
+        matchedKeyOfPair,
       );
     } catch (err) {
       resultFailure = {

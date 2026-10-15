@@ -147,6 +147,14 @@ export function builder(cmd: Argv): Argv {
             "alcove-results-<time>.csv each run, beside the record, keys and " +
             "receipt stamped with the same time. Without it the result goes " +
             "to stdout and the other files to the working directory",
+        })
+        .option("include-matching-key", {
+          type: "boolean",
+          describe:
+            "add a last column, matched_on_key, to the result file, naming " +
+            "the linkage key each pair matched on. Local to this run: nothing " +
+            "extra is sent and your partner's result is unchanged. Requires " +
+            "the cascade linkage strategy and the psi algorithm",
         }),
       // exchange reads a config and has no URL, so the config/key files are read
       // (not written) and the server-* / peer-id overrides apply to the config.
@@ -225,6 +233,9 @@ interface ExchangeArgs extends CommonBootstrapOptions {
   // ExchangeOptions so it never reaches loadConfig; the handler decodes it
   // ahead of the config load and passes loadConfig the decoded key.
   invitation?: string;
+  // Whether the result names the linkage key each pair matched on. CLI-only
+  // and excluded from ExchangeOptions, so it never reaches loadConfig.
+  includeMatchingKey: boolean;
 }
 
 type ExchangeOptions = Omit<
@@ -240,6 +251,7 @@ type ExchangeOptions = Omit<
   | "eventStream"
   | "allowMemoryShortfall"
   | "invitation"
+  | "includeMatchingKey"
   | "record"
 >;
 
@@ -287,7 +299,37 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
     forceRetainSweep:
       (argv["force-retain-sweep"] as boolean | undefined) ?? false,
     invitation,
+    includeMatchingKey:
+      (argv["include-matching-key"] as boolean | undefined) ?? false,
   };
+}
+
+/**
+ * Refuse `--include-matching-key` on terms that give this party no round to
+ * name: a `single-pass` sender is handed the resolved table and counts no
+ * rounds, and a count-only (`psi-c`) run writes no result. Refused for
+ * `single-pass` whichever role the run resolves, since the role is decided
+ * at the terms exchange, after this check.
+ *
+ * @internal exported for testing
+ */
+export function assertMatchingKeyAvailable(
+  includeMatchingKey: boolean,
+  linkageTerms: ExchangeDataSpec["linkageTerms"],
+): void {
+  if (!includeMatchingKey || linkageTerms === undefined) return;
+  if (linkageTerms.algorithm === "psi-c")
+    throw new UsageError(
+      "--include-matching-key is set on a count-only (psi-c) exchange, which " +
+        "writes no result file. Remove --include-matching-key.",
+    );
+  if (linkageTerms.linkageStrategy === "single-pass")
+    throw new UsageError(
+      "--include-matching-key is set on a single-pass exchange, where the " +
+        "party that sends its records first is not told which key matched. " +
+        "Remove --include-matching-key, or agree the cascade linkage " +
+        "strategy with your partner.",
+    );
 }
 
 // The runtime-injected authentication fields: their values come only from
@@ -1091,6 +1133,7 @@ export async function handler(argv: Arguments): Promise<void> {
     eventStream,
     allowMemoryShortfall,
     invitation,
+    includeMatchingKey,
     ...options
   } = parsed;
 
@@ -1199,6 +1242,10 @@ export async function handler(argv: Arguments): Promise<void> {
         exchangeDataSpec.signing,
         options.configFile,
       );
+      assertMatchingKeyAvailable(
+        includeMatchingKey,
+        exchangeDataSpec.linkageTerms,
+      );
 
       // Token expiry advisory baseline: was the token expiring soon at load time?
       // This recheck uses a fresh clock just after loadConfig's hard stop, so in the
@@ -1263,6 +1310,7 @@ export async function handler(argv: Arguments): Promise<void> {
         csvDelimiter,
         allowMemoryShortfall === true,
       );
+      if (includeMatchingKey) prepared.includeMatchingKey = true;
 
       // Load the signing identity from the path the pre-flight above established
       // the config names, before any credential, terms, or data are sent: a path
