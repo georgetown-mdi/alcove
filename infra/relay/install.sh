@@ -301,8 +301,7 @@ install -d -m 700 -o "$IMAGE_UID" -g "$IMAGE_GID" /var/lib/alcove-relay
 install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
-  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/maintenance-lock.sh" \
-  "$HERE/render-front.sh" "$LIBEXEC/"
+  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$LIBEXEC/aws/"

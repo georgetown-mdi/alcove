@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -1126,14 +1126,10 @@ describe("install.sh", () => {
     const h = host();
     const r = h.run(join(PULL_DIR, "install.sh"));
     expect(r.status, r.stderr).toBe(0);
-    for (const source of [
-      join(PULL_DIR, "pull.sh"),
-      join(PULL_DIR, "workflow-runs.mjs"),
-      join(repo, "infra/relay/maintenance-lock.sh"),
-    ]) {
-      const installed = join(h.root, "opt/alcove-host-pull", basename(source));
+    for (const file of ["pull.sh", "workflow-runs.mjs"]) {
+      const installed = join(h.root, "opt/alcove-host-pull", file);
       expect(readFileSync(installed, "utf8")).toBe(
-        readFileSync(source, "utf8"),
+        readFileSync(join(PULL_DIR, file), "utf8"),
       );
       expect(lstatSync(installed).mode & 0o777).toBe(0o755);
     }
@@ -1198,7 +1194,7 @@ describe("alcove-host-pull units", () => {
   it("runs the installed copy under the maintenance lock, after the OS update", () => {
     const service = read("infra/host-pull/alcove-host-pull.service");
     expect(setting(service, "ExecStart")).toMatch(
-      /^\/opt\/alcove-host-pull\/maintenance-lock\.sh \d+ \/opt\/alcove-host-pull\/pull\.sh$/,
+      / \/run\/alcove-maintenance\.lock \/usr\/bin\/timeout -k \d+ \d+ \/opt\/alcove-host-pull\/pull\.sh$/,
     );
     expect(setting(service, "After").split(/\s+/)).toContain(
       "alcove-relay-os-update.service",

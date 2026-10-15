@@ -41,9 +41,10 @@ RUN_PAGES=10
 # counted staging bounds (ls-remote 120 s, one run-page download 300 s, the two
 # build downloads 2 * 300 s, the fetch 600 s and npm ci 600 s) plus a forward
 # attempt and a rollback, two install scripts each, stay near the run's 1-hour
-# maximum (alcove-host-pull.service). They do not guarantee every run fits. The share holds the
-# --kill-after wait, so the script gets INSTALL_SHARE - INSTALL_KILL_AFTER
-# seconds before TERM. The override may only lower either wait.
+# maximum (alcove-host-pull.service). They do not guarantee every run fits.
+# The share holds the --kill-after wait, so the script gets INSTALL_SHARE -
+# INSTALL_KILL_AFTER seconds before TERM. The override may only lower either
+# wait.
 INSTALL_SHARE=345
 INSTALL_KILL_AFTER_DEFAULT=30
 INSTALL_TIMEOUT_DEFAULT=$((INSTALL_SHARE - INSTALL_KILL_AFTER_DEFAULT))

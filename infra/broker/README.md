@@ -31,7 +31,7 @@ The front listens on IPv4 only.
 | `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
 | `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; then restarts each running unit whose inputs are newer than its start, whether or not the renewal succeeded, except under `install.sh`, which does that itself after its writes |
 | `unit-state.sh` | Sourced by both scripts and installed beside `renew.sh`: decides from systemd's state and file times which running units to restart |
-| `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 08:15 UTC plus up to 5 minutes, after the relay's own renewal, under the relay host's maintenance lock through a copy of the relay's `maintenance-lock.sh` that `install.sh` puts at `/etc/alcove-broker/maintenance-lock.sh` ([`../relay/README.md`, The daily schedule](../relay/README.md#the-daily-schedule)) |
+| `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 08:15 UTC plus up to 5 minutes, after the relay's own renewal, under the relay host's maintenance lock ([`../relay/README.md`, The daily schedule](../relay/README.md#the-daily-schedule)) |
 | `install.sh` | Creates the broker's system user if it is missing, installs all of the above and converges on a re-run, then checks `/api/health` through the front |
 | `broker.env.example` | The host's one configuration file, copied to `/etc/alcove-broker/broker.env` |
 

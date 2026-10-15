@@ -6,8 +6,9 @@ Requires=alcove-relay.service
 
 [Service]
 Type=oneshot
-# Under the host's maintenance lock, stopped at 30 minutes, above the sum of
-# verify.sh's own timeouts (README.md, The daily schedule). No start timeout of
-# its own, which would cut short the wait for the lock.
-ExecStart=/opt/alcove-relay/maintenance-lock.sh 1800 /opt/alcove-relay/verify.sh
+# Under the host's maintenance lock, failing when it is still held after two
+# hours, and stopped at 30 minutes, above the sum of verify.sh's own timeouts
+# (README.md, The daily schedule). flock's wait and timeout bound the run, so
+# the unit sets no start timeout.
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 1770 /opt/alcove-relay/verify.sh
 TimeoutStartSec=infinity

@@ -1,8 +1,7 @@
 #!/bin/bash
-# Install the host pull: pull.sh, workflow-runs.mjs and the relay's
-# maintenance-lock.sh under /opt/alcove-host-pull, and its service and timer.
-# It enables nothing, and neither the relay's nor the broker's install.sh runs
-# it (README.md, Install).
+# Install the host pull: pull.sh and workflow-runs.mjs under
+# /opt/alcove-host-pull, and its service and timer. It enables nothing, and
+# neither the relay's nor the broker's install.sh runs it (README.md, Install).
 #
 #   install.sh
 set -euo pipefail
@@ -24,9 +23,8 @@ die() { printf '[%s] ABORTING: %s\n' "$(date -u +%FT%TZ)" "$*" >&2; exit 1; }
 # Each file is renamed into place, so a pull.sh that is running keeps reading
 # the copy it started from.
 install -d -m 755 "$LIBEXEC" "$UNIT_DIR"
-for path in "$HERE/pull.sh" "$HERE/workflow-runs.mjs" "$HERE/../relay/maintenance-lock.sh"; do
-  file="$(basename "$path")"
-  install -m 755 "$path" "$LIBEXEC/.$file.new"
+for file in pull.sh workflow-runs.mjs; do
+  install -m 755 "$HERE/$file" "$LIBEXEC/.$file.new"
   mv -f "$LIBEXEC/.$file.new" "$LIBEXEC/$file"
 done
 for unit in alcove-host-pull.service alcove-host-pull.timer; do

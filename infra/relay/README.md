@@ -71,8 +71,8 @@ Nothing in this directory runs a relay in CI. Tests under `scripts/` drive
 registrar, `verify.sh`'s cleanup and registrar probe, and `render-config.sh`
 against a fixture host whose `turndb` is a real SQLite file holding coturn's
 `turn_secret` table. `scripts/relay-host-schedule.test.mjs` holds every daily
-timer on the host to [the daily schedule](#the-daily-schedule) and drives
-`maintenance-lock.sh` against a held lock.
+timer on the host to [the daily schedule](#the-daily-schedule) and each daily
+unit's `ExecStart` to the maintenance lock's shape.
 `scripts/relay-turn-secret-schema.test.mjs` holds that
 table's shape to the pinned image: where docker or podman answers, the image's
 own `turnadmin` creates a table, `relay_table.py` reads its row and writes its
@@ -130,7 +130,6 @@ when its operator runs `install.sh` from that commit's checkout.
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |
 | `alcove-relay-verify.service`, `.timer` | The daily verification. A standing relay is idle between exchanges, so nothing else notices it stopped carrying allocations until a partner is waiting on one |
 | `alcove-relay-os-update.service`, `.timer` | The daily OS update on Amazon Linux 2023. See [OS updates](#os-updates) |
-| `maintenance-lock.sh` | Runs each daily job under the host's maintenance lock, stopped at its maximum run time. See [The daily schedule](#the-daily-schedule) |
 | `install.sh` | The whole install, idempotent |
 | `relay_table.py` | The one write path to the secrets table: register, revoke, and sweep, each one SQLite transaction, as the relay image's account. Everything below that touches the table calls it. See [Per-exchange keys](#per-exchange-keys) |
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
@@ -591,8 +590,10 @@ its maximum run time:
 - **The order.** The certificate renewals come first and the OS update before
   the host pull, whose unit is also ordered `After=` it. The verification runs
   last, after every job that can restart a service, so it checks what they
-  left. The hourly lapse sweep keeps its own schedule and takes no lock: it
-  restarts nothing.
+  left. After a hold that spans several start times, the jobs run in whatever
+  order they get the lock, and the next day's verification checks the result.
+  The hourly lapse sweep keeps its own schedule and takes no lock: it restarts
+  nothing.
 - **The starts.** The two renewals keep up to 5 minutes of randomized delay,
   because Let's Encrypt asks clients to randomize their renewal time; every
   other job starts on the minute.
@@ -606,16 +607,28 @@ its maximum run time:
   verification when it boots, under the lock below; the OS update and the pull
   skip the day.
 
-**The maintenance lock.** Each daily job's unit runs its command through
-`maintenance-lock.sh`, which takes `/run/lock/alcove-maintenance.lock` before
-the job acts and holds it until the job ends, so no two jobs, and no job and a
-host hand-off, run at once. A job waits up to two hours for the lock. When it
-is still held then, the job logs that it did not run and exits 0, and the next
-day's run goes ahead. Holding the lock, the script sends the job TERM 30 seconds
-before its maximum and KILL at it; the units set no start timeout of their own,
-which would cut the wait short. To run a command by hand under the lock:
-`flock /run/lock/alcove-maintenance.lock <command>`. A daily job's unit started
-while the lock is held waits for it like a scheduled run.
+**The maintenance lock.** Each daily job's unit takes
+`/run/alcove-maintenance.lock` in its own `ExecStart`, before the job acts, and
+holds it until the job ends, so no two jobs, and no job and a host hand-off,
+run at once. The lock is under `/run`, which only root can write, so no other
+account can hold it. Every unit's `ExecStart` has the same shape:
+
+    /usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 <maximum - 30> <command>
+
+- **The wait.** A job waits up to two hours for the lock. When it is still held
+  then, `flock` exits 1 without running the job and the unit fails, so a
+  skipped renewal, update or verification shows as a failed unit
+  (`systemctl --failed`), not as a success.
+- **The maximum.** Holding the lock, `timeout` sends the job TERM 30 seconds
+  before its maximum and KILL at it. `-o` keeps the job from inheriting the
+  lock, so a process it leaves behind does not hold it.
+- **The start timeout.** Each unit sets `TimeoutStartSec=infinity`: the wait and
+  `timeout` already bound the run, and a finite start timeout would have to
+  cover both.
+- **By hand.** To run a command under the lock, as root:
+  `flock /run/alcove-maintenance.lock <command>`. A daily job's unit started
+  while the lock is held waits for it like a scheduled run, and fails the same
+  way.
 
 ## Certificates
 

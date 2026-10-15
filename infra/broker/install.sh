@@ -152,8 +152,6 @@ printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
 put_file "$IMAGE_ENV" "$ETC/front-image.env" 644
-# The renewal unit runs renew.sh through it, under the host's maintenance lock.
-put_file "$HERE/../relay/maintenance-lock.sh" "$ETC/maintenance-lock.sh" 700
 put_file "$HERE/alcove-broker-cert.service" "$UNIT_DIR/alcove-broker-cert.service" 644
 put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 644
 CONF="$ETC/nginx.conf"

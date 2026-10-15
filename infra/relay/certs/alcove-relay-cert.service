@@ -6,8 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Under the host's maintenance lock, stopped at 10 minutes (README.md, The
-# daily schedule). No start timeout of its own, which would cut short the wait
-# for the lock.
-ExecStart=/opt/alcove-relay/maintenance-lock.sh 600 /opt/alcove-relay/certs/renew.sh
+# Under the host's maintenance lock, failing when it is still held after two
+# hours, and stopped at 10 minutes (README.md, The daily schedule). flock's
+# wait and timeout bound the run, so the unit sets no start timeout.
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 570 /opt/alcove-relay/certs/renew.sh
 TimeoutStartSec=infinity

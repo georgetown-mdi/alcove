@@ -1,37 +1,26 @@
-import { spawn, spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // Holds the relay host's daily jobs to infra/relay/README.md, The daily
 // schedule: every daily timer under infra/relay, infra/broker and
 // infra/host-pull starts inside 08:00-11:00 UTC, no two overlap given their
-// maximums, the verification runs last, each job's unit runs its command
-// under maintenance-lock.sh, and the README's table is what the units say.
-// Then drives maintenance-lock.sh against a held lock.
+// maximums, the verification runs last, each job's unit takes the maintenance
+// lock in its own ExecStart, and the README's table is what the units say.
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(repo, path), "utf8");
-const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
-const LOCK_SCRIPT = join(repo, "infra/relay/maintenance-lock.sh");
 
+const COMPONENTS = ["infra/relay", "infra/broker", "infra/host-pull"];
 const WINDOW = [8 * 60, 11 * 60];
 const VERIFY_TIMER = "alcove-relay-verify.timer";
 const RENEWAL_TIMERS = ["alcove-relay-cert.timer", "alcove-broker-cert.timer"];
-// Where each component's install script puts its copy of maintenance-lock.sh.
-const LOCK_COPIES = {
-  "infra/relay": "/opt/alcove-relay/maintenance-lock.sh",
-  "infra/broker": "/etc/alcove-broker/maintenance-lock.sh",
-  "infra/host-pull": "/opt/alcove-host-pull/maintenance-lock.sh",
-};
+const LOCK = "/run/alcove-maintenance.lock";
+const KILL_AFTER = 30;
+// /usr/bin/flock -o -w <wait> <lock> /usr/bin/timeout -k 30 <maximum - 30> <command>
+const LOCKED_EXEC_START =
+  /^\/usr\/bin\/flock -o -w ([1-9]\d*) (\S+) \/usr\/bin\/timeout -k (\d+) ([1-9]\d*) (\/\S+(?: \S+)*)$/;
 
 const settings = (text, name) =>
   [...text.matchAll(new RegExp(`^${name}=(.*)$`, "gm"))].map((m) =>
@@ -59,30 +48,27 @@ const minutes = (span) => {
   return Number(match[1]);
 };
 
-const dailyJobs = Object.keys(LOCK_COPIES)
-  .flatMap(timerFiles)
+const dailyJobs = COMPONENTS.flatMap(timerFiles)
   .filter((path) => ONCE_A_DAY.test(setting(read(path), "OnCalendar")))
   .map((path) => {
     const timer = read(path);
-    const servicePath = path.replace(/\.timer$/, ".service");
-    const service = read(servicePath);
+    const service = read(path.replace(/\.timer$/, ".service"));
     const fixed = setting(timer, "OnCalendar").match(FIXED_UTC);
     const start = fixed ? Number(fixed[1]) * 60 + Number(fixed[2]) : null;
     const delay = minutes(setting(timer, "RandomizedDelaySec"));
-    const execStart = setting(service, "ExecStart").split(/\s+/);
-    const maximum = Number(execStart[1]) / 60;
-    const component = Object.keys(LOCK_COPIES).find((dir) =>
-      path.startsWith(`${dir}/`),
-    );
+    const execStart = setting(service, "ExecStart");
+    const locked = execStart.match(LOCKED_EXEC_START);
+    const maximum = locked
+      ? (Number(locked[4]) + Number(locked[3])) / 60
+      : Number.NaN;
     return {
       name: basename(path),
-      path,
       timer,
       service,
-      component,
       start,
       delay,
       execStart,
+      locked,
       maximum,
       slot: [start, start + delay + maximum],
     };
@@ -150,12 +136,15 @@ describe("the relay host's daily timers", () => {
 
 describe("the relay host's daily units", () => {
   it.each(dailyJobs.map((job) => [job.name, job]))(
-    "%s's service runs its one command under the maintenance lock, with a maximum",
+    "%s's ExecStart takes the shared lock with flock, with a wait, then runs its command under timeout",
     (_, job) => {
-      expect(job.execStart[0]).toBe(LOCK_COPIES[job.component]);
-      expect(job.execStart[1]).toMatch(/^[1-9]\d*$/);
-      expect(Number(job.execStart[1]) % 60).toBe(0);
-      expect(job.execStart.length).toBeGreaterThan(2);
+      expect(job.locked, job.execStart).not.toBeNull();
+      const [, wait, lock, killAfter, beforeKill] = job.locked;
+      expect(lock).toBe(LOCK);
+      expect(Number(wait)).toBeGreaterThan(0);
+      expect(Number(killAfter)).toBe(KILL_AFTER);
+      // TERM 30 seconds before a whole-minute maximum, KILL at it.
+      expect((Number(beforeKill) + KILL_AFTER) % 60).toBe(0);
       // An ExecStartPre= or ExecStartPost= would run outside the lock.
       expect([...job.service.matchAll(/^Exec\w*=/gm)].map((m) => m[0])).toEqual(
         ["ExecStart="],
@@ -170,16 +159,12 @@ describe("the relay host's daily units", () => {
     },
   );
 
-  // The source each install script copies to the path in LOCK_COPIES.
-  it.each([
-    ["infra/relay", '"$HERE/maintenance-lock.sh"'],
-    [
-      "infra/broker",
-      'put_file "$HERE/../relay/maintenance-lock.sh" "$ETC/maintenance-lock.sh"',
-    ],
-    ["infra/host-pull", '"$HERE/../relay/maintenance-lock.sh"'],
-  ])("%s/install.sh installs maintenance-lock.sh", (component, line) => {
-    expect(read(`${component}/install.sh`)).toContain(line);
+  it("wait the same time for the lock, longer than any job holds it", () => {
+    const waits = new Set(dailyJobs.map((job) => Number(job.locked?.[1])));
+    expect([...waits]).toEqual([2 * 3600]);
+    for (const job of dailyJobs) {
+      expect(2 * 3600, job.name).toBeGreaterThan(job.maximum * 60);
+    }
   });
 });
 
@@ -213,109 +198,13 @@ describe("infra/relay/README.md, The daily schedule", () => {
     }
   });
 
-  it("states the lock path and the wait maintenance-lock.sh uses", () => {
-    const script = readFileSync(LOCK_SCRIPT, "utf8");
-    const lock = script.match(
-      /^LOCK="\$\{ALCOVE_MAINTENANCE_LOCK:-([^}]+)\}"$/m,
+  it("states the units' lock path, wait and ExecStart shape", () => {
+    const prose = readme.replace(/\s+/g, " ");
+    expect(prose).toContain(`takes \`${LOCK}\` in its own \`ExecStart\``);
+    expect(prose).toContain("A job waits up to two hours for the lock.");
+    expect(readme).toContain(
+      `    /usr/bin/flock -o -w 7200 ${LOCK} /usr/bin/timeout -k ${KILL_AFTER} <maximum - ${KILL_AFTER}> <command>`,
     );
-    expect(lock).not.toBeNull();
-    expect(readme).toContain(`takes \`${lock[1]}\``);
-    const wait = script.match(/^WAIT_DEFAULT=(\d+)$/m);
-    expect(Number(wait?.[1])).toBe(2 * 3600);
-    expect(readme).toContain("A job waits up to two hours for the lock.");
-    // Longer than the longest job holds the lock, so a job never skips a day
-    // for another job that ran long.
-    for (const job of dailyJobs) {
-      expect(Number(wait[1]), job.name).toBeGreaterThan(job.maximum * 60);
-    }
-  });
-});
-
-const describeOnScriptHost = describe.skipIf(process.platform !== "linux");
-
-describeOnScriptHost("maintenance-lock.sh", { timeout: 30_000 }, () => {
-  const created = [];
-  const holders = [];
-  afterEach(() => {
-    while (holders.length > 0) holders.pop().kill("SIGKILL");
-    while (created.length > 0) {
-      rmSync(created.pop(), { recursive: true, force: true });
-    }
-  });
-  const fixture = () => {
-    const dir = mkdtempSync(join(tmpdir(), "maintenance-lock-"));
-    created.push(dir);
-    return { dir, lock: join(dir, "maintenance.lock") };
-  };
-  const run = (lock, args, extra = {}) => {
-    const started = Date.now();
-    const result = spawnSync(BASH, [LOCK_SCRIPT, ...args], {
-      encoding: "utf8",
-      env: { ...process.env, ALCOVE_MAINTENANCE_LOCK: lock, ...extra },
-    });
-    return { ...result, elapsed: Date.now() - started };
-  };
-  // Holds the lock in one process until the test ends, as a hand-off does.
-  const hold = async (lock) => {
-    const holder = spawn(
-      BASH,
-      ["-c", 'exec 9>> "$1"; flock 9; echo held; exec sleep 60', "_", lock],
-      { stdio: ["ignore", "pipe", "inherit"] },
-    );
-    holders.push(holder);
-    await new Promise((done, fail) => {
-      holder.stdout.on("data", (chunk) => {
-        if (String(chunk).includes("held")) done();
-      });
-      holder.on("exit", () => fail(new Error("the holder exited")));
-    });
-  };
-
-  it("exits 0 with its log line, without running the job, once the held lock outlasts its wait", async () => {
-    const { dir, lock } = fixture();
-    await hold(lock);
-    const marker = join(dir, "ran");
-    const result = run(lock, ["60", "/usr/bin/touch", marker], {
-      ALCOVE_MAINTENANCE_LOCK_WAIT: "1",
-    });
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain(
-      `touch did not run: ${lock} was held for 1 seconds, by a host hand-off or another daily job. The next scheduled run goes ahead.`,
-    );
-    expect(result.elapsed).toBeGreaterThanOrEqual(1000);
-    expect(existsSync(marker)).toBe(false);
-  });
-
-  it("runs the job holding the lock, and exits with the job's status", () => {
-    const { lock } = fixture();
-    const result = run(lock, [
-      "60",
-      BASH,
-      "-c",
-      'flock -n "$0" true && echo free || echo held; exit 3',
-      lock,
-    ]);
-    expect(result.status, result.stderr).toBe(3);
-    expect(result.stdout.trim()).toBe("held");
-    expect(spawnSync("flock", ["-n", lock, "true"]).status).toBe(0);
-  });
-
-  it("stops the job at its maximum and says so", () => {
-    const { lock } = fixture();
-    const result = run(lock, ["2", "sleep", "30"], {
-      ALCOVE_MAINTENANCE_KILL_AFTER: "1",
-    });
-    expect(result.status).toBe(124);
-    expect(result.stderr).toContain(
-      "sleep was stopped at its maximum run time of 2 seconds",
-    );
-    expect(result.elapsed).toBeLessThan(10_000);
-  });
-
-  it("refuses a maximum no longer than the wait before KILL", () => {
-    const { lock } = fixture();
-    const result = run(lock, ["30", "true"]);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("usage: maintenance-lock.sh");
+    expect(readme).toContain(`\`flock ${LOCK} <command>\``);
   });
 });
