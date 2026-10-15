@@ -18,7 +18,6 @@ import {
 } from "../connection/webrtc/weriftPeer";
 import {
   enrollAtInvitationRelay,
-  INVITATION_RELAY_NOT_ENROLLED_REMEDY,
   invitationRelayEnrolledNotice,
   invitationRelayNotEnrolledStatement,
 } from "../invitationRelayEnrollment";
@@ -34,7 +33,8 @@ import { fail, ok, warn } from "./verdict";
 // run lists, asked as the run's ICE gathering asks. werift allocates on the
 // first TURN url a peer is given and ignores the rest, so only the first url's
 // outcome decides the verdict. Before it asks them it enrolls at the registrar
-// the invitation's relay names, as a run does before it dials; it contacts
+// the invitation's relay names, as a run does before it dials when that relay
+// is the one it allocates on; it contacts
 // nothing else, and runs only when the operator names it. Contract:
 // docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the relay of a
 // WebRTC exchange.
@@ -191,7 +191,7 @@ export function relayHostStatement(
     ...relays,
     "Before it asks them, it enrolls this exchange's relay key at the relay " +
       "registrar your partner's invitation names, as a run does just before " +
-      "it connects:",
+      "it connects when that relay is the one it allocates on:",
     `  ${registrar}`,
     "Whoever runs that registrar learns this machine's network address. " +
       "It contacts nothing else.",
@@ -234,12 +234,22 @@ export async function enrollBeforeRelayChecks(
 }
 
 const ENROLLMENT_FAILED_MEANING =
-  "a run sends this same enrollment just before it connects. Until the " +
-  "exchange's relay key is enrolled there, by a run on either side, the " +
-  "relay that registrar serves refuses the credential derived from the " +
-  "exchange's shared secret.";
+  "the registrar did not record this exchange's relay key. A run makes " +
+  "this same enrollment just before it connects when the relay your " +
+  "partner's invitation names is the one it allocates on.";
 
-/** The check line of the enrollment, in the run's own wording. */
+/** What to do about a failed enrollment. */
+export const ENROLLMENT_FAILED_ACTION =
+  "Run this check again. If the enrollment keeps failing, ask your partner " +
+  "whether the relay registrar their invitation names is up. A run goes on " +
+  "without this enrollment, but the relay your partner's invitation names " +
+  "refuses the run's credential until either of you enrolls the exchange " +
+  "there.";
+
+/**
+ * The check line of the enrollment. A failed one is a `warn`: the enrollment
+ * serves the invitation's relay, whose own line has the consequence.
+ */
 export function enrollmentCheckRecord(
   enrollment: RelayCheckEnrollment,
 ): DoctorCheckRecord {
@@ -253,11 +263,11 @@ export function enrollmentCheckRecord(
         ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
       },
     );
-  return fail(
+  return warn(
     ENROLLMENT_CHECK_ID,
     invitationRelayNotEnrolledStatement(registrar, outcome.detail),
     ENROLLMENT_FAILED_MEANING,
-    INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+    ENROLLMENT_FAILED_ACTION,
     { registrar },
   );
 }

@@ -17,6 +17,7 @@ import { runProbe } from "../../../src/doctor/probe";
 import type { ProbeDeps } from "../../../src/doctor/probe";
 import {
   ENROLLMENT_CHECK_ID,
+  ENROLLMENT_FAILED_ACTION,
   NOT_ALLOCATED_ACTION,
   RELAY_CHECK_NO_TURN_URL,
   RELAY_CHECK_WEBRTC_ONLY,
@@ -259,7 +260,8 @@ test("doctor relay names every relay and the registrar before it contacts either
   expect(statement).not.toContain("as an exchange run does");
   expect(statement).toContain(
     "it enrolls this exchange's relay key at the relay registrar your " +
-      "partner's invitation names, as a run does just before it connects:",
+      "partner's invitation names, as a run does just before it connects " +
+      "when that relay is the one it allocates on:",
   );
   expect(statement).toContain(`line   ${REGISTRAR}`);
   expect(statement).toContain(
@@ -598,7 +600,7 @@ test("an enrollment with no lapse states none, on the line and in the verdict", 
   );
 });
 
-test("a refused enrollment is a FAIL line in the run's wording, and the relay lines still run", async () => {
+test("a refused enrollment is a WARN line that leaves the verdict ok when the relay a run allocates on is reached", async () => {
   writeThreeRelayConfig();
   const requests: Array<RTCIceServer> = [];
 
@@ -608,7 +610,7 @@ test("a refused enrollment is a FAIL line in the run's wording, and the relay li
     writeStatementLine: () => undefined,
     fetch: fakeRegistrar([jsonResponse(409, { error: "no" })]).fetch,
     gather: scriptedGathering(
-      { [OWN_TURN]: false, [STATIC_TURN]: true, [INVITATION_TURN]: false },
+      { [OWN_TURN]: true, [STATIC_TURN]: true, [INVITATION_TURN]: false },
       requests,
     ),
   });
@@ -622,31 +624,76 @@ test("a refused enrollment is a FAIL line in the run's wording, and the relay li
   ]);
   const enrollment = report.checks[0];
   expect(enrollment).toMatchObject({
-    status: "fail",
+    status: "warn",
     registrar: REGISTRAR,
     summary: invitationRelayNotEnrolledStatement(REGISTRAR, "HTTP 409: no"),
-    action: INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+    action: ENROLLMENT_FAILED_ACTION,
   });
   expect(verdictOf(report).checks[0]).toEqual({
     id: ENROLLMENT_CHECK_ID,
-    status: "fail",
+    status: "warn",
     meaning: enrollment?.meaning,
-    action: INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+    action: ENROLLMENT_FAILED_ACTION,
     registrar: REGISTRAR,
   });
   expect(verdictLines(report)[0]).toBe(
-    `FAIL: the relay registrar at ${REGISTRAR} that your partner's ` +
+    `WARN: the relay registrar at ${REGISTRAR} that your partner's ` +
       "invitation names did not enroll this exchange (HTTP 409: no).",
   );
+  expect(checkFor(report, INVITATION_TURN)).toMatchObject({
+    status: "warn",
+  });
   expect(checkFor(report, INVITATION_TURN).meaning).toContain(
     "The likely cause is the failed enrollment above",
   );
-  expect(checkFor(report, OWN_TURN).meaning).not.toContain("failed enrollment");
+  expect(checkFor(report, OWN_TURN).status).toBe("ok");
   expect(checkFor(report, STATIC_TURN).status).toBe("ok");
-  expect(overallOf(report)).toBe("fix_and_retry");
+  expect(overallOf(report)).toBe("ok");
+  expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
 });
 
-test("a registrar that cannot be reached is a FAIL line, and the relay lines still run", async () => {
+test("a refused enrollment with the invitation's relay first and not reached fails the check on that relay's line", async () => {
+  writeConfig(
+    webrtcConnection({
+      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
+    }),
+  );
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    fetch: fakeRegistrar([jsonResponse(409, { error: "no" })]).fetch,
+    gather: scriptedGathering({ [INVITATION_TURN]: false }, []),
+  });
+
+  expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+    [ENROLLMENT_CHECK_ID, "warn"],
+    ["turn_1", "fail"],
+  ]);
+  const invitation = checkFor(report, INVITATION_TURN);
+  expect(invitation.action).toBe(RELAY_NOT_REACHED_REMEDY);
+  expect(invitation.meaning).toContain(
+    "The likely cause is the failed enrollment above",
+  );
+  expect(overallOf(report)).toBe("fix_and_retry");
+  expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(78);
+});
+
+test("a failed enrollment's action is to retry, then ask the partner about the registrar", () => {
+  expect(ENROLLMENT_FAILED_ACTION).toBe(
+    "Run this check again. If the enrollment keeps failing, ask your " +
+      "partner whether the relay registrar their invitation names is up. A " +
+      "run goes on without this enrollment, but the relay your partner's " +
+      "invitation names refuses the run's credential until either of you " +
+      "enrolls the exchange there.",
+  );
+  expect(ENROLLMENT_FAILED_ACTION).not.toBe(
+    INVITATION_RELAY_NOT_ENROLLED_REMEDY,
+  );
+});
+
+test("a registrar that cannot be reached is a WARN line, and the relay lines still run", async () => {
   writeConfig(
     webrtcConnection({
       invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
@@ -664,12 +711,13 @@ test("a registrar that cannot be reached is a FAIL line, and the relay lines sti
 
   expect(requests).toHaveLength(1);
   const enrollment = report.checks[0];
-  expect(enrollment?.status).toBe("fail");
+  expect(enrollment?.status).toBe("warn");
   expect(enrollment?.summary).toMatch(
     /^the relay registrar at https:\/\/registrar\.example\.org that your partner's invitation names did not enroll this exchange \(.+\)\.$/,
   );
-  expect(enrollment?.action).toBe(INVITATION_RELAY_NOT_ENROLLED_REMEDY);
+  expect(enrollment?.action).toBe(ENROLLMENT_FAILED_ACTION);
   expect(checkFor(report, INVITATION_TURN).status).toBe("ok");
+  expect(overallOf(report)).toBe("ok");
 });
 
 // --- the refusals --------------------------------------------------------------
