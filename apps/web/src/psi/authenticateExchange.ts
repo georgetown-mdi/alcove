@@ -1,5 +1,6 @@
 import {
   ConnectionError,
+  EncryptedMessageConnection,
   authenticateConnection,
   causeChainSome,
   errorMessage,
@@ -22,41 +23,57 @@ const NON_TRUST_KINDS: ReadonlySet<ConnectionErrorKind> = new Set([
   "usage",
 ]);
 
+/** What {@link authenticateExchange} hands its caller: the handshake's result
+ * and the connection the exchange runs on. */
+export interface AuthenticatedExchange extends AuthResult {
+  /** The message connection wrapped in core's
+   * {@link EncryptedMessageConnection}, so every frame after the key exchange
+   * crosses as an AEAD envelope. The caller runs the exchange on it and closes
+   * it, never the bare connection beneath it. */
+  connection: MessageConnection;
+}
+
 /**
  * Run core's P-256 (NNpsk0) authenticated key exchange
  * ({@link authenticateConnection}, shared with the CLI) over the data channel
- * before any PSI frame. It requests no application-layer encryption, since
- * DTLS already covers the channel (docs/SECURITY_DESIGN.md, "Channel
- * security"). It neither persists nor rotates the returned secret.
+ * before any PSI frame, requesting application-layer encryption, and wrap the
+ * connection in core's {@link EncryptedMessageConnection} keyed from the
+ * session key (docs/spec/CHANNEL_SECURITY.md, "Which channels request it"). It
+ * neither persists nor rotates the returned secret.
  *
  * A trust failure -- a wrong secret, a malformed or expired credential, or a
  * `protocol` error from the peer -- is re-tagged as a `security`
  * {@link ConnectionError}, so the caller shows the authentication-failure
- * alert; a {@link NON_TRUST_KINDS} failure is re-thrown unchanged.
+ * alert; a {@link NON_TRUST_KINDS} failure is re-thrown unchanged. A failure
+ * of the wrap itself during the exchange -- a bad tag, a replay, a gap, a
+ * malformed envelope -- is a `security` ConnectionError from the returned
+ * connection.
  *
  * @param mc            The open message connection.
  * @param exchangeRole  This party's role, the same one passed to `runExchange`.
  * @param sharedSecret  The invitation's base64url shared secret.
  * @param expires       The invitation's `expires` (ISO 8601); core checks it
  *                      before and after the handshake. Omit when unbounded.
- * @returns The {@link AuthResult}; both peers derive the same `sessionKey`.
+ * @returns The {@link AuthenticatedExchange}; both peers derive the same
+ *          `sessionKey`.
  * @throws {ConnectionError} of kind `"security"` on a trust failure; of kind
- *         `"usage"` if the peer negotiates encryption the web path does not yet
- *         apply; otherwise the original non-trust connection failure, unchanged.
+ *         `"usage"` if the handshake returns without the encryption this side
+ *         requested; otherwise the original non-trust connection failure,
+ *         unchanged.
  */
 export async function authenticateExchange(
   mc: MessageConnection,
   exchangeRole: HandshakeRole,
   sharedSecret: string,
   expires?: string,
-): Promise<AuthResult> {
+): Promise<AuthenticatedExchange> {
   let result: AuthResult;
   try {
     result = await authenticateConnection(
       mc,
       { sharedSecret, expires },
       exchangeRole,
-      false,
+      true,
     );
   } catch (error) {
     // An unrecognized failure is treated as a trust failure: fail closed.
@@ -70,17 +87,21 @@ export async function authenticateExchange(
     throw wrapped;
   }
 
-  // The web path does not apply the application AEAD, so a peer requesting it
-  // would diverge from this cleartext run. Only a peer that completed the
-  // handshake can set this, so it never fires for an unauthenticated peer;
-  // `usage` routes to the generic alert, as a capability mismatch.
-  if (result.applyEncryption)
+  // The decision is the OR of both requests and this side requested, so it is
+  // true on every completed handshake; refuse to run the exchange bare if it
+  // is not.
+  if (!result.applyEncryption)
     throw new ConnectionError(
-      "the peer requested application-layer encryption, which the web " +
-        "exchange does not yet apply",
+      "the key exchange completed without the application-layer encryption " +
+        "this side requested",
       "usage",
     );
-  return result;
+  const connection = await EncryptedMessageConnection.create(
+    mc,
+    result.sessionKey,
+    exchangeRole,
+  );
+  return { ...result, connection };
 }
 
 /**

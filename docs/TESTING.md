@@ -480,23 +480,16 @@ comparison is against the real program's own bytes, and a unit test neither
 builds the CLI nor spawns it. What the console's hand-off composes without the
 CLI stays in the unit project.
 
-Two pieces of the web party are the harness's rather than the app's, and each is
-there because the app has no counterpart it could use:
-
-- **The file-drop directory client.** `FileSyncConnection` lives in core but its
-  filesystem client (`LocalFSClient`) lives in `apps/cli`, which `apps/web` may
-  not import. The harness supplies one scoped to what the file-sync protocol
-  calls, not a second copy of the shipped client's hardening.
-- **The application-layer AEAD wrap.** A CLI party on a file-sync channel
-  requests it unconditionally and `applyEncryption` is the OR of both parties'
-  requests, so a web party must apply it for the exchange to start. The web app's
-  own handshake driver refuses it -- the app exchanges only over a
-  DTLS-confidential WebRTC channel -- so a third test in the suite runs that
-  driver against a CLI party and pins the refusal. That test fails the day
-  `apps/web` applies the wrap itself, which is when the stand-in should go.
+One piece of the web party is the harness's rather than the app's, because the
+app has no counterpart it could use: the file-drop directory client.
+`FileSyncConnection` lives in core but its filesystem client (`LocalFSClient`)
+lives in `apps/cli`, which `apps/web` may not import. The harness supplies one
+scoped to what the file-sync protocol calls, not a second copy of the shipped
+client's hardening.
 
 Everything else is each runtime's own: the CLI's argv, configuration, key file,
-PSI backend and result CSV; the web app's acceptor assembly, its invitation creation
+PSI backend and result CSV; the web app's handshake and application-layer AEAD
+wrap, its acceptor assembly, its invitation creation
 and inviter spec assembly, and its browser WASM PSI engine.
 
 It runs on both `cli_build_and_test.yaml` and `web_build_and_test.yaml`. That is

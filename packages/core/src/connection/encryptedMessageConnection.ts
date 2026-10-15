@@ -14,8 +14,9 @@ import {
 import type { HandshakeRole } from "../types";
 
 // Leading byte of the binary AEAD envelope: a format/version marker. A frame
-// whose first byte is not this value, or that is not a Uint8Array at all, is
-// rejected as a security failure rather than silently misparsed. Bump it on any
+// whose first byte is not this value, or that is not binary at all (a
+// Uint8Array or an ArrayBuffer), is rejected as a security failure rather than
+// silently misparsed. Bump it on any
 // change to the envelope layout (the IV/ciphertext/tag order or widths) so a
 // format mismatch fails cleanly instead of being read as an IV.
 /** @internal */
@@ -384,7 +385,15 @@ export class EncryptedMessageConnection implements MessageConnection {
   // `"security"` ConnectionError and throws it; a transport drop from
   // inner.receive propagates unchanged.
   private async handleInbound(data: unknown): Promise<unknown> {
-    if (!(data instanceof Uint8Array)) {
+    // The browser WebRTC transport hands a sent Uint8Array over as an
+    // ArrayBuffer, so that is read as the same bytes.
+    const bytes =
+      data instanceof Uint8Array
+        ? (data as Uint8Array<ArrayBuffer>)
+        : data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : undefined;
+    if (bytes === undefined) {
       throw this.fail(
         new ConnectionError(
           "EncryptedMessageConnection: received invalid envelope",
@@ -392,7 +401,6 @@ export class EncryptedMessageConnection implements MessageConnection {
         ),
       );
     }
-    const bytes = data as Uint8Array<ArrayBuffer>;
 
     // Binary length bound. The transport read layer already refuses an over-cap
     // inbound file before reading it (see MAX_FRAME_SIZE_BYTES and

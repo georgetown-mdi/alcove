@@ -7,7 +7,11 @@ import {
   prepareForExchange,
   runExchange,
 } from "@alcove/core";
-import { sortAssociationTable } from "@alcove/core/testing";
+
+import {
+  AEAD_ENVELOPE_VERSION,
+  sortAssociationTable,
+} from "@alcove/core/testing";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
@@ -52,6 +56,8 @@ const serverUnreachableNote = `PeerJS coordination server at ${hostString} unrea
 // absent result.
 let serverResult: ReturnType<typeof sortAssociationTable> | undefined;
 let clientResult: ReturnType<typeof sortAssociationTable> | undefined;
+// Every frame either data channel delivered before the close.
+let dataChannelFrames: Array<unknown> | undefined;
 
 // Generous timeout: peer coordination, the WASM load, and the round-trip
 // exchange all happen here. The hook timeout turns a stuck server into a clear
@@ -85,40 +91,52 @@ beforeAll(async () => {
 
   const serverMc = await openPeerMessageConnection(inviterConn);
   const clientMc = await openPeerMessageConnection(acceptorConn);
+  const delivered: Array<unknown> = [];
+  for (const conn of [inviterConn, acceptorConn])
+    conn.on("data", (data) => delivered.push(data));
 
   // Mirror the production lifecycle: authenticate the peer over the real data
   // channel (the P-256 handshake the inviter/acceptor derive from the same
-  // shared secret) before any PSI frame. This is the end-to-end check that the
+  // shared secret) before any PSI frame, then run the exchange on the AEAD
+  // wrapper the handshake returns. This is the end-to-end check that the
   // key-exchange messages round-trip over PeerJS and that both ends agree.
   const runServerPSI = async () => {
-    await authenticateExchange(serverMc, "responder", sharedSecret);
-    const { associationTable } = await runExchange(
+    const { connection } = await authenticateExchange(
       serverMc,
+      "responder",
+      sharedSecret,
+    );
+    const { associationTable } = await runExchange(
+      connection,
       "responder",
       serverPrepared,
       { psiLibrary },
     );
-    return associationTable;
+    return { associationTable, connection };
   };
 
   const runClientPSI = async () => {
-    await authenticateExchange(clientMc, "initiator", sharedSecret);
-    const { associationTable } = await runExchange(
+    const { connection } = await authenticateExchange(
       clientMc,
+      "initiator",
+      sharedSecret,
+    );
+    const { associationTable } = await runExchange(
+      connection,
       "initiator",
       clientPrepared,
       { psiLibrary },
     );
-    return associationTable;
+    return { associationTable, connection };
   };
 
-  const [rawServerResult, rawClientResult] = await Promise.all([
-    runServerPSI(),
-    runClientPSI(),
-  ]);
+  const [server, client] = await Promise.all([runServerPSI(), runClientPSI()]);
+  const rawServerResult = server.associationTable;
+  const rawClientResult = client.associationTable;
+  dataChannelFrames = [...delivered];
 
-  await serverMc.close();
-  await clientMc.close();
+  await server.connection.close();
+  await client.connection.close();
   inviterPeer.disconnect();
   acceptorPeer.disconnect();
 
@@ -144,4 +162,22 @@ test("psi yields correct results", (ctx) => {
   if (!serverResult) return ctx.skip(serverUnreachableNote);
   expect(serverResult[0]).toStrictEqual([2, 4]);
   expect(serverResult[1]).toStrictEqual([0, 1]);
+});
+
+test("every frame after the key exchange crosses the data channel as an AEAD envelope", (ctx) => {
+  if (!dataChannelFrames) return ctx.skip(serverUnreachableNote);
+  const isKexMessage = (frame: unknown) =>
+    typeof frame === "object" && frame !== null && "kexMsg" in frame;
+  const kexFrames = dataChannelFrames.filter(isKexMessage);
+  const exchangeFrames = dataChannelFrames.filter(
+    (frame) => !isKexMessage(frame),
+  );
+  expect(kexFrames).toHaveLength(3);
+  expect(exchangeFrames.length).toBeGreaterThan(0);
+  // The data channel can hand a sent Uint8Array over as an ArrayBuffer.
+  for (const frame of exchangeFrames) {
+    const bytes = frame instanceof ArrayBuffer ? new Uint8Array(frame) : frame;
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect((bytes as Uint8Array)[0]).toBe(AEAD_ENVELOPE_VERSION);
+  }
 });

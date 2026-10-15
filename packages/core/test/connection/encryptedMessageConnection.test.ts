@@ -323,6 +323,31 @@ test("an envelope with an unsupported version byte is rejected as a security fai
   await expectSecurity(recv.receive(), /unsupported envelope version/i);
 });
 
+test("an envelope delivered as an ArrayBuffer is opened as the same bytes", async () => {
+  // The browser WebRTC transport hands a sent Uint8Array over as an
+  // ArrayBuffer.
+  const [recv, peer] = await makeInjectable("responder");
+  const first = await sealRawBytes("initiator", 0, jsonPlaintext({ n: 0 }));
+  // The binary payload type tag (1), then the payload bytes.
+  const second = await sealRawBytes(
+    "initiator",
+    1,
+    new Uint8Array([1, 7, 8, 9]) as Uint8Array<ArrayBuffer>,
+  );
+  await peer.send(first.buffer);
+  await peer.send(second.buffer);
+  expect(await recv.receive()).toEqual({ n: 0 });
+  expect(await recv.receive()).toEqual(new Uint8Array([7, 8, 9]));
+});
+
+test("a tampered envelope delivered as an ArrayBuffer is rejected as a security failure", async () => {
+  const [recv, peer] = await makeInjectable("responder");
+  const bytes = await sealRawBytes("initiator", 0, jsonPlaintext({ n: 0 }));
+  bytes[bytes.length - 1] ^= 0x01;
+  await peer.send(bytes.buffer);
+  await expectSecurity(recv.receive(), /authentication tag/i);
+});
+
 test("a non-binary envelope (the old base64url-in-JSON object) is rejected as a security failure", async () => {
   const [recv, peer] = await makeInjectable("responder");
   await peer.send({ enc: "AAAAAAAAAAAAAAAA" });
