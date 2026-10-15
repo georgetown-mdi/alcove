@@ -105,15 +105,18 @@ project's account are read back with
   subscribed and confirmed. An alarm notifies only a topic in its own region.
 - **Billing metrics.** `EstimatedCharges` is published only once billing
   alerts are on in the account's billing preferences.
-- **Every alarm.** One evaluation period of one datapoint,
-  `GreaterThanThreshold`, missing data `notBreaching`, the topic as its alarm
-  action and no OK action.
+- **Every alarm.** The topic as its alarm action and no OK action.
+- **Every alarm but the heartbeat's.** One evaluation period of one
+  datapoint, `GreaterThanThreshold`, missing data `notBreaching`.
+- **The heartbeat's.** Two evaluation periods, both needed to alarm,
+  `LessThanThreshold` 1, missing data `breaching`.
 
 | alarm | region | namespace, metric, dimensions | statistic, period |
 | --- | --- | --- | --- |
 | `alcove-account-estimated-charges` | us-east-1 | `AWS/Billing`, `EstimatedCharges`, `Currency=USD` | `Maximum`, 21600 |
 | `alcove-relay-network-out` | the instance's | `AWS/EC2`, `NetworkOut`, `InstanceId=<instance-id>` | `Sum`, 3600 |
-| `alcove-relay-tokenless-enrollments` | the instance's | `Alcove/Relay`, `tokenless_enrollments`, none | `Sum`, 3600 |
+| `alcove-relay-tokenless-enrollments` | the instance's | `Alcove/Relay`, `tokenless_enrollments`, none | `Sum`, 21600 |
+| `alcove-relay-publisher-heartbeat` | the instance's | `Alcove/Relay`, `publisher_heartbeat`, none | `Sum`, 86400 |
 | `alcove-relay-rate-limit-refusals` | the instance's | `Alcove/Relay`, `rate_limit_refusals`, none | `Sum`, 3600 |
 | `alcove-relay-client-cap-refusals` | the instance's | `Alcove/Relay`, `client_cap_refusals`, none | `Sum`, 3600 |
 | `alcove-relay-tokenless-ceiling-refusals` | the instance's | `Alcove/Relay`, `tokenless_ceiling_refusals`, none | `Sum`, 3600 |

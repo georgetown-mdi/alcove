@@ -73,18 +73,31 @@ const fixtureHost = ({ region = "us-west-2" } = {}) => {
   );
   const countersFile = join(root, "registrar-counters");
   const stateFile = join(root, "state", "published");
+  const emptyBin = join(root, "empty-bin");
+  mkdirSync(emptyBin);
   return {
     stateFile,
     write: (text) => writeFileSync(countersFile, text),
     awsFails: (fails) =>
       fails ? writeFileSync(failFlag, "") : rmSync(failFlag, { force: true }),
-    run: () => {
+    // The last heartbeat as published on an earlier UTC day.
+    heartbeatYesterday: () =>
+      writeFileSync(
+        stateFile,
+        readFileSync(stateFile, "utf8").replace(
+          /^heartbeat=.*$/m,
+          "heartbeat=2000-01-01",
+        ),
+      ),
+    // withoutAws runs on a PATH holding nothing, which the --heartbeat
+    // path alone can run on.
+    run: ({ args = [], withoutAws = false } = {}) => {
       rmSync(calls, { force: true });
-      const result = spawnSync(BASH, [PUBLISH], {
+      const result = spawnSync(BASH, [PUBLISH, ...args], {
         encoding: "utf8",
         env: {
           ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
+          PATH: withoutAws ? emptyBin : `${bin}:${process.env.PATH}`,
           ALCOVE_RELAY_ENV_FILE: envFile,
           ALCOVE_RELAY_COUNTERS_FILE: countersFile,
           ALCOVE_RELAY_METRICS_STATE_FILE: stateFile,
@@ -109,15 +122,64 @@ describe("publish-metrics.sh", () => {
     expect(run.stderr).toContain("nothing to publish");
   });
 
-  it("records the first counts it reads and publishes none of them", () => {
+  it("records the first counts it reads and publishes none of them, only the day's heartbeat", () => {
     const host = fixtureHost();
     host.write(counters(START, { tokenless_enrollments: 500 }));
     const run = host.run();
     expect(run.status).toBe(0);
-    expect(run.awsCalls).toEqual([]);
+    expect(run.awsCalls).toEqual([
+      "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+        "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+    ]);
     expect(readFileSync(host.stateFile, "utf8")).toContain(
       "tokenless_enrollments=500",
     );
+  });
+
+  it("publishes the heartbeat on the first run of a UTC day and not on later runs", () => {
+    const host = fixtureHost();
+    host.write(counters(START, {}));
+    expect(host.run().awsCalls).toHaveLength(1);
+    expect(host.run().awsCalls).toEqual([]);
+    host.heartbeatYesterday();
+    const nextDay = host.run();
+    expect(nextDay.status, nextDay.stderr).toBe(0);
+    expect(nextDay.awsCalls).toEqual([
+      "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+        "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+    ]);
+    expect(nextDay.stderr).toContain("published heartbeat");
+    expect(host.run().awsCalls).toEqual([]);
+  });
+
+  it("sends the day's heartbeat in the same aws call as a rise", () => {
+    const host = fixtureHost();
+    host.write(counters(START, {}));
+    host.run();
+    host.heartbeatYesterday();
+    host.write(counters(START, { rate_limit_refusals: 2 }));
+    const run = host.run();
+    expect(run.awsCalls).toEqual([
+      "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+        "MetricName=rate_limit_refusals,Value=2,Unit=Count " +
+        "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+    ]);
+  });
+
+  it("sends the heartbeat again on the next run after a failed one", () => {
+    const host = fixtureHost();
+    host.write(counters(START, {}));
+    host.awsFails(true);
+    const failed = host.run();
+    expect(failed.status).toBe(1);
+    expect(failed.stderr).toContain("the publish of heartbeat");
+    host.awsFails(false);
+    const retried = host.run();
+    expect(retried.status, retried.stderr).toBe(0);
+    expect(retried.awsCalls).toEqual([
+      "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+        "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+    ]);
   });
 
   it("publishes each count's rise since the last publish, and only the counts that rose", () => {
@@ -230,6 +292,46 @@ describe("publish-metrics.sh", () => {
     const run = host.run();
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("ALCOVE_RELAY_METRICS_REGION is unset");
+  });
+
+  describe("--heartbeat, install.sh's test publish", () => {
+    it("publishes one heartbeat and records nothing", () => {
+      const host = fixtureHost();
+      host.write(counters(START, { tokenless_enrollments: 5 }));
+      const run = host.run({ args: ["--heartbeat"] });
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+      ]);
+      expect(existsSync(host.stateFile)).toBe(false);
+    });
+
+    it("fails naming the missing aws command", () => {
+      const host = fixtureHost();
+      const run = host.run({ args: ["--heartbeat"], withoutAws: true });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("no aws command on PATH");
+    });
+
+    it("fails where CloudWatch refuses the publish", () => {
+      const host = fixtureHost();
+      host.awsFails(true);
+      const run = host.run({ args: ["--heartbeat"] });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("refused or did not answer a test publish");
+    });
+
+    it("is run by install.sh, which stops on its failure before enabling the timer", () => {
+      const install = read("infra/relay/install.sh");
+      const testPublish = install.indexOf(
+        '"$LIBEXEC/aws/publish-metrics.sh" --heartbeat \\\n    || die ',
+      );
+      expect(testPublish).toBeGreaterThan(-1);
+      expect(testPublish).toBeLessThan(
+        install.indexOf("systemctl enable --now alcove-relay-metrics.timer"),
+      );
+    });
   });
 
   it("publishes the counts the registrar writes and the README names", () => {
@@ -349,6 +451,45 @@ describe("alcove-relay-metrics.timer", () => {
 
   it("does not catch up at boot", () => {
     expect(setting(TIMER, "Persistent")).toBe("false");
+  });
+});
+
+// The longest wait, in minutes, from one run to the next, across midnight.
+const longestGap = () => {
+  const { times } = publishTimes();
+  const sorted = [...times].sort((a, b) => a - b);
+  return Math.max(
+    ...sorted.map((time, i) =>
+      i + 1 < sorted.length ? sorted[i + 1] - time : sorted[0] + 1440 - time,
+    ),
+  );
+};
+
+const alarmPeriodMinutes = (alarm) => {
+  const row = read("infra/relay/aws/provision.md").match(
+    new RegExp(`^\\| \`${alarm}\` \\|.*\`Sum\`, (\\d+) \\|$`, "m"),
+  );
+  expect(row, `provision.md has a Sum row for ${alarm}`).not.toBeNull();
+  return Number(row[1]) / 60;
+};
+
+describe("the alarms on the publisher's datapoints", () => {
+  it("sizes the enrollment threshold to a period plus the longest gap between runs", () => {
+    const multiple = read("infra/relay/README.md").match(
+      /`alcove-relay-tokenless-enrollments` \|[^\n]*\| (\d+) times `ALCOVE_RELAY_TOTAL_QUOTA` \|/,
+    );
+    expect(multiple).not.toBeNull();
+    // 3 exchanges an hour per unit of quota at full use.
+    const hoursCovered = Number(multiple[1]) / 3;
+    const period = alarmPeriodMinutes("alcove-relay-tokenless-enrollments");
+    expect(period).toBeGreaterThanOrEqual(longestGap());
+    expect(period + longestGap()).toBeLessThanOrEqual(hoursCovered * 60);
+  });
+
+  it("gives the heartbeat a one-day period, longer than any gap between runs", () => {
+    const period = alarmPeriodMinutes("alcove-relay-publisher-heartbeat");
+    expect(period).toBe(1440);
+    expect(longestGap()).toBeLessThan(period);
   });
 });
 

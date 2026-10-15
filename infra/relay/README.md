@@ -62,9 +62,10 @@ your own environment:
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
   [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
-- [The counts publisher and the alarms](#monitoring) have not yet run on the
-  project's relay host; its tests drive the publisher against a stubbed
-  `aws` and hold its timer out of the busy hours.
+- [The counts publisher, the alarms and the runbook's `nft`
+  block](#monitoring) have not yet run on the project's relay host; its tests
+  drive the publisher against a stubbed `aws` and hold its timer out of the
+  busy hours.
 
 The measurement this reference implements, and the shapes it rules out, are in
 [`docs/notes/webrtc-relay-deployment.md`](../../docs/notes/webrtc-relay-deployment.md);
@@ -991,7 +992,7 @@ a disk swapfile before it installs anything:
 
 CloudWatch alarms email the owner when the relay's traffic, the account's
 spend, or the registrar's enrollments without a token rise past a threshold
-derived below. They are created by hand and recorded, for the relay's
+derived below, and when the publisher of those counts stops publishing. They are created by hand and recorded, for the relay's
 OpenTofu root to import, in [aws/provision.md](aws/provision.md), Alarms.
 
 ### Publishing the registrar's counts
@@ -1010,38 +1011,54 @@ put-metric-data` under the instance role.
   the daily verification, the certificate renewals, [the OS
   update](#os-updates) and the host pull run: dnf alone ran this instance out
   of memory before it had disk swap. A rise in those hours is published by the next run, so the first
-  datapoint after 08:00 UTC can hold five hours of counts.
-- **What it costs.** A run where no count rose reads one small file and starts
-  no `aws` process. A run that publishes starts one for a few seconds, niced,
-  idle-class for I/O, and stopped after 2 minutes; its peak memory on the
-  project's host is not yet measured.
-- **What it keeps.** The counts it last published, in
-  `/var/lib/alcove-relay-metrics/published`. The first run records the counts
-  and publishes nothing; a changed `started` in the counters file counts from
-  0; a failed publish keeps the old record, so the next run publishes the rise
-  again. A run writes one line to `journalctl -u alcove-relay-metrics.service`
-  when it publishes, records the first counts, fails, or finds no counters
-  file, and none on a run where no count rose.
+  datapoint after 08:00 UTC can hold five hours of counts, which is why
+  [the enrollment alarm](#the-alarms) sums 6 hours.
+- **The heartbeat.** The first run of each UTC day that reads the counters
+  file also publishes `publisher_heartbeat`, value 1, in the same call as any
+  rise, so [an alarm](#the-alarms) can tell a publisher that fails from a
+  quiet relay. A run that fails, or finds no counters file, sends none.
+- **At install.** Where it enables the timer, `install.sh` first runs
+  `publish-metrics.sh --heartbeat`, one test publish of a heartbeat, and stops
+  naming the cause where there is no `aws` command or CloudWatch refuses it.
+- **What it costs.** A run where no count rose, past the day's first, reads
+  one small file and starts no `aws` process. A run that publishes starts one
+  for a few seconds, niced, idle-class for I/O, and stopped after 2 minutes;
+  its peak memory on the project's host is not yet measured.
+- **What it keeps.** The counts it last published and the UTC day of the last
+  heartbeat, in `/var/lib/alcove-relay-metrics/published`. The first run
+  records the counts and publishes none of them; a changed `started` in the
+  counters file counts from 0; a failed publish keeps the old record, so the
+  next run publishes the rise, and the heartbeat, again. A run writes one line
+  to `journalctl -u alcove-relay-metrics.service` when it publishes, records
+  the first counts, fails, or finds no counters file, and none on a run where
+  nothing was published.
 
 ### The alarms
 
 Each alarm notifies an SNS topic the owner's email subscribes to:
 `alcove-relay-alarms` in the instance's region, and `alcove-billing-alarms`
-in us-east-1, the one region AWS publishes billing metrics in. Missing data
-is not breaching: the publisher sends nothing on a quiet run.
+in us-east-1, the one region AWS publishes billing metrics in. For the
+alarms in the table, missing data is not breaching: the publisher sends
+nothing on a quiet run.
 
 | alarm | metric, statistic and period | fires when it exceeds |
 | --- | --- | --- |
 | `alcove-account-estimated-charges`, us-east-1 | `AWS/Billing` `EstimatedCharges`, `Currency=USD`, maximum over 6 hours | the last full month's bill times 31, divided by that month's days |
 | `alcove-relay-network-out` | `AWS/EC2` `NetworkOut` of the relay instance, sum over 1 hour | the largest hourly sum in the last full month |
-| `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 1 hour | 3 times `ALCOVE_RELAY_TOTAL_QUOTA` |
+| `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 36 times `ALCOVE_RELAY_TOTAL_QUOTA` |
 | `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
+
+`alcove-relay-publisher-heartbeat` watches the publisher itself:
+`Alcove/Relay` `publisher_heartbeat`, sum over 1 day, firing when two
+consecutive days hold no datapoint. For it alone, missing data is breaching.
 
 How each threshold is derived:
 
 - **Spend.** A month spending at the last full month's daily rate stays
-  under it, even at 31 days, so it fires when this month spends faster than
-  the last. The 6 hours are an arbitrary working value longer than the
+  under it, even at 31 days. It fires only once this month's total passes a
+  full 31-day month at that rate, so a month spending faster than the last
+  trips it before the month ends, not early in it. The 6 hours
+  are an arbitrary working value longer than the
   billing metric's update interval.
 - **Traffic.** No hour of the last full month sent as many bytes. Read it
   from the instance's own `NetworkOut` history, at a 1-hour period.
@@ -1050,7 +1067,20 @@ How each threshold is derived:
   `ALCOVE_RELAY_TOTAL_QUOTA` x 3 exchanges an hour, each enrolled once
   ([The registrar](#the-registrar), Enrollment without a token, The
   ceiling). More enrollments than that are more exchanges than the relay
-  could carry if every one relayed. Change the threshold with the quota.
+  could carry if every one relayed. A 6-hour sum holds at most 6 hours of
+  enrollments plus the longest gap between the publisher's runs, 02:55 to
+  08:00 UTC, which the 08:00 run publishes as one datapoint: under 12 hours
+  in all. So the threshold is 12 hours at full use, 36 times the quota, and
+  ordinary overnight enrollments do not trip it at 08:00. The cost is slower
+  detection: an hourly sum would fire within the hour enrollments pass full
+  use, while this one fires up to 6 hours later, and only once they average
+  twice full use over the 6 hours. Change the threshold with the quota.
+- **Heartbeat.** A working publisher puts one heartbeat in each UTC day,
+  whatever the relay's traffic, at the day's first run, normally 01:00 UTC,
+  or 08:00 or later where the runs before the skipped hours failed. Two days
+  rather than one, so the day in progress, before its first run, is not taken
+  for a publisher that fails. It fires within about three days of the
+  publisher's last success.
 - **Refusals.** Each bound the registrar refuses at is sized to admit
   legitimate use ([The registrar](#the-registrar), Enrollment without a
   token), so a refusal is a client past it. A ceiling refusal also refuses
@@ -1095,18 +1125,37 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   Type=DIMENSION,Key=USAGE_TYPE`, from a machine holding the account's
   credentials. Data transfer out of the instance is the relay's traffic: as
   for `alcove-relay-network-out`. Anything else is not the relay's.
+- **`alcove-relay-publisher-heartbeat`.** The publisher has sent nothing for
+  two UTC days, so the alarms on the registrar's counts would not fire either.
+  `journalctl -u alcove-relay-metrics.service --since -3days` names the cause
+  on its last lines: CloudWatch refusing the publish (the instance role's
+  permission, or the network), a counters file it cannot read or that is
+  malformed, or no counters file, where the registrar is not running.
+  `systemctl list-timers alcove-relay-metrics.timer` shows whether the timer
+  still runs. After the fix, `systemctl start alcove-relay-metrics.service`
+  runs it once, and the alarm returns to OK at the next day's heartbeat.
 
 The responses:
 
 - **Revoke an exchange.** `revoke-exchange.sh <exchange-id>`
   ([Per-exchange keys](#per-exchange-keys)). An allocation already open is not
   cut, so block its client's address too.
-- **Block an address at the 443 front.**
-  `iptables -I INPUT -s <address> -p tcp --dport 443 -j DROP`. A new
-  connection from it is dropped; an open one gets nothing more through, and
-  the front closes it after 900 s idle ([The 443 front](#the-443-front),
-  Bounds). The rule lasts until a reboot;
-  `iptables -D INPUT -s <address> -p tcp --dport 443 -j DROP` removes it.
+- **Block an address at the 443 front.** With `nft`, which Amazon Linux 2023
+  uses for its firewall rules:
+
+  ```sh
+  nft add table inet alcove_block
+  nft add chain inet alcove_block input '{ type filter hook input priority 0; }'
+  nft add rule inet alcove_block input ip saddr <address> tcp dport 443 drop
+  ```
+
+  The first two lines change nothing where the table and chain exist; use
+  `ip6 saddr` for an IPv6 address. A new connection from it is dropped; an
+  open one gets nothing more through, and the front closes it after 900 s
+  idle ([The 443 front](#the-443-front), Bounds). The rules last until a
+  reboot. `nft -a list table inet alcove_block` lists them with their
+  handles; `nft delete rule inet alcove_block input handle <handle>` removes
+  one, and `nft delete table inet alcove_block` removes them all.
 - **Turn enrollment without a token off.** Set
   `ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=off` in `relay.env`, then
   `systemctl restart alcove-relay-registrar.service`

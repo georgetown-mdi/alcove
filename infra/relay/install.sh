@@ -416,6 +416,10 @@ fi
 # the operator named the region, having granted the role its permission
 # (aws/provision.md, The instance role).
 if [ -n "${ALCOVE_RELAY_METRICS_REGION:-}" ]; then
+  # A publisher that always fails sends no datapoint, which every alarm but
+  # the heartbeat's treats as a quiet relay; one test publish finds that here.
+  ALCOVE_RELAY_ENV_FILE="$ENV_FILE" "$LIBEXEC/aws/publish-metrics.sh" --heartbeat \
+    || die "the test publish to CloudWatch failed (above), so no alarm would see the registrar's counts; fix the cause and run again, or unset ALCOVE_RELAY_METRICS_REGION in $ENV_FILE"
   systemctl enable --now alcove-relay-metrics.timer \
     || die "alcove-relay-metrics.timer did not start; no alarm would see the registrar's counts. journalctl -u alcove-relay-metrics.timer"
   log "the registrar's counts are published to CloudWatch in $ALCOVE_RELAY_METRICS_REGION every 5 minutes outside hours 00 and 03-07 UTC"
