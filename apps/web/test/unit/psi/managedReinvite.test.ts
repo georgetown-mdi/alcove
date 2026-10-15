@@ -84,10 +84,15 @@ const seams = {
   encode: encodeInvitation,
   now: () => NOW,
   ownRelay: undefined,
-  defaultRelayTurnUrl: undefined,
+  defaultRelay: undefined,
 };
 
 const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
+const DEFAULT_RELAY_REGISTRAR_URL = "https://turn.example.org";
+const DEFAULT_RELAY = {
+  turnUrl: DEFAULT_RELAY_TURN_URL,
+  registrarUrl: DEFAULT_RELAY_REGISTRAR_URL,
+};
 
 describe("composeManagedReinvite", () => {
   test("mints a fresh secret and reuses the stored document's terms verbatim", async () => {
@@ -162,22 +167,28 @@ describe("composeManagedReinvite", () => {
     const reinvite = await composeManagedReinvite(inviterRecord(), location, {
       ...seams,
       ownRelay,
-      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
+      defaultRelay: DEFAULT_RELAY,
     });
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toMatchObject({
-      relay: { turn: [...ownRelay.turn, DEFAULT_RELAY_TURN_URL] },
+      relay: {
+        turn: [...ownRelay.turn, DEFAULT_RELAY_TURN_URL],
+        registrar: DEFAULT_RELAY_REGISTRAR_URL,
+      },
     });
   });
 
   test("names the build's default relay alone when this browser has no relay", async () => {
     const reinvite = await composeManagedReinvite(inviterRecord(), location, {
       ...seams,
-      defaultRelayTurnUrl: DEFAULT_RELAY_TURN_URL,
+      defaultRelay: DEFAULT_RELAY,
     });
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toMatchObject({
-      relay: { turn: [DEFAULT_RELAY_TURN_URL] },
+      relay: {
+        turn: [DEFAULT_RELAY_TURN_URL],
+        registrar: DEFAULT_RELAY_REGISTRAR_URL,
+      },
     });
   });
 

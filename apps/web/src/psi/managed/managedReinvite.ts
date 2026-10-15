@@ -62,6 +62,7 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { InvitationLocation } from "../invitation";
 import type { InvitationToken } from "@alcove/core";
 import type { RelayUrls } from "../transport/ownRelaySetting";
@@ -162,9 +163,9 @@ interface ManagedReinviteSeams {
   /** This browser's own relay, which the invitation names; `undefined` names
    * none. */
   ownRelay: RelayUrls | undefined;
-  /** The TURN url of the build's default relay, which the invitation names
-   * after the own relay; `undefined` names none. */
-  defaultRelayTurnUrl: string | undefined;
+  /** The build's default relay, whose TURN url the invitation names after the
+   * own relay, with its registrar; `undefined` names none. */
+  defaultRelay: DefaultRelaySetting | undefined;
 }
 
 /**
@@ -207,7 +208,7 @@ export async function composeManagedReinvite(
     location,
     freshSecret,
     tokenExpires,
-    invitationRelayWithDefault(seams.ownRelay, seams.defaultRelayTurnUrl),
+    invitationRelayWithDefault(seams.ownRelay, seams.defaultRelay),
   );
   const encoded = await seams.encode(token);
   return {

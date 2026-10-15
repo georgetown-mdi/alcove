@@ -68,8 +68,9 @@ export interface ResolveAuthoredSignalingServerOptions {
 const BODY_REFUSED =
   "The request body must be an object with address, a string of at most " +
   `${MAX_SIGNALING_SERVER_URL_LENGTH} characters, and optionally ` +
-  "invitationRelay, the turn and stun lists of an accepted invitation's " +
-  "relay, and ownRelay, the turn urls and registrar of this console's relay.";
+  "invitationRelay, the turn and stun lists and registrar of an accepted " +
+  "invitation's relay, and ownRelay, the turn urls and registrar of this " +
+  "console's relay.";
 
 /** The refusal of a relay setting core's rules refuse, naming the first
  * rule it breaks. */

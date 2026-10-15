@@ -490,7 +490,7 @@ describe("a webrtc configuration", () => {
     );
   });
 
-  test("names the TURN urls its run relays through, as the command line chooses them", () => {
+  test("names the TURN urls its run relays through, as the command line lists them", () => {
     const connection = webrtcDocument().connection as Record<string, unknown>;
     const direct = {
       channel: "webrtc",
@@ -508,9 +508,12 @@ describe("a webrtc configuration", () => {
     expect(
       relayed({
         turn: [{ url: "turns:own.example.org:443" }],
-        invitation_relay: { turn: ["turns:relay.example.org:5349"] },
+        invitation_relay: {
+          turn: ["turns:relay.example.org:5349"],
+          registrar: "https://relay.example.org",
+        },
       }),
-    ).toEqual(["turns:relay.example.org:5349"]);
+    ).toEqual(["turns:own.example.org:443", "turns:relay.example.org:5349"]);
     expect(
       loadDocument(webrtcDocument({ connection: direct })),
     ).not.toHaveProperty("relaySettings");
@@ -536,6 +539,11 @@ describe("a webrtc configuration", () => {
     expect(
       minted({
         turn: [{ url: "turn:own.example.org" }],
+        invitation_relay: { turn: ["turns:relay.example.org:5349"] },
+      }),
+    ).toBe(true);
+    expect(
+      minted({
         invitation_relay: { turn: ["turns:relay.example.org:5349"] },
       }),
     ).toBeUndefined();

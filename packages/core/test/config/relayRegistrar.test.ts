@@ -49,7 +49,7 @@ test("a registrar url naming no port parses, and a refusal's example names none"
   expect(result.success).toBe(true);
   expect(
     messages(webrtc({ url: "registrar.example.org", exchange_id: "x-1" })),
-  ).toContain("write it as https://registrar.example.org");
+  ).toMatch(/for example https:\/\/registrar\.example\.org$/);
   expect(
     messages(
       webrtc({ url: "http://registrar.example.org", exchange_id: "x-1" }),
@@ -57,15 +57,29 @@ test("a registrar url naming no port parses, and a refusal's example names none"
   ).toMatch(/for example https:\/\/registrar\.example\.org(?!:)/);
 });
 
+const FORM =
+  "an https:// url naming only a host and an optional port from 1 to 65535, " +
+  "for example https://registrar.example.org";
+
 test.each([
-  ["http://relay.example.org:8443", "https://"],
-  ["https://relay.example.org:8443/exchanges", "no path"],
-  ["https://relay.example.org:8443?x=1", "no path"],
-  ["relay.example.org", "not a url"],
-  ["https://relay.example.org:0", "1-65535"],
+  ["http://relay.example.org:8443", `must be ${FORM}`],
+  [
+    "https://relay.example.org:8443/exchanges",
+    `has a path, query or fragment; write it as ${FORM}`,
+  ],
+  ["https://relay.example.org:8443?x=1", "has a path, query or fragment"],
+  ["relay.example.org", `is not a url; write it as ${FORM}`],
+  ["https://relay.example.org:0", `names port 0; write it as ${FORM}`],
+  ["https://relay.example.org#x", "has a path, query or fragment"],
+  ["https://relay.example.org?", "has a path, query or fragment"],
+  ["https://relay.example.org#", "has a path, query or fragment"],
+  ["https://relay.example.org/?#", "has a path, query or fragment"],
+  ["https://relay.example.org//", "has a path, query or fragment"],
+  ["https://relay.example.org/.", `must be written as ${FORM}`],
+  ["https:relay.example.org", `must be written as ${FORM}`],
 ])("the registrar url %s is refused", (url, expected) => {
   expect(messages(webrtc({ url, exchange_id: "exchange-1" }))).toContain(
-    expected,
+    `relay_registrar.url ${expected}`,
   );
 });
 
@@ -74,8 +88,45 @@ test("a registrar url holding a user is refused without repeating it", () => {
     url: `https://owner:${PASSWORD}@relay.example.org:8443`,
     exchange_id: "exchange-1",
   });
-  expect(messages(result)).toContain("names a user");
+  expect(messages(result)).toContain(
+    `relay_registrar.url names a user; write it as ${FORM}`,
+  );
   expect(JSON.stringify(result)).not.toContain(PASSWORD);
+});
+
+test.each([
+  ["https://hidden-host.example.org?", "query"],
+  ["https://hidden-host.example.org/x", "path"],
+  ["https://hidden-host.example.org:0", "port 0"],
+  ["http://hidden-host.example.org", "https"],
+])("a refused registrar url %s is not repeated", (url) => {
+  const result = webrtc({ url, exchange_id: "exchange-1" });
+  expect(result.success).toBe(false);
+  expect(JSON.stringify(result)).not.toContain("hidden-host");
+});
+
+test.each([
+  ["an explicit port 443", "https://relay.example.org:443"],
+  ["an upper-case host", "https://Relay.Example.ORG"],
+  ["a trailing slash", "https://relay.example.org/"],
+  ["all three", "https://Relay.example.org:443/"],
+])("a registrar url with %s parses to its origin", (_, url) => {
+  const result = webrtc({ url, exchange_id: "exchange-1" });
+  expect(result.success).toBe(true);
+  if (!result.success || result.data.channel !== "webrtc") return;
+  expect(result.data.relayRegistrar?.url).toBe("https://relay.example.org");
+});
+
+test("a registrar url with a port other than 443 keeps it in its origin", () => {
+  const result = webrtc({
+    url: "https://Relay.example.org:8443/",
+    exchange_id: "exchange-1",
+  });
+  if (!result.success || result.data.channel !== "webrtc")
+    throw new Error("expected the registrar to parse");
+  expect(result.data.relayRegistrar?.url).toBe(
+    "https://relay.example.org:8443",
+  );
 });
 
 test.each([

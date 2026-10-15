@@ -1639,6 +1639,29 @@ describe("partitionReadableManagedExchanges", () => {
     expect(read.records).toEqual([record]);
     expect(read.unreadableIds).toEqual([]);
   });
+
+  test("reads a stored registrar url back as its origin, losing nothing else", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const stored = {
+      ...record,
+      relayRegistrar: {
+        url: "https://Relay.example.org:443/",
+        exchangeId: "riverbend-weekly",
+      },
+    };
+    const read = partitionReadableManagedExchanges([record.id], [stored]);
+
+    expect(read.unreadableIds).toEqual([]);
+    expect(read.records).toEqual([
+      {
+        ...stored,
+        relayRegistrar: {
+          url: "https://relay.example.org",
+          exchangeId: "riverbend-weekly",
+        },
+      },
+    ]);
+  });
 });
 
 // The standing condition: raised by the two failure kinds whose remedy is

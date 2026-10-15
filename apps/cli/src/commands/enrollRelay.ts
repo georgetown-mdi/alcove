@@ -163,9 +163,7 @@ export async function enrollRelay(
     throw new UsageError(
       "the configuration names no relay registrar this party registers at: " +
         "enrollment needs a webrtc connection with connection.relay_registrar " +
-        "and a connection.turn entry that sets no username or credential, " +
-        "and no connection.invitation_relay naming a turn url, since a run " +
-        "relaying through the partner's relay registers nothing",
+        "and a connection.turn entry that sets no username or credential",
     );
   const ownerToken = checkedOwnerToken(
     await options.readOwnerToken(

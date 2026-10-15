@@ -45,11 +45,13 @@ import {
   DEDUPLICATE_CONTROL_LABEL,
 } from "@psi/deduplicateChoice";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
+import { isConsoleBuild } from "@utils/clientConfig";
 
 import type { ReactNode, Ref } from "react";
 
 import type {
   ConnectionEndpoint,
+  Displayable,
   InvitationKeySummary,
   LinkageTerms,
 } from "@alcove/core";
@@ -118,6 +120,20 @@ const DUPLICATE_MATCHES_HEADLINE = {
       "No more than one of your records matches a single one of your partner's records.",
   },
 } as const;
+
+/**
+ * The line naming the registrar an invitation's relay names, `registrar`
+ * escaped in the summary. A console run is the CLI's, which enrolls there
+ * before it connects (apps/cli/src/invitationDisplay.ts states the same); a
+ * browser run enrolls only at its own build's default relay, so the hosted
+ * line names the registrar and nothing more.
+ */
+function invitationRelayRegistrarLine(registrar: Displayable): string {
+  return isConsoleBuild()
+    ? `Each run registers this exchange at ${registrar} before it connects, ` +
+        "and whoever runs that registrar learns this machine's network address."
+    : `The invitation also names this relay's registrar: ${registrar}`;
+}
 
 /** A labelled block: a bold caption above its value(s). When `captionId` is set it
  * is put on the caption, so a child that is itself a labelled region (a
@@ -1024,6 +1040,11 @@ export function InvitationTerms({
                 STUN {url}
               </Text>
             ))}
+            {summary.relay.registrar !== undefined && (
+              <Text size="sm">
+                {invitationRelayRegistrarLine(summary.relay.registrar)}
+              </Text>
+            )}
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.invitationRelay.note}
             </Text>

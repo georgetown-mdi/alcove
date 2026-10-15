@@ -111,6 +111,18 @@ export const ALLOWLIST = [
       "the registrar address in core's @internal command-line export fixtures, exported for tests through packages/core/src/testing.ts; a reserved documentation domain, never dialed",
   },
   {
+    url: "turns:default-relay.example.org:443?transport=tcp",
+    match: "exact",
+    reason:
+      "the invitation relay's TURN url in core's @internal command-line export fixtures, exported for tests through packages/core/src/testing.ts; a reserved documentation domain, never dialed",
+  },
+  {
+    url: "https://default-relay.example.org",
+    match: "exact",
+    reason:
+      "the invitation relay's registrar in core's @internal command-line export fixtures, exported for tests through packages/core/src/testing.ts; a reserved documentation domain, never dialed",
+  },
+  {
     url: "https://app.example.org/",
     match: "exact",
     reason:

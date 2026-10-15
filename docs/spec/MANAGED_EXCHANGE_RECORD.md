@@ -337,7 +337,8 @@ marker the stored record held, the secret it attests being unchanged.
 For the browser path the document's connection block is the `webrtc` channel
 restricted to its credential-free locator subset: `server` locator fields only
 (`host`/`port`/`path` -- no `server.username`, no PeerJS `key`), the
-`invitation_relay` the invitation named (TURN and STUN urls only, see
+`invitation_relay` the invitation named (TURN and STUN urls and a registrar
+url only, see
 [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), and no
 `turn`, `ice_provision`, or `provider_options` entries (a TURN entry holds
 relay credentials, and the provider map is opaque and `@`-file-pathed). An
@@ -1527,22 +1528,19 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   setting this build cannot read is refused apart, naming setting it again.
   The panel's preview and its download compose from one read of the relay
   settings, so the files name the urls the panel showed.
-- **A record whose command-line runs would relay through the partner's relay
-  writes neither.** When the invitation the record was accepted from names a
-  TURN url, a command-line run relays there in place of its own relay
-  ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)) and registers
-  nothing, so the export writes no `connection.relay_registrar` and no own
-  `turn` entry and reads no relay setting; the configuration's
-  `invitation_relay` is the relay its runs use. Such a record is also not refused for a pending re-invite
-  registration, and its key file writes no pending marker.
-- **The build's default relay is not counted.** The export reads the TURN url
-  of the build's default relay
-  ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)) and treats the
-  invitation as if it did not name that url, since a command-line run does not
-  enroll there: the url does not make a record one whose command-line runs
-  relay through the partner's relay, and `invitation_relay` is written without
-  it, or not written when no url remains. A build that names no default relay
-  counts every url the invitation names.
+- **The invitation's relay does not change it.** A command-line run lists
+  the relay the invitation named beside its own and still registers at its
+  own registrar ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)),
+  so the export writes the registrar, the own `turn` entries and the marker
+  whatever relay the invitation named.
+- **The invitation's relay is written whole.** The export writes the record's
+  `invitation_relay` as the invitation named it, its `registrar` included, so
+  a command-line run lists that relay and enrolls at the registrar the
+  invitation names, whichever build named it
+  ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)). Where the
+  invitation names a registrar, the export panel states that each
+  command-line run registers there before it connects and that whoever runs
+  it learns that machine's network address.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not

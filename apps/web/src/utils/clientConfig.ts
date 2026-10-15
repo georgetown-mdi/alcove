@@ -6,7 +6,10 @@ import {
   SIGNALING_SCHEME_MISMATCH,
   signalingSchemeMatchesPage,
 } from "./signalingScheme";
-import { defaultRelayConfigProblems } from "./defaultRelayConfig";
+import {
+  defaultRelayConfigProblems,
+  defaultRelayRegistrarOrigin,
+} from "./defaultRelayConfig";
 
 import type { DefaultRelaySetting } from "./defaultRelayConfig";
 import type { LogLevelDesc } from "loglevel";
@@ -95,8 +98,9 @@ export interface ClientConfig {
    */
   DEFAULT_RELAY_TURN_URL: string;
   /**
-   * The `https://` address of the default relay's registrar, where each run
-   * enrolls its relay key without a token. Empty, the build has none.
+   * The `https://` address of the default relay's registrar, as its origin,
+   * where each run enrolls its relay key without a token. Empty, the build
+   * has none.
    */
   DEFAULT_RELAY_REGISTRAR_URL: string;
 }
@@ -203,7 +207,13 @@ const clientConfigSchema: ZodType<ClientConfig> = z
         path: [problem.variable],
         message: problem.message,
       });
-  });
+  })
+  .transform((value) => ({
+    ...value,
+    DEFAULT_RELAY_REGISTRAR_URL: defaultRelayRegistrarOrigin(
+      value.DEFAULT_RELAY_REGISTRAR_URL,
+    ),
+  }));
 
 /**
  * Resolves a {@link ClientConfig} from `data`, keyed by the unprefixed names.

@@ -33,6 +33,12 @@ const baseTerms = {
   linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
+const REGISTRAR = "https://registrar.example.org:8443";
+const REGISTRAR_FORM =
+  "an https:// url naming only a host and an optional port from 1 to 65535, " +
+  "for example https://registrar.example.org";
+const PATH_QUERY_OR_FRAGMENT = `has a path, query or fragment; write it as ${REGISTRAR_FORM}`;
+
 const RELAY = {
   turn: ["turns:relay.example.org:443?transport=tcp"],
   stun: ["stun:relay.example.org:3478"],
@@ -95,7 +101,9 @@ describe("the invitation's relay locator", () => {
       });
       await expect(
         decodeInvitation(await encodeRawInvitation(token)),
-      ).rejects.toThrow(/relay may carry only turn and stun url lists/);
+      ).rejects.toThrow(
+        /relay may hold only turn and stun url lists and a registrar url/,
+      );
       await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
     },
   );
@@ -210,6 +218,207 @@ describe("the invitation's relay locator", () => {
     await expect(
       decodeInvitation(await encodeRawInvitation(token)),
     ).rejects.toThrow(/Remove unexpected field\(s\): relay/);
+  });
+
+  test("a locator naming a registrar round-trips through mint and decode", async () => {
+    const endpoint = {
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { ...RELAY, registrar: REGISTRAR },
+    };
+    const decoded = await decodeInvitation(
+      await encodeInvitation(tokenWithEndpoint(endpoint)),
+    );
+    expect(decoded.connectionEndpoint).toEqual(endpoint);
+  });
+
+  test.each([
+    [
+      "an http url",
+      "http://SECRETHOST.example.org",
+      `must be ${REGISTRAR_FORM}`,
+    ],
+    [
+      "a url with a path",
+      "https://registrar.example.org/SECRETPATH",
+      PATH_QUERY_OR_FRAGMENT,
+    ],
+    [
+      "a url naming a user",
+      "https://SECRETUSER@registrar.example.org",
+      `names a user; write it as ${REGISTRAR_FORM}`,
+    ],
+    [
+      "text that is no url",
+      "SECRET registrar",
+      `is not a url; write it as ${REGISTRAR_FORM}`,
+    ],
+  ])(
+    "a registrar that is %s is refused at decode without its value",
+    async (_, registrar, refusal) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      });
+      const error: unknown = await decodeInvitation(
+        await encodeRawInvitation(token),
+      ).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ZodError);
+      const message = (error as ZodError).message;
+      expect(message).toContain(`a relay locator's registrar ${refusal}`);
+      expect(message).not.toContain("SECRET");
+      await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+    },
+  );
+
+  test.each([
+    ["a query", "https://hidden-host.example.org?a=1", PATH_QUERY_OR_FRAGMENT],
+    ["a bare ?", "https://hidden-host.example.org?", PATH_QUERY_OR_FRAGMENT],
+    ["a fragment", "https://hidden-host.example.org#x", PATH_QUERY_OR_FRAGMENT],
+    ["a bare #", "https://hidden-host.example.org#", PATH_QUERY_OR_FRAGMENT],
+    [
+      "an empty query and fragment",
+      "https://hidden-host.example.org/?#",
+      PATH_QUERY_OR_FRAGMENT,
+    ],
+    [
+      "two trailing slashes",
+      "https://hidden-host.example.org//",
+      PATH_QUERY_OR_FRAGMENT,
+    ],
+    [
+      "port 0",
+      "https://hidden-host.example.org:0",
+      `names port 0; write it as ${REGISTRAR_FORM}`,
+    ],
+  ])(
+    "a registrar url with %s is refused at decode and at mint without its value",
+    async (_, registrar, refusal) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      });
+      const decodeError: unknown = await decodeInvitation(
+        await encodeRawInvitation(token),
+      ).catch((caught: unknown) => caught);
+      const mintError: unknown = await encodeInvitation(token).catch(
+        (caught: unknown) => caught,
+      );
+      for (const error of [decodeError, mintError]) {
+        expect(error).toBeInstanceOf(ZodError);
+        const message = (error as ZodError).message;
+        expect(message).toContain(`a relay locator's registrar ${refusal}`);
+        expect(message).not.toContain("hidden-host");
+      }
+    },
+  );
+
+  test.each([
+    ["an explicit port 443", "https://registrar.example.org:443"],
+    ["an upper-case host", "https://Registrar.Example.ORG"],
+    ["a trailing slash", "https://registrar.example.org/"],
+    ["all three", "https://Registrar.example.org:443/"],
+  ])(
+    "a registrar url with %s is minted and decoded as its origin",
+    async (_, registrar) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      });
+      const expected = {
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar: "https://registrar.example.org" },
+      };
+      const minted = await decodeInvitation(await encodeInvitation(token));
+      expect(minted.connectionEndpoint).toEqual(expected);
+      const decoded = await decodeInvitation(await encodeRawInvitation(token));
+      expect(decoded.connectionEndpoint).toEqual(expected);
+    },
+  );
+
+  test.each([["https://registrar.example.org"], [REGISTRAR]])(
+    "the registrar url %s, written as its origin, is accepted at mint and at decode",
+    async (registrar) => {
+      const endpoint = {
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      };
+      const decoded = await decodeInvitation(
+        await encodeInvitation(tokenWithEndpoint(endpoint)),
+      );
+      expect(decoded.connectionEndpoint).toEqual(endpoint);
+    },
+  );
+
+  test("a registrar of exactly the length bound decodes, and one code unit over is refused", async () => {
+    const registrarOfLength = (length: number): string =>
+      "https://" + "r".repeat(length - "https://.org".length) + ".org";
+    const atBound = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: {
+        turn: RELAY.turn,
+        registrar: registrarOfLength(MAX_RELAY_LOCATOR_URL_LENGTH),
+      },
+    });
+    expect(
+      (await decodeInvitation(await encodeRawInvitation(atBound)))
+        .connectionEndpoint,
+    ).toEqual(atBound.connectionEndpoint);
+    const overBound = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: {
+        turn: RELAY.turn,
+        registrar: registrarOfLength(MAX_RELAY_LOCATOR_URL_LENGTH + 1),
+      },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(overBound)),
+    ).rejects.toThrow(/registrar is longer than 1024 characters/);
+  });
+
+  test("a registrar beside no turn url is refused at decode and at mint", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { stun: RELAY.stun, registrar: REGISTRAR },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(/registrar enrolls the key of its TURN relay/);
+    await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+  });
+
+  test("a registrar does not admit a credential beside it", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { ...RELAY, registrar: REGISTRAR, credential: "hunter2" },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(/Remove unexpected field\(s\): credential/);
+  });
+
+  test("the consent summary names the relay's registrar, escaped", async () => {
+    const summary = summarizeInvitation(
+      tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { turn: RELAY.turn, registrar: REGISTRAR },
+      }),
+    );
+    expect(summary.relay).toEqual({
+      turn: RELAY.turn,
+      stun: [],
+      registrar: REGISTRAR,
+    });
   });
 
   test("the consent summary names the relay's urls, escaped", async () => {
@@ -352,6 +561,38 @@ describe("the accepting side's connection", () => {
         invitation_relay: { ...RELAY, credential: "x" },
       }),
     ).toThrow(/invitation_relay has no key credential/);
+  });
+
+  test("keeps the invitation's registrar on invitation_relay, and parses it back from a configuration file", () => {
+    const relay = { ...RELAY, registrar: REGISTRAR };
+    expect(
+      connectionFromLocator({
+        channel: "webrtc",
+        host: "signal.example",
+        relay,
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: relay,
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(() =>
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: { ...relay, registrar: "http://r.example.org" },
+      }),
+    ).toThrow(/registrar must be an https:\/\/ url/);
+    expect(
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: { ...relay, registrar: `${REGISTRAR}/` },
+      }),
+    ).toMatchObject({ invitationRelay: relay });
   });
 
   test("a relay-only policy is satisfied by the invitation's TURN urls", () => {

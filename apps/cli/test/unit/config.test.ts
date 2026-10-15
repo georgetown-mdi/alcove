@@ -1719,6 +1719,28 @@ describe("persistInvitationRelay", () => {
     });
   });
 
+  test("writes the relay's registrar beside its urls, and it parses back", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    fs.writeFileSync(
+      configPath,
+      configWithLinkageTerms({
+        connection: { channel: "webrtc", server: { host: "peer.example.org" } },
+      }),
+    );
+    const relay = {
+      turn: ["turns:relay.example.org:443"],
+      registrar: "https://registrar.example.org",
+    };
+    expect(persistInvitationRelay(configPath, relay)).toBe("set");
+    const raw = YAML.parse(fs.readFileSync(configPath, "utf8")) as {
+      connection: Record<string, unknown>;
+    };
+    expect(raw.connection).toMatchObject({ invitation_relay: relay });
+    expect(parseExchangeSpec(raw).connection).toMatchObject({
+      invitationRelay: relay,
+    });
+  });
+
   test("leaves a connection that is not webrtc as it is", () => {
     const configPath = path.join(dir, "alcove.yaml");
     const original = [

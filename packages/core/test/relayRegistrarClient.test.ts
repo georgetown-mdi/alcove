@@ -1,10 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   RELAY_REGISTRATION_CANCELLED_REASON,
   REMOVED_CREDENTIAL_TEXT,
+  enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,
   registerRelayKey,
+  relayRegistrationOutcomeDetail,
   sendRelayRegistration,
 } from "../src/relayRegistrarClient";
 import { deriveRelayExchangeId, deriveRelayKey } from "../src/relayCredential";
@@ -221,6 +223,52 @@ describe("sendRelayRegistration", () => {
       { fetch: failingWith({ code: "ECONNREFUSED" }) },
     );
     expect(answer).toMatchObject({ unreachable: { port: 443 } });
+  });
+});
+
+// A timer left pending keeps a command-line process alive after its run.
+describe("sendRelayRegistration's timeout timer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test.each([
+    ["confirmed", 200, REGISTRAR_ANSWER, "registered"],
+    ["refused", 401, { error: "unknown key" }, "refused"],
+  ])(
+    "no timer remains after a request the registrar %s",
+    async (_, status, body, kind) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      let answerRequest: (() => void) | undefined;
+      const fetch = (() =>
+        new Promise<Response>((resolve) => {
+          answerRequest = () =>
+            resolve(new Response(JSON.stringify(body), { status }));
+        })) as typeof globalThis.fetch;
+      const pending = sendRelayRegistration(PROOF_REQUEST, { fetch });
+      expect(vi.getTimerCount()).toBe(1);
+      answerRequest?.();
+      expect((await pending).kind).toBe(kind);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test("a request aborts with a TimeoutError at the bound, not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fetch = neverAnswering();
+    const pending = sendRelayRegistration(PROOF_REQUEST, {
+      fetch,
+      timeoutMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetch.endings).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch.endings).toEqual(["TimeoutError"]);
+    expect(await pending).toMatchObject({
+      kind: "unavailable",
+      reason: "no answer within 1000 ms",
+    });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
@@ -519,5 +567,128 @@ describe("enrollRelayKeyWithoutToken", () => {
     );
     expect(outcome.kind).toBe("registered");
     expect(calls).toBe(2);
+  });
+});
+
+describe("relayRegistrationOutcomeDetail", () => {
+  test.each<[Parameters<typeof relayRegistrationOutcomeDetail>[0], string]>([
+    [{ kind: "refused", status: 409, reason: "held" }, "HTTP 409: held"],
+    [{ kind: "rejected", status: 400 }, "HTTP 400"],
+    [{ kind: "unavailable", reason: "no route" }, "no route"],
+    [{ kind: "unavailable", reason: "" }, "unavailable"],
+  ])("%j is stated as %j", (outcome, detail) => {
+    expect(relayRegistrationOutcomeDetail(outcome)).toBe(detail);
+  });
+});
+
+describe("enrollRelayKeyWithinWait", () => {
+  const REGISTRAR_URL = "https://registrar.example.org";
+  const WAIT_MS = 3_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A fetch answering only by rejecting with its signal's reason once that
+   * signal aborts, as a registrar that takes the connection and never replies;
+   * `called` resolves at its first request. */
+  function silent() {
+    let markCalled = () => {};
+    const called = new Promise<void>((resolve) => {
+      markCalled = resolve;
+    });
+    const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+      markCalled();
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason as Error),
+        );
+      });
+    }) as typeof globalThis.fetch;
+    return { fetch, called };
+  }
+
+  async function enrollWith(
+    fetch: typeof globalThis.fetch,
+    signal?: AbortSignal,
+  ) {
+    return enrollRelayKeyWithinWait(
+      { registrarUrl: REGISTRAR_URL, sharedSecret: generateSharedSecret() },
+      { waitMs: WAIT_MS, fetch, ...(signal !== undefined && { signal }) },
+    );
+  }
+
+  test("a confirmed enrollment is enrolled, with the registrar's lapse", async () => {
+    expect(
+      await enrollWith(
+        answering([
+          [200, { maxAgeDays: null, lapsesAt: "2026-10-15T13:10:00Z" }],
+        ]),
+      ),
+    ).toEqual({ kind: "enrolled", lapsesAt: "2026-10-15T13:10:00Z" });
+  });
+
+  test.each([
+    [409, "HTTP 409: held"],
+    [429, "HTTP 429: held"],
+  ])("a %i fails after one attempt, stating it", async (status, detail) => {
+    const fetch = answering([
+      [status, { error: "held" }],
+      [200, { maxAgeDays: null, lapsesAt: null }],
+    ]);
+    expect(await enrollWith(fetch)).toEqual({ kind: "failed", detail });
+    expect(fetch.authorizations).toEqual([null]);
+  });
+
+  test("an unreachable registrar fails, stating it", async () => {
+    expect(await enrollWith(answering([]))).toEqual({
+      kind: "failed",
+      detail: "it could not be reached (unreachable)",
+    });
+  });
+
+  test("a registrar client that throws fails, stating the registrar could not be reached", async () => {
+    const malformed = (() =>
+      Promise.resolve(undefined)) as unknown as typeof globalThis.fetch;
+    expect(await enrollWith(malformed)).toEqual({
+      kind: "failed",
+      detail: "it could not be reached",
+    });
+  });
+
+  test("the request is cut once the wait passes, and not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { fetch, called } = silent();
+    let settled = false;
+    const pending = enrollWith(fetch).finally(() => {
+      settled = true;
+    });
+    await called;
+    await vi.advanceTimersByTimeAsync(WAIT_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toEqual({
+      kind: "failed",
+      detail: `no answer within ${WAIT_MS} ms`,
+    });
+  });
+
+  test("a cancel during the attempt ends it as cancelled", async () => {
+    const cancel = new AbortController();
+    const { fetch, called } = silent();
+    const pending = enrollWith(fetch, cancel.signal);
+    await called;
+    cancel.abort();
+    await expect(pending).resolves.toEqual({ kind: "cancelled" });
+  });
+
+  test("a cancel before the attempt sends nothing", async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    const fetch = answering([[200, { maxAgeDays: null, lapsesAt: null }]]);
+    expect(await enrollWith(fetch, cancel.signal)).toEqual({
+      kind: "cancelled",
+    });
+    expect(fetch.authorizations).toEqual([]);
   });
 });

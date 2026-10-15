@@ -25,6 +25,21 @@ const PAIRING =
   "or neither";
 
 /**
+ * The trimmed registrar build variable as the origin core's registrar rule
+ * parses it to, or `""` when the value is unset or the rule refuses it.
+ */
+export function defaultRelayRegistrarOrigin(registrarUrl: string): string {
+  if (registrarUrl === "") return "";
+  // The registrar schema checks a url beside an exchange id; the id here is a
+  // placeholder, since each run derives its own.
+  const parsed = RelayRegistrarSchema.safeParse({
+    url: registrarUrl,
+    exchangeId: "default-relay",
+  });
+  return parsed.success ? parsed.data.url : "";
+}
+
+/**
  * What is wrong with the two trimmed values, empty when nothing is: each set
  * value must be one `turn:` / `turns:` url and an `https://` url naming only a
  * host and an optional port, and the two are set together or not at all.
@@ -39,19 +54,12 @@ export function defaultRelayConfigProblems(
       variable: "DEFAULT_RELAY_TURN_URL",
       message: "must be one turn: or turns: url",
     });
-  // The registrar schema checks a url beside an exchange id; the id here is a
-  // placeholder, since each run derives its own.
-  if (
-    registrarUrl !== "" &&
-    !RelayRegistrarSchema.safeParse({
-      url: registrarUrl,
-      exchangeId: "default-relay",
-    }).success
-  )
+  if (registrarUrl !== "" && defaultRelayRegistrarOrigin(registrarUrl) === "")
     problems.push({
       variable: "DEFAULT_RELAY_REGISTRAR_URL",
       message:
-        "must be an https:// url naming only a host and an optional port",
+        "must be an https:// url naming only a host and an optional port " +
+        "from 1 to 65535, for example https://registrar.example.org",
     });
   if ((turnUrl === "") !== (registrarUrl === ""))
     problems.push({

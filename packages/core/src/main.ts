@@ -851,9 +851,14 @@ export {
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   selectRunRelay,
 } from "./relayCredential";
-export type { RelayCredential } from "./relayCredential";
+export type {
+  RelayCredential,
+  RunRelaySelection,
+  RunTurnServer,
+} from "./relayCredential";
 export {
   enrollRelayKey,
+  enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,
   registerRelayKey,
   RELAY_REGISTRAR_REQUEST_TIMEOUT_MS,
@@ -861,10 +866,12 @@ export {
   relayRegistrarLabel,
   relayRegistrationBody,
   relayRegistrationNotice,
+  relayRegistrationOutcomeDetail,
   REMOVED_CREDENTIAL_TEXT,
   sendRelayRegistration,
 } from "./relayRegistrarClient";
 export type {
+  RelayEnrollmentWithinWait,
   RelayRegistrarAnswer,
   RelayRegistrarTransport,
   RelayRegistrationEnvironment,

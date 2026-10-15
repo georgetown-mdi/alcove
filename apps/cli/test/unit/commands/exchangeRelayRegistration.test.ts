@@ -273,22 +273,32 @@ test("a run that fails after rotating still registers the rotated key", async ()
   expect(loadKeyFile(keyFile)).toEqual({ sharedSecret: ROTATED });
 });
 
-test("a run relaying through the invitation's relay registers nothing", async () => {
+test("a run listing the invitation's relay beside its own still retries and registers at its own registrar", async () => {
   writeConfig({
-    invitation_relay: { turn: ["turns:partner.example.org:443"] },
+    invitation_relay: {
+      turn: ["turns:partner.example.org:443"],
+      registrar: "https://partner.example.org",
+    },
   });
   saveKeyFile(keyFile, {
     sharedSecret: PRE_ROTATION,
     relayRegistrationPendingSince: PENDING_SINCE,
   });
-  const requests = useRegistrar([]);
+  const requests = useRegistrar([
+    registrationAnswer(30, "2026-02-01T00:00:00Z"),
+    registrationAnswer(30, "2026-02-01T00:00:00Z"),
+  ]);
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
-    expect(options.auth?.relayRegistrationFollows).toBeUndefined();
-    expect(options.fileSyncRuntime?.onOutputComplete).toBeUndefined();
-    expect(options.fileSyncRuntime?.onRemoteFollowUp).toBeUndefined();
+    expect(options.auth?.relayRegistrationFollows).toBe(true);
     rotateLikeTheKeyExchange(options);
+    await options.fileSyncRuntime?.onRemoteFollowUp?.();
     return { outcome: "completed" };
   });
   await runHandler();
-  expect(requests).toHaveLength(0);
+  expect(requests.map((request) => request.url)).toEqual([
+    "https://relay.example.org:8443/exchanges/exchange-1",
+    "https://relay.example.org:8443/exchanges/exchange-1",
+  ]);
+  await expectSignedWithPreRotationKey(requests[1]!);
+  expect(loadKeyFile(keyFile)).toEqual({ sharedSecret: ROTATED });
 });

@@ -560,6 +560,9 @@ export function persistInvitationRelay(
         doc.createNode({
           ...(relay.turn !== undefined ? { turn: relay.turn } : {}),
           ...(relay.stun !== undefined ? { stun: relay.stun } : {}),
+          ...(relay.registrar !== undefined
+            ? { registrar: relay.registrar }
+            : {}),
         }),
       );
     },

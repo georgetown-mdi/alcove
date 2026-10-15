@@ -408,6 +408,8 @@ describe("what a re-take checks and writes", () => {
     const decided = decideRetake(enrolled, {
       ...runnable(),
       relayRegistrar: {
+        // Written in a form the registrar url schema would normalize to the
+        // stored origin; the function under test compares the strings as given.
         url: "https://RELAY.example.org:443",
         exchangeId: "riverbend-q3",
       },

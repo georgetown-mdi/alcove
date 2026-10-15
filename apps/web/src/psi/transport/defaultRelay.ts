@@ -1,16 +1,16 @@
 /**
  * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL` and
  * `VITE_DEFAULT_RELAY_REGISTRAR_URL`). An invitation this build creates names
- * it, and every browser run lists it beside any relay the invitation or this
+ * it and its registrar, and every browser run lists it beside any relay the invitation or this
  * browser's own setting names, once the run has enrolled its relay key at the
- * relay's registrar without a token (`enrollRelayKeyWithoutToken` in core),
+ * relay's registrar without a token (`enrollRelayKeyWithinWait` in core),
  * right before it connects. The key and the exchange id it is enrolled under
  * both derive from the run's current shared secret.
  */
 
 import {
   MAX_RELAY_LOCATOR_URLS,
-  enrollRelayKeyWithoutToken,
+  enrollRelayKeyWithinWait,
   getLogger,
 } from "@alcove/core";
 
@@ -36,8 +36,8 @@ export const DEFAULT_RELAY_DIAL_WAIT_MS = 3_000;
 export interface DefaultRelayDependencies {
   /** The build's default relay; {@link defaultRelaySetting} when unset. */
   setting?: () => DefaultRelaySetting | undefined;
-  /** The registrar client; core's {@link enrollRelayKeyWithoutToken}. */
-  enroll?: typeof enrollRelayKeyWithoutToken;
+  /** The bounded enrollment; core's {@link enrollRelayKeyWithinWait}. */
+  enroll?: typeof enrollRelayKeyWithinWait;
   /** Cancels the enrollment and the wait for it. */
   signal?: AbortSignal;
   /** How long a dial waits; {@link DEFAULT_RELAY_DIAL_WAIT_MS} when unset. */
@@ -48,23 +48,27 @@ export interface DefaultRelayDependencies {
 }
 
 /**
- * The relay an invitation names: `ownRelay`, followed by `defaultTurnUrl` when
- * the build names a default relay, once, and only where the locator has room
- * for it under {@link MAX_RELAY_LOCATOR_URLS}. A new invitation and a managed
- * re-invite both name it this way.
+ * The relay an invitation names: `ownRelay`, followed by the default relay's
+ * TURN url when the build names one, once, and only where the locator has
+ * room for it under {@link MAX_RELAY_LOCATOR_URLS}. Where the result names
+ * that url, it also names the default relay's registrar, where a command-line
+ * party enrolls without a token. A new invitation and a managed re-invite both
+ * name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
-  defaultTurnUrl: string | undefined,
+  defaultRelay: DefaultRelaySetting | undefined,
 ): RelayUrls | undefined {
+  if (defaultRelay === undefined) return ownRelay;
   const turn = ownRelay?.turn ?? [];
-  if (
-    defaultTurnUrl === undefined ||
-    turn.includes(defaultTurnUrl) ||
-    turn.length >= MAX_RELAY_LOCATOR_URLS
-  )
-    return ownRelay;
-  return { ...ownRelay, turn: [...turn, defaultTurnUrl] };
+  if (turn.includes(defaultRelay.turnUrl))
+    return { ...ownRelay, registrar: defaultRelay.registrarUrl };
+  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return ownRelay;
+  return {
+    ...ownRelay,
+    turn: [...turn, defaultRelay.turnUrl],
+    registrar: defaultRelay.registrarUrl,
+  };
 }
 
 /**
@@ -74,59 +78,6 @@ export function invitationRelayWithDefault(
 export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
   "The site's relay server could not be set up for this exchange. " +
   "Connecting without it.";
-
-type Enrollment = "enrolled" | "failed" | "cancelled";
-
-// One enrollment attempt. A refusal, a registrar that cannot be reached and
-// `waitMs` passing are each "failed", and logged once.
-async function enrollWithinDialWait(
-  setting: DefaultRelaySetting,
-  sharedSecret: string,
-  dependencies: DefaultRelayDependencies,
-): Promise<Enrollment> {
-  const { signal } = dependencies;
-  if (signal?.aborted === true) return "cancelled";
-  const enroll = dependencies.enroll ?? enrollRelayKeyWithoutToken;
-  const waitMs = dependencies.dialWaitMs ?? DEFAULT_RELAY_DIAL_WAIT_MS;
-  const attempt = enroll(
-    { registrarUrl: setting.registrarUrl, sharedSecret },
-    {
-      ...(signal !== undefined ? { signal } : {}),
-      timeoutMs: waitMs,
-      retryDelaysMs: [],
-    },
-  ).then(
-    (outcome): true | string =>
-      outcome.kind === "registered"
-        ? true
-        : `did not enroll this exchange (${outcome.kind}` +
-          `${outcome.status === undefined ? "" : ` ${outcome.status}`})`,
-    () => "could not be reached",
-  );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let stopWaiting = (): void => {};
-  const waited = new Promise<string | undefined>((resolve) => {
-    timer = setTimeout(
-      () => resolve(`did not answer within ${waitMs} ms`),
-      waitMs,
-    );
-    stopWaiting = () => resolve(undefined);
-    signal?.addEventListener("abort", stopWaiting, { once: true });
-  });
-  try {
-    const first = await Promise.race([attempt, waited]);
-    if (first === true) return "enrolled";
-    if (first === undefined) return "cancelled";
-    log.warn(
-      `the default relay's registrar ${first}, so this run connects ` +
-        "without it",
-    );
-    return "failed";
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", stopWaiting);
-  }
-}
 
 /**
  * The relay a browser run dials with: `relay`, this browser's own and the
@@ -145,16 +96,26 @@ export async function relayWithDefaultForRun(
 ): Promise<RelayLocator | undefined> {
   const setting = (dependencies.setting ?? defaultRelaySetting)();
   if (setting === undefined) return relay;
-  const enrollment = await enrollWithinDialWait(
-    setting,
-    sharedSecret,
-    dependencies,
+  const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;
+  const enrollment = await enroll(
+    { registrarUrl: setting.registrarUrl, sharedSecret },
+    {
+      waitMs: dependencies.dialWaitMs ?? DEFAULT_RELAY_DIAL_WAIT_MS,
+      ...(dependencies.signal !== undefined && {
+        signal: dependencies.signal,
+      }),
+    },
   );
-  if (enrollment === "failed")
+  if (enrollment.kind === "failed") {
+    log.warn(
+      `the default relay's registrar did not enroll this exchange ` +
+        `(${enrollment.detail}), so this run connects without it`,
+    );
     dependencies.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+  }
   const others = (relay?.turn ?? []).filter((url) => url !== setting.turnUrl);
   const turn =
-    enrollment === "enrolled" ? [...others, setting.turnUrl] : others;
+    enrollment.kind === "enrolled" ? [...others, setting.turnUrl] : others;
   const stun = [...(relay?.stun ?? [])];
   return turn.length + stun.length === 0 ? undefined : { turn, stun };
 }

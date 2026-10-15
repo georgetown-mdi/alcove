@@ -200,6 +200,16 @@ describe("parseClientConfig", () => {
     );
   });
 
+  test("reads the default relay's registrar as its origin", () => {
+    const config = parseClientConfig({
+      DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+      DEFAULT_RELAY_REGISTRAR_URL: "https://Registrar.example.org:443/",
+    });
+    expect(config.DEFAULT_RELAY_REGISTRAR_URL).toBe(
+      "https://registrar.example.org",
+    );
+  });
+
   test.each([
     [
       { DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443" },
@@ -222,6 +232,13 @@ describe("parseClientConfig", () => {
         DEFAULT_RELAY_REGISTRAR_URL: "http://registrar.example.org/path",
       },
       /VITE_DEFAULT_RELAY_REGISTRAR_URL: must be an https:\/\/ url/,
+    ],
+    [
+      {
+        DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+        DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org?",
+      },
+      /VITE_DEFAULT_RELAY_REGISTRAR_URL: must be an https:\/\/ url naming only a host and an optional port from 1 to 65535, for example https:\/\/registrar\.example\.org/,
     ],
   ])("refuses the default relay %j", (data, message) => {
     expect(() => parseClientConfig(data)).toThrow(message);

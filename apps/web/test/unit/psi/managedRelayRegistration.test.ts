@@ -850,7 +850,7 @@ describe("the enrollment form's address problems", () => {
   test.each([
     ["relay.example.org", "is not a url"],
     ["http://relay.example.org", "must be an https:// url"],
-    ["https://relay.example.org/register", "no path, query, or fragment"],
+    ["https://relay.example.org/register", "has a path, query or fragment"],
   ])("%s is refused in the schema's own words", (url, rule) => {
     const parsed = RelayRegistrarSchema.safeParse({
       url,
@@ -864,6 +864,17 @@ describe("the enrollment form's address problems", () => {
     expect(problems[0]).toMatch(/^The registrar address /);
     expect(problems[0]).toContain(rule);
     expect(problems[0]).not.toContain("relay_registrar");
+  });
+});
+
+describe("the enrollment form's stored address", () => {
+  test("a typed address is stored as its origin", () => {
+    const parsed = RelayRegistrarSchema.safeParse({
+      url: "https://Registrar.Example.org:443/",
+      exchangeId: REGISTRAR.exchangeId,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.url).toBe("https://registrar.example.org");
   });
 });
 

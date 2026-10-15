@@ -18,7 +18,7 @@
  * hand-off does ({@link ./scheduledRunCommand.ts}).
  */
 
-import { sanitizeErrorForDisplay } from "@alcove/core";
+import { sanitizeErrorForDisplay, sanitizeForDisplay } from "@alcove/core";
 
 import {
   composeManagedCronExport,
@@ -61,6 +61,26 @@ import type { RunSchedule } from "./scheduleTemplates";
  * itself.
  */
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
+
+/**
+ * The line an export shows where the exported connection's `invitation_relay`
+ * names a registrar, which every command-line run enrolls at before it
+ * connects; `undefined` where it names none. The registrar is the partner's
+ * choice, so it is escaped.
+ */
+export function invitationRegistrarExportLine(
+  record: ManagedExchangeRecord,
+): string | undefined {
+  const connection = record.exchangeFile.connection;
+  if (connection.channel !== "webrtc") return undefined;
+  const registrar = connection.invitationRelay?.registrar;
+  if (registrar === undefined) return undefined;
+  return (
+    "Each command-line run of this exchange registers at " +
+    `${sanitizeForDisplay(registrar)} before it connects, and whoever runs ` +
+    "that registrar learns the network address of the machine it runs on."
+  );
+}
 
 /** The command and schedule lines running a composed export, or why none is
  * shown ({@link RunLines}). */

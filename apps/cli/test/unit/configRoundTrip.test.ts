@@ -148,6 +148,7 @@ function webrtcConnection(variant: Variant, ice: Record<string, unknown>) {
     invitationRelay: {
       turn: [`turns:${host(variant, "relay")}:443?transport=tcp`],
       stun: [`stun:${host(variant, "relay")}:3478`],
+      registrar: `https://${host(variant, "relay-registrar")}`,
     },
     iceTransportPolicy: pick(variant, "all", "relay"),
     options: connectionTimeouts(variant),
@@ -277,4 +278,35 @@ test("a saved file-sync configuration spells the option write_without_renaming",
   const saved = fs.readFileSync(configPath, "utf8");
   expect(saved).toContain("write_without_renaming: true");
   expect(saved).not.toContain("publish_without_rename");
+});
+
+test("an invitation relay registrar written in a typed form is saved and read back as its origin", () => {
+  const configPath = path.join(dir, "alcove.yaml");
+  const typed = "https://Registrar.Example.org:443/";
+  const connection = webrtcRelayConnection(0);
+  const raw = {
+    connection: {
+      ...connection,
+      invitationRelay: { ...connection.invitationRelay, registrar: typed },
+    },
+    ...documentSettings(0),
+  };
+  const load = () =>
+    parseExchangeSpec(
+      parseSensitiveYaml(fs.readFileSync(configPath, "utf8"), "round trip"),
+    );
+  fs.writeFileSync(configPath, YAML.stringify(snakeizeKeys(raw)));
+  expect(fs.readFileSync(configPath, "utf8")).toContain(typed);
+
+  const loaded = load();
+  saveConfig(configPath, loaded);
+
+  const saved = fs.readFileSync(configPath, "utf8");
+  expect(saved).toContain("registrar: https://registrar.example.org\n");
+  expect(saved).not.toContain(typed);
+  expect(load()).toEqual(loaded);
+  const channel = load().connection;
+  expect(
+    channel.channel === "webrtc" ? channel.invitationRelay?.registrar : null,
+  ).toBe("https://registrar.example.org");
 });

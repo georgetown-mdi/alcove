@@ -7,6 +7,7 @@ import {
   getDefaultLinkageTerms,
   parseExchangeSpec,
   parseSensitiveYaml,
+  sanitizeForDisplay,
 } from "@alcove/core";
 
 import {
@@ -20,6 +21,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   exportRun,
+  invitationRegistrarExportLine,
   managedConfigurationExportState,
   managedCronExportPanelState,
 } from "@recurring/managedCronExportModel";
@@ -245,6 +247,51 @@ describe("what the panel gets to render", () => {
     const before = structuredClone(record);
     exportableState(record);
     expect(record).toEqual(before);
+  });
+});
+
+describe("the line naming the invitation relay's registrar", () => {
+  /** A record whose invitation relay names `registrar`, set past the schema
+   * so the line meets a value no parse has checked. */
+  function withRegistrar(registrar: string): RunnableManagedExchangeRecord {
+    const record = managedRecord();
+    const connection = record.exchangeFile.connection;
+    if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+    return {
+      ...record,
+      exchangeFile: {
+        ...record.exchangeFile,
+        connection: {
+          ...connection,
+          invitationRelay: {
+            turn: ["turns:relay.partner.example.org:443"],
+            registrar,
+          },
+        },
+      },
+    };
+  }
+
+  test("escapes the control characters a registrar holds and keeps markup as text", () => {
+    const registrar =
+      "https://registrar.example.org\u001b[2J\r\n\u202e<img src=x onerror=alert(1)>\u0000";
+    const line = invitationRegistrarExportLine(withRegistrar(registrar));
+
+    expect(line).toBe(
+      "Each command-line run of this exchange registers at " +
+        `${sanitizeForDisplay(registrar)} before it connects, and whoever ` +
+        "runs that registrar learns the network address of the machine it " +
+        "runs on.",
+    );
+    expect(line).toContain(
+      "https://registrar.example.org\\x1b[2J\\x0d\\x0a\\u202e" +
+        "<img src=x onerror=alert(1)>\\x00",
+    );
+    expect(line).not.toMatch(/[\p{Cc}\u202e]/u);
+  });
+
+  test("is absent where the invitation's relay names no registrar", () => {
+    expect(invitationRegistrarExportLine(managedRecord())).toBeUndefined();
   });
 });
 

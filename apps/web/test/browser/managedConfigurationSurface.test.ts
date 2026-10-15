@@ -140,6 +140,55 @@ describe("the surface of an imported configuration", () => {
   });
 });
 
+describe("the export's line naming the invitation relay's registrar", () => {
+  const REGISTRAR_LINE = "Each command-line run of this exchange registers at";
+
+  test("is shown, as the registrar's origin, where the relay names one", async () => {
+    const created = await createManagedExchange({
+      ...configurationOnly(),
+      side: "acceptor",
+      exchangeFile: composeManagedExchangeFile({
+        connection: {
+          channel: "webrtc",
+          host: "signaling.example.org",
+          relay: {
+            turn: ["turns:relay.partner.example.org:443?transport=tcp"],
+            registrar: "https://Registrar.Partner.example.org:443/",
+          },
+        },
+        linkageTerms,
+      }),
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(
+        page.getByText(
+          `${REGISTRAR_LINE} https://registrar.partner.example.org before ` +
+            "it connects, and whoever runs that registrar learns the network " +
+            "address of the machine it runs on.",
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("is absent where the relay names none", async () => {
+    const created = await createManagedExchange(configurationOnly());
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: `Download ${CRON_EXPORT_CONFIG_FILE_NAME}`,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(REGISTRAR_LINE);
+  });
+});
+
 describe("the settings of the imported document", () => {
   const note = "Filed with the program office for seven years.";
 

@@ -762,7 +762,9 @@ describe("the relay key registration", () => {
     expect(connection.relayRegistrar).toEqual(REGISTRAR);
     expect(connection.turn).toEqual([{ url: OWN_TURN }]);
     expect(hasMintedTurnEntry(connection.turn)).toBe(true);
-    expect(selectRunRelay(connection).turn?.source).toBe("own");
+    expect(selectRunRelay(connection).turn).toEqual([
+      { source: "own", url: OWN_TURN },
+    ]);
     expect(connection.stun).toBeUndefined();
     expect(
       composeManagedCronExport(record, ownRelay([OWN_TURN])).config.text,
@@ -856,66 +858,12 @@ describe("the relay key registration", () => {
   });
 
   describe("an enrolled record whose invitation named a relay", () => {
-    const PARTNER_TURN = "turns:partner-relay.example.org:443?transport=tcp";
-
-    function partnerRelayedRecord(): RunnableManagedExchangeRecord {
-      return managedRecord({
-        side: "acceptor",
-        exchangeFile: composeManagedDocument(
-          { side: "acceptor", linkageTerms },
-          webrtcLocatorFromEndpoint({
-            channel: "webrtc",
-            host: "signaling.example.org",
-            relay: { turn: [PARTNER_TURN] },
-          }),
-        ),
-        relayRegistrar: REGISTRAR,
-      });
-    }
-
-    test.each<[string, () => OwnRelayRead]>([
-      ["a relay setting naming a TURN url", ownRelay([OWN_TURN])],
-      ["no relay setting", () => ({ kind: "none" })],
-      ["an unreadable relay setting", () => ({ kind: "unreadable" })],
-    ])(
-      "writes neither the registrar nor an own TURN url under %s",
-      (_case, readOwn) => {
-        const connection = exportedConfig(partnerRelayedRecord(), readOwn);
-        expect(connection.relayRegistrar).toBeUndefined();
-        expect(connection.turn).toBeUndefined();
-        expect(connection.invitationRelay).toEqual({ turn: [PARTNER_TURN] });
-        expect(selectRunRelay(connection).turn).toEqual({
-          source: "invitation",
-          urls: [PARTNER_TURN],
-        });
-      },
-    );
-
-    test("a pending re-invite registration is neither refused nor written as a marker", () => {
-      const record: RunnableManagedExchangeRecord = {
-        ...partnerRelayedRecord(),
-        relayRegistrationPendingSince: PENDING_SINCE,
-        relayRegistrationPendingReason: "reinvite",
-      };
-      expect(() =>
-        composeManagedCronExport(record, ownRelay([OWN_TURN])),
-      ).not.toThrow();
-      expect(exportedKey(record, ownRelay([OWN_TURN]))).not.toHaveProperty(
-        "relayRegistrationPendingSince",
-      );
-    });
-  });
-
-  describe("an enrolled record whose invitation named the build's default relay", () => {
     const DEFAULT_TURN = "turns:turn.example.org:443?transport=tcp";
+    const DEFAULT_REGISTRAR = "https://registrar.example.org";
     const PARTNER_TURN = "turns:partner-relay.example.org:443?transport=tcp";
-    const defaultRelay = () => ({
-      turnUrl: DEFAULT_TURN,
-      registrarUrl: "https://registrar.example.org",
-    });
 
     function invitedRecord(
-      relay: { turn?: Array<string>; stun?: Array<string> },
+      relay: { turn?: Array<string>; stun?: Array<string>; registrar?: string },
       overrides: Partial<NewManagedExchange> = {},
     ): RunnableManagedExchangeRecord {
       return managedRecord({
@@ -934,11 +882,7 @@ describe("the relay key registration", () => {
     }
 
     function exported(record: RunnableManagedExchangeRecord) {
-      const composed = composeManagedCronExport(
-        record,
-        ownRelay([OWN_TURN]),
-        defaultRelay,
-      );
+      const composed = composeManagedCronExport(record, ownRelay([OWN_TURN]));
       const connection = parseExchangeSpec(
         parseSensitiveYaml(composed.config.text, "exported alcove.yaml"),
       ).connection;
@@ -950,64 +894,60 @@ describe("the relay key registration", () => {
       };
     }
 
-    test("one naming only the default relay keeps the registrar and own TURN url, and writes no invitation_relay", () => {
+    test("writes the registrar, the own TURN url, and the invitation's relay whole", () => {
+      const relay = {
+        turn: [PARTNER_TURN, DEFAULT_TURN],
+        stun: ["stun:stun.example.org:3478"],
+        registrar: DEFAULT_REGISTRAR,
+      };
       const { connection, text, key } = exported(
-        invitedRecord(
-          { turn: [DEFAULT_TURN] },
-          { relayRegistrationPendingSince: PENDING_SINCE },
-        ),
+        invitedRecord(relay, { relayRegistrationPendingSince: PENDING_SINCE }),
       );
       expect(connection.relayRegistrar).toEqual(REGISTRAR);
       expect(connection.turn).toEqual([{ url: OWN_TURN }]);
-      expect(connection.invitationRelay).toBeUndefined();
-      expect(text).not.toContain("invitation_relay");
-      expect(text).not.toContain(DEFAULT_TURN);
-      expect(selectRunRelay(connection).turn?.source).toBe("own");
+      expect(connection.invitationRelay).toEqual(relay);
+      expect(text).toContain(`registrar: ${DEFAULT_REGISTRAR}`);
+      expect(selectRunRelay(connection).turn).toEqual([
+        { source: "own", url: OWN_TURN },
+        { source: "invitation", url: PARTNER_TURN },
+        { source: "invitation", url: DEFAULT_TURN },
+      ]);
       expect(key.relayRegistrationPendingSince).toBe(PENDING_SINCE);
     });
 
-    test("one naming the default relay beside a STUN url keeps the STUN url alone", () => {
-      const { connection } = exported(
-        invitedRecord({
-          turn: [DEFAULT_TURN],
-          stun: ["stun:stun.example.org:3478"],
-        }),
-      );
-      expect(connection.invitationRelay).toEqual({
-        stun: ["stun:stun.example.org:3478"],
-      });
+    test("one naming only the default relay keeps it and its registrar", () => {
+      const relay = { turn: [DEFAULT_TURN], registrar: DEFAULT_REGISTRAR };
+      const { connection } = exported(invitedRecord(relay));
+      expect(connection.invitationRelay).toEqual(relay);
       expect(connection.relayRegistrar).toEqual(REGISTRAR);
     });
 
-    test("one naming the default relay beside the inviter's writes the inviter's alone and drops the registrar", () => {
-      const { connection, text, key } = exported(
-        invitedRecord(
-          { turn: [PARTNER_TURN, DEFAULT_TURN] },
-          { relayRegistrationPendingSince: PENDING_SINCE },
-        ),
-      );
+    test("an invitation relay naming no registrar is written as named", () => {
+      const { connection } = exported(invitedRecord({ turn: [PARTNER_TURN] }));
       expect(connection.invitationRelay).toEqual({ turn: [PARTNER_TURN] });
-      expect(text).not.toContain(DEFAULT_TURN);
-      expect(connection.relayRegistrar).toBeUndefined();
-      expect(connection.turn).toBeUndefined();
-      expect(key).not.toHaveProperty("relayRegistrationPendingSince");
+      expect(connection.relayRegistrar).toEqual(REGISTRAR);
     });
 
-    test("a build naming no default relay counts every url the invitation names", () => {
-      const record = invitedRecord({ turn: [DEFAULT_TURN] });
-      const connection = parseExchangeSpec(
-        parseSensitiveYaml(
-          composeManagedCronExport(
-            record,
-            ownRelay([OWN_TURN]),
-            () => undefined,
-          ).config.text,
-          "exported alcove.yaml",
+    test("a re-invite's pending registration is refused as for any enrolled record", () => {
+      const record: RunnableManagedExchangeRecord = {
+        ...invitedRecord({ turn: [PARTNER_TURN] }),
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      };
+      expect(() =>
+        composeManagedCronExport(record, ownRelay([OWN_TURN])),
+      ).toThrow("This exchange's re-invite replaced its shared secret");
+    });
+
+    test("is refused under a relay setting naming no TURN url, as any enrolled record is", () => {
+      expect(() =>
+        composeManagedCronExport(
+          invitedRecord({ turn: [PARTNER_TURN] }),
+          () => ({
+            kind: "none",
+          }),
         ),
-      ).connection;
-      if (connection.channel !== "webrtc") throw new Error("expected webrtc");
-      expect(connection.invitationRelay).toEqual({ turn: [DEFAULT_TURN] });
-      expect(connection.relayRegistrar).toBeUndefined();
+      ).toThrow("but this browser's relay settings name no TURN url");
     });
   });
 });

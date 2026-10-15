@@ -66,6 +66,10 @@ import {
   openWebRtcMessageConnection,
 } from "./connection/webrtc/webrtcMessageConnection";
 import { persistPartnerFingerprint } from "./config";
+import {
+  enrollAtInvitationRelay,
+  reportInvitationRelayEnrollment,
+} from "./invitationRelayEnrollment";
 import { describeExchangeOutcome, zeroMatchWarning } from "./exchangeOutcome";
 import {
   buildRotatedKeyFile,
@@ -670,10 +674,18 @@ async function openRunTransport(params: {
   connection: ProtocolConnectionConfig;
   interrupted: AbortController;
   log: ReturnType<typeof getLogger>;
+  emit: (fn: (e: EventStreamEmitter) => void) => void;
   onSignalingRegistered?: () => void;
 }): Promise<HandshakeRole> {
-  const { build, run, connection, interrupted, log, onSignalingRegistered } =
-    params;
+  const {
+    build,
+    run,
+    connection,
+    interrupted,
+    log,
+    emit,
+    onSignalingRegistered,
+  } = params;
   let role: HandshakeRole;
   if (connection.channel === "webrtc") {
     // Resolved by the prepare block for exactly this channel; the check is
@@ -682,6 +694,24 @@ async function openRunTransport(params: {
       throw new InternalConsistencyError(
         "the webrtc rendezvous was not resolved",
       );
+    // Once per run, before the first connection attempt: the attempts after
+    // it reuse the key this enrolls, which only a rotation changes.
+    const invitationRegistrar = connection.invitationRelay?.registrar;
+    if (invitationRegistrar !== undefined) {
+      const enrollment = await enrollAtInvitationRelay(
+        invitationRegistrar,
+        build.webRtcDial.options.sharedSecret,
+        { signal: interrupted.signal },
+      );
+      reportInvitationRelayEnrollment(invitationRegistrar, enrollment, {
+        log,
+        emit,
+      });
+      if (run.signalReceived !== undefined)
+        throw new Error(
+          `interrupted by ${run.signalReceived} before the rendezvous`,
+        );
+    }
     log.info(
       "connecting through the coordination server at",
       // dialedBrokerAuthority (see its doc) is what the socket actually
@@ -1907,6 +1937,7 @@ export async function runProtocol(
       connection,
       interrupted,
       log,
+      emit,
       onSignalingRegistered,
     });
 

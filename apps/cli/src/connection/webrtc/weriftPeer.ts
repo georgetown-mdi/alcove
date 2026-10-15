@@ -540,9 +540,8 @@ export function brokerLocationFromConnection(
 
 /**
  * Resolve a webrtc connection's relay servers into the ICE server list the
- * peer connection is built with: the invitation's relay where it names one,
- * else the connection's own `stun`/`turn` entries, per kind
- * (`selectRunRelay`).
+ * peer connection is built with: the connection's own `stun`/`turn` entries
+ * followed by the invitation's relay, per kind (`selectRunRelay`).
  *
  * An `iceProvision` block is refused rather than ignored: it names servers the
  * operator meant to use, and silently falling back to the built-in default
@@ -571,8 +570,8 @@ export function iceServersFromConnection(
   }
   const { stun, turn } = selectRunRelay(connection);
   const servers: Array<RTCIceServer> = [];
-  if (stun !== undefined && stun.urls.length > 0) {
-    servers.push({ urls: stun.urls });
+  if (stun !== undefined && stun.length > 0) {
+    servers.push({ urls: stun });
   }
   const minted = (): RelayCredential => {
     if (runRelayCredential === undefined)
@@ -582,19 +581,13 @@ export function iceServersFromConnection(
       );
     return runRelayCredential;
   };
-  if (turn?.source === "invitation") {
-    const { username, credential } = minted();
-    for (const url of turn.urls)
-      servers.push({ urls: url, username, credential });
-  } else {
-    for (const server of turn?.servers ?? []) {
-      // `credential_type: hmac-sha1` describes how a deployment MINTS a
-      // time-limited credential, not how a client presents it: the minted value
-      // is still sent as the password, so both types take the same shape here.
-      const { username, credential } =
-        server.credential === undefined ? minted() : server;
-      servers.push({ urls: server.url, username, credential });
-    }
+  for (const server of turn ?? []) {
+    // `credential_type: hmac-sha1` describes how a deployment MINTS a
+    // time-limited credential, not how a client presents it: the minted value
+    // is still sent as the password, so both types take the same shape here.
+    const { username, credential } =
+      server.credential === undefined ? minted() : server;
+    servers.push({ urls: server.url, username, credential });
   }
   return servers;
 }
@@ -616,16 +609,16 @@ export function turnEntryNeedsSecretMessage(url: string): string {
 
 /**
  * Mint this run's TURN credential, or return `undefined` when the run
- * presents none. A credential is minted when the run relays through the TURN
- * urls the invitation's relay names, or through an own `turn` entry that sets
- * no username or credential: from the current shared secret, for
+ * presents none. A credential is minted when the run lists a TURN url the
+ * invitation's relay names, or an own `turn` entry that sets no username or
+ * credential: from the current shared secret, for
  * `RELAY_CREDENTIAL_MAX_TTL_SECONDS` (`mintRunRelayCredential`), and never
  * stored. Async, unlike the rest of the dial's resolution, because the key
  * derivation is.
  *
- * With no shared secret, the invitation's urls yield `undefined`, which the
- * dial itself refuses, and an own entry needing a minted credential is refused
- * here by name.
+ * With no shared secret, an own entry needing a minted credential is refused
+ * here by name, and the invitation's urls alone yield `undefined`, which the
+ * dial itself refuses.
  *
  * @throws {UsageError} if an own `turn` entry needs a minted credential and
  *   `sharedSecret` is undefined.
@@ -635,17 +628,16 @@ export async function relayCredentialForRun(
   sharedSecret: string | undefined,
   now: Date,
 ): Promise<RelayCredential | undefined> {
-  const { turn } = selectRunRelay(connection);
-  if (turn === undefined) return undefined;
-  if (turn.source === "own") {
-    const unset = turn.servers.find(
-      (server) => server.credential === undefined,
-    );
-    if (unset === undefined) return undefined;
-    if (sharedSecret === undefined)
-      throw new UsageError(turnEntryNeedsSecretMessage(unset.url));
+  const takesMinted = (selectRunRelay(connection).turn ?? []).filter(
+    (server) => server.credential === undefined,
+  );
+  if (takesMinted.length === 0) return undefined;
+  if (sharedSecret === undefined) {
+    const ownUnset = takesMinted.find((server) => server.source === "own");
+    if (ownUnset !== undefined)
+      throw new UsageError(turnEntryNeedsSecretMessage(ownUnset.url));
+    return undefined;
   }
-  if (sharedSecret === undefined) return undefined;
   return mintRunRelayCredential(sharedSecret, now);
 }
 
@@ -728,13 +720,21 @@ export function relayCredentialNotice(
   connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
   credential: RelayCredential,
 ): string {
-  const relay =
-    selectRunRelay(connection).turn?.source === "invitation"
-      ? "the TURN server your partner's invitation named"
-      : (connection.turn ?? [])
-          .filter((server) => server.credential === undefined)
-          .map((server) => server.url)
-          .join(", ");
+  const takesMinted = (selectRunRelay(connection).turn ?? []).filter(
+    (server) => server.credential === undefined,
+  );
+  const own = takesMinted
+    .filter((server) => server.source === "own")
+    .map((server) => server.url);
+  const invitationNamesAny = takesMinted.some(
+    (server) => server.source === "invitation",
+  );
+  const relay = [
+    ...own,
+    ...(invitationNamesAny
+      ? ["the TURN server your partner's invitation named"]
+      : []),
+  ].join(", ");
   return (
     `relaying through ${relay}, with a credential derived from the ` +
     "exchange's shared secret that is valid for " +

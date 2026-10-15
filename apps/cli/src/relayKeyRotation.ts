@@ -7,12 +7,12 @@
 import {
   ConnectionError,
   registerRelayKey,
+  relayRegistrationOutcomeDetail,
   sanitizeErrorForDisplay,
   UsageError,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
 import type {
-  ConnectionConfig,
   RelayRegistrar,
   RelayRegistrationEnvironment,
 } from "@alcove/core";
@@ -25,7 +25,6 @@ import {
   type KeyFile,
 } from "./keyFile";
 import {
-  relayRegistrarForRun,
   relayRegistrarLabel,
   relayRegistrarUnreachableError,
   relayRegistrationNotice,
@@ -46,34 +45,6 @@ export const RELAY_REENROLLMENT_STEP =
   "and --key-file, and enter the token when asked";
 
 /**
- * What a run states when its connection names a registrar it does not
- * register at, because it relays through the relay the invitation named;
- * `undefined` when the registrar is used or none is named.
- */
-export function relayRegistrarUnusedNotice(
-  connection: ConnectionConfig,
-): string | undefined {
-  if (connection.channel !== "webrtc") return undefined;
-  const registrar = connection.relayRegistrar;
-  if (registrar === undefined || relayRegistrarForRun(connection) !== undefined)
-    return undefined;
-  return (
-    `connection.relay_registrar is not used on this run: it relays through ` +
-    "the relay your partner's invitation named (connection.invitation_relay), " +
-    `so nothing is registered at ${relayRegistrarLabel(registrar)}.`
-  );
-}
-
-function answerDetail(outcome: RelayRegistrationOutcome): string {
-  if (outcome.kind === "registered") return "";
-  const status = outcome.status === undefined ? "" : `HTTP ${outcome.status}`;
-  const reason = outcome.reason ?? "";
-  return status !== "" && reason !== ""
-    ? `${status}: ${reason}`
-    : status || reason;
-}
-
-/**
  * The failure a registration outcome other than `registered` becomes, for the
  * `stage` it was made at:
  *
@@ -91,7 +62,7 @@ export function relayRegistrationError(
   stage: "rotation" | "pending",
 ): Error {
   const label = relayRegistrarLabel(registrar);
-  const detail = answerDetail(outcome);
+  const detail = relayRegistrationOutcomeDetail(outcome);
   const what =
     stage === "rotation"
       ? `the exchange's shared secret rotated, and ${label} did not register ` +

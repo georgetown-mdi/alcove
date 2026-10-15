@@ -19,6 +19,7 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
+  invitationRegistrarExportLine,
   managedConfigurationExportState,
 } from "./managedCronExportModel";
 import {
@@ -193,6 +194,7 @@ function ConfigurationExportPanel({
   const configFile = composed.config;
   const credentialNote = sftpCredentialNote(record);
   const referenceNote = fileReferenceExportNote(record);
+  const invitationRegistrarLine = invitationRegistrarExportLine(record);
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run it from the command line</h2>
@@ -254,6 +256,11 @@ function ConfigurationExportPanel({
           This exchange names no STUN server, so every run uses the built-in
           default ({CLI_BUILT_IN_STUN_URI}) to discover the public address of
           the machine it runs on.
+        </p>
+      )}
+      {invitationRegistrarLine !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>
+          {invitationRegistrarLine}
         </p>
       )}
     </div>

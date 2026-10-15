@@ -224,6 +224,52 @@ describe("the command-line export hands over two files", () => {
   });
 });
 
+describe("the registrar the invitation's relay names", () => {
+  const REGISTRAR_LINE = "Each command-line run of this exchange registers at";
+
+  test("is named on the panel, since every command-line run enrolls there", async () => {
+    const created = await createManagedExchange(
+      newExchange({
+        side: "acceptor",
+        exchangeFile: composeManagedExchangeFile({
+          connection: {
+            channel: "webrtc",
+            host: "signaling.example.org",
+            relay: {
+              turn: ["turns:relay.partner.example.org:443?transport=tcp"],
+              registrar: "https://registrar.partner.example.org",
+            },
+          },
+          linkageTerms,
+        }),
+      }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect
+      .element(
+        page.getByText(
+          `${REGISTRAR_LINE} https://registrar.partner.example.org before ` +
+            "it connects, and whoever runs that registrar learns the network " +
+            "address of the machine it runs on.",
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("is absent where the invitation's relay names none", async () => {
+    const created = await createManagedExchange(newExchange());
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect
+      .element(page.getByText(CLI_BUILT_IN_STUN_URI, { exact: false }))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(REGISTRAR_LINE);
+  });
+});
+
 describe("a panel whose lines are withheld", () => {
   afterEach(() => {
     withheldLines.notice = undefined;

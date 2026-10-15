@@ -1098,10 +1098,14 @@ with the TURN urls from this browser's relay settings that the command line
 registers for, and a pending registration into `.alcove.key`, which the first
 command-line run tries again before it dials. It refuses while a fresh
 invitation's registration is pending, since no command-line run can confirm
-that one: enroll the exchange again first. The export leaves out the site's
-[default relay](DEPLOYMENT.md#the-default-relay), which an invitation from
-this site names, since a command-line run does not enroll there: a command-line
-run relays as it would had the invitation not named it.
+that one: enroll the exchange again first. The export writes the relay your
+partner's invitation named as it was named, the site's
+[default relay](DEPLOYMENT.md#the-default-relay) and its registrar included: a
+command-line run lists it beside your own relay, as a run here does, and
+enrolls the exchange at the registrar the invitation names before it
+connects, whichever site's invitation named it. The export panel names that
+registrar, since whoever runs it learns the network address of the machine
+running the exchange.
 
 ### Bringing a command-line configuration back
 

@@ -36,14 +36,17 @@ describe("relayRegistrarForRun", () => {
     expect(relayRegistrarForRun(webrtc({}))).toEqual(REGISTRAR);
   });
 
-  test("registers nothing when the run relays through the invitation's relay", () => {
+  test("keeps registering when the run lists the invitation's relay beside its own", () => {
     expect(
       relayRegistrarForRun(
         webrtc({
-          invitationRelay: { turn: ["turns:partner.example.org:443"] },
+          invitationRelay: {
+            turn: ["turns:partner.example.org:443"],
+            registrar: "https://partner.example.org",
+          },
         }),
       ),
-    ).toBeUndefined();
+    ).toEqual(REGISTRAR);
   });
 
   test("registers nothing when no registrar is named", () => {
