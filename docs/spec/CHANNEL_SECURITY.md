@@ -55,7 +55,7 @@ The wrap is applied when the key exchange's transcript-bound decision says so, a
 | `sftp`, `filedrop` | yes | The exchange sits in a server's or a share's filesystem. Its administrator can read and alter every frame, so the confidentiality and integrity have to come from a layer above the transport. |
 | `webrtc` | yes, from the CLI and from the web application | A coordination server controls the signaling it relays and could otherwise place itself between the two parties, so the wrap, keyed by the authenticated key exchange that server cannot complete, is what keeps exchange content from it. |
 
-The CLI (`apps/cli/src/protocol.ts`) and the web application (`apps/web/src/psi/authenticateExchange.ts`) request the wrap on every `webrtc` exchange, so every `webrtc` exchange is wrapped. The limit is a stated one: a web application or CLI build from before the web application requested the wrap cannot complete a `webrtc` exchange with a current web application or CLI build, and a recurring exchange run across such a pair is set up again from a new invitation.
+The CLI (`apps/cli/src/protocol.ts`) and the web application (`apps/web/src/psi/authenticateExchange.ts`) request the wrap on every `webrtc` exchange, so every `webrtc` exchange is wrapped. The limit is a stated one: a web application build from before the web application requested the wrap cannot complete a `webrtc` exchange with a current web application or CLI build, and a recurring exchange run across such a pair is set up again from a new invitation.
 
 ## IV construction and SP 800-38D conformance
 

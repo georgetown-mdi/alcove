@@ -45,7 +45,7 @@ The relay's reconnect queue reconstitutes a held payload through the same chokep
 ## Web signaling surface bounds
 
 The bounds in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) harden the CLI's file-sync transport against a hostile server admin.
-The PeerJS-compatible signaling broker (`packages/peerjs-broker`) is a separate surface with a different model: it is untrusted by design (see the **Channel security** and **Third parties** overviews in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), relaying only opaque rendezvous-setup messages between two browsers that authenticate each other directly.
+The PeerJS-compatible signaling broker (`packages/peerjs-broker`) is a separate surface with a different model: it is untrusted by design (see the **Channel security** and **Third parties** overviews in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), relaying only rendezvous-setup messages between two parties that authenticate each other directly.
 So the residual exposure on its WebSocket upgrade surface is resource exhaustion, not access to any party's data.
 The guards below are defense-in-depth against that nuisance, enforced in the application unconditionally; the deployment-dependent Origin and per-address controls are the reverse proxy's responsibility and are described operationally in [DEPLOYMENT.md](../DEPLOYMENT.md#hardening-the-coordination-server), not here.
 All values are fixed constants, not configurable, for the same reason as the file-sync bounds: a configurable bound risks an operator raising it enough to reintroduce the denial of service.
