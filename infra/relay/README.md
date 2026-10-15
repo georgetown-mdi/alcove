@@ -593,10 +593,13 @@ start: to turn it off, set it to `off` and
       that is 2 exchanges a minute, each holding one row for 70 minutes. The
       formula is `total-quota x 3.5`: on raising the quota, keep the
       ceiling well above it.
-    - **On the relay host.** The cost of a row is an estimate. Timing an
-      allocation on the relay host with no rows added, with 1800 and with
-      18,000 confirms the ceiling, or lowers it to 10 ms over the measured
-      cost of a row.
+    - **On the relay host.** The cost of a row is an estimate, and the
+      2026-10-15 measurement on the relay host could not resolve it: each
+      timed allocation included a client start of 11 to 17 s, and with no
+      rows added, with 1800 and with 18,000 the times showed no difference
+      beyond that noise. The default 1800 stays a modeled working value. A
+      timing that leaves out the client's start confirms the ceiling, or
+      lowers it to 10 ms over the measured cost of a row.
 
     A lapsed row is not counted, and the sweep deletes it within about
     eleven minutes, so a flood holds at most about 1800 x 81 / 70, about
@@ -809,8 +812,8 @@ its maximum run time:
   last, after every job that can restart a service, so it checks what they
   left. After a hold that spans several start times, the jobs run in whatever
   order they get the lock, and the next day's verification checks the result.
-  The hourly lapse sweep keeps its own schedule and takes no lock: it restarts
-  nothing.
+  The lapse sweep, every ten minutes, keeps its own schedule and takes no
+  lock: it restarts nothing.
 - **The starts.** The two renewals keep up to 5 minutes of randomized delay,
   because Let's Encrypt asks clients to randomize their renewal time; every
   other job starts on the minute.
