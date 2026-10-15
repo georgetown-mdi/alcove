@@ -170,7 +170,7 @@ describe("stun-binding.py", () => {
     ["127.0.0.1", "127.0.0.1:45732 (loopback)"],
     ["127.4.5.6", "127.4.5.6:45732 (loopback)"],
     ["0:0:0:0:0:0:0:1", "[::1]:45732 (loopback)"],
-    ["0:0:0:0:0:ffff:7f00:1", "[::ffff:7f00:1]:45732 (loopback)"],
+    ["0:0:0:0:0:ffff:7f00:1", "[::ffff:127.0.0.1]:45732 (loopback)"],
   ])("exits 5 on the loopback address %s", async (address, shown) => {
     const { port } = await startServer(mapped(address, 45732));
     const result = await probe(port);

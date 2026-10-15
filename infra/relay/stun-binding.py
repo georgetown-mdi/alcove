@@ -113,7 +113,8 @@ def shown(address, redact):
     if redact and address.is_global:
         return "<public>"
     if address.version == 6:
-        return "[%s]" % address
+        mapped = address.ipv4_mapped
+        return "[::ffff:%s]" % mapped if mapped is not None else "[%s]" % address
     return str(address)
 
 
