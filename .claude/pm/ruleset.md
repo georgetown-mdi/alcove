@@ -419,19 +419,23 @@ Ratified by the owner:
   exchange with a browser party through it.
 - **Relay credentials** (board 9) -- Done is: each party reaches a relay (its
   own, the invitation's and the project's, listed together) with a credential
-  derived from the current shared
-  secret and registered every run; the relay holds only the current key; no
-  relay credential or owner token is stored outside the operator's own
-  settings or shipped in a bundle; a CLI-to-browser exchange with the browser
-  on a UDP-blocked network completes over a relayed pair; and the production
-  web app relays through the project's relay by default, its key enrolled
-  without the owner token, so a browser-to-browser exchange with one party on
-  a UDP-blocked network completes over a relayed pair.
-- **WebSocket relay** (board 9) -- Done is: a browser party and a CLI party on
-  a network that intercepts TLS and stops TURN but passes a WebSocket on 443
-  each complete an exchange with a partner through the project's WebSocket
-  relay, reaching it with no setting when no WebRTC path opens, and the
-  disclosure documents state what the relay's operator sees.
+  derived from the current shared secret and registered every run; the relay
+  holds only the current key; no relay credential or owner token is stored
+  outside the operator's own settings or shipped in a bundle; a CLI-to-browser
+  exchange with the browser on a UDP-blocked network completes over a relayed
+  pair; and the production web app relays through the project's relay by
+  default, its key enrolled without the owner token, so a browser-to-browser
+  exchange with one party on a UDP-blocked network completes over a relayed
+  pair.
+- **WebSocket relay** (board 9) -- Done is: on a network that intercepts TLS
+  and stops TURN but passes a WebSocket on 443, a browser-to-browser exchange
+  and a CLI-to-browser exchange each complete through the project's WebSocket
+  relay, which each party reaches with no relay setting when no WebRTC path
+  opens (a CLI on such a network still trusts the network's CA); the relay
+  admits only an exchange whose key, derived from the current shared secret, is
+  registered; every frame it carries is under the negotiated application AEAD,
+  and a quick exchange refuses it; and the disclosure documents state what the
+  relay's operator and any TLS interception point on the path see.
 - **Repo review 2026-09** (boards 9 and 10) -- Done is: every finding in the
   2026-09 repo review's consolidated lists, including those its own review
   rounds raised, is landed or recorded as refused with a reason, and no source
