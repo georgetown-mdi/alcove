@@ -831,9 +831,12 @@ Its admission rule, which is narrow on purpose: material goes in only when a
 second workspace's test tree needs it AND it cannot take the
 `@alcove/core/testing` channel, and it is exported one explicit subpath at a
 time. Nothing moves in for tidiness, and the existing `@alcove/core/testing`
-subjects stay where they are. Its one subject today is the WebRTC inbound frame
-fixture set, which both apps' transports are held to and which is built with the
-real `peerjs-js-binarypack` packer.
+subjects stay where they are. The WebRTC inbound frame fixture set, which the
+CLI's parity tests and the web app's tests drive and which is built with the
+real `peerjs-js-binarypack` packer, is the exception: `packages/core` declares
+that packer, so the set could take the `@alcove/core/testing` channel. It stays
+in the testkit until it is moved into `@alcove/core/testing`, a change of its
+own.
 
 Anything a single workspace needs stays in that workspace's own test tree,
 whichever channel it would qualify for. The decision, the alternatives measured

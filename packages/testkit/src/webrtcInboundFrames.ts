@@ -15,7 +15,7 @@
 //
 // The set lives here rather than in either test tree because both apps need it and
 // neither may import the other, and rather than behind `@alcove/core/testing`
-// because the CLI parity test and the web app's wrap both consume it from here, and
+// because the CLI's parity tests and the web app's tests import it from here, and
 // moving it into core's testing entry is a change of its own (docs/TESTING.md,
 // Shared test material). What each transport contributes is the half that cannot
 // move: the assertion that drives its own reassembler.

@@ -55,11 +55,16 @@ with a message asking for an npm exclude entry that would be false.
   precisely because the bound parses its wire format -- and pulled out of the
   routine Dependabot batch into a reviewed `webrtc-stack` group
   (`.github/dependabot.yml`). `packages/core` declares it too, as a dependency
-  at that same exact version, because the PeerJS framing both transports share
+  at that same exact version, because core's PeerJS framing
   (`packages/core/src/connection/peerjsWire.ts`) unpacks the wire with it, and
   because the marker scan that parses the wire format lives there and its
   differential test drives the real encoder as its oracle -- so the guard over
   the shared bound holds whether or not an app keeps the dependency.
+  The CLI's WebRTC transport uses that framing, and the transports of the
+  WebSocket relay path will
+  ([web-websocket-transport.md](../notes/web-websocket-transport.md)); the web
+  transport decodes through PeerJS itself, plus its own bounded reassembly
+  (`apps/web/src/psi/transport/boundedReassembly.ts`).
   `packages/testkit` declares it at that same exact version as well, because
   the shared WebRTC inbound frame
   fixtures both transports are held to are built with the real packer

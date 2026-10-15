@@ -91,8 +91,8 @@ Later (2026-10-15): the reason given for the testkit above, a dependency
 `peerjs-js-binarypack`, because the PeerJS framing moved into it and unpacks the
 wire with it, and core's rollup config keeps every declared dependency external,
 so a frame set in `dist/testing.*` would no longer inline a copy of the codec.
-The set stays in `packages/testkit` for a different reason: the CLI parity test
-and the web app's wrap both consume it from there, and moving it into core's
+The set stays in `packages/testkit` for a different reason: the CLI's parity
+tests and the web app's tests import it from there, and moving it into core's
 testing entry is a change of its own, not taken with the move of the framing.
 
 ## The constraints, and where they bite

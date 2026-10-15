@@ -161,8 +161,9 @@ export { encodeBinaryPackValue } from "./connection/binaryPackEncode";
 // framing chunks at the same threshold the check charges for.
 export { PEERJS_CHUNK_MTU } from "./connection/webrtcOutboundBound";
 // The PeerJS DataConnection framing and the bounded inbound reassembler.
-// Published so each transport that reads PeerJS's chunked frames applies one
-// implementation of them.
+// Published for the CLI's WebRTC transport, and for the WebSocket relay path's
+// transports to come; the web transport decodes through PeerJS itself, plus its
+// own bounded reassembly (apps/web/src/psi/transport/boundedReassembly.ts).
 export {
   PEERJS_SERIALIZATION,
   PeerJsFrameEncoder,
