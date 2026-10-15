@@ -10,7 +10,7 @@ Type=oneshot
 # hours, and stopped at 1 hour, so a fetch or an image build that hangs does
 # not hold the unit active (infra/relay/README.md, The daily schedule). The
 # lock is apart from pull.sh's own, which keeps two pulls from overlapping.
-ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 3570 /opt/alcove-host-pull/pull.sh
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 3570 /opt/alcove-host-pull/pull.sh
 # npm and git as root read their configuration from here.
 Environment=HOME=/root
 StateDirectory=alcove-host-pull

@@ -283,6 +283,10 @@ const host = () => {
     join(bin, "systemctl"),
     `${head}\nprintf 'systemctl %s\\n' "$*" >> "$F/calls"`,
   );
+  writeStub(
+    join(bin, "systemd-tmpfiles"),
+    `${head}\nprintf 'systemd-tmpfiles %s\\n' "$*" >> "$F/calls"`,
+  );
   writeStub(join(bin, "timeout"), `${head}\n${TIMEOUT_STUB}`);
   writeStub(
     join(bin, "chown"),
@@ -1138,7 +1142,15 @@ describe("install.sh", () => {
         readFileSync(join(h.root, "etc/systemd/system", unit), "utf8"),
       ).toBe(readFileSync(join(PULL_DIR, unit), "utf8"));
     }
+    const tmpfiles = join(h.root, "etc/tmpfiles.d/alcove-maintenance.conf");
+    expect(readFileSync(tmpfiles, "utf8")).toBe(
+      readFileSync(
+        join(repo, "infra/tmpfiles.d/alcove-maintenance.conf"),
+        "utf8",
+      ),
+    );
     expect(r.calls).toEqual([
+      `systemd-tmpfiles --create ${tmpfiles}`,
       "systemctl daemon-reload",
       "systemctl try-restart alcove-host-pull.timer",
     ]);
@@ -1194,7 +1206,7 @@ describe("alcove-host-pull units", () => {
   it("runs the installed copy under the maintenance lock, after the OS update", () => {
     const service = read("infra/host-pull/alcove-host-pull.service");
     expect(setting(service, "ExecStart")).toMatch(
-      / \/run\/alcove-maintenance\.lock \/usr\/bin\/timeout -k \d+ \d+ \/opt\/alcove-host-pull\/pull\.sh$/,
+      / \/run\/alcove-maintenance\/lock \/usr\/bin\/timeout -k \d+ \d+ \/opt\/alcove-host-pull\/pull\.sh$/,
     );
     expect(setting(service, "After").split(/\s+/)).toContain(
       "alcove-relay-os-update.service",

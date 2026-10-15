@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 const BROKER = resolve(here, "..", "infra/broker");
 const TEMPLATE = join(BROKER, "nginx.conf.tmpl");
+const TMPFILES_SOURCE = resolve(here, "..", "infra/tmpfiles.d");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
 // The fields PRIVACY.md lists for the front's access log. A signaling URL's
@@ -342,6 +343,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const root = fixtureDir("broker-host-");
   const source = join(root, "broker");
   cpSync(BROKER, source, { recursive: true });
+  cpSync(TMPFILES_SOURCE, join(root, "tmpfiles.d"), { recursive: true });
   const pinFront = (image) =>
     writeFileSync(join(source, "Dockerfile"), `FROM ${image}\n`);
   pinFront(pinnedImage());
@@ -414,6 +416,12 @@ const brokerHost = ({ client = "lego" } = {}) => {
     .join("\n");
   writeStub(join(bin, "systemctl"), `${paths}\n${SYSTEMCTL_STUB}`);
   writeStub(join(bin, "lego"), `${paths}\n${LEGO_STUB}`);
+  const tmpfilesLog = join(root, "tmpfiles.log");
+  writeFileSync(tmpfilesLog, "");
+  writeStub(
+    join(bin, "systemd-tmpfiles"),
+    `printf 'systemd-tmpfiles %s\\n' "$*" >> '${tmpfilesLog}'`,
+  );
   writeStub(join(usrBin, "docker"), `${paths}\n${DOCKER_STUB}`);
   writeStub(join(bin, "mv"), `${paths}\n${MV_STUB}`);
   writeStub(join(bin, "curl"), "exit 0");
@@ -499,6 +507,8 @@ const brokerHost = ({ client = "lego" } = {}) => {
   return {
     conf: join(etc, "nginx.conf"),
     etc,
+    root,
+    tmpfilesCalls: () => lines(tmpfilesLog),
     source,
     tls: join(etc, "tls"),
     unitDir,
@@ -720,6 +730,19 @@ describeOnScriptHost("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(result.starts).toEqual([
       brokerStart(pinnedImage(), 1),
       frontStart(pinnedImage(), 1),
+    ]);
+  });
+
+  it("installs the maintenance lock's tmpfiles entry and creates its directory", () => {
+    const host = brokerHost();
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    const installed = join(host.root, "etc/tmpfiles.d/alcove-maintenance.conf");
+    expect(readFileSync(installed, "utf8")).toBe(
+      readFileSync(join(TMPFILES_SOURCE, "alcove-maintenance.conf"), "utf8"),
+    );
+    expect(host.tmpfilesCalls()).toEqual([
+      `systemd-tmpfiles --create ${installed}`,
     ]);
   });
 

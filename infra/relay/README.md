@@ -608,12 +608,20 @@ its maximum run time:
   skip the day.
 
 **The maintenance lock.** Each daily job's unit takes
-`/run/alcove-maintenance.lock` in its own `ExecStart`, before the job acts, and
+`/run/alcove-maintenance/lock` in its own `ExecStart`, before the job acts, and
 holds it until the job ends, so no two jobs, and no job and a host hand-off,
-run at once. The lock is under `/run`, which only root can write, so no other
-account can hold it. Every unit's `ExecStart` has the same shape:
+run at once. The lock file is in `/run/alcove-maintenance`, a directory only
+root can enter (mode 0700, owned by root), so no account but root can open the
+lock, and none can hold it. A file directly under `/run` would not do: `flock`
+creates it readable by everyone, and any account can hold a lock on a file it
+can read. The tmpfiles entry `infra/tmpfiles.d/alcove-maintenance.conf` makes the
+directory at every boot, and each `install.sh` that installs a locked unit
+(the relay's, the broker's and the host pull's) installs it as
+`/etc/tmpfiles.d/alcove-maintenance.conf` and runs `systemd-tmpfiles --create`
+on it, so the directory exists before any unit runs. Every unit's `ExecStart`
+has the same shape:
 
-    /usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 <maximum - 30> <command>
+    /usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 <maximum - 30> <command>
 
 - **The wait.** A job waits up to two hours for the lock. When it is still held
   then, `flock` exits 1 without running the job and the unit fails, so a
@@ -626,7 +634,7 @@ account can hold it. Every unit's `ExecStart` has the same shape:
   `timeout` already bound the run, and a finite start timeout would have to
   cover both.
 - **By hand.** To run a command under the lock, as root:
-  `flock /run/alcove-maintenance.lock <command>`. A daily job's unit started
+  `flock /run/alcove-maintenance/lock <command>`. A daily job's unit started
   while the lock is held waits for it like a scheduled run, and fails the same
   way.
 

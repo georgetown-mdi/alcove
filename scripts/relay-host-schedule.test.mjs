@@ -16,7 +16,9 @@ const COMPONENTS = ["infra/relay", "infra/broker", "infra/host-pull"];
 const WINDOW = [8 * 60, 11 * 60];
 const VERIFY_TIMER = "alcove-relay-verify.timer";
 const RENEWAL_TIMERS = ["alcove-relay-cert.timer", "alcove-broker-cert.timer"];
-const LOCK = "/run/alcove-maintenance.lock";
+const LOCK_DIR = "/run/alcove-maintenance";
+const LOCK = `${LOCK_DIR}/lock`;
+const TMPFILES = "infra/tmpfiles.d/alcove-maintenance.conf";
 const KILL_AFTER = 30;
 // /usr/bin/flock -o -w <wait> <lock> /usr/bin/timeout -k 30 <maximum - 30> <command>
 const LOCKED_EXEC_START =
@@ -166,6 +168,58 @@ describe("the relay host's daily units", () => {
       expect(2 * 3600, job.name).toBeGreaterThan(job.maximum * 60);
     }
   });
+});
+
+describe("the maintenance lock's directory", () => {
+  const SOURCE = '"$HERE/../tmpfiles.d/alcove-maintenance.conf"';
+  const INSTALLED = "/etc/tmpfiles.d/alcove-maintenance.conf";
+
+  it("is made by one tmpfiles line: mode 0700, owned by root", () => {
+    const entries = read(TMPFILES)
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !line.startsWith("#"));
+    expect(entries).toEqual([`d ${LOCK_DIR} 0700 root root -`]);
+  });
+
+  it.each(dailyJobs.map((job) => [job.name, job]))(
+    "%s's unit takes a lock file directly inside it",
+    (_, job) => {
+      const lock = job.locked?.[2] ?? "";
+      expect(dirname(lock)).toBe(LOCK_DIR);
+    },
+  );
+
+  it.each([
+    [
+      "infra/relay/install.sh",
+      [
+        `install -m 644 ${SOURCE} ${INSTALLED}`,
+        `systemd-tmpfiles --create ${INSTALLED} \\`,
+      ],
+    ],
+    [
+      "infra/broker/install.sh",
+      [
+        `TMPFILES="$ROOT${INSTALLED}"`,
+        `install -m 644 ${SOURCE} "$TMPFILES"`,
+        'systemd-tmpfiles --create "$TMPFILES" \\',
+      ],
+    ],
+    [
+      "infra/host-pull/install.sh",
+      [
+        `TMPFILES="$ROOT${INSTALLED}"`,
+        `install -m 644 ${SOURCE} "$TMPFILES"`,
+        'systemd-tmpfiles --create "$TMPFILES" \\',
+      ],
+    ],
+  ])(
+    "%s installs the tmpfiles file and creates the directory",
+    (script, lines) => {
+      const present = read(script).split("\n");
+      for (const line of lines) expect(present, line).toContain(line);
+    },
+  );
 });
 
 describe("infra/relay/README.md, The daily schedule", () => {

@@ -355,6 +355,12 @@ for service in alcove-relay alcove-relay-front; do
     rm -f "$STALE_UNIT"
   fi
 done
+# The daily units take their lock inside /run/alcove-maintenance, which only
+# root can enter; the directory must exist before any of them runs.
+install -d -m 755 /etc/tmpfiles.d
+install -m 644 "$HERE/../tmpfiles.d/alcove-maintenance.conf" /etc/tmpfiles.d/alcove-maintenance.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/alcove-maintenance.conf \
+  || die "systemd-tmpfiles could not create /run/alcove-maintenance, the directory the daily units take their lock in; run systemd-tmpfiles --create /etc/tmpfiles.d/alcove-maintenance.conf to see why"
 install -m 644 "$HERE/certs/alcove-relay-cert.service" "$HERE/certs/alcove-relay-cert.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-verify.service" "$HERE/alcove-relay-verify.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-sweep.timer" "$UNIT_DIR/"

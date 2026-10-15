@@ -9,5 +9,5 @@ Type=oneshot
 # Under the host's maintenance lock, failing when it is still held after two
 # hours, and stopped at 10 minutes (README.md, The daily schedule). flock's
 # wait and timeout bound the run, so the unit sets no start timeout.
-ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 570 /opt/alcove-relay/certs/renew.sh
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 570 /opt/alcove-relay/certs/renew.sh
 TimeoutStartSec=infinity

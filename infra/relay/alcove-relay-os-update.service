@@ -14,6 +14,6 @@ Type=oneshot
 # hours, and stopped at 1 hour, so a download that hangs does not hold the unit
 # active (README.md, The daily schedule). The daily verification runs after it
 # and the host pull.
-ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 3570 /usr/bin/dnf -y upgrade --releasever=latest
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 3570 /usr/bin/dnf -y upgrade --releasever=latest
 # flock's wait and timeout bound the run, so the unit sets no start timeout.
 TimeoutStartSec=infinity

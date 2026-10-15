@@ -10,5 +10,5 @@ Type=oneshot
 # hours, and stopped at 30 minutes, above the sum of verify.sh's own timeouts
 # (README.md, The daily schedule). flock's wait and timeout bound the run, so
 # the unit sets no start timeout.
-ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance.lock /usr/bin/timeout -k 30 1770 /opt/alcove-relay/verify.sh
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 1770 /opt/alcove-relay/verify.sh
 TimeoutStartSec=infinity

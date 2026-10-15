@@ -148,6 +148,13 @@ if ! getent passwd "$BROKER_USER" >/dev/null; then
   log "creating the system user $BROKER_USER, which the broker runs as"
   useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "$BROKER_USER"
 fi
+# The renewal unit takes its lock inside /run/alcove-maintenance, which only
+# root can enter; the directory must exist before the unit runs.
+TMPFILES="$ROOT/etc/tmpfiles.d/alcove-maintenance.conf"
+install -d -m 755 "$ROOT/etc/tmpfiles.d"
+install -m 644 "$HERE/../tmpfiles.d/alcove-maintenance.conf" "$TMPFILES"
+systemd-tmpfiles --create "$TMPFILES" \
+  || die "systemd-tmpfiles could not create /run/alcove-maintenance, the directory the renewal unit takes its lock in; run systemd-tmpfiles --create $TMPFILES to see why"
 printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
