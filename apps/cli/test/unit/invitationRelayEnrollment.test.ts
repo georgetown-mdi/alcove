@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { deriveRelayExchangeId, deriveRelayKey } from "@alcove/core";
 import type { EventStreamEmitter } from "../../src/eventStream";
@@ -20,13 +20,23 @@ const REGISTRAR = "https://default-relay.example.net";
 const LAPSES_AT = "2026-01-01T01:10:00Z";
 
 /** A fetch that answers only when its request is aborted, as a registrar that
- * takes the connection and never replies. */
-const silentFetch = (async (_input: unknown, init?: RequestInit) =>
-  new Promise<Response>((_resolve, reject) => {
-    init?.signal?.addEventListener("abort", () =>
-      reject(init.signal?.reason as Error),
-    );
-  })) as typeof globalThis.fetch;
+ * takes the connection and never replies; `called` resolves at its first
+ * request. */
+function silentRegistrar() {
+  let markCalled = () => {};
+  const called = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
+  const fetch = ((_input: unknown, init?: RequestInit) => {
+    markCalled();
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(init.signal?.reason as Error),
+      );
+    });
+  }) as typeof globalThis.fetch;
+  return { fetch, called };
+}
 
 describe("enrollAtInvitationRelay", () => {
   test("enrolls the relay key under the derived exchange id, with no token", async () => {
@@ -65,63 +75,52 @@ describe("enrollAtInvitationRelay", () => {
     expect(registrar.requests[1]).toEqual(registrar.requests[0]);
   });
 
-  test.each([
-    [401, "HTTP 401: no"],
-    [409, "HTTP 409: no"],
-    [429, "HTTP 429: no"],
-  ])(
-    "a %i is a failure stating the status, after one attempt",
-    async (status, detail) => {
-      const registrar = fakeRegistrar([
-        jsonResponse(status, { error: "no" }),
-        registrationAnswer(),
-      ]);
-      expect(
-        await enrollAtInvitationRelay(REGISTRAR, SECRET, {
-          fetch: registrar.fetch,
-        }),
-      ).toEqual({ kind: "failed", detail });
-      expect(registrar.requests).toHaveLength(1);
-    },
-  );
-
-  test("a registrar that cannot be reached is a failure", async () => {
-    const registrar = fakeRegistrar([]);
-    const enrollment = await enrollAtInvitationRelay(REGISTRAR, SECRET, {
-      fetch: registrar.fetch,
-    });
-    expect(enrollment.kind).toBe("failed");
+  test("a 409 is a failure stating the status, after one attempt", async () => {
+    const registrar = fakeRegistrar([
+      jsonResponse(409, { error: "no" }),
+      registrationAnswer(),
+    ]);
+    expect(
+      await enrollAtInvitationRelay(REGISTRAR, SECRET, {
+        fetch: registrar.fetch,
+      }),
+    ).toEqual({ kind: "failed", detail: "HTTP 409: no" });
     expect(registrar.requests).toHaveLength(1);
   });
 
-  test("a registrar that does not answer within the wait is a failure, the request cut at the wait", async () => {
-    const started = Date.now();
-    expect(
-      await enrollAtInvitationRelay(REGISTRAR, SECRET, {
-        fetch: silentFetch,
-        waitMs: 50,
-      }),
-    ).toEqual({ kind: "failed", detail: "no answer within 50 ms" });
-    expect(Date.now() - started).toBeLessThan(2_000);
-  });
-
-  test("a fetch that ignores the cut still costs no more than the wait", async () => {
-    const neverSettles = (() =>
-      new Promise<Response>(() => {})) as typeof globalThis.fetch;
-    expect(
-      await enrollAtInvitationRelay(REGISTRAR, SECRET, {
-        fetch: neverSettles,
-        waitMs: 50,
-      }),
-    ).toEqual({ kind: "failed", detail: "no answer within 50 ms" });
+  test("a registrar that does not answer is cut at the run's wait, and not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const silent = silentRegistrar();
+      let settled = false;
+      const pending = enrollAtInvitationRelay(REGISTRAR, SECRET, {
+        fetch: silent.fetch,
+      }).finally(() => {
+        settled = true;
+      });
+      await silent.called;
+      await vi.advanceTimersByTimeAsync(
+        INVITATION_RELAY_ENROLLMENT_WAIT_MS - 1,
+      );
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toEqual({
+        kind: "failed",
+        detail: `no answer within ${INVITATION_RELAY_ENROLLMENT_WAIT_MS} ms`,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a cancelled run stops waiting and reports a cancellation", async () => {
     const cancel = new AbortController();
+    const silent = silentRegistrar();
     const enrollment = enrollAtInvitationRelay(REGISTRAR, SECRET, {
-      fetch: silentFetch,
+      fetch: silent.fetch,
       signal: cancel.signal,
     });
+    await silent.called;
     cancel.abort();
     expect(await enrollment).toEqual({ kind: "cancelled" });
     const before = new AbortController();

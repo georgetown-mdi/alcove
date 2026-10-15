@@ -194,6 +194,23 @@ export interface RelayRegistrarTransport {
 export const RELAY_REGISTRATION_CANCELLED_REASON =
   "the registration was cancelled";
 
+// A signal aborting with a `TimeoutError` once `ms` pass. Built on `setTimeout`
+// rather than `AbortSignal.timeout`, which a test's fake timers do not drive.
+function timeoutSignal(ms: number): {
+  signal: AbortSignal;
+  clear: () => void;
+} {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException(`no answer within ${ms} ms`, "TimeoutError"),
+      ),
+    ms,
+  );
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
 // The timeout's signal, or one that also aborts with `cancel`. Built by hand
 // rather than with `AbortSignal.any`, which older browsers lack.
 function requestSignal(
@@ -295,10 +312,8 @@ export async function sendRelayRegistration(
 ): Promise<RelayRegistrarAnswer> {
   const fetchImpl = transport.fetch ?? globalThis.fetch;
   const timeoutMs = transport.timeoutMs ?? RELAY_REGISTRAR_REQUEST_TIMEOUT_MS;
-  const { signal, release } = requestSignal(
-    AbortSignal.timeout(timeoutMs),
-    transport.signal,
-  );
+  const timeout = timeoutSignal(timeoutMs);
+  const { signal, release } = requestSignal(timeout.signal, transport.signal);
   const cancel = transport.signal;
   try {
     let response: Response;
@@ -383,6 +398,7 @@ export async function sendRelayRegistration(
       ...(body.error !== undefined && { reason: body.error }),
     };
   } finally {
+    timeout.clear();
     release();
   }
 }
@@ -392,6 +408,20 @@ export type RelayRegistrationOutcome = Exclude<
   RelayRegistrarAnswer,
   { kind: "clock-skew" }
 >;
+
+/**
+ * What a registration the registrar did not confirm came to, as a message
+ * states it: `HTTP <status>: <reason>`, either half alone where the other is
+ * absent, or the outcome's kind where both are.
+ */
+export function relayRegistrationOutcomeDetail(
+  outcome: Exclude<RelayRegistrationOutcome, { kind: "registered" }>,
+): string {
+  const status = outcome.status === undefined ? "" : `HTTP ${outcome.status}`;
+  const reason = outcome.reason ?? "";
+  if (status !== "" && reason !== "") return `${status}: ${reason}`;
+  return status || reason || outcome.kind;
+}
 
 /** The line a run states once the registrar holds a key it registered. */
 export function relayRegistrationNotice(
@@ -613,4 +643,48 @@ export async function enrollRelayKeyWithoutToken(
       env.lastAttemptSignal,
     ]);
   }
+}
+
+/** What one enrollment without a token, bounded by a wait, came to. */
+export type RelayEnrollmentWithinWait =
+  | { kind: "enrolled"; lapsesAt: string | null }
+  /**
+   * Refused, unreachable, or unanswered within the wait;
+   * `detail` says which ({@link relayRegistrationOutcomeDetail}).
+   */
+  | { kind: "failed"; detail: string }
+  | { kind: "cancelled" };
+
+/**
+ * One {@link enrollRelayKeyWithoutToken} attempt, with no retry, whose request
+ * is cut once `waitMs` pass: the request's own timeout is the wait, so no
+ * second timer races it. `cancelled` once `signal` aborts, before or during
+ * the attempt; a same-key repeat is `enrolled`. Never throws.
+ */
+export async function enrollRelayKeyWithinWait(
+  params: { registrarUrl: string; sharedSecret: string },
+  options: {
+    waitMs: number;
+    signal?: AbortSignal;
+    fetch?: typeof globalThis.fetch;
+  },
+): Promise<RelayEnrollmentWithinWait> {
+  const { signal } = options;
+  const cancelled = (): boolean => signal?.aborted === true;
+  if (cancelled()) return { kind: "cancelled" };
+  let outcome: RelayRegistrationOutcome;
+  try {
+    outcome = await enrollRelayKeyWithoutToken(params, {
+      ...(options.fetch !== undefined && { fetch: options.fetch }),
+      ...(signal !== undefined && { signal }),
+      timeoutMs: options.waitMs,
+      retryDelaysMs: [],
+    });
+  } catch {
+    outcome = { kind: "unavailable", reason: "it could not be reached" };
+  }
+  if (cancelled()) return { kind: "cancelled" };
+  return outcome.kind === "registered"
+    ? { kind: "enrolled", lapsesAt: outcome.lapsesAt }
+    : { kind: "failed", detail: relayRegistrationOutcomeDetail(outcome) };
 }

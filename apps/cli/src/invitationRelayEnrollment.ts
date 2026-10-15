@@ -1,16 +1,16 @@
 // The enrollment a run makes, before it dials, at the registrar its
 // invitation's relay names (docs/spec/PROTOCOL.md, "Enrolling at a default
 // relay"): one attempt without a token, its wait bounded, and a failure
-// reported while the run goes on. The request is core's
-// `enrollRelayKeyWithoutToken`; the browser's counterpart is
+// reported while the run goes on. The attempt is core's
+// `enrollRelayKeyWithinWait`; the browser's counterpart is
 // apps/web/src/psi/transport/defaultRelay.ts.
 
 import {
-  enrollRelayKeyWithoutToken,
+  enrollRelayKeyWithinWait,
   redactAndSanitizeForDisplay,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type { RelayRegistrationOutcome } from "@alcove/core";
+import type { RelayEnrollmentWithinWait } from "@alcove/core";
 
 import type { EventStreamEmitter } from "./eventStream";
 
@@ -24,85 +24,32 @@ import type { EventStreamEmitter } from "./eventStream";
 export const INVITATION_RELAY_ENROLLMENT_WAIT_MS = 3_000;
 
 /** What one enrollment at the invitation relay's registrar came to. */
-export type InvitationRelayEnrollment =
-  | { kind: "enrolled"; lapsesAt: string | null }
-  /** Refused, unreachable, or unanswered within the wait; `detail` says which. */
-  | { kind: "failed"; detail: string }
-  | { kind: "cancelled" };
+export type InvitationRelayEnrollment = RelayEnrollmentWithinWait;
 
 /** What the enrollment reads from its surroundings: injectable for tests. */
 export interface InvitationRelayEnrollmentDependencies {
-  /** The registrar client; core's {@link enrollRelayKeyWithoutToken}. */
-  enroll?: typeof enrollRelayKeyWithoutToken;
   /** The fetch implementation the client sends with. */
   fetch?: typeof globalThis.fetch;
   /** Cancels the enrollment and the wait for it. */
   signal?: AbortSignal;
-  /** How long the run waits; {@link INVITATION_RELAY_ENROLLMENT_WAIT_MS}. */
-  waitMs?: number;
-}
-
-function outcomeDetail(
-  outcome: Exclude<RelayRegistrationOutcome, { kind: "registered" }>,
-): string {
-  const status = outcome.status === undefined ? "" : `HTTP ${outcome.status}`;
-  const reason = outcome.reason ?? "";
-  if (status !== "" && reason !== "") return `${status}: ${reason}`;
-  return status || reason || outcome.kind;
 }
 
 /**
  * Enroll the relay key derived from `sharedSecret` at `registrarUrl`, under
  * the exchange id derived from the same secret, with no token: one attempt,
- * waited on for at most `waitMs`. A same-key repeat, either party's or a
- * later run's on the same secret, is answered as enrolled.
+ * waited on for at most {@link INVITATION_RELAY_ENROLLMENT_WAIT_MS}. A
+ * same-key repeat, either party's or a later run's on the same secret, is
+ * answered as enrolled.
  */
-export async function enrollAtInvitationRelay(
+export function enrollAtInvitationRelay(
   registrarUrl: string,
   sharedSecret: string,
   dependencies: InvitationRelayEnrollmentDependencies = {},
 ): Promise<InvitationRelayEnrollment> {
-  const { signal } = dependencies;
-  const cancelled = (): boolean => signal?.aborted === true;
-  if (cancelled()) return { kind: "cancelled" };
-  const enroll = dependencies.enroll ?? enrollRelayKeyWithoutToken;
-  const waitMs = dependencies.waitMs ?? INVITATION_RELAY_ENROLLMENT_WAIT_MS;
-  const attempt = enroll(
+  return enrollRelayKeyWithinWait(
     { registrarUrl, sharedSecret },
-    {
-      ...(dependencies.fetch !== undefined && { fetch: dependencies.fetch }),
-      ...(signal !== undefined && { signal }),
-      timeoutMs: waitMs,
-      retryDelaysMs: [],
-    },
-  ).then(
-    (outcome): InvitationRelayEnrollment =>
-      outcome.kind === "registered"
-        ? { kind: "enrolled", lapsesAt: outcome.lapsesAt }
-        : { kind: "failed", detail: outcomeDetail(outcome) },
-    (): InvitationRelayEnrollment => ({
-      kind: "failed",
-      detail: "it could not be reached",
-    }),
+    { waitMs: INVITATION_RELAY_ENROLLMENT_WAIT_MS, ...dependencies },
   );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let stopWaiting = (): void => {};
-  const waited = new Promise<InvitationRelayEnrollment>((resolve) => {
-    timer = setTimeout(
-      () =>
-        resolve({ kind: "failed", detail: `no answer within ${waitMs} ms` }),
-      waitMs,
-    );
-    stopWaiting = () => resolve({ kind: "cancelled" });
-    signal?.addEventListener("abort", stopWaiting, { once: true });
-  });
-  try {
-    const first = await Promise.race([attempt, waited]);
-    return cancelled() ? { kind: "cancelled" } : first;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", stopWaiting);
-  }
 }
 
 /** The registrar as a message names it: its origin alone. */

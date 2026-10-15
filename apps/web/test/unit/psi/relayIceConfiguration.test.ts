@@ -23,7 +23,7 @@ import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js"
 import { relayForRun } from "../../../src/psi/transport/ownRelaySetting.js";
 import { relayWithDefaultForRun } from "../../../src/psi/transport/defaultRelay.js";
 
-import type { WebRTCEndpoint, enrollRelayKeyWithoutToken } from "@alcove/core";
+import type { WebRTCEndpoint, enrollRelayKeyWithinWait } from "@alcove/core";
 
 import type { OwnRelayRead } from "../../../src/psi/transport/ownRelaySetting.js";
 import type Peer from "peerjs";
@@ -372,19 +372,15 @@ describe("the ICE list of a build naming a default relay", () => {
   const NAMED = {
     turn: ["turns:partner-relay.example.org:443?transport=tcp"],
   };
-  const registered = vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
-    Promise.resolve({
-      kind: "registered",
-      maxAgeDays: null,
-      lapsesAt: "2026-09-22T13:10:00Z",
-    }),
+  const registered = vi.fn<typeof enrollRelayKeyWithinWait>(() =>
+    Promise.resolve({ kind: "enrolled", lapsesAt: "2026-09-22T13:10:00Z" }),
   );
 
   async function iceList(
     invitationRelay: { turn?: Array<string> } | undefined,
     own: OwnRelayRead,
     setting: typeof DEFAULT_RELAY | undefined,
-    enroll: typeof enrollRelayKeyWithoutToken = registered,
+    enroll: typeof enrollRelayKeyWithinWait = registered,
   ): Promise<{
     urls: Array<string>;
     servers: Array<RTCIceServer>;
@@ -463,7 +459,7 @@ describe("the ICE list of a build naming a default relay", () => {
   });
 
   test("is unchanged, apart from the kept STUN server, when the build names none", async () => {
-    const enroll = vi.fn<typeof enrollRelayKeyWithoutToken>();
+    const enroll = vi.fn<typeof enrollRelayKeyWithinWait>();
     const none = await iceList(undefined, { kind: "none" }, undefined, enroll);
     expect(none.servers).toEqual(NO_RELAY_CONFIG.iceServers);
     const named = await iceList(NAMED, { kind: "none" }, undefined, enroll);
@@ -472,8 +468,8 @@ describe("the ICE list of a build naming a default relay", () => {
   });
 
   test("leaves the default relay out, and keeps STUN and the invitation's relay, when the enrollment fails", async () => {
-    const refused = vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
-      Promise.resolve({ kind: "refused", status: 409 }),
+    const refused = vi.fn<typeof enrollRelayKeyWithinWait>(() =>
+      Promise.resolve({ kind: "failed", detail: "HTTP 409" }),
     );
     const { urls } = await iceList(
       NAMED,

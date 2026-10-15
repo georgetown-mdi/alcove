@@ -7,6 +7,7 @@
 import {
   ConnectionError,
   registerRelayKey,
+  relayRegistrationOutcomeDetail,
   sanitizeErrorForDisplay,
   UsageError,
   markStatesItsOwnNextStep,
@@ -43,15 +44,6 @@ export const RELAY_REENROLLMENT_STEP =
   "'alcove enroll-relay --replace-relay-key' with this run's --config-file " +
   "and --key-file, and enter the token when asked";
 
-function answerDetail(outcome: RelayRegistrationOutcome): string {
-  if (outcome.kind === "registered") return "";
-  const status = outcome.status === undefined ? "" : `HTTP ${outcome.status}`;
-  const reason = outcome.reason ?? "";
-  return status !== "" && reason !== ""
-    ? `${status}: ${reason}`
-    : status || reason;
-}
-
 /**
  * The failure a registration outcome other than `registered` becomes, for the
  * `stage` it was made at:
@@ -70,7 +62,7 @@ export function relayRegistrationError(
   stage: "rotation" | "pending",
 ): Error {
   const label = relayRegistrarLabel(registrar);
-  const detail = answerDetail(outcome);
+  const detail = relayRegistrationOutcomeDetail(outcome);
   const what =
     stage === "rotation"
       ? `the exchange's shared secret rotated, and ${label} did not register ` +

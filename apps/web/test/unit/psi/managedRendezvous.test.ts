@@ -4,6 +4,7 @@ import { default as EventEmitter } from "eventemitter3";
 
 import {
   deriveRendezvousPeerId,
+  enrollRelayKeyWithinWait,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
@@ -543,12 +544,7 @@ describe("beginManagedRendezvous: relay", () => {
             turnUrl: defaultTurnUrl,
             registrarUrl: "https://registrar.example.org",
           }),
-          enroll: () =>
-            Promise.resolve({
-              kind: "registered",
-              maxAgeDays: null,
-              lapsesAt: null,
-            }),
+          enroll: () => Promise.resolve({ kind: "enrolled", lapsesAt: null }),
         },
       },
     );
@@ -593,7 +589,16 @@ describe("beginManagedRendezvous: relay", () => {
             turnUrl: "turns:turn.example.org:443?transport=tcp",
             registrarUrl: "https://registrar.example.org",
           }),
-          enroll: () => new Promise<never>(() => {}),
+          enroll: (params, options) =>
+            enrollRelayKeyWithinWait(params, {
+              ...options,
+              fetch: (_input, init) =>
+                new Promise<never>((_resolve, reject) => {
+                  init?.signal?.addEventListener("abort", () =>
+                    reject(init.signal?.reason as Error),
+                  );
+                }),
+            }),
           dialWaitMs: 50,
         },
       });
