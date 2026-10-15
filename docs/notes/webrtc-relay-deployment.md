@@ -433,6 +433,32 @@ The front puts a proxy between coturn and the client: coturn sees
 `127.0.0.1` as every client's address, reports it to the client as its
 reflexive address, and names it in its log lines.
 
+**The client's address at the registrar.** Enrollment without a token is
+bounded by a rate limit for each client address
+([the registrar](../../infra/relay/README.md#enrollment-without-a-token)),
+so the registrar needs the address the front sees. What was weighed:
+
+- **A limit in the front** (nginx's `limit_req`) is HTTP-level, and the
+  front passes TLS through unopened, so it cannot read a request. A limit on
+  connections per address would count TURN clients and every request alike.
+- **A PROXY protocol header on the registrar's route only.** nginx's stream
+  module sends the header for a whole server block, so one server on 443
+  cannot send it to the registrar and not to coturn's TLS listener, which is
+  not configured to read one.
+- **nginx's `pass` directive**, which hands a connection to another of
+  nginx's own listeners with its address, would let a second server send the
+  header to the registrar alone. Whether it carries the bytes `ssl_preread`
+  has already read is not measured here, since no nginx runs in the
+  development container.
+- **Two hops, chosen.** The server on 443 sends the header on every
+  connection, to the registrar's loopback port or to a second server on
+  loopback that drops it before coturn and each routed service. Each piece
+  is a directive nginx has long had (`proxy_protocol on`, `listen ...
+  proxy_protocol`), and `install.sh`'s `nginx -t` checks the configuration
+  before it goes live. The cost is a second proxy hop on every TURN
+  connection, and each one counting four of `worker_connections` rather
+  than two.
+
 Measured on the project's relay host on 2026-10-12, with the front routing
 `signal.data-bridge.org` to the broker's front on 8443 and every other
 connection to coturn on `127.0.0.1:5349` (the host runs no registrar and no
@@ -467,9 +493,11 @@ registrar name is set):
 
 Not measured, and so owed before the front is called deployed:
 
-- the registrar behind the front at a name of its own: the project's host has
+- the registrar behind the front at a name of its own: the project's host had
   no registrar, so no name was set, no certificate was issued for one, and
   the registrar's `OPTIONS` and `PUT` calls were not made through the front;
+- the front's two hops: a TURN allocation through the second hop, and the
+  registrar reading the client's address from the first hop's PROXY header;
 - a relayed exchange through the front from a browser and from the CLI, each
   on a network admitting outbound TCP to 443 only, which needs a registrar to
   register the exchange's key.
@@ -596,14 +624,21 @@ token -- is the issuance event: it is what makes the relay accept the
 credentials both parties mint for that exchange. Its line is:
 
 ```
-credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged|revoked> authority=<relay-owner-token|proof>
+credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged|revoked> authority=<relay-owner-token|proof|none>
 ```
 
 `time` is the registrar's clock in UTC when it processed the request; `outcome` is what the
 write did, `unchanged` for an enrollment repeating the key the exchange holds;
-`authority` is the credential that authorized it. A revocation writes the same
+`authority` is the credential that authorized it, `none` for an enrollment
+without a token. A revocation writes the same
 line with `outcome=revoked`. No registrar line names the
-caller's address, the key, the token, or the proof.
+caller's address, the key, the token, or the proof. The rate limit on
+enrollment without a token holds each enrolling address in the registrar's
+memory, as does the cap on each client's rows, and neither writes it
+anywhere. An entry is dropped once its window (600 s) or its row (70 minutes)
+has ended and a later enrollment without a token arrives; on a
+registrar that receives none, it stays until one does or the registrar
+restarts.
 `scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
 absence of any address, key, token or proof in the whole journal across
 registrations, revocations, refusals and a connection error.

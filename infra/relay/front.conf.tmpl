@@ -1,20 +1,31 @@
 # The relay host's one listener on 443/tcp: an nginx stream proxy that reads
 # the TLS ClientHello's server name and passes the connection on unchanged.
 # It terminates no TLS and holds no key; each service behind it serves its own
-# certificate. render-front.sh writes the routes into the map below and
+# certificate. render-front.sh writes the routes into the maps below and
 # install.sh writes the result to /etc/alcove-relay/front.conf.
 #
-# A connection whose server name no route claims -- the realm's own name, no
-# server name, or bytes that are not TLS -- goes to coturn's TURNS listener on
-# loopback, the port turnserver.conf.tmpl sets, so a TURN client reaches coturn
-# whatever server name it sends. scripts/relay-front.test.mjs holds the two
-# files to the same port, and holds this file to writing no access log.
+# Two hops. The first, on 443, sends every connection on with a PROXY protocol
+# header naming the client's address, which nginx sends for a whole server
+# block or not at all: a connection asking for the registrar's name goes to the
+# registrar's front port, which reads the header, and every other connection
+# goes to the second hop on loopback, which reads and drops it.
+#
+# At the second hop, a connection whose server name no route claims -- the
+# realm's own name, no server name, or bytes that are not TLS -- goes to
+# coturn's TURNS listener on loopback, the port turnserver.conf.tmpl sets, so a
+# TURN client reaches coturn whatever server name it sends.
+# scripts/relay-front.test.mjs holds the two files to the same port, and holds
+# this file to writing no access log.
 worker_processes 1;
 error_log /dev/stderr warn;
 pid /tmp/nginx.pid;
 events { worker_connections 1024; }
 stream {
   access_log off;
+  map $ssl_preread_server_name $alcove_hop {
+    default 127.0.0.1:5348;
+    __REGISTRAR_ROUTE__
+  }
   map $ssl_preread_server_name $alcove_route {
     default 127.0.0.1:5349;
     __ROUTES__
@@ -26,6 +37,15 @@ stream {
     proxy_connect_timeout 5s;
     # Longer than coturn's max-allocate-lifetime, so an allocation its client
     # refreshes is not cut by the front between refreshes.
+    proxy_timeout 900s;
+    proxy_protocol on;
+    proxy_pass $alcove_hop;
+  }
+  server {
+    listen 127.0.0.1:5348 proxy_protocol;
+    ssl_preread on;
+    preread_timeout 10s;
+    proxy_connect_timeout 5s;
     proxy_timeout 900s;
     proxy_pass $alcove_route;
   }

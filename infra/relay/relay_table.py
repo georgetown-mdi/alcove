@@ -66,14 +66,20 @@ BUSY_TIMEOUT_SECONDS = 10
 # The columns of coturn's turn_secret this module writes. The schema check in
 # scripts/relay-turn-secret-schema.test.mjs holds them against the pinned image.
 TURN_SECRET_COLUMNS = ("realm", "value")
+# fixed_lapse_at is set on a row enrolled without a token: the Unix time it
+# lapses, which no registration under a proof moves. Such a row also holds a
+# max_age_days covering that time, so a sweep that does not read the column
+# still revokes it.
 MAPPING_SCHEMA = (
     "CREATE TABLE IF NOT EXISTS alcove_exchange ("
     "exchange_id TEXT PRIMARY KEY NOT NULL, "
     "realm TEXT NOT NULL, "
     "key TEXT NOT NULL UNIQUE, "
     "registered_at INTEGER NOT NULL, "
-    "max_age_days INTEGER)"
+    "max_age_days INTEGER, "
+    "fixed_lapse_at INTEGER)"
 )
+FIXED_LAPSE_COLUMN = "ALTER TABLE alcove_exchange ADD COLUMN fixed_lapse_at INTEGER"
 
 
 class Refused(Exception):
@@ -87,6 +93,26 @@ class TableError(Exception):
 
 class UsageError(Exception):
     """A command run without what it needs to name its target; exit 2."""
+
+
+class CeilingReached(Exception):
+    """An enrollment with a fixed lapse refused because the realm already holds
+    the ceiling's count of such rows not yet lapsed; nothing changed.
+    `earliest_lapse` is the Unix time the first of them lapses."""
+
+    def __init__(self, earliest_lapse):
+        super().__init__("the realm holds as many rows with a fixed lapse as its ceiling allows")
+        self.earliest_lapse = earliest_lapse
+
+
+class ClientCapReached(Exception):
+    """An enrollment with a fixed lapse refused because the rows its client
+    enrolled, not yet lapsed, already number the client's cap; nothing
+    changed. `earliest_lapse` is the Unix time the first of them lapses."""
+
+    def __init__(self, earliest_lapse):
+        super().__init__("the client holds as many rows with a fixed lapse as its cap allows")
+        self.earliest_lapse = earliest_lapse
 
 
 class ProofRefused(Refused):
@@ -145,6 +171,10 @@ def _connect(path, mode):
         raise TableError("could not open the secrets table %s: %s; nothing changed" % (path, error))
 
 
+def _has_fixed_lapse_column(conn):
+    return "fixed_lapse_at" in {row[1] for row in conn.execute("PRAGMA table_info(alcove_exchange)")}
+
+
 def open_table(path=None):
     """Opens coturn's existing turndb for writing, never creating it, and adds the
     mapping table when absent."""
@@ -158,6 +188,13 @@ def open_table(path=None):
                 % (path, ", ".join(TURN_SECRET_COLUMNS))
             )
         conn.execute(MAPPING_SCHEMA)
+        if not _has_fixed_lapse_column(conn):
+            try:
+                conn.execute(FIXED_LAPSE_COLUMN)
+            except sqlite3.Error:
+                # Another writer opening the table at once may have added it.
+                if not _has_fixed_lapse_column(conn):
+                    raise
     except sqlite3.Error as error:
         conn.close()
         raise TableError("could not open the secrets table %s for writing: %s; nothing changed" % (path, error))
@@ -196,7 +233,7 @@ def iso_time(seconds):
     return datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_key(conn, realm, exchange_id, key, max_age_days, now, prior):
+def _write_key(conn, realm, exchange_id, key, max_age_days, now, prior, fixed_lapse_at=None):
     """Adds the key's row and points the exchange at it, deleting `prior`, the
     exchange's mapped (realm, key) or None, in the caller's transaction."""
     holder = conn.execute("SELECT exchange_id FROM alcove_exchange WHERE key = ?", (key,)).fetchone()
@@ -205,28 +242,40 @@ def _write_key(conn, realm, exchange_id, key, max_age_days, now, prior):
     conn.execute("INSERT OR IGNORE INTO turn_secret (realm, value) VALUES (?, ?)", (realm, key))
     if prior is not None and (prior[0], prior[1]) != (realm, key):
         conn.execute("DELETE FROM turn_secret WHERE realm = ? AND value = ?", prior)
+    stored_days = max_age_days if fixed_lapse_at is None else _days_covering(now, fixed_lapse_at)
     conn.execute(
-        "INSERT OR REPLACE INTO alcove_exchange (exchange_id, realm, key, registered_at, max_age_days) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (exchange_id, realm, key, now, max_age_days),
+        "INSERT OR REPLACE INTO alcove_exchange (exchange_id, realm, key, registered_at, max_age_days, fixed_lapse_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (exchange_id, realm, key, now, stored_days, fixed_lapse_at),
     )
     if prior is None:
         return "registered"
     return "renewed" if prior[1] == key else "replaced"
 
 
+def _days_covering(now, fixed_lapse_at):
+    return max(1, -(-(fixed_lapse_at - now) // DAY_SECONDS))
+
+
 def _mapped(conn, exchange_id):
     return conn.execute("SELECT realm, key FROM alcove_exchange WHERE exchange_id = ?", (exchange_id,)).fetchone()
 
 
-def _registration(outcome, realm, exchange_id, max_age_days, now):
+def _fixed_lapse(conn, exchange_id):
+    row = conn.execute("SELECT fixed_lapse_at FROM alcove_exchange WHERE exchange_id = ?", (exchange_id,)).fetchone()
+    return None if row is None else row[0]
+
+
+def _registration(outcome, realm, exchange_id, max_age_days, now, fixed_lapse_at=None):
+    """A row with a fixed lapse states that lapse and no max-age-days."""
     return {
         "outcome": outcome,
         "exchange_id": exchange_id,
         "realm": realm,
         "registered_at": now,
-        "max_age_days": max_age_days,
-        "lapses_at": lapses_at(now, max_age_days),
+        "max_age_days": max_age_days if fixed_lapse_at is None else None,
+        "lapses_at": lapses_at(now, max_age_days) if fixed_lapse_at is None else fixed_lapse_at,
+        "fixed_lapse": fixed_lapse_at is not None,
     }
 
 
@@ -244,26 +293,74 @@ def register(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=F
     return _registration(outcome, realm, exchange_id, max_age_days, now)
 
 
-def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=False):
+def _live_lapses(conn, realm, client_rows, now):
+    """The lapse of each (exchange_id, fixed_lapse_at) in `client_rows` that the
+    realm still holds with that lapse, after `now`."""
+    lapses = []
+    for exchange_id, fixed_lapse_at in client_rows:
+        row = conn.execute(
+            "SELECT fixed_lapse_at FROM alcove_exchange "
+            "WHERE exchange_id = ? AND realm = ? AND fixed_lapse_at = ? AND fixed_lapse_at > ?",
+            (exchange_id, realm, fixed_lapse_at, now),
+        ).fetchone()
+        if row is not None:
+            lapses.append(row[0])
+    return lapses
+
+
+def enroll(
+    conn,
+    realm,
+    exchange_id,
+    key,
+    max_age_days,
+    now,
+    allow_verify_id=False,
+    fixed_lapse_at=None,
+    ceiling=None,
+    client_rows=(),
+    client_cap=None,
+):
     """Adds the key's row and maps an exchange this relay does not yet hold.
     Enrolling an exchange again with the key it holds changes nothing and
     returns its registration as held; any other key for an id already mapped
-    is refused. Returns the registration."""
+    is refused. With `fixed_lapse_at`, a Unix time after `now`, the row lapses
+    then and max_age_days must be None. A new row with a fixed lapse is then
+    refused with ClientCapReached while `client_cap` of the rows
+    `client_rows` names, (exchange_id, fixed_lapse_at) pairs the caller's
+    client enrolled, are held with that lapse after `now`, and with
+    CeilingReached while the realm holds `ceiling` rows with a fixed lapse
+    after `now`. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
     now = int(now)
+    if fixed_lapse_at is not None and (max_age_days is not None or fixed_lapse_at <= now):
+        raise Refused("an enrollment with a fixed lapse takes no max-age-days, and lapses after it is made")
 
     def body():
         held = conn.execute(
-            "SELECT realm, key, registered_at, max_age_days FROM alcove_exchange WHERE exchange_id = ?",
+            "SELECT realm, key, registered_at, max_age_days, fixed_lapse_at FROM alcove_exchange "
+            "WHERE exchange_id = ?",
             (exchange_id,),
         ).fetchone()
         if held is None:
-            outcome = _write_key(conn, realm, exchange_id, key, max_age_days, now, None)
-            return _registration(outcome, realm, exchange_id, max_age_days, now)
+            if fixed_lapse_at is not None and client_cap is not None:
+                client_lapses = _live_lapses(conn, realm, client_rows, now)
+                if len(client_lapses) >= client_cap:
+                    raise ClientCapReached(min(client_lapses))
+            if fixed_lapse_at is not None and ceiling is not None:
+                live, earliest_lapse = conn.execute(
+                    "SELECT COUNT(*), MIN(fixed_lapse_at) FROM alcove_exchange "
+                    "WHERE realm = ? AND fixed_lapse_at IS NOT NULL AND fixed_lapse_at > ?",
+                    (realm, now),
+                ).fetchone()
+                if live >= ceiling:
+                    raise CeilingReached(earliest_lapse)
+            outcome = _write_key(conn, realm, exchange_id, key, max_age_days, now, None, fixed_lapse_at)
+            return _registration(outcome, realm, exchange_id, max_age_days, now, fixed_lapse_at)
         if (held[0], held[1]) == (realm, key):
-            return _registration("unchanged", realm, exchange_id, held[3], held[2])
+            return _registration("unchanged", realm, exchange_id, held[3], held[2], held[4])
         raise Refused(
             "exchange-id %s is already enrolled on this relay with another key; rotate its key under a proof "
             "of the key it holds, or revoke it and enroll it again" % exchange_id
@@ -312,7 +409,8 @@ def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession, 
     `proves_possession(current_key)` runs under the table's write lock and the
     write happens only if it returns True, so a proof made under a replaced key
     is refused and two rotations from one key cannot both succeed. Registering
-    the key the exchange already holds renews it. Returns the registration."""
+    the key the exchange already holds renews it. A row with a fixed lapse
+    keeps it, whatever `max_age_days` asks. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
@@ -320,10 +418,11 @@ def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession, 
 
     def body():
         prior = _held_key_proven(conn, exchange_id, proves_possession)
-        return _write_key(conn, realm, exchange_id, key, max_age_days, now, prior)
+        fixed_lapse_at = _fixed_lapse(conn, exchange_id)
+        outcome = _write_key(conn, realm, exchange_id, key, max_age_days, now, prior, fixed_lapse_at)
+        return _registration(outcome, realm, exchange_id, max_age_days, now, fixed_lapse_at)
 
-    outcome = _transaction(conn, body)
-    return _registration(outcome, realm, exchange_id, max_age_days, now)
+    return _transaction(conn, body)
 
 
 def describe_registration(registration):
@@ -333,6 +432,10 @@ def describe_registration(registration):
         "renewed": "renewed exchange %s (realm %s), which already had this key registered",
         "unchanged": "exchange %s (realm %s) is already enrolled with this key; nothing changed",
     }[registration["outcome"]] % (registration["exchange_id"], registration["realm"])
+    if registration.get("fixed_lapse"):
+        return head + "; it was enrolled without a token, so it lapses at %s, and a registration under a proof does not move that" % (
+            iso_time(registration["lapses_at"])
+        )
     if registration["max_age_days"] is None:
         return head + "; it has no lapse and stays registered until revoked or replaced"
     return head + "; it lapses %d day(s) after this registration, at %s, unless registered again" % (
@@ -380,15 +483,17 @@ def describe_revocation(revocation):
 
 def sweep(conn, now):
     """Revokes, in one transaction, every exchange whose registration is at least
-    its max-age-days old at `now`. Returns the revoked exchanges."""
+    its max-age-days old at `now`, or whose fixed lapse is at or before `now`.
+    Returns the revoked exchanges."""
     now = int(now)
 
     def body():
         lapsed = conn.execute(
             "SELECT exchange_id, realm, key FROM alcove_exchange "
-            "WHERE max_age_days IS NOT NULL AND ? - registered_at >= max_age_days * ? "
+            "WHERE (max_age_days IS NOT NULL AND ? - registered_at >= max_age_days * ?) "
+            "OR (fixed_lapse_at IS NOT NULL AND fixed_lapse_at <= ?) "
             "ORDER BY exchange_id",
-            (now, DAY_SECONDS),
+            (now, DAY_SECONDS, now),
         ).fetchall()
         revoked = []
         for exchange_id, realm, key in lapsed:

@@ -6,7 +6,8 @@ a digest-pinned coturn image, a hardened configuration, the systemd unit that
 supervises it, a front that holds 443 and routes each connection by the name
 it asks for, an ACME renewal that keeps its certificate current, scripts that
 register and revoke each exchange's relay key, an optional HTTPS registrar that
-enrolls an exchange under the relay-owner token and rotates or revokes it under
+enrolls an exchange under the relay-owner token, or without one where the
+operator turns that on, and rotates or revokes it under
 a proof of holding its key, a sweep that revokes
 lapsed keys, and a verification script that asks the deployed relay whether it
 is doing its job.
@@ -48,10 +49,12 @@ your own environment:
   `install.sh`.
 - [The 443 front](#the-443-front) is installed on the project's relay host
   and passed `verify.sh` through it (13 checks), with signaling answering on
-  443; the registrar behind it and a relayed exchange from a 443-only
-  client are not measured, since the host runs no registrar today. Its tests
-  under `scripts/` drive `render-front.sh` and hold the template to coturn's
-  listener, not nginx.
+  443, in its one-hop form. Its two hops, the registrar behind it with the
+  client's address in the PROXY header, and a relayed exchange from a
+  443-only client are not yet measured there. Its tests under `scripts/`
+  drive `render-front.sh` and hold the template to coturn's listener, not
+  nginx; the registrar's tests drive its PROXY header reader with a header
+  written by the test, not by nginx.
 - [The OS update](#os-updates) has not yet run on the project's relay
   host, so where the host records its release lock, and what its first run
   restarted, are not yet recorded here.
@@ -134,8 +137,8 @@ when its operator runs `install.sh` from that commit's checkout.
 | `relay_table.py` | The one write path to the secrets table: register, revoke, and sweep, each one SQLite transaction, as the relay image's account. Everything below that touches the table calls it. See [Per-exchange keys](#per-exchange-keys) |
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
 | `import-legacy-mapping.sh` | Carries the text mapping an install from before the secrets table's own mapping kept into the table, and deletes it once the table reads back every row; `install.sh` runs it. See [Per-exchange keys](#per-exchange-keys), The mapping |
-| `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, hourly. See [Per-exchange keys](#per-exchange-keys), Lifetime |
-| `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
+| `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, every ten minutes. See [Per-exchange keys](#per-exchange-keys), Lifetime |
+| `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, or for any caller where enrollment without a token is on, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
 | `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front before its first probe, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
@@ -201,7 +204,9 @@ revoke-exchange.sh <exchange-id>
     refresh.
 - **Lifetime.** A row registered with max-age-days lapses that many days after
   its registration, and the sweep -- `sweep-exchanges.sh`, or
-  `alcove-relay-sweep.timer` hourly -- revokes it within the hour. Registering
+  `alcove-relay-sweep.timer` every ten minutes -- revokes it within about
+  eleven minutes. A lapsed row still authenticates until the sweep deletes
+  it. Registering
   the exchange's next key, or its current key again, replaces the row and
   restarts the count, so each run's registration is the renewal and an exchange
   that keeps running is never swept. max-age-days is the managed-exchange
@@ -213,11 +218,18 @@ revoke-exchange.sh <exchange-id>
   `MAX_TOKEN_MAX_AGE_DAYS` (`packages/core/src/config/connection.ts`). The
   record's policy is off by default; a row registered with `none`, like a record
   with no policy, has no lapse and lives until it is revoked or replaced. There
-  is no relay-side setting for the lapse.
+  is no relay-side setting for the lapse, except for a row
+  [the registrar](#the-registrar) enrolls without a token: it lapses at a
+  time the registrar fixes, which a later registration under a proof does
+  not move.
 - **The mapping.** `turn_secret` is keyed by realm and key and holds no exchange
   id, so `relay_table.py` keeps a second table in the same file,
   `alcove_exchange`: the exchange id, the realm, the key, the Unix time of the
-  registration, and max-age-days (empty for no lapse). coturn reads neither the
+  registration, max-age-days (empty for no lapse), and, for a row enrolled
+  without a token, the Unix time it lapses (`fixed_lapse_at`; such a row also
+  holds a max-age-days of 1, so the sweep of an install that does not read
+  that column, as after a rollback, still revokes it within a day). coturn
+  reads neither the
   table nor anything else it does not know. One file means a register, revoke,
   or sweep is one SQLite transaction across the row and the mapping: it lands
   whole or not at all, and its result is the write's own, with nothing read
@@ -289,10 +301,14 @@ Give the token to the relay's operator, who needs it only to enroll an
 exchange and to recover one, and never puts it in a served bundle. To turn the
 registrar off, delete the file and run `install.sh` again. To replace the
 token, overwrite the file and
-`systemctl restart alcove-relay-registrar.service`.
+`systemctl restart alcove-relay-registrar.service`. The registrar can also
+enroll an exchange for a caller holding no token, such as a browser party
+whose operator gave it none; that is turned on in `relay.env` -- see
+[Enrollment without a token](#enrollment-without-a-token) below.
 
-- **Two ways to authenticate.** Every request but a CORS preflight holds one
-  credential in its `Authorization` header:
+- **Two ways to authenticate.** Every request but a CORS preflight, and an
+  enrollment without a token where that is on, holds one credential in its
+  `Authorization` header:
   - **The relay-owner token**, `Authorization: Bearer <token>`, enrolls an
     exchange the relay does not yet hold (`POST`). It also registers or revokes
     any exchange unconditionally (`PUT`, `DELETE`): that is the operator's
@@ -305,8 +321,8 @@ token, overwrite the file and
     core's `relayRegistrarAuthorization` makes one. It holds no token, so the
     routine calls after enrollment never need the token.
 
-  A request with neither, a wrong token, or a malformed proof is answered 401
-  and nothing is written. A proof whose `ts` is more than 300 s from the
+  A request with neither, other than that enrollment, a wrong token, or a
+  malformed proof is answered 401 and nothing is written. A proof whose `ts` is more than 300 s from the
   registrar's clock is answered 401 with `serverTime`, the registrar's Unix
   seconds, so a caller whose clock has drifted signs again. A CORS preflight
   (`OPTIONS`) is answered 204 without a credential and does nothing. Any other
@@ -321,6 +337,7 @@ token, overwrite the file and
   | `PUT /exchanges/<exchange-id>` with the same body | proof | the new key in place of the one proven, or a renewal of the key held | as `POST` |
   | `DELETE /exchanges/<exchange-id>` | proof | what `revoke-exchange.sh <exchange-id>` writes | 200 and `{"message": ...}` |
   | `PUT` or `DELETE`, as above | token | what `register-exchange.sh <exchange-id> <days\|none>` or `revoke-exchange.sh <exchange-id>` writes, whatever key the exchange holds | as above |
+  | `POST /exchanges/<exchange-id>` with `{"key": "<key-hex64>", "maxAgeDays": null}`, where enrollment without a token is on | none: no `Authorization` header | as the token's `POST`, the row lapsing at a time the registrar fixes | as `POST`, `maxAgeDays` `null` and `lapsesAt` the fixed lapse |
 
   - **Enrolling** is create-only. Enrolling an exchange again with the key it
     holds changes nothing and is answered 200 with the registration as held,
@@ -349,7 +366,12 @@ token, overwrite the file and
   value that fails them 400 with a fixed message naming the field, never the
   value, before anything is written. An id starting with `alcove-verify-` is
   refused 400 unless the request carries `Alcove-Relay-Verify-Run: 1`, which
-  `verify.sh` sends and which the preflight does not allow a browser to send. A
+  `verify.sh` sends and which the preflight does not allow a browser to send.
+  An enrollment without a token of such an id is also refused 400 unless its
+  client address is loopback -- the connection's own on the registrar's port,
+  the one the front's PROXY header names on the front's -- since any other
+  client can send that header; `verify.sh`, which runs on the relay host,
+  sends those enrollments to `127.0.0.1`. A
   body that is not that JSON object is answered 400, one over 1024 bytes 413,
   and one without a `Content-Length` 411; a revocation under a proof may send
   no body, which it signs as empty. A request line or header block the
@@ -400,10 +422,18 @@ token, overwrite the file and
   certificate changes. The port is 8443 where unset; `relay.env.example` sets
   8444, because the broker's TLS front holds 8443 on a host that runs it. An
   existing host's registrar port is whatever its `relay.env` sets. Where
-  `ALCOVE_RELAY_REGISTRAR_NAME` gives it a name of its own,
-  [the 443 front](#the-443-front) passes a connection asking for that
-  name to this port on loopback, so its address is `https://<that name>`, on
-  443. The certificate is issued for the name beside the realm.
+  `ALCOVE_RELAY_REGISTRAR_NAME` gives it a name of its own, it also listens
+  on `127.0.0.1` at `ALCOVE_RELAY_REGISTRAR_FRONT_PORT` (8445 where unset),
+  and [the 443 front](#the-443-front) passes a connection asking for that
+  name there, so its address is `https://<that name>`, on 443. Each
+  connection on that port starts with the front's PROXY protocol (version 1)
+  header naming the client's address, which the registrar reads, within 5 s
+  (`PROXY_HEADER_SECONDS`), before the TLS handshake. A connection that does
+  not start with a well-formed one is closed unanswered and writes nothing,
+  including the header's `UNKNOWN` form, which names no client and which
+  nginx does not send for a TCP connection. The port listens on
+  loopback only, so only a process on the host can name an address there.
+  The certificate is issued for the name beside the realm.
 - **Who must reach it.** Every machine that registers: the machine
   `alcove enroll-relay` runs on, and every CLI or browser that runs an
   exchange through this relay, since each run registers its rotated key. At
@@ -431,14 +461,187 @@ token, overwrite the file and
   alcove-relay-registrar.service`), naming the method, the status, and the
   path, and the result of each write: a registration as one
   `credential issuance:` line naming the exchange, the time, the outcome and
-  whether the token or a proof made it, in the format
+  whether the token, a proof, or no credential made it, in the format
   [the deployment record](../../docs/notes/webrtc-relay-deployment.md#what-the-relay-host-keeps)
   states. The path is logged only when it is
   `/exchanges/<exchange-id>` with a well-formed id, and the method only when
   it is a standard one; any other path or method, and any part of a malformed
   request line, is replaced by a fixed placeholder, since it could hold a key
   sent in the wrong place. Neither the token, a key, nor the caller's address
-  is logged.
+  is logged. The rate limit below and the cap on each client's rows hold each
+  address that enrolled without a token in the registrar's memory, and
+  neither writes it anywhere. An entry that has ended is dropped only when a
+  later enrollment without a token arrives, so on a registrar that receives
+  none the address stays in memory until one does or the registrar restarts.
+
+### Enrollment without a token
+
+A browser party enrolls the exchange it is about to run with no token: it
+holds none, and any token a served page held would be public. Where
+`ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=on` in `relay.env`, the
+registrar takes a `POST` with no `Authorization` header as an enrollment.
+Off, or unset, it answers that `POST` 401. The setting is read at
+start: to turn it off, set it to `off` and
+`systemctl restart alcove-relay-registrar.service`.
+
+- **What it writes.** As the token's enrollment, for an id not yet enrolled:
+  the key's row and the exchange's mapping. Any id in the registrar's id
+  space is accepted; the exchange id a browser exchange uses is
+  [PROTOCOL.md](../../docs/spec/PROTOCOL.md)'s to state.
+- **The lapse is the registrar's.** The body must send `"maxAgeDays": null`;
+  any other value is answered 400 and nothing is written. The row lapses
+  4200 s (70 minutes) after the enrollment (`TOKENLESS_LIFETIME_SECONDS`), and
+  the answer states it: `maxAgeDays` `null` and `lapsesAt` that time. The 70
+  minutes are what one browser exchange needs: the inviter enrolls when it
+  creates the invitation and waits at most 10 minutes for its partner
+  (`DEFAULT_PEER_WAIT_TIMEOUT_MS`, `apps/web/src/psi/transport/waitForConnection.ts`),
+  and each party then mints a credential that lasts 3600 s
+  (`RELAY_CREDENTIAL_MAX_TTL_SECONDS`, `packages/core/src/relayCredential.ts`),
+  under which a new allocation needs the row. A lapsed row authenticates
+  until the sweep deletes it, within about eleven minutes of its lapse
+  ([Per-exchange keys](#per-exchange-keys), Lifetime), so a row lives at most
+  about 81 minutes.
+- **The same key again, and another key.** An enrollment of the key the id
+  already holds is answered 200 with the registration as held, its lapse
+  unchanged: both parties derive the same key from the same secret, and
+  either may enroll. Another key is answered 409, so a caller cannot replace
+  or revoke an exchange whose key it does not hold. That holds for an id the
+  token enrolled too.
+- **No extension past the lapse.** A `PUT` under a proof on a row enrolled
+  without a token -- a renewal, or a rotation to a new key -- keeps the row's
+  lapse whatever `maxAgeDays` its body names, and the answer states that
+  lapse. Only the relay-owner token's `PUT`, the operator's recovery route,
+  replaces it with the lapse its body names. A `DELETE` under a proof revokes
+  the row as for any other.
+- **The rate limit.** At most 20 enrollments without a token from one client
+  address in a window of 600 s from its first (`TOKENLESS_ENROLLMENTS_PER_WINDOW`,
+  `TOKENLESS_WINDOW_SECONDS`). Past that, an enrollment is answered 429 with
+  `Retry-After`, the seconds until the window ends, which the answer lets a
+  browser's script read (`Access-Control-Expose-Headers`), and nothing is
+  written.
+  Each request is counted before its id or body is read, so a malformed one,
+  or one probing whether an id is held, counts too. These are arbitrary
+  working values, raised on request; the reasoning behind them: one exchange
+  costs at most two enrollments, the inviter's and its partner's, and a
+  client retrying as core's registrar client does
+  ([PROTOCOL.md, Registering the rotated relay key](../../docs/spec/PROTOCOL.md#registering-the-rotated-relay-key),
+  Retries) sends a request that gets no answer, or a 429, three times in
+  all, so 20 in 10 minutes -- the length of the inviter's wait -- admits
+  about ten exchanges set up at once behind one address, such as a facility's
+  shared network address, or three whose every request was retried. The cap
+  on each client, below, bounds the rows an address holds.
+- **The client's address.** On the registrar's own port, the connection's
+  address. Through the front, the address in its PROXY header, since every
+  connection the front passes comes from `127.0.0.1` (Where it listens,
+  above). For the rate limit, an IPv6 address counts as its /64, which one
+  host commonly holds whole; for the cap on each client, below, as its /48.
+- **The cap on each client.** At most 10 rows enrolled without a token and
+  not yet lapsed are held for one client address
+  (`TOKENLESS_ROWS_PER_CLIENT`), counted inside the enrollment's own write.
+  Past it, an enrollment of an id not yet held is answered 429 with
+  `Retry-After`, the seconds until the first of that address's rows lapses,
+  and nothing is written; an enrollment naming the key an id already holds
+  is still answered 200. A row revoked, or lapsed, no longer counts.
+  - **Why 10.** An arbitrary working value, raised on request. A row lives
+    70 minutes whether its exchange relays or not, so the cap is the number
+    of exchanges one address can set up within any 70 minutes. An exchange
+    holds one row whichever of its parties enrolls it, so 10 admits the
+    about ten exchanges set up at once behind a facility's one shared
+    address that the rate limit above is sized for. One address holds at
+    most 10 / 1800 of the ceiling below, about half of one percent.
+  - **IPv6.** The cap counts an IPv6 address as its /48, not its /64: a
+    site is commonly assigned a /56 or a /48, so counting /64s would give
+    one holder 256 to 65,536 caps. A site on IPv6 then shares one cap
+    across its /48, as a facility on IPv4 shares one across its address.
+    The reference deployment's names are DNS A records only
+    ([aws/provision.md](aws/provision.md)), so there every client reaches
+    the registrar, and is counted, by its IPv4 address.
+  - **Held in memory.** Which address enrolled each row is held in the
+    registrar's memory, and written nowhere. A row the registrar revokes is
+    dropped at once; a lapsed row is dropped only when a later enrollment
+    without a token arrives. A restart of the registrar clears it, so after one
+    an address can enroll up to 10 more while its earlier rows still hold;
+    the ceiling below still bounds them all.
+- **How many addresses.** At most 4096 addresses' windows are held at once
+  (`MAX_TRACKED_ADDRESSES`, an arbitrary working value). With all of them
+  taken, an enrollment from another address is answered 429, until the
+  oldest window ends, and writes nothing.
+- **The ceiling.** At most 1800 rows enrolled without a token and not yet
+  lapsed are held in the realm at once
+  (`ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING` in `relay.env`, 1800 where
+  unset), counted inside the enrollment's own write. Past it, an enrollment
+  of an id not yet held is answered 503 with `Retry-After`, the seconds until
+  the first of those rows lapses, and nothing is written; an enrollment
+  naming the key an id already holds is still answered 200. Every such row is
+  a secret in coturn's `turn_secret` for the realm, and coturn checks a
+  credential against every secret the realm holds, so the ceiling bounds the
+  work callers holding no credential can add to each authentication.
+  - **Where 1800 comes from.** From what a row costs, not from what the
+    relay serves:
+    - **Authentication.** A request with a wrong credential is checked
+      against every row. A model of one check -- two HMAC-SHA1s and an MD5, in Python --
+      measured about 5.5 microseconds a row on a development machine. The
+      bound is a full scan of about 10 ms, an arbitrary working value, and
+      10 ms / 5.5 microseconds is about 1800 rows.
+    - **Size.** About 400 bytes a row in `turndb`, measured on the same
+      machine, so 1800 rows add under 1 MB and 18,000 about 7 MB, small
+      beside the instance's memory. The size does not set the ceiling.
+    - **Use.** Use at full relay capacity holds about 140 rows, under a
+      tenth of the ceiling: `total-quota` (40, `ALCOVE_RELAY_TOTAL_QUOTA`)
+      allows 20 relayed exchanges at once, at two allocations each; taking
+      `max-allocate-lifetime`'s 600 s as how long an exchange holds them,
+      that is 2 exchanges a minute, each holding one row for 70 minutes. The
+      formula is `total-quota x 3.5`: on raising the quota, keep the
+      ceiling well above it.
+    - **On the relay host.** The cost of a row is an estimate, and the
+      2026-10-15 measurement on the relay host could not resolve it: each
+      timed allocation included a client start of 11 to 17 s, and with no
+      rows added, with 1800 and with 18,000 the times showed no difference
+      beyond that noise. The default 1800 stays a modeled working value. A
+      timing that leaves out the client's start confirms the ceiling, or
+      lowers it to 10 ms over the measured cost of a row.
+
+    A lapsed row is not counted, and the sweep deletes it within about
+    eleven minutes, so a flood holds at most about 1800 x 81 / 70, about
+    2100, such rows in the table.
+  - **The limit.** One address holds at most 10 rows (The cap on each
+    client, above), so filling the ceiling takes 180 client addresses, IPv4
+    addresses or IPv6 /48s, fewer by the rows legitimate use holds. Many
+    addresses can still fill it: then an enrollment without a token of a new
+    id is refused until rows lapse, up to 70 minutes, and a browser run that
+    could not enroll dials without the default relay, by STUN alone. A run
+    that never relays still holds a row, so legitimate use setting up more
+    than about 25 exchanges a minute reaches it too. Each refusal is counted
+    (What it counts, below), for the relay's monitoring.
+
+### What it counts
+
+The registrar counts the enrollments without a token it wrote, the 429s it
+answered at the rate limit (`rate_limit_refusals`) and at the cap on each
+client (`client_cap_refusals`), and the 503s it answered at
+[the ceiling](#enrollment-without-a-token) (`tokenless_ceiling_refusals`),
+and writes the counts to `/var/lib/alcove-relay/registrar-counters`
+(beside the secrets table), for the relay's monitoring to read:
+
+```
+started=2026-10-15T12:00:00Z
+updated=2026-10-15T12:34:50Z
+tokenless_enrollments=12
+rate_limit_refusals=3
+client_cap_refusals=0
+tokenless_ceiling_refusals=0
+```
+
+Each count is the total since the registrar started, at `started`; a reader
+takes the difference between two reads, and a changed `started` means the
+counts began again at 0. The file is written at start, then at most every 10
+s (`COUNTERS_WRITE_SECONDS`), and only when a count changed, replaced whole
+so a reader never sees half a file; `updated` is the time of the last write.
+A file, rather than a count of journal lines, because journald drops a
+unit's lines past its rate limit (`RateLimitBurst` in `journald.conf`), and
+a flood of enrollments is what would reach it, and because reading it costs
+one small read on an instance with no memory to spare. A failure to write it
+goes to the registrar's journal, and the registrar goes on serving.
 
 ## The 443 front
 
@@ -453,7 +656,7 @@ so the front sees what any network hop on the path sees.
 
   | the connection asks for | it goes to |
   | --- | --- |
-  | `ALCOVE_RELAY_REGISTRAR_NAME` | the registrar, on `127.0.0.1` at `ALCOVE_RELAY_REGISTRAR_PORT` |
+  | `ALCOVE_RELAY_REGISTRAR_NAME` | the registrar, on `127.0.0.1` at `ALCOVE_RELAY_REGISTRAR_FRONT_PORT`, with a PROXY header naming the client |
   | a name in `ALCOVE_RELAY_FRONT_ROUTES` (`name=port` pairs) | that port on `127.0.0.1` |
   | the realm, any other name, no name, or bytes that are not TLS | coturn, `127.0.0.1:5349` |
 
@@ -463,15 +666,28 @@ so the front sees what any network hop on the path sees.
   nginx's map matches them, and refuses a route for the realm, a name two
   routes claim, a name that is not a lowercase DNS name, a name nginx's map
   reads as a keyword (`default`, `include`, `hostnames`, `volatile`), port
-  443, and a port another route or the registrar already uses; `install.sh`
+  443, and a port another route, the registrar or the second hop below
+  already uses; `install.sh`
   runs it before it installs or restarts anything. `install.sh` then builds
   the front's image and checks the rendered configuration with `nginx -t`
   before it installs the scripts under `/opt` or renders coturn's
   configuration, so a front that fails either leaves coturn as it was.
+- **Two hops.** The registrar's rate limit needs each client's address,
+  which the front, passing TLS through unopened, can hand on only as a PROXY
+  protocol header, and nginx sends that header for a whole server block or
+  not at all. So the server on 443 sends it on every connection: one asking
+  for the registrar's name goes to the registrar's front port, which reads
+  it, and every other connection goes to a second server on
+  `127.0.0.1:5348`, which reads and drops the header and routes by server
+  name as the table above states. coturn and each routed service never see
+  the header. The port 5348 is fixed in `front.conf.tmpl` and
+  `render-front.sh` (`HOP_PORT`).
 - **Why the server name.** The alternatives weighed against it, a test of the
   first bytes and ALPN, are in
-  [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443).
-- **What the services see.** A connection through the front arrives at coturn
+  [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
+  and so are those weighed against the two hops.
+- **What the services see.** The registrar takes the client's address from
+  the PROXY header. A connection through the front arrives at coturn
   and at each routed service from `127.0.0.1`. coturn's log lines name that
   address rather than the client's, and so do the broker front's access log
   lines for a connection through 443. coturn reports it to a TURN client as
@@ -480,11 +696,14 @@ so the front sees what any network hop on the path sees.
   (`preread_timeout`) and the service behind must accept within 5 s. An
   established connection idle for 900 s is closed, longer than coturn's
   `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
-  not cut. At most 1024 connections are open at once, a client's side and the
-  service's side each counting one (`worker_connections`). These are
-  working values in `front.conf.tmpl`, not measured bounds, raised on
-  request. The registrar's own bounds ([The registrar](#the-registrar),
-  Bounds on a connection) apply behind the front unchanged.
+  not cut. The second hop applies the same three bounds. At most 1024
+  connections are open at once, a client's side and the service's side each
+  counting one (`worker_connections`), and a connection through the second
+  hop counts four, so 1024 is about 256 TURN clients and 512 registrar
+  clients. These are working values in `front.conf.tmpl`, not measured
+  bounds, raised on request. The registrar's own bounds
+  ([The registrar](#the-registrar), Bounds on a connection) apply behind the
+  front unchanged.
 - **One limit for all three services.** The 1024 connections are shared by
   coturn, the registrar and every routed service, and the front sets no limit
   per client address. One host that opens that many connections, and holds
@@ -496,11 +715,12 @@ so the front sees what any network hop on the path sees.
   the journal. When coturn or a routed service refuses a connection, does
   not accept it within 5 s, or resets it, the line nginx writes there names
   the client's address beside the service's loopback port, which identifies
-  the service the client asked for. On the project's relay host, coturn
-  resetting a connection whose credential or allocation it refused, or a probe
-  that sent no server name, an ALPN offer or bytes that were not TLS, each
-  wrote such a line (`recv() failed (104: Connection reset by peer) while
-  proxying and reading from upstream`).
+  the service the client asked for. On the project's relay host, with one
+  hop, coturn resetting a connection whose credential or allocation it
+  refused, or a probe that sent no server name, an ALPN offer or bytes that
+  were not TLS, each wrote such a line (`recv() failed (104: Connection reset
+  by peer) while proxying and reading from upstream`). Which address the
+  second hop's lines name is not yet measured.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
@@ -592,8 +812,8 @@ its maximum run time:
   last, after every job that can restart a service, so it checks what they
   left. After a hold that spans several start times, the jobs run in whatever
   order they get the lock, and the next day's verification checks the result.
-  The hourly lapse sweep keeps its own schedule and takes no lock: it restarts
-  nothing.
+  The lapse sweep, every ten minutes, keeps its own schedule and takes no
+  lock: it restarts nothing.
 - **The starts.** The two renewals keep up to 5 minutes of randomized delay,
   because Let's Encrypt asks clients to randomize their renewal time; every
   other job starts on the minute.

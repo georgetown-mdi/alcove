@@ -1,5 +1,5 @@
-# The relay's registrar: registers and revokes exchange keys over HTTPS for a
-# caller holding the relay-owner token (README.md, The registrar). install.sh
+# The relay's registrar: enrolls, rotates and revokes exchange keys over HTTPS
+# (README.md, The registrar). install.sh
 # renders this to /etc/systemd/system/, filling in the relay image's uid and
 # gid, and enables it only on a host holding /etc/alcove-relay/registrar-token.
 #

@@ -1,4 +1,4 @@
-# The hourly sweep of lapsed exchange keys (README.md, Per-exchange keys).
+# The sweep of lapsed exchange keys, every ten minutes (README.md, Per-exchange keys).
 # install.sh renders this to /etc/systemd/system/, filling in the relay image's
 # uid and gid; it runs as that account, which owns the secrets table, under the
 # registrar's sandbox with no network.

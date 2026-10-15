@@ -1388,8 +1388,9 @@ const registrarEnv = (host, token = REGISTRAR_TOKEN) => {
 const REGISTRAR_START_SECONDS = 15;
 let registrarStartTimedOut = false;
 
-// Starts the registrar on a free port and resolves once it is listening.
-// `bounds` replaces module constants, by name, before it starts.
+// Starts the registrar on a free port and resolves once it is listening, with
+// the free loopback port it takes the front's connections on where `env` names
+// the registrar. `bounds` replaces module constants, by name, before it starts.
 const startRegistrarWith = (env, bounds = {}) =>
   new Promise((resolvePort, reject) => {
     if (registrarStartTimedOut) {
@@ -1408,10 +1409,17 @@ const startRegistrarWith = (env, bounds = {}) =>
       Object.keys(bounds).length === 0
         ? [join(relay, "registrar.py")]
         : ["-B", "-c", `import registrar\n${assignments}registrar.main()`],
-      { env: { ...env, PYTHONPATH: relay, ALCOVE_RELAY_REGISTRAR_PORT: "0" } },
+      {
+        env: {
+          ...env,
+          PYTHONPATH: relay,
+          ALCOVE_RELAY_REGISTRAR_PORT: "0",
+          ALCOVE_RELAY_REGISTRAR_FRONT_PORT: "0",
+        },
+      },
     );
     registrars.push(child);
-    const log = { stderr: "" };
+    const log = { stderr: "", stdout: "" };
     const deadline = setTimeout(() => {
       registrarStartTimedOut = true;
       child.kill();
@@ -1425,10 +1433,19 @@ const startRegistrarWith = (env, bounds = {}) =>
       log.stderr += chunk;
     });
     child.stdout.on("data", (chunk) => {
-      const match = /listening on port (\d+)/.exec(String(chunk));
+      log.stdout += chunk;
+      const match = /listening on port (\d+)/.exec(log.stdout);
       if (match) {
         clearTimeout(deadline);
-        resolvePort({ port: Number(match[1]), log });
+        const front =
+          /listening for the 443 front on 127\.0\.0\.1 port (\d+)/.exec(
+            log.stdout,
+          );
+        resolvePort({
+          port: Number(match[1]),
+          frontPort: front ? Number(front[1]) : undefined,
+          log,
+        });
       }
     });
     child.on("exit", (code) => {
@@ -2196,7 +2213,8 @@ import registrar
 def refuse(*args):
     raise AssertionError("looked up a hostname")
 socket.getfqdn = socket.gethostbyaddr = refuse
-registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler).server_close()`);
+shared = registrar.shared_state(b"x", False, 1, 0)
+registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler, shared).server_close()`);
   });
 
   it("reads the token and certificate from systemd's credentials directory", async () => {
@@ -2979,6 +2997,813 @@ describe.skipIf(runningAsRoot)(
   },
 );
 
+const TOKENLESS_LIFETIME_SECONDS = 4200;
+const TOKENLESS_MAX_AGE_REFUSAL =
+  'an enrollment without a token sends "maxAgeDays": null; the registrar sets its lapse, which the answer\'s lapsesAt states';
+
+// A registrar with enrollment without a token turned on, and with a name, so
+// it also listens for the 443 front.
+const startOpenRegistrar = (host, bounds = {}, env = {}) =>
+  startRegistrarWith(
+    {
+      ...registrarEnv(host),
+      ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT: "on",
+      ALCOVE_RELAY_REGISTRAR_NAME: "registrar.relay.example",
+      ...env,
+    },
+    bounds,
+  );
+
+const enrollWithoutToken = (port, exchangeId, key, maxAgeDays = "null") =>
+  call(port, "POST", `/exchanges/${exchangeId}`, {
+    body: keyBody(key, maxAgeDays),
+  });
+
+// One request on the registrar's front port, as the 443 front makes it: the
+// PROXY header `proxyHeader`, then TLS and the request on the same connection.
+// Resolves with the answer, or with `{ closed: true }` when the registrar
+// closes the connection without one.
+const callThroughFront = (
+  frontPort,
+  proxyHeader,
+  method,
+  path,
+  body = "",
+  headers = {},
+) =>
+  new Promise((resolveResponse) => {
+    const raw = netConnect({ host: "127.0.0.1", port: frontPort }, () => {
+      raw.write(proxyHeader);
+      const socket = connect(
+        {
+          socket: raw,
+          servername: "relay.example",
+          ca: readFileSync(join(certDir, "fullchain.pem")),
+        },
+        () =>
+          socket.write(
+            rawRequest(method, path, { Connection: "close", ...headers }, body),
+          ),
+      );
+      let text = "";
+      socket.on("data", (chunk) => {
+        text += chunk;
+      });
+      socket.on("end", () => {
+        const status = /^HTTP\/1\.1 (\d{3}) /.exec(text);
+        if (status === null) {
+          resolveResponse({ closed: true });
+          return;
+        }
+        const [head, payload] = text.split("\r\n\r\n");
+        const headers = Object.fromEntries(
+          head
+            .split("\r\n")
+            .slice(1)
+            .map((line) => [
+              line.slice(0, line.indexOf(":")).toLowerCase(),
+              line.slice(line.indexOf(":") + 1).trim(),
+            ]),
+        );
+        resolveResponse({ status: Number(status[1]), headers, text: payload });
+      });
+      socket.on("error", () => resolveResponse({ closed: true }));
+    });
+    raw.on("error", () => resolveResponse({ closed: true }));
+  });
+
+// Writes `opening` to the registrar's front port and nothing after it, ending
+// the connection when `endAfterWrite`. Resolves with the bytes the registrar
+// sent before it closed the connection.
+const openFrontConnection = (frontPort, opening, endAfterWrite) =>
+  new Promise((resolveAnswer) => {
+    const received = [];
+    const raw = netConnect({ host: "127.0.0.1", port: frontPort }, () => {
+      if (endAfterWrite) raw.end(opening);
+      else raw.write(opening);
+    });
+    raw.on("data", (chunk) => received.push(chunk));
+    raw.on("close", () => resolveAnswer(Buffer.concat(received)));
+    raw.on("error", () => {});
+  });
+
+const proxyHeaderFor = (address) =>
+  `PROXY TCP4 ${address} 127.0.0.1 40000 443\r\n`;
+
+const readCounters = (host) => {
+  const path = join(host.root, "registrar-counters");
+  if (!existsSync(path)) return {};
+  return Object.fromEntries(
+    readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split("=")),
+  );
+};
+
+describe.skipIf(runningAsRoot)(
+  "registrar.py enrollment without a token",
+  { timeout: 60000 },
+  () => {
+    it("enrolls an id not yet held, lapsing at the time the registrar fixes, and counts it", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startOpenRegistrar(host, {
+        COUNTERS_WRITE_SECONDS: 0.2,
+      });
+      const before = Date.now();
+      const response = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(response.status, response.text).toBe(200);
+      const body = JSON.parse(response.text);
+      expect(body.maxAgeDays).toBeNull();
+      const lapse = Date.parse(body.lapsesAt);
+      expect(lapse).toBeGreaterThanOrEqual(
+        Math.floor(before / 1000) * 1000 + TOKENLESS_LIFETIME_SECONDS * 1000,
+      );
+      expect(lapse).toBeLessThanOrEqual(
+        Date.now() + TOKENLESS_LIFETIME_SECONDS * 1000,
+      );
+      expect(body.message).toContain("enrolled without a token");
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: KEY_A, days: 1 },
+      ]);
+      expect(host.rows()).toContain(listed(KEY_A));
+      await vi.waitFor(() => {
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 time=\S+ outcome=registered authority=none\n/,
+        );
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "1",
+          rate_limit_refusals: "0",
+        });
+      });
+      expect(readCounters(host).started).toMatch(
+        /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/,
+      );
+      for (const text of [response.text, log.stderr]) {
+        expect(text).not.toMatch(HEX64);
+      }
+    });
+
+    it("refuses a lifetime the caller asks for, and writes nothing", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host);
+      const response = await enrollWithoutToken(port, "exchange-1", KEY_A, "1");
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.text).error).toBe(TOKENLESS_MAX_AGE_REFUSAL);
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+    });
+
+    it("keeps the fixed lapse through a renewal and a rotation under a proof, and the sweep revokes the row once it passes", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host, {
+        TOKENLESS_LIFETIME_SECONDS: 3,
+      });
+      const enrolled = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(enrolled.status, enrolled.text).toBe(200);
+      const { lapsesAt } = JSON.parse(enrolled.text);
+      const renewal = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_A, "30"),
+      });
+      expect(renewal.status, renewal.text).toBe(200);
+      expect(JSON.parse(renewal.text)).toMatchObject({
+        maxAgeDays: null,
+        lapsesAt,
+      });
+      const rotation = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_B, "null"),
+      });
+      expect(rotation.status, rotation.text).toBe(200);
+      expect(JSON.parse(rotation.text)).toMatchObject({
+        maxAgeDays: null,
+        lapsesAt,
+      });
+      expect(host.mapping()).toMatchObject([{ id: "exchange-1", key: KEY_B }]);
+      const kept = host.sweep();
+      expect(kept.status, kept.stderr).toBe(0);
+      expect(host.mapping()).toHaveLength(1);
+      await new Promise((resolveWait) =>
+        setTimeout(
+          resolveWait,
+          Math.max(0, Date.parse(lapsesAt) - Date.now()) + 1100,
+        ),
+      );
+      const swept = host.sweep();
+      expect(swept.status, swept.stderr).toBe(0);
+      expect(swept.stdout).toContain("revoked exchange exchange-1");
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+    });
+
+    it("answers the held key again with the registration as held, and another key 409, leaving the row", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startOpenRegistrar(host);
+      const first = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const before = host.mapping();
+      const again = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(again.status, again.text).toBe(200);
+      expect(JSON.parse(again.text)).toMatchObject({
+        maxAgeDays: null,
+        lapsesAt: JSON.parse(first.text).lapsesAt,
+        message: expect.stringContaining("nothing changed"),
+      });
+      const other = await enrollWithoutToken(port, "exchange-1", KEY_B);
+      expect(other.status).toBe(409);
+      expect(JSON.parse(other.text).error).toContain(
+        "already enrolled on this relay with another key",
+      );
+      expect(host.mapping()).toEqual(before);
+      expect(host.rows()).toEqual([listed(KEY_LISTED), listed(KEY_A)].sort());
+
+      const held = await enroll(port, "exchange-2", KEY_C, "30");
+      expect(held.status, held.text).toBe(200);
+      const squat = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(squat.status).toBe(409);
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: KEY_A },
+        { id: "exchange-2", key: KEY_C, days: 30 },
+      ]);
+      await vi.waitFor(() =>
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 time=\S+ outcome=unchanged authority=none\n/,
+        ),
+      );
+    });
+
+    it("answers 429 past the limit, writing nothing, and enrolls again once the window ends", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startOpenRegistrar(host, {
+        TOKENLESS_ENROLLMENTS_PER_WINDOW: 2,
+        TOKENLESS_WINDOW_SECONDS: 2,
+        COUNTERS_WRITE_SECONDS: 0.2,
+      });
+      const started = Date.now();
+      for (const id of ["exchange-1", "exchange-2"]) {
+        const response = await enrollWithoutToken(
+          port,
+          id,
+          id === "exchange-1" ? KEY_A : KEY_B,
+        );
+        expect(response.status, response.text).toBe(200);
+      }
+      const refused = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(refused.status).toBe(429);
+      expect(Number(refused.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+      expect(Number(refused.headers["retry-after"])).toBeLessThanOrEqual(2);
+      expect(refused.headers["access-control-expose-headers"]).toBe(
+        "Retry-After",
+      );
+      expect(JSON.parse(refused.text).error).toMatch(
+        /^this address has sent 2 enrollment requests without a token within 1 minutes; try again in [12] s$/,
+      );
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+      ]);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "2",
+          rate_limit_refusals: "1",
+        }),
+      );
+      await new Promise((resolveWait) =>
+        setTimeout(resolveWait, Math.max(0, started + 2100 - Date.now())),
+      );
+      const admitted = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(admitted.status, admitted.text).toBe(200);
+      expect(host.mapping().map(({ id }) => id)).toContain("exchange-3");
+      expect(log.stderr).toMatch(/POST \/exchanges\/exchange-3 429\n/);
+    });
+
+    it("counts each request before reading it, so a malformed one costs one too", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host, {
+        TOKENLESS_ENROLLMENTS_PER_WINDOW: 1,
+      });
+      const malformed = await call(port, "POST", "/exchanges/exchange-1", {
+        body: "{",
+      });
+      expect(malformed.status).toBe(400);
+      const refused = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(refused.status).toBe(429);
+      expect(host.mapping()).toEqual([]);
+    });
+
+    it("takes the client's address from the front's PROXY header, not the loopback address it connects from", async () => {
+      const host = fixtureHost();
+      const { port, frontPort, log } = await startOpenRegistrar(host, {
+        TOKENLESS_ENROLLMENTS_PER_WINDOW: 1,
+      });
+      expect(frontPort).toBeGreaterThan(0);
+      const first = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("203.0.113.7"),
+        "POST",
+        "/exchanges/exchange-1",
+        keyBody(KEY_A),
+      );
+      expect(first.status, first.text).toBe(200);
+      const second = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("203.0.113.7"),
+        "POST",
+        "/exchanges/exchange-2",
+        keyBody(KEY_B),
+      );
+      expect(second.status).toBe(429);
+      const otherClient = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("198.51.100.9"),
+        "POST",
+        "/exchanges/exchange-2",
+        keyBody(KEY_B),
+      );
+      expect(otherClient.status, otherClient.text).toBe(200);
+      const direct = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(direct.status, direct.text).toBe(200);
+      const directAgain = await enrollWithoutToken(
+        port,
+        "exchange-4",
+        "b".repeat(64),
+      );
+      expect(directAgain.status).toBe(429);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+        "exchange-3",
+      ]);
+      expect(log.stderr).not.toContain("203.0.113.7");
+      expect(log.stderr).not.toContain("198.51.100.9");
+    });
+
+    it("answers a token and a proof on the front's port as on its own", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(host);
+      const response = await new Promise((resolveResponse, reject) => {
+        const raw = netConnect({ host: "127.0.0.1", port: frontPort }, () => {
+          raw.write(proxyHeaderFor("203.0.113.7"));
+          const socket = connect(
+            {
+              socket: raw,
+              servername: "relay.example",
+              ca: readFileSync(join(certDir, "fullchain.pem")),
+            },
+            () =>
+              socket.write(
+                rawRequest(
+                  "PUT",
+                  "/exchanges/exchange-1",
+                  {
+                    Connection: "close",
+                    Authorization: `Bearer ${REGISTRAR_TOKEN}`,
+                  },
+                  keyBody(KEY_A, "30"),
+                ),
+              ),
+          );
+          let text = "";
+          socket.on("data", (chunk) => {
+            text += chunk;
+          });
+          socket.on("end", () => resolveResponse(text));
+          socket.on("error", reject);
+        });
+        raw.on("error", reject);
+      });
+      expect(response).toMatch(/^HTTP\/1\.1 200 /);
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: KEY_A, days: 30 },
+      ]);
+    });
+
+    it.each([
+      ["no header", "POST /exchanges/exchange-1 HTTP/1.1\r\n"],
+      ["a malformed header", "PROXY TCP4 not-an-address 127.0.0.1 1 2\r\n"],
+      ["an address of the wrong family", "PROXY TCP4 ::1 ::1 1 2\r\n"],
+      ["a header over 107 bytes", `PROXY TCP4 ${"1".repeat(120)}\r\n`],
+      ["the UNKNOWN form", "PROXY UNKNOWN\r\n"],
+      [
+        "the UNKNOWN form with addresses",
+        "PROXY UNKNOWN 127.0.0.1 127.0.0.1 1 2\r\n",
+      ],
+      ["non-ASCII bytes", "PROXY TCP4 éé 127.0.0.1 1 2\r\n"],
+    ])(
+      "closes a front connection starting with %s unanswered, and writes nothing",
+      async (_, opening) => {
+        const host = fixtureHost();
+        const { frontPort, log } = await startOpenRegistrar(host);
+        const answer = await callThroughFront(
+          frontPort,
+          opening,
+          "POST",
+          "/exchanges/exchange-1",
+          keyBody(KEY_A),
+        );
+        expect(answer).toEqual({ closed: true });
+        expect(host.mapping()).toEqual([]);
+        await vi.waitFor(() =>
+          expect(log.stderr).toContain("connection ended: "),
+        );
+        expect(log.stderr).not.toContain("not-an-address");
+      },
+    );
+
+    it("closes a front connection whose header ends before its line does, and writes nothing", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host);
+      const answer = await openFrontConnection(
+        frontPort,
+        "PROXY TCP4 203.0.113.7 127.0.0.1 4",
+        true,
+      );
+      expect(answer.length).toBe(0);
+      expect(host.mapping()).toEqual([]);
+      await vi.waitFor(() =>
+        expect(log.stderr).toContain(
+          "connection ended: the connection closed before the 443 front's PROXY header ended",
+        ),
+      );
+    });
+
+    it("closes a front connection whose header never completes at the deadline, and writes nothing", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host, {
+        PROXY_HEADER_SECONDS: 0.5,
+      });
+      const started = Date.now();
+      const answer = await openFrontConnection(
+        frontPort,
+        "PROXY TCP4 203.0.113.7 127.0.0.1 4",
+        false,
+      );
+      expect(Date.now() - started).toBeGreaterThanOrEqual(400);
+      expect(answer.length).toBe(0);
+      expect(host.mapping()).toEqual([]);
+      await vi.waitFor(() =>
+        expect(log.stderr).toContain("connection ended: timed out"),
+      );
+    });
+
+    it("refuses an address past the number of addresses it tracks", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(host, {
+        MAX_TRACKED_ADDRESSES: 1,
+      });
+      const first = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("203.0.113.7"),
+        "POST",
+        "/exchanges/exchange-1",
+        keyBody(KEY_A),
+      );
+      expect(first.status, first.text).toBe(200);
+      const second = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("198.51.100.9"),
+        "POST",
+        "/exchanges/exchange-2",
+        keyBody(KEY_B),
+      );
+      expect(second.status).toBe(429);
+      expect(JSON.parse(second.text).error).toMatch(
+        /^the registrar is answering enrollments without a token from as many addresses as it can; try again in \d+ s$/,
+      );
+    });
+
+    it("answers a new id 503 at the ceiling, writing nothing, still answers the held key 200, and counts the refusal", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(
+        host,
+        { COUNTERS_WRITE_SECONDS: 0.2 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "2" },
+      );
+      for (const [id, key] of [
+        ["exchange-1", KEY_A],
+        ["exchange-2", KEY_B],
+      ]) {
+        const response = await enrollWithoutToken(port, id, key);
+        expect(response.status, response.text).toBe(200);
+      }
+      const mappingAtCeiling = host.mapping();
+      const rowsAtCeiling = host.rows();
+      const refused = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(refused.status).toBe(503);
+      const wait = Number(refused.headers["retry-after"]);
+      expect(wait).toBeGreaterThanOrEqual(1);
+      expect(wait).toBeLessThanOrEqual(TOKENLESS_LIFETIME_SECONDS);
+      expect(refused.headers["access-control-expose-headers"]).toBe(
+        "Retry-After",
+      );
+      expect(JSON.parse(refused.text).error).toBe(
+        `the relay holds as many exchanges enrolled without a token as it serves; try again in ${wait} s, or run the exchange without this relay`,
+      );
+      expect(host.mapping()).toEqual(mappingAtCeiling);
+      expect(host.rows()).toEqual(rowsAtCeiling);
+
+      const again = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(again.status, again.text).toBe(200);
+      expect(JSON.parse(again.text).message).toContain("nothing changed");
+      const other = await enrollWithoutToken(port, "exchange-1", KEY_C);
+      expect(other.status).toBe(409);
+
+      const underToken = await enroll(port, "exchange-4", KEY_C, "30");
+      expect(underToken.status, underToken.text).toBe(200);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "2",
+          rate_limit_refusals: "0",
+          tokenless_ceiling_refusals: "1",
+        }),
+      );
+    });
+
+    it("admits a new id again once a row at the ceiling lapses, and once one is revoked", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(
+        host,
+        { TOKENLESS_LIFETIME_SECONDS: 3 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "1" },
+      );
+      const first = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const refused = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(refused.status).toBe(503);
+      expect(Number(refused.headers["retry-after"])).toBeLessThanOrEqual(3);
+      await new Promise((resolveWait) =>
+        setTimeout(
+          resolveWait,
+          Math.max(
+            0,
+            Date.parse(JSON.parse(first.text).lapsesAt) - Date.now(),
+          ) + 1100,
+        ),
+      );
+      const afterLapse = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(afterLapse.status, afterLapse.text).toBe(200);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+      ]);
+
+      const atCeiling = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(atCeiling.status).toBe(503);
+      const revoked = await call(port, "DELETE", "/exchanges/exchange-2", {
+        token: REGISTRAR_TOKEN,
+      });
+      expect(revoked.status, revoked.text).toBe(200);
+      const afterRevoke = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(afterRevoke.status, afterRevoke.text).toBe(200);
+    });
+
+    it("answers 429 past the cap on one address's rows, writing nothing, still answers its held key 200, and counts the refusal", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 2,
+        COUNTERS_WRITE_SECONDS: 0.2,
+      });
+      const from = (address, id, key) =>
+        callThroughFront(
+          frontPort,
+          proxyHeaderFor(address),
+          "POST",
+          `/exchanges/${id}`,
+          keyBody(key),
+        );
+      for (const [id, key] of [
+        ["exchange-1", KEY_A],
+        ["exchange-2", KEY_B],
+      ]) {
+        const response = await from("203.0.113.7", id, key);
+        expect(response.status, response.text).toBe(200);
+      }
+      const mappingAtCap = host.mapping();
+      const rowsAtCap = host.rows();
+      const refused = await from("203.0.113.7", "exchange-3", KEY_C);
+      expect(refused.status).toBe(429);
+      const wait = Number(refused.headers["retry-after"]);
+      expect(wait).toBeGreaterThanOrEqual(1);
+      expect(wait).toBeLessThanOrEqual(TOKENLESS_LIFETIME_SECONDS);
+      expect(refused.headers["access-control-expose-headers"]).toBe(
+        "Retry-After",
+      );
+      expect(JSON.parse(refused.text).error).toBe(
+        `this address holds 2 exchanges enrolled without a token that have not lapsed; try again in ${wait} s, or run the exchange without this relay`,
+      );
+      expect(host.mapping()).toEqual(mappingAtCap);
+      expect(host.rows()).toEqual(rowsAtCap);
+
+      const again = await from("203.0.113.7", "exchange-1", KEY_A);
+      expect(again.status, again.text).toBe(200);
+      expect(JSON.parse(again.text).message).toContain("nothing changed");
+
+      const otherClient = await from("198.51.100.9", "exchange-3", KEY_C);
+      expect(otherClient.status, otherClient.text).toBe(200);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+        "exchange-3",
+      ]);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "3",
+          rate_limit_refusals: "0",
+          client_cap_refusals: "1",
+          tokenless_ceiling_refusals: "0",
+        }),
+      );
+      expect(log.stderr).not.toContain("203.0.113.7");
+      expect(log.stderr).not.toContain("198.51.100.9");
+    });
+
+    it("frees a slot under an address's cap once one of its rows is revoked or lapses", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 1,
+        TOKENLESS_LIFETIME_SECONDS: 3,
+      });
+      const first = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const atCap = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(atCap.status).toBe(429);
+      expect(Number(atCap.headers["retry-after"])).toBeLessThanOrEqual(3);
+      const revoked = await proven(port, "DELETE", "exchange-1", KEY_A);
+      expect(revoked.status, revoked.text).toBe(200);
+      const afterRevoke = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(afterRevoke.status, afterRevoke.text).toBe(200);
+
+      const stillAtCap = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(stillAtCap.status).toBe(429);
+      await new Promise((resolveWait) =>
+        setTimeout(
+          resolveWait,
+          Math.max(
+            0,
+            Date.parse(JSON.parse(afterRevoke.text).lapsesAt) - Date.now(),
+          ) + 1100,
+        ),
+      );
+      const afterLapse = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(afterLapse.status, afterLapse.text).toBe(200);
+    });
+
+    it("counts an IPv6 address under its /48 for the cap on rows", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 1,
+      });
+      const from = (address, id, key) =>
+        callThroughFront(
+          frontPort,
+          `PROXY TCP6 ${address} ::1 40000 443\r\n`,
+          "POST",
+          `/exchanges/${id}`,
+          keyBody(key),
+        );
+      const first = await from("2001:db8:1:1::7", "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const sameSite = await from("2001:db8:1:2::7", "exchange-2", KEY_B);
+      expect(sameSite.status).toBe(429);
+      const otherSite = await from("2001:db8:2:1::7", "exchange-2", KEY_B);
+      expect(otherSite.status, otherSite.text).toBe(200);
+    });
+
+    it("holds the ceiling across addresses each under its own cap", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(
+        host,
+        { TOKENLESS_ROWS_PER_CLIENT: 2, COUNTERS_WRITE_SECONDS: 0.2 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "5" },
+      );
+      const statuses = [];
+      for (let n = 0; n < 4; n += 1) {
+        for (let m = 0; m < 2; m += 1) {
+          const response = await callThroughFront(
+            frontPort,
+            proxyHeaderFor(`203.0.113.${n + 1}`),
+            "POST",
+            `/exchanges/exchange-${n}-${m}`,
+            keyBody(`${n}${m}`.repeat(32)),
+          );
+          statuses.push(response.status);
+        }
+      }
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 503, 503, 503]);
+      expect(host.mapping()).toHaveLength(5);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "5",
+          client_cap_refusals: "0",
+          tokenless_ceiling_refusals: "3",
+        }),
+      );
+    });
+
+    it("refuses to start with a ceiling that is not a whole number of at least 1", () => {
+      const host = fixtureHost();
+      const result = spawnSync("python3", [join(relay, "registrar.py")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          PYTHONPATH: relay,
+          ALCOVE_RELAY_REGISTRAR_PORT: "0",
+          ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "0",
+        },
+        timeout: 10000,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING is '0'; set it to a whole number of at least 1",
+      );
+    });
+
+    it("enrolls an id under verify.sh's prefix without a token only from loopback, whatever the request's header", async () => {
+      const host = fixtureHost();
+      const { port, frontPort } = await startOpenRegistrar(host);
+      const verifyRun = { "Alcove-Relay-Verify-Run": "1" };
+      const refused = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("203.0.113.7"),
+        "POST",
+        "/exchanges/alcove-verify-registrar",
+        keyBody(KEY_A),
+        verifyRun,
+      );
+      expect(refused.status).toBe(400);
+      expect(JSON.parse(refused.text).error).toContain(
+        "may not start with 'alcove-verify-'",
+      );
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+
+      const throughFront = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("127.0.0.1"),
+        "POST",
+        "/exchanges/alcove-verify-registrar",
+        keyBody(KEY_A),
+        verifyRun,
+      );
+      expect(throughFront.status, throughFront.text).toBe(200);
+      const direct = await call(port, "POST", "/exchanges/alcove-verify-a", {
+        body: keyBody(KEY_B),
+        headers: verifyRun,
+      });
+      expect(direct.status, direct.text).toBe(200);
+      const withoutHeader = await enrollWithoutToken(
+        port,
+        "alcove-verify-b",
+        KEY_C,
+      );
+      expect(withoutHeader.status).toBe(400);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "alcove-verify-a",
+        "alcove-verify-registrar",
+      ]);
+    });
+
+    it("counts the IPv6 addresses of one /64 as one client", () => {
+      const keys = python(
+        `import json, registrar
+print(json.dumps([registrar.client_key(a) for a in ["2001:db8:1:2::5", "2001:db8:1:2:ffff::9", "2001:db8:1:3::5", "::ffff:203.0.113.7", "203.0.113.7"]]))`,
+      );
+      expect(keys).toEqual([
+        "2001:db8:1:2::/64",
+        "2001:db8:1:2::/64",
+        "2001:db8:1:3::/64",
+        "203.0.113.7",
+        "203.0.113.7",
+      ]);
+    });
+
+    it("refuses to start with a tokenless setting other than on or off", () => {
+      const host = fixtureHost();
+      const result = spawnSync("python3", [join(relay, "registrar.py")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          PYTHONPATH: relay,
+          ALCOVE_RELAY_REGISTRAR_PORT: "0",
+          ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT: "yes",
+        },
+        timeout: 10000,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is 'yes'; set it to on or off",
+      );
+    });
+
+    it("answers a POST with no credential 401 where enrollment without a token is off", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      const response = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(response.status).toBe(401);
+      expect(host.mapping()).toEqual([]);
+    });
+  },
+);
+
 // The CORS invariant: the registrar authenticates on the Authorization header
 // alone, and no answer allows credentials, so a browser's ambient cookies or
 // client certificate can never authenticate a cross-origin call.
@@ -3125,6 +3950,51 @@ describe.skipIf(runningAsRoot)(
       for (const stream of [result.stdout, result.stderr]) {
         expect(stream).not.toMatch(HEX64);
         expect(stream).not.toContain(REGISTRAR_TOKEN);
+      }
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+    });
+
+    it("asks a registrar enrolling without a token to enroll the registered id under another key and under its own", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host);
+      const result = spawnSync(BASH, [join(relay, "verify.sh")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          ALCOVE_RELAY_REGISTRAR_PORT: String(port),
+          ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT: "on",
+          ALCOVE_RELAY_VERIFY_CONNECT: "127.0.0.1",
+          ALCOVE_RELAY_VERIFY_WAIT: "0",
+          CURL_CA_BUNDLE: join(certDir, "fullchain.pem"),
+        },
+      });
+      const registrarLines = result.stdout.slice(
+        result.stdout.lastIndexOf(
+          "\n",
+          result.stdout.indexOf("a registration with the token"),
+        ) + 1,
+      );
+      expect(
+        registrarLines
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith("PASS")),
+      ).toEqual([
+        "PASS     a registration with the token was answered 200",
+        "PASS     the registration is in the mapping and the secrets table",
+        "PASS     a registration with no token was answered 401",
+        "PASS     a registration with a wrong token was answered 401",
+        "PASS     a revocation with no token was answered 401",
+        "PASS     an enrollment without a token naming another key was answered 409",
+        "PASS     an enrollment without a token naming the registered key was answered 200",
+        "PASS     the refused calls left the mapping and the secrets table unchanged",
+        "PASS     a revocation with the token was answered 200",
+        "PASS     the revocation removed the key from the mapping and the secrets table",
+      ]);
+      expect(registrarLines).not.toMatch(/FAIL|UNCLEAR/);
+      for (const stream of [result.stdout, result.stderr]) {
+        expect(stream).not.toMatch(HEX64);
       }
       expect(host.mapping()).toEqual([]);
       expect(host.rows()).toEqual([listed(KEY_LISTED)]);

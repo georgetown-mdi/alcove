@@ -1,11 +1,12 @@
 [Unit]
-Description=Revoke the Alcove relay's lapsed exchange keys hourly
+Description=Revoke the Alcove relay's lapsed exchange keys every ten minutes
 
 [Timer]
-# A lapse is a whole number of days, so an hourly sweep revokes a row within an
-# hour of its lapse.
-OnCalendar=hourly
-RandomizedDelaySec=5m
+# A row enrolled without a token lapses 70 minutes after its enrollment, and a
+# lapsed row authenticates until the sweep deletes it, so the sweep runs every
+# ten minutes: such a row is revoked within about eleven minutes of its lapse.
+OnCalendar=*:0/10
+RandomizedDelaySec=1m
 Persistent=true
 
 [Install]
