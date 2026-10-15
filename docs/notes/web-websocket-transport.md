@@ -4,7 +4,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; nothing here is built.
+_Status: design only; of it, only the relay proof derivation is built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2 to S8, none of which has run (S1 ran in a narrower form: its decisive part was met and the rest stays open, [recorded below](#the-spikes)), and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
