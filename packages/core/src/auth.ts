@@ -22,9 +22,8 @@ export const NEW_INVITATION_REMEDY =
 export interface AuthResult {
   /**
    * 32-byte session key from the P-256 key exchange, the same for both parties.
-   * A caller that needs application-layer encryption passes it to
-   * {@link deriveAeadKey}; one relying on transport security (WebRTC with
-   * DTLS) may ignore it.
+   * The caller passes it to {@link deriveAeadKey} for the application-layer
+   * encryption the handshake negotiated.
    */
   sessionKey: Uint8Array<ArrayBuffer>;
   /**
