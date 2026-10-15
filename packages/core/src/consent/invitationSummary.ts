@@ -491,10 +491,15 @@ export interface InvitationSummary {
    */
   connectionPath?: Displayable;
   /**
-   * The relay urls a webrtc endpoint names, sanitized. Present only when the
+   * The relay urls a webrtc endpoint names, sanitized, and the registrar
+   * address a run enrolls at, when the relay names one. Present only when the
    * endpoint names a relay; a list is empty when none of that kind is named.
    */
-  relay?: { turn: Array<Displayable>; stun: Array<Displayable> };
+  relay?: {
+    turn: Array<Displayable>;
+    stun: Array<Displayable>;
+    registrar?: Displayable;
+  };
 }
 
 /**
@@ -1299,6 +1304,9 @@ export function summarizeInvitation(
       stun: (endpoint.relay.stun ?? []).map((url) =>
         redactAndSanitizeForDisplay(url),
       ),
+      ...(endpoint.relay.registrar !== undefined && {
+        registrar: redactAndSanitizeForDisplay(endpoint.relay.registrar),
+      }),
     };
 
   return summary;

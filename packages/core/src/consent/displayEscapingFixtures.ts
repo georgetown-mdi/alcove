@@ -171,6 +171,7 @@ export const hostileSource: HostileSource = {
 const HOSTILE_RELAY_HOSTS = {
   turn: `relay${ESC}.example`,
   stun: `relay${RLO}.example`,
+  registrar: `registrar${BEL}.example`,
 };
 
 /**
@@ -197,6 +198,7 @@ export const hostileVariants: ReadonlyArray<{
         relay: {
           turn: [`turns:${HOSTILE_RELAY_HOSTS.turn}:443`],
           stun: [`stun:${HOSTILE_RELAY_HOSTS.stun}`],
+          registrar: `https://${HOSTILE_RELAY_HOSTS.registrar}`,
         },
       },
     },

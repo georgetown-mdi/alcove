@@ -1121,8 +1121,9 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
 /**
  * Where a relay is reached, and nothing that authenticates to it: TURN and
  * STUN urls under the grammar of the connection block's own `turn` and `stun`
- * entries. An invitation's webrtc endpoint may name one, and the accepting
- * side keeps it on its connection as
+ * entries, and the address of a registrar that enrolls the exchange's relay
+ * key without a token. An invitation's webrtc endpoint may name one, and the
+ * accepting side keeps it on its connection as
  * {@link WebRTCConnectionConfig.invitationRelay}. Each party mints the TURN
  * credential from the exchange's shared secret (docs/spec/PROTOCOL.md, "Relay
  * credential derivation"), so the locator has no username or credential field.
@@ -1132,6 +1133,13 @@ export interface RelayLocator {
   turn?: string[];
   /** STUN urls; non-empty when present. */
   stun?: string[];
+  /**
+   * The `https://` address of a registrar, naming only a host and an optional
+   * port, where a run enrolls the exchange's relay key without a token before
+   * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Present
+   * only beside `turn`.
+   */
+  registrar?: string;
 }
 
 /** Upper bound on the urls in each list of a {@link RelayLocator}. */
@@ -1159,13 +1167,32 @@ const relayUrlList = (url: z.ZodType<string>, name: "turn" | "stun") =>
     1,
   );
 
+const relayLocatorRegistrarSchema = z
+  .string()
+  .trim()
+  .check(
+    maxCodeUnits(
+      MAX_RELAY_LOCATOR_URL_LENGTH,
+      `a relay locator's registrar is longer than ` +
+        `${MAX_RELAY_LOCATOR_URL_LENGTH} characters`,
+    ),
+  )
+  .superRefine((url, ctx) => {
+    const problem = relayRegistrarUrlProblem(url);
+    if (problem !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: `a relay locator's registrar ${problem}`,
+      });
+  });
+
 /**
  * Build the strict {@link RelayLocator} schema. Every key outside
- * `turn`/`stun`, a `username` or `credential` included, is refused rather than
- * stripped, with `unknownKeysMessage` naming the keys; a locator naming no url
- * is refused too. The invitation endpoint and the connection block each supply
- * their own message: one names keys a partner wrote, the other keys the
- * operator wrote.
+ * `turn`/`stun`/`registrar`, a `username` or `credential` included, is refused
+ * rather than stripped, with `unknownKeysMessage` naming the keys; a locator
+ * naming no url, and one naming a registrar beside no TURN url, are refused
+ * too. The invitation endpoint and the connection block each supply their own
+ * message: one names keys a partner wrote, the other keys the operator wrote.
  */
 export function relayLocatorSchema(
   unknownKeysMessage: (keys: ReadonlyArray<string>) => string,
@@ -1175,6 +1202,7 @@ export function relayLocatorSchema(
       {
         turn: relayUrlList(TurnUrlSchema, "turn").optional(),
         stun: relayUrlList(StunUrlSchema, "stun").optional(),
+        registrar: relayLocatorRegistrarSchema.optional(),
       },
       {
         error: (issue) =>
@@ -1187,13 +1215,20 @@ export function relayLocatorSchema(
       message:
         "a relay locator must name at least one turn or stun url; omit it " +
         "when there is no relay to name",
+    })
+    .refine((relay) => relay.registrar === undefined || relay.turn !== undefined, {
+      message:
+        "a relay locator's registrar enrolls the key of its TURN relay, so " +
+        "it requires a turn url",
+      path: ["registrar"],
     });
 }
 
 const ConnectionRelayLocatorSchema = relayLocatorSchema(
   (keys) =>
     `invitation_relay has no ${keys.length === 1 ? "key" : "keys"} ` +
-    `${keys.join(", ")}; it holds only turn and stun url lists`,
+    `${keys.join(", ")}; it holds only turn and stun url lists and a ` +
+    "registrar url",
 );
 
 // --- Relay registrar ---------------------------------------------------------
@@ -1334,16 +1369,17 @@ export interface WebRTCConnectionConfig {
   /** TURN servers for relaying when no direct path can be found. */
   turn?: TurnServer[];
   /**
-   * The relay named by the invitation this connection was accepted from. Its
-   * TURN urls replace {@link turn} and its STUN urls replace {@link stun},
-   * each only when the locator names that kind, with the TURN credential
-   * minted from the shared secret on each run.
+   * The relay named by the invitation this connection was accepted from. A
+   * run lists its TURN urls after {@link turn} and its STUN urls after
+   * {@link stun}, with the TURN credential minted from the shared secret,
+   * and enrolls at its `registrar`, when it names one, before it dials.
    */
   invitationRelay?: RelayLocator;
   /**
    * The registrar of the relay this party's own {@link turn} entries name,
    * where a run registers the relay key derived from each rotated shared
-   * secret. Requires a `turn` entry that sets no username or credential.
+   * secret, whether or not an {@link invitationRelay} is listed beside it.
+   * Requires a `turn` entry that sets no username or credential.
    */
   relayRegistrar?: RelayRegistrar;
   /**

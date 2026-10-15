@@ -1,6 +1,7 @@
 // The `alcove.yaml` documents the web app's command-line export writes for a
-// managed exchange enrolled with a relay registrar, one per relay its runs use,
-// each with the registrar a command-line run of it registers at. One set behind
+// managed exchange enrolled with a relay registrar, one per side, each with the
+// registrar a command-line run of it registers at and the one it enrolls at
+// without a token. One set behind
 // the `./testing` subpath, so the composer that writes the file and the CLI
 // loader that reads it cannot drift: the web leg composes each document from
 // the inputs below and compares the YAML data it writes, and the CLI leg loads
@@ -8,7 +9,7 @@
 // documents and the expected answer only; each leg drives its own code.
 
 import type { LinkageTerms } from "./linkageTermsSchema.js";
-import type { RelayRegistrar } from "./connection.js";
+import type { RelayLocator, RelayRegistrar } from "./connection.js";
 import type { WebRTCEndpoint } from "./invitation.js";
 
 /**
@@ -35,6 +36,9 @@ export interface CommandLineExportRelayCase {
   /** The registrar a command-line run of the document registers at, or null
    * where it registers nothing. */
   readonly runRegistrar: RelayRegistrar | null;
+  /** The registrar a command-line run of the document enrolls at without a
+   * token, or null where it enrolls nowhere. */
+  readonly invitationRegistrar: string | null;
   /** Why this record exports that, in one line; the parity tests' title. */
   readonly because: string;
 }
@@ -48,12 +52,21 @@ export const COMMAND_LINE_EXPORT_RELAY_REGISTRAR: RelayRegistrar = {
 /**
  * @internal
  *
- * The exporting browser's own TURN url. The invitation in the partner case
- * names the same url: what a case writes depends on which relay its runs use,
- * not on the url.
+ * The exporting browser's own TURN url.
  */
 export const COMMAND_LINE_EXPORT_OWN_TURN_URL =
   "turns:relay.example.org:443?transport=tcp";
+
+/**
+ * @internal
+ *
+ * The relay a hosted invitation names in the partner case: a build's default
+ * relay, its TURN url and its registrar.
+ */
+export const COMMAND_LINE_EXPORT_INVITATION_RELAY: RelayLocator = {
+  turn: ["turns:default-relay.example.net:443?transport=tcp"],
+  registrar: "https://default-relay.example.net",
+};
 
 /** @internal */
 export const COMMAND_LINE_EXPORT_LINKAGE_TERMS: LinkageTerms = {
@@ -73,7 +86,8 @@ export const COMMAND_LINE_EXPORT_LINKAGE_TERMS: LinkageTerms = {
  *
  * Every case is enrolled with {@link COMMAND_LINE_EXPORT_RELAY_REGISTRAR}, and
  * the exporting browser's relay settings name
- * {@link COMMAND_LINE_EXPORT_OWN_TURN_URL}.
+ * {@link COMMAND_LINE_EXPORT_OWN_TURN_URL}. The partner case's invitation
+ * names {@link COMMAND_LINE_EXPORT_INVITATION_RELAY}.
  */
 export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
   Record<CommandLineExportRelayCaseId, CommandLineExportRelayCase>
@@ -111,6 +125,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "        - field: ssn",
     ].join("\n"),
     runRegistrar: COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
+    invitationRegistrar: null,
     because:
       "its runs relay through this party's own TURN relay, which they " +
       "register at the registrar",
@@ -120,7 +135,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
     locator: {
       channel: "webrtc",
       host: "signaling.example.org",
-      relay: { turn: [COMMAND_LINE_EXPORT_OWN_TURN_URL] },
+      relay: COMMAND_LINE_EXPORT_INVITATION_RELAY,
     },
     document: [
       "connection:",
@@ -128,9 +143,15 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "  server:",
       "    host: signaling.example.org",
       "  role: acceptor",
+      "  turn:",
+      "    - url: turns:relay.example.org:443?transport=tcp",
+      "  relay_registrar:",
+      "    url: https://relay.example.org:8443",
+      "    exchange_id: riverbend-q3",
       "  invitation_relay:",
       "    turn:",
-      "      - turns:relay.example.org:443?transport=tcp",
+      "      - turns:default-relay.example.net:443?transport=tcp",
+      "    registrar: https://default-relay.example.net",
       "linkage_terms:",
       "  version: 1.0.0",
       "  identity: County Health Dept",
@@ -149,9 +170,11 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "      elements:",
       "        - field: ssn",
     ].join("\n"),
-    runRegistrar: null,
+    runRegistrar: COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
+    invitationRegistrar: "https://default-relay.example.net",
     because:
-      "its runs relay through the relay the invitation named, which the " +
-      "partner registers at",
+      "its runs list this party's own TURN relay, which they register at the " +
+      "registrar, beside the relay the invitation named, whose registrar " +
+      "they enroll at without a token",
   },
 };

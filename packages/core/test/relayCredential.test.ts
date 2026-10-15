@@ -158,60 +158,106 @@ describe("mintRelayCredential", () => {
 });
 
 describe("selectRunRelay", () => {
-  const ownTurn = [
-    {
-      url: "turns:own.example:443?transport=tcp",
-      username: "operator",
-      credential: "own-secret",
-    },
-  ];
+  const ownStatic = {
+    url: "turns:own.example:443?transport=tcp",
+    username: "operator",
+    credential: "own-secret",
+  };
+  const ownMinted = { url: "turn:own-minted.example:3478" };
   const ownStun = ["stun:own.example:3478"];
   const invitationRelay = {
     turn: ["turns:partner.example:443?transport=tcp"],
     stun: ["stun:partner.example:3478"],
   };
 
-  test("prefers the invitation's relay over the connection's own", () => {
+  test("own relay only: selects exactly the connection's own", () => {
     expect(
-      selectRunRelay({ turn: ownTurn, stun: ownStun, invitationRelay }),
+      selectRunRelay({ turn: [ownStatic, ownMinted], stun: ownStun }),
     ).toEqual({
-      turn: { source: "invitation", urls: invitationRelay.turn },
-      stun: { source: "invitation", urls: invitationRelay.stun },
+      turn: [
+        { source: "own", ...ownStatic },
+        { source: "own", ...ownMinted },
+      ],
+      stun: ownStun,
+    });
+    expect(selectRunRelay({ stun: [] })).toEqual({ stun: [] });
+    expect(selectRunRelay({})).toEqual({});
+  });
+
+  test("invitation relay only: selects the invitation's urls, each to take the minted credential", () => {
+    expect(selectRunRelay({ invitationRelay })).toEqual({
+      turn: [{ source: "invitation", url: invitationRelay.turn[0] }],
+      stun: invitationRelay.stun,
+    });
+    expect(
+      selectRunRelay({
+        invitationRelay: { ...invitationRelay, registrar: "https://r.example" },
+      }),
+    ).toEqual({
+      turn: [{ source: "invitation", url: invitationRelay.turn[0] }],
+      stun: invitationRelay.stun,
     });
   });
 
-  test("falls back to its own relay, per kind, where the invitation names none", () => {
+  test("both: lists the connection's own relay first and the invitation's after it, per kind", () => {
     expect(
       selectRunRelay({
-        turn: ownTurn,
+        turn: [ownStatic, ownMinted],
+        stun: ownStun,
+        invitationRelay,
+      }),
+    ).toEqual({
+      turn: [
+        { source: "own", ...ownStatic },
+        { source: "own", ...ownMinted },
+        { source: "invitation", url: invitationRelay.turn[0] },
+      ],
+      stun: [...ownStun, ...invitationRelay.stun],
+    });
+    expect(
+      selectRunRelay({
+        turn: [ownStatic],
         stun: ownStun,
         invitationRelay: { stun: invitationRelay.stun },
       }),
     ).toEqual({
-      turn: { source: "own", servers: ownTurn },
-      stun: { source: "invitation", urls: invitationRelay.stun },
+      turn: [{ source: "own", ...ownStatic }],
+      stun: [...ownStun, ...invitationRelay.stun],
     });
     expect(
       selectRunRelay({
-        turn: ownTurn,
         stun: ownStun,
         invitationRelay: { turn: invitationRelay.turn },
       }),
     ).toEqual({
-      turn: { source: "invitation", urls: invitationRelay.turn },
-      stun: { source: "own", urls: ownStun },
+      turn: [{ source: "invitation", url: invitationRelay.turn[0] }],
+      stun: ownStun,
     });
   });
 
-  test("with no invitation relay, selects exactly the connection's own", () => {
-    expect(selectRunRelay({ turn: ownTurn, stun: ownStun })).toEqual({
-      turn: { source: "own", servers: ownTurn },
-      stun: { source: "own", urls: ownStun },
+  test("a url present in both is listed once, as the connection's own entry", () => {
+    expect(
+      selectRunRelay({
+        turn: [ownStatic],
+        stun: ownStun,
+        invitationRelay: {
+          turn: [ownStatic.url, ownStatic.url, invitationRelay.turn[0]],
+          stun: [ownStun[0], invitationRelay.stun[0], invitationRelay.stun[0]],
+        },
+      }),
+    ).toEqual({
+      turn: [
+        { source: "own", ...ownStatic },
+        { source: "invitation", url: invitationRelay.turn[0] },
+      ],
+      stun: [...ownStun, ...invitationRelay.stun],
     });
-    expect(selectRunRelay({ stun: [] })).toEqual({
-      stun: { source: "own", urls: [] },
-    });
-    expect(selectRunRelay({})).toEqual({});
+    expect(
+      selectRunRelay({
+        turn: [ownMinted],
+        invitationRelay: { turn: [ownMinted.url] },
+      }),
+    ).toEqual({ turn: [{ source: "own", ...ownMinted }] });
   });
 });
 

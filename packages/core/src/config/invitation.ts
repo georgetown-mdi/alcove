@@ -31,8 +31,9 @@ export interface WebRTCEndpoint {
   /** URL path for WebRTC signaling; non-empty when present. */
   path?: string;
   /**
-   * The inviter's relay, TURN and STUN urls only, used in place of the
-   * acceptor's own (`WebRTCConnectionConfig.invitationRelay`).
+   * The inviter's relay, its TURN and STUN urls and the registrar a run
+   * enrolls at without a token, listed beside the acceptor's own
+   * (`WebRTCConnectionConfig.invitationRelay`).
    */
   relay?: RelayLocator;
 }
@@ -95,7 +96,8 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
     // escapes them (CONTRIBUTING.md, Operator-facing escaping).
     return (
       "a connection endpoint may hold only a credential-free locator (channel " +
-      "plus host/port/path and, on webrtc, a relay of turn and stun urls, or " +
+      "plus host/port/path and, on webrtc, a relay of turn and stun urls " +
+      "and a registrar url, or " +
       "an inbound_path/outbound_path pair for a split " +
       "file-sync directory), so that no password, private key, or host-key " +
       "fingerprint is sent in an invitation. Remove unexpected " +
@@ -107,11 +109,12 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
   return undefined;
 };
 
-// The inviter's relay: TURN and STUN urls only. Any other key, a credential
-// included, is refused rather than stripped.
+// The inviter's relay: TURN and STUN urls and a registrar url only. Any other
+// key, a credential included, is refused rather than stripped.
 const InvitationRelayLocatorSchema = relayLocatorSchema(
   (keys) =>
-    "a connection endpoint's relay may carry only turn and stun url lists; " +
+    "a connection endpoint's relay may hold only turn and stun url lists " +
+    "and a registrar url; " +
     "a relay credential is derived by each party from the shared secret and " +
     "is never part of an invitation. Remove unexpected field(s): " +
     keys.map(fittedEndpointKeyName).join(", "),

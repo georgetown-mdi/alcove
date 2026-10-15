@@ -173,22 +173,36 @@ export async function mintRelayCredential({
 export const RUN_RELAY_CREDENTIAL_LABEL = "alcove";
 
 /**
- * The relay servers a webrtc run gathers candidates from, chosen per kind: the
- * invitation's TURN urls when its relay names any, else the connection's own
- * `turn` entries, and the invitation's STUN urls when its relay names any, else
- * the connection's own `stun` list. An invitation's TURN url has no credential;
- * the run mints one ({@link mintRunRelayCredential}).
+ * One TURN server a webrtc run lists. An entry with no `credential` is
+ * presented the credential the run mints from the shared secret
+ * ({@link mintRunRelayCredential}); one with a `credential` is an own `turn`
+ * entry's static pair, presented as written.
+ */
+export interface RunTurnServer {
+  /** Whether the url is the connection's own `turn` entry or the invitation's. */
+  source: "own" | "invitation";
+  url: string;
+  username?: string;
+  credential?: string;
+}
+
+/**
+ * The relay servers a webrtc run gathers candidates from: every relay it may
+ * use, the connection's own followed by the invitation's.
  */
 export interface RunRelaySelection {
-  /** The STUN urls and their source; absent when neither side names a list. */
-  stun?: { source: "invitation" | "own"; urls: string[] };
-  /** The TURN servers and their source; absent when neither side names any. */
-  turn?:
-    | { source: "invitation"; urls: string[] }
-    | {
-        source: "own";
-        servers: NonNullable<WebRTCConnectionConfig["turn"]>;
-      };
+  /**
+   * The connection's own `stun` urls followed by the invitation's, an
+   * invitation url already listed left out; absent when neither side names a
+   * list.
+   */
+  stun?: string[];
+  /**
+   * The connection's own `turn` entries followed by the invitation's TURN
+   * urls, an invitation url an own entry already names left out; absent when
+   * neither side names any.
+   */
+  turn?: RunTurnServer[];
 }
 
 /**
@@ -201,19 +215,39 @@ export function selectRunRelay(
 ): RunRelaySelection {
   const invitation = connection.invitationRelay;
   const selection: RunRelaySelection = {};
-  if (invitation?.stun !== undefined && invitation.stun.length > 0)
-    selection.stun = { source: "invitation", urls: [...invitation.stun] };
-  else if (connection.stun !== undefined)
-    selection.stun = { source: "own", urls: [...connection.stun] };
-  if (invitation?.turn !== undefined && invitation.turn.length > 0)
-    selection.turn = { source: "invitation", urls: [...invitation.turn] };
-  else if (connection.turn !== undefined)
-    selection.turn = { source: "own", servers: [...connection.turn] };
+  if (connection.stun !== undefined || invitation?.stun !== undefined) {
+    const stun = [...(connection.stun ?? [])];
+    const listed = new Set(stun);
+    for (const url of invitation?.stun ?? []) {
+      if (listed.has(url)) continue;
+      listed.add(url);
+      stun.push(url);
+    }
+    selection.stun = stun;
+  }
+  if (connection.turn !== undefined || invitation?.turn !== undefined) {
+    const turn: RunTurnServer[] = (connection.turn ?? []).map((server) => ({
+      source: "own",
+      url: server.url,
+      ...(server.username !== undefined && { username: server.username }),
+      ...(server.credential !== undefined && {
+        credential: server.credential,
+      }),
+    }));
+    const listed = new Set(turn.map((server) => server.url));
+    for (const url of invitation?.turn ?? []) {
+      if (listed.has(url)) continue;
+      listed.add(url);
+      turn.push({ source: "invitation", url });
+    }
+    selection.turn = turn;
+  }
   return selection;
 }
 
 /**
- * Mint the credential a run presents to the TURN urls an invitation named:
+ * Mint the credential a run presents to every TURN url it lists that sets no
+ * static credential, the invitation's urls and its own minted entries alike:
  * signed under the relay key derived from the run's current shared secret, for
  * {@link RELAY_CREDENTIAL_MAX_TTL_SECONDS}, labelled
  * {@link RUN_RELAY_CREDENTIAL_LABEL}. Nothing is stored; the next run mints
