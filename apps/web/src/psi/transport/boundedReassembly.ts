@@ -92,7 +92,7 @@ function binaryByteLength(value: unknown): number | undefined {
 /**
  * Returns the {@link PeerChunk} and its slice's byte length, or what is wrong
  * with the envelope. The same rule the CLI's receive dispatch applies
- * (`classifyInboundValue`, apps/cli/src/connection/webrtc/peerjsWire.ts), so
+ * (`classifyInboundValue`, packages/core/src/connection/peerjsWire.ts), so
  * both parties refuse the same envelopes. PeerJS stores
  * `new Uint8Array(data)`, which for a number or numeric string allocates that
  * many bytes, so a non-binary `data` must never reach it.
@@ -132,7 +132,7 @@ function toUint8(data: unknown): Uint8Array | undefined {
 
 /** A datagram no PeerJS binary sender emits, or one whose BinaryPack body the
  * unpacker throws on: the same refusal, in the same words, as the CLI's receive
- * path (`malformedFrameError`, apps/cli/src/connection/webrtc/peerjsWire.ts). */
+ * path (`malformedFrameError`, packages/core/src/connection/peerjsWire.ts). */
 function malformedDatagramError(detail: string): ConnectionError {
   return new ConnectionError(
     `the peer sent a malformed WebRTC frame: ${detail}`,
@@ -146,7 +146,7 @@ function malformedDatagramError(detail: string): ConnectionError {
  * envelope, and anything else is delivered to the `data` listeners. A frame
  * that decodes to `null` or `undefined` is delivered too, as the CLI's receive
  * dispatch delivers it (`classifyInboundValue`,
- * apps/cli/src/connection/webrtc/peerjsWire.ts), where PeerJS itself throws.
+ * packages/core/src/connection/peerjsWire.ts), where PeerJS itself throws.
  */
 function dispatchDecodedFrame(
   conn: DataConnection,

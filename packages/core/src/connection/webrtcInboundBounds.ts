@@ -1,5 +1,5 @@
+import { ConnectionError } from "../errors";
 import {
-  ConnectionError,
   MAX_CHUNKS_PER_REASSEMBLY,
   MAX_CONCURRENT_REASSEMBLIES,
   MAX_WEBRTC_FRAME_BYTES,
@@ -8,7 +8,7 @@ import {
   MIN_CHUNK_RESIDENT_BYTES,
   describeFrameStructureRefusal,
   scanFrameStructure,
-} from "@alcove/core";
+} from "./binaryPackBounds";
 
 import { classifyInboundValue, concatChunks, unpackFrame } from "./peerjsWire";
 
@@ -74,15 +74,30 @@ export type InboundOutcome =
   /** A complete application frame, ready for the message queue. */
   | { kind: "frame"; value: unknown };
 
-/** Per-bound overrides; set only by tests, never an operator-facing setting. */
-export interface InboundBoundOptions {
-  maxFrameBytes?: number;
-  maxConcurrentReassemblies?: number;
-  maxReassemblyDepth?: number;
-  maxChunks?: number;
-  minChunkResidentBytes?: number;
-  maxStringBytes?: number;
+/** The limits one {@link BoundedInboundFrames} enforces. */
+export interface InboundFrameLimits {
+  readonly maxFrameBytes: number;
+  readonly maxConcurrentReassemblies: number;
+  readonly maxReassemblyDepth: number;
+  readonly maxChunks: number;
+  readonly minChunkResidentBytes: number;
+  readonly maxStringBytes: number;
 }
+
+/**
+ * Per-bound overrides, reached only through `@alcove/core/testing`: the spec
+ * fixes these limits, so no production caller sets them.
+ */
+export type InboundBoundOverrides = Partial<InboundFrameLimits>;
+
+const SPEC_INBOUND_FRAME_LIMITS: InboundFrameLimits = Object.freeze({
+  maxFrameBytes: MAX_WEBRTC_FRAME_BYTES,
+  maxConcurrentReassemblies: MAX_CONCURRENT_REASSEMBLIES,
+  maxReassemblyDepth: MAX_WEBRTC_REASSEMBLY_DEPTH,
+  maxChunks: MAX_CHUNKS_PER_REASSEMBLY,
+  minChunkResidentBytes: MIN_CHUNK_RESIDENT_BYTES,
+  maxStringBytes: MAX_WEBRTC_STRING_BYTES,
+});
 
 /**
  * A terminal refusal of one frame: `predicate` says what the frame did, so the
@@ -131,30 +146,19 @@ interface Reassembly {
  *
  * Not reusable across channels: it holds one channel's in-flight reassembly
  * state, and the byte budget is per-channel.
+ *
+ * Takes no options: every limit is the constant docs/spec/TRANSPORT_BOUNDS.md
+ * fixes. A test that needs a smaller limit builds one through
+ * `boundedInboundFramesWithBounds` on the testing entry.
  */
 export class BoundedInboundFrames {
-  private readonly maxFrameBytes: number;
-  private readonly maxConcurrent: number;
-  private readonly maxDepth: number;
-  private readonly maxChunks: number;
-  private readonly minChunkBytes: number;
-  private readonly maxStringBytes: number;
+  /** The limits this reassembler enforces. */
+  readonly limits: InboundFrameLimits = SPEC_INBOUND_FRAME_LIMITS;
 
   // In arrival order, so the first key is the oldest partial to evict (a Map
   // preserves insertion order and re-setting an existing key does not move it).
   private readonly inFlight = new Map<number, Reassembly>();
   private bytesInFlight = 0;
-
-  constructor(options?: InboundBoundOptions) {
-    this.maxFrameBytes = options?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
-    this.maxConcurrent =
-      options?.maxConcurrentReassemblies ?? MAX_CONCURRENT_REASSEMBLIES;
-    this.maxDepth = options?.maxReassemblyDepth ?? MAX_WEBRTC_REASSEMBLY_DEPTH;
-    this.maxChunks = options?.maxChunks ?? MAX_CHUNKS_PER_REASSEMBLY;
-    this.minChunkBytes =
-      options?.minChunkResidentBytes ?? MIN_CHUNK_RESIDENT_BYTES;
-    this.maxStringBytes = options?.maxStringBytes ?? MAX_WEBRTC_STRING_BYTES;
-  }
 
   /** Bytes currently retained across every incomplete reassembly. */
   retainedBytes(): number {
@@ -198,15 +202,15 @@ export class BoundedInboundFrames {
 
   /** Wire-byte cap, then structural pre-scan, then `unpack`. In that order. */
   private decodeBounded(bytes: Uint8Array): unknown {
-    if (bytes.byteLength > this.maxFrameBytes) {
+    if (bytes.byteLength > this.limits.maxFrameBytes) {
       throw frameRefusalError(
-        `exceeds its ${this.maxFrameBytes}-byte size limit`,
+        `exceeds its ${this.limits.maxFrameBytes}-byte size limit`,
       );
     }
     const refusal = scanFrameStructure(
       bytes,
-      this.maxDepth,
-      this.maxStringBytes,
+      this.limits.maxReassemblyDepth,
+      this.limits.maxStringBytes,
     );
     if (refusal !== undefined) {
       throw frameRefusalError(describeFrameStructureRefusal(refusal));
@@ -227,9 +231,9 @@ export class BoundedInboundFrames {
     data: Uint8Array,
     wireBytes: number,
   ): Uint8Array | undefined {
-    if (total > this.maxChunks) {
+    if (total > this.limits.maxChunks) {
       throw frameRefusalError(
-        `exceeds its ${this.maxChunks}-chunk reassembly limit`,
+        `exceeds its ${this.limits.maxChunks}-chunk reassembly limit`,
       );
     }
     let entry = this.inFlight.get(messageId);
@@ -239,18 +243,20 @@ export class BoundedInboundFrames {
       );
     }
     if (entry === undefined) {
-      while (this.inFlight.size >= this.maxConcurrent) this.evictOldest();
+      while (this.inFlight.size >= this.limits.maxConcurrentReassemblies) {
+        this.evictOldest();
+      }
     }
 
-    const charge = Math.max(wireBytes, this.minChunkBytes);
-    if (this.bytesInFlight + charge > this.maxFrameBytes) {
+    const charge = Math.max(wireBytes, this.limits.minChunkResidentBytes);
+    if (this.bytesInFlight + charge > this.limits.maxFrameBytes) {
       throw frameRefusalError(
-        `exceeds its ${this.maxFrameBytes}-byte size limit`,
+        `exceeds its ${this.limits.maxFrameBytes}-byte size limit`,
       );
     }
-    if ((entry?.charged ?? 0) + 1 > this.maxChunks) {
+    if ((entry?.charged ?? 0) + 1 > this.limits.maxChunks) {
       throw frameRefusalError(
-        `exceeds its ${this.maxChunks}-chunk reassembly limit`,
+        `exceeds its ${this.limits.maxChunks}-chunk reassembly limit`,
       );
     }
 
@@ -291,4 +297,35 @@ export class BoundedInboundFrames {
     if (oldest === undefined) return;
     this.release(oldest[0], oldest[1]);
   }
+}
+
+class BoundedInboundFramesWithBounds extends BoundedInboundFrames {
+  override readonly limits: InboundFrameLimits;
+
+  constructor(overrides: InboundBoundOverrides) {
+    super();
+    const spec = SPEC_INBOUND_FRAME_LIMITS;
+    this.limits = Object.freeze({
+      maxFrameBytes: overrides.maxFrameBytes ?? spec.maxFrameBytes,
+      maxConcurrentReassemblies:
+        overrides.maxConcurrentReassemblies ?? spec.maxConcurrentReassemblies,
+      maxReassemblyDepth:
+        overrides.maxReassemblyDepth ?? spec.maxReassemblyDepth,
+      maxChunks: overrides.maxChunks ?? spec.maxChunks,
+      minChunkResidentBytes:
+        overrides.minChunkResidentBytes ?? spec.minChunkResidentBytes,
+      maxStringBytes: overrides.maxStringBytes ?? spec.maxStringBytes,
+    });
+  }
+}
+
+/**
+ * A {@link BoundedInboundFrames} with some limits lowered, so a suite can reach
+ * a bound without sending hundreds of MiB. Exported from `@alcove/core/testing`
+ * only.
+ */
+export function boundedInboundFramesWithBounds(
+  overrides: InboundBoundOverrides,
+): BoundedInboundFrames {
+  return new BoundedInboundFramesWithBounds(overrides);
 }

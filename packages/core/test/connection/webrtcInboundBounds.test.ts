@@ -1,21 +1,24 @@
 import { unpack } from "peerjs-js-binarypack";
 import { expect, test } from "vitest";
 
+import { ConnectionError } from "../../src/errors";
 import {
-  ConnectionError,
   MAX_CHUNKS_PER_REASSEMBLY,
   MAX_CONCURRENT_REASSEMBLIES,
+  MAX_WEBRTC_FRAME_BYTES,
+  MAX_WEBRTC_REASSEMBLY_DEPTH,
+  MAX_WEBRTC_STRING_BYTES,
   MIN_CHUNK_RESIDENT_BYTES,
-} from "@alcove/core";
-
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
+} from "../../src/connection/binaryPackBounds";
 import {
   PEERJS_CHUNK_MTU,
   PeerJsFrameEncoder,
   packCloseSentinel,
   packValue,
   toFrameBytes,
-} from "../../../src/connection/webrtc/peerjsWire";
+} from "../../src/connection/peerjsWire";
+import { BoundedInboundFrames } from "../../src/main";
+import { boundedInboundFramesWithBounds } from "../../src/testing";
 
 /** One chunk envelope, built directly so a test can choose every field. */
 function chunk(
@@ -126,7 +129,7 @@ test("two frames interleaved on the wire each reassemble to their own value", ()
 // --- the bounds -------------------------------------------------------------
 
 test("a datagram over the wire-byte cap is refused before it is unpacked", () => {
-  const bounds = new BoundedInboundFrames({ maxFrameBytes: 512 });
+  const bounds = boundedInboundFramesWithBounds({ maxFrameBytes: 512 });
   const { kind, message } = refusal(() => bounds.accept(new Uint8Array(513)));
   expect(kind).toBe("protocol");
   expect(message).toContain("512-byte size limit");
@@ -163,14 +166,14 @@ test("a nested frame that re-reserves its own bytes is refused the same way", ()
 });
 
 test("a reassembly declaring more chunks than the cap is refused up front", () => {
-  const bounds = new BoundedInboundFrames({ maxChunks: 4 });
+  const bounds = boundedInboundFramesWithBounds({ maxChunks: 4 });
   expect(
     refusal(() => bounds.accept(chunk(1, 0, 5, new Uint8Array(8)))).message,
   ).toContain("4-chunk reassembly limit");
 });
 
 test("a repeated chunk ordinal is charged but never completes the frame", () => {
-  const bounds = new BoundedInboundFrames({ maxChunks: 6 });
+  const bounds = boundedInboundFramesWithBounds({ maxChunks: 6 });
   const repeated = chunk(1, 0, 3, new Uint8Array(8));
   for (let i = 0; i < 6; i += 1) {
     expect(bounds.accept(repeated)).toEqual({ kind: "pending" });
@@ -186,7 +189,7 @@ test("a chunk flood is bounded by retained bytes, each chunk charged a floor", (
   // A one-byte slice still costs a retained view, so the byte cap charges the
   // resident floor rather than the payload; otherwise a tiny-chunk flood would
   // stay far under the cap while exhausting memory.
-  const bounds = new BoundedInboundFrames({
+  const bounds = boundedInboundFramesWithBounds({
     maxFrameBytes: MIN_CHUNK_RESIDENT_BYTES * 4,
     maxChunks: 1_000,
   });
@@ -201,7 +204,9 @@ test("a chunk flood is bounded by retained bytes, each chunk charged a floor", (
 });
 
 test("past the concurrency cap the oldest partial is evicted, silently", () => {
-  const bounds = new BoundedInboundFrames({ maxConcurrentReassemblies: 2 });
+  const bounds = boundedInboundFramesWithBounds({
+    maxConcurrentReassemblies: 2,
+  });
   const slice = new Uint8Array(16);
   expect(bounds.accept(chunk(1, 0, 2, slice))).toEqual({ kind: "pending" });
   expect(bounds.accept(chunk(2, 0, 2, slice))).toEqual({ kind: "pending" });
@@ -241,13 +246,46 @@ test("chunks that reassemble into another envelope are refused", () => {
 
 test("a refusal has the limit and no peer-supplied bytes", () => {
   const marker = "PEER-CHOSEN-MARKER";
-  const bounds = new BoundedInboundFrames({ maxFrameBytes: 8 });
+  const bounds = boundedInboundFramesWithBounds({ maxFrameBytes: 8 });
   expect(
     refusal(() => bounds.accept(packValue({ marker }))).message,
   ).not.toContain(marker);
 });
 
 // --- the defaults are core's constants, not a per-transport re-derivation ----
+
+test("the main entry's reassembler takes no limit and enforces the spec's", () => {
+  expect(BoundedInboundFrames.length).toBe(0);
+  expect(new BoundedInboundFrames().limits).toEqual({
+    maxFrameBytes: MAX_WEBRTC_FRAME_BYTES,
+    maxConcurrentReassemblies: MAX_CONCURRENT_REASSEMBLIES,
+    maxReassemblyDepth: MAX_WEBRTC_REASSEMBLY_DEPTH,
+    maxChunks: MAX_CHUNKS_PER_REASSEMBLY,
+    minChunkResidentBytes: MIN_CHUNK_RESIDENT_BYTES,
+    maxStringBytes: MAX_WEBRTC_STRING_BYTES,
+  });
+});
+
+test("a lowered limit leaves the others at the spec's", () => {
+  const bounds = boundedInboundFramesWithBounds({ maxChunks: 4 });
+  expect(bounds).toBeInstanceOf(BoundedInboundFrames);
+  expect(bounds.limits).toEqual({
+    ...new BoundedInboundFrames().limits,
+    maxChunks: 4,
+  });
+});
+
+test("an undefined override keeps the spec's limit and still refuses", () => {
+  const bounds = boundedInboundFramesWithBounds({
+    maxFrameBytes: undefined,
+    maxChunks: undefined,
+  });
+  expect(bounds.limits).toEqual(new BoundedInboundFrames().limits);
+  expect(
+    refusal(() => bounds.accept(new Uint8Array(MAX_WEBRTC_FRAME_BYTES + 1)))
+      .message,
+  ).toContain(`${MAX_WEBRTC_FRAME_BYTES}-byte size limit`);
+});
 
 test("the default chunk-count cap is core's", () => {
   const bounds = new BoundedInboundFrames();

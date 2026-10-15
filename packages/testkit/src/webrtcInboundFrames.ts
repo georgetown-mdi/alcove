@@ -3,8 +3,9 @@
 //
 // One wire format has three enforcement points. Core's structural pre-scan
 // (packages/core/src/connection/binaryPackBounds.ts) decides what a frame costs and
-// which rule refuses it; the CLI's reassembler and the web app's PeerJS wrap each own
-// their own chunk handling and call that scan at two chokepoints of their own.
+// which rule refuses it; core's reassembler, which the CLI's transport uses, and the
+// web app's PeerJS wrap each own their own chunk handling and call that scan at two
+// chokepoints of their own.
 // Nothing about the three living in one repository makes them agree, so this set is
 // driven through every one of them, and each transport's verdict is compared against
 // {@link preScanVerdict} -- and so, transitively, against the other transport's. What
@@ -14,12 +15,11 @@
 // arriving in chunks.
 //
 // The set lives here rather than in either test tree because both apps need it and
-// neither may import the other, and rather than behind `@alcove/core/testing`
-// because it is built with the real `peerjs-js-binarypack` packer, which
-// `packages/core` does not declare in its `dependencies` -- putting it there would
-// inline a copy of the wire codec into core's published `dist/testing.*`
-// (docs/TESTING.md, Shared test material). What each transport contributes is the
-// half that cannot move: the assertion that drives its own reassembler.
+// neither may import the other; `@alcove/core/testing` could hold it, since core
+// declares the packer, and it stays here as a stated exception to the testkit's
+// admission rule (docs/TESTING.md, Shared test material). What each transport
+// contributes is the half that cannot move: the assertion that drives its own
+// reassembler.
 //
 // Every frame is the real packer's output. The three shapes that packer never emits
 // -- a container declaring more elements than the bytes behind it, nested containers

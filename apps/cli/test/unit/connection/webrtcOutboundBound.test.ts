@@ -2,19 +2,20 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { InProcessPsiEngine, MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
+import {
+  InProcessPsiEngine,
+  MAX_WEBRTC_FRAME_BYTES,
+  PEERJS_CHUNK_MTU,
+  PeerJsFrameEncoder,
+} from "@alcove/core";
 import {
   PSIParticipant,
   binaryPackByteStringLength,
+  boundedInboundFramesWithBounds,
   PSI_SET_PART_HEADER_BYTES,
   webrtcFrameReceiveCharge,
 } from "@alcove/core/testing";
 
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
-import {
-  PEERJS_CHUNK_MTU,
-  PeerJsFrameEncoder,
-} from "../../../src/connection/webrtc/peerjsWire";
 import { webRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
 
 import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
@@ -66,7 +67,7 @@ function recordingSession(
 
 /** Every frame `datagrams` reassemble to on a receive path bounded at `max`. */
 function received(datagrams: Array<Uint8Array>, max: number): Array<unknown> {
-  const bounds = new BoundedInboundFrames({ maxFrameBytes: max });
+  const bounds = boundedInboundFramesWithBounds({ maxFrameBytes: max });
   const frames: Array<unknown> = [];
   for (const datagram of datagrams) {
     const outcome = bounds.accept(datagram);
@@ -83,7 +84,8 @@ test("the data channel states the receive bound it applies", () => {
   ).toBe(MAX_WEBRTC_FRAME_BYTES);
   expect(
     webRtcMessageConnection(recordingSession().session, {
-      inboundBounds: { maxFrameBytes: 4096 },
+      inboundFrames: () =>
+        boundedInboundFramesWithBounds({ maxFrameBytes: 4096 }),
     }).outboundWebRtcFrameBound?.(),
   ).toBe(4096);
 });
@@ -129,7 +131,8 @@ async function starterSetupParts(
     if (parts.length === header.getUint32(4)) allSent(parts);
   });
   const conn = webRtcMessageConnection(session, {
-    inboundBounds: { maxFrameBytes: bound },
+    inboundFrames: () =>
+      boundedInboundFramesWithBounds({ maxFrameBytes: bound }),
   });
   const starter = new PSIParticipant(
     "server",

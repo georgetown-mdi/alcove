@@ -8,10 +8,16 @@ import logLibrary from "loglevel";
 
 import {
   ConnectionError,
+  PEERJS_CHUNK_MTU,
   generateSharedSecret,
+  packCloseSentinel,
   setDiagnosticSink,
   setLogLevel,
 } from "@alcove/core";
+import {
+  boundedInboundFramesWithBounds,
+  packValue,
+} from "@alcove/core/testing";
 
 import {
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
@@ -27,11 +33,6 @@ import {
   WERIFT_BUILT_IN_STUN_URI,
   openWebRtcPeerSession,
 } from "../../../src/connection/webrtc/weriftPeer";
-import {
-  PEERJS_CHUNK_MTU,
-  packCloseSentinel,
-  packValue,
-} from "../../../src/connection/webrtc/peerjsWire";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { startBrokerProcess } from "../../signaling/brokerProcess";
 import { startRefusingStunServer } from "./refusingStunServer";
@@ -633,7 +634,8 @@ test("an over-cap inbound frame fails the connection closed", async () => {
       ...common,
       role: "inviter",
       // A cap far below any real frame, so a modest send trips it.
-      inboundBounds: { maxFrameBytes: 4_096 },
+      inboundFrames: () =>
+        boundedInboundFramesWithBounds({ maxFrameBytes: 4_096 }),
     }),
     openWebRtcMessageConnection({ ...common, role: "acceptor" }),
   ]);

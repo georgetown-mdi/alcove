@@ -9,6 +9,7 @@ import {
   formatWaitDuration,
   InternalConsistencyError,
   markFailureCause,
+  PEERJS_SERIALIZATION,
   UsageError,
   deriveRendezvousPeerId,
   getLogger,
@@ -33,7 +34,6 @@ import {
   iceFailureDetails,
   readIceStats,
 } from "./iceDiagnostics";
-import { PEERJS_SERIALIZATION } from "./peerjsWire";
 
 import type {
   BrokerClient,
@@ -1291,7 +1291,7 @@ type AttemptOutcome = { session: WebRtcPeerSession } | { next: NextAttempt };
  * a legitimate late description still applies the ones held, and a peer that
  * only floods candidates cannot grow this without bound. Dropping is silent --
  * logging per candidate would itself be a log-flood vector, the same reason
- * inboundBounds.ts evicts silently.
+ * BoundedInboundFrames evicts silently.
  */
 function holdRemoteCandidate(
   queue: Array<Record<string, unknown>>,

@@ -1,19 +1,16 @@
 import {
+  BoundedInboundFrames,
   ConnectionError,
   DeliveryUnconfirmedError,
   INACTIVITY_TIMEOUT_KEY,
-  MAX_WEBRTC_FRAME_BYTES,
+  PeerJsFrameEncoder,
   QueuedMessageConnection,
   asConnectionError,
+  packCloseSentinel,
+  toFrameBytes,
 } from "@alcove/core";
 
 import { inactivityTimeoutGuidance } from "../timeoutGuidance";
-import { BoundedInboundFrames } from "./inboundBounds";
-import {
-  PeerJsFrameEncoder,
-  packCloseSentinel,
-  toFrameBytes,
-} from "./peerjsWire";
 import { openWebRtcPeerSession } from "./weriftPeer";
 
 import type { WebRtcPeerOptions, WebRtcPeerSession } from "./weriftPeer";
@@ -34,7 +31,7 @@ import type { RTCDataChannel } from "werift";
  *
  * - Framing. Outbound values are BinaryPack-packed and chunked into the
  *   envelopes a browser peer reassembles; inbound datagrams go through the
- *   bounded reassembler (`inboundBounds.ts`) before anything is delivered.
+ *   bounded reassembler (core's `BoundedInboundFrames`) before anything is delivered.
  * - Draining. Both transports wait for the peer before a clean close resolves,
  *   on the strongest signal each stack exposes: PeerJS's flushing close is just
  *   the in-band sentinel, so the web waits for the PEER to close the channel on
@@ -132,11 +129,11 @@ export interface WebRtcMessageConnectionOptions {
   /** Outbound window bounds; tests only. */
   sendWindowBytes?: number;
   sendWindowLowBytes?: number;
-  /** Per-bound overrides for the inbound reassembler; tests only. Its
+  /** Builds the inbound reassembler; tests only, to lower its limits. Its
    * `maxFrameBytes` is also the bound the connection states for the partner's
    * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
    * sets to. */
-  inboundBounds?: ConstructorParameters<typeof BoundedInboundFrames>[0];
+  inboundFrames?: () => BoundedInboundFrames;
 }
 
 /**
@@ -248,7 +245,7 @@ export function webRtcMessageConnection(
   return new QueuedMessageConnection(
     (controls) => {
       const encoder = new PeerJsFrameEncoder();
-      const bounds = new BoundedInboundFrames(options?.inboundBounds);
+      const bounds = options?.inboundFrames?.() ?? new BoundedInboundFrames();
       let peerCloseRead = false;
       let sendStopped = false;
       let sendQueue: Promise<void> = Promise.resolve();
@@ -325,8 +322,7 @@ export function webRtcMessageConnection(
       );
 
       return {
-        outboundWebRtcFrameBound: () =>
-          options?.inboundBounds?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES,
+        outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
         send: (data) => {
           const frame = sendQueue.then(() => sendFrame(data));
           sendQueue = frame.catch(() => {});

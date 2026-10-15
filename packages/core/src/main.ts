@@ -153,13 +153,29 @@ export {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
 } from "./connection/frameSize";
-// The send-side half of the same wire. Published for the same reason: both
-// WebRTC transports encode their outbound frames outside this package, and one
-// implementation has to produce the bytes a partner's BinaryPack reads.
+// The send-side half of the same wire. Core's PeerJS framing below calls it,
+// and the web transport encodes its outbound frames outside this package
+// (apps/web/src/psi/transport/iterativePacking.ts), so one implementation
+// produces the bytes a partner's BinaryPack reads.
 export { encodeBinaryPackValue } from "./connection/binaryPackEncode";
-// The send-side check of the same bound. Published because the CLI's PeerJS
-// framing chunks at the same threshold the check charges for.
+// The send-side check of the same bound. Core's PeerJS framing below chunks
+// at the same threshold the check charges for.
 export { PEERJS_CHUNK_MTU } from "./connection/webrtcOutboundBound";
+// The PeerJS DataConnection framing and the bounded inbound reassembler.
+// Published for the CLI's WebRTC transport; the web transport decodes through
+// PeerJS itself, plus its own bounded reassembly
+// (apps/web/src/psi/transport/boundedReassembly.ts).
+export {
+  PEERJS_SERIALIZATION,
+  PeerJsFrameEncoder,
+  packCloseSentinel,
+  toFrameBytes,
+} from "./connection/peerjsWire";
+export { BoundedInboundFrames } from "./connection/webrtcInboundBounds";
+export type {
+  InboundFrameLimits,
+  InboundOutcome,
+} from "./connection/webrtcInboundBounds";
 export {
   formatLogPrefix,
   getLogger,

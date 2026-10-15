@@ -10,8 +10,11 @@ channel, and what a clean close has to do before it tears the channel down.
 
 Two implementations speak this wire and must agree on every line of it: the web
 app, which runs the PeerJS client in the browser (`apps/web/src/psi/`), and the
-CLI, which drives werift's `RTCPeerConnection` directly and hand-writes both the
-broker client and the framing (`apps/cli/src/connection/webrtc/`). None of it is
+CLI, which drives werift's `RTCPeerConnection` directly instead of running
+PeerJS. The CLI's framing and bounded reassembly are Alcove's own, in core
+(`packages/core/src/connection/peerjsWire.ts` and `webrtcInboundBounds.ts`);
+the werift socket and the broker client stay with the CLI transport
+(`apps/cli/src/connection/webrtc/`). None of it is
 Alcove's own protocol to define -- it is PeerJS 1.5.5's, measured on the wire
 and recorded here because a second implementation has to match it exactly. The
 library choice and the alternatives weighed are in

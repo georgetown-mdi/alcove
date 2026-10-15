@@ -86,6 +86,15 @@ one build away from meaning nothing. A helper needing a dependency core does not
 declare therefore takes the testkit whether or not the build would tolerate
 inlining it.
 
+Later (2026-10-15): the reason given for the testkit above, a dependency
+`packages/core` does not declare, has lapsed. Core now declares
+`peerjs-js-binarypack`, because the PeerJS framing moved into it and unpacks the
+wire with it, and core's rollup config keeps every declared dependency external,
+so a frame set in `dist/testing.*` would no longer inline a copy of the codec.
+The set stays in `packages/testkit` as a stated exception to the admission rule
+in docs/TESTING.md, Shared test material; whether it moves is a decision of its
+own, outside this note.
+
 ## The constraints, and where they bite
 
 Each is a property of configuration this repository already has, so each is

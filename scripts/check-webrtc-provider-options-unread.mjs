@@ -5,8 +5,10 @@
 // docs/EXCHANGE_REFERENCE.md (`### connection.provider_options`) that no WebRTC
 // transport reads `connection.provider_options`.
 //
-// Scans CLI_FILES, every file under apps/cli/src/connection/webrtc/, checked
-// against the directory listing; and WEB_FILES, rendezvous.ts,
+// Scans CLI_FILES, every file under apps/cli/src/connection/webrtc/ (the CLI's
+// transport), checked against the directory listing; CORE_FILES, the framing and
+// bounded reassembly the CLI's transport uses, which live in core, each checked
+// to exist; and WEB_FILES, rendezvous.ts,
 // managedRendezvous.ts and peerMessageConnection.ts plus every local module they
 // import statically, one hop out, checked against their import statements
 // through `ts.resolveModuleName`. A file outside these lists is unexamined, not
@@ -30,18 +32,22 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The CLI's whole WebRTC connection implementation. */
+/** The CLI's WebRTC transport; its framing and bounded reassembly live in core, under `CORE_FILES`. */
 export const CLI_WEBRTC_DIR = "apps/cli/src/connection/webrtc";
 
 /** `CLI_WEBRTC_DIR`'s files, repository-relative, held to the real listing. */
 export const CLI_FILES = [
   "apps/cli/src/connection/webrtc/brokerClient.ts",
   "apps/cli/src/connection/webrtc/iceDiagnostics.ts",
-  "apps/cli/src/connection/webrtc/inboundBounds.ts",
-  "apps/cli/src/connection/webrtc/peerjsWire.ts",
   "apps/cli/src/connection/webrtc/signalingTls.ts",
   "apps/cli/src/connection/webrtc/webrtcMessageConnection.ts",
   "apps/cli/src/connection/webrtc/weriftPeer.ts",
+];
+
+/** The framing and bounded reassembly in core that the CLI's transport uses, repository-relative; each must exist. */
+export const CORE_FILES = [
+  "packages/core/src/connection/peerjsWire.ts",
+  "packages/core/src/connection/webrtcInboundBounds.ts",
 ];
 
 /** The web app's tsconfig, whose `paths` aliases `webFilesDrift` resolves against. */
@@ -249,7 +255,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     );
 
   const scanned = [];
-  for (const file of [...CLI_FILES, ...WEB_FILES]) {
+  for (const file of [...CLI_FILES, ...CORE_FILES, ...WEB_FILES]) {
     let source;
     try {
       source = readSource(file);

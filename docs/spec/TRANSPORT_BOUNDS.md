@@ -229,7 +229,10 @@ The large raw PSI set frame -- one party's full encrypted set as raw elliptic-cu
 
 The control is in two halves.
 Its transport-agnostic half -- the fixed constants below and the `scanFrameStructure` structural pre-scan they parameterize -- lives in `@alcove/core` (`packages/core/src/connection/binaryPackBounds.ts`), so every WebRTC transport enforces one implementation of them rather than a per-transport re-derivation.
-Its transport-coupled half -- the wrapping of a specific reassembler's internals, which is where the bounds are actually applied -- lives with that transport: for the web that is `apps/web/src/psi/transport/boundedReassembly.ts`.
+Its other half is the reassembler that applies the bounds, which differs by transport.
+The web transport decodes through PeerJS's own reassembly, so its half wraps PeerJS's internals and lives with that transport, in `apps/web/src/psi/transport/boundedReassembly.ts`.
+The CLI transport owns its reassembler outright, and that reassembler is in `@alcove/core` too: `BoundedInboundFrames` (`packages/core/src/connection/webrtcInboundBounds.ts`), which takes no limit from its caller and decodes through core's PeerJS framing (`packages/core/src/connection/peerjsWire.ts`).
+The werift socket that feeds it datagrams stays with the CLI transport (`apps/cli/src/connection/webrtc/`).
 The control bounds the receive path on several axes, each a fixed constant (not a configurable option, since a configurable bound risks being raised to reintroduce the denial of service) and each fail-closed with a terminal `protocol` `ConnectionError` -- the same class as core's inbound-buffer overflow, since every bound sits far above any legitimate frame so an over-bound frame is never benign.
 Each refusal names the rule that fired -- the nesting-depth cap, the per-string cap, the byte-backed-elements check, the cumulative element rule, or the map-key rule -- so the failure an operator (or a support thread) reads identifies the control that refused the frame.
 The wording of those five rules is rendered once in `@alcove/core` (`describeFrameStructureRefusal`), so both transport halves word each of them identically, and is composed from that rule's own fixed limit: no length, count, depth, or byte the peer chose reaches an operator through it.

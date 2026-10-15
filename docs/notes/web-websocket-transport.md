@@ -37,8 +37,9 @@ The pieces a WebSocket path would build on, with where each is stated:
 - **Two WebRTC implementations speak one wire.**
   The browser runs PeerJS (`apps/web/src/psi/transport/peerMessageConnection.ts`); the CLI drives werift and hand-writes the broker client and the framing (`apps/cli/src/connection/webrtc/`).
   Both present the exchange with core's `MessageConnection` (`packages/core/src/connection/messageConnection.ts`): `send`, `receive`, `close`, and a terminal state.
-- **The framing and its bounds are already transport-independent on the CLI side.**
-  `apps/cli/src/connection/webrtc/peerjsWire.ts` (the BinaryPack frame, the chunk envelope, the close sentinel) and `inboundBounds.ts` (the bounded reassembler) import only `@alcove/core` and `peerjs-js-binarypack`, with no Node module, so they run in a browser bundle.
+- **The framing and its bounds are transport-independent, in core.**
+  `packages/core/src/connection/peerjsWire.ts` (the BinaryPack frame, the chunk envelope, the close sentinel) and `webrtcInboundBounds.ts` (the bounded reassembler) import only core and `peerjs-js-binarypack`, with no Node module, so they run in a browser bundle.
+  The CLI's WebRTC transport imports them from `@alcove/core`.
   The constants they apply -- `MAX_WEBRTC_FRAME_BYTES` of 268,435,456 bytes, the chunk-count and concurrent-reassembly caps -- live in core (`packages/core/src/connection/binaryPackBounds.ts`; [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
   The browser applies the same constants by wrapping PeerJS internals (`apps/web/src/psi/transport/boundedReassembly.ts`), which a transport that does not run PeerJS cannot reuse.
 - **The wrap is a decorator over any `MessageConnection`.**
@@ -337,7 +338,6 @@ The front on 443 and the broker's route on it are already built. Its open measur
 
 Relay path, in order:
 
-- **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
   Built: `packages/core/src/websocketRelayProof.ts`, specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.

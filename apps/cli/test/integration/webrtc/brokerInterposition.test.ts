@@ -19,13 +19,14 @@ import {
   generateSharedSecret,
   prepareForExchange,
 } from "@alcove/core";
-import { AEAD_ENVELOPE_VERSION, withCapturedLogs } from "@alcove/core/testing";
-
 import {
+  AEAD_ENVELOPE_VERSION,
   classifyInboundValue,
   concatChunks,
   unpackFrame,
-} from "../../../src/connection/webrtc/peerjsWire";
+  withCapturedLogs,
+} from "@alcove/core/testing";
+
 import { saveKeyFile } from "../../../src/keyFile";
 import { runProtocol } from "../../../src/protocol";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
