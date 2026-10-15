@@ -31,7 +31,7 @@ The front listens on IPv4 only.
 | `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
 | `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; then restarts each running unit whose inputs are newer than its start, whether or not the renewal succeeded, except under `install.sh`, which does that itself after its writes |
 | `unit-state.sh` | Sourced by both scripts and installed beside `renew.sh`: decides from systemd's state and file times which running units to restart |
-| `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 04:30 UTC plus up to 15 minutes, after the relay's own renewal window |
+| `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 08:15 UTC plus up to 5 minutes, after the relay's own renewal, under the relay host's maintenance lock ([`../relay/README.md`, The daily schedule](../relay/README.md#the-daily-schedule)) |
 | `install.sh` | Creates the broker's system user if it is missing, installs all of the above and converges on a re-run, then checks `/api/health` through the front |
 | `broker.env.example` | The host's one configuration file, copied to `/etc/alcove-broker/broker.env` |
 
@@ -176,7 +176,7 @@ The broker reads them from the pull's deployed marker and status record under `/
 The headers, their values and the `unknown` each takes when it cannot be read: [`packages/peerjs-broker/README.md`, Deployment headers](../../packages/peerjs-broker/README.md#deployment-headers).
 The unit's sandbox leaves `/var/lib` readable; that the broker reads the two files under it has not yet been measured on the host.
 
-[`nightly_relay_deployment.yaml`](../../.github/workflows/nightly_relay_deployment.yaml) reads those headers every day at 07:23 UTC, after the pull's window, through [`scripts/relay-deployment-check.mjs`](../../scripts/relay-deployment-check.mjs).
+[`nightly_relay_deployment.yaml`](../../.github/workflows/nightly_relay_deployment.yaml) reads those headers every day at 11:23 UTC, after the pull's run and the daily verification, through [`scripts/relay-deployment-check.mjs`](../../scripts/relay-deployment-check.mjs).
 It finds the broker from the repository variable `VITE_SIGNALING_SERVER_URL`, the web build's `wss:` URL of this broker, and reads `/api/health` at the same host over `https:`.
 It goes red when:
 

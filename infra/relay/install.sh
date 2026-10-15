@@ -355,6 +355,12 @@ for service in alcove-relay alcove-relay-front; do
     rm -f "$STALE_UNIT"
   fi
 done
+# The daily units take their lock inside /run/alcove-maintenance, which only
+# root can enter; the directory must exist before any of them runs.
+install -d -m 755 /etc/tmpfiles.d
+install -m 644 "$HERE/../tmpfiles.d/alcove-maintenance.conf" /etc/tmpfiles.d/alcove-maintenance.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/alcove-maintenance.conf \
+  || die "systemd-tmpfiles could not create /run/alcove-maintenance, the directory the daily units take their lock in; run systemd-tmpfiles --create /etc/tmpfiles.d/alcove-maintenance.conf to see why"
 install -m 644 "$HERE/certs/alcove-relay-cert.service" "$HERE/certs/alcove-relay-cert.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-verify.service" "$HERE/alcove-relay-verify.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-sweep.timer" "$UNIT_DIR/"
@@ -398,7 +404,7 @@ systemctl enable --now alcove-relay-sweep.timer \
 if [ "$OS_UPDATES" = 1 ]; then
   systemctl enable --now alcove-relay-os-update.timer \
     || die "alcove-relay-os-update.timer did not start; this host would take no OS updates. journalctl -u alcove-relay-os-update.timer"
-  log "OS updates install daily between 05:00 and 05:30 UTC, then verify.sh runs"
+  log "OS updates install daily at 08:30 UTC; see The daily schedule in infra/relay/README.md"
 else
   systemctl disable --now alcove-relay-os-update.timer 2>/dev/null || true
   log "WARNING: not Amazon Linux 2023, so no automatic OS updates are set up; configure the distribution's own"

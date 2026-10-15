@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 // The relay host's pull from main (infra/host-pull): pull.sh through each
 // outcome against a fixture host with git, curl, cosign, npm, systemctl, chown
-// and both install scripts stubbed, its install.sh, and its timer's window.
+// and both install scripts stubbed, its install.sh, and its units.
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PULL_DIR = join(repo, "infra/host-pull");
@@ -282,6 +282,10 @@ const host = () => {
   writeStub(
     join(bin, "systemctl"),
     `${head}\nprintf 'systemctl %s\\n' "$*" >> "$F/calls"`,
+  );
+  writeStub(
+    join(bin, "systemd-tmpfiles"),
+    `${head}\nprintf 'systemd-tmpfiles %s\\n' "$*" >> "$F/calls"`,
   );
   writeStub(join(bin, "timeout"), `${head}\n${TIMEOUT_STUB}`);
   writeStub(
@@ -1138,7 +1142,15 @@ describe("install.sh", () => {
         readFileSync(join(h.root, "etc/systemd/system", unit), "utf8"),
       ).toBe(readFileSync(join(PULL_DIR, unit), "utf8"));
     }
+    const tmpfiles = join(h.root, "etc/tmpfiles.d/alcove-maintenance.conf");
+    expect(readFileSync(tmpfiles, "utf8")).toBe(
+      readFileSync(
+        join(repo, "infra/tmpfiles.d/alcove-maintenance.conf"),
+        "utf8",
+      ),
+    );
     expect(r.calls).toEqual([
+      `systemd-tmpfiles --create ${tmpfiles}`,
       "systemctl daemon-reload",
       "systemctl try-restart alcove-host-pull.timer",
     ]);
@@ -1184,77 +1196,18 @@ describe("alcove-host-pull units", () => {
     expect(matches, name).toHaveLength(1);
     return matches[0][1].trim();
   };
-  const minutes = (span) => {
-    const match = span.match(/^(\d+)(m|h)$/);
-    expect(match, span).not.toBeNull();
-    return Number(match[1]) * (match[2] === "h" ? 60 : 1);
-  };
-  const clock = (minute) =>
-    `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-  // [start, end) in minutes past midnight: the daily fire time plus the
-  // randomized delay. A timer without " UTC" runs on the host's zone, UTC on
-  // the relay host.
-  const window = (path) => {
-    const text = read(path);
-    const match = setting(text, "OnCalendar").match(
-      /^\*-\*-\* (\d\d):(\d\d):00( UTC)?$/,
-    );
-    expect(match, `${path} fires daily at a fixed time`).not.toBeNull();
-    const start = Number(match[1]) * 60 + Number(match[2]);
-    return [start, start + minutes(setting(text, "RandomizedDelaySec"))];
-  };
-  const TIMERS = {
-    "alcove-relay-cert.timer": "infra/relay/certs/alcove-relay-cert.timer",
-    "alcove-broker-cert.timer": "infra/broker/alcove-broker-cert.timer",
-    "alcove-relay-os-update.timer": "infra/relay/alcove-relay-os-update.timer",
-  };
-  const readme = read("infra/host-pull/README.md");
-  const timer = read("infra/host-pull/alcove-host-pull.timer");
-  const pull = window("infra/host-pull/alcove-host-pull.timer");
-  const stated = [
-    ...readme.matchAll(
-      /^\| `([\w.-]+\.timer)`, [^|]+\| (\d\d):(\d\d) to (\d\d):(\d\d) \|$/gm,
-    ),
-  ].map((m) => ({
-    name: m[1],
-    window: [
-      Number(m[2]) * 60 + Number(m[3]),
-      Number(m[4]) * 60 + Number(m[5]),
-    ],
-  }));
 
-  it("fires in UTC, in the window the README states", () => {
-    expect(setting(timer, "OnCalendar")).toMatch(/ UTC$/);
-    expect(pull[1]).toBeLessThanOrEqual(24 * 60);
-    expect(readme).toContain(
-      `fires every day at ${clock(pull[0])} UTC, with up to ${pull[1] - pull[0]} minutes`,
-    );
+  it("does not catch up at boot, outside the schedule", () => {
+    expect(
+      setting(read("infra/host-pull/alcove-host-pull.timer"), "Persistent"),
+    ).toBe("false");
   });
 
-  it("states the window of each timer it stays clear of, as the timer has it", () => {
-    expect(stated.map((entry) => entry.name).sort()).toEqual(
-      Object.keys(TIMERS).sort(),
-    );
-    for (const { name, window: span } of stated) {
-      if (existsSync(join(repo, TIMERS[name]))) {
-        expect(window(TIMERS[name]), name).toEqual(span);
-      }
-    }
-  });
-
-  it("starts after every window it states, within the day", () => {
-    for (const { name, window: span } of stated) {
-      expect(pull[0], name).toBeGreaterThanOrEqual(span[1]);
-    }
-  });
-
-  it("does not catch up at boot, outside the window", () => {
-    expect(setting(timer, "Persistent")).toBe("false");
-  });
-
-  it("runs the installed copy, after the OS update", () => {
+  it("runs the installed copy under the maintenance lock, after the OS update", () => {
     const service = read("infra/host-pull/alcove-host-pull.service");
-    expect(setting(service, "ExecStart")).toBe("/opt/alcove-host-pull/pull.sh");
+    expect(setting(service, "ExecStart")).toMatch(
+      / \/run\/alcove-maintenance\/lock \/usr\/bin\/timeout -k \d+ \d+ \/opt\/alcove-host-pull\/pull\.sh$/,
+    );
     expect(setting(service, "After").split(/\s+/)).toContain(
       "alcove-relay-os-update.service",
     );

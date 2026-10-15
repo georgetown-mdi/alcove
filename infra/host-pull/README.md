@@ -38,19 +38,13 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 It never builds core.
 It never runs code from a tree it is about to replace: the timer runs the copy of `pull.sh` this directory's `install.sh` put under `/opt/alcove-host-pull`.
 
-## The window
+## When it runs
 
-The timer fires every day at 06:00 UTC, with up to 5 minutes of randomized delay.
-That is after the other daily windows on the same host:
-
-| unit | window (UTC) |
-| --- | --- |
-| `alcove-relay-cert.timer`, the relay's certificate renewal | 03:00 to 04:00 |
-| `alcove-broker-cert.timer`, the broker's certificate renewal | 04:30 to 04:45 |
-| `alcove-relay-os-update.timer`, the relay's OS updates | 05:00 to 05:30 |
-
-The service is ordered after `alcove-relay-os-update.service`, so a pull that starts while an OS update is still running waits for it to finish; that wait has not been measured on a host.
-A host that is down at 06:00 skips the day rather than pulling at boot.
+The timer fires every day at 09:30 UTC, and a run is stopped at one hour: after the certificate renewals and the OS update, and before the daily verification, as [`infra/relay/README.md`, The daily schedule](../relay/README.md#the-daily-schedule) lists them.
+The unit runs `pull.sh` under the host's maintenance lock that every daily job and a host hand-off take, so a pull never runs beside one of them; when the lock is still held after two hours, the unit fails without running `pull.sh`.
+`pull.sh` also takes a lock of its own, `/var/lib/alcove-host-pull/lock`, so two pulls never overlap.
+The service is also ordered after `alcove-relay-os-update.service`, so a pull that starts while an OS update is still running waits for it to finish.
+A host that is down at 09:30 skips the day rather than pulling at boot.
 
 ## Outcomes
 
@@ -59,7 +53,7 @@ A host that is down at 06:00 skips the day rather than pulling at boot.
 | `unchanged` | 0 | the tip of `main` is the deployed commit |
 | `skipped` | 0 | a push-triggered workflow run has not completed, none has started yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
 | `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` |
-| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, a precondition below, the installs at the tip when there was no deployed commit to roll back to, or the run was stopped by a signal, such as systemd's at `TimeoutStartSec=` |
+| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, a precondition below, the installs at the tip when there was no deployed commit to roll back to, or the run was stopped by a signal, such as `timeout`'s at the run's one-hour maximum |
 | `rolled-back` | 1 | the installs at the tip failed, and both install scripts and `verify.sh` passed again on the deployed commit |
 | `rollback-failed` | 1 | the installs at the tip failed, and so did those on the deployed commit; the units are as far as the second attempt got |
 | `updated` | 0 | both install scripts and `verify.sh` passed on the new commit |
@@ -124,7 +118,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 - **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `rollback-failed` leaves the tip's tree, and the next run removes it before staging. A run that ends `failed` leaves the link on the tip's tree, which stays until the link moves to another tree.
 - **Each install script is cut off after 5 minutes 15 seconds, and killed 30 seconds later if it ignores the stop.** Each runs in a session of its own, and when it fails or is cut off, the script and every descendant still in its process group are killed before the run goes on. A forward attempt and a rollback run two scripts each. A script that hangs is an ordinary failure and is rolled back. `ALCOVE_HOST_PULL_INSTALL_TIMEOUT` can only lower the bound; an unset, zero, non-numeric or larger value uses the default. `ALCOVE_HOST_PULL_KILL_AFTER` sets the wait before the kill and likewise can only lower it.
 - **A probe in its own process group is not killed.** Relay `verify.sh` runs its probes through `timeout`, which starts a process group of its own, so a probe still running when an install fails (each at most its own timeout, the longest 150 seconds) can still be running when the rollback restarts the relay. They are read-only checks.
-- **A run can still outlast `TimeoutStartSec=1h`.** A run whose unbounded steps (cosign trust fetches, restarts, git, tar and checksum steps) or many pages of push runs push it past `TimeoutStartSec` is stopped by systemd mid-step and recorded `failed`, not rolled back. The next run retries the full path, and [the deployment check](../broker/README.md#the-deployment-check) reports the failed run.
+- **A run can still outlast its one-hour maximum.** A run whose unbounded steps (cosign trust fetches, restarts, git, tar and checksum steps) or many pages of push runs push it past the hour is stopped by the unit's `timeout` mid-step and recorded `failed`, not rolled back. The next run retries the full path, and [the deployment check](../broker/README.md#the-deployment-check) reports the failed run.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
 - **The tree is not signed.** Only core's build is. What binds the tree to `main` is the fetch over HTTPS from github.com and the check that the fetched commit is the tip `git ls-remote` named.
 
@@ -134,7 +128,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 | --- | --- |
 | `pull.sh` | One run, as above. Installed as `/opt/alcove-host-pull/pull.sh` |
 | `workflow-runs.mjs` | Reads the pages of the workflow-runs answer and prints whether the commit's push runs passed, are pending or did not pass; `pull.sh` runs it with the host's Node |
-| `alcove-host-pull.service`, `.timer` | Run `pull.sh` daily in the window above |
+| `alcove-host-pull.service`, `.timer` | Run `pull.sh` daily, under the maintenance lock, as above |
 | `install.sh` | Installs the three above; enables nothing |
 
-[`scripts/host-pull.test.mjs`](../../scripts/host-pull.test.mjs) drives `pull.sh` through each outcome against a fixture host with `git`, `curl`, `cosign`, `npm`, `systemctl`, both install scripts and `verify.sh` stubbed, including a rollback after each failing step, a rollback that fails, and the trees kept over three updates, and holds the timer to the window above.
+[`scripts/host-pull.test.mjs`](../../scripts/host-pull.test.mjs) drives `pull.sh` through each outcome against a fixture host with `git`, `curl`, `cosign`, `npm`, `systemctl`, both install scripts and `verify.sh` stubbed, including a rollback after each failing step, a rollback that fails, and the trees kept over three updates, and holds the service to the installed `pull.sh` under the lock; [`scripts/relay-host-schedule.test.mjs`](../../scripts/relay-host-schedule.test.mjs) holds the timer to the daily schedule.

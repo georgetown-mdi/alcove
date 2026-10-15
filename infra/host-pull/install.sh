@@ -31,6 +31,13 @@ for unit in alcove-host-pull.service alcove-host-pull.timer; do
   install -m 644 "$HERE/$unit" "$UNIT_DIR/.$unit.new"
   mv -f "$UNIT_DIR/.$unit.new" "$UNIT_DIR/$unit"
 done
+# The service takes its lock inside /run/alcove-maintenance, which only root can
+# enter; the directory must exist before it runs.
+TMPFILES="$ROOT/etc/tmpfiles.d/alcove-maintenance.conf"
+install -d -m 755 "$ROOT/etc/tmpfiles.d"
+install -m 644 "$HERE/../tmpfiles.d/alcove-maintenance.conf" "$TMPFILES"
+systemd-tmpfiles --create "$TMPFILES" \
+  || die "systemd-tmpfiles could not create /run/alcove-maintenance, the directory the service takes its lock in; run systemd-tmpfiles --create $TMPFILES to see why"
 systemctl daemon-reload
 systemctl try-restart alcove-host-pull.timer
 log "installed; the timer runs only once enabled: systemctl enable --now alcove-host-pull.timer"

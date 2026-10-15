@@ -5,4 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/etc/alcove-broker/renew.sh
+# Under the host's maintenance lock, failing when it is still held after two
+# hours, and stopped at 10 minutes (infra/relay/README.md, The daily
+# schedule). flock's wait and timeout bound the run, so the unit sets no start
+# timeout.
+ExecStart=/usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 570 /etc/alcove-broker/renew.sh
+TimeoutStartSec=infinity

@@ -1,14 +1,13 @@
 [Unit]
-Description=Bring the Alcove relay host to the tip of main daily, 06:00-06:05 UTC
+Description=Bring the Alcove relay host to the tip of main daily at 09:30 UTC
 
 [Timer]
-# After the relay's certificate renewal (03:00-04:00 UTC), a broker's on the same
-# host (04:30-04:45 UTC) and the relay's OS updates (05:00-05:30 UTC), so an
-# install's restarts do not land with theirs.
-OnCalendar=*-*-* 06:00:00 UTC
-RandomizedDelaySec=5m
-# Off, so a host that was down at 06:00 does not install at boot, outside the
-# window; it pulls at the next day's window.
+# After the relay's OS update and before the daily verification, in the relay
+# host's daily schedule (infra/relay/README.md, The daily schedule).
+OnCalendar=*-*-* 09:30:00 UTC
+RandomizedDelaySec=0
+# Off, so a host that was down at 09:30 does not install at boot, outside the
+# schedule; it pulls the next day.
 Persistent=false
 
 [Install]

@@ -70,7 +70,10 @@ Nothing in this directory runs a relay in CI. Tests under `scripts/` drive
 `certs/deploy-hook.sh`, `relay_table.py`, the key scripts, the sweep, the
 registrar, `verify.sh`'s cleanup and registrar probe, and `render-config.sh`
 against a fixture host whose `turndb` is a real SQLite file holding coturn's
-`turn_secret` table. `scripts/relay-turn-secret-schema.test.mjs` holds that
+`turn_secret` table. `scripts/relay-host-schedule.test.mjs` holds every daily
+timer on the host to [the daily schedule](#the-daily-schedule) and each daily
+unit's `ExecStart` to the maintenance lock's shape.
+`scripts/relay-turn-secret-schema.test.mjs` holds that
 table's shape to the pinned image: where docker or podman answers, the image's
 own `turnadmin` creates a table, `relay_table.py` reads its row and writes its
 own, and `turnadmin` lists the result; where neither answers, the test is
@@ -126,7 +129,7 @@ when its operator runs `install.sh` from that commit's checkout.
 | `alcove-relay.container` | The Quadlet unit for a podman host, installed at `/etc/containers/systemd/`. systemd is the only supervisor; there is no container daemon under it |
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |
 | `alcove-relay-verify.service`, `.timer` | The daily verification. A standing relay is idle between exchanges, so nothing else notices it stopped carrying allocations until a partner is waiting on one |
-| `alcove-relay-os-update.service`, `.timer` | The daily OS update on Amazon Linux 2023, followed by the verification. See [OS updates](#os-updates) |
+| `alcove-relay-os-update.service`, `.timer` | The daily OS update on Amazon Linux 2023. See [OS updates](#os-updates) |
 | `install.sh` | The whole install, idempotent |
 | `relay_table.py` | The one write path to the secrets table: register, revoke, and sweep, each one SQLite transaction, as the relay image's account. Everything below that touches the table calls it. See [Per-exchange keys](#per-exchange-keys) |
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
@@ -569,6 +572,72 @@ hands out a relayed transport address, and bridge networking or published ports
 rewrite the address the client is told to use; the relay range is also wide
 enough that publishing it is not a port list.
 
+## The daily schedule
+
+Every daily job on the relay host runs between 08:00 and 11:00 UTC: 04:00 to
+07:00 Eastern and 01:00 to 04:00 Pacific in daylight time, an hour earlier in
+winter. The jobs run one after another, each from a fixed start and stopped at
+its maximum run time:
+
+| job | timer | start (UTC) | maximum | busy (UTC) | may restart |
+| --- | --- | --- | --- | --- | --- |
+| the relay's certificate renewal | `alcove-relay-cert.timer` | 08:00, plus up to 5 min | 10 min | 08:00 to 08:15 | `alcove-relay.service` and `alcove-relay-registrar.service`, on a day the certificate changed |
+| the broker's certificate renewal | `alcove-broker-cert.timer` | 08:15, plus up to 5 min | 10 min | 08:15 to 08:30 | `alcove-broker.service`, `alcove-broker-tls.service` and the timer, where their inputs changed ([`infra/broker/README.md`](../broker/README.md)) |
+| the OS update | `alcove-relay-os-update.timer` | 08:30 | 60 min | 08:30 to 09:30 | `docker.service`, and with it `alcove-relay.service`, `alcove-relay-front.service` and `alcove-broker-tls.service`, where a package's update restarts it ([OS updates](#os-updates)) |
+| the host pull | `alcove-host-pull.timer` | 09:30 | 60 min | 09:30 to 10:30 | `alcove-broker.service`, then what both install scripts restart, on a day `main` moved ([`infra/host-pull/README.md`](../host-pull/README.md)) |
+| the verification | `alcove-relay-verify.timer` | 10:30 | 30 min | 10:30 to 11:00 | nothing |
+
+- **The order.** The certificate renewals come first and the OS update before
+  the host pull, whose unit is also ordered `After=` it. The verification runs
+  last, after every job that can restart a service, so it checks what they
+  left. After a hold that spans several start times, the jobs run in whatever
+  order they get the lock, and the next day's verification checks the result.
+  The hourly lapse sweep keeps its own schedule and takes no lock: it restarts
+  nothing.
+- **The starts.** The two renewals keep up to 5 minutes of randomized delay,
+  because Let's Encrypt asks clients to randomize their renewal time; every
+  other job starts on the minute.
+- **The maximums.** The pull's hour is the bound `pull.sh`'s own timeouts are
+  sized to (its header). The OS update's hour is more than twice the 23-minute
+  upgrade measured under [OS updates](#os-updates). The verification's 30
+  minutes are above the sum of `verify.sh`'s own timeouts, about 23 minutes
+  with one front route. The renewals' 10 minutes are a working value, not a
+  measured one: neither `renew.sh` bounds its ACME client.
+- **A host that was down** at a job's start runs the renewals and the
+  verification when it boots, under the lock below; the OS update and the pull
+  skip the day.
+
+**The maintenance lock.** Each daily job's unit takes
+`/run/alcove-maintenance/lock` in its own `ExecStart`, before the job acts, and
+holds it until the job ends, so no two jobs, and no job and a host hand-off,
+run at once. The lock file is in `/run/alcove-maintenance`, a directory only
+root can enter (mode 0700, owned by root), so no account but root can open the
+lock, and none can hold it. A file directly under `/run` would not do: `flock`
+creates it readable by everyone, and any account can hold a lock on a file it
+can read. The tmpfiles entry `infra/tmpfiles.d/alcove-maintenance.conf` makes the
+directory at every boot, and each `install.sh` that installs a locked unit
+(the relay's, the broker's and the host pull's) installs it as
+`/etc/tmpfiles.d/alcove-maintenance.conf` and runs `systemd-tmpfiles --create`
+on it, so the directory exists before any unit runs. Every unit's `ExecStart`
+has the same shape:
+
+    /usr/bin/flock -o -w 7200 /run/alcove-maintenance/lock /usr/bin/timeout -k 30 <maximum - 30> <command>
+
+- **The wait.** A job waits up to two hours for the lock. When it is still held
+  then, `flock` exits 1 without running the job and the unit fails, so a
+  skipped renewal, update or verification shows as a failed unit
+  (`systemctl --failed`), not as a success.
+- **The maximum.** Holding the lock, `timeout` sends the job TERM 30 seconds
+  before its maximum and KILL at it. `-o` keeps the job from inheriting the
+  lock, so a process it leaves behind does not hold it.
+- **The start timeout.** Each unit sets `TimeoutStartSec=infinity`: the wait and
+  `timeout` already bound the run, and a finite start timeout would have to
+  cover both.
+- **By hand.** To run a command under the lock, as root:
+  `flock /run/alcove-maintenance/lock <command>`. A daily job's unit started
+  while the lock is held waits for it like a scheduled run, and fails the same
+  way.
+
 ## Certificates
 
 Let's Encrypt over DNS-01, on a systemd timer, driven through `lego` (default,
@@ -607,22 +676,20 @@ hook does the thing that certainly works. A restart drops any allocation in
 flight, so the hook restarts only when the certificate or key it deploys differs
 from the copy already in `/etc/alcove-relay/certs` in content or owner -- on
 most days the timer fires, the ACME client renews nothing and the relay keeps
-running -- and the timer runs at a fixed early hour for the day it does renew.
+running -- and the timer runs in [the daily schedule](#the-daily-schedule)
+for the day it does renew.
 
 ## OS updates
 
 On Amazon Linux 2023, `install.sh` installs `alcove-relay-os-update.timer`,
-which upgrades the host to the newest distribution release unattended and
-then runs `verify.sh`. On any other distribution it installs neither unit and
-says so; set up that distribution's own automatic updates there.
+which upgrades the host to the newest distribution release unattended. On any
+other distribution it installs neither unit and says so; set up that
+distribution's own automatic updates there.
 
-**The window.** Every day between 05:00 and 05:30 UTC: the timer fires at 05:00
-UTC with up to 30 minutes of randomized delay. That is after the relay's
-certificate renewal window, 03:00 to 04:00 UTC, and after the window of a broker
-on the same host, 04:30 to 04:45 UTC
-([`infra/broker/README.md`](../broker/README.md)), so a package's restart does
-not land with a certificate's. A host that is down at that time skips the day
-rather than updating at boot.
+**When.** Every day at 08:30 UTC, for at most an hour, after both certificate
+renewals and before the host pull ([The daily schedule](#the-daily-schedule)),
+so a package's restart does not land with a certificate's or an install's. A
+host that is down at that time skips the day rather than updating at boot.
 
 **What it updates.** It runs `dnf -y upgrade --releasever=latest`: every
 installed package, to its version in the newest Amazon Linux 2023 release, so
@@ -652,12 +719,11 @@ URL.
   `dnf needs-restarting -r` says whether a reboot is pending; the reboot is the
   operator's to schedule.
 
-**The verification.** After a successful upgrade the unit starts
-`alcove-relay-verify.service` and waits for it, so the relay is checked the same
-way the daily verification checks it. A failed upgrade or a failed verification
-fails `alcove-relay-os-update.service`:
-`journalctl -u alcove-relay-os-update.service -u alcove-relay-verify.service`
-shows which.
+**The verification.** The unit runs no verification of its own: the daily
+verification runs after it and the host pull, at 10:30 UTC, and checks what
+both left. A failed upgrade fails `alcove-relay-os-update.service`
+(`journalctl -u alcove-relay-os-update.service`), and a relay it broke fails
+`alcove-relay-verify.service`.
 
 **The swapfile.** dnf needs more memory than a 412 MB instance has: on the
 project's t4g.nano with only Amazon Linux 2023's zram swap, reading the newest

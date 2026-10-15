@@ -4,11 +4,11 @@ Description=Renew the Alcove relay's TLS certificate daily
 [Timer]
 # Daily, because the ACME client renews only inside its window. The deploy hook
 # runs every day too, and restarts the relay only on a day the certificate or
-# key changed; the fixed early hour is when that restart is least likely to land
-# on an exchange in flight. The randomized delay keeps several relays off the
-# same second at the authority.
-OnCalendar=*-*-* 03:00:00 UTC
-RandomizedDelaySec=1h
+# key changed. The slot is in the relay host's daily schedule (README.md, The
+# daily schedule).
+OnCalendar=*-*-* 08:00:00 UTC
+# Let's Encrypt asks clients to randomize their renewal time.
+RandomizedDelaySec=5m
 Persistent=true
 
 [Install]
