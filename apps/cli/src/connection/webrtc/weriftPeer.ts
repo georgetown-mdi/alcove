@@ -874,6 +874,10 @@ export async function gatherRelayCandidate(
   let onAbort: (() => void) | undefined;
   try {
     const aborted = new Promise<"aborted">((resolve) => {
+      if (signal.aborted) {
+        resolve("aborted");
+        return;
+      }
       onAbort = () => resolve("aborted");
       signal.addEventListener("abort", onAbort, { once: true });
     });

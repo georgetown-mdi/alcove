@@ -274,9 +274,9 @@ function notReachedMeaning(
   if (server.credential !== undefined) return NOT_REACHED_MEANING;
   if (server.source !== "invitation")
     return (
-      `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
-      "from the exchange's shared secret until the exchange's relay key " +
-      "is enrolled there with alcove enroll-relay."
+      `${NOT_REACHED_MEANING} A relay that takes enrolled keys refuses the ` +
+      "credential derived from the exchange's shared secret until the " +
+      "exchange's relay key is enrolled there with alcove enroll-relay."
     );
   if (enrollment === undefined)
     return (
