@@ -171,7 +171,7 @@ export {
 } from "./connection/peerjsWire";
 export { BoundedInboundFrames } from "./connection/webrtcInboundBounds";
 export type {
-  InboundBoundOptions,
+  InboundFrameLimits,
   InboundOutcome,
 } from "./connection/webrtcInboundBounds";
 export {

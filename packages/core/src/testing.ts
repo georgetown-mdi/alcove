@@ -124,6 +124,12 @@ export {
   unpackFrame,
 } from "./connection/peerjsWire.js";
 
+// The inbound reassembler with lowered limits, so a suite can reach each bound
+// with small frames. It stays out of the main entry point: the spec fixes the
+// limits, and the main entry's BoundedInboundFrames takes none.
+export { boundedInboundFramesWithBounds } from "./connection/webrtcInboundBounds.js";
+export type { InboundBoundOverrides } from "./connection/webrtcInboundBounds.js";
+
 // The header each part of a PSI set begins with, and the byte bound a set's
 // first part is held to, so each WebRTC transport's suite can join the parts a
 // round sent back into the set and drive a first part at that bound's edge.

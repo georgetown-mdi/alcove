@@ -9,7 +9,10 @@ import {
   packCloseSentinel,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
-import { packValue } from "@alcove/core/testing";
+import {
+  boundedInboundFramesWithBounds,
+  packValue,
+} from "@alcove/core/testing";
 import {
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
@@ -434,7 +437,7 @@ test("a partial frame followed by the close sentinel is discarded and the close 
 test("an over-bound datagram fails the connection closed", async () => {
   const { channel, session } = harness();
   const connection = webRtcMessageConnection(session, {
-    inboundBounds: { maxFrameBytes: 64 },
+    inboundFrames: () => boundedInboundFramesWithBounds({ maxFrameBytes: 64 }),
   });
   channel.deliver(packValue({ body: new Uint8Array(256) }));
   const refusal = await connection.receive().then(

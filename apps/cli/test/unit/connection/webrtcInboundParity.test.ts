@@ -5,7 +5,10 @@ import {
   ConnectionError,
   toFrameBytes,
 } from "@alcove/core";
-import { chunkPacked } from "@alcove/core/testing";
+import {
+  boundedInboundFramesWithBounds,
+  chunkPacked,
+} from "@alcove/core/testing";
 import {
   WEBRTC_CHUNK_ENVELOPE_FIXTURES,
   WEBRTC_INBOUND_FRAME_FIXTURES,
@@ -15,7 +18,6 @@ import {
   preScanVerdict,
 } from "@alcove/testkit/webrtcInboundFrames";
 
-import type { InboundBoundOptions } from "@alcove/core";
 import type {
   CappedRule,
   FrameVerdict,
@@ -41,14 +43,14 @@ import type {
 // app's test tree. The reassembler and the scan it is driven against are the ones
 // this app links from core's BUILD, not a source copy.
 
-/** The reassembler's overrides for a fixture's limits. Only the two limits the
- * fixture set varies are set; every other bound stays at its production default, as
- * it does on the web leg. */
-function boundsFor(fixture: WebrtcFrameFixture): InboundBoundOptions {
-  return {
+/** A reassembler at a fixture's limits. Only the two limits the fixture set
+ * varies are set; every other bound stays at its production default, as it does
+ * on the web leg. */
+function reassemblerFor(fixture: WebrtcFrameFixture): BoundedInboundFrames {
+  return boundedInboundFramesWithBounds({
     maxReassemblyDepth: fixture.limits.maxDepth,
     maxStringBytes: fixture.limits.maxStringBytes,
-  };
+  });
 }
 
 /** The reassembler's verdict on a fixture delivered as `datagrams`, in order. */
@@ -56,7 +58,7 @@ function reassemblerVerdict(
   fixture: WebrtcFrameFixture,
   datagrams: Array<Uint8Array>,
 ): FrameVerdict {
-  const bounds = new BoundedInboundFrames(boundsFor(fixture));
+  const bounds = reassemblerFor(fixture);
   try {
     let outcome = { kind: "pending" } as ReturnType<
       BoundedInboundFrames["accept"]
@@ -173,7 +175,7 @@ describe("the CLI reassembler against core's pre-scan", () => {
     // ones before it: a reassembler that decided early would pass those tests while
     // delivering (or refusing) a frame it had not seen whole.
     for (const fixture of WEBRTC_INBOUND_FRAME_FIXTURES) {
-      const bounds = new BoundedInboundFrames(boundsFor(fixture));
+      const bounds = reassemblerFor(fixture);
       for (const datagram of chunkedDatagrams(fixture).slice(0, -1)) {
         expect(bounds.accept(datagram), fixture.label).toEqual({
           kind: "pending",

@@ -14,7 +14,10 @@ import {
   setDiagnosticSink,
   setLogLevel,
 } from "@alcove/core";
-import { packValue } from "@alcove/core/testing";
+import {
+  boundedInboundFramesWithBounds,
+  packValue,
+} from "@alcove/core/testing";
 
 import {
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
@@ -631,7 +634,8 @@ test("an over-cap inbound frame fails the connection closed", async () => {
       ...common,
       role: "inviter",
       // A cap far below any real frame, so a modest send trips it.
-      inboundBounds: { maxFrameBytes: 4_096 },
+      inboundFrames: () =>
+        boundedInboundFramesWithBounds({ maxFrameBytes: 4_096 }),
     }),
     openWebRtcMessageConnection({ ...common, role: "acceptor" }),
   ]);

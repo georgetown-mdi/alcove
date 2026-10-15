@@ -3,7 +3,6 @@ import {
   ConnectionError,
   DeliveryUnconfirmedError,
   INACTIVITY_TIMEOUT_KEY,
-  MAX_WEBRTC_FRAME_BYTES,
   PeerJsFrameEncoder,
   QueuedMessageConnection,
   asConnectionError,
@@ -130,11 +129,11 @@ export interface WebRtcMessageConnectionOptions {
   /** Outbound window bounds; tests only. */
   sendWindowBytes?: number;
   sendWindowLowBytes?: number;
-  /** Per-bound overrides for the inbound reassembler; tests only. Its
+  /** Builds the inbound reassembler; tests only, to lower its limits. Its
    * `maxFrameBytes` is also the bound the connection states for the partner's
    * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
    * sets to. */
-  inboundBounds?: ConstructorParameters<typeof BoundedInboundFrames>[0];
+  inboundFrames?: () => BoundedInboundFrames;
 }
 
 /**
@@ -246,7 +245,7 @@ export function webRtcMessageConnection(
   return new QueuedMessageConnection(
     (controls) => {
       const encoder = new PeerJsFrameEncoder();
-      const bounds = new BoundedInboundFrames(options?.inboundBounds);
+      const bounds = options?.inboundFrames?.() ?? new BoundedInboundFrames();
       let peerCloseRead = false;
       let sendStopped = false;
       let sendQueue: Promise<void> = Promise.resolve();
@@ -323,8 +322,7 @@ export function webRtcMessageConnection(
       );
 
       return {
-        outboundWebRtcFrameBound: () =>
-          options?.inboundBounds?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES,
+        outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
         send: (data) => {
           const frame = sendQueue.then(() => sendFrame(data));
           sendQueue = frame.catch(() => {});
