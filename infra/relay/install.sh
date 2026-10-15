@@ -338,8 +338,8 @@ fi
 
 # --- units ------------------------------------------------------------------
 # One service name whichever runtime this is: certs/deploy-hook.sh restarts
-# alcove-relay.service by name and alcove-relay-verify.service requires it, so
-# only the file that defines it differs.
+# alcove-relay-front.service by name and alcove-relay-verify.service requires
+# alcove-relay.service, so only the file that defines each differs.
 for service in alcove-relay alcove-relay-front; do
   if [ "$RUNTIME" = podman ]; then
     install -d -m 755 "$QUADLET_DIR"

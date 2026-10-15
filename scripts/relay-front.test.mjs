@@ -497,10 +497,15 @@ describe("front.conf.tmpl", () => {
     const totalQuota = Number(
       /^ALCOVE_RELAY_TOTAL_QUOTA=(\d+)$/m.exec(read("relay.env.example"))[1],
     );
-    // Four connections for each TURN client, and room for every allocation
-    // the total quota admits.
+    const brokerConnections = Number(
+      /worker_connections (\d+);/.exec(read("../broker/nginx.conf.tmpl"))[1],
+    );
+    // Four connections for each TURN or routed-service client, room for every
+    // allocation the total quota admits, and room for every WebSocket client
+    // the broker's front admits at two connections each.
     expect(connections / 4).toBeGreaterThanOrEqual(totalQuota);
-    expect(connections).toBeLessThanOrEqual(512);
+    expect(connections / 4).toBeGreaterThanOrEqual(brokerConnections / 2);
+    expect(connections).toBeLessThanOrEqual(1024);
   });
 
   it("keeps an idle connection longer than coturn's allocation lifetime", () => {

@@ -52,7 +52,7 @@ The pieces a WebSocket path would build on, with where each is stated:
   Enrolling an exchange needs the relay-owner token: the CLI's `alcove enroll-relay`, or a saved exchange's page in the browser ([MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#when-your-relay-runs-a-registrar)); a one-shot browser exchange enrolls nothing ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), the registrar row).
 - **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)).
   The browser keeps its own relay setting in `localStorage` (`apps/web/src/psi/transport/ownRelaySetting.ts`).
-- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host, and one listener on 443, the relay's 443 front, which passes each connection unopened to coturn or the broker's front by the server name it asks for ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs); [infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
+- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host, and one listener on 443, the relay's 443 front, which routes each connection by the server name it asks for: to the broker's front unopened, or to coturn, terminating the TURN client's TLS itself ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs); [infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
   The front closes a WebSocket idle for 300 s; the PeerJS heartbeat every 5 s keeps a signaling socket alive.
 - **What the relay measurements established.**
   TURN over TLS on 443 carried a UDP-blocked CLI party on a real path, and through a TLS-inspecting proxy once that proxy's CA was trusted on the CLI host; the interception point read the STUN and TURN envelope in the clear and passed it ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-1-does-turn-over-tls-on-443-carry-a-restrictive-network)).
@@ -176,8 +176,8 @@ The rows it adds to [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-o
 The broker and the relay each need 443 for the reason TURN does.
 The owner's choice (2026-10-04) is one proxy on 443, and the relay reference builds it as [the 443 front](../../infra/relay/README.md#the-443-front):
 
-- **What it does.** It reads each connection's TLS server name and passes the connection, TLS unopened, to a service on loopback; coturn takes every connection no route claims.
-  It has no key, so each service presents its own certificate.
+- **What it does.** It reads each connection's TLS server name and passes a routed connection, TLS unopened, to its service on loopback, which presents its own certificate.
+  Every connection no route claims is TURN: the front terminates its TLS under the relay's certificate and passes plain TURN to coturn on loopback.
 - **Where it runs.** It is installed on the project's relay host, routing the broker's name to the broker's front ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs)).
   TURN allocations and a signaling WebSocket passed through it there; a relayed exchange from a client admitted to 443 only is not yet measured ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
 - **What the relay adds.** One more route, its own name to its loopback port, with a certificate for that name and no listener of its own ([infra/relay/README.md, The 443 front](../../infra/relay/README.md#the-443-front), The WebSocket relay).

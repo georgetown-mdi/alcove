@@ -711,9 +711,8 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   or ChaCha20-Poly1305 (`ssl_protocols`, `ssl_ciphers` in
   `front.conf.tmpl`); TLS 1.3's suites are OpenSSL's defaults.
   **Dated, 2026-10-14:** TLS for TURN is the front's, at the settings above.
-  coturn opens no TLS listener, so its own TLS settings (`no-tlsv1`,
-  `no-tlsv1_1`, `cert`, `pkey`) are gone from `turnserver.conf.tmpl`, and
-  nothing coturn does or ignores sets the relay's TLS floor.
+  coturn opens no TLS listener and `turnserver.conf.tmpl` sets no TLS
+  option, so nothing coturn does or ignores sets the relay's TLS floor.
 - **Why the server name.** The alternatives weighed against it, a test of the
   first bytes and ALPN, are in
   [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
@@ -731,10 +730,15 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
   not cut. Each server applies the same bounds.
 - **Connections and memory.** One worker (`worker_processes 1`) holds at
-  most 512 connections at once (`worker_connections`), a client's side and
-  the service's side of each hop counting one. A TURN client counts four, so
-  512 is 128 TURN clients, three times coturn's `total-quota` of 40
-  allocations, or 256 registrar clients. That is the bound on the front's
+  most 1024 connections at once (`worker_connections`), a client's side and
+  the service's side of each hop counting one. A TURN client counts four
+  (the server on 443's two sides, the TURN server's two sides), and so does
+  a client of a routed service (the server on 443's two sides, the route
+  hop's two sides). A registrar client counts two. So 1024 is 256 TURN
+  clients, six times coturn's `total-quota` of 40 allocations, 256 clients
+  of routed services, twice the 128 WebSocket clients the broker's front
+  admits (`worker_connections 256` in `infra/broker/nginx.conf.tmpl`, two
+  per client), or 512 registrar clients. That is the bound on the front's
   memory: each TURN client holds the TURN server's TLS session and a buffer
   each way on two hops, which the host run reads under load
   (below). The instance has 412 MB and no headroom (a full `npm ci` there
@@ -749,7 +753,7 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   `memory.peak` there, with `docker stats --no-stream alcove-relay-front`,
   idle and while a batch of `stun-binding.py --hold` probes holds connections
   open through the front, and `free -m` before and after.
-- **One limit for all three services.** The 512 connections are shared by
+- **One limit for all three services.** The 1024 connections are shared by
   TURN, the registrar and every routed service, and the front sets no limit
   per client address. One host that opens that many connections, and holds
   them or replaces each as the 10 s or 900 s bound closes it, keeps every

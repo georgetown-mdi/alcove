@@ -22,10 +22,12 @@
 worker_processes 1;
 error_log /dev/stderr warn;
 pid /tmp/nginx.pid;
-# A TURN client counts four connections (443, the TURN server's two sides, and
-# coturn's), a registrar client two, so 512 is 128 TURN clients, three times
-# coturn's total-quota of 40 allocations. The bound on the front's memory.
-events { worker_connections 512; }
+# Each side of each hop counts one. A TURN client or a routed-service client
+# counts four (the 443 server's two sides, then the 5347 or 5348 server's), a
+# registrar client two, so 1024 is 256 clients of TURN or a routed service:
+# six times coturn's total-quota of 40 allocations, twice the broker front's
+# 128 WebSocket clients. The bound on the front's memory.
+events { worker_connections 1024; }
 stream {
   access_log off;
   map $ssl_preread_server_name $alcove_hop {
