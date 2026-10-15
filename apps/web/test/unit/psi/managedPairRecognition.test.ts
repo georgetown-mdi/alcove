@@ -408,6 +408,7 @@ describe("what a re-take checks and writes", () => {
     const decided = decideRetake(enrolled, {
       ...runnable(),
       relayRegistrar: {
+        // This value bypasses the registrar url schema on purpose; the schema would refuse it.
         url: "https://RELAY.example.org:443",
         exchangeId: "riverbend-q3",
       },

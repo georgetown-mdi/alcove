@@ -84,6 +84,16 @@ test("a registrar url holding a user is refused without repeating it", () => {
 });
 
 test.each([
+  ["an explicit port 443", "https://hidden-host.example.org:443"],
+  ["an upper-case host", "https://Hidden-Host.example.org"],
+])("a registrar url with %s is refused without repeating it", (_, url) => {
+  const result = webrtc({ url, exchange_id: "exchange-1" });
+  expect(messages(result)).toContain("must be written as https://");
+  expect(JSON.stringify(result)).not.toContain("hidden-host");
+  expect(JSON.stringify(result)).not.toContain("Hidden-Host");
+});
+
+test.each([
   ["-leading-dash"],
   ["a".repeat(129)],
   ["has space"],

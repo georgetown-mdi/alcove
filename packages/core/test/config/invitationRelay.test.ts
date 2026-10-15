@@ -297,6 +297,35 @@ describe("the invitation's relay locator", () => {
     },
   );
 
+  test.each([
+    ["an explicit port 443", "https://hidden-host.example.org:443"],
+    ["an upper-case host", "https://Hidden-Host.example.org"],
+  ])(
+    "a registrar url with %s is refused at decode and at mint without its value",
+    async (_, registrar) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      });
+      const decodeError: unknown = await decodeInvitation(
+        await encodeRawInvitation(token),
+      ).catch((caught: unknown) => caught);
+      const mintError: unknown = await encodeInvitation(token).catch(
+        (caught: unknown) => caught,
+      );
+      for (const error of [decodeError, mintError]) {
+        expect(error).toBeInstanceOf(ZodError);
+        const message = (error as ZodError).message;
+        expect(message).toContain(
+          `a relay locator's registrar ${EXACT_ORIGIN}`,
+        );
+        expect(message).not.toContain("hidden-host");
+        expect(message).not.toContain("Hidden-Host");
+      }
+    },
+  );
+
   test.each([["https://registrar.example.org"], [REGISTRAR]])(
     "the registrar url %s, written as its origin, is accepted at mint and at decode",
     async (registrar) => {
