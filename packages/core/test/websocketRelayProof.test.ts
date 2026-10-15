@@ -195,6 +195,7 @@ describe("parseWebSocketRelayProof", () => {
     ["a negative expiry", text(`${label}\ninviter\n-1`), tag],
     ["a trailing LF", text(`${label}\ninviter\n1\n`), tag],
     ["a CR LF separator", text(`${label}\r\ninviter\r\n1`), tag],
+    ["a leading BOM", text(`﻿${label}\ninviter\n1`), tag],
     ["a fourth field", text(`${label}\ninviter\n1\n2`), tag],
     ["a missing expiry", text(`${label}\ninviter`), tag],
     [

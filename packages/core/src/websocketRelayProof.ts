@@ -1,10 +1,4 @@
-import {
-  bytesEqual,
-  decFatal,
-  enc,
-  hkdfDerive,
-  hmacSha256,
-} from "./utils/crypto.js";
+import { bytesEqual, enc, hkdfDerive, hmacSha256 } from "./utils/crypto.js";
 import { InternalConsistencyError } from "./errors.js";
 import { relayKeyBytes } from "./relayRegistrarProof.js";
 import { RENDEZVOUS_ROLES } from "./rendezvous.js";
@@ -18,6 +12,13 @@ const PROOF_TAG_BYTES = 32;
 // Longer than any well-formed message (the label, the longer role, a
 // safe-integer expiry and two separators), so a parse decodes nothing larger.
 const MAX_PROOF_MESSAGE_BYTES = 128;
+
+// ignoreBOM keeps a leading U+FEFF in the text, so the layout check refuses it
+// instead of the decoder stripping it.
+const proofMessageDecoder = new TextDecoder("utf-8", {
+  fatal: true,
+  ignoreBOM: true,
+});
 
 const PROOF_MESSAGE_PATTERN = new RegExp(
   `^${PROOF_MESSAGE_LABEL}\\n(${RENDEZVOUS_ROLES.join("|")})\\n(0|[1-9][0-9]*)$`,
@@ -188,7 +189,7 @@ export function parseWebSocketRelayProof(
   }
   let text: string;
   try {
-    text = decFatal.decode(message);
+    text = proofMessageDecoder.decode(message);
   } catch {
     throw malformed("the message is not UTF-8");
   }
