@@ -17,6 +17,7 @@ import {
   PeerAbortError,
   ReceiptVerificationError,
   causeChainSome,
+  ConnectionError,
   isPeerWaitTimeout,
   keepOperatorSuppliedText,
   messageWithOperatorText,
@@ -1080,12 +1081,11 @@ async function authenticateRun(params: {
     }
   }
 
-  // Wrap mc in the AEAD decorator when the handshake negotiated it, and
-  // run the PSI exchange through `secure` so every frame is encrypted
-  // on the wire. Gated on applyEncryption -- the transcript-bound OR of
-  // both parties' requests -- rather than bare authentication state;
-  // this party requests it on every channel, so the gate is set
-  // whenever a handshake completes.
+  // Wrap mc in the AEAD decorator and run the PSI exchange through `secure`
+  // so every frame is encrypted on the wire. applyEncryption is the
+  // transcript-bound OR of both parties' requests and this party requests it
+  // on every channel, so a handshake that completes without it is refused
+  // rather than run bare.
   //
   // create() derives the two per-direction keys via HKDF and registers
   // no listeners on mc, so a signal arriving before it resolves needs
@@ -1095,12 +1095,16 @@ async function authenticateRun(params: {
   // decorator holds only CryptoKey objects). The signalReceived check
   // below mirrors the post-open and post-synchronize guards, bailing
   // before runExchange so the encrypted stream never starts against an
-  // already-closed mc; it runs whether or not the wrap was applied,
-  // since a signal may also have arrived during the onAuthenticated
-  // hook above.
-  if (applyEncryption) {
-    run.secure = await EncryptedMessageConnection.create(mc, sessionKey, role);
+  // already-closed mc; it runs after the wrap is created, since a
+  // signal may also have arrived during the onAuthenticated hook above.
+  if (!applyEncryption) {
+    throw new ConnectionError(
+      "the key exchange completed without the application-layer encryption " +
+        "this side requested",
+      "usage",
+    );
   }
+  run.secure = await EncryptedMessageConnection.create(mc, sessionKey, role);
   if (run.signalReceived !== undefined) {
     throw new Error(
       `interrupted by ${run.signalReceived} during channel encryption setup`,

@@ -266,21 +266,21 @@ function relayedMarker(relayed: ReadonlyArray<RelayedDatagram>): number {
   return relayed.filter((datagram) => datagram.bytes.includes(marker)).length;
 }
 
-test("with the request forced off on both parties, the server reads the disclosed payload", async () => {
+test("with the request forced off on both parties, each run is refused and no payload crosses the server", async () => {
   mockState.forceRequestEncryptionOff = true;
   const settled = await runThroughBroker();
-  expect(settled.inviter.status).toBe("fulfilled");
-  expect(settled.acceptor.status).toBe("fulfilled");
+  for (const party of [settled.inviter, settled.acceptor]) {
+    expect(party.status).toBe("rejected");
+    const reason = (party as PromiseRejectedResult).reason;
+    expect(reason).toBeInstanceOf(ConnectionError);
+    expect(reason.kind).toBe("usage");
+    expect(reason.message).toContain(
+      "without the application-layer encryption",
+    );
+  }
   // Each party asked for the wrap; only the override above withdrew it.
   expect(mockState.requested).toEqual([true, true]);
-  expect(await resultOf("acceptor")).toContain(PAYLOAD_MARKER);
-
-  // The bytes the server forwarded hold the payload value in the clear, and
-  // every frame after the key exchange is a plain application frame.
-  expect(relayedMarker(broker!.relayed())).toBeGreaterThan(0);
-  const frames = applicationFrames(broker!.relayed());
-  expect(frames.some((frame) => isKexMessage(frame.value))).toBe(true);
-  expect(frames.some((frame) => isAeadEnvelope(frame.value))).toBe(false);
+  expect(relayedMarker(broker!.relayed())).toBe(0);
 }, 120_000);
 
 test("on the CLI's own path, no frame after the key exchange crosses the server outside an envelope", async () => {

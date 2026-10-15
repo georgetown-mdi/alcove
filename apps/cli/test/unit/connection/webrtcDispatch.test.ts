@@ -33,6 +33,8 @@ const mockState = vi.hoisted(() => ({
     role: string;
     requestEncryption: boolean;
   }>,
+  /** When set, the handshake result reports the application-layer encryption as not applied. */
+  reportEncryptionOff: false,
   /** The connection each party's runExchange was handed. */
   exchangeConnections: [] as Array<unknown>,
   /** Every `log.info` line the run emitted, with its arguments joined as a console joins them. */
@@ -77,12 +79,15 @@ vi.mock("@alcove/core", async (importActual) => {
         // it -- the argument list itself has no party name.
         const side = connection === pair.inviter ? "inviter" : "acceptor";
         mockState.handshakes.push({ side, role, requestEncryption });
-        return actual.authenticateConnection(
+        const result = await actual.authenticateConnection(
           connection,
           params,
           role,
           requestEncryption,
         );
+        return mockState.reportEncryptionOff
+          ? { ...result, applyEncryption: false }
+          : result;
       },
     ),
     runExchange: vi.fn(async (connection: unknown) => {
@@ -250,6 +255,7 @@ beforeEach(() => {
   mockState.dials.length = 0;
   mockState.handshakes.length = 0;
   mockState.exchangeConnections.length = 0;
+  mockState.reportEncryptionOff = false;
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
 });
@@ -473,6 +479,25 @@ test("a finished exchange whose last message the partner never confirmed warns t
   expect(mockState.warnLines.filter((line) => line === warning)).toHaveLength(
     1,
   );
+});
+
+test("a handshake that completes without the encryption is refused and no exchange runs", async () => {
+  mockState.reportEncryptionOff = true;
+  const { ConnectionError } = await import("@alcove/core");
+  const outcomes = await Promise.allSettled([
+    runParty("inviter"),
+    runParty("acceptor"),
+  ]);
+  for (const outcome of outcomes) {
+    expect(outcome.status).toBe("rejected");
+    const reason = (outcome as PromiseRejectedResult).reason;
+    expect(reason).toBeInstanceOf(ConnectionError);
+    expect(reason.kind).toBe("usage");
+    expect(reason.message).toContain(
+      "without the application-layer encryption",
+    );
+  }
+  expect(mockState.exchangeConnections).toHaveLength(0);
 });
 
 test("any other close failure of a finished exchange is not raised to the operator", async () => {
