@@ -703,8 +703,8 @@ been confirmed at the relay registrar a run registers at
   registration that run confirms before it dials; a refusal there ends the run
   with exit 77 and the re-enrollment step, with the secret unchanged.
 - **What supersedes it.** A run that does not register -- its connection names
-  no registrar, or it relays through the invitation's relay -- leaves the
-  field, and its own rotation write, which stores none, drops it.
+  no registrar -- leaves the field, and its own rotation write, which stores
+  none, drops it.
 - **Across applications.** The console's check of a mounted key file
   validates the field as the command line does, so it reads the file and
   refuses one whose field is not an ISO 8601 instant. The web application's
