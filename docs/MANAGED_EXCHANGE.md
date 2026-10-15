@@ -1102,11 +1102,12 @@ that one: enroll the exchange again first. The export writes the relay your
 partner's invitation named as it was named, the site's
 [default relay](DEPLOYMENT.md#the-default-relay) and its registrar included: a
 command-line run lists it beside your own relay, as a run here does. A run
-registers the exchange at that registrar before it connects only when it
-allocates on the invitation's relay, which an export with its own `turn`
-entries does not. The export panel names that registrar and says so, since
-whoever runs it then learns the network address of the machine running the
-exchange.
+registers the exchange at that registrar before it connects only when the
+relay it allocates on, the first TURN url it lists, is one the invitation
+names and takes the credential the run derives. The export panel names that
+registrar and says, from the configuration it writes, whether a run
+registers there, since whoever runs it then learns the network address of
+the machine running the exchange.
 
 ### Bringing a command-line configuration back
 

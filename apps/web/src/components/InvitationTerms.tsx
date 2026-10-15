@@ -132,9 +132,8 @@ const DUPLICATE_MATCHES_HEADLINE = {
 function invitationRelayRegistrarLine(registrar: Displayable): string {
   return isConsoleBuild()
     ? `A run registers this exchange at ${registrar} before it connects ` +
-        "only when that relay is the one it allocates on, with no turn entry " +
-        "of your own listed first, and whoever runs that registrar then " +
-        "learns this machine's network address."
+        "only when that relay is the one it allocates on, and whoever runs " +
+        "that registrar then learns this machine's network address."
     : `The invitation also names this relay's registrar: ${registrar}`;
 }
 

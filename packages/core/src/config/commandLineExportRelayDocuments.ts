@@ -1,7 +1,8 @@
 // The `alcove.yaml` documents the web app's command-line export writes for a
 // managed exchange enrolled with a relay registrar, one per side, each with the
-// registrar a command-line run of it registers at and the one it enrolls at
-// without a token. One set behind
+// registrar a command-line run of it registers at and the registrar its
+// `invitation_relay` names, where a run enrolls without a token only when the
+// relay it allocates on is one the invitation names. One set behind
 // the `./testing` subpath, so the composer that writes the file and the CLI
 // loader that reads it cannot drift: the web leg composes each document from
 // the inputs below and compares the YAML data it writes, and the CLI leg loads
@@ -36,8 +37,9 @@ export interface CommandLineExportRelayCase {
   /** The registrar a command-line run of the document registers at, or null
    * where it registers nothing. */
   readonly runRegistrar: RelayRegistrar | null;
-  /** The registrar a command-line run of the document enrolls at without a
-   * token, or null where it enrolls nowhere. */
+  /** The registrar the document's `invitation_relay` names, or null where it
+   * names none. A command-line run enrolls there without a token only when
+   * the relay it allocates on is one the invitation names. */
   readonly invitationRegistrar: string | null;
   /** Why this record exports that, in one line; the parity tests' title. */
   readonly because: string;
@@ -175,6 +177,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
     because:
       "its runs list this party's own TURN relay, which they register at the " +
       "registrar, beside the relay the invitation named, whose registrar " +
-      "they enroll at without a token",
+      "they enroll at only when the relay they allocate on is one the " +
+      "invitation names",
   },
 };
