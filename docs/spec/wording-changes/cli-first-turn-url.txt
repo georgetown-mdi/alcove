@@ -1,12 +1,15 @@
-# A CLI run gathers relay candidates from the first TURN url it lists and
-# server-reflexive candidates from the first STUN url.
+# A CLI run allocates a relay on the first TURN url it lists and queries the
+# first STUN url; the limit is stated once in PROTOCOL.md, and the pins name
+# the parser test and the gathering test that vouch for it.
 - - -> **A CLI run gathers from one TURN url and one STUN url.**
 - - -> The CLI's WebRTC library takes the first TURN url and the first STUN url of the list it is given, so a CLI run gathers relay candidates from the first TURN url it lists (its own first `turn` entry, else the invitation's first url) and server-reflexive candidates from the first STUN url it lists (its own first `stun` url, else the invitation's first).
-- - -> A CLI run whose connection has its own `turn` entry relays through that entry and never through the invitation's relay.
+- - -> A CLI run whose connection has its own `turn` entry allocates only on that entry and never on the invitation's relay; the exchange may still pass through the invitation's relay by way of the partner's relayed candidates.
 - - -> The registrar enrollment of the invitation's relay runs regardless, and a browser run uses every server it lists.
+- What a run states about the relays it uses, its relay credential notice among them, names the invitation's relay beside the party's own, and a report that no relay candidate was gathered means none was gathered from any relay the run lists. -> What a run states about the relays it uses, its relay credential notice among them, names the invitation's relay beside the party's own, and a report that no relay candidate was gathered means none was gathered from any relay a browser run lists, or from the one TURN url a CLI run gathers from.
 - - -> **werift keeps the first TURN url and the first STUN url of the `iceServers` list and drops the rest.**
 - - -> Its `parseIceServers`, given a list of two STUN urls and two TURN urls, returns options holding the first STUN address and the first TURN address with its username and credential only.
-- - -> A CLI run therefore gathers relay candidates from the first TURN url it lists and server-reflexive candidates from the first STUN url, and the relay documents state that ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)).
-- - -> Driven through the parser itself (`test/unit/connection/webrtcIceConfiguration.test.ts`).
-- - -> Run `npm run test:unit -w apps/cli -- test/unit/connection/webrtcIceConfiguration.test.ts` for the one-TURN-url, one-STUN-url assumption.
-- - -> A bump that takes a further url reddens there, and the relay statements in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator), [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectioninvitation_relay) and [CLI.md](../CLI.md#turn) are then updated with it.
+- - -> A CLI run therefore gathers relay candidates from the first TURN url it lists and server-reflexive candidates from the first STUN url, as [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) states.
+- - -> The parser test (`test/unit/connection/webrtcIceConfiguration.test.ts`) pins what `parseIceServers` keeps.
+- - -> The integration test (`test/integration/webrtc/firstTurnUrl.test.ts`) shows what a real peer contacts: a peer given two STUN and two TURN loopback servers, each answering with an error at once, sends requests to the first of each kind only by the time its gathering completes.
+- - -> Run `npm run test:integration:webrtc -w apps/cli -- test/integration/webrtc/firstTurnUrl.test.ts` and `npm run test:unit -w apps/cli -- test/unit/connection/webrtcIceConfiguration.test.ts` for the one-TURN-url, one-STUN-url assumption.
+- - -> A bump that contacts a further url reddens in the integration test, and the stated limit in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) is then updated with it; the other documents link to it.
