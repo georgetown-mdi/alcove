@@ -422,7 +422,7 @@ if [ -n "${ALCOVE_RELAY_METRICS_REGION:-}" ]; then
     || die "the test publish to CloudWatch failed (above), so no alarm would see the registrar's counts; fix the cause and run again, or unset ALCOVE_RELAY_METRICS_REGION in $ENV_FILE"
   systemctl enable --now alcove-relay-metrics.timer \
     || die "alcove-relay-metrics.timer did not start; no alarm would see the registrar's counts. journalctl -u alcove-relay-metrics.timer"
-  log "the registrar's counts are published to CloudWatch in $ALCOVE_RELAY_METRICS_REGION every 5 minutes outside hours 00 and 03-07 UTC"
+  log "the registrar's counts are published to CloudWatch in $ALCOVE_RELAY_METRICS_REGION every 5 minutes outside hours 08 to 10 UTC"
 else
   systemctl disable --now alcove-relay-metrics.timer 2>/dev/null || true
   log "ALCOVE_RELAY_METRICS_REGION is unset in $ENV_FILE, so the registrar's counts are not published"

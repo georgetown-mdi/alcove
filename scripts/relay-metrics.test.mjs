@@ -26,12 +26,31 @@ const read = (path) => readFileSync(resolve(repoRoot, path), "utf8");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 const PUBLISH = resolve(repoRoot, "infra/relay/aws/publish-metrics.sh");
 
-const COUNTS = [
-  "tokenless_enrollments",
-  "rate_limit_refusals",
-  "client_cap_refusals",
-  "tokenless_ceiling_refusals",
-];
+const sortedNames = (names) => [...names].sort();
+
+// The names the registrar writes, from its own COUNTER_NAMES.
+const COUNTS = (() => {
+  const match = read("infra/relay/registrar.py").match(
+    /^COUNTER_NAMES = \(([^)]*)\)/m,
+  );
+  expect(match, "registrar.py defines COUNTER_NAMES").not.toBeNull();
+  return [...match[1].matchAll(/"([a-z_]+)"/g)].map((name) => name[1]);
+})();
+
+// The backticked metric names in the Alcove/Relay rows of a markdown table
+// whose first cell is an alarm name, other than the heartbeat.
+const alarmedCounts = (path) => {
+  const names = [];
+  for (const row of read(path).split("\n")) {
+    if (!/^\| `alcove-relay-/.test(row) || !row.includes("`Alcove/Relay`")) {
+      continue;
+    }
+    for (const token of row.matchAll(/`([a-z]+(?:_[a-z]+)+)`/g)) {
+      if (token[1] !== "publisher_heartbeat") names.push(token[1]);
+    }
+  }
+  return names;
+};
 
 const tmpDirs = [];
 
@@ -334,12 +353,25 @@ describe("publish-metrics.sh", () => {
     });
   });
 
-  it("publishes the counts the registrar writes and the README names", () => {
-    const readme = read("infra/relay/README.md");
-    for (const name of COUNTS) {
-      expect(read("infra/relay/aws/publish-metrics.sh")).toContain(name);
-      expect(readme).toContain(`\`${name}\``);
-    }
+  it("publishes exactly the counts the registrar writes", () => {
+    expect(COUNTS).toContain("client_cap_refusals");
+    expect(COUNTS).toContain("tokenless_ceiling_refusals");
+    const declared = read("infra/relay/aws/publish-metrics.sh").match(
+      /^COUNTS=\(([^)]*)\)/m,
+    );
+    expect(declared, "publish-metrics.sh declares COUNTS").not.toBeNull();
+    expect(sortedNames(declared[1].trim().split(/\s+/))).toEqual(
+      sortedNames(COUNTS),
+    );
+  });
+
+  it("is alarmed on exactly the counts the registrar writes, in the README and provision.md", () => {
+    expect(sortedNames(alarmedCounts("infra/relay/README.md"))).toEqual(
+      sortedNames(COUNTS),
+    );
+    expect(sortedNames(alarmedCounts("infra/relay/aws/provision.md"))).toEqual(
+      sortedNames(COUNTS),
+    );
   });
 });
 
@@ -363,6 +395,7 @@ const setting = (text, name) => {
 };
 
 const minutes = (span) => {
+  if (span === "0") return 0;
   const match = span.match(/^(\d+)(min|m|h)$/);
   expect(match, `${span} is a whole number of minutes or hours`).not.toBeNull();
   return Number(match[1]) * (match[2] === "h" ? 60 : 1);
@@ -407,15 +440,18 @@ const publishTimes = () => {
   return { hours, times };
 };
 
-const QUIET_HOURS = [0, 3, 4, 5, 6, 7];
+// The hours the daily jobs run in (README.md, The daily schedule).
+const QUIET_HOURS = [8, 9, 10];
 
 describe("alcove-relay-metrics.timer", () => {
   it("fires in no hour the README keeps it out of", () => {
     const { hours } = publishTimes();
     for (const hour of QUIET_HOURS) expect(hours).not.toContain(hour);
     expect(hours).toHaveLength(24 - QUIET_HOURS.length);
-    expect(read("infra/relay/README.md")).toContain(
-      "except in hour 00 and hours 03 to 07 UTC",
+    const readme = read("infra/relay/README.md");
+    expect(readme).toContain("except in hours 08 to 10 UTC");
+    expect(readme).toContain(
+      "Every daily job on the relay host runs between 08:00 and 11:00 UTC",
     );
   });
 

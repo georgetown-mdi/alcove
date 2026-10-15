@@ -1007,12 +1007,15 @@ put-metric-data` under the instance role.
   `install.sh` leaves the timer disabled elsewhere. The instance role needs
   the permission [aws/provision.md](aws/provision.md), The instance role,
   names.
-- **When.** Every 5 minutes, except in hour 00 and hours 03 to 07 UTC, when
-  the daily verification, the certificate renewals, [the OS
-  update](#os-updates) and the host pull run: dnf alone ran this instance out
-  of memory before it had disk swap. A rise in those hours is published by the next run, so the first
-  datapoint after 08:00 UTC can hold five hours of counts, which is why
-  [the enrollment alarm](#the-alarms) sums 6 hours.
+- **When.** Every 5 minutes, except in hours 08 to 10 UTC, when the daily
+  jobs run ([The daily schedule](#the-daily-schedule)): dnf alone ran this
+  instance out of memory before it had disk swap. A rise in those hours is
+  published by the 11:00 run, so that datapoint can hold three hours of
+  counts, which [the enrollment alarm](#the-alarms) allows for.
+- **No maintenance lock.** The publisher is not a daily job and restarts
+  nothing, so it does not take [the maintenance
+  lock](#the-daily-schedule); the timer keeps it out of the jobs' hours, and
+  a run held behind a job would fail after two hours.
 - **The heartbeat.** The first run of each UTC day that reads the counters
   file also publishes `publisher_heartbeat`, value 1, in the same call as any
   rise, so [an alarm](#the-alarms) can tell a publisher that fails from a
@@ -1045,7 +1048,7 @@ nothing on a quiet run.
 | --- | --- | --- |
 | `alcove-account-estimated-charges`, us-east-1 | `AWS/Billing` `EstimatedCharges`, `Currency=USD`, maximum over 6 hours | the last full month's bill times 31, divided by that month's days |
 | `alcove-relay-network-out` | `AWS/EC2` `NetworkOut` of the relay instance, sum over 1 hour | the largest hourly sum in the last full month |
-| `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 36 times `ALCOVE_RELAY_TOTAL_QUOTA` |
+| `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 30 times `ALCOVE_RELAY_TOTAL_QUOTA` |
 | `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
 
 `alcove-relay-publisher-heartbeat` watches the publisher itself:
@@ -1068,16 +1071,18 @@ How each threshold is derived:
   ([The registrar](#the-registrar), Enrollment without a token, The
   ceiling). More enrollments than that are more exchanges than the relay
   could carry if every one relayed. A 6-hour sum holds at most 6 hours of
-  enrollments plus the longest gap between the publisher's runs, 02:55 to
-  08:00 UTC, which the 08:00 run publishes as one datapoint: under 12 hours
-  in all. So the threshold is 12 hours at full use, 36 times the quota, and
-  ordinary overnight enrollments do not trip it at 08:00. The cost is slower
+  enrollments plus the longest gap between the publisher's runs, 07:55 to
+  11:00 UTC (3 hours 5 minutes), which the 11:00 run publishes as one
+  datapoint: under 9 hours 5 minutes in all, which is under 10 hours. So the
+  threshold is 10 hours at full use, 30 times the quota, and ordinary
+  enrollments in the jobs' hours do not trip it at 11:00. The cost is slower
   detection: an hourly sum would fire within the hour enrollments pass full
   use, while this one fires up to 6 hours later, and only once they average
-  twice full use over the 6 hours. Change the threshold with the quota.
+  five thirds of full use over the 6 hours. Change the threshold with the
+  quota.
 - **Heartbeat.** A working publisher puts one heartbeat in each UTC day,
-  whatever the relay's traffic, at the day's first run, normally 01:00 UTC,
-  or 08:00 or later where the runs before the skipped hours failed. Two days
+  whatever the relay's traffic, at the day's first run, normally 00:00 UTC,
+  or 11:00 or later where the runs before the skipped hours failed. Two days
   rather than one, so the day in progress, before its first run, is not taken
   for a publisher that fails. It fires within about three days of the
   publisher's last success.

@@ -1,14 +1,14 @@
 [Unit]
-Description=Publish the Alcove relay registrar's counts every 5 minutes, outside hours 00 and 03-07 UTC
+Description=Publish the Alcove relay registrar's counts every 5 minutes, outside hours 08 to 10 UTC
 
 [Timer]
-# Every 5 minutes, the period of the instance's own EC2 metrics. Not in hour
-# 00, the daily verification (00:00-00:30 UTC), nor hours 03 to 07, the
-# certificate renewals, the OS update and the host pull (03:00-06:05 UTC) and
-# their runs: dnf alone ran this 412 MB instance out of memory (README.md, OS
-# updates), and an aws process beside it adds to that. A count that rises in
-# those hours is published by the next run.
-OnCalendar=*-*-* 01,02,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23:00/5:00 UTC
+# Every 5 minutes, the period of the instance's own EC2 metrics. Not in hours
+# 08 to 10, when the daily jobs run (README.md, The daily schedule): the
+# certificate renewals, the OS update, the host pull and the verification
+# (08:00-11:00 UTC). dnf alone ran this 412 MB instance out of memory
+# (README.md, OS updates), and an aws process beside it adds to that. A count
+# that rises in those hours is published by the 11:00 run.
+OnCalendar=*-*-* 00,01,02,03,04,05,06,07,11,12,13,14,15,16,17,18,19,20,21,22,23:00/5:00 UTC
 # systemd's default, stated so the test can add it to the last run's end.
 AccuracySec=1min
 Persistent=false
