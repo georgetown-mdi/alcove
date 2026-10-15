@@ -1,7 +1,7 @@
 /**
  * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL` and
  * `VITE_DEFAULT_RELAY_REGISTRAR_URL`). An invitation this build creates names
- * it, and every browser run lists it beside any relay the invitation or this
+ * it and its registrar, and every browser run lists it beside any relay the invitation or this
  * browser's own setting names, once the run has enrolled its relay key at the
  * relay's registrar without a token (`enrollRelayKeyWithoutToken` in core),
  * right before it connects. The key and the exchange id it is enrolled under
@@ -48,23 +48,27 @@ export interface DefaultRelayDependencies {
 }
 
 /**
- * The relay an invitation names: `ownRelay`, followed by `defaultTurnUrl` when
- * the build names a default relay, once, and only where the locator has room
- * for it under {@link MAX_RELAY_LOCATOR_URLS}. A new invitation and a managed
- * re-invite both name it this way.
+ * The relay an invitation names: `ownRelay`, followed by the default relay's
+ * TURN url when the build names one, once, and only where the locator has
+ * room for it under {@link MAX_RELAY_LOCATOR_URLS}. Where the result names
+ * that url, it also names the default relay's registrar, where a command-line
+ * party enrolls without a token. A new invitation and a managed re-invite both
+ * name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
-  defaultTurnUrl: string | undefined,
+  defaultRelay: DefaultRelaySetting | undefined,
 ): RelayUrls | undefined {
+  if (defaultRelay === undefined) return ownRelay;
   const turn = ownRelay?.turn ?? [];
-  if (
-    defaultTurnUrl === undefined ||
-    turn.includes(defaultTurnUrl) ||
-    turn.length >= MAX_RELAY_LOCATOR_URLS
-  )
-    return ownRelay;
-  return { ...ownRelay, turn: [...turn, defaultTurnUrl] };
+  if (turn.includes(defaultRelay.turnUrl))
+    return { ...ownRelay, registrar: defaultRelay.registrarUrl };
+  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return ownRelay;
+  return {
+    ...ownRelay,
+    turn: [...turn, defaultRelay.turnUrl],
+    registrar: defaultRelay.registrarUrl,
+  };
 }
 
 /**

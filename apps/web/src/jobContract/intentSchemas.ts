@@ -773,13 +773,14 @@ const jobSftpExchangeIntentSchema = z
   })
   .strict();
 
-/** An accepted invitation's relay: its TURN and STUN url lists under core's
- * relay locator rule, and nothing else. */
+/** An accepted invitation's relay: its TURN and STUN url lists and its
+ * registrar under core's relay locator rule, and nothing else. */
 export const jobInvitationRelaySchema: z.ZodType<RelayLocator> =
   relayLocatorSchema(
     (keys) =>
       `the invitation's relay has no ${keys.length === 1 ? "key" : "keys"} ` +
-      `${keys.join(", ")}; it holds only turn and stun url lists`,
+      `${keys.join(", ")}; it holds only turn and stun url lists and a ` +
+      "registrar url",
   );
 
 const jobSignalingServerEndpointSchema: z.ZodType<JobSignalingServerEndpoint> =

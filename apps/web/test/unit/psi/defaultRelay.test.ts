@@ -275,36 +275,42 @@ describe("the dial's wait for the enrollment", () => {
 });
 
 describe("invitationRelayWithDefault", () => {
-  test("names the default relay after the own relay", () => {
-    expect(invitationRelayWithDefault(OWN, DEFAULT_RELAY.turnUrl)).toEqual({
+  test("names the default relay after the own relay, with its registrar", () => {
+    expect(invitationRelayWithDefault(OWN, DEFAULT_RELAY)).toEqual({
       turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
       stun: [],
+      registrar: DEFAULT_RELAY.registrarUrl,
     });
   });
 
   test("names the default relay alone when there is no own relay", () => {
-    expect(
-      invitationRelayWithDefault(undefined, DEFAULT_RELAY.turnUrl),
-    ).toEqual({ turn: [DEFAULT_RELAY.turnUrl] });
+    expect(invitationRelayWithDefault(undefined, DEFAULT_RELAY)).toEqual({
+      turn: [DEFAULT_RELAY.turnUrl],
+      registrar: DEFAULT_RELAY.registrarUrl,
+    });
   });
 
-  test("names it once when the own relay already names it", () => {
+  test("names it once when the own relay already names it, with its registrar", () => {
     const own = { turn: [DEFAULT_RELAY.turnUrl] };
-    expect(invitationRelayWithDefault(own, DEFAULT_RELAY.turnUrl)).toBe(own);
+    expect(invitationRelayWithDefault(own, DEFAULT_RELAY)).toEqual({
+      turn: [DEFAULT_RELAY.turnUrl],
+      registrar: DEFAULT_RELAY.registrarUrl,
+    });
   });
 
-  test("names only the own relay when the build names no default relay", () => {
+  test("names only the own relay, and no registrar, when the build names no default relay", () => {
     expect(invitationRelayWithDefault(OWN, undefined)).toBe(OWN);
     expect(invitationRelayWithDefault(undefined, undefined)).toBeUndefined();
   });
 
-  test("withholds it when the locator is full", () => {
+  test("withholds it and its registrar when the locator is full", () => {
     const full = {
       turn: Array.from(
         { length: MAX_RELAY_LOCATOR_URLS },
         (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
       ),
     };
-    expect(invitationRelayWithDefault(full, DEFAULT_RELAY.turnUrl)).toBe(full);
+    expect(invitationRelayWithDefault(full, DEFAULT_RELAY)).toBe(full);
   });
 });
+

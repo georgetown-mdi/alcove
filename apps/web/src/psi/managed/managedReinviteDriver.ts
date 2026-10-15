@@ -26,6 +26,7 @@ import { composeManagedReinvite } from "./managedReinvite";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
 import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
@@ -47,9 +48,8 @@ interface ManagedReinviteDriverDeps {
   now: () => number;
   /** Read this browser's own relay, which the invitation names. */
   ownRelay: () => RelayUrls | undefined;
-  /** Read the TURN url of the build's default relay, which the invitation
-   * also names. */
-  defaultRelayTurnUrl: () => string | undefined;
+  /** Read the build's default relay, which the invitation also names. */
+  defaultRelay: () => DefaultRelaySetting | undefined;
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -61,7 +61,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: () => relayForRun(),
-  defaultRelayTurnUrl: () => defaultRelaySetting()?.turnUrl,
+  defaultRelay: () => defaultRelaySetting(),
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -101,7 +101,7 @@ export async function reinviteManagedExchange(
     encode: deps.encode,
     now: deps.now,
     ownRelay: deps.ownRelay(),
-    defaultRelayTurnUrl: deps.defaultRelayTurnUrl(),
+    defaultRelay: deps.defaultRelay(),
   });
   const persisted = await deps.persistRotation(
     record.id,

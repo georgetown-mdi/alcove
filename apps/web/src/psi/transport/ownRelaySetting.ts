@@ -155,13 +155,15 @@ export function parseRelayUrlLines(
 }
 
 /**
- * A relay's TURN and STUN urls with each list optional: the shape of core's
- * `RelayLocator`, which an invitation endpoint and a stored connection's
- * `invitationRelay` hold, and of the urls an inviter names.
+ * A relay's TURN and STUN urls with each list optional, and the registrar a
+ * command-line party enrolls at: the shape of core's `RelayLocator`, which an
+ * invitation endpoint and a stored connection's `invitationRelay` hold, and
+ * of the relay an inviter names.
  */
 export interface RelayUrls {
   turn?: ReadonlyArray<string>;
   stun?: ReadonlyArray<string>;
+  registrar?: string;
 }
 
 /**
@@ -169,7 +171,7 @@ export interface RelayUrls {
  * this browser's own and the invitation's. Its TURN urls are this browser's
  * own followed by the invitation's, each listed once, and its STUN urls
  * likewise. With neither it is none. A stored setting this build cannot read
- * adds nothing, and is logged. The command line instead chooses one per kind
+ * adds nothing, and is logged. The command line lists them the same way
  * (`selectRunRelay` in core).
  */
 export function relayForRun(

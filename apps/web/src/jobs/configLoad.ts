@@ -691,34 +691,28 @@ function namesIceProvision(document: ExchangeSpec): boolean {
 }
 
 /**
- * The TURN urls a run of a webrtc document relays through, chosen as the CLI
- * chooses them ({@link selectRunRelay}): an accepted invitation's where it
- * names any, else the document's own `turn` entries'. Empty where it names
- * none. A url holds no credential under core's `turn` url rule.
+ * The TURN urls a run of a webrtc document relays through, listed as the CLI
+ * lists them ({@link selectRunRelay}): the document's own `turn` entries'
+ * followed by an accepted invitation's. Empty where it names none. A url
+ * holds no credential under core's `turn` url rule.
  */
 export function relayTurnUrls(document: ExchangeSpec): Array<string> {
   const { connection } = document;
   if (connection.channel !== "webrtc") return [];
-  const { turn } = selectRunRelay(connection);
-  if (turn === undefined) return [];
-  return turn.source === "invitation"
-    ? [...turn.urls]
-    : turn.servers.map((server) => server.url);
+  return (selectRunRelay(connection).turn ?? []).map((server) => server.url);
 }
 
 /**
  * Whether the run mints a TURN credential for an entry of the document's own
  * `turn` list: the CLI mints one for an entry stating no credential. False
- * where the run relays through an invitation's urls, whose relay the partner
- * enrolls, or states every credential itself.
+ * where the own entries state every credential themselves, or there are none,
+ * whatever the invitation's relay names.
  */
 export function mintsOwnRelayCredential(document: ExchangeSpec): boolean {
   const { connection } = document;
   if (connection.channel !== "webrtc") return false;
-  const { turn } = selectRunRelay(connection);
-  return (
-    turn?.source === "own" &&
-    turn.servers.some((server) => server.credential === undefined)
+  return (selectRunRelay(connection).turn ?? []).some(
+    (server) => server.source === "own" && server.credential === undefined,
   );
 }
 

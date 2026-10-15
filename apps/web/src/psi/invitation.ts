@@ -224,8 +224,9 @@ export function webrtcEndpointFromAddress(
 
 /**
  * The webrtc endpoint in a web invitation: the signaling locator plus the
- * inviter's own relay, if any. Both mint paths, a new invitation and a managed
- * re-invite, call it.
+ * relay the inviter names, if any, with its registrar where the relay names a
+ * TURN url. Both mint paths, a new invitation and a managed re-invite, call
+ * it.
  */
 export function invitationWebrtcEndpoint(
   loc: InvitationLocation,
@@ -233,7 +234,13 @@ export function invitationWebrtcEndpoint(
 ): WebRTCEndpoint {
   const endpoint = webrtcEndpointFromAddress(invitationSignalingAddress(loc));
   const relay = relayLocatorFromOwnRelay(ownRelay);
-  return relay !== undefined ? { ...endpoint, relay } : endpoint;
+  if (relay === undefined) return endpoint;
+  const registrar =
+    relay.turn !== undefined ? ownRelay?.registrar : undefined;
+  return {
+    ...endpoint,
+    relay: registrar !== undefined ? { ...relay, registrar } : relay,
+  };
 }
 
 /** Build the deep-link URL with `encoded` in the fragment. */
@@ -266,7 +273,7 @@ export type ConnectionEndpointRequest =
 /**
  * Resolve a request to the token's endpoint. This app's own webrtc locator
  * names this browser's own relay ({@link relayForRun}) and the build's
- * default relay, where the locator has room for it
+ * default relay with its registrar, where the locator has room for it
  * ({@link invitationRelayWithDefault}); no registrar is contacted. A webrtc
  * endpoint naming its host is taken as given.
  */
@@ -278,7 +285,7 @@ function resolveConnectionEndpoint(
   if (request.channel === "webrtc" && !("host" in request))
     return invitationWebrtcEndpoint(
       location,
-      invitationRelayWithDefault(relayForRun(), readDefaultRelay()?.turnUrl),
+      invitationRelayWithDefault(relayForRun(), readDefaultRelay()),
     );
   return request;
 }

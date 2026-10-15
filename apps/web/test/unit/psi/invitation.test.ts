@@ -293,12 +293,15 @@ describe("generateInvitation", () => {
       vi.unstubAllGlobals();
     });
 
-    test("names the default relay alone, and contacts no registrar", async () => {
+    test("names the default relay alone with its registrar, and contacts no registrar", async () => {
       const fetchSpy = vi.fn<typeof fetch>();
       vi.stubGlobal("fetch", fetchSpy);
       expect(await mintedEndpoint(() => DEFAULT_RELAY)).toStrictEqual({
         ...WEBRTC_ENDPOINT,
-        relay: { turn: [DEFAULT_RELAY.turnUrl] },
+        relay: {
+          turn: [DEFAULT_RELAY.turnUrl],
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
       });
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -314,6 +317,7 @@ describe("generateInvitation", () => {
         relay: {
           turn: [...ownRelay.turn, DEFAULT_RELAY.turnUrl],
           stun: ownRelay.stun,
+          registrar: DEFAULT_RELAY.registrarUrl,
         },
       });
     });
@@ -324,7 +328,7 @@ describe("generateInvitation", () => {
       );
     });
 
-    test("leaves the default relay out when the own relay fills the locator", async () => {
+    test("leaves the default relay and its registrar out when the own relay fills the locator", async () => {
       const ownRelay = {
         turn: Array.from(
           { length: MAX_RELAY_LOCATOR_URLS },
@@ -1761,6 +1765,25 @@ describe("invitationWebrtcEndpoint", () => {
       }),
     );
     expect(decoded.connectionEndpoint).toStrictEqual(endpoint);
+  });
+
+  test("names a registrar only beside a TURN url", () => {
+    const registrar = "https://registrar.example.org";
+    expect(
+      invitationWebrtcEndpoint(location, {
+        turn: ["turns:relay.example.org:443?transport=tcp"],
+        registrar,
+      }).relay,
+    ).toStrictEqual({
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      registrar,
+    });
+    expect(
+      invitationWebrtcEndpoint(location, {
+        stun: ["stun:relay.example.org:3478"],
+        registrar,
+      }).relay,
+    ).toStrictEqual({ stun: ["stun:relay.example.org:3478"] });
   });
 });
 
