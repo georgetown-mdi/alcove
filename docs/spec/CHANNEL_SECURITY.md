@@ -53,11 +53,11 @@ The wrap is applied when the key exchange's transcript-bound decision says so, a
 | Channel | Requests the wrap | Why |
 | ------- | ----------------- | --- |
 | `sftp`, `filedrop` | yes | The exchange sits in a server's or a share's filesystem. Its administrator can read and alter every frame, so the confidentiality and integrity have to come from a layer above the transport. |
-| `webrtc` | no from the CLI; yes from the web application | A data channel is end-to-end confidential and integrity-protected under DTLS between the two parties. The signaling server introduces them and sees no exchange content, and a TURN relay forwards ciphertext. The wrap would protect nothing the transport has not already protected. |
+| `webrtc` | no from the CLI; yes from the web application | A data channel is end-to-end confidential and integrity-protected under DTLS between the two parties. The signaling server introduces them and sees no exchange content, and a TURN relay forwards ciphertext. |
 
 The one case that would change the CLI's `webrtc` request is a transport leg an intermediary terminates -- concretely, a WebSocket-to-TCP proxy relaying a party's traffic, which would put a third party inside the confidential channel. No such transport exists. If one lands, the request bit is how the party behind it asks for the wrap. No negotiation mechanism is built for that case in advance.
 
-The web application requests the wrap on every `webrtc` exchange (`apps/web/src/psi/authenticateExchange.ts`), so every exchange with a browser party is wrapped.
+The web application requests the wrap on every `webrtc` exchange (`apps/web/src/psi/authenticateExchange.ts`), so every exchange with a browser party is wrapped. The limit is a stated one: a web application or CLI build from before the web application requested the wrap cannot complete a `webrtc` exchange with a current build, and a recurring exchange run across such a pair is set up again from a new invitation.
 
 ## IV construction and SP 800-38D conformance
 

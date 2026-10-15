@@ -48,7 +48,7 @@ order to meet at all.
 
 Both implementations resolve this table identically or a CLI party and a browser
 party cannot complete a handshake with each other, so the pairing -- together
-with the request-encryption flag the CLI sends, `false` on both sides (see
+with the request-encryption flag the CLI sends, `false` from either rendezvous side (see
 [Application-layer encryption](#application-layer-encryption)) -- is pinned by
 the cross-application conformance vectors at
 [`packages/core/test/vectors/webrtc-interop-vectors.json`](../../packages/core/test/vectors/webrtc-interop-vectors.json),
