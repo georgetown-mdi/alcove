@@ -19,6 +19,9 @@ ContainerName=alcove-relay-front
 Image=localhost/alcove-relay-front:installed
 Network=host
 Volume=/etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro
+# The relay's certificate, for the TURN server's TLS. Owned by root, which
+# nginx's master reads it as with every capability dropped.
+Volume=/etc/alcove-relay/certs:/etc/nginx/certs:ro
 ReadOnly=true
 Tmpfs=/tmp
 # nginx's master binds 443 and starts its worker as the image's nginx user.

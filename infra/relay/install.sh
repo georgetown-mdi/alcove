@@ -212,21 +212,34 @@ case "$RUNTIME" in
 esac \
   || die "the front's image did not build; nothing coturn runs from was changed. Fix the cause above and run again"
 install -d -m 700 "$ETC"
+command -v openssl >/dev/null 2>&1 || dnf -y install openssl
+command -v curl >/dev/null 2>&1 || dnf -y install curl
 FRONT_CONF="$ETC/front.conf"
 FRONT_CANDIDATE="$(mktemp "$FRONT_CONF.XXXXXX")"
-trap 'rm -f "$FRONT_CANDIDATE"' EXIT
+# nginx -t loads the TURN server's certificate. A first install obtains the
+# relay's further on, so until then it checks against a throwaway pair.
+FRONT_CHECK_CERTS="$ETC/certs"
+THROWAWAY_CERTS=
+trap 'rm -f "$FRONT_CANDIDATE"; [ -z "$THROWAWAY_CERTS" ] || rm -rf "$THROWAWAY_CERTS"' EXIT
+if [ ! -s "$ETC/certs/fullchain.pem" ] || [ ! -s "$ETC/certs/privkey.pem" ]; then
+  THROWAWAY_CERTS="$(mktemp -d)"
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+    -subj "/CN=$ALCOVE_RELAY_REALM" -keyout "$THROWAWAY_CERTS/privkey.pem" \
+    -out "$THROWAWAY_CERTS/fullchain.pem" > /dev/null 2>&1 \
+    || die "could not make a throwaway certificate to check the front's configuration with; nothing coturn runs from was changed"
+  FRONT_CHECK_CERTS="$THROWAWAY_CERTS"
+fi
 "$HERE/render-front.sh" > "$FRONT_CANDIDATE" \
   || die "the front's routes in $ENV_FILE are refused (above); nothing coturn runs from was changed"
 chmod 644 "$FRONT_CANDIDATE"
 "$RUNTIME" run --rm --network host --read-only --tmpfs /tmp \
   -v "$FRONT_CANDIDATE:/etc/nginx/nginx.conf:ro" \
+  -v "$FRONT_CHECK_CERTS:/etc/nginx/certs:ro" \
   --entrypoint nginx "$FRONT_IMAGE" -t \
   || die "the rendered front configuration fails nginx -t; $FRONT_CONF, coturn's configuration and the running services are unchanged. Fix front.conf.tmpl or the routes in $ENV_FILE and run again"
 mv "$FRONT_CANDIDATE" "$FRONT_CONF"
+[ -z "$THROWAWAY_CERTS" ] || rm -rf "$THROWAWAY_CERTS"
 trap - EXIT
-
-command -v openssl >/dev/null 2>&1 || dnf -y install openssl
-command -v curl >/dev/null 2>&1 || dnf -y install curl
 
 # --- python3 ------------------------------------------------------------------
 # relay_table.py, which every key script, the sweep, and the registrar write the
@@ -270,10 +283,8 @@ case "$RUNTIME" in
   docker) docker build --pull -t "$IMAGE" "$HERE" ;;
 esac
 
-# The account the image runs as, asked of the image rather than assumed: the ACME
-# deploy hook has to hand it a readable private key, and the measurement record
-# has coturn falling back to its defaults on a key it cannot read
-# (docs/notes/webrtc-relay-deployment.md).
+# The account the image runs as, asked of the image rather than assumed: it owns
+# the secrets table, which coturn reads and the units below write as it.
 IMAGE_UID="$("$RUNTIME" run --rm --entrypoint id "$IMAGE" -u | tr -d '[:space:]')"
 case "$IMAGE_UID" in
   ''|*[!0-9]*) die "could not read the image's uid; got '$IMAGE_UID'" ;;
@@ -301,7 +312,8 @@ install -d -m 700 -o "$IMAGE_UID" -g "$IMAGE_GID" /var/lib/alcove-relay
 install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
-  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/render-front.sh" "$LIBEXEC/"
+  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/stun-binding.py" \
+  "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$LIBEXEC/aws/"
@@ -313,14 +325,12 @@ if [ ! -s "$ETC/certs/fullchain.pem" ] || [ ! -s "$ETC/certs/privkey.pem" ]; the
   "$LIBEXEC/certs/renew.sh" || die "certificate issuance failed; see Certificates in infra/relay/README.md"
 else
   # A re-run with a certificate already here skips renew.sh, and the deploy hook
-  # with it, so nothing else re-owns the key to the uid probed above. A rebuilt
-  # image that moved that uid would hand coturn a key it cannot read, which it
-  # answers by falling back to its defaults rather than failing
-  # (docs/notes/webrtc-relay-deployment.md): the relay starts, and the first
-  # symptom is a party that cannot gather a relay candidate.
-  log "certificate already present; re-owning it to uid $IMAGE_UID"
-  chown "$IMAGE_UID" "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem" \
-    || die "could not give uid $IMAGE_UID the certificate in $ETC/certs; coturn would start on defaults rather than fail"
+  # with it, so the ownership the hook gives is converged here: root, which the
+  # front's nginx master reads the key as with every capability dropped. A key
+  # another account owns stops the front from starting.
+  log "certificate already present; re-owning it to root"
+  chown 0:0 "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem" \
+    || die "could not give root the certificate in $ETC/certs; the 443 front cannot read a key another account owns"
 fi
 
 # --- the configuration ------------------------------------------------------

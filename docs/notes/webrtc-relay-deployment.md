@@ -403,7 +403,7 @@ static site with no server framework
 
 ### One listener on 443
 
-_Status: installed on the project's relay host and measured there on 2026-10-12, without a registrar and without a relayed exchange from a 443-only client._
+_Status: installed on the project's relay host and measured there on 2026-10-12, without a registrar and without a relayed exchange from a 443-only client. The TURN server that terminates TLS in the front (The client's address at coturn, below) is not yet measured there._
 
 With coturn on 443, the registrar and the broker's front, each on a port of
 its own, are out of reach of a network admitting outbound TCP to 443 only: the
@@ -411,8 +411,9 @@ its own, are out of reach of a network admitting outbound TCP to 443 only: the
 proxy on 443 (2026-10-04). The reference builds it as
 [the 443 front](../../infra/relay/README.md#the-443-front): nginx's stream
 module reads each connection's TLS server name and passes the connection,
-unopened, to coturn on loopback, the registrar under a name of its own, or a
-routed service such as the broker's front.
+unopened, to the registrar under a name of its own or a routed service such
+as the broker's front; every other connection is TURN, whose TLS the front
+terminates before it passes plain TURN to coturn on loopback.
 
 The rule, and what was weighed:
 
@@ -429,9 +430,31 @@ The rule, and what was weighed:
   the other, about $3.60 a month, with no proxy on the TURN path. It is the
   fallback if TURN clients fail through the front.
 
-The front puts a proxy between coturn and the client: coturn sees
-`127.0.0.1` as every client's address, reports it to the client as its
-reflexive address, and names it in its log lines.
+**The client's address at coturn.** The front puts a proxy between coturn
+and the client. Passing TLS through to coturn's own TLS listener, coturn saw
+`127.0.0.1` as every client's address and reported it to the client in
+XOR-MAPPED-ADDRESS, on a Binding and on a successful Allocate (measured
+through the front on the project's host, 2026-10-14). Firefox 157 rejected
+that Allocate answer and gathered no relay candidate; Chrome ignored the
+address and relayed. What was weighed:
+
+- **A second public address** for coturn on 443, with no proxy on the TURN
+  path: about $3.60 a month, the fallback named above.
+- **nginx's transparent proxying** (`proxy_bind $remote_addr transparent`),
+  which makes the client's address the source of the connection to coturn.
+  It needs a network capability for nginx's workers and policy routing on
+  the host (nginx's `proxy_bind` documentation; not driven here), against a
+  front that drops every capability but three.
+- **A PROXY header to coturn, chosen.** The pinned coturn 4.18.0 has
+  `tcp-proxy-port`. Driven in Docker (2026-10-14), it took a PROXY v1 header
+  on that port and used the header's source as the client's address, and
+  refused a connection without one; but the port speaks plain TCP, not TLS,
+  needs plain TCP enabled, and coturn's TLS listener stopped once it was set.
+  So the front terminates TLS for TURN under the relay's certificate, in a
+  server that takes the client's address from the header the server on 443
+  sent (nginx's stream realip module) and sends coturn a header of its own
+  naming it. coturn opens no TLS listener and holds no key, and the TLS
+  floor is the front's to state.
 
 **The client's address at the registrar.** Enrollment without a token is
 bounded by a rate limit for each client address
@@ -451,13 +474,14 @@ so the registrar needs the address the front sees. What was weighed:
   has already read is not measured here, since no nginx runs in the
   development container.
 - **Two hops, chosen.** The server on 443 sends the header on every
-  connection, to the registrar's loopback port or to a second server on
-  loopback that drops it before coturn and each routed service. Each piece
-  is a directive nginx has long had (`proxy_protocol on`, `listen ...
-  proxy_protocol`), and `install.sh`'s `nginx -t` checks the configuration
-  before it goes live. The cost is a second proxy hop on every TURN
-  connection, and each one counting four of `worker_connections` rather
-  than two.
+  connection, to the registrar's loopback port, to the TURN server above,
+  which reads it, or to a route hop on loopback that drops it before each
+  routed service. Each piece is a directive nginx has long had
+  (`proxy_protocol on`, `listen ... proxy_protocol`, `set_real_ip_from`),
+  and `install.sh`'s `nginx -t` checks the configuration before it goes
+  live. The cost is a second proxy hop on every TURN connection, each one
+  counting four of `worker_connections` rather than two, and the TURN
+  server's TLS sessions in the front's memory.
 
 Measured on the project's relay host on 2026-10-12, with the front routing
 `signal.data-bridge.org` to the broker's front on 8443 and every other
@@ -496,8 +520,10 @@ Not measured, and so owed before the front is called deployed:
 - the registrar behind the front at a name of its own: the project's host had
   no registrar, so no name was set, no certificate was issued for one, and
   the registrar's `OPTIONS` and `PUT` calls were not made through the front;
-- the front's two hops: a TURN allocation through the second hop, and the
-  registrar reading the client's address from the first hop's PROXY header;
+- the front's hops: a TURN allocation through the TURN server with coturn
+  reporting the client's own address, a routed service through the route
+  hop, and the registrar reading the client's address from the first hop's
+  PROXY header;
 - a relayed exchange through the front from a browser and from the CLI, each
   on a network admitting outbound TCP to 443 only, which needs a registrar to
   register the exchange's key.
@@ -567,8 +593,9 @@ signals instead._
 
 **coturn.** At the template's settings (`log-file=stdout`, `simple-log`, no
 `verbose`), coturn 4.18.0 writes no line for a successful allocation: not at
-allocation, during the relay, or at expiry. No line it writes carries a client
-IP address, a client port, a byte count or a packet count. What it does write:
+allocation, during the relay, or at expiry. No line it writes includes a byte
+count or a packet count, and only a socket error names a client's address.
+What it does write:
 
 - its start-up lines, and one process-level line on the first client request
   since start, holding no client data;
@@ -586,7 +613,13 @@ IP address, a client port, a byte count or a packet count. What it does write:
   10.0.0.0-10.255.255.255 in server 7 (session 007000000000000001)`). That is
   a party's private host candidate, so this line does name an address about a
   party, and the denial cannot be kept without it being logged at these
-  settings. It names no client address and no username.
+  settings. It names no client address and no username;
+- a socket error on a client's connection, one `ERROR` line naming the
+  client's address and port as coturn sees it (`ERROR socket error: Broken
+  pipe <address>:<port> (TLS/TCP socket, session ...)`, on the project's host
+  on 2026-10-14, when coturn saw the 443 front's `127.0.0.1`). coturn takes
+  that address from the front's PROXY header, so the line names the client's
+  own address.
 
 A quota refusal (error 486, allocation quota reached) writes no line. With
 `log-file=stdout` coturn writes no log file: `/var/tmp` held only the pid file.

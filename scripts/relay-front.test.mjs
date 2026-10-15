@@ -15,10 +15,11 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 // The relay host's 443 front (infra/relay): render-front.sh's routes and
-// refusals, the template's logging and its agreement with coturn's listener,
-// the two front units, install.sh's order, and renew.sh's names. No nginx,
-// coturn or ACME client runs here; what the front does with a real client is
-// the host run's to measure (infra/relay/README.md, The 443 front).
+// refusals, the template's TURN server, logging and agreement with coturn's
+// listener, coturn's listeners, the two front units, install.sh's order, and
+// renew.sh's names. No nginx, coturn or ACME client runs here; what the front
+// does with a real client is the host run's to measure
+// (infra/relay/README.md, The 443 front).
 
 const here = dirname(fileURLToPath(import.meta.url));
 const RELAY = resolve(here, "..", "infra/relay");
@@ -70,8 +71,8 @@ const render = (envLines, { registrarToken = false, realm = REALM } = {}) => {
 
 /**
  * The entries of the map setting `variable` in a rendered configuration, as
- * [name, target] pairs: `$alcove_hop`, the first hop's, or `$alcove_route`,
- * the second hop's.
+ * [name, target] pairs: `$alcove_hop`, the server on 443's, or
+ * `$alcove_route`, the route hop's.
  */
 const mapEntries = (rendered, variable) => {
   const start = rendered.indexOf(`map $ssl_preread_server_name ${variable} {`);
@@ -84,22 +85,25 @@ const mapEntries = (rendered, variable) => {
 const hopEntries = (rendered) => mapEntries(rendered, "$alcove_hop");
 const routeEntries = (rendered) => mapEntries(rendered, "$alcove_route");
 
-// The second hop's port, render-front.sh's HOP_PORT.
-const HOP = "127.0.0.1:5348";
+// render-front.sh's ports: the front's TURN server, its route hop, and
+// coturn's tcp-proxy-port.
+const portOf = (name) =>
+  new RegExp(`^${name}=(\\d+)$`, "m").exec(read("render-front.sh"))[1];
+const TURN = `127.0.0.1:${portOf("TURN_PORT")}`;
+const HOP = `127.0.0.1:${portOf("HOP_PORT")}`;
 
 describe("render-front.sh", () => {
-  it("sends every connection to coturn through the second hop when the host routes no name", () => {
+  it("sends every connection to the TURN server when the host routes no name", () => {
     const result = render([]);
     expect(result.status, result.stderr).toBe(0);
-    expect(hopEntries(result.stdout)).toEqual([["default", HOP]]);
-    expect(routeEntries(result.stdout)).toEqual([
-      ["default", "127.0.0.1:5349"],
-    ]);
+    expect(hopEntries(result.stdout)).toEqual([["default", TURN]]);
+    expect(routeEntries(result.stdout)).toEqual([["default", TURN]]);
     expect(result.stdout).not.toContain("__ROUTES__");
+    expect(result.stdout).not.toContain("__ROUTE_HOPS__");
     expect(result.stdout).not.toContain("__REGISTRAR_ROUTE__");
   });
 
-  it("routes the registrar's name to its front port at the first hop and each listed name to its own at the second", () => {
+  it("routes the registrar's name to its front port from 443 and each listed name through the route hop to its own", () => {
     const result = render([
       "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
       "ALCOVE_RELAY_REGISTRAR_PORT=8444",
@@ -108,11 +112,13 @@ describe("render-front.sh", () => {
     ]);
     expect(result.status, result.stderr).toBe(0);
     expect(hopEntries(result.stdout)).toEqual([
-      ["default", HOP],
+      ["default", TURN],
       ["registrar.example.org", "127.0.0.1:8446"],
+      ["signal.example.org", HOP],
+      ["ws.example.org", HOP],
     ]);
     expect(routeEntries(result.stdout)).toEqual([
-      ["default", "127.0.0.1:5349"],
+      ["default", TURN],
       ["signal.example.org", "127.0.0.1:8443"],
       ["ws.example.org", "127.0.0.1:9500"],
     ]);
@@ -230,10 +236,25 @@ describe("render-front.sh", () => {
       "ALCOVE_RELAY_REGISTRAR_FRONT_PORT is 8444, the registrar's own port (ALCOVE_RELAY_REGISTRAR_PORT); give it another",
     ],
     [
-      "a listed route and the front's second hop",
+      "a listed route and the front's route hop",
       ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=5348"'],
       {},
-      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 5348, which the front's second hop also uses",
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 5348, which the front's route hop also uses",
+    ],
+    [
+      "a listed route and the front's TURN server",
+      ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=5347"'],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 5347, which the front's TURN server also uses",
+    ],
+    [
+      "the registrar's front port and coturn's port",
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        "ALCOVE_RELAY_REGISTRAR_FRONT_PORT=5350",
+      ],
+      {},
+      "ALCOVE_RELAY_REGISTRAR_NAME routes registrar.example.org to port 5350, which coturn also uses",
     ],
     [
       "a listed route and a registrar with no name on a host holding its token",
@@ -368,64 +389,121 @@ describe("render-front.sh", () => {
   });
 });
 
+/** The template's server blocks, each as its setting lines. */
+const serverBlocks = () =>
+  read("front.conf.tmpl")
+    .split(/^ {2}server \{$/m)
+    .slice(1)
+    .map((block) => settings(block.slice(0, block.indexOf("\n  }"))));
+
+/** coturn's settings, from the template render-config.sh fills in. */
+const coturnSettings = () => settings(read("turnserver.conf.tmpl"));
+const coturnProxyPort = () =>
+  coturnSettings()
+    .find((line) => line.startsWith("tcp-proxy-port="))
+    .split("=")[1];
+
 describe("front.conf.tmpl", () => {
   const template = settings(read("front.conf.tmpl"));
 
-  it("sends unrouted connections to the port and address coturn listens on", () => {
-    const coturn = settings(read("turnserver.conf.tmpl"));
-    const port = coturn
-      .find((line) => line.startsWith("tls-listening-port="))
-      .split("=")[1];
-    expect(coturn).toContain("listening-ip=127.0.0.1");
-    expect(coturn.filter((line) => line.startsWith("listening-ip="))).toEqual([
-      "listening-ip=127.0.0.1",
-    ]);
-    expect(template).toContain(`default 127.0.0.1:${port};`);
-  });
-
-  it("listens on 443, reads the server name and opens no TLS", () => {
-    expect(template).toContain("listen 443;");
-    expect(template).toContain("ssl_preread on;");
-    expect(
-      template.some((line) =>
-        /^ssl_(certificate|certificate_key)\b/.test(line),
-      ),
-    ).toBe(false);
+  it("has three servers: 443, the TURN server and the route hop", () => {
+    const servers = serverBlocks();
+    expect(servers).toHaveLength(3);
+    expect(servers[0]).toContain("listen 443;");
+    expect(servers[1]).toContain(`listen ${TURN} ssl proxy_protocol;`);
+    expect(servers[2]).toContain(`listen ${HOP} proxy_protocol;`);
     expect(template.some((line) => /^http\b/.test(line))).toBe(false);
   });
 
+  it("reads the server name on 443 and terminates no TLS there or at the route hop", () => {
+    const [first, , hop] = serverBlocks();
+    for (const server of [first, hop]) {
+      expect(server).toContain("ssl_preread on;");
+      expect(
+        server.some((line) => /^ssl_(certificate|protocols)\b/.test(line)),
+      ).toBe(false);
+      const listen = server.find((line) => line.startsWith("listen "));
+      expect(listen.split(/[\s;]+/)).not.toContain("ssl");
+    }
+  });
+
   // nginx sends a PROXY header for a whole server block or not at all, so the
-  // first hop sends it on every connection and only the registrar's front
-  // port and the second hop, on loopback, read it.
-  it("sends the PROXY header from 443 and reads it at the second hop on loopback", () => {
-    const text = read("front.conf.tmpl");
-    const servers = text
-      .split(/^ {2}server \{$/m)
-      .slice(1)
-      .map((block) => settings(block.slice(0, block.indexOf("\n  }"))));
-    expect(servers).toHaveLength(2);
-    const [first, second] = servers;
-    expect(first).toContain("listen 443;");
+  // server on 443 sends it on every connection, and the registrar's front
+  // port, the TURN server and the route hop, each on loopback, read it.
+  it("sends the PROXY header from 443, and the route hop drops it", () => {
+    const [first, , hop] = serverBlocks();
     expect(first).toContain("proxy_protocol on;");
     expect(first).toContain("proxy_pass $alcove_hop;");
-    const hopPort = /^HOP_PORT=(\d+)$/m.exec(read("render-front.sh"))[1];
-    expect(second).toContain(`listen 127.0.0.1:${hopPort} proxy_protocol;`);
-    expect(second).toContain("ssl_preread on;");
-    expect(second).toContain("proxy_pass $alcove_route;");
-    expect(second.some((line) => line.startsWith("proxy_protocol "))).toBe(
-      false,
-    );
-    expect(template).toContain(`default 127.0.0.1:${hopPort};`);
-    for (const server of servers) {
+    expect(hop).toContain("proxy_pass $alcove_route;");
+    expect(hop.some((line) => line.startsWith("proxy_protocol "))).toBe(false);
+  });
+
+  it("terminates TURN's TLS under the relay's certificate, TLS 1.2 and 1.3 only", () => {
+    const turn = serverBlocks()[1];
+    expect(turn).toContain("ssl_certificate /etc/nginx/certs/fullchain.pem;");
+    expect(turn).toContain("ssl_certificate_key /etc/nginx/certs/privkey.pem;");
+    expect(turn).toContain("ssl_protocols TLSv1.2 TLSv1.3;");
+    const ciphers = turn
+      .find((line) => line.startsWith("ssl_ciphers "))
+      .replace(/^ssl_ciphers /, "")
+      .replace(/;$/, "")
+      .split(":");
+    expect(ciphers.length).toBeGreaterThan(0);
+    for (const cipher of ciphers) {
+      expect(cipher).toMatch(
+        /^ECDHE-(ECDSA|RSA)-(AES(128|256)-GCM-SHA(256|384)|CHACHA20-POLY1305)$/,
+      );
+    }
+    expect(turn).toContain("ssl_handshake_timeout 10s;");
+  });
+
+  // The certificate the units mount at /etc/nginx/certs is the directory
+  // certs/deploy-hook.sh writes fullchain.pem and privkey.pem into.
+  it("reads the certificate from the directory the units mount and the deploy hook writes", () => {
+    const mount = "/etc/alcove-relay/certs:/etc/nginx/certs:ro";
+    expect(read("alcove-relay-front-docker.service")).toContain(`-v ${mount}`);
+    expect(read("alcove-relay-front.container")).toContain(`Volume=${mount}\n`);
+    const hook = read("certs/deploy-hook.sh");
+    expect(hook).toContain('DEST="${ALCOVE_RELAY_CERT_DIR:-$ETC/certs}"');
+    expect(hook).toContain('"$DEST/fullchain.pem"');
+    expect(hook).toContain('"$DEST/privkey.pem"');
+  });
+
+  // coturn reports the address the TURN server's header names, so that server
+  // takes it from the header the server on 443 sent, and sends it on.
+  it("passes the client's address from the header on 443 to coturn's proxy port", () => {
+    const turn = serverBlocks()[1];
+    expect(turn).toContain("set_real_ip_from 127.0.0.1;");
+    expect(turn).toContain("proxy_protocol on;");
+    expect(turn).toContain(`proxy_pass 127.0.0.1:${coturnProxyPort()};`);
+    expect(portOf("COTURN_PORT")).toBe(coturnProxyPort());
+  });
+
+  it("bounds a connection's wait for its first bytes and its idle time at every server", () => {
+    const [first, turn, hop] = serverBlocks();
+    for (const server of [first, hop]) {
       expect(server).toContain("preread_timeout 10s;");
+    }
+    for (const server of [first, turn, hop]) {
       expect(server).toContain("proxy_connect_timeout 5s;");
       expect(server).toContain("proxy_timeout 900s;");
     }
   });
 
-  it("bounds a connection's wait for its first bytes and its idle time", () => {
-    expect(template).toContain("preread_timeout 10s;");
-    expect(template).toContain("proxy_connect_timeout 5s;");
+  it("runs one worker with a bounded number of connections", () => {
+    expect(template).toContain("worker_processes 1;");
+    const events = template.find((line) => line.startsWith("events "));
+    const connections = Number(/worker_connections (\d+);/.exec(events)[1]);
+    const totalQuota = Number(
+      /^ALCOVE_RELAY_TOTAL_QUOTA=(\d+)$/m.exec(read("relay.env.example"))[1],
+    );
+    // Four connections for each TURN client, and room for every allocation
+    // the total quota admits.
+    expect(connections / 4).toBeGreaterThanOrEqual(totalQuota);
+    expect(connections).toBeLessThanOrEqual(512);
+  });
+
+  it("keeps an idle connection longer than coturn's allocation lifetime", () => {
     const idle = template.find((line) => line.startsWith("proxy_timeout "));
     const lifetime = settings(read("turnserver.conf.tmpl"))
       .find((line) => line.startsWith("max-allocate-lifetime="))
@@ -443,6 +521,55 @@ describe("front.conf.tmpl", () => {
     ]);
     const errorLogs = template.filter((line) => line.startsWith("error_log"));
     expect(errorLogs).toEqual(["error_log /dev/stderr warn;"]);
+  });
+});
+
+describe("turnserver.conf.tmpl's listeners", () => {
+  // The front holds 443 on every address; coturn listens on loopback alone,
+  // on its proxy port, with plain TCP enabled for that port and no TLS
+  // listener or key of its own.
+  it("listens on loopback only, on the proxy port, with no TLS listener", () => {
+    const coturn = coturnSettings();
+    expect(coturn.filter((line) => line.startsWith("listening-ip="))).toEqual([
+      "listening-ip=127.0.0.1",
+    ]);
+    expect(coturnProxyPort()).toMatch(/^\d+$/);
+    const names = coturn.map((line) => line.split("=")[0]);
+    for (const absent of [
+      "no-tcp",
+      "tls-listening-port",
+      "alt-tls-listening-port",
+      "listening-port",
+      "alt-listening-port",
+      "cert",
+      "pkey",
+    ]) {
+      expect(names, absent).not.toContain(absent);
+    }
+  });
+
+  it("keeps UDP listeners off and every peer restriction", () => {
+    const coturn = coturnSettings();
+    for (const kept of ["no-udp", "no-tcp-relay", "no-multicast-peers"]) {
+      expect(coturn).toContain(kept);
+    }
+    for (const range of [
+      "denied-peer-ip=10.0.0.0-10.255.255.255",
+      "denied-peer-ip=127.0.0.0-127.255.255.255",
+      "denied-peer-ip=169.254.0.0-169.254.255.255",
+      "denied-peer-ip=::1",
+    ]) {
+      expect(coturn).toContain(range);
+    }
+  });
+
+  it("mounts no certificate into coturn's container", () => {
+    for (const unit of [
+      "alcove-relay-docker.service",
+      "alcove-relay.container",
+    ]) {
+      expect(read(unit)).not.toContain("/etc/alcove-relay/certs");
+    }
   });
 });
 
@@ -470,13 +597,17 @@ describe("the front's units", () => {
         "-v /etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro",
         "Volume=/etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro",
       ],
+      [
+        "-v /etc/alcove-relay/certs:/etc/nginx/certs:ro",
+        "Volume=/etc/alcove-relay/certs:/etc/nginx/certs:ro",
+      ],
     ];
     for (const [flag, directive] of flags) {
       expect(docker).toContain(flag);
       expect(quadlet).toContain(`${directive}\n`);
     }
-    expect(docker.match(/ -v /g)).toHaveLength(1);
-    expect(quadlet.match(/^Volume=/gm)).toHaveLength(1);
+    expect(docker.match(/ -v /g)).toHaveLength(2);
+    expect(quadlet.match(/^Volume=/gm)).toHaveLength(2);
   });
 
   it("drop every capability but the three nginx needs to bind 443 and start its worker", () => {
@@ -519,6 +650,36 @@ describe("install.sh and the front", () => {
     const live = install.indexOf('mv "$FRONT_CANDIDATE" "$FRONT_CONF"');
     expect(check).toBeGreaterThan(0);
     expect(live).toBeGreaterThan(check);
+  });
+
+  // nginx -t loads the TURN server's certificate, which a first install has
+  // not obtained yet.
+  it("checks it against the relay's certificate, or a throwaway one where there is none yet", () => {
+    const check = install.indexOf('--entrypoint nginx "$FRONT_IMAGE" -t');
+    const mount = install.indexOf(
+      '-v "$FRONT_CHECK_CERTS:/etc/nginx/certs:ro"',
+    );
+    expect(mount).toBeGreaterThan(0);
+    expect(mount).toBeLessThan(check);
+    expect(install).toContain('FRONT_CHECK_CERTS="$ETC/certs"');
+    expect(install).toContain('FRONT_CHECK_CERTS="$THROWAWAY_CERTS"');
+    const openssl = install.indexOf("command -v openssl");
+    expect(openssl).toBeGreaterThan(0);
+    expect(openssl).toBeLessThan(
+      install.indexOf('THROWAWAY_CERTS="$(mktemp -d)"'),
+    );
+  });
+
+  it("gives root the certificate it finds, which the front reads the key as", () => {
+    expect(install).toContain(
+      'chown 0:0 "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem"',
+    );
+    expect(install).not.toMatch(/chown "\$IMAGE_UID" "\$ETC\/certs/);
+  });
+
+  it("installs the client-address probe verify.sh runs", () => {
+    expect(install).toContain('"$HERE/stun-binding.py"');
+    expect(read("verify.sh")).toContain('"$HERE/stun-binding.py"');
   });
 
   // turnserver.conf moves coturn onto loopback, so a front that fails after it

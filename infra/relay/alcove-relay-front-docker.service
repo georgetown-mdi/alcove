@@ -6,9 +6,12 @@
 # together. The directive-to-flag mapping is the one alcove-relay-docker.service
 # states.
 #
-# The front holds no key and terminates no TLS: it reads the server name from a
-# connection's first bytes and passes the connection to coturn, the registrar,
-# or a routed service on loopback (README.md, The 443 front).
+# The front reads the server name from a connection's first bytes and passes
+# the connection to the registrar or a routed service on loopback, TLS
+# unopened, or terminates a TURN client's TLS under the relay's certificate
+# and passes plain TURN to coturn (README.md, The 443 front). The certificate
+# is owned by root, which nginx's master reads it as with every capability
+# dropped.
 
 [Unit]
 Description=alcove relay front (nginx stream, 443/tcp)
@@ -26,6 +29,7 @@ ExecStart=/usr/bin/docker run --rm --name alcove-relay-front \
   --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
   --log-driver journald \
   -v /etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro \
+  -v /etc/alcove-relay/certs:/etc/nginx/certs:ro \
   localhost/alcove-relay-front:installed
 ExecStop=-/usr/bin/docker stop alcove-relay-front
 Restart=always

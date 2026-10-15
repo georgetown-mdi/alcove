@@ -4143,6 +4143,119 @@ describe.skipIf(runningAsRoot)(
 );
 
 describe.skipIf(runningAsRoot)(
+  "verify.sh client address",
+  { timeout: 60000 },
+  () => {
+    // A python3 that answers for stun-binding.py as the test chooses, and
+    // runs every other script on the real python3.
+    // With `unanswered`, the first that many runs exit 3, as a Binding the
+    // front closed while coturn was starting does.
+    const verifyWithProbe = (
+      line,
+      status,
+      { unanswered = 0, wait = 0 } = {},
+    ) => {
+      const host = fixtureHost();
+      const stubDir = join(host.root, "probe-stub");
+      mkdirSync(stubDir);
+      const argv = join(host.root, "probe-argv.log");
+      writeFileSync(argv, "");
+      const realPython = process.env.PATH.split(":")
+        .map((dir) => join(dir, "python3"))
+        .find(existsSync);
+      writeFileSync(
+        join(stubDir, "python3"),
+        [
+          "#!/bin/bash",
+          'case "${2:-}" in',
+          "  */stun-binding.py)",
+          `    printf '%s\\n' "$*" >> '${argv}'`,
+          `    [ "$(grep -c . '${argv}')" -gt ${unanswered} ] || exit 3`,
+          `    printf '%s\\n' '${line}'`,
+          `    exit ${status} ;;`,
+          "esac",
+          `exec ${realPython} "$@"`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "python3"), 0o755);
+      // A front whose TLS handshake completes, so the wait reaches the Binding.
+      const realOpenssl = process.env.PATH.split(":")
+        .map((dir) => join(dir, "openssl"))
+        .find(existsSync);
+      writeFileSync(
+        join(stubDir, "openssl"),
+        [
+          "#!/bin/bash",
+          '[ "$1" = s_client ] && exit 0',
+          `exec ${realOpenssl} "$@"`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "openssl"), 0o755);
+      const result = host.verify({
+        PATH: `${stubDir}:${host.env.PATH}`,
+        ALCOVE_RELAY_VERIFY_WAIT: String(wait),
+      });
+      return {
+        result,
+        runs: readFileSync(argv, "utf8").split("\n").filter(Boolean),
+      };
+    };
+
+    it("retries a Binding the front closed unanswered until coturn answers it", () => {
+      const { result, runs } = verifyWithProbe(
+        "XOR-MAPPED-ADDRESS 10.0.0.5:40000",
+        0,
+        { unanswered: 2, wait: 20 },
+      );
+      expect(runs).toHaveLength(3);
+      expect(result.stdout).toContain(
+        "PASS     coturn answered a Binding through the front with this client's address",
+      );
+    });
+
+    it("asks through the front on 443 under the realm's name", () => {
+      const { runs } = verifyWithProbe("XOR-MAPPED-ADDRESS 10.0.0.5:40000", 0);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toMatch(
+        new RegExp(`^-B \\S+/stun-binding\\.py 127\\.0\\.0\\.1 443 ${REALM}$`),
+      );
+    });
+
+    it("passes on this client's own address", () => {
+      const { result } = verifyWithProbe(
+        "XOR-MAPPED-ADDRESS 10.0.0.5:40000",
+        0,
+      );
+      expect(result.stdout).toContain(
+        "PASS     coturn answered a Binding through the front with this client's address",
+      );
+    });
+
+    it("fails on a loopback address", () => {
+      const { result } = verifyWithProbe(
+        "XOR-MAPPED-ADDRESS 127.0.0.1:45732 (loopback)",
+        5,
+      );
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "FAIL     coturn answered a Binding through the front with a loopback address",
+      );
+      expect(result.stdout).toContain("XOR-MAPPED-ADDRESS 127.0.0.1:45732");
+    });
+
+    it("is unclear when the Binding got no answer", () => {
+      const { result } = verifyWithProbe("no answer within 15 s", 3);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  could not ask coturn for this client's address through the front",
+      );
+    });
+  },
+);
+
+describe.skipIf(runningAsRoot)(
   "verify.sh TURNS client runs",
   { timeout: 60000 },
   () => {

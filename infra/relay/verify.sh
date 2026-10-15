@@ -8,10 +8,15 @@
 # shapes assumed in advance. Fix what a later run gets wrong rather than
 # loosening a probe until it passes.
 #
-# Six probes, in the order a failure matters:
+# Seven probes, in the order a failure matters:
 #
 #   handshake     a real TLS handshake on 443/tcp, and the certificate the relay
 #                 serves for its own realm
+#   client address
+#                 a STUN Binding through the front, which coturn must answer
+#                 with this client's address rather than a loopback one: the
+#                 address a browser is told it connected from, and Firefox
+#                 gathers no relay candidate when it is loopback
 #   front routes  each name ALCOVE_RELAY_FRONT_ROUTES routes, answered on 443
 #                 with a certificate that verifies for it
 #   allocation    a real TURN allocation through that handshake, with a
@@ -123,9 +128,10 @@ printf '\n'
 # --- wait for the relay -------------------------------------------------------
 # install.sh restarts coturn, then the 443 front, and runs this script about a
 # second later; coturn was measured accepting 1.3 s after a restart
-# (2026-09-03). The front accepts a connection while coturn is still starting,
-# so retry a TLS handshake for the realm through the front, which completes
-# only once both are up. Its certificate is checked by the probe below.
+# (2026-09-03). The front completes a TURN client's TLS handshake itself, so
+# retry one for the realm until the front is up, then the client-address
+# probe's Binding until coturn answers it. The certificate is checked by the
+# probe below.
 DEADLINE=$((SECONDS + WAIT))
 until echo | bounded 5 openssl s_client -connect "$CONNECT:443" -servername "$REALM" >/dev/null 2>&1; do
   if [ "$SECONDS" -ge "$DEADLINE" ]; then
@@ -179,10 +185,31 @@ else
   certificate_report "$HS"
 fi
 
+# --- client address -------------------------------------------------------------
+# coturn takes a TURN client's address from the PROXY header the front's TURN
+# server sends, which names the address the front's first server read from
+# its own. A loopback answer means a hop lost it: coturn sees the front, and
+# reports it to every client as the address that client connected from.
+# Exit 3 is a connection the front took and closed unanswered, which is what a
+# coturn still starting behind it gives, so only that is retried.
+while :; do
+  MAPPED="$(bounded 30 python3 -B "$HERE/stun-binding.py" "$CONNECT" 443 "$REALM" 2>&1)"
+  MAPPED_STATUS=$?
+  [ "$MAPPED_STATUS" = 3 ] && [ "$SECONDS" -lt "$DEADLINE" ] || break
+  sleep 1
+done
+case "$MAPPED_STATUS" in
+  0) report pass "coturn answered a Binding through the front with this client's address" "$MAPPED" ;;
+  5) report fail "coturn answered a Binding through the front with a loopback address" \
+       "$MAPPED; the front's TURN server did not pass the client's address in its PROXY header" ;;
+  *) report unclear "could not ask coturn for this client's address through the front" \
+       "$(printf '%s' "$MAPPED" | tr '\n' ' ' | cut -c1-160)" ;;
+esac
+
 # --- front routes ----------------------------------------------------------------
 # Each name ALCOVE_RELAY_FRONT_ROUTES routes must reach a service that presents
-# a certificate verifying for that name. One the front sent to coturn instead
-# presents the realm's certificate and fails here.
+# a certificate verifying for that name. One the front did not route is
+# answered with the realm's certificate and fails here.
 read -r -a FRONT_ROUTES <<< "${ALCOVE_RELAY_FRONT_ROUTES:-}"
 for route in ${FRONT_ROUTES[@]+"${FRONT_ROUTES[@]}"}; do
   name="${route%%=*}"
