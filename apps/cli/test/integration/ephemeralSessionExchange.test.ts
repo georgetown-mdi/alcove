@@ -43,7 +43,7 @@ import { waitFor } from "../support";
 // close lands, and the assertions want several of them.
 const BOUNDARY_TEST_TIMEOUT_MS = 120_000;
 
-// The protocol's own in-flight write, `temp-<uuidv4()>.tmp`: a failed publish and
+// The protocol's own in-flight write, `temp-<uuidv4()>.tmp`: a failed write and
 // never transcript, so no run of either mode may end with one on the server.
 const isProtocolTemp = (name: string): boolean =>
   name.startsWith("temp-") && name.endsWith(".tmp");
@@ -1308,7 +1308,7 @@ inProcessOnly(
 );
 
 inProcessOnly(
-  "an idle release between a publish and its cleanup leaves no temp file behind",
+  "an idle release between a write and its cleanup leaves no temp file behind",
   async () => {
     // The one cleanup delete that reaches no session gate: send()'s catch sweeps
     // the temp it wrote, and its never-reject contract keeps it outside the
@@ -1317,7 +1317,7 @@ inProcessOnly(
     // remove is what survives -- so the assertion here is the directory, not a
     // counter. The rename is torn by design, with the release driven inside the
     // tear, because the two orderings that produce this state (a send resuming
-    // from the protocol continuation, a failing publish) are both races the loop
+    // from the protocol continuation, a failing write) are both races the loop
     // will not stage on demand.
     const srv = await startInProcessSftpServer();
     const dir = await fsp.mkdtemp(
@@ -1327,12 +1327,12 @@ inProcessOnly(
     const senderAdapter = new SSH2SFTPClientAdapter({
       ephemeralSessions: true,
     });
-    const publishedRename = senderAdapter.rename.bind(senderAdapter);
+    const originalRename = senderAdapter.rename.bind(senderAdapter);
     let tearNextRename = false;
     senderAdapter.rename = async (fromPath: string, toPath: string) => {
-      if (!tearNextRename) return publishedRename(fromPath, toPath);
+      if (!tearNextRename) return originalRename(fromPath, toPath);
       tearNextRename = false;
-      // The idle boundary falls here: the temp is on the server, the publish has
+      // The idle boundary falls here: the temp is on the server, the write has
       // not landed, and the sweep that follows runs with the session released.
       await senderAdapter.releaseForIdle();
       throw new Error("the partner's server refused the rename");
@@ -1382,7 +1382,7 @@ inProcessOnly(
 
           tearNextRename = true;
           const sendError = await sender
-            .send({ message: "the publish that never landed" })
+            .send({ message: "the write that never landed" })
             .then(
               () => undefined,
               (error: unknown) => error,
@@ -1394,7 +1394,7 @@ inProcessOnly(
         (level) => level === "WARN" || level === "ERROR",
       );
 
-      // The publish failed, which is what put a temp on the server with no
+      // The write failed, which is what put a temp on the server with no
       // session left to remove it.
       expect(outcome.sendError).toBeInstanceOf(Error);
       // The sweep itself removed nothing, and asserting it fails the case if
@@ -1435,10 +1435,10 @@ inProcessOnly(
     const senderAdapter = new SSH2SFTPClientAdapter({
       ephemeralSessions: true,
     });
-    const publishedRename = senderAdapter.rename.bind(senderAdapter);
+    const originalRename = senderAdapter.rename.bind(senderAdapter);
     let tearNextRename = false;
     senderAdapter.rename = async (fromPath: string, toPath: string) => {
-      if (!tearNextRename) return publishedRename(fromPath, toPath);
+      if (!tearNextRename) return originalRename(fromPath, toPath);
       tearNextRename = false;
       await senderAdapter.releaseForIdle();
       throw new Error("the partner's server refused the rename");
@@ -1495,7 +1495,7 @@ inProcessOnly(
 
           tearNextRename = true;
           const sendError = await sender
-            .send({ message: "the publish that never landed" })
+            .send({ message: "the write that never landed" })
             .then(
               () => undefined,
               (error: unknown) => error,

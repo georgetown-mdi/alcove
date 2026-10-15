@@ -1,6 +1,6 @@
 // The TEXT of the SFTP adapter's operator-facing warnings and typed errors: what
 // a killed session, an exhausted reconnection budget, a recovered drop, an idle
-// boundary, a declined transition, or an unsettled publish is reported as.
+// boundary, a declined transition, or an unsettled write is reported as.
 // Every export is a pure builder over its stated inputs -- it holds no adapter
 // state, takes no logger and no ledger, and issues no server round trip -- so
 // the adapter keeps every latch, every paced-warn call site, and every log call.
@@ -13,7 +13,7 @@
 // the call site that is its sink.
 import {
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
 } from "@alcove/core";
 
@@ -423,14 +423,14 @@ export function cycleRedialDeclinedWarning(
 }
 
 /**
- * The rejection for a publish whose fate the transport cannot settle: a
+ * The rejection for a write whose fate the transport cannot settle: a
  * mid-operation drop tore the rename, and what the recovery could read of the
- * aftermath is the state a landed-then-consumed publish and an unlanded one
- * share. It stays a rejection -- nothing here reports an unpublished write as
+ * aftermath is the state a landed-then-consumed write and an unlanded one
+ * share. It stays a rejection -- nothing here reports an unlanded write as
  * sent.
  *
- * Names the publish rather than a message, and prescribes no next step:
- * rename() is shared machinery, and the four publishes reaching it -- the
+ * Names the write rather than a message, and prescribes no next step:
+ * rename() is shared machinery, and the four writes reaching it -- the
  * message loop's send(), its ack, the rendezvous joining->hello rename, and the
  * abort marker -- share no remedy, so this holds no recovery-hint mark either.
  * The one caller whose remedy is established re-raises this as its own marked
@@ -439,7 +439,7 @@ export function cycleRedialDeclinedWarning(
  * Written to survive the display boundary, which caps each error in a rendered
  * cause chain at COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH: the sentence the operator
  * must act on leads, and the destination -- named because what this party
- * published may now be in the peer's hands under it -- comes last, where the
+ * wrote may now be in the peer's hands under it -- comes last, where the
  * cap costs least.
  *
  * @param error - The re-issue's own error, held only as the `cause` so the
@@ -449,11 +449,11 @@ export function cycleRedialDeclinedWarning(
  * rename paths and composed RAW like every other path this app puts in an error:
  * the display sink escapes the whole rendered chain once.
  */
-export function indeterminatePublishError(
+export function indeterminateWriteError(
   error: unknown,
   toPath: string,
-): TransportPublishIndeterminateError {
-  return new TransportPublishIndeterminateError(
+): TransportWriteIndeterminateError {
+  return new TransportWriteIndeterminateError(
     `the file may or may not have reached the partner: the operation was ` +
       `cut off before the server answered and could not be confirmed ` +
       `afterwards. ` +

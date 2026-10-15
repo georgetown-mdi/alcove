@@ -31,7 +31,7 @@ import { ackMarkerName } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
-import { renameOwnTemp } from "./fileSyncPublish";
+import { renameOwnTemp } from "./fileSyncWrite";
 import type { PresentedHostKey } from "./sftpConnect";
 import { AbortMarkerSubsystem } from "./abortMarker";
 import { SftpSession } from "./sftpSession";
@@ -149,7 +149,7 @@ export const CONNECTION_CLOSE_TIMEOUT_MS = 1000 * 30;
 export const DEFAULT_POLLING_FREQUENCY_MS = 5000;
 const DEFAULT_VERBOSITY = 1;
 
-// Wall-clock allowance for a peer's publish-and-rename to land: how long the
+// Wall-clock allowance for a peer's write-and-rename to land: how long the
 // lock-path peer waits for a joiner whose `<id>-joining.json` sentinel is
 // visible, and the floor under every poll-cycle rendezvous bound
 // (rendezvousBoundMs), so lowering it can abort a live partner mid-round-trip.
@@ -1104,7 +1104,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return this.messageLoop.send(data);
   }
 
-  // Publishes the zero-length marker `<myId>-<originalName>-ack.json`
+  // Writes the zero-length marker `<myId>-<originalName>-ack.json`
   // (ackMarkerName) temp-then-rename, for the lockless rendezvous ack and the
   // retain-mode message ack; `originalName` omits `.json`. The name depends only
   // on this party's id and `originalName`, so a re-write after a reprocess

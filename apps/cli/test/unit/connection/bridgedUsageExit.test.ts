@@ -7,7 +7,7 @@ import {
   ConnectionError,
   FileSyncConnection,
   fromEventConnection,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
 } from "@alcove/core";
 import type { FileInfo, MessageConnection } from "@alcove/core";
@@ -186,18 +186,15 @@ test("a message the partner never consumes exits 64 through the bridge", async (
 }, 20_000);
 
 test("a send on a spent sequence number exits 64 through the bridge", async () => {
-  // The publish the transport could not confirm fails the first bridge, as a
+  // The write the transport could not confirm fails the first bridge, as a
   // transport fault of its own; a later send on the same connection is the
   // refusal under test, reached here through a second bridge.
   const { client, connA, bridge } = await rendezvous();
   client.renameFault = (toPath) =>
     path.basename(toPath).startsWith(`${A}-`) && toPath.endsWith(".json")
-      ? new TransportPublishIndeterminateError(
-          "the rename outcome is unknown",
-          {
-            cause: new Error("connection reset during rename"),
-          },
-        )
+      ? new TransportWriteIndeterminateError("the rename outcome is unknown", {
+          cause: new Error("connection reset during rename"),
+        })
       : undefined;
   const first = await rejection(bridge.send({ n: 1 }));
   expect(exitCodeForError(first)).toBe(69);

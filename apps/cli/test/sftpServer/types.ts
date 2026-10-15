@@ -179,7 +179,7 @@ export interface SftpFaultInjection {
 export interface SftpRenameTearControls {
   /**
    * Tear the connection serving the next RENAME from inside its `fs.rename`
-   * callback, on success and before its reply is written: the publish is durably
+   * callback, on success and before its reply is written: the write is durably
    * in place at the server and the client's rename is torn off the wire with no
    * status ever sent.
    */
@@ -206,8 +206,8 @@ export interface SftpRenameTearControls {
   holdProbeUntilDestinationConsumed: boolean;
   /**
    * Fail any STAT/LSTAT of {@link tornDestination} with a generic error,
-   * distinct from "the server reported it absent": the publishing party's
-   * landed-confirmation probe cannot determine the publish either way, so it
+   * distinct from "the server reported it absent": the writing party's
+   * landed-confirmation probe cannot determine the write either way, so it
    * stays undetermined with its message file still on the server. Models the
    * race between a probe torn, expired, or refused on a dead session -- the
    * arm the clean-directory remedy exists for.
@@ -215,9 +215,9 @@ export interface SftpRenameTearControls {
   refuseProbeOfTornDestination: boolean;
   /**
    * Acknowledge any REMOVE of {@link tornDestination} without performing it, so
-   * the partner's consume-delete leaves the torn publish's message file on the
+   * the partner's consume-delete leaves the torn write's message file on the
    * server. It stages the residue rather than a server behaviour: a real run
-   * reaches the same state when the publishing party's abort marker reaches the
+   * reaches the same state when the writing party's abort marker reaches the
    * partner before that partner's next poll, which is a race a case must not
    * tune a sleep to.
    */

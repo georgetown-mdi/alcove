@@ -29,13 +29,13 @@ import {
   PeerAbortError,
   PartnerProtocolRefusalError,
   ProtocolRefusalError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   errorMessage,
   markStatesItsOwnNextStep,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
-import { renameOwnTemp } from "./fileSyncPublish";
+import { renameOwnTemp } from "./fileSyncWrite";
 import {
   MESSAGE_ENVELOPE_VERSION,
   MESSAGE_TYPE_OBJECT,
@@ -60,8 +60,8 @@ import {
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
-// The single remedy for a message publish the transport could not settle,
-// shared by the two places send() prescribes it: the publish's own rejection,
+// The single remedy for a message write the transport could not settle,
+// shared by the two places send() prescribes it: the write's own rejection,
 // and the refusal of the next send() over the seq slot it spent. Both messages
 // are marked, which suppresses the CLI's generic post-handshake advisory, so
 // this sentence must clear the display boundary's per-error cap on its own.
@@ -365,14 +365,14 @@ export class FileSyncMessageLoop {
   // because close() reads it through the connection's delegating getter.
   lastSentFile: string | undefined;
   private consecutiveEnoentCount = 0;
-  // The message publish whose outcome the transport could not settle, if one has
+  // The message write whose outcome the transport could not settle, if one has
   // happened this session: the seq it spent, and the transport's own error, which
   // the refusal holds as its `cause` so the destination and status that error
   // names stay reachable without spending the refusal's display budget. Set from
   // send()'s rename, read by the next send(), which refuses rather than write a
   // second message under a seq the peer may already have consumed one under.
-  private indeterminatePublish:
-    { seq: number; error: TransportPublishIndeterminateError } | undefined;
+  private indeterminateWrite:
+    { seq: number; error: TransportWriteIndeterminateError } | undefined;
   // Distinct names already warned about under `unexpectedFiles: "warn"`. poll()
   // re-lists every cycle, so a recurring unexpected file would log on each pass
   // without this; membership caps it at one warning per name. Reset per session
@@ -396,7 +396,7 @@ export class FileSyncMessageLoop {
     // require synchronize() to have completed first.
     if (!deps.peerId()) throw new InternalConsistencyError("not synchronized");
 
-    // A publish whose outcome the transport could not settle spends its seq
+    // A write whose outcome the transport could not settle spends its seq
     // slot without advancing the counter (see the rename in the try below):
     // the peer may already hold a message under that name, and the receive
     // path has no check that would reject a second message under the same
@@ -408,14 +408,14 @@ export class FileSyncMessageLoop {
     // here is the only next step an operator gets and must clear the display
     // boundary's per-error cap on its own; the transport's error is hung off
     // `cause`, rendered under its own cap.
-    if (this.indeterminatePublish !== undefined)
+    if (this.indeterminateWrite !== undefined)
       throw markStatesItsOwnNextStep(
         new UsageError(
-          `cannot send: sequence number ${this.indeterminatePublish.seq} was ` +
+          `cannot send: sequence number ${this.indeterminateWrite.seq} was ` +
             `spent on a write the transport could not confirm, so the partner ` +
             `may already hold a message under it. ` +
             CLEAN_DIRECTORY_RESTART_REMEDY,
-          { cause: this.indeterminatePublish.error },
+          { cause: this.indeterminateWrite.error },
         ),
       );
 
@@ -570,7 +570,7 @@ export class FileSyncMessageLoop {
             `${byteLength} bytes`,
         );
       if (deps.options().writeWithoutRenaming) {
-        await this.publishDirect(header, payloadBytes, outPath, outName, seq);
+        await this.writeDirect(header, payloadBytes, outPath, outName, seq);
         return;
       }
 
@@ -596,18 +596,18 @@ export class FileSyncMessageLoop {
           deps.options().renameRefusedGuidance,
         );
       } catch (renameErr: unknown) {
-        if (!(renameErr instanceof TransportPublishIndeterminateError))
+        if (!(renameErr instanceof TransportWriteIndeterminateError))
           throw renameErr;
         // The counter does not advance below, but this seq is spent all the same
         // -- see the refusal at send() entry for what that costs.
-        this.indeterminatePublish = { seq, error: renameErr };
-        // The transport's own rejection is caller-neutral (it names a publish
-        // and prescribes nothing, since the several publishes reaching it
+        this.indeterminateWrite = { seq, error: renameErr };
+        // The transport's own rejection is caller-neutral (it names a write
+        // and prescribes nothing, since the several writes reaching it
         // share no remedy). This one has a remedy, restated here and marked
         // to suppress the CLI's generic advisory; the transport's error
         // stays as the `cause`, rendered on its own line under its own cap.
         throw markStatesItsOwnNextStep(
-          new TransportPublishIndeterminateError(
+          new TransportWriteIndeterminateError(
             `the message may or may not have reached the partner: renaming ` +
               `its file into place was cut off before the server answered ` +
               `and could not be confirmed afterwards. ` +
@@ -625,20 +625,20 @@ export class FileSyncMessageLoop {
       // before the put -- a UsageError on timeout, or a ConnectionClosedError
       // if close() aborts the wait. safeDelete is idempotent over an absent
       // file, so the sweep needs no record of whether the put ran. A direct
-      // publish names no temp at all.
+      // write names no temp at all.
       if (!deps.options().writeWithoutRenaming)
         await deps.client().safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));
     }
   }
 
-  // send()'s publish under writeWithoutRenaming: the message is written
+  // send()'s write under writeWithoutRenaming: the message is written
   // straight to its final name, tracked first in delete mode (I4a) because a
   // put that throws can leave that name on disk. A throwing put is an
-  // unsettled publish, as an undetermined rename is: the file may be on disk
+  // unsettled write, as an undetermined rename is: the file may be on disk
   // in full and already read, so the seq is spent and the rejection is a
-  // TransportPublishIndeterminateError.
-  private async publishDirect(
+  // TransportWriteIndeterminateError.
+  private async writeDirect(
     header: Uint8Array,
     payloadBytes: Uint8Array,
     outPath: string,
@@ -654,15 +654,15 @@ export class FileSyncMessageLoop {
         encoding: null,
       });
     } catch (putErr: unknown) {
-      this.indeterminatePublish = {
+      this.indeterminateWrite = {
         seq,
-        error: new TransportPublishIndeterminateError(
+        error: new TransportWriteIndeterminateError(
           `the write of ${outName} did not complete`,
           { cause: putErr },
         ),
       };
       throw markStatesItsOwnNextStep(
-        new TransportPublishIndeterminateError(
+        new TransportWriteIndeterminateError(
           `the message may or may not have reached the partner: its write ` +
             `did not complete. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
           { cause: putErr },
@@ -1309,7 +1309,7 @@ export class FileSyncMessageLoop {
     this.recvSeq = 0;
     this.lastAckedNNN = -1;
     this.lastSentFile = undefined;
-    this.indeterminatePublish = undefined;
+    this.indeterminateWrite = undefined;
     this.warnedUnexpectedFiles.clear();
     // Clear any per-exchange inbound cap so a stale tight cap from a prior
     // exchange on a reused connection cannot reject a later one. The protocol

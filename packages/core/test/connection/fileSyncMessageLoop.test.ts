@@ -30,7 +30,7 @@ import {
   BilateralModeMismatchError,
   PeerAbortError,
   FrameSizeExceededError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   statesItsOwnNextStep,
 } from "../../src/errors";
 import { getLoggerForVerbosity } from "../../src/utils/logger";
@@ -240,8 +240,8 @@ type LoopInternals = {
   recvSeq: number;
   lastAckedNNN: number;
   consecutiveEnoentCount: number;
-  indeterminatePublish:
-    { seq: number; error: TransportPublishIndeterminateError } | undefined;
+  indeterminateWrite:
+    { seq: number; error: TransportWriteIndeterminateError } | undefined;
   inboundFrameCap: number | undefined;
   warnedUnexpectedFiles: Set<string>;
   poll(): Promise<void>;
@@ -420,7 +420,7 @@ describe("FileSyncMessageLoop emit routing", () => {
   });
 });
 
-// The one recovery send() prescribes for a publish the transport could not
+// The one recovery send() prescribes for a write the transport could not
 // settle. Spelled out here rather than imported so an edit to the module
 // constant has to be made in both places; the two messages that hold it are
 // asserted against this single literal, so they cannot silently diverge.
@@ -453,7 +453,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
     expect([...failFiles.keys()].some((p) => p.endsWith(".tmp"))).toBe(false);
   });
 
-  test("a publish the transport could not settle spends its seq slot", async () => {
+  test("a write the transport could not settle spends its seq slot", async () => {
     const files = new Map<string, Buffer>();
     const f = makeLoop({}, {}, files);
     const realRename = f.client.rename.bind(f.client);
@@ -461,14 +461,14 @@ describe("FileSyncMessageLoop counter commit points", () => {
     f.client.rename = async (from: string, to: string) => {
       renames += 1;
       if (renames > 1) return realRename(from, to);
-      // The publish landed durably and the peer consumed it before the transport
+      // The write landed durably and the peer consumed it before the transport
       // could confirm it; from the transport's side that is indistinguishable
-      // from a publish that never landed at all.
+      // from a write that never landed at all.
       await realRename(from, to);
       files.delete(to);
-      // Caller-neutral, as the transport raises it: it names a publish, prescribes
+      // Caller-neutral, as the transport raises it: it names a write, prescribes
       // no step, and holds no tag.
-      throw new TransportPublishIndeterminateError(
+      throw new TransportWriteIndeterminateError(
         `the file may or may not have reached the partner: the operation was ` +
           `cut off before the server answered and could not be confirmed ` +
           `afterwards. ` +
@@ -481,7 +481,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
       () => undefined,
       (e: unknown) => e,
     );
-    expect(rejected).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(rejected).toBeInstanceOf(TransportWriteIndeterminateError);
     // The mechanical state after a rejected send is unchanged: the counter did
     // not advance, nothing was recorded as sent, and the temp was swept.
     expect(f.loop.seq).toBe(0);
@@ -490,26 +490,25 @@ describe("FileSyncMessageLoop counter commit points", () => {
     expect([...files.keys()].filter((p) => p.endsWith(".tmp"))).toEqual([]);
 
     // What the caller is told, read where the operator reads it. send() is
-    // the one publish whose recovery is established, so it restates the
+    // the one write whose recovery is established, so it restates the
     // transport's rejection, naming the message and stating that recovery,
     // tagged to suppress the CLI's generic "retry without re-inviting"
     // advisory. This remedy is the only next step printed, so it must end
     // inside the renderer's per-link cap.
     expect(statesItsOwnNextStep(rejected, { ownOnly: true })).toBe(true);
-    const publishRender = sanitizeErrorForDisplay(rejected);
-    const [publishLink, ...publishCauseLinks] =
-      publishRender.split("\ncaused by: ");
-    expect(publishLink).toContain(
+    const writeRender = sanitizeErrorForDisplay(rejected);
+    const [writeLink, ...writeCauseLinks] = writeRender.split("\ncaused by: ");
+    expect(writeLink).toContain(
       "the message may or may not have reached the partner",
     );
-    expect(publishLink).toContain(REMEDY);
-    expect(publishLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(writeLink).toContain(REMEDY);
+    expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
     // The transport's own rejection stays as the cause, so the destination and the
     // status it names render on their own lines under their own caps.
-    expect(publishCauseLinks.join("\n")).toContain(
+    expect(writeCauseLinks.join("\n")).toContain(
       `Destination: ${DIR}/${SELF}-${objectMessage({ a: 1 }).length}.json`,
     );
-    expect(publishCauseLinks.join("\n")).toContain(
+    expect(writeCauseLinks.join("\n")).toContain(
       "_rename: No such file or directory",
     );
 
@@ -535,11 +534,11 @@ describe("FileSyncMessageLoop counter commit points", () => {
     const rendered = sanitizeErrorForDisplay(refused);
     const [refusalLink, ...causeLinks] = rendered.split("\ncaused by: ");
     expect(refusalLink).toContain("cannot send: sequence number 0 was spent");
-    // The SAME remedy the publish's own rejection above gave: one condition, one
+    // The SAME remedy the write's own rejection above gave: one condition, one
     // recovery, so an operator who reads both is not told two different things.
     expect(refusalLink).toContain(REMEDY);
     expect(refusalLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
-    // The publish itself is identified by the transport's own error, which the
+    // The write itself is identified by the transport's own error, which the
     // refusal hangs off `cause` so it renders under its own cap.
     expect(causeLinks.join("\n")).toContain(
       `Destination: ${DIR}/${SELF}-${objectMessage({ a: 1 }).length}.json`,
@@ -568,7 +567,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
     };
 
     await expect(f.loop.send({ a: 1 })).rejects.toThrow("rename failed");
-    // A determinate failure publishes nothing, so the same seq is written again
+    // A determinate failure writes nothing, so the same seq is written again
     // and the send completes -- the refusal above is scoped to the outcome the
     // transport could not settle, not to any failed send.
     await expect(f.loop.send({ a: 1 })).resolves.toBeUndefined();
@@ -1077,9 +1076,9 @@ describe("FileSyncMessageLoop resetSessionState", () => {
     i.recvSeq = 3;
     i.lastAckedNNN = 2;
     f.loop.lastSentFile = "self-99.json";
-    i.indeterminatePublish = {
+    i.indeterminateWrite = {
       seq: 4,
-      error: new TransportPublishIndeterminateError("publish torn", {
+      error: new TransportWriteIndeterminateError("write torn", {
         cause: new Error("_rename: No such file or directory"),
       }),
     };
@@ -1093,7 +1092,7 @@ describe("FileSyncMessageLoop resetSessionState", () => {
     expect(i.recvSeq).toBe(0);
     expect(i.lastAckedNNN).toBe(-1);
     expect(f.loop.lastSentFile).toBeUndefined();
-    expect(i.indeterminatePublish).toBeUndefined();
+    expect(i.indeterminateWrite).toBeUndefined();
     expect(i.inboundFrameCap).toBeUndefined();
     expect(i.warnedUnexpectedFiles.size).toBe(0);
     // consecutiveEnoentCount is NOT a per-session-reset field (start() clears it),

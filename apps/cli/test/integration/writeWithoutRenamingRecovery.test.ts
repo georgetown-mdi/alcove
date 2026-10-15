@@ -2,7 +2,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { expect } from "vitest";
-import { TransportPublishIndeterminateError } from "@alcove/core";
+import { TransportWriteIndeterminateError } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
@@ -12,7 +12,7 @@ import { inProcessOnly } from "../sftpBackendGate";
 import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // A put whose reply a dropped session lost, against the real SSH/SFTP stack. With
-// write_without_renaming on, a put to the final name is the publish, so the
+// write_without_renaming on, a put to the final name is the write, so the
 // recovery re-dial does not re-issue it blind: it reads what the destination
 // holds (docs/spec/SFTP_SESSION_RECOVERY.md, "Re-issuing an operation"). A put
 // to a protocol temp keeps its verbatim re-issue. The drop is staged by the
@@ -22,7 +22,7 @@ import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 const TEST_TIMEOUT_MS = 60_000;
 const STALL_DEADLINE_MS = 3_000;
 
-// A header and a payload, the chunk list a message publish hands put().
+// A header and a payload, the chunk list a message write hands put().
 const HEADER = Buffer.from([1, 2, 3, 4]);
 const PAYLOAD = Buffer.alloc(256 * 1024, 7);
 const SOURCE_BYTES = HEADER.length + PAYLOAD.length;
@@ -99,11 +99,11 @@ inProcessOnly(
     try {
       // Consumed by the time the re-dialed session looks: not re-created.
       const consumed = await tornPut(party, "a-consumed.json", "remove");
-      expect(consumed.error).toBeInstanceOf(TransportPublishIndeterminateError);
+      expect(consumed.error).toBeInstanceOf(TransportWriteIndeterminateError);
       expect(consumed.opens).toBe(1);
       expect(consumed.size).toBeUndefined();
 
-      // Present and complete: the publish landed, and is not re-issued.
+      // Present and complete: the write landed, and is not re-issued.
       const landed = await tornPut(party, "b-landed.json", "keep");
       expect(landed.error).toBeUndefined();
       expect(landed.opens).toBe(1);

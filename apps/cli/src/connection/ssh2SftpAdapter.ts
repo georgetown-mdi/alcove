@@ -99,7 +99,7 @@ import {
   forcedIdleReleaseWarning,
   idleReleaseDeclinedWarning,
   idleReleaseDidNotCloseWarning,
-  indeterminatePublishError,
+  indeterminateWriteError,
   midExchangeReconnectBudgetExhaustedError,
   partnerDropAtIdleBoundaryWarning,
   remainingMidExchangeRedials,
@@ -2984,10 +2984,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         this.putOnce(src, dest, options),
       );
     // A put to a protocol temp is re-issued verbatim: no reader acts on a temp,
-    // and the rename that follows is the publish. A put to any other name is
-    // itself the publish (write_without_renaming), which a partner may already
-    // have read or consumed, so its re-issue is decided by what the destination
-    // holds: docs/spec/SFTP_SESSION_RECOVERY.md, "Re-issuing an operation".
+    // and the rename that follows is the final-name write. A put to any other
+    // name is itself the final-name write (write_without_renaming), which a
+    // partner may already have read or consumed, so its re-issue is decided by
+    // what the destination holds: docs/spec/SFTP_SESSION_RECOVERY.md,
+    // "Re-issuing an operation".
     if (isProtocolTempName(dest.slice(dest.lastIndexOf("/") + 1)))
       return this.runOperation({ recovery: "verbatim" }, () =>
         this.putOnce(src, dest, options),
@@ -3005,7 +3006,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     );
   }
 
-  // The second attempt of a put whose destination is the publish. Re-issuing it
+  // The second attempt of a put whose destination is the final name. Re-issuing it
   // blind could re-create a file the partner has consumed, or truncate one it is
   // reading, so the destination is probed first. Only a short file is re-issued:
   // no reader acts on one, because a message reader waits for the byte count its
@@ -3020,13 +3021,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     sourceBytes: number,
   ): Promise<unknown> {
     // Undefined is a destination the server reported absent, null a probe that
-    // answered nothing; both leave the publish undetermined.
+    // answered nothing; both leave the write undetermined.
     const size = await this.existsOnce(dest)
       .then((present) => (present ? this.statSizeOnce(dest) : undefined))
       .catch(() => null);
     if (size === sourceBytes) return undefined;
     if (typeof size === "number" && size < sourceBytes) return run();
-    throw indeterminatePublishError(lost, dest);
+    throw indeterminateWriteError(lost, dest);
   }
 
   private putOnce(
@@ -3213,7 +3214,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         // The CONVERSE does not hold, and the arm below is what that costs. An
         // absent destination is not evidence the rename failed: in delete mode
         // the peer's consume-delete removes exactly this party's own
-        // self-prefixed publish, so a rename that landed durably and was then
+        // self-prefixed write, so a rename that landed durably and was then
         // consumed inside the recovery window reports the identical state a
         // rename that never landed does. Nothing the adapter can read separates
         // them (see SFTP_SESSION_RECOVERY.md), so that state is reported as the
@@ -3246,7 +3247,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
             if (destination === "absent") {
               // The one reading that determines it the other way: a source still
               // on the server means nothing moved this party's file, so the
-              // publish determinately did not land. Worth the second round trip
+              // write determinately did not land. Worth the second round trip
               // only where the first was answered -- a probe that could not
               // answer has already left the question open.
               const sourceHeld = await this.existsOnce(fromPath).catch(
@@ -3254,7 +3255,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
               );
               if (sourceHeld) throw error;
             }
-            throw indeterminatePublishError(error, toPath);
+            throw indeterminateWriteError(error, toPath);
           }),
       },
       () => this.renameOnce(fromPath, toPath),

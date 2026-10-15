@@ -39,8 +39,8 @@ import {
   DIRECT_LINKAGE_STRATEGY_AGREEMENT_NOTICE,
 } from "@exchange/directExchangeModel";
 import {
-  PUBLISH_WITHOUT_RENAME_NOTICE,
   RETAIN_MODE_BILATERAL_NOTICE,
+  WRITE_WITHOUT_RENAMING_NOTICE,
 } from "@console/exchangeFilesModel";
 import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
 import { SPLIT_DIRECTORY_RETAIN_SUMMARY } from "@console/sftpConnectionForm";
@@ -1538,14 +1538,14 @@ describe("direct exchange file-handling gate", () => {
     app.render(createElement(DirectExchangeScreen));
     await openExchangeFiles();
     expect(app.container.textContent).not.toContain(
-      PUBLISH_WITHOUT_RENAME_NOTICE,
+      WRITE_WITHOUT_RENAMING_NOTICE,
     );
 
     await page.getByLabelText("Write files without renaming them").click();
     await expect
       .element(page.getByLabelText("Write files without renaming them"))
       .toBeChecked();
-    expect(app.container.textContent).toContain(PUBLISH_WITHOUT_RENAME_NOTICE);
+    expect(app.container.textContent).toContain(WRITE_WITHOUT_RENAMING_NOTICE);
     await expect
       .element(page.getByLabelText("Keep every exchange file"))
       .not.toBeChecked();

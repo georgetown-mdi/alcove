@@ -39,7 +39,7 @@ import {
   UsageError,
   BilateralModeMismatchError,
   FrameSizeExceededError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   chainDetailCauses,
   markPeerWaitTimeout,
   markStatesItsOwnNextStep,
@@ -52,7 +52,7 @@ import {
 } from "./fileSyncConstants";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
-import { renameOwnTemp } from "./fileSyncPublish";
+import { renameOwnTemp } from "./fileSyncWrite";
 import {
   HELLO_SUFFIX,
   LOCK_SUFFIX,
@@ -254,7 +254,7 @@ export async function readControlFileWithGate(
   // budget each leaves is pinned by a test, not asserted here.
   //
   // Neither text claims which of the two causes applies -- residue, or a
-  // live peer still publishing -- since the recovery step (re-run, remove
+  // live peer still writing -- since the recovery step (re-run, remove
   // only if it persists) is the same either way. Only the entry-present
   // read names residue as the likelier reading, since it predates this
   // run.
@@ -434,9 +434,9 @@ const RETAIN_INSPECTION_POLL_CYCLES = 2;
 // budget.
 //
 // Three times the inspection's cycles, since this read races a peer
-// actively publishing rather than inspecting a stale directory, so it must
-// absorb a full publish propagation, not just flush jitter. Not larger
-// still: the hello publishes temp-then-rename, so its body is complete
+// actively writing rather than inspecting a stale directory, so it must
+// absorb a full write propagation, not just flush jitter. Not larger
+// still: the hello writes temp-then-rename, so its body is complete
 // before its final name is visible, and what remains to absorb is
 // propagation, never a write in progress.
 const RENDEZVOUS_HELLO_READ_POLL_CYCLES = 6;
@@ -449,7 +449,7 @@ const RENDEZVOUS_HELLO_READ_POLL_CYCLES = 6;
 // adaptive.
 //
 // joinerRecoveryMs is that wall-clock quantity already -- what the lock
-// path allows for a peer's publish-and-rename to land -- so it is reused
+// path allows for a peer's write-and-rename to land -- so it is reused
 // rather than adding a second constant. Neither bound below extends a wait
 // past what the operator configured: the I5a hello-read bound stays capped
 // at the remaining peer budget, and the entry-hello window arms only when
@@ -765,8 +765,8 @@ export class FileSyncRendezvous {
     }
   }
 
-  // Publishes this party's hello temp-then-rename, matching every other
-  // payload-bearing publish (send()'s message write, writeAck(), the
+  // Writes this party's hello temp-then-rename, matching every other
+  // payload-bearing write (send()'s message write, writeAck(), the
   // joiner's sentinel): the final `<id>-hello.json` appears only at the
   // atomic rename, so no reader ever observes it torn. A hard kill
   // mid-write leaves an inert `temp-hello-<uuid>.tmp`, tolerated by the
@@ -782,7 +782,7 @@ export class FileSyncRendezvous {
   // and where the caller tracks the name (`track`) it is added to
   // responsibleFiles first in delete mode: a put that throws can leave the
   // final name on disk, the case the lock's pre-track covers (I4a).
-  private async publishHello(
+  private async writeHello(
     dir: string,
     name: string,
     track: boolean,
@@ -1124,7 +1124,7 @@ export class FileSyncRendezvous {
     // entry is accepted (sweepOrphanedTemps), so a refused entry deletes none.
     //
     // Deleting either shape is safe because both are orphaned by construction:
-    // writing one requires having already seen this party's hello, published
+    // writing one requires having already seen this party's hello, written
     // only after this scan (the ordering is pinned by a test), so no live
     // in-flight write can race the delete.
     const orphanedTempFiles = files.filter(
@@ -1376,7 +1376,7 @@ export class FileSyncRendezvous {
     );
   }
 
-  // Publishes this party's hello on the lock joiner's refusal path so the
+  // Writes this party's hello on the lock joiner's refusal path so the
   // peer reads it and refuses too. The one refusal site needing a new write
   // at detection time: if every attempt fails, the peer degrades to its peer
   // timeout. Never throws, so a transport rejection (exit 69) or a close()
@@ -1391,7 +1391,7 @@ export class FileSyncRendezvous {
       attempt++
     ) {
       try {
-        await this.publishHello(
+        await this.writeHello(
           scope.outboundPath,
           `${deps.id()}${HELLO_SUFFIX}`,
           false,
@@ -1488,7 +1488,7 @@ export class FileSyncRendezvous {
 
     // A flag mismatch here means the peer is lockless: only a lockless peer
     // leaves its hello for a lock joiner to find. On any refusal the joiner
-    // publishes its own hello first, so the peer reads it and refuses too, and
+    // writes its own hello first, so the peer reads it and refuses too, and
     // keeps the peer hello: both are the directory's terminal state, untracked
     // so close()/cleanup() does not sweep them.
     const refusal =
@@ -1509,7 +1509,7 @@ export class FileSyncRendezvous {
     // bare delete(peer hello) then put(my hello) is observable as an
     // inconsistent state: if the delete lands but the put fails, the peer's
     // waitForPeer cannot tell "joiner mid-write" from "joiner crashed", so
-    // it polls to the full peerTimeoutMs. Instead, publish a
+    // it polls to the full peerTimeoutMs. Instead, write a
     // `<id>-joining.json` sentinel holding our hello body, delete the peer
     // hello, then rename the sentinel to our hello. The rename is atomic,
     // so the sentinel exists across exactly the window where the peer
@@ -1528,8 +1528,8 @@ export class FileSyncRendezvous {
       // The sentinel holds the hello body so the rename below yields a
       // fully-valid `<id>-hello.json` the peer reads through its gate; the
       // peer itself matches the sentinel by name existence and never reads
-      // it. Published temp-then-rename like the hello.
-      await this.publishHello(scope.inboundPath, joiningName, true);
+      // it. Written temp-then-rename like the hello.
+      await this.writeHello(scope.inboundPath, joiningName, true);
       // Track the sentinel only until the peer hello is deleted: before that
       // point a failure leaves the peer hello intact, so cleanup() may safely
       // sweep the sentinel (the peer is no worse off than if we never
@@ -1555,7 +1555,7 @@ export class FileSyncRendezvous {
         // stays as the peer's recovery signal), and only then is the
         // sentinel deleted. The peer tolerates its sentinel beside its hello
         // (waitForPeer) and in its message loop (isRecognizedLoopFile).
-        await this.publishHello(scope.outboundPath, helloName, true);
+        await this.writeHello(scope.outboundPath, helloName, true);
         await this.deleteOwnSentinel(joiningPath, joiningName);
       } else {
         await renameOwnTemp(
@@ -1600,7 +1600,7 @@ export class FileSyncRendezvous {
     try {
       await deps.client().delete(joiningPath);
     } catch (err: unknown) {
-      if (err instanceof TransportPublishIndeterminateError) throw err;
+      if (err instanceof TransportWriteIndeterminateError) throw err;
       if (!deps.options().retainFiles) deps.responsibleFiles.add(joiningName);
       deps
         .log()
@@ -1649,12 +1649,12 @@ export class FileSyncRendezvous {
     deps
       .log()
       .debug(`[${deps.role()}] creating initial ${deps.id()}${HELLO_SUFFIX}`);
-    await this.publishHello(outboundPath, `${deps.id()}${HELLO_SUFFIX}`, true);
+    await this.writeHello(outboundPath, `${deps.id()}${HELLO_SUFFIX}`, true);
     // Tracked after the durable rename (delete mode only), with no throwable
-    // statement between it and the rename inside publishHello, exactly as the
+    // statement between it and the rename inside writeHello, exactly as the
     // ack write does: the final name only appears at that atomic step, so there
     // is no orphan window a pre-track would cover (I4a). A direct write is
-    // pre-tracked inside publishHello instead.
+    // pre-tracked inside writeHello instead.
     if (!deps.options().retainFiles)
       deps.responsibleFiles.add(`${deps.id()}${HELLO_SUFFIX}`);
     let lockPath: string | undefined;
@@ -1666,7 +1666,7 @@ export class FileSyncRendezvous {
     // budget can hold the window. Measured from here, the instant this party's
     // own hello is on disk: before that there is nothing for a live peer to
     // acknowledge, so an earlier start would charge the peer for this party's
-    // own publish.
+    // own write.
     const entryHelloDeadline =
       entryPeerHello === undefined
         ? undefined
@@ -1763,7 +1763,7 @@ export class FileSyncRendezvous {
             // after it (`<myId>-<peerHelloStem>-ack.json`). This is a
             // self-write, so it goes to the outbound directory (the peer reads
             // it from its inbound); in shared mode that is the inbound path.
-            // Published temp-then-rename so its final name never appears before
+            // Written temp-then-rename so its final name never appears before
             // the file exists; the peer matches it by name existence, never by
             // reading a body.
             const peerHelloStem = peerHello.name.slice(0, -".json".length);
@@ -1853,7 +1853,7 @@ export class FileSyncRendezvous {
             continue;
           }
 
-          // The peer's ack of a hello this party published after its own entry
+          // The peer's ack of a hello this party wrote after its own entry
           // scan: an observation attributable to a LIVE peer, which is what
           // clears an entry-present hello from the unconfirmed-residue case.
           deps.setEntryPeerHello(undefined);
@@ -1954,7 +1954,7 @@ export class FileSyncRendezvous {
             // rename to land -- the joiner then appears as a normal peer
             // hello and the branches below take over. If the sentinel
             // persists past the window, the joiner failed mid-arrival
-            // (after writing the sentinel but before publishing its hello);
+            // (after writing the sentinel but before writing its hello);
             // abort with a distinct transport error (a plain Error, exit
             // 69) instead of polling to the full peer timeout. We do not
             // re-create our own hello: that races the joiner's rename and

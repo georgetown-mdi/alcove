@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
@@ -14,7 +14,7 @@ import {
   forcedIdleReleaseWarning,
   idleReleaseDeclinedWarning,
   idleReleaseDidNotCloseWarning,
-  indeterminatePublishError,
+  indeterminateWriteError,
   midExchangeReconnectBudgetExhaustedError,
   partnerDropAtIdleBoundaryWarning,
   remainingMidExchangeRedials,
@@ -408,13 +408,13 @@ describe("the declined cycle-start re-dial", () => {
   });
 });
 
-describe("the undetermined publish", () => {
+describe("the undetermined write", () => {
   test("leads with the sentence to act on and trails the destination", () => {
-    const err = indeterminatePublishError(
+    const err = indeterminateWriteError(
       new Error("_rename: No such file or directory"),
       "/remote/id-hello.json",
     );
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(err.message).toBe(
       "the file may or may not have reached the partner: the operation was " +
         "cut off before the server answered and could not be confirmed " +
@@ -425,7 +425,7 @@ describe("the undetermined publish", () => {
 
   test("holds the re-issue's own error only as the cause", () => {
     const cause = new Error("_rename: No such file or directory");
-    const err = indeterminatePublishError(cause, "/remote/id-hello.json");
+    const err = indeterminateWriteError(cause, "/remote/id-hello.json");
     expect(err.cause).toBe(cause);
     expect(err.message).not.toContain("_rename");
   });
@@ -433,7 +433,7 @@ describe("the undetermined publish", () => {
   test("composes the destination RAW, escaped once at the sink", () => {
     // Altitude: an Error, so the partner-derived destination goes in unescaped
     // and the display sink escapes the rendered chain once.
-    const err = indeterminatePublishError(new Error("torn"), HOSTILE_FRAGMENT);
+    const err = indeterminateWriteError(new Error("torn"), HOSTILE_FRAGMENT);
     expect(err.message).toContain(`Destination: ${HOSTILE_FRAGMENT}`);
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).toContain(ESCAPED_ONCE);

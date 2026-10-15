@@ -350,7 +350,7 @@ export type PartnerCertificateRefusalKind = PartnerCertificateConditionKey<
 /**
  * Send the partner the abort `condition` calls for and return the refusal to
  * raise for it, marked {@link markStatesItsOwnNextStep} per instance on the
- * convention `TransportPublishIndeterminateError` (`./errors.ts`) states: an
+ * convention `TransportWriteIndeterminateError` (`./errors.ts`) states: an
  * error is marked exactly when it holds its own next step, and each of these
  * messages ends in one. The mark suppresses the CLI's generic advisory and lets
  * a display layer show the message instead of fixed copy -- which is what

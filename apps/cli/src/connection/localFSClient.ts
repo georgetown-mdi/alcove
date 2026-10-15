@@ -493,7 +493,7 @@ export class LocalFSClient implements FileTransportClient {
         //
         // A SHORT write is not a failure and does not reject: the kernel may
         // take fewer bytes than offered, and what it did not take would
-        // otherwise publish as a truncated frame -- so re-offer what remains
+        // otherwise land as a truncated frame -- so re-offer what remains
         // until nothing is, the way get() loops its reads. No position is
         // passed on any pass, so each write continues at the handle's own
         // position and an `a` (append) flag keeps its meaning.

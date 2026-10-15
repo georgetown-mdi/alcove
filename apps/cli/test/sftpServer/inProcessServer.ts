@@ -830,7 +830,7 @@ function attachSftpHandlers(
         return;
       }
       // A generic failure rather than NO_SUCH_FILE: what the probe must not be
-      // able to conclude is that the destination is absent, so the publish stays
+      // able to conclude is that the destination is absent, so the write stays
       // undetermined instead of being decided either way.
       if (
         renameTear.refuseProbeOfTornDestination &&
@@ -845,7 +845,7 @@ function attachSftpHandlers(
 
   sftp.on("REMOVE", (reqid: number, p: string) => {
     if (inject.withholdOn === "REMOVE") return;
-    // Acknowledged, not performed: the torn publish's message file stays on the
+    // Acknowledged, not performed: the torn write's message file stays on the
     // server, which is the residue a plain retry then meets.
     if (
       renameTear.preserveTornDestinationOnRemove &&
@@ -880,7 +880,7 @@ function attachSftpHandlers(
       return sftp.status(reqid, STATUS_CODE.FAILURE);
     }
     fs.rename(resolve(oldPath), resolve(newPath), (err) => {
-      // Staged tear with the publish durably in place: end the connection here,
+      // Staged tear with the write durably in place: end the connection here,
       // in the callback the filesystem work completed in, instead of writing the
       // reply, so the client's rename is torn off the wire over a destination
       // that exists.

@@ -1038,7 +1038,7 @@ test("synchronize() joiner branch: a sentinel put failure leaves the peer hello 
   expect(conn.handshakeRole).toBeUndefined();
 });
 
-test("synchronize() joiner branch: publishes the joining sentinel temp-then-rename, never by a put to its name", async () => {
+test("synchronize() joiner branch: writes the joining sentinel temp-then-rename, never by a put to its name", async () => {
   const { conn, client } = await makeJoiner();
   const joiningPath = `${conn.path}/${conn.id}-joining.json`;
   const putPaths: string[] = [];
@@ -1383,7 +1383,7 @@ test("synchronize() lock starter: a different-id sentinel replacing an earlier o
   // The joiningSeenName !== joiningName arm restarts the recovery window when a
   // sentinel from a different id replaces an earlier one (a second joiner taking
   // over). This pins the functional outcome: the starter completes against
-  // whichever joiner ultimately publishes its hello, even after seeing a
+  // whichever joiner ultimately writes its hello, even after seeing a
   // different sentinel first. (The sub-poll timing of the restart is covered by
   // reasoning, not asserted: A directly replaced by B has no empty poll between,
   // so the restart's effect is a single poll interval, below real-timer
@@ -1927,7 +1927,7 @@ test("synchronize() joiner branch rejects a prefix-at-dash id pair", async () =>
   // Connection must stay unsynchronized so a retry is not blocked.
   expect(conn.peerId).toBeUndefined();
   // Refused before the joiner deletes anything: the partner's hello stays,
-  // and ours is published beside it so the partner refuses on reading it.
+  // and ours is written beside it so the partner refuses on reading it.
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
   expect(files.has(`${conn.path}/${myId}-hello.json`)).toBe(true);
 });
@@ -2021,7 +2021,7 @@ test("synchronize() throws UsageError for multiple concurrent sessions detected 
       { name: "peer-bbb-hello.json", modifyTime: 0, size: 0 },
     ];
   };
-  // The hello publish must succeed (put then rename, neither reflected into the
+  // The hello write must succeed (put then rename, neither reflected into the
   // store the stubbed list() above bypasses); delete/safeDelete are no-ops.
   client.put = async () => {};
   client.rename = async () => {};
@@ -2051,7 +2051,7 @@ test("synchronize() throws UsageError for more than one joining sentinel in the 
       { name: "peer-bbb-joining.json", modifyTime: 0, size: 0 },
     ];
   };
-  // The hello publish must succeed (put then rename, neither reflected into the
+  // The hello write must succeed (put then rename, neither reflected into the
   // store the stubbed list() above bypasses).
   client.put = async () => {};
   client.rename = async () => {};

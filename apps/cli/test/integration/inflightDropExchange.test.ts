@@ -5,7 +5,7 @@ import { expect } from "vitest";
 import {
   DISPLAY_TRUNCATION_MARKER,
   FileSyncConnection,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
   statesItsOwnNextStep,
@@ -27,13 +27,13 @@ import { inProcessOnly } from "../sftpBackendGate";
 // waiting for it.
 //
 // The contract has a second side, driven by the last case here. A rejected send()
-// does not mean the peer has nothing: a publish that landed durably and was
+// does not mean the peer has nothing: a write that landed durably and was
 // consumed by the partner inside the sender's recovery window leaves the sender
-// with the same reading a publish that never landed leaves, so its send() rejects
+// with the same reading a write that never landed leaves, so its send() rejects
 // over a message the partner has already delivered to its application. What the
 // caller is owed there is the difference between the two -- an undetermined
 // outcome is not a determined non-delivery -- and that the sequence slot the
-// publish spent is not silently reused underneath it.
+// write spent is not silently reused underneath it.
 //
 // Both parties connect and synchronize before the drop is armed, so no connection
 // is established under a standing control, but unlike the withheld-close exercise
@@ -272,7 +272,7 @@ inProcessOnly(
   TEST_TIMEOUT_MS,
 );
 
-// The recovery both of the divergence's messages prescribe: the publish's own
+// The recovery both of the divergence's messages prescribe: the write's own
 // rejection and the refusal of the next send() over the slot it spent. Asserted
 // against this one literal in both places, so a drift between them fails here.
 const REMEDY =
@@ -332,12 +332,12 @@ inProcessOnly(
       // the whole of what an operator is told.
       for (const outcome of outcomes) {
         expect(outcome.sendRejection).toBeInstanceOf(
-          TransportPublishIndeterminateError,
+          TransportWriteIndeterminateError,
         );
         expect((outcome.sendRejection as Error).cause).toBeInstanceOf(Error);
         const rendered = sanitizeErrorForDisplay(outcome.sendRejection);
-        const [publishLink, ...causeLinks] = rendered.split("\ncaused by: ");
-        expect(publishLink).toContain(
+        const [writeLink, ...causeLinks] = rendered.split("\ncaused by: ");
+        expect(writeLink).toContain(
           "the message may or may not have reached the partner",
         );
         // The rejection holds the recovery, and is marked so the CLI's generic
@@ -347,15 +347,15 @@ inProcessOnly(
         expect(
           statesItsOwnNextStep(outcome.sendRejection, { ownOnly: true }),
         ).toBe(true);
-        expect(publishLink).toContain(REMEDY);
-        expect(publishLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
+        expect(writeLink).toContain(REMEDY);
+        expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
         // The transport's own error keeps its own link and its own budget: the
         // destination it names is not spent out of the sentence above.
         expect(causeLinks.join("\n")).toContain("_rename");
         expect(causeLinks.join("\n")).toContain("Destination:");
       }
 
-      // And what it costs the session: the rejected publish spent its sequence
+      // And what it costs the session: the rejected write spent its sequence
       // number, because the partner has already delivered a message under it. A
       // send() that reused it would be treated as a second message rather than
       // as a retry of the first, so the next send() is refused instead. That

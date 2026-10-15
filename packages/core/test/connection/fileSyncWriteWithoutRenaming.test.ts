@@ -9,11 +9,11 @@ import {
   FileSyncConnection,
   type FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
-import { DEFAULT_RENAME_REFUSED_GUIDANCE } from "../../src/connection/fileSyncPublish";
+import { DEFAULT_RENAME_REFUSED_GUIDANCE } from "../../src/connection/fileSyncWrite";
 import { fromEventConnection } from "../../src/connection/messageConnection";
 import {
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   causeChainSome,
   statesItsOwnNextStep,
 } from "../../src/errors";
@@ -389,7 +389,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     await connB.close();
   });
 
-  test("a message, which is reported as an unsettled publish and spends its seq", async () => {
+  test("a message, which is reported as an unsettled write and spends its seq", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files, {
       failPutTo: (n) => n.startsWith(`${ID_A}-`) && n !== `${ID_A}-hello.json`,
@@ -401,7 +401,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
       () => undefined,
       (e: unknown) => e,
     );
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(statesItsOwnNextStep(err)).toBe(true);
     expect(((err as Error).cause as Error).message).toMatch(/connection lost/);
     const written = [...files.keys()].map(baseName);
@@ -449,7 +449,7 @@ describe("a payload send whose put throws, through the message bridge", () => {
     expect(
       causeChainSome(
         raised,
-        (link) => link instanceof TransportPublishIndeterminateError,
+        (link) => link instanceof TransportWriteIndeterminateError,
       ),
     ).toBe(true);
     expect(reported).toBe(1);
@@ -469,7 +469,7 @@ describe("a payload send whose put throws, through the message bridge", () => {
     expect(
       causeChainSome(
         raised,
-        (link) => link instanceof TransportPublishIndeterminateError,
+        (link) => link instanceof TransportWriteIndeterminateError,
       ),
     ).toBe(false);
     expect(reported).toBe(0);
@@ -480,7 +480,7 @@ describe("with the mode off, a refused rename names the option", () => {
   const noSuchFile = (): Error =>
     Object.assign(new Error("_rename: No such file"), { code: 2 });
 
-  test("at the hello publish, with the default remedy", async () => {
+  test("at the hello write, with the default remedy", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files, { renameError: noSuchFile() });
     const conn = party(ID_A, a.client, {});
@@ -499,7 +499,7 @@ describe("with the mode off, a refused rename names the option", () => {
     expect(a.ops[0]).toMatch(/^put:temp-hello-/);
   });
 
-  test("at a message publish, with the caller's remedy", async () => {
+  test("at a message write, with the caller's remedy", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files, {
       renameError: Object.assign(new Error("ENOENT"), { code: "ENOENT" }),

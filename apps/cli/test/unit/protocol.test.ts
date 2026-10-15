@@ -2531,7 +2531,7 @@ test("runProtocol writes no key when SIGINT cancels before the handshake complet
     loggerName: "test-a",
   });
   try {
-    // Wait until the inviter has published its rendezvous file (it is now waiting
+    // Wait until the inviter has written its rendezvous file (it is now waiting
     // for a peer in synchronize()), then cancel. A lone party has no peer whose
     // lock files the cleanup could disrupt, so cancelling during synchronize() is
     // safe here.
@@ -8171,7 +8171,7 @@ test("runProtocol leaves ephemeralSessions unset when connection_per_poll is abs
 // --- write_without_renaming is announced before the run connects -------------
 
 for (const writeWithoutRenaming of [true, false])
-  test(`runProtocol ${writeWithoutRenaming ? "warns once naming the assumption" : "raises no publish warning"} with write_without_renaming ${writeWithoutRenaming ? "on" : "off"}`, async () => {
+  test(`runProtocol ${writeWithoutRenaming ? "warns once naming the assumption" : "raises no warning"} with write_without_renaming ${writeWithoutRenaming ? "on" : "off"}`, async () => {
     mockState.warnings.length = 0;
     await runProtocol({
       connection: {

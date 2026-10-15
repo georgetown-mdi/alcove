@@ -30,7 +30,7 @@ import {
   ConnectionClosedError,
   FrameSizeExceededError,
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   ConnectionError,
 } from "../../src/errors";
 import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
@@ -1975,7 +1975,7 @@ test("poll() stops the poller on a stalled consume-delete, not swallowed-and-re-
 
 test("poll() stops the poller on a stalled retain-mode ack-write, not advanced-and-re-emitted", async () => {
   // Retain mode never deletes the message; the consumption signal is a
-  // zero-length ack marker writeAck() publishes (a put then a rename) BEFORE
+  // zero-length ack marker writeAck() writes (a put then a rename) BEFORE
   // poll() emits the payload and advances recvSeq/lastAckedNNN. A TRANSIENT
   // ack-write failure reschedules and reprocesses the message next cycle,
   // but a terminal UsageError must NOT be swallowed: advancing past it would
@@ -3321,7 +3321,7 @@ test("(c) lock joiner fast-path retries a transient advertise-hello write, then 
 
   // Fail the advertise-hello put on every attempt but the last in the budget,
   // then delegate to the in-memory store so the final attempt lands. Scoped to
-  // the hello publish's in-flight temp (the hello is published temp-then-rename,
+  // the hello write's in-flight temp (the hello is written temp-then-rename,
   // so its final name never appears under a failing write); on a mismatch this
   // branch issues no other put.
   const helloPath = `${conn.path}/${conn.id}-hello.json`;
@@ -4450,21 +4450,21 @@ test("composed via fromEventConnection: the first transient poll() error is term
   expect(messageLoopInternals(conn).recvSeq).toBe(0);
 });
 
-// The ack publish poll() writes in retain mode is the one publish a transport can
-// leave undetermined from inside the poll loop, so TransportPublishIndeterminateError
+// The ack write poll() performs in retain mode is the one write a transport can
+// leave undetermined from inside the poll loop, so TransportWriteIndeterminateError
 // -- a plain Error, not a UsageError -- is reachable at poll()'s catch. The pair
 // below measures what that classification does and does not buy, in isolation and
 // under the production composition.
 
-// Stage the retain-mode ack publish as undetermined on its first attempt: the ack
-// name is re-derived identically each cycle, so a later attempt republishes it.
+// Stage the retain-mode ack write as undetermined on its first attempt: the ack
+// name is re-derived identically each cycle, so a later attempt rewrites it.
 function undeterminedFirstAck(client: FileTransportClient): () => number {
   let renames = 0;
   const realRename = client.rename.bind(client);
   client.rename = async (from: string, to: string) => {
     renames += 1;
     if (renames > 1) return realRename(from, to);
-    throw new TransportPublishIndeterminateError(
+    throw new TransportWriteIndeterminateError(
       "the file may or may not have reached the partner",
       { cause: new Error("_rename: No such file or directory") },
     );
@@ -4472,7 +4472,7 @@ function undeterminedFirstAck(client: FileTransportClient): () => number {
   return () => renames;
 }
 
-test("poll() retryable: an undetermined ack publish reschedules and the ack lands on a later cycle", async () => {
+test("poll() retryable: an undetermined ack write reschedules and the ack lands on a later cycle", async () => {
   const { client, files } = makeMockClient();
   const peerId = "peer-sender";
   const body = objectMessage({ v: 1 });
@@ -4493,8 +4493,8 @@ test("poll() retryable: an undetermined ack publish reschedules and the ack land
   await runPoller(conn, delivered);
 
   // Not a UsageError, so poll()'s catch leaves pollerActive set: the next cycle
-  // re-derives the same ack name, republishes it, and delivers the message.
-  expect(errors[0]).toBeInstanceOf(TransportPublishIndeterminateError);
+  // re-derives the same ack name, rewrites it, and delivers the message.
+  expect(errors[0]).toBeInstanceOf(TransportWriteIndeterminateError);
   expect(errors[0]).not.toBeInstanceOf(UsageError);
   expect(renameCount()).toBeGreaterThan(1);
   expect(received).toHaveLength(1);
@@ -4502,12 +4502,12 @@ test("poll() retryable: an undetermined ack publish reschedules and the ack land
   expect([...files.keys()].some((p) => p.endsWith("-ack.json"))).toBe(true);
 });
 
-test("composed via fromEventConnection: an undetermined ack publish ends the exchange, so the reschedule above never runs", async () => {
+test("composed via fromEventConnection: an undetermined ack write ends the exchange, so the reschedule above never runs", async () => {
   // The measurement that determines what the plain-Error classification is
   // worth to an EXCHANGE. The reschedule the test above measures is a property
   // of poll() standalone; in the CLI a FileSyncConnection is always bridged
   // through fromEventConnection, whose error listener fails the
-  // MessageConnection on the first emitted poll error. So a publish this class
+  // MessageConnection on the first emitted poll error. So a write this class
   // leaves undetermined ends the exchange whether or not it is classified
   // terminal -- the classification buys the loop's own retry, not a surviving
   // exchange.
@@ -4534,12 +4534,12 @@ test("composed via fromEventConnection: an undetermined ack publish ends the exc
   expect((err as ConnectionError).kind).toBe("transport");
   expect((err as Error).message).toContain("may or may not have reached");
   expect((err as ConnectionError).cause).toBeInstanceOf(
-    TransportPublishIndeterminateError,
+    TransportWriteIndeterminateError,
   );
   expect(messageLoopInternals(conn).pollerActive).toBe(false);
 
-  // No later cycle: the ack was never republished and the message was never
-  // delivered, where the isolation test above republishes and delivers.
+  // No later cycle: the ack was never rewritten and the message was never
+  // delivered, where the isolation test above rewrites and delivers.
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(renameCount()).toBe(1);
   expect(messageLoopInternals(conn).recvSeq).toBe(0);
@@ -6287,7 +6287,7 @@ describe("connection-per-poll idle-boundary signal", () => {
     expect(capture()).toEqual(before);
   });
 
-  test("the idle-boundary release never falls inside a publish the poll loop performs", async () => {
+  test("the idle-boundary release never falls inside a write the poll loop performs", async () => {
     const { client, files } = makeMockClient();
     const trace: string[] = [];
     client.ensureConnected = async () => {
@@ -6335,12 +6335,12 @@ describe("connection-per-poll idle-boundary signal", () => {
       delivered,
       new Promise<void>((r) => setTimeout(r, 2_000)),
     ]);
-    // Keep polling past the delivery so the run brackets the publish with a
+    // Keep polling past the delivery so the run brackets the write with a
     // boundary on both sides rather than stopping at the first one.
     await new Promise((r) => setTimeout(r, 25));
     conn.stop();
 
-    // The retain ack is the publish the poll loop itself performs: a temp put
+    // The retain ack is the write the poll loop itself performs: a temp put
     // followed by the rename that commits the final name. The only release site
     // is the cycle's own finally, so the two ops are contiguous and no boundary
     // can leave the temp orphaned with the peer's go-ahead signal missing.
@@ -6354,7 +6354,7 @@ describe("connection-per-poll idle-boundary signal", () => {
     expect(ackRename).toBeGreaterThan(tempPut);
     expect(trace.slice(tempPut, ackRename)).not.toContain("release");
     // The boundaries are live in this run, so the exclusion above is real: the
-    // first release lands after the publish committed, and further cycles
+    // first release lands after the write committed, and further cycles
     // dialed again.
     expect(trace.indexOf("release")).toBeGreaterThan(ackRename);
     expect(trace.filter((entry) => entry === "dial").length).toBeGreaterThan(1);

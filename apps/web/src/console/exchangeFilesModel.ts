@@ -70,7 +70,7 @@ export const EXCHANGE_FILES_DEFAULT: ExchangeFilesDraft = {
  * the CLI's start warning names (docs/EXCHANGE_REFERENCE.md,
  * write_without_renaming), shown while the operator can still turn it off.
  */
-export const PUBLISH_WITHOUT_RENAME_NOTICE =
+export const WRITE_WITHOUT_RENAMING_NOTICE =
   "Each exchange file is written directly under its final name, so it is " +
   "visible before it is complete. This is only safe if the shared " +
   "folder never passes a file to your partner while it is still being " +

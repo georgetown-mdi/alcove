@@ -16,7 +16,7 @@ import { createMessagePipe } from "../../src/connection/messageConnection";
 import { withHostilePayload } from "../utils/hostilePayload";
 import {
   OperatorConfigError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   ConnectionError,
 } from "../../src/errors";
 import {
@@ -1713,7 +1713,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
   });
 
   test("a payload send rejected as indeterminate is owed a record on the leg that sends first", async () => {
-    // The transport could neither confirm nor retract the publish, so this
+    // The transport could neither confirm nor retract the write, so this
     // party's payload may be in the partner's directory: the region opens on
     // the rejection, and the run fails holding the record of a disclosure it
     // cannot rule out. The rejection reaches the step wrapped as the message
@@ -1728,10 +1728,10 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const failure = await runExchange(
       rejectPayloadSend(
         connInitiatorRaw,
-        new ConnectionError("the publish could not be confirmed", "transport", {
-          cause: new TransportPublishIndeterminateError(
+        new ConnectionError("the write could not be confirmed", "transport", {
+          cause: new TransportWriteIndeterminateError(
             "the message may or may not have reached the partner",
-            { cause: new Error("the publish was cut off mid-operation") },
+            { cause: new Error("the write was cut off mid-operation") },
           ),
         }),
       ),
@@ -1741,7 +1741,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     ).then(
       () => {
         throw new Error(
-          "expected the indeterminate publish to end the initiator's run",
+          "expected the indeterminate write to end the initiator's run",
         );
       },
       (reason: unknown) => reason,
@@ -1750,7 +1750,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     // The run still fails, and on the transport's own error.
     expect(failure).toBeInstanceOf(ConnectionError);
     expect((failure as ConnectionError).cause).toBeInstanceOf(
-      TransportPublishIndeterminateError,
+      TransportWriteIndeterminateError,
     );
     const kept = exchangeRecordFromFailure(failure);
     expect(kept?.record.outcome).toBe("receipt-swap-terminated");
@@ -1779,10 +1779,10 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const failure = await runExchange(
       rejectPayloadSend(
         connResponderRaw,
-        new ConnectionError("the publish could not be confirmed", "transport", {
-          cause: new TransportPublishIndeterminateError(
+        new ConnectionError("the write could not be confirmed", "transport", {
+          cause: new TransportWriteIndeterminateError(
             "the message may or may not have reached the partner",
-            { cause: new Error("the publish was cut off mid-operation") },
+            { cause: new Error("the write was cut off mid-operation") },
           ),
         }),
       ),
@@ -1792,7 +1792,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     ).then(
       () => {
         throw new Error(
-          "expected the indeterminate publish to end the responder's run",
+          "expected the indeterminate write to end the responder's run",
         );
       },
       (reason: unknown) => reason,
@@ -1811,7 +1811,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
   });
 
   test("the responder's terminal send refused outright owes no record", async () => {
-    // The other rejection on the same leg: the transport settled the publish as
+    // The other rejection on the same leg: the transport settled the write as
     // not having happened, so nothing of this party's crossed and there is
     // nothing to attest -- the received payload alone owes no record.
     const [connInitiator, connResponderRaw] = createMessagePipe();
