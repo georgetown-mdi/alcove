@@ -1,16 +1,8 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { ConnectionError } from "@alcove/core";
 
 import {
   acceptAsWebParty,
@@ -27,8 +19,8 @@ import {
   startCli,
 } from "./cliParty";
 
-import type { WebHandshakeDriver, WebPartyOutcome } from "./webParty";
 import type { CliRun } from "./cliParty";
+import type { WebPartyOutcome } from "./webParty";
 
 /**
  * A CLI party and a web party completing one live exchange over a shared
@@ -38,12 +30,9 @@ import type { CliRun } from "./cliParty";
  * outputs agree). The CLI party is the real `alcove` program; the web party
  * is assembled from the web app's own modules (apps/web/src).
  *
- * The harness supplies what apps/web has neither of and may not import from
- * the CLI: the file-sync client (./fileDropTransport) and an AEAD wrap
- * stand-in for `applyEncryption`, which a file-sync CLI party always
- * requests. The app's own driver refuses that wrap (WebRTC only, already
- * DTLS-confidential); the last test below pins the refusal, so the stand-in
- * cannot outlive the day apps/web applies the wrap itself.
+ * The harness supplies the one piece apps/web has none of and may not import
+ * from the CLI: the file-sync client (./fileDropTransport). The handshake and
+ * the AEAD wrap over the exchange are the app's own.
  */
 
 // Two rows in common, at different offsets on each side, so a party reading its
@@ -83,15 +72,7 @@ const POLL_INTERVAL_MS = 20;
 // the test's runtime.
 const COMPLETING_PEER_TIMEOUT_MS = 60_000;
 
-// The peer budget for the arm where one party FAILS mid-run and the other is
-// left waiting for it. That wait IS this arm's runtime, and the web party has no
-// abort marker to cut it short (the CLI's cross-party fast-fail is a file-sync
-// mechanism the app has no counterpart for), so it is sized against what the arm
-// needs -- a rendezvous and a key exchange over local files -- rather than
-// against a production wait.
-const REFUSAL_PEER_TIMEOUT_MS = 10_000;
-
-// A hard deadline on each `alcove` invocation, comfortably past every peer
+// A hard deadline on each `alcove` invocation, comfortably past the peer
 // budget above so a run that hangs is reported as a hang rather than absorbed
 // into a budget's expiry.
 const CLI_DEADLINE_MS = 150_000;
@@ -132,14 +113,13 @@ function makeWorkspace(): Workspace {
  * rejection. */
 async function runBothParties(params: {
   workspace: Workspace;
-  driver: WebHandshakeDriver;
   webSetup: Awaited<ReturnType<typeof acceptAsWebParty>>;
   peerTimeoutMs: number;
 }): Promise<{
   cli: PromiseSettledResult<CliRun>;
   web: PromiseSettledResult<WebPartyOutcome>;
 }> {
-  const { workspace, driver, webSetup, peerTimeoutMs } = params;
+  const { workspace, webSetup, peerTimeoutMs } = params;
   const cli = startCli({
     args: ["exchange", workspace.cliInput, workspace.cliOutput],
     cwd: workspace.cliDir,
@@ -148,7 +128,6 @@ async function runBothParties(params: {
   const web = runWebPartyExchange({
     dropDir: workspace.dropDir,
     setup: webSetup,
-    driver,
     pollIntervalMs: POLL_INTERVAL_MS,
     peerTimeoutMs,
   });
@@ -194,7 +173,6 @@ describe("a CLI party and a web party complete one live exchange", () => {
     });
     const { cli, web } = await runBothParties({
       workspace,
-      driver: "aead-stand-in",
       webSetup,
       peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
@@ -236,64 +214,11 @@ describe("a CLI party and a web party complete one live exchange", () => {
 
     const { cli, web } = await runBothParties({
       workspace,
-      driver: "aead-stand-in",
       webSetup: minted,
       peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
 
     expectBothPartiesLinked({ cli, web });
-  });
-
-  test("the web app's own handshake driver refuses the AEAD a file-sync CLI party asks for", async () => {
-    const invite = await startCli({
-      args: ["invite", "--identity", CLI_IDENTITY, workspace.cliInput],
-      cwd: workspace.cliDir,
-      timeoutMs: CLI_DEADLINE_MS,
-    });
-    expectCliSucceeded(invite, "invite");
-    fillInFileDropConnection({
-      configPath: workspace.cliConfig,
-      dropDir: workspace.dropDir,
-      pollIntervalMs: POLL_INTERVAL_MS,
-      peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
-    });
-
-    const webSetup = await acceptAsWebParty({
-      token: invitationFrom(invite),
-      identity: WEB_IDENTITY,
-      inputCsvPath: workspace.webInput,
-    });
-    const { cli, web } = await runBothParties({
-      workspace,
-      driver: "app",
-      webSetup,
-      peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
-    });
-
-    // The handshake itself succeeds -- both parties derive the same session
-    // key -- and the run stops on what it negotiated: a capability the web
-    // path does not apply, reported as a local `usage` fault rather than a
-    // failed authentication. Nothing reaches the PSI rounds, on either side.
-    if (web.status !== "rejected")
-      throw new Error("the web party completed an exchange it must refuse");
-    expect(web.reason).toBeInstanceOf(ConnectionError);
-    expect((web.reason as ConnectionError).kind).toBe("usage");
-    expect((web.reason as ConnectionError).message).toContain(
-      "application-layer encryption",
-    );
-
-    // The CLI party exits on its own peer budget rather than being killed on
-    // the harness deadline, so this arm measures a real failure rather than a
-    // hang the assertion above would pass over.
-    if (cli.status !== "fulfilled") throw cli.reason;
-    expect(cli.value.timedOut).toBe(false);
-    expect(cli.value.exitCode).toBeGreaterThan(0);
-    expect(
-      existsSync(workspace.cliOutput) &&
-        readdirSync(workspace.cliOutput).some((name) =>
-          name.startsWith("alcove-results-"),
-        ),
-    ).toBe(false);
   });
 });
 

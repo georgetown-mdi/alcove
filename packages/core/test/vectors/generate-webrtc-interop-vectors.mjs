@@ -172,8 +172,9 @@ const peerIds = {
  * One rendezvous side's whole pairing. `handshakeRole` and `requestEncryption`
  * are the contract, not a derivation: the acceptor dials the data channel and
  * sends the first key-exchange message (so it is the initiator) while the
- * inviter listens and answers, and neither party asks for the application-layer
- * AEAD over a data channel that DTLS already makes end-to-end confidential.
+ * inviter listens and answers. `requestEncryption` is the CLI's flag, which
+ * asks for no application-layer AEAD on a data channel; the web app asks for
+ * it on every webrtc exchange.
  */
 const sideVector = (side, handshakeRole) => ({
   side,

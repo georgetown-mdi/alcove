@@ -97,8 +97,8 @@ export interface StageDefinition {
  * alert. `"exchange"` (acquire/open/run) invites a re-run. `"output"` means
  * the exchange already succeeded and only local results-file generation
  * failed -- never re-run. `"security"` is the trust-boundary subset of an
- * exchange failure: the authenticated key exchange (or, once wrapped, the
- * AEAD layer) reported a wrong secret, tamper, or replay, so the UI shows it
+ * exchange failure: the authenticated key exchange (or the AEAD layer over
+ * the exchange) reported a wrong secret, tamper, or replay, so the UI shows it
  * as an authentication failure rather than a retryable transport drop.
  * `"config"` is an {@link OperatorConfigError} raised in the PREPARE phase
  * (inside `acquire`, before any peer connection), whose message names only
@@ -485,6 +485,9 @@ export async function runExchangeLifecycle<
 
   const { peer, conn, psi, prepared } = acquired;
   let mc: MessageConnection | undefined;
+  // The AEAD wrapper over `mc` once the handshake has produced it; closing it
+  // closes `mc` beneath it.
+  let secure: MessageConnection | undefined;
 
   // F4 trigger: drop the broker signaling socket on the first inbound frame,
   // keeping the data channel (already open and bidirectional by the time a frame
@@ -518,7 +521,7 @@ export async function runExchangeLifecycle<
         // openPeerMessageConnection), which is why teardown can emit after the
         // run's terminal event; a failed or cancelled run drains the same
         // close silently.
-        await mc.close();
+        await (secure ?? mc).close();
       } else {
         // The wrapper never materialized (abort/timeout before the open await
         // resolved); hard-close the raw channel so a pending open rejects.
@@ -573,27 +576,29 @@ export async function runExchangeLifecycle<
     });
     // Authenticate the peer before any PSI frame is sent: the P-256 key exchange
     // fails closed on a wrong secret or tampered/malformed frame, so an
-    // unauthenticated peer never reaches runExchange. Its 32-byte session key is
-    // discarded here (under DTLS the web declines the AEAD wrap -- see
-    // authenticateExchange). A trust failure is a security-kind ConnectionError,
-    // routed by the catch below to the distinct authentication-failure alert.
+    // unauthenticated peer never reaches runExchange. The exchange runs on the
+    // AEAD-wrapped connection it returns. A trust failure, or a failure of the
+    // wrap mid-exchange, is a security-kind ConnectionError, routed by the
+    // catch below to the distinct authentication-failure alert.
     //
     // This runs BEFORE `await psi`: the handshake needs no PSI library, and
     // authenticating first keeps the responder's WASM load out of the handshake's
     // critical path -- a load that approached the per-message kex timeout could
     // otherwise time out the initiator's wait for the responder's reply -- and
     // spends no WASM load on a peer that fails authentication.
-    const { rotatedSecret } = await authenticateExchange(
+    const authenticated = await authenticateExchange(
       mc,
       exchangeRole,
       sharedSecret,
       expires,
     );
+    secure = authenticated.connection;
+    const { rotatedSecret } = authenticated;
     // Resolves before runExchange: instant for the initiator (it loaded the
     // library during acquire), the real WASM wait for the responder, overlapping
     // the wait for the peer's first PSI frame.
     const psiLibrary = await psi;
-    const result = await runExchange(mc, exchangeRole, prepared, {
+    const result = await runExchange(secure, exchangeRole, prepared, {
       psiLibrary,
       // Run the PSI masking in a Web Worker off the UI thread, so the tab stays
       // responsive and the WebRTC peer keepalives keep firing during a round.

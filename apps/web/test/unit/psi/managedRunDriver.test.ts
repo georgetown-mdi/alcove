@@ -17,6 +17,7 @@ import {
 } from "@alcove/core";
 
 import {
+  AEAD_ENVELOPE_VERSION,
   AGREED_TERMS_VERSION,
   minimalExchangeResult,
   minimalPreparedExchange,
@@ -53,6 +54,8 @@ import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { persistManagedExchangePayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
+
+import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
 import type { ManagedInputSource } from "../../../src/psi/managed/managedInputHandle.js";
 import type { RunnableManagedExchangeRecord } from "../../../src/psi/managed/managedExchangeRecord.js";
@@ -180,8 +183,18 @@ vi.mock("../../../src/psi/managed/managedPreparedExchange.js", () => ({
     }),
   ),
 }));
+// The handshake hands back the opened connection as the one the exchange runs
+// on, so the teardown tests observe its close; the wrap tests return a
+// distinct one.
 vi.mock("../../../src/psi/authenticateExchange.js", () => ({
-  authenticateExchange: vi.fn(() => Promise.resolve({ rotatedSecret: "next" })),
+  authenticateExchange: vi.fn((connection: MessageConnection) =>
+    Promise.resolve({
+      sessionKey: new Uint8Array(32),
+      rotatedSecret: "next",
+      applyEncryption: true,
+      connection,
+    }),
+  ),
 }));
 vi.mock("@psi/runOutputs", () => ({
   buildRunOutputs: vi.fn(() => OUTPUTS),
@@ -328,6 +341,16 @@ function makeStalledExchangeMc() {
     } as unknown as MessageConnection,
     close,
     stalled,
+  };
+}
+
+/** A completed handshake whose exchange runs on `connection`. */
+function wrappedHandshake(connection: MessageConnection) {
+  return {
+    sessionKey: new Uint8Array(32),
+    rotatedSecret: "next",
+    applyEncryption: true,
+    connection,
   };
 }
 
@@ -722,6 +745,128 @@ describe("runManagedExchangeInBrowser", () => {
     );
 
     expect(close).toHaveBeenCalled();
+  });
+
+  test("runs the exchange on the AEAD-wrapped connection: its frames cross as envelopes, and teardown closes it", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    const { secure, partnerRaw, open } = await aeadWrappedPipe();
+    mockedAuthenticate.mockResolvedValueOnce(wrappedHandshake(secure));
+    const outbound = { probe: "cleartext-marker" };
+    const wire: Array<unknown> = [];
+    mockedRunExchange.mockImplementationOnce(async (connection) => {
+      await connection.send(outbound);
+      wire.push(await partnerRaw.receive());
+      return minimalExchangeResult({
+        partnerTerms: getDefaultLinkageTerms("Managed re-run partner fixture"),
+      });
+    });
+
+    await expect(
+      runDriver(new AbortController().signal),
+    ).resolves.toMatchObject({ exchange: OUTPUTS });
+
+    expect(mockedRunExchange.mock.calls[0][0]).toBe(secure);
+    const [frame] = wire;
+    expect(frame).toBeInstanceOf(Uint8Array);
+    const bytes = frame as Uint8Array;
+    expect(bytes[0]).toBe(AEAD_ENVELOPE_VERSION);
+    expect(new TextDecoder().decode(bytes)).not.toContain("cleartext-marker");
+    expect(await open(frame)).toEqual(outbound);
+    await expect(secure.send(outbound)).rejects.toMatchObject({
+      kind: "usage",
+    });
+  });
+
+  test("a tampered envelope ends the run with the security failure and nothing after it is processed", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+    mockedAuthenticate.mockResolvedValueOnce(wrappedHandshake(secure));
+    const processed: Array<unknown> = [];
+    mockedRunExchange.mockImplementationOnce(async (connection) => {
+      for (;;) processed.push(await connection.receive());
+    });
+    const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+    const tampered = first.slice();
+    tampered[tampered.length - 1] ^= 0x01;
+    await partnerRaw.send(tampered);
+    await partnerRaw.send(second);
+
+    const rejection = await runDriver(new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBeInstanceOf(ConnectionError);
+    expect((rejection as ConnectionError).kind).toBe("security");
+    expect(processed).toEqual([]);
+    expect(mockedBuildRunOutputs).not.toHaveBeenCalled();
+    // The wrapper stays failed, so the intact frame queued behind the
+    // tampered one is never delivered.
+    await expect(secure.receive()).rejects.toBe(rejection);
+  });
+
+  test.each([
+    {
+      name: "a replayed envelope",
+      frames: (first: Uint8Array, second: Uint8Array) => [first, first, second],
+      delivered: [{ round: 1 }],
+    },
+    {
+      name: "a malformed envelope, too short for its header and tag",
+      frames: (first: Uint8Array, second: Uint8Array) => [
+        first.slice(0, 28),
+        second,
+      ],
+      delivered: [],
+    },
+  ])(
+    "$name ends the run with the security failure and nothing after it is processed",
+    async ({ frames, delivered }) => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources();
+      const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+      mockedAuthenticate.mockResolvedValueOnce(wrappedHandshake(secure));
+      const processed: Array<unknown> = [];
+      mockedRunExchange.mockImplementationOnce(async (connection) => {
+        for (;;) processed.push(await connection.receive());
+      });
+      const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+      for (const frame of frames(first, second)) await partnerRaw.send(frame);
+
+      const rejection = await runDriver(new AbortController().signal).catch(
+        (error: unknown) => error,
+      );
+
+      expect(rejection).toBeInstanceOf(ConnectionError);
+      expect((rejection as ConnectionError).kind).toBe("security");
+      expect(processed).toEqual(delivered);
+      expect(mockedBuildRunOutputs).not.toHaveBeenCalled();
+      await expect(secure.receive()).rejects.toBe(rejection);
+    },
+  );
+
+  test("a cancel during the exchange closes the AEAD-wrapped connection", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    const { secure } = await aeadWrappedPipe();
+    mockedAuthenticate.mockResolvedValueOnce(wrappedHandshake(secure));
+    mockedRunExchange.mockImplementationOnce(async (connection) => {
+      await connection.receive();
+      throw new Error("the exchange went on past the cancel");
+    });
+    const controller = new AbortController();
+
+    const running = runDriver(controller.signal);
+    await vi.waitFor(() => expect(mockedRunExchange).toHaveBeenCalled());
+    controller.abort();
+
+    await expect(running).rejects.toMatchObject({ kind: "closed" });
+    await expect(secure.send({})).rejects.toMatchObject({ kind: "usage" });
   });
 
   test("yields its outputs on a run cancelled during the drain", async () => {

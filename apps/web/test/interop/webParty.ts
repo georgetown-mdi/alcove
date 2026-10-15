@@ -1,9 +1,7 @@
 import { createReadStream } from "node:fs";
 
 import {
-  EncryptedMessageConnection,
   FileSyncConnection,
-  authenticateConnection,
   decodeInvitation,
   fromEventConnection,
   loadCSVFile,
@@ -26,12 +24,7 @@ import { prepareAcceptorExchange } from "@exchange/acceptorExchange";
 
 import { HarnessFileDropClient } from "./fileDropTransport";
 
-import type {
-  CSVRow,
-  HandshakeRole,
-  MessageConnection,
-  PreparedExchange,
-} from "@alcove/core";
+import type { CSVRow, PreparedExchange } from "@alcove/core";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 /** The CSV a party links on, parsed through the same core reader both runtimes
@@ -144,23 +137,6 @@ export async function inviteAsWebParty(params: {
   };
 }
 
-/**
- * Which handshake driver the web party runs.
- *
- * `app` is the web app's own {@link authenticateExchange}: it asks for no
- * application-layer AEAD and refuses a partner that asks, since the app exchanges
- * only over a DTLS-confidential WebRTC channel. A CLI party on a file-sync channel
- * asks unconditionally -- the frames sit in a share whose admin can read them --
- * so `applyEncryption` (the OR of both requests) forces this driver to fail closed.
- *
- * `aead-stand-in` is what a web party WOULD run if the app applied the
- * file-sync wrap: the same core handshake asking for encryption, and core's
- * `EncryptedMessageConnection` over the result. It stands in for the one piece
- * apps/web does not implement, so the completing arms can exercise everything
- * above and below it. Nothing else on the web party's side is substituted.
- */
-export type WebHandshakeDriver = "app" | "aead-stand-in";
-
 /** One web party's completed exchange. */
 export interface WebPartyOutcome {
   /** The partner's declared identity, read off the agreed terms. */
@@ -194,11 +170,10 @@ function matchedPairs(
 export async function runWebPartyExchange(params: {
   dropDir: string;
   setup: WebPartySetup;
-  driver: WebHandshakeDriver;
   pollIntervalMs: number;
   peerTimeoutMs: number;
 }): Promise<WebPartyOutcome> {
-  const { dropDir, setup, driver, pollIntervalMs, peerTimeoutMs } = params;
+  const { dropDir, setup, pollIntervalMs, peerTimeoutMs } = params;
   const connection = new FileSyncConnection(new HarnessFileDropClient(), {
     verbose: -1,
   });
@@ -223,11 +198,11 @@ export async function runWebPartyExchange(params: {
     const transport = fromEventConnection(connection, {
       inactivityTimeoutMs: peerTimeoutMs,
     });
-    const secure = await authenticateAndWrap(
+    const { connection: secure } = await authenticateExchange(
       transport,
       handshakeRole,
-      setup,
-      driver,
+      setup.sharedSecret,
+      setup.expires,
     );
 
     const { library } = await loadPsiBackend(
@@ -245,36 +220,4 @@ export async function runWebPartyExchange(params: {
   } finally {
     await connection.close().catch(() => {});
   }
-}
-
-/** Authenticate through the chosen driver and return the connection the PSI
- * rounds run on -- wrapped when the handshake negotiated the AEAD. */
-async function authenticateAndWrap(
-  transport: MessageConnection,
-  handshakeRole: HandshakeRole,
-  setup: WebPartySetup,
-  driver: WebHandshakeDriver,
-): Promise<MessageConnection> {
-  if (driver === "app") {
-    await authenticateExchange(
-      transport,
-      handshakeRole,
-      setup.sharedSecret,
-      setup.expires,
-    );
-    return transport;
-  }
-  const { sessionKey, applyEncryption } = await authenticateConnection(
-    transport,
-    { sharedSecret: setup.sharedSecret, expires: setup.expires },
-    handshakeRole,
-    true,
-  );
-  return applyEncryption
-    ? await EncryptedMessageConnection.create(
-        transport,
-        sessionKey,
-        handshakeRole,
-      )
-    : transport;
 }

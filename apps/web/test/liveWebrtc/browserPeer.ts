@@ -161,16 +161,23 @@ async function runOverConnection(params: {
     },
   });
   const handshakeRole = handshakeRoleForRendezvousRole(role);
-  await authenticateExchange(mc, handshakeRole, sharedSecret, expires);
+  const { connection } = await authenticateExchange(
+    mc,
+    handshakeRole,
+    sharedSecret,
+    expires,
+  );
   const psiLibrary = await (PSI() as Promise<PSILibrary>);
-  const result = await runExchange(mc, handshakeRole, prepared, { psiLibrary });
+  const result = await runExchange(connection, handshakeRole, prepared, {
+    psiLibrary,
+  });
 
   const ending = endBeforeOwnClose(conn, connectionError);
   // The measurement: a flushing close queues the in-band close sentinel behind
   // the final frame and then waits for the peer to close the channel, so this
   // span is what a browser operator waits after their result is on screen.
   const closeStartedAt = performance.now();
-  await mc.close();
+  await connection.close();
   const closeWaitMs = Math.round(performance.now() - closeStartedAt);
   peer.disconnect();
 

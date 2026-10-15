@@ -112,6 +112,7 @@ interface ManagedRerunInput {
  * the live peer/channel for teardown, and what the data exchange reads off the
  * record the handshake ran. */
 interface ManagedRerunCarried {
+  /** The AEAD-wrapped connection {@link authenticateExchange} returned. */
   mc: MessageConnection;
   psiLibrary: PSILibrary;
   peer: Peer;
@@ -382,6 +383,11 @@ export function runManagedExchangeInBrowser(
             current.sharedSecret,
             current.expires,
           );
+          // From here the run uses the AEAD-wrapped connection: the exchange
+          // runs on it, and a cancel or teardown closes it, which closes the
+          // opened connection beneath it.
+          mc = auth.connection;
+          openTransport = { peer, conn, mc };
           const carried: ManagedRerunCarried = {
             mc,
             psiLibrary,

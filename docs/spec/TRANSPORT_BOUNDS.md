@@ -223,8 +223,7 @@ The adversary here is the exchange counterparty, a mutually-distrusting peer (se
 The data channel is end-to-end confidential under DTLS, so neither the broker nor a TURN relay is in scope; the peer is.
 
 No existing control reaches this transport.
-The web path discards the rotated key and declines the application-layer AEAD wrap under DTLS (`apps/web/src/psi/authenticateExchange.ts`, `requestEncryption: false`), so core's `EncryptedMessageConnection` and its ~512 MiB `MAX_FRAME_SIZE_BYTES` envelope -- a file-sync transport control -- never bind on the web path.
-(If deferred web-encryption work ever forces the AEAD wrap on, that envelope would come into scope and could subsume part of this need; while the wrap is declined, this control stands on its own and waits on no encryption rework.)
+The web path applies core's `EncryptedMessageConnection` over the data channel (`apps/web/src/psi/authenticateExchange.ts`), but that wrapper's ~512 MiB `MAX_FRAME_SIZE_BYTES` check reads a frame only after the transport has reassembled it, so it does not bound reassembly.
 The only inbound limiters that do apply are core's count/structure bounds on the *parsed* payload-exchange message (the web wire is BinaryPack, not JSON, but those bounds act on the deserialized structure either way) and the `QueuedMessageConnection` message-count capacity -- none a byte-size bound.
 The large raw PSI set frame -- one party's full encrypted set as raw elliptic-curve points, **35 bytes per element** on the wire (see [PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)) -- is sent as a single binary `Uint8Array` that, left unbounded, PeerJS reassembles with no byte cap.
 

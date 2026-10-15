@@ -1,15 +1,38 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ConnectionError } from "@alcove/core";
+import { ConnectionError, EncryptedMessageConnection } from "@alcove/core";
 
-import { createMessagePipe, runKex } from "@alcove/core/testing";
+import {
+  AEAD_ENVELOPE_VERSION,
+  createMessagePipe,
+  runKex,
+} from "@alcove/core/testing";
 
 import {
   authenticateExchange,
   hasRecoveryHint,
 } from "../../../src/psi/authenticateExchange.js";
 
+import type * as AlcoveCore from "@alcove/core";
 import type { MessageConnection } from "@alcove/core";
+
+// Core's handshake runs for real; one test forces its result to carry no
+// encryption decision, which the OR of the two requests cannot produce.
+const forceNoEncryption = vi.hoisted(() => ({ value: false }));
+vi.mock("@alcove/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof AlcoveCore>();
+  return {
+    ...actual,
+    authenticateConnection: async (
+      ...args: Parameters<typeof actual.authenticateConnection>
+    ) => {
+      const result = await actual.authenticateConnection(...args);
+      return forceNoEncryption.value
+        ? { ...result, applyEncryption: false }
+        : result;
+    },
+  };
+});
 
 /** A MessageConnection whose `send` resolves and whose `receive` rejects with
  * `error`. As the initiator, the handshake sends its first frame then awaits a
@@ -68,6 +91,7 @@ describe("authenticateExchange", () => {
   // branch; restore real time after every test so it cannot leak.
   afterEach(() => {
     vi.useRealTimers();
+    forceNoEncryption.value = false;
   });
 
   test("matching secret: both ends derive the same 32-byte session key", async () => {
@@ -87,10 +111,92 @@ describe("authenticateExchange", () => {
     expect(initiator.value.sessionKey).toBeInstanceOf(Uint8Array);
     expect(initiator.value.sessionKey.length).toBe(32);
     expect(initiator.value.sessionKey).toEqual(responder.value.sessionKey);
-    // The web path declines the application AEAD over DTLS (requestEncryption is
-    // false on both ends), so the negotiated decision is false.
-    expect(initiator.value.applyEncryption).toBe(false);
-    expect(responder.value.applyEncryption).toBe(false);
+    expect(initiator.value.applyEncryption).toBe(true);
+    expect(responder.value.applyEncryption).toBe(true);
+    // Each end's returned connection is the AEAD wrapper, keyed so the two
+    // open each other's frames.
+    for (const end of [initiator.value, responder.value])
+      expect(end.connection).toBeInstanceOf(EncryptedMessageConnection);
+    await initiator.value.connection.send({ round: 1 });
+    expect(await responder.value.connection.receive()).toEqual({ round: 1 });
+    await responder.value.connection.send(new Uint8Array([1, 2, 3]));
+    expect(await initiator.value.connection.receive()).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+  });
+
+  test("requests the wrap in the handshake from either role", async () => {
+    const [connA, connB] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    for (const end of [connA, connB]) {
+      const original = end.send.bind(end);
+      end.send = (data: unknown) => {
+        sent.push(data);
+        return original(data);
+      };
+    }
+
+    await runBothEnds(connA, connB, SECRET_A, SECRET_A);
+
+    expect(sent).toEqual([
+      expect.objectContaining({ kexMsg: "1", reqEnc: true }),
+      expect.objectContaining({ kexMsg: "2", reqEnc: true }),
+      expect.objectContaining({ kexMsg: "3" }),
+    ]);
+  });
+
+  test.each(["initiator", "responder"] as const)(
+    "a partner that does not request the wrap still gets it, and the web %s's frames cross as envelopes",
+    async (webRole) => {
+      const [connWeb, connPeer] = createMessagePipe();
+      const peerRole = webRole === "initiator" ? "responder" : "initiator";
+      const psk = new Uint8Array(Buffer.from(SECRET_A, "base64url"));
+      const [web, peer] = await Promise.all([
+        authenticateExchange(connWeb, webRole, SECRET_A),
+        runKex(connPeer, peerRole, psk, false),
+      ]);
+
+      // The decision is the OR of both requests, so the partner's is true too.
+      expect(web.applyEncryption).toBe(true);
+      expect(peer.applyEncryption).toBe(true);
+
+      await web.connection.send({ probe: "cleartext-marker" });
+      const frame = await connPeer.receive();
+      expect(frame).toBeInstanceOf(Uint8Array);
+      expect((frame as Uint8Array)[0]).toBe(AEAD_ENVELOPE_VERSION);
+      expect(Buffer.from(frame as Uint8Array).toString("latin1")).not.toContain(
+        "cleartext-marker",
+      );
+      // The partner's own wrapper over the same session key opens it.
+      const partnerSecure = await EncryptedMessageConnection.create(
+        {
+          send: () => Promise.resolve(),
+          receive: () => Promise.resolve(frame),
+          close: () => Promise.resolve(),
+        },
+        peer.sessionKey,
+        peerRole,
+      );
+      expect(await partnerSecure.receive()).toEqual({
+        probe: "cleartext-marker",
+      });
+    },
+  );
+
+  test("refuses to run the exchange bare when the handshake returns without the wrap", async () => {
+    // Unreachable through core's OR of the two requests; pinned so a change
+    // there cannot leave the web exchange unwrapped.
+    forceNoEncryption.value = true;
+    const [connA, connB] = createMessagePipe();
+    const [initiator] = await runBothEnds(connA, connB, SECRET_A, SECRET_A);
+
+    expect(initiator.status).toBe("rejected");
+    if (initiator.status !== "rejected") return;
+    expect(initiator.reason).toBeInstanceOf(ConnectionError);
+    expect((initiator.reason as ConnectionError).kind).toBe("usage");
+    expect((initiator.reason as ConnectionError).message).toMatch(
+      /encryption/i,
+    );
   });
 
   test("mismatched secret: fails closed as a security-kind ConnectionError on both ends", async () => {
@@ -197,33 +303,14 @@ describe("authenticateExchange", () => {
     expect(err).toBe(usageError);
   });
 
-  test("rejects when the peer negotiates encryption the web path does not apply", async () => {
-    const [connA, connB] = createMessagePipe();
-    // The peer (responder) requests the application AEAD; the web initiator
-    // passes false, so the negotiated decision is true -- which the web path does
-    // not yet apply. Running the exchange in cleartext while the peer wraps would
-    // silently diverge, so the handshake must fail loudly instead.
-    const psk = new Uint8Array(Buffer.from(SECRET_A, "base64url"));
-    const [initiator] = await Promise.allSettled([
-      authenticateExchange(connA, "initiator", SECRET_A),
-      runKex(connB, "responder", psk, true),
-    ]);
-
-    expect(initiator.status).toBe("rejected");
-    if (initiator.status !== "rejected") return;
-    expect(initiator.reason).toBeInstanceOf(ConnectionError);
-    expect((initiator.reason as ConnectionError).kind).toBe("usage");
-    expect((initiator.reason as ConnectionError).message).toMatch(
-      /encryption/i,
-    );
-  });
-
-  test.each(["initiator", "responder"] as const)(
-    "an unauthenticated peer requesting encryption fails as security, not the encryption mismatch (web %s)",
-    async (webRole) => {
-      // The encryption-mismatch refusal is reachable only past the handshake:
-      // a peer holding the wrong secret is refused as a trust failure, whatever
-      // it requested.
+  test.each([
+    ["initiator", true],
+    ["initiator", false],
+    ["responder", true],
+    ["responder", false],
+  ] as const)(
+    "a peer holding the wrong secret fails as security (web %s, peer requests the wrap: %s)",
+    async (webRole, peerRequestsEncryption) => {
       const [connWeb, connPeer] = createMessagePipe();
       const wrongPsk = new Uint8Array(Buffer.from(SECRET_B, "base64url"));
       const [web] = await Promise.allSettled([
@@ -232,7 +319,7 @@ describe("authenticateExchange", () => {
           connPeer,
           webRole === "initiator" ? "responder" : "initiator",
           wrongPsk,
-          true,
+          peerRequestsEncryption,
         ),
       ]);
 

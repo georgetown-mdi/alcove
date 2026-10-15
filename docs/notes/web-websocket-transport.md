@@ -42,8 +42,8 @@ The pieces a WebSocket path would build on, with where each is stated:
   The browser applies the same constants by wrapping PeerJS internals (`apps/web/src/psi/transport/boundedReassembly.ts`), which a transport that does not run PeerJS cannot reuse.
 - **The wrap is a decorator over any `MessageConnection`.**
   `EncryptedMessageConnection` (`packages/core/src/connection/encryptedMessageConnection.ts`) runs on WebCrypto, and the request bit is the fourth argument of `authenticateConnection` (`packages/core/src/auth.ts`).
-  The web side passes `false` and refuses a partner that requests it (`apps/web/src/psi/authenticateExchange.ts`); the WebRTC channel states `request_encryption: false` on both sides ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#application-layer-encryption)).
-  That no browser exchange has run the wrap is a stated limit of the earlier note, and this one inherits it ([browser-sftp-proxy.md](browser-sftp-proxy.md#channel-security)).
+  The web application requests and applies the wrap on every WebRTC exchange (`apps/web/src/psi/authenticateExchange.ts`; [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#application-layer-encryption)).
+  The earlier note stated as a limit that no browser exchange had run the wrap ([browser-sftp-proxy.md](browser-sftp-proxy.md#channel-security)); the web application now applies it on every WebRTC exchange, so this note does not inherit that limit.
 - **Every web WebRTC exchange has a shared secret.**
   No secret-less rendezvous is offered on the web ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), so a session key exists for the wrap on every browser exchange this note concerns.
 - **A per-exchange relay key exists.**
@@ -151,7 +151,7 @@ Step 1 is the smaller change and gives a party that has no path today a working 
 Step 2 is the better experience -- nothing to set, no second wait -- and about twice the protocol work; it is the recommended end state, and the hello frame carries a start message from the first cut so step 2 adds behaviour rather than a new wire.
 
 **The wrap.** On the relay path both implementations pass `requestEncryption = true` to `authenticateConnection`, and the web side applies `EncryptedMessageConnection` when the negotiated decision is true instead of refusing.
-The WebRTC path is unchanged: the web still passes `false` there and still refuses a partner that requests it, so the refusal in `authenticateExchange.ts` becomes a property of the connection shape rather than of the application.
+On the WebRTC path the web application also requests and applies the wrap on every exchange.
 The handshake frames, the ephemeral public keys and confirmation MACs, cross the relay in the clear as they cross an SFTP server ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)); the PSI frames and the lists of matched records do not.
 
 ### What the relay's operator sees, stated for the disclosure documents

@@ -47,8 +47,8 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  *
  * The inbound path is byte-bounded against a hostile or buggy peer
  * ({@link boundChunkReassembly}, re-checked at delivery by
- * {@link checkDeliveredFrameBound}) -- the WebRTC transport's own bound, since
- * core's AEAD frame-size envelope does not apply on the DTLS-wrapped web path.
+ * {@link checkDeliveredFrameBound}) -- the WebRTC transport's own bound,
+ * applied before core's AEAD wrapper above this connection reads a frame.
  * The outbound path packs through core's iterative encoder
  * ({@link packOutboundFramesIteratively}), so a frame's element count is
  * bounded by memory rather than by the JavaScript stack, and states the same

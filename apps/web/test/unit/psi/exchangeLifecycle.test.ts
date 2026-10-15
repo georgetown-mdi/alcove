@@ -15,7 +15,9 @@ import {
   runExchange,
   statesItsOwnNextStep,
 } from "@alcove/core";
+
 import {
+  AEAD_ENVELOPE_VERSION,
   StandardizationTermsError,
   StandardizedDataset,
 } from "@alcove/core/testing";
@@ -34,17 +36,19 @@ import {
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 
+import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
+
 import type {
   Acquire,
   AcquiredExchange,
   ExchangeOutputs,
 } from "../../../src/psi/exchangeLifecycle.js";
+import type { AuthenticatedExchange } from "../../../src/psi/authenticateExchange.js";
 
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 
 import type {
-  AuthResult,
   BuiltExchangeRecord,
   ExchangeResult,
   MessageConnection,
@@ -204,6 +208,18 @@ function makeFakeMc() {
   };
 }
 
+/** A completed handshake whose exchange runs on `connection`. */
+function authenticatedOver(
+  connection: MessageConnection,
+): AuthenticatedExchange {
+  return {
+    sessionKey: new Uint8Array(32),
+    rotatedSecret: "rotated",
+    applyEncryption: true,
+    connection,
+  };
+}
+
 function makeResources(overrides?: { peer?: FakePeer; conn?: FakeConn }) {
   const peer = overrides?.peer ?? new FakePeer();
   const conn = overrides?.conn ?? new FakeConn();
@@ -253,14 +269,13 @@ afterEach(() => {
 describe("runExchangeLifecycle", () => {
   beforeEach(() => {
     // Default happy mocks; individual tests override as needed. The handshake
-    // resolves (its 32-byte session key is unused by the lifecycle today; its
-    // rotated secret reaches the completion), so the owner advances to
-    // runExchange.
-    mockedAuthenticate.mockResolvedValue({
-      sessionKey: new Uint8Array(32),
-      rotatedSecret: "rotated",
-      applyEncryption: false,
-    } satisfies AuthResult);
+    // resolves (its rotated secret reaches the completion), so the owner
+    // advances to runExchange. Its returned connection is the opened one here,
+    // so the teardown and abort tests observe the opened connection's close;
+    // the wrap tests below return a distinct one.
+    mockedAuthenticate.mockImplementation((connection) =>
+      Promise.resolve(authenticatedOver(connection)),
+    );
     mockedRunExchange.mockResolvedValue(STUB_EXCHANGE_RESULT);
   });
 
@@ -869,6 +884,133 @@ describe("runExchangeLifecycle", () => {
     expect(mockedRunExchange).not.toHaveBeenCalled();
   });
 
+  test("runs the exchange on the AEAD-wrapped connection: its frames cross as envelopes, and teardown closes it", async () => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const { secure, partnerRaw, open } = await aeadWrappedPipe();
+    mockedAuthenticate.mockResolvedValue(authenticatedOver(secure));
+    const outbound = { probe: "cleartext-marker" };
+    const wire: Array<unknown> = [];
+    mockedRunExchange.mockImplementation(async (connection) => {
+      await connection.send(outbound);
+      wire.push(await partnerRaw.receive());
+      return STUB_EXCHANGE_RESULT;
+    });
+    const { acquired } = makeResources();
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire: () => Promise.resolve(acquired),
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(s.onResult).toHaveBeenCalledTimes(1);
+    expect(mockedRunExchange.mock.calls[0][0]).toBe(secure);
+    const [frame] = wire;
+    expect(frame).toBeInstanceOf(Uint8Array);
+    const bytes = frame as Uint8Array;
+    expect(bytes[0]).toBe(AEAD_ENVELOPE_VERSION);
+    expect(new TextDecoder().decode(bytes)).not.toContain("cleartext-marker");
+    expect(await open(frame)).toEqual(outbound);
+    await expect(secure.send(outbound)).rejects.toMatchObject({
+      kind: "usage",
+    });
+  });
+
+  test("a tampered envelope ends the run as category 'security' and nothing after it is processed", async () => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+    mockedAuthenticate.mockResolvedValue(authenticatedOver(secure));
+    const processed: Array<unknown> = [];
+    mockedRunExchange.mockImplementation(async (connection) => {
+      for (;;) processed.push(await connection.receive());
+    });
+    const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+    const tampered = first.slice();
+    tampered[tampered.length - 1] ^= 0x01;
+    await partnerRaw.send(tampered);
+    await partnerRaw.send(second);
+    const { acquired } = makeResources();
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire: () => Promise.resolve(acquired),
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    const securityFailure = expect.objectContaining({
+      name: "ConnectionError",
+      kind: "security",
+    }) as unknown;
+    expect(s.onError.mock.calls).toEqual([
+      [{ category: "security", error: securityFailure }],
+    ]);
+    expect(processed).toEqual([]);
+    expect(s.generateOutput).not.toHaveBeenCalled();
+    expect(s.onResult).not.toHaveBeenCalled();
+    // The wrapper stays failed, so the intact frame queued behind the
+    // tampered one is never delivered.
+    await expect(secure.receive()).rejects.toMatchObject({ kind: "security" });
+  });
+
+  test.each([
+    {
+      name: "a replayed envelope",
+      frames: (first: Uint8Array, second: Uint8Array) => [first, first, second],
+      delivered: [{ round: 1 }],
+    },
+    {
+      name: "a malformed envelope, too short for its header and tag",
+      frames: (first: Uint8Array, second: Uint8Array) => [
+        first.slice(0, 28),
+        second,
+      ],
+      delivered: [],
+    },
+  ])(
+    "$name ends the run as category 'security' and nothing after it is processed",
+    async ({ frames, delivered }) => {
+      const { mc } = makeFakeMc();
+      mockedOpen.mockResolvedValue(mc);
+      const { secure, partnerRaw, seal } = await aeadWrappedPipe();
+      mockedAuthenticate.mockResolvedValue(authenticatedOver(secure));
+      const processed: Array<unknown> = [];
+      mockedRunExchange.mockImplementation(async (connection) => {
+        for (;;) processed.push(await connection.receive());
+      });
+      const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
+      for (const frame of frames(first, second)) await partnerRaw.send(frame);
+      const { acquired } = makeResources();
+      const s = seams();
+
+      await runExchangeLifecycle({
+        acquire: () => Promise.resolve(acquired),
+        exchangeRole: "initiator",
+        signal: new AbortController().signal,
+        ...s,
+      });
+
+      const securityFailure = expect.objectContaining({
+        name: "ConnectionError",
+        kind: "security",
+      }) as unknown;
+      expect(s.onError.mock.calls).toEqual([
+        [{ category: "security", error: securityFailure }],
+      ]);
+      expect(processed).toEqual(delivered);
+      expect(s.generateOutput).not.toHaveBeenCalled();
+      expect(s.onResult).not.toHaveBeenCalled();
+      await expect(secure.receive()).rejects.toMatchObject({
+        kind: "security",
+      });
+    },
+  );
+
   test("a generateOutput failure is category 'output' (the exchange succeeded)", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
@@ -1089,7 +1231,7 @@ describe("runExchangeLifecycle", () => {
     // exercises an abort landing in the handshake step (before runExchange), the
     // one interleaving the other abort tests do not cover.
     mockedAuthenticate.mockImplementation(
-      async (c) => (await c.receive()) as AuthResult,
+      async (c) => (await c.receive()) as AuthenticatedExchange,
     );
     const controller = new AbortController();
     const { acquired, peer } = makeResources();

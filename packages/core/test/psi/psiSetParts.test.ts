@@ -336,6 +336,14 @@ test("at the real bounds, the largest set the decode admits goes in two message 
   );
   expect(webRtc).toBe(267_532_665);
   expect(Math.ceil(largestSet / webRtc)).toBe(3);
+
+  const wrappedWebRtc = psiSetPartPayloadBytes({
+    ...withBounds(raw, { webRtc: MAX_WEBRTC_FRAME_BYTES }),
+    outboundFrameOverheadBytes: () => AEAD_ENVELOPE_OVERHEAD_BYTES,
+  });
+  expect(AEAD_ENVELOPE_OVERHEAD_BYTES).toBe(30);
+  expect(wrappedWebRtc).toBe(267_532_635);
+  expect(Math.ceil(largestSet / wrappedWebRtc)).toBe(3);
 });
 
 function values(count: number, prefix: string): Array<string> {

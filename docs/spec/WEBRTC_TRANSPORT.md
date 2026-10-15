@@ -48,7 +48,7 @@ order to meet at all.
 
 Both implementations resolve this table identically or a CLI party and a browser
 party cannot complete a handshake with each other, so the pairing -- together
-with the request-encryption flag each side sends, `false` on both (see
+with the request-encryption flag the CLI sends, `false` from either rendezvous side (see
 [Application-layer encryption](#application-layer-encryption)) -- is pinned by
 the cross-application conformance vectors at
 [`packages/core/test/vectors/webrtc-interop-vectors.json`](../../packages/core/test/vectors/webrtc-interop-vectors.json),
@@ -985,12 +985,12 @@ options could otherwise move where this side connects.
 
 ## Application-layer encryption
 
-The `webrtc` channel states `request_encryption: false`: a data channel is
+The CLI's `webrtc` channel states `request_encryption: false`: a data channel is
 end-to-end confidential under DTLS against the signaling server and any relay,
 so the application-layer AEAD wraps nothing the transport has not already
-protected, and the web peer refuses a partner that requests it. The rationale
-and the one case that would change it are in
-[CHANNEL_SECURITY.md](CHANNEL_SECURITY.md).
+protected. The web peer requests the wrap on every exchange, so an exchange
+with a browser party is wrapped. The rationale and the one case that would
+change the CLI's request are in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md).
 
 ## Budgets
 
