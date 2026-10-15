@@ -1102,7 +1102,10 @@ that one: enroll the exchange again first. The export writes the relay your
 partner's invitation named as it was named, the site's
 [default relay](DEPLOYMENT.md#the-default-relay) and its registrar included: a
 command-line run lists it beside your own relay, as a run here does, and
-enrolls the exchange at that registrar before it connects.
+enrolls the exchange at the registrar the invitation names before it
+connects, whichever site's invitation named it. The export panel names that
+registrar, since whoever runs it learns the network address of the machine
+running the exchange.
 
 ### Bringing a command-line configuration back
 

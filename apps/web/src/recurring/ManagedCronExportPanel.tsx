@@ -21,6 +21,7 @@ import styles from "@styles/app.module.css";
 import {
   CLI_BUILT_IN_STUN_URI,
   exportRun,
+  invitationRegistrarExportLine,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
 import {
@@ -112,6 +113,7 @@ export function ManagedCronExportPanel({
       state: managedCronExportPanelState(record, () => read),
     };
   }, [record]);
+  const invitationRegistrarLine = invitationRegistrarExportLine(record);
 
   // A run holds the hand-off back: the polled reading, or the spend's own refusal
   // at a click the poll's last reading was too old to hold back.
@@ -289,6 +291,9 @@ export function ManagedCronExportPanel({
                 connection in {state.composed.config.fileName} to use your own
                 server instead.
               </li>
+              {invitationRegistrarLine !== undefined && (
+                <li>{invitationRegistrarLine}</li>
+              )}
               <li>
                 {state.fromAgreedSchedule
                   ? "These files do not include the schedule you agreed with " +
