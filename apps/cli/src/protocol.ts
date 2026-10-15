@@ -907,23 +907,13 @@ async function authenticateRun(params: {
   run: RunLifecycle;
   mc: MessageConnection;
   auth: AuthPersist;
-  connection: ProtocolConnectionConfig;
   role: HandshakeRole;
   onAuthenticated: (() => void | Promise<void>) | undefined;
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
 }): Promise<void> {
-  const {
-    build,
-    run,
-    mc,
-    auth,
-    connection,
-    role,
-    onAuthenticated,
-    log,
-    eventStream,
-  } = params;
+  const { build, run, mc, auth, role, onAuthenticated, log, eventStream } =
+    params;
   log.info("authenticating");
   // Discard the (possibly whitespace-padded) keyFilePath from auth;
   // saveKeyFile below uses trimmedKeyFilePath, which was captured and
@@ -958,18 +948,17 @@ async function authenticateRun(params: {
   run.authStarted = true;
   // sessionKey (32 bytes, both parties derive the same value) keys the
   // per-direction AEAD encryption set up below, so every PSI frame
-  // after this point is opaque on the wire to an SFTP/file-drop admin.
-  // rotatedSecret is the new shared secret persisted to disk.
-  // requestEncryption is what this party asks for; applyEncryption is
-  // the negotiated OR both parties agree on, gating the
-  // EncryptedMessageConnection wrap below.
+  // after this point is opaque on the wire to a file-sync admin and to
+  // the webrtc coordination server. rotatedSecret is the new shared
+  // secret persisted to disk. requestEncryption is what this party asks
+  // for; applyEncryption is the negotiated OR both parties agree on,
+  // gating the EncryptedMessageConnection wrap below.
   //
-  // A file-sync channel asks for it unconditionally, since its
-  // filesystem admin can read every frame. A webrtc data channel does
-  // not: it is already end-to-end confidential under DTLS, so the wrap
-  // would buy nothing, and a browser peer declines and refuses a
-  // partner that asks. See docs/spec/CHANNEL_SECURITY.md.
-  const requestEncryption = connection.channel !== "webrtc";
+  // Every channel asks for it. A file-sync admin can read every frame,
+  // and the coordination server controls the webrtc signaling it relays,
+  // so DTLS alone does not keep content from it; it cannot complete this
+  // handshake. See docs/spec/CHANNEL_SECURITY.md.
+  const requestEncryption = true;
   const { rotatedSecret, sessionKey, applyEncryption } =
     await authenticateConnection(mc, authParams, role, requestEncryption).catch(
       (err: unknown) => {
@@ -1094,11 +1083,9 @@ async function authenticateRun(params: {
   // Wrap mc in the AEAD decorator when the handshake negotiated it, and
   // run the PSI exchange through `secure` so every frame is encrypted
   // on the wire. Gated on applyEncryption -- the transcript-bound OR of
-  // both parties' requests -- rather than bare authentication state:
-  // file-sync requests it unconditionally, so behavior here is
-  // unchanged today, while the gate readies the path for a future
-  // caller on an already-confidential transport that declines the
-  // extra layer.
+  // both parties' requests -- rather than bare authentication state;
+  // this party requests it on every channel, so the gate is set
+  // whenever a handshake completes.
   //
   // create() derives the two per-direction keys via HKDF and registers
   // no listeners on mc, so a signal arriving before it resolves needs
@@ -1934,7 +1921,6 @@ export async function runProtocol(
         run,
         mc,
         auth,
-        connection,
         role,
         onAuthenticated,
         log,

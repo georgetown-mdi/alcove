@@ -151,7 +151,7 @@ Step 1 is the smaller change and gives a party that has no path today a working 
 Step 2 is the better experience -- nothing to set, no second wait -- and about twice the protocol work; it is the recommended end state, and the hello frame carries a start message from the first cut so step 2 adds behaviour rather than a new wire.
 
 **The wrap.** On the relay path both implementations pass `requestEncryption = true` to `authenticateConnection`, and the web side applies `EncryptedMessageConnection` when the negotiated decision is true instead of refusing.
-On the WebRTC path the web application also requests and applies the wrap on every exchange.
+On the WebRTC path both implementations also request and apply the wrap on every exchange.
 The handshake frames, the ephemeral public keys and confirmation MACs, cross the relay in the clear as they cross an SFTP server ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)); the PSI frames and the lists of matched records do not.
 
 ### What the relay's operator sees, stated for the disclosure documents

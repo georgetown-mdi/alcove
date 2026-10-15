@@ -220,7 +220,7 @@ The local-filesystem adapter is the one case where the rendezvous directory's co
 The [Web signaling surface bounds](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds) cover the signaling *socket* -- the broker the two browsers rendezvous through.
 The PSI payload itself never crosses that socket: it flows peer-to-peer over the WebRTC *data channel*, which is the surface this bound covers.
 The adversary here is the exchange counterparty, a mutually-distrusting peer (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)) -- authenticated by the P-256 handshake, but free to be hostile or buggy thereafter.
-The data channel is end-to-end confidential under DTLS, so neither the broker nor a TURN relay is in scope; the peer is.
+The bound acts on every datagram the data channel delivers, before the application-layer AEAD check, so it applies to the coordination server too where that server is in the path ([CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#which-channels-request-it)); a TURN relay forwards DTLS without terminating it and is not in scope.
 
 No existing control reaches this transport.
 The web path applies core's `EncryptedMessageConnection` over the data channel (`apps/web/src/psi/authenticateExchange.ts`), but that wrapper's ~512 MiB `MAX_FRAME_SIZE_BYTES` check reads a frame only after the transport has reassembled it, so it does not bound reassembly.

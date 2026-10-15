@@ -24,11 +24,11 @@
 /**
  * Maximum size, in bytes, of a single inbound frame the web WebRTC
  * data-channel receive path will reassemble into memory. The web
- * peer-to-peer transport runs the PeerJS data channel directly and declines
- * the application-layer AEAD wrap under DTLS (see
- * `apps/web/src/psi/authenticateExchange.ts`), so core's
- * `EncryptedMessageConnection` and its ~512 MiB `MAX_FRAME_SIZE_BYTES`
- * envelope never bind here; this is the WebRTC transport's own inbound byte
+ * peer-to-peer transport runs the PeerJS data channel directly, and core's
+ * `EncryptedMessageConnection` above it (see
+ * `apps/web/src/psi/authenticateExchange.ts`) checks its ~512 MiB
+ * `MAX_FRAME_SIZE_BYTES` only after the transport has reassembled a frame, so
+ * that check does not bound reassembly; this is the WebRTC transport's own inbound byte
  * bound, the analogue of the file-sync frame-size cap
  * (docs/spec/TRANSPORT_BOUNDS.md) for the one transport that cap does not
  * reach. Without it a hostile or buggy peer can stream an oversized PSI set

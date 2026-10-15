@@ -48,7 +48,7 @@ order to meet at all.
 
 Both implementations resolve this table identically or a CLI party and a browser
 party cannot complete a handshake with each other, so the pairing -- together
-with the request-encryption flag the CLI sends, `false` from either rendezvous side (see
+with the request-encryption flag each side sends, `true` from either rendezvous side (see
 [Application-layer encryption](#application-layer-encryption)) -- is pinned by
 the cross-application conformance vectors at
 [`packages/core/test/vectors/webrtc-interop-vectors.json`](../../packages/core/test/vectors/webrtc-interop-vectors.json),
@@ -432,12 +432,13 @@ its body is parsed; the data channel has reassembled the part by then, up to
 under a tighter bound.
 
 A cascade round's association table and original-index list are one frame
-each, sent as BinaryPack with no AEAD wrap. Their index lists fit one frame at
-the per-set maximum, as they fit one message file on file-sync: two index
-lists of 2^24 positions each, encoded by `encodeBinaryPackValue`, measured
-167,509,259 bytes (4.99 bytes per value), which `webrtcFrameReceiveCharge`
-charges as 168,074,494 bytes (5.01 bytes per value) against the 268,435,456
-bytes of `MAX_WEBRTC_FRAME_BYTES`. What can still pass the bound is the
+each, sent as UTF-8 JSON inside the application-layer AEAD envelope (see
+[Application-layer encryption](#application-layer-encryption)). Their index
+lists do not fit one frame at the per-set maximum: two index lists of the
+positions 0 to 2^24 - 1 measured 279,767,673 bytes as JSON, which
+`webrtcFrameReceiveCharge` charges as 280,711,728 bytes inside the envelope
+against the 268,435,456 bytes of `MAX_WEBRTC_FRAME_BYTES`, so the frame passes
+the bound at about 16.1 million matched records. What can also pass the bound is the
 deduplicating side's owner-list grouping beside them
 ([PROTOCOL.md, The lists the parts do not cover](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 
@@ -985,12 +986,10 @@ options could otherwise move where this side connects.
 
 ## Application-layer encryption
 
-The CLI's `webrtc` channel states `request_encryption: false`: a data channel is
-end-to-end confidential under DTLS against the signaling server and any relay,
-so the application-layer AEAD wraps nothing the transport has not already
-protected. The web peer requests the wrap on every exchange, so an exchange
-with a browser party is wrapped. The rationale and the one case that would
-change the CLI's request are in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md).
+The `webrtc` channel states `request_encryption: true` from the CLI and from
+the web peer, so every exchange is wrapped: every frame after the key exchange
+is an AEAD envelope. The rationale is in
+[CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#which-channels-request-it).
 
 ## Budgets
 

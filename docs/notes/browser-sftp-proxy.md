@@ -200,8 +200,8 @@ How that reads for each proxy shape:
   A raw relay sees addresses, the target, timing and volume, and the SSH version strings and algorithm negotiation sent before encryption (RFC 4253 sections 4.2 and 7.1; advisory, not checked here).
   A terminating proxy also holds the SFTP credential and reads every file: the rendezvous files, the handshake frames and abort marker outside the wrap, and on a quick exchange everything.
 - **The wrap.**
-  The `sftp` channel requests the wrap whatever the client, so any browser SFTP path, not only a terminating one, needs the web side to apply it on `sftp` while keeping the `webrtc` refusal.
-  Core's wrap runs on WebCrypto (`packages/core/src/connection/encryptedMessageConnection.ts`), but no browser exchange runs it yet, so that it works there is unverified.
+  The `sftp` channel requests the wrap whatever the client, so any browser SFTP path, not only a terminating one, needs the web side to apply it on `sftp`, as it does on `webrtc`.
+  Core's wrap runs on WebCrypto (`packages/core/src/connection/encryptedMessageConnection.ts`), and the web application runs it on every WebRTC exchange.
 - **Quick exchanges.**
   A quick exchange relies on SSH alone, which a raw relay leaves intact; a terminating proxy could read it, so a quick exchange would be refused there, as under a DTLS-terminating relay ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)).
 

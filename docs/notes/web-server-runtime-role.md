@@ -24,8 +24,8 @@ the code that does it, as a static site
 The one runtime service an exchange needs from outside the two browsers is the
 peer-coordination (PeerJS) broker, which introduces them to each other and sees
 no exchange content -- the rendezvous ids derive from the invitation secret, and
-the data channel is confidential against it under DTLS
-([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)). It is not part of
+the application-layer encryption every exchange applies keeps the content from
+it ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)). It is not part of
 the web app's deployment: a page dials the broker the build names
 ([DEPLOYMENT.md](../DEPLOYMENT.md#coordination-server)), and where that
 broker runs is recorded in
