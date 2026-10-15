@@ -235,8 +235,7 @@ export function invitationWebrtcEndpoint(
   const endpoint = webrtcEndpointFromAddress(invitationSignalingAddress(loc));
   const relay = relayLocatorFromOwnRelay(ownRelay);
   if (relay === undefined) return endpoint;
-  const registrar =
-    relay.turn !== undefined ? ownRelay?.registrar : undefined;
+  const registrar = relay.turn !== undefined ? ownRelay?.registrar : undefined;
   return {
     ...endpoint,
     relay: registrar !== undefined ? { ...relay, registrar } : relay,

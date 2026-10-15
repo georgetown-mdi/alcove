@@ -313,4 +313,3 @@ describe("invitationRelayWithDefault", () => {
     expect(invitationRelayWithDefault(full, DEFAULT_RELAY)).toBe(full);
   });
 });
-

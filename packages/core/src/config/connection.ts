@@ -1216,12 +1216,15 @@ export function relayLocatorSchema(
         "a relay locator must name at least one turn or stun url; omit it " +
         "when there is no relay to name",
     })
-    .refine((relay) => relay.registrar === undefined || relay.turn !== undefined, {
-      message:
-        "a relay locator's registrar enrolls the key of its TURN relay, so " +
-        "it requires a turn url",
-      path: ["registrar"],
-    });
+    .refine(
+      (relay) => relay.registrar === undefined || relay.turn !== undefined,
+      {
+        message:
+          "a relay locator's registrar enrolls the key of its TURN relay, so " +
+          "it requires a turn url",
+        path: ["registrar"],
+      },
+    );
 }
 
 const ConnectionRelayLocatorSchema = relayLocatorSchema(

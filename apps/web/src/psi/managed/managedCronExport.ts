@@ -74,7 +74,6 @@ import {
   bindPathsIn,
 } from "@jobContract/handoffBindPaths";
 
-
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
 import {

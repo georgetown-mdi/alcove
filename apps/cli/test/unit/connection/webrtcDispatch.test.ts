@@ -1119,9 +1119,7 @@ test("a run whose invitation relay names a registrar enrolls there once, without
     maxAgeDays: null,
   });
   expect(acceptorDialsAtEachRequest).toEqual([0]);
-  const acceptorDial = mockState.dials.find(
-    (dial) => dial.role === "acceptor",
-  );
+  const acceptorDial = mockState.dials.find((dial) => dial.role === "acceptor");
   expect(
     (acceptorDial?.iceServers as Array<{ urls: unknown }>).map(
       ({ urls }) => urls,
@@ -1164,4 +1162,3 @@ test("a run whose invitation relay names no registrar enrolls nowhere", async ()
   }
   expect(registrar.requests).toHaveLength(0);
 });
-

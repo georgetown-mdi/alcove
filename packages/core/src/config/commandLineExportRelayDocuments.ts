@@ -64,8 +64,8 @@ export const COMMAND_LINE_EXPORT_OWN_TURN_URL =
  * relay, its TURN url and its registrar.
  */
 export const COMMAND_LINE_EXPORT_INVITATION_RELAY: RelayLocator = {
-  turn: ["turns:default-relay.example.net:443?transport=tcp"],
-  registrar: "https://default-relay.example.net",
+  turn: ["turns:default-relay.example.org:443?transport=tcp"],
+  registrar: "https://default-relay.example.org",
 };
 
 /** @internal */
@@ -150,8 +150,8 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "    exchange_id: riverbend-q3",
       "  invitation_relay:",
       "    turn:",
-      "      - turns:default-relay.example.net:443?transport=tcp",
-      "    registrar: https://default-relay.example.net",
+      "      - turns:default-relay.example.org:443?transport=tcp",
+      "    registrar: https://default-relay.example.org",
       "linkage_terms:",
       "  version: 1.0.0",
       "  identity: County Health Dept",
@@ -171,7 +171,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "        - field: ssn",
     ].join("\n"),
     runRegistrar: COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
-    invitationRegistrar: "https://default-relay.example.net",
+    invitationRegistrar: "https://default-relay.example.org",
     because:
       "its runs list this party's own TURN relay, which they register at the " +
       "registrar, beside the relay the invitation named, whose registrar " +

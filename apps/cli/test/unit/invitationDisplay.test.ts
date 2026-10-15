@@ -1421,9 +1421,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       `    ${CONSENT_FACTS.invitationRelay.note}`,
     ]);
     expect(
-      invitationRelayRegistrarLine(
-        "https://r\\x1b[31m.example" as Displayable,
-      ),
+      invitationRelayRegistrarLine("https://r\\x1b[31m.example" as Displayable),
     ).toContain("https://r\\x1b[31m.example");
   });
 

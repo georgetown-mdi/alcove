@@ -941,9 +941,12 @@ describe("the relay key registration", () => {
 
     test("is refused under a relay setting naming no TURN url, as any enrolled record is", () => {
       expect(() =>
-        composeManagedCronExport(invitedRecord({ turn: [PARTNER_TURN] }), () => ({
-          kind: "none",
-        })),
+        composeManagedCronExport(
+          invitedRecord({ turn: [PARTNER_TURN] }),
+          () => ({
+            kind: "none",
+          }),
+        ),
       ).toThrow("but this browser's relay settings name no TURN url");
     });
   });
