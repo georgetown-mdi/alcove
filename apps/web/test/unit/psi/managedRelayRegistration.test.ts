@@ -867,6 +867,17 @@ describe("the enrollment form's address problems", () => {
   });
 });
 
+describe("the enrollment form's stored address", () => {
+  test("a typed address is stored as its origin", () => {
+    const parsed = RelayRegistrarSchema.safeParse({
+      url: "https://Registrar.Example.org:443/",
+      exchangeId: REGISTRAR.exchangeId,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.url).toBe("https://registrar.example.org");
+  });
+});
+
 describe("the enrollment form's exchange-id problems", () => {
   test.each([
     [".", "must not be '.' or '..'"],

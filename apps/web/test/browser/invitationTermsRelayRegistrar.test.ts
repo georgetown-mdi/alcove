@@ -6,7 +6,11 @@ import { page } from "vitest/browser";
 
 import { createElement } from "react";
 
-import { CONSENT_FACTS } from "@alcove/core";
+import {
+  CONSENT_FACTS,
+  decodeInvitation,
+  generateSharedSecret,
+} from "@alcove/core";
 
 import { InvitationTerms } from "@components/InvitationTerms";
 
@@ -122,6 +126,54 @@ describe("InvitationTerms: the registrar an invitation's relay names", () => {
       });
       expect(text).toContain(`TURN ${TURN_URL}`);
       expect(text).not.toContain("registrar");
+    },
+  );
+});
+
+async function decodedFromTypedRegistrar(
+  registrar: string,
+): Promise<ConnectionEndpoint> {
+  const base64Url = (bytes: Uint8Array) =>
+    btoa(String.fromCharCode(...bytes))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+  const bytes = new TextEncoder().encode(
+    JSON.stringify({
+      version: "1",
+      linkageTerms: terms,
+      sharedSecret: generateSharedSecret(),
+      connectionEndpoint: {
+        channel: "webrtc",
+        host: "peer.example.org",
+        relay: { turn: [TURN_URL], registrar },
+      },
+    }),
+  );
+  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  const { connectionEndpoint } = await decodeInvitation(
+    base64Url(bytes) + base64Url(new Uint8Array(hash).slice(0, 4)),
+  );
+  if (connectionEndpoint === undefined) throw new Error("no endpoint decoded");
+  return connectionEndpoint;
+}
+
+describe("InvitationTerms: a registrar written in a typed form", () => {
+  test.each([
+    { profile: "console", isConsole: true, line: CONSOLE_LINE },
+    { profile: "hosted", isConsole: false, line: HOSTED_LINE },
+  ])(
+    "the $profile build names the decoded origin and not the typed form",
+    async ({ isConsole, line }) => {
+      build.console = isConsole;
+      const text = await producesText(
+        await decodedFromTypedRegistrar(
+          "https://Default-Relay.Example.net:443/",
+        ),
+      );
+      expect(text).toContain(line);
+      expect(text).not.toContain("Default-Relay");
+      expect(text).not.toContain(":443/");
     },
   );
 });

@@ -1425,6 +1425,31 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     ).toContain("https://r\\x1b[31m.example");
   });
 
+  test("displayInvitation: a registrar written in a typed form is shown as its origin", async () => {
+    const log = getLogger("accept-display-relay-registrar-typed-test");
+    log.setLevel("silent");
+    const typed = "https://Registrar.Example.org:443/";
+    const decoded = await decodeAndValidateInvitation(
+      await encodeRawInvitation(
+        sampleToken(FUTURE(), {
+          channel: "webrtc",
+          host: "peer.example.org",
+          relay: {
+            turn: ["turns:default-relay.example.net:443?transport=tcp"],
+            registrar: typed,
+          },
+        }),
+      ),
+    );
+    const output = renderDisplayInvitation(log, decoded);
+    expect(output).toContain(
+      "Each run registers this exchange at https://registrar.example.org " +
+        "before it connects",
+    );
+    expect(output).not.toContain(typed);
+    expect(output).not.toContain("Registrar.Example");
+  });
+
   test("displayInvitation: a split-directory endpoint states the retention with no declaration", () => {
     // The seeded sub-case: this accept builds its connection from the endpoint and
     // is put in retain mode by its shape (a split pair cannot be configured
