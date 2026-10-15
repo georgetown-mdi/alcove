@@ -27,7 +27,7 @@
 - - -> A locator that names it names at least one `turn` url.
 - - -> Any other url, one naming a user, a path, a query or a fragment among them, is refused, and the refusal does not repeat it.
 - - -> Where the locator names the default relay's TURN url, the web app also names that relay's registrar as `registrar`; the CLI names none.
-- - -> `registrar` was added to the strict locator the same way.
+- - -> `registrar` was added to the strict locator without a `version` bump too: a decoder predating it, an earlier web app or CLI build among them, refuses every invitation that names it, as every invitation a build with a default relay makes does.
 - - -> A browser run reads its own relay from the browser's relay setting (`relayForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`).
 - - -> **No preference for a party's own relay.**
 - - -> **Reports name more relays.**

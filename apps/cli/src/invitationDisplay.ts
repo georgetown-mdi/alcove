@@ -119,7 +119,7 @@ export function marked(
 export function invitationRelayRegistrarLine(registrar: Displayable): string {
   return (
     `Each run registers this exchange at ${registrar} before it connects, ` +
-    "and whoever runs that relay learns your network address."
+    "and whoever runs that registrar learns your network address."
   );
 }
 

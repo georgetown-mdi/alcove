@@ -1417,7 +1417,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       "    TURN turns:default-relay.example.net:443?transport=tcp",
       "    Each run registers this exchange at " +
         "https://default-relay.example.net before it connects, and whoever " +
-        "runs that relay learns your network address.",
+        "runs that registrar learns your network address.",
       `    ${CONSENT_FACTS.invitationRelay.note}`,
     ]);
     expect(
