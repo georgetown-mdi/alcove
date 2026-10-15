@@ -56,13 +56,15 @@ with a message asking for an npm exclude entry that would be false.
   routine Dependabot batch into a reviewed `webrtc-stack` group
   (`.github/dependabot.yml`). `apps/cli` declares `peerjs-js-binarypack` at the
   same exact version for the same reason: its WebRTC transport writes the PeerJS
-  DataConnection wire by hand (`apps/cli/src/connection/webrtc/peerjsWire.ts`),
+  DataConnection wire by hand (`packages/core/src/connection/peerjsWire.ts`),
   so the encoding is a contract, not an implementation detail. `packages/core`
-  declares it too, as a devDependency at that same exact version, because the
-  marker scan that parses the wire format lives there and its differential test
-  drives the real encoder as its oracle -- so the guard over the shared bound
-  holds whether or not an app keeps the dependency. `packages/testkit` declares
-  it at that same exact version as well, because the shared WebRTC inbound frame
+  declares it too, as a dependency at that same exact version, because that
+  framing and the bounded reassembler decode with its unpacker there, and
+  because the marker scan that parses the wire format lives there and its
+  differential test drives the real encoder as its oracle -- so the guard over
+  the shared bound holds whether or not an app keeps the dependency.
+  `packages/testkit` declares it at that same exact version as well, because
+  the shared WebRTC inbound frame
   fixtures both transports are held to are built with the real packer
   (`packages/testkit/src/webrtcInboundFrames.ts`), and a workspace's own imports
   are declared in its own manifest rather than resolved through a consumer's
@@ -641,9 +643,9 @@ Then run `npm run test:integration -w apps/cli` against the new version. The con
 
 The web WebRTC data-channel inbound bound specified in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) reaches past the public `DataConnection` API into PeerJS reassembly/unpack internals (`apps/web/src/psi/transport/boundedReassembly.ts`) and parses the `peerjs-js-binarypack` wire format directly (`packages/core/src/connection/binaryPackBounds.ts`), so it rests on assumptions about both packages' internal behavior that an upgrade can silently break. The outbound path does the same in the other direction: Alcove encodes every frame itself (`packages/core/src/connection/binaryPackEncode.ts`), because the library's packer recurses once per element and cannot encode a record-scaling frame at all, and the web app installs that encoder over the PeerJS connection's own send internals (`apps/web/src/psi/transport/iterativePacking.ts`). Re-verify the following on any `peerjs` or `peerjs-js-binarypack` version bump, before the bump merges.
 
-A `peerjs-js-binarypack` bump is one edit across four declaration sites: `apps/web/package.json` and `apps/cli/package.json` (the two transports' decoders, and the packer their parity suites compare Alcove's encoder against), `packages/core/package.json` (a devDependency: the real packer and unpacker both of core's differential suites oracle against), and `packages/testkit/package.json` (the shared frame fixtures both transports are driven through, `packages/testkit/src/webrtcInboundFrames.ts`). A site left behind puts the wire format the guards are measured against out of step with the one a partner decodes with.
+A `peerjs-js-binarypack` bump is one edit across four declaration sites: `apps/web/package.json` and `apps/cli/package.json` (the two transports' decoders, and the packer their parity suites compare Alcove's encoder against), `packages/core/package.json` (a dependency: the unpacker the PeerJS framing in core decodes with, and the real packer and unpacker both of core's differential suites oracle against), and `packages/testkit/package.json` (the shared frame fixtures both transports are driven through, `packages/testkit/src/webrtcInboundFrames.ts`). A site left behind puts the wire format the guards are measured against out of step with the one a partner decodes with.
 
-The library is the ORACLE for Alcove's own encoder, not a runtime dependency of it: `packages/core` keeps the pin as a devDependency, and the encoder's differential suite requires byte equality against the real `pack` for every frame shape and marker. A bump that moves the encoding fails there rather than at a partner's browser.
+The library is the ORACLE for Alcove's own encoder, not a runtime dependency of it: `binaryPackEncode.ts` does not import the library, and the encoder's differential suite requires byte equality against the real `pack` for every frame shape and marker. A bump that moves the encoding fails there rather than at a partner's browser.
 
 The internal assumptions the bound relies on:
 

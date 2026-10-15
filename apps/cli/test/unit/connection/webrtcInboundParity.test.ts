@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { ConnectionError } from "@alcove/core";
+import {
+  BoundedInboundFrames,
+  ConnectionError,
+  toFrameBytes,
+} from "@alcove/core";
+import { chunkPacked } from "@alcove/core/testing";
 import {
   WEBRTC_CHUNK_ENVELOPE_FIXTURES,
   WEBRTC_INBOUND_FRAME_FIXTURES,
@@ -10,18 +15,12 @@ import {
   preScanVerdict,
 } from "@alcove/testkit/webrtcInboundFrames";
 
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
-import {
-  chunkPacked,
-  toFrameBytes,
-} from "../../../src/connection/webrtc/peerjsWire";
-
+import type { InboundBoundOptions } from "@alcove/core";
 import type {
   CappedRule,
   FrameVerdict,
   WebrtcFrameFixture,
 } from "@alcove/testkit/webrtcInboundFrames";
-import type { InboundBoundOptions } from "../../../src/connection/webrtc/inboundBounds";
 
 // The WebRTC inbound bound has two enforcement points over one wire format: core's
 // structural pre-scan (packages/core/src/connection/binaryPackBounds.ts), which
@@ -37,10 +36,10 @@ import type { InboundBoundOptions } from "../../../src/connection/webrtc/inbound
 // The set itself is `@alcove/testkit/webrtcInboundFrames`, shared with the web app's
 // PeerJS wrap, which is held to it the same way (apps/web/test/unit/
 // webrtcInboundParity.test.ts) -- so the two transports' verdicts are compared against
-// one reference and therefore against each other. What lives here is the half no
-// shared package can hold: core cannot import an app, so the assertion driving THIS
-// reassembler belongs in this app's test tree. The scan it is driven against is the
-// one this app links from core's BUILD, not a source copy.
+// one reference and therefore against each other. The reassembler is core's, but
+// the set's package depends on core, so the assertion driving it lives in this
+// app's test tree. The reassembler and the scan it is driven against are the ones
+// this app links from core's BUILD, not a source copy.
 
 /** The reassembler's overrides for a fixture's limits. Only the two limits the
  * fixture set varies are set; every other bound stays at its production default, as

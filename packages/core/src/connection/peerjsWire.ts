@@ -1,10 +1,8 @@
 import { unpack } from "peerjs-js-binarypack";
 
-import {
-  ConnectionError,
-  PEERJS_CHUNK_MTU,
-  encodeBinaryPackValue,
-} from "@alcove/core";
+import { ConnectionError } from "../errors";
+import { encodeBinaryPackValue } from "./binaryPackEncode";
+import { PEERJS_CHUNK_MTU } from "./webrtcOutboundBound";
 
 /**
  * The PeerJS DataConnection wire, written out rather than obtained by running
@@ -20,13 +18,13 @@ import {
  * chunking threshold, the close sentinel's exact object, the
  * truthy-`__peerData` receive dispatch, and the fact that `pack` encodes a
  * `Uint8Array`, an `ArrayBuffer` and a Node `Buffer` to identical bytes. The
- * round-trip tests in test/unit/connection/peerjsWire.test.ts pin those bytes
+ * round-trip tests in test/connection/peerjsWire.test.ts pin those bytes
  * as fixtures, so a bump that moves the encoding fails there rather than at a
  * partner's browser.
  *
  * This module is the framing only. The bounds that make the receive path safe
- * against a hostile peer live beside it in `inboundBounds.ts`, which is the only
- * thing that should call {@link classifyInboundValue} in production.
+ * against a hostile peer live beside it in `webrtcInboundBounds.ts`, which is
+ * the only thing that should call {@link classifyInboundValue} in production.
  */
 
 /**
@@ -192,7 +190,7 @@ function isChunkOrdinal(value: unknown): value is number {
  * peer-chosen): `total` must be a positive integer, `n` must be in
  * `[0, total)`, and `data` must be bytes. The numeric CAPS (how many
  * chunks, how many bytes, how many reassemblies at once) are not applied
- * here -- they belong to `inboundBounds.ts`, which owns the memory
+ * here -- they belong to `webrtcInboundBounds.ts`, which owns the memory
  * envelope.
  *
  * @throws {ConnectionError} of kind `protocol` if the value has a
@@ -252,7 +250,7 @@ export function unpackFrame(bytes: Uint8Array): unknown {
 /**
  * Join a completed reassembly's slices into the packed frame they encode.
  * `parts` is indexed by chunk ordinal and must be dense; the caller
- * (`inboundBounds.ts`) only calls this once every ordinal has arrived.
+ * (`webrtcInboundBounds.ts`) only calls this once every ordinal has arrived.
  */
 export function concatChunks(parts: Array<Uint8Array>): Uint8Array {
   let total = 0;

@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vitest";
 
+import { packValue } from "@alcove/core/testing";
 import {
   WEBRTC_INBOUND_FRAME_FIXTURES,
   packValue as packWithTheLibrary,
   unpackFrame,
 } from "@alcove/testkit/webrtcInboundFrames";
-
-import { packValue } from "../../../src/connection/webrtc/peerjsWire";
 
 // The outbound counterpart of webrtcInboundParity.test.ts: the shared frame set
 // is decoded and re-encoded, once by the pinned `peerjs-js-binarypack` packer a

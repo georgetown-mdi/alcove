@@ -1,21 +1,20 @@
 import { unpack } from "peerjs-js-binarypack";
 import { expect, test } from "vitest";
 
+import { ConnectionError } from "../../src/errors";
 import {
-  ConnectionError,
   MAX_CHUNKS_PER_REASSEMBLY,
   MAX_CONCURRENT_REASSEMBLIES,
   MIN_CHUNK_RESIDENT_BYTES,
-} from "@alcove/core";
-
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
+} from "../../src/connection/binaryPackBounds";
 import {
   PEERJS_CHUNK_MTU,
   PeerJsFrameEncoder,
   packCloseSentinel,
   packValue,
   toFrameBytes,
-} from "../../../src/connection/webrtc/peerjsWire";
+} from "../../src/connection/peerjsWire";
+import { BoundedInboundFrames } from "../../src/connection/webrtcInboundBounds";
 
 /** One chunk envelope, built directly so a test can choose every field. */
 function chunk(

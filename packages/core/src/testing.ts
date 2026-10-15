@@ -112,6 +112,18 @@ export {
   webrtcFrameReceiveCharge,
 } from "./connection/webrtcOutboundBound.js";
 
+// The PeerJS framing's single steps, so a transport's suite can build a chunk
+// stream and read back what it sent. They stay out of the main entry point: a
+// transport sends through PeerJsFrameEncoder and receives through
+// BoundedInboundFrames.
+export {
+  chunkPacked,
+  classifyInboundValue,
+  concatChunks,
+  packValue,
+  unpackFrame,
+} from "./connection/peerjsWire.js";
+
 // The header each part of a PSI set begins with, and the byte bound a set's
 // first part is held to, so each WebRTC transport's suite can join the parts a
 // round sent back into the set and drive a first part at that bound's edge.

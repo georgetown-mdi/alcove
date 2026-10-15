@@ -833,8 +833,7 @@ second workspace's test tree needs it AND it cannot take the
 time. Nothing moves in for tidiness, and the existing `@alcove/core/testing`
 subjects stay where they are. Its one subject today is the WebRTC inbound frame
 fixture set, which both apps' transports are held to and which is built with the
-real `peerjs-js-binarypack` packer (a devDependency of `packages/core`, not a
-dependency).
+real `peerjs-js-binarypack` packer.
 
 Anything a single workspace needs stays in that workspace's own test tree,
 whichever channel it would qualify for. The decision, the alternatives measured

@@ -1,8 +1,7 @@
 import { pack, unpack } from "peerjs-js-binarypack";
 import { expect, test } from "vitest";
 
-import { ConnectionError } from "@alcove/core";
-
+import { ConnectionError } from "../../src/errors";
 import {
   PEERJS_CHUNK_MTU,
   PeerJsFrameEncoder,
@@ -13,7 +12,7 @@ import {
   packValue,
   toFrameBytes,
   unpackFrame,
-} from "../../../src/connection/webrtc/peerjsWire";
+} from "../../src/connection/peerjsWire";
 
 // --- wire fixtures ----------------------------------------------------------
 //

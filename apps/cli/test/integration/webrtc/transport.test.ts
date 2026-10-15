@@ -8,10 +8,13 @@ import logLibrary from "loglevel";
 
 import {
   ConnectionError,
+  PEERJS_CHUNK_MTU,
   generateSharedSecret,
+  packCloseSentinel,
   setDiagnosticSink,
   setLogLevel,
 } from "@alcove/core";
+import { packValue } from "@alcove/core/testing";
 
 import {
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
@@ -27,11 +30,6 @@ import {
   WERIFT_BUILT_IN_STUN_URI,
   openWebRtcPeerSession,
 } from "../../../src/connection/webrtc/weriftPeer";
-import {
-  PEERJS_CHUNK_MTU,
-  packCloseSentinel,
-  packValue,
-} from "../../../src/connection/webrtc/peerjsWire";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { startBrokerProcess } from "../../signaling/brokerProcess";
 import { startRefusingStunServer } from "./refusingStunServer";

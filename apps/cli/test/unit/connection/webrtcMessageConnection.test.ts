@@ -1,18 +1,15 @@
 import { expect, test, vi } from "vitest";
 
 import {
+  BoundedInboundFrames,
   ConnectionError,
-  generateSharedSecret,
-  sanitizeErrorForDisplay,
-} from "@alcove/core";
-
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
-import {
   PEERJS_CHUNK_MTU,
   PeerJsFrameEncoder,
+  generateSharedSecret,
   packCloseSentinel,
-  packValue,
-} from "../../../src/connection/webrtc/peerjsWire";
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
+import { packValue } from "@alcove/core/testing";
 import {
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,

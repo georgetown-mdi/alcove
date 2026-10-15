@@ -1,19 +1,17 @@
 import {
+  BoundedInboundFrames,
   ConnectionError,
   DeliveryUnconfirmedError,
   INACTIVITY_TIMEOUT_KEY,
   MAX_WEBRTC_FRAME_BYTES,
+  PeerJsFrameEncoder,
   QueuedMessageConnection,
   asConnectionError,
+  packCloseSentinel,
+  toFrameBytes,
 } from "@alcove/core";
 
 import { inactivityTimeoutGuidance } from "../timeoutGuidance";
-import { BoundedInboundFrames } from "./inboundBounds";
-import {
-  PeerJsFrameEncoder,
-  packCloseSentinel,
-  toFrameBytes,
-} from "./peerjsWire";
 import { openWebRtcPeerSession } from "./weriftPeer";
 
 import type { WebRtcPeerOptions, WebRtcPeerSession } from "./weriftPeer";
@@ -34,7 +32,7 @@ import type { RTCDataChannel } from "werift";
  *
  * - Framing. Outbound values are BinaryPack-packed and chunked into the
  *   envelopes a browser peer reassembles; inbound datagrams go through the
- *   bounded reassembler (`inboundBounds.ts`) before anything is delivered.
+ *   bounded reassembler (core's `BoundedInboundFrames`) before anything is delivered.
  * - Draining. Both transports wait for the peer before a clean close resolves,
  *   on the strongest signal each stack exposes: PeerJS's flushing close is just
  *   the in-band sentinel, so the web waits for the PEER to close the channel on

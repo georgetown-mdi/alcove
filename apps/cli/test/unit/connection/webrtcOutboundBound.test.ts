@@ -2,7 +2,13 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { InProcessPsiEngine, MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
+import {
+  BoundedInboundFrames,
+  InProcessPsiEngine,
+  MAX_WEBRTC_FRAME_BYTES,
+  PEERJS_CHUNK_MTU,
+  PeerJsFrameEncoder,
+} from "@alcove/core";
 import {
   PSIParticipant,
   binaryPackByteStringLength,
@@ -10,11 +16,6 @@ import {
   webrtcFrameReceiveCharge,
 } from "@alcove/core/testing";
 
-import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
-import {
-  PEERJS_CHUNK_MTU,
-  PeerJsFrameEncoder,
-} from "../../../src/connection/webrtc/peerjsWire";
 import { webRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
 
 import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";

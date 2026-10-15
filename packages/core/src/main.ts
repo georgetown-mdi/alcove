@@ -160,6 +160,20 @@ export { encodeBinaryPackValue } from "./connection/binaryPackEncode";
 // The send-side check of the same bound. Published because the CLI's PeerJS
 // framing chunks at the same threshold the check charges for.
 export { PEERJS_CHUNK_MTU } from "./connection/webrtcOutboundBound";
+// The PeerJS DataConnection framing and the bounded inbound reassembler.
+// Published so each transport that reads PeerJS's chunked frames applies one
+// implementation of them.
+export {
+  PEERJS_SERIALIZATION,
+  PeerJsFrameEncoder,
+  packCloseSentinel,
+  toFrameBytes,
+} from "./connection/peerjsWire";
+export { BoundedInboundFrames } from "./connection/webrtcInboundBounds";
+export type {
+  InboundBoundOptions,
+  InboundOutcome,
+} from "./connection/webrtcInboundBounds";
 export {
   formatLogPrefix,
   getLogger,

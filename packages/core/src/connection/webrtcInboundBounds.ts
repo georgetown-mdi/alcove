@@ -1,5 +1,5 @@
+import { ConnectionError } from "../errors";
 import {
-  ConnectionError,
   MAX_CHUNKS_PER_REASSEMBLY,
   MAX_CONCURRENT_REASSEMBLIES,
   MAX_WEBRTC_FRAME_BYTES,
@@ -8,7 +8,7 @@ import {
   MIN_CHUNK_RESIDENT_BYTES,
   describeFrameStructureRefusal,
   scanFrameStructure,
-} from "@alcove/core";
+} from "./binaryPackBounds";
 
 import { classifyInboundValue, concatChunks, unpackFrame } from "./peerjsWire";
 

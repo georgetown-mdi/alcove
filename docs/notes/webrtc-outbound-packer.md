@@ -69,9 +69,9 @@ leaf to the library's `pack`; the other would write the whole encoder.
 The whole encoder was built, for two reasons the panel did not weigh.
 
 - Delegating leaves means importing the library at run time from
-  `packages/core`, where it is a devDependency today. Core's inbound structural
-  scan reads the same wire format with no runtime dependency on the package, by
-  decision, so that the guard holds whether or not an app keeps it; the two
+  `packages/core`, where it was a devDependency when the encoder was built.
+  Core's inbound structural scan reads the same wire format with no runtime
+  dependency on the package, by decision, so that the guard holds whether or not an app keeps it; the two
   halves of one format should not rest on different assumptions.
 - Delegation costs a `Packer` per leaf and an extra copy of every byte-array
   leaf. Measured on the 200,000-record iteration map, the delegating shape took
