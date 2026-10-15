@@ -78,7 +78,7 @@ const RUN_CREDENTIAL = {
   expiresAt: new Date("2026-01-01T01:00:00Z"),
 };
 
-test("the invitation's relay is used in place of the connection's own, with the run's credential", () => {
+test("the invitation's relay is listed after the connection's own, the run's credential presented to its urls", () => {
   expect(
     iceServersFromConnection(
       {
@@ -89,7 +89,12 @@ test("the invitation's relay is used in place of the connection's own, with the 
       RUN_CREDENTIAL,
     ),
   ).toEqual([
-    { urls: INVITATION_RELAY.stun },
+    { urls: ["stun:own.example:3478", ...INVITATION_RELAY.stun] },
+    {
+      urls: OWN_TURN[0].url,
+      username: OWN_TURN[0].username,
+      credential: OWN_TURN[0].credential,
+    },
     ...INVITATION_RELAY.turn.map((url) => ({
       urls: url,
       username: RUN_CREDENTIAL.username,
@@ -98,7 +103,7 @@ test("the invitation's relay is used in place of the connection's own, with the 
   ]);
 });
 
-test("a connection falls back to its own TURN where the invitation's relay names none", () => {
+test("a connection keeps its own TURN where the invitation's relay names none", () => {
   expect(
     iceServersFromConnection({
       turn: OWN_TURN,
@@ -120,7 +125,7 @@ test("the invitation's TURN urls with no minted credential is a fault, not an un
   ).toThrow(/no relay credential was minted/);
 });
 
-test("a run mints a credential only when it uses the invitation's TURN urls", async () => {
+test("a run mints a credential only when it lists a TURN url that takes one", async () => {
   const secret = "A".repeat(43);
   const now = new Date("2026-01-01T00:00:00Z");
   const minted = await relayCredentialForRun(
@@ -129,6 +134,13 @@ test("a run mints a credential only when it uses the invitation's TURN urls", as
     now,
   );
   expect(minted).toEqual(await mintRunRelayCredential(secret, now));
+  expect(
+    await relayCredentialForRun(
+      { turn: OWN_TURN, invitationRelay: INVITATION_RELAY },
+      secret,
+      now,
+    ),
+  ).toEqual(minted);
   expect(
     await relayCredentialForRun(
       { turn: OWN_TURN, invitationRelay: { stun: INVITATION_RELAY.stun } },
@@ -197,7 +209,7 @@ test("a static turn entry is presented its own credential even when the run mint
   ]);
 });
 
-test("the invitation's TURN urls replace an own url-only entry, with one minted credential", async () => {
+test("the invitation's TURN urls follow an own url-only entry, one minted credential presented to every one", async () => {
   const connection = {
     turn: URL_ONLY_TURN,
     invitationRelay: { turn: INVITATION_RELAY.turn },
@@ -208,9 +220,38 @@ test("the invitation's TURN urls replace an own url-only entry, with one minted 
     FIXED_NOW,
   );
   expect(minted?.credential).toBe(FIXED_RUN_CREDENTIAL);
+  expect(iceServersFromConnection(connection, minted)).toEqual(
+    [URL_ONLY_TURN[0].url, ...INVITATION_RELAY.turn].map((url) => ({
+      urls: url,
+      username: "1767229200:alcove",
+      credential: FIXED_RUN_CREDENTIAL,
+    })),
+  );
+});
+
+test("a url the invitation and an own entry both name is listed once, with the own entry's credential", () => {
   expect(
-    iceServersFromConnection(connection, minted).map(({ urls }) => urls),
-  ).toEqual(INVITATION_RELAY.turn);
+    iceServersFromConnection(
+      { turn: OWN_TURN, invitationRelay: { turn: [OWN_TURN[0].url] } },
+      RUN_CREDENTIAL,
+    ),
+  ).toEqual([
+    {
+      urls: OWN_TURN[0].url,
+      username: OWN_TURN[0].username,
+      credential: OWN_TURN[0].credential,
+    },
+  ]);
+});
+
+test("an own url-only entry with no shared secret is refused even beside the invitation's relay", async () => {
+  await expect(
+    relayCredentialForRun(
+      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
+      undefined,
+      FIXED_NOW,
+    ),
+  ).rejects.toThrow(turnEntryNeedsSecretMessage(URL_ONLY_TURN[0].url));
 });
 
 test("an own url-only turn entry with no shared secret is refused naming the entry", async () => {
@@ -254,6 +295,14 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
   );
   expect(mixed).toContain("turns:minted.example:443?transport=tcp");
   expect(mixed).not.toContain("own.example");
+  expect(
+    relayCredentialNotice(
+      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
+      RUN_CREDENTIAL,
+    ),
+  ).toMatch(
+    /^relaying through turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named, with/,
+  );
 });
 
 test("a later attempt's credential notice names the wait and the new expiry", () => {

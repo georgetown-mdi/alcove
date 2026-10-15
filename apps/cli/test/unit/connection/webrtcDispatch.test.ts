@@ -172,11 +172,15 @@ const {
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
   prepareForExchange,
+  deriveRelayExchangeId,
+  deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
   mintRunRelayCredential,
   sanitizeErrorForDisplay,
 } = await import("@alcove/core");
+const { fakeRegistrar, jsonResponse, registrationAnswer } =
+  await import("../relayRegistrarFake");
 const { StandardizedDataset } = await import("@alcove/core/testing");
 
 /**
@@ -1058,3 +1062,106 @@ test("an unset ice_transport_policy leaves the transport's own default", () => {
   );
   expect(options).not.toHaveProperty("iceTransportPolicy");
 });
+
+// --- the invitation relay's registrar ---------------------------------------
+
+const INVITATION_REGISTRAR = "https://default-relay.example.net";
+
+/** Run the pair, the acceptor's connection naming an invitation relay with a
+ * registrar, against a registrar that answers with `answers`. */
+async function runPairEnrollingAt(answers: Response[]) {
+  const registrar = fakeRegistrar(answers);
+  const acceptorDialsAtEachRequest: number[] = [];
+  vi.stubGlobal("fetch", (async (...args: Parameters<typeof fetch>) => {
+    acceptorDialsAtEachRequest.push(
+      mockState.dials.filter((dial) => dial.role === "acceptor").length,
+    );
+    return registrar.fetch(...args);
+  }) as typeof fetch);
+  const keyFilePath = path.join(tmpDir, "acceptor.key");
+  saveKeyFile(keyFilePath, { sharedSecret: SECRET });
+  try {
+    await Promise.all([
+      runParty("inviter"),
+      runProtocol({
+        connection: {
+          ...webrtcConnection("acceptor"),
+          invitationRelay: {
+            turn: ["turns:default-relay.example.net:443?transport=tcp"],
+            registrar: INVITATION_REGISTRAR,
+          },
+        },
+        auth: { sharedSecret: SECRET, keyFilePath },
+        prepared: minimalPrepared,
+        output: path.join(tmpDir, "acceptor.csv"),
+        verbosity: -1,
+        loggerName: "test",
+      }),
+    ]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  return { requests: registrar.requests, acceptorDialsAtEachRequest };
+}
+
+test("a run whose invitation relay names a registrar enrolls there once, without a token, before it dials", async () => {
+  const { requests, acceptorDialsAtEachRequest } = await runPairEnrollingAt([
+    registrationAnswer(null, "2026-01-01T01:10:00Z"),
+  ]);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    url: `${INVITATION_REGISTRAR}/exchanges/${await deriveRelayExchangeId(SECRET)}`,
+    method: "POST",
+    authorization: null,
+  });
+  expect(JSON.parse(requests[0]!.body)).toEqual({
+    key: await deriveRelayKey(SECRET),
+    maxAgeDays: null,
+  });
+  expect(acceptorDialsAtEachRequest).toEqual([0]);
+  const acceptorDial = mockState.dials.find(
+    (dial) => dial.role === "acceptor",
+  );
+  expect(
+    (acceptorDial?.iceServers as Array<{ urls: unknown }>).map(
+      ({ urls }) => urls,
+    ),
+  ).toContain("turns:default-relay.example.net:443?transport=tcp");
+  expect(
+    mockState.logLines.some((line) =>
+      line.includes(
+        `the relay registrar at ${INVITATION_REGISTRAR} that your partner's ` +
+          "invitation names enrolled this exchange, until 2026-01-01T01:10:00Z",
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("a refused enrollment is warned about and the run goes on to dial", async () => {
+  const { requests } = await runPairEnrollingAt([
+    jsonResponse(409, { error: "the exchange holds another key" }),
+  ]);
+  expect(requests).toHaveLength(1);
+  expect(mockState.dials.map((dial) => dial.role).sort()).toEqual([
+    "acceptor",
+    "inviter",
+  ]);
+  expect(mockState.warnLines).toContain(
+    `the relay registrar at ${INVITATION_REGISTRAR} that your partner's ` +
+      "invitation names did not enroll this exchange (HTTP 409: the exchange " +
+      "holds another key). The run continues with its other relays, and " +
+      "that relay takes it only if your partner enrolled the exchange there.",
+  );
+});
+
+test("a run whose invitation relay names no registrar enrolls nowhere", async () => {
+  const registrar = fakeRegistrar([]);
+  vi.stubGlobal("fetch", registrar.fetch);
+  try {
+    await Promise.all([runParty("inviter"), runParty("acceptor")]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  expect(registrar.requests).toHaveLength(0);
+});
+

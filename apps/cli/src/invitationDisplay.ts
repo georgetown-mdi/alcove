@@ -111,6 +111,19 @@ export function marked(
 }
 
 /**
+ * The line the acceptance review shows under a relay whose invitation names a
+ * registrar, `registrar` escaped in the summary: each run enrolls there before
+ * it connects (`invitationRelayEnrollment.ts`), so its operator sees this
+ * party's address.
+ */
+export function invitationRelayRegistrarLine(registrar: Displayable): string {
+  return (
+    `Each run registers this exchange at ${registrar} before it connects, ` +
+    "and whoever runs that relay learns your network address."
+  );
+}
+
+/**
  * The label one half of a cited rule set takes: its own wording plus this
  * build's verdict on that half, from the shared table. It replaces the
  * basis marker on these two lines -- what an operator needs beside a set
@@ -791,6 +804,8 @@ export function displayInvitation(params: {
     emit(`  ${marked("relay your partner named", "invitationRelay")}:`);
     for (const url of summary.relay.turn) emit(`    TURN ${url}`);
     for (const url of summary.relay.stun) emit(`    STUN ${url}`);
+    if (summary.relay.registrar !== undefined)
+      emit(`    ${invitationRelayRegistrarLine(summary.relay.registrar)}`);
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);
   }
   // The linkage strategy is a mandatory-consistency term like the

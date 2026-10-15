@@ -56,7 +56,6 @@ import {
 import {
   logRotatedRelayKey,
   registerRotatedRelayKey,
-  relayRegistrarUnusedNotice,
   retryPendingRelayRegistration,
   type RotatedRelayKeyResult,
 } from "../relayKeyRotation";
@@ -1142,8 +1141,6 @@ export async function handler(argv: Arguments): Promise<void> {
       // The registration signs with authentication.sharedSecret, the secret
       // loaded before the run: the rotation rewrites the key file, not this object.
       const relayRegistrar = relayRegistrarForRun(connection);
-      const unusedRegistrarNotice = relayRegistrarUnusedNotice(connection);
-      if (unusedRegistrarNotice !== undefined) log.info(unusedRegistrarNotice);
       const authentication: AuthPersist =
         relayRegistrar === undefined
           ? loadedAuthentication

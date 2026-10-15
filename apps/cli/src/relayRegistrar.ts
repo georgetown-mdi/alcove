@@ -8,7 +8,6 @@ import {
   failureCauseSentence,
   hasMintedTurnEntry,
   markFailureCause,
-  selectRunRelay,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -33,20 +32,17 @@ export type {
 
 /**
  * The registrar a run registers its rotated relay key at: the connection's
- * `relay_registrar`, when the run relays through this party's own `turn`
- * entries and one of them has its credential minted from the shared secret.
- * `undefined` otherwise -- a run relaying through the relay a partner's
- * invitation named registers nothing, since the party supplying a relay is
- * the one that registers at it.
+ * `relay_registrar`, when one of this party's own `turn` entries has its
+ * credential minted from the shared secret. A run lists its own entries
+ * whether or not an invitation's relay is listed beside them, so that relay
+ * does not change the answer. `undefined` otherwise.
  */
 export function relayRegistrarForRun(
   connection: ConnectionConfig,
 ): RelayRegistrar | undefined {
   if (connection.channel !== "webrtc") return undefined;
   const registrar = connection.relayRegistrar;
-  if (registrar === undefined) return undefined;
-  const { turn } = selectRunRelay(connection);
-  if (turn?.source !== "own" || !hasMintedTurnEntry(turn.servers))
+  if (registrar === undefined || !hasMintedTurnEntry(connection.turn))
     return undefined;
   return registrar;
 }

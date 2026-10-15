@@ -29,6 +29,7 @@ export const WARNING_SOURCES = [
   "logFileLoss",
   "memoryShortfall",
   "writeWithoutRenaming",
+  "invitationRelayEnrollment",
 ] as const;
 
 /** One {@link WARNING_SOURCES} value; see that list. */

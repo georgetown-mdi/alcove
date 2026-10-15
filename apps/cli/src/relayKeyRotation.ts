@@ -12,7 +12,6 @@ import {
   markStatesItsOwnNextStep,
 } from "@alcove/core";
 import type {
-  ConnectionConfig,
   RelayRegistrar,
   RelayRegistrationEnvironment,
 } from "@alcove/core";
@@ -25,7 +24,6 @@ import {
   type KeyFile,
 } from "./keyFile";
 import {
-  relayRegistrarForRun,
   relayRegistrarLabel,
   relayRegistrarUnreachableError,
   relayRegistrationNotice,
@@ -44,25 +42,6 @@ export const RELAY_REENROLLMENT_STEP =
   "enroll the exchange again with the relay-owner token: run " +
   "'alcove enroll-relay --replace-relay-key' with this run's --config-file " +
   "and --key-file, and enter the token when asked";
-
-/**
- * What a run states when its connection names a registrar it does not
- * register at, because it relays through the relay the invitation named;
- * `undefined` when the registrar is used or none is named.
- */
-export function relayRegistrarUnusedNotice(
-  connection: ConnectionConfig,
-): string | undefined {
-  if (connection.channel !== "webrtc") return undefined;
-  const registrar = connection.relayRegistrar;
-  if (registrar === undefined || relayRegistrarForRun(connection) !== undefined)
-    return undefined;
-  return (
-    `connection.relay_registrar is not used on this run: it relays through ` +
-    "the relay your partner's invitation named (connection.invitation_relay), " +
-    `so nothing is registered at ${relayRegistrarLabel(registrar)}.`
-  );
-}
 
 function answerDetail(outcome: RelayRegistrationOutcome): string {
   if (outcome.kind === "registered") return "";

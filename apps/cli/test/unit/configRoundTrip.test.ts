@@ -148,6 +148,7 @@ function webrtcConnection(variant: Variant, ice: Record<string, unknown>) {
     invitationRelay: {
       turn: [`turns:${host(variant, "relay")}:443?transport=tcp`],
       stun: [`stun:${host(variant, "relay")}:3478`],
+      registrar: `https://${host(variant, "relay-registrar")}`,
     },
     iceTransportPolicy: pick(variant, "all", "relay"),
     options: connectionTimeouts(variant),

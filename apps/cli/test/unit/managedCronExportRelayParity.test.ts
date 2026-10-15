@@ -8,7 +8,6 @@ import { COMMAND_LINE_EXPORT_RELAY_CASES } from "@alcove/core/testing";
 import { loadConfig } from "../../src/commands/exchange";
 import { saveKeyFile } from "../../src/keyFile";
 import { relayRegistrarForRun } from "../../src/relayRegistrar";
-import { relayRegistrarUnusedNotice } from "../../src/relayKeyRotation";
 
 // The CLI half of the set in `@alcove/core/testing`; its module header states the design.
 
@@ -38,5 +37,9 @@ test.each(
 
   expect(connection.channel).toBe("webrtc");
   expect(relayRegistrarForRun(connection) ?? null).toEqual(one.runRegistrar);
-  expect(relayRegistrarUnusedNotice(connection)).toBeUndefined();
+  expect(
+    (connection.channel === "webrtc"
+      ? connection.invitationRelay?.registrar
+      : undefined) ?? null,
+  ).toEqual(one.invitationRegistrar);
 });

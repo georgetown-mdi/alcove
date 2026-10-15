@@ -34,6 +34,7 @@ import {
 import type {
   Algorithm,
   ConnectionEndpoint,
+  Displayable,
   InvitationToken,
   LinkageRuleSetReference,
   LinkageStrategy,
@@ -43,7 +44,10 @@ import type {
 import type { ConsentFact } from "@alcove/core/testing";
 
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
-import { logDecisionFacts } from "../../src/invitationDisplay";
+import {
+  invitationRelayRegistrarLine,
+  logDecisionFacts,
+} from "../../src/invitationDisplay";
 import {
   FUTURE,
   OUTBOUND_SEND_LABEL,
@@ -1391,6 +1395,36 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     );
     expect(without).not.toContain("relay your partner named");
     expect(without).not.toContain(CONSENT_FACTS.invitationRelay.note);
+    expect(without).not.toContain("Each run registers this exchange");
+  });
+
+  test("displayInvitation: a relay naming a registrar gains one line saying its operator learns this party's address", () => {
+    const log = getLogger("accept-display-relay-registrar-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(
+      log,
+      sampleToken(FUTURE(), {
+        channel: "webrtc",
+        host: "peer.example.org",
+        relay: {
+          turn: ["turns:default-relay.example.net:443?transport=tcp"],
+          registrar: "https://default-relay.example.net",
+        },
+      }),
+    ).split("\n");
+    const heading = lines.indexOf("  relay your partner named (enforced):");
+    expect(lines.slice(heading + 1, heading + 4)).toEqual([
+      "    TURN turns:default-relay.example.net:443?transport=tcp",
+      "    Each run registers this exchange at " +
+        "https://default-relay.example.net before it connects, and whoever " +
+        "runs that relay learns your network address.",
+      `    ${CONSENT_FACTS.invitationRelay.note}`,
+    ]);
+    expect(
+      invitationRelayRegistrarLine(
+        "https://r\\x1b[31m.example" as Displayable,
+      ),
+    ).toContain("https://r\\x1b[31m.example");
   });
 
   test("displayInvitation: a split-directory endpoint states the retention with no declaration", () => {
