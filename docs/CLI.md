@@ -22,6 +22,7 @@ Before a first SFTP exchange against a server you do not administer yourself, wo
 | Run it on a schedule | cron or the Task Scheduler | [Scheduling the run](#scheduling-the-run) |
 | Read an SFTP server's host key before a scheduled run | `alcove probe-host-key` | [Reading a host key](#reading-a-host-key-with-probe-host-key) |
 | Check a network folder before the first exchange over it | `alcove doctor` | [Checking a network shared folder](#checking-a-network-shared-folder) |
+| Check that this host reaches a WebRTC exchange's relay | `alcove doctor relay` | [Checking the relay of a WebRTC exchange](#checking-the-relay-of-a-webrtc-exchange) |
 | Change the agreed terms with an existing partner | `alcove update`, then `alcove apply` | [Changing the terms](#changing-the-terms-of-an-established-partnership) |
 | Check an exchange record or receipt | `alcove verify-receipt` | [Verifying a receipt](#verifying-a-receipt) |
 | Recover from a lost or out-of-sync key file | re-invite | [Recovery](#recovery) |
@@ -838,6 +839,8 @@ A rendezvous that ends without a data channel names what ICE found, so the failu
 
 The failure states whether a relay candidate was gathered, how many remote candidates the partner sent, and how many pairs were tried. A report of no relay candidate is the first case or the second according to your own `turn` configuration and the `invitation_relay` beside it, which the failure does not read. It does read [`ice_transport_policy`](#turn) and names it where a relay-only run gathered none, the case with no direct path left to fall back on. A completed exchange reports the candidate pair it settled on at `--log-level debug`, which is what tells you whether a run that worked went direct or through the relay.
 
+To learn whether this host reaches the relays a run lists before the run that needs them, run [`alcove doctor relay`](#checking-the-relay-of-a-webrtc-exchange).
+
 **A failure against the coordination server names a certificate problem when that is what it was.** A `wss://` socket that fails before the server confirms the registration is checked once more against the same endpoint, and a certificate that does not verify on this host is reported as such rather than as a generic connection failure. That failure ends the run at once and exits 77, including on a registration partway through the wait for the partner, since every later dial meets the same certificate. A socket that drops later already completed that handshake, so its failure is reported at once and names no certificate. On a network that intercepts TLS, the remedy is to trust that network's certificate authority -- add it to the host's trust store, or name a file holding it in `NODE_EXTRA_CA_CERTS`.
 
 **A run configured for an environment proxy is told no certificate was checked.** The check dials the coordination server itself and never through a proxy, so on a `wss://` run that turns Node's environment proxying on -- `NODE_USE_ENV_PROXY` set to `1`, or `--use-env-proxy` on the command line or in `NODE_OPTIONS` -- with a proxy address in `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, or `http_proxy`, it cannot tell whether the failed connection went through the proxy, and no certificate verdict is reported at all: the failure states that, and names the same remedy, since an intercepting proxy is the likely cause there too. A run whose `NO_PROXY` or `no_proxy` excludes the signaling host is answered the same way, since that exclusion applies per dial and the check does not read it.
@@ -1104,7 +1107,22 @@ By default each check prints a line on stderr -- `OK:`, `WARN:`, `FAIL:`, or `SK
 
 A failure stops the run, and every check after it prints a `SKIP:` line naming what it would have asked. Those all have the same reason, so it prints once, under the last of them.
 
-`--json` prints the verdict as one line of JSON on stdout instead of those check lines, for a script or a setup launcher to consume. Either way the run's exit code states the verdict, so a caller that parses nothing still learns whether anything blocks an exchange (see [Exit codes](#exit-codes)). The full contract -- every field, the schema version and the rule for reading it, the status and verdict vocabularies, both modes' fixed check lists, and the exit-code mapping -- is in [docs/spec/CLI_DOCTOR.md](spec/CLI_DOCTOR.md).
+`--json` prints the verdict as one line of JSON on stdout instead of those check lines, for a script or a setup launcher to consume. Either way the run's exit code states the verdict, so a caller that parses nothing still learns whether anything blocks an exchange (see [Exit codes](#exit-codes)). The full contract -- every field, the schema version and the rule for reading it, the status and verdict vocabularies, each mode's check list, and the exit-code mapping -- is in [docs/spec/CLI_DOCTOR.md](spec/CLI_DOCTOR.md).
+
+### Checking the relay of a WebRTC exchange
+
+```sh
+alcove doctor relay
+```
+
+`doctor relay` asks whether this host reaches the TURN relays a [WebRTC exchange](#webrtc-exchanges) lists, so a network that blocks UDP, or does not let TURN over TLS on 443 out, is found at setup rather than at the first exchange. Run it after `alcove invite` or `alcove accept` has written the configuration and key file. It takes the same `--config-file` and `--key-file` a run takes, and sends each relay the credential a run sends: the one derived from the exchange's shared secret, or an entry's own `username` and `credential`.
+
+- **It runs only when you name it.** `alcove doctor probe` and `alcove doctor mount` contact no relay and no registrar, and nothing else runs this check. A configuration whose channel is not `webrtc` is refused, since the check applies to WebRTC exchanges only. So is one that lists no TURN url -- no `turn` entry and no turn url in [`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay) -- since there is no relay to check. Both exit 64 with nothing contacted.
+- **It names every host before it contacts one.** It first prints each TURN url a run lists, in the run's order -- your own `turn` entries, then the invitation's -- with the transport the url names and where the url came from. It contacts those relays and nothing else: no relay registrar, so it enrolls nothing, and no coordination server.
+- **It asks each relay as a run does.** For each url it builds the peer connection a run builds, listing that url alone and gathering relay candidates only, and it waits up to 30 seconds for all of them together. A relay that gave a relay address prints `OK:`. One that did not prints `FAIL:` with `no relay candidate gathered`, the words a run's own failure uses, and the remedy that failure has under [When a WebRTC exchange does not connect](#when-a-webrtc-exchange-does-not-connect).
+- **A `FAIL:` does not say why.** The peer connection reports no reason, so a network that blocks the relay, a relay that refused the credential, and a relay certificate this host does not trust all print the same line. A relay that takes enrolled keys refuses a credential derived from the exchange's shared secret until the exchange's relay key is enrolled there. At the relay your partner's invitation named, a run enrolls it just before it connects, so before the first run that relay's line fails however open the network is. At your own, [`alcove enroll-relay`](#registering-the-relay-key-at-your-relay) enrolls it.
+
+The output and exit codes are those of the other checks ([Output](#output)): `--json` prints the verdict, with each relay's url and transport on its check, and any `FAIL:` exits 78. The verdict's fields and the bound: [docs/spec/CLI_DOCTOR.md](spec/CLI_DOCTOR.md#the-relay-check).
 
 ## Signing identity fingerprint
 

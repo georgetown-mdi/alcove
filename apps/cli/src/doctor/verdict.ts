@@ -19,7 +19,10 @@ import { asciiSafeJsonLine } from "../util/jsonLine";
 export const DOCTOR_VERDICT_VERSION = 1;
 
 /** Which check set produced a verdict. */
-export type DoctorMode = "probe" | "mount";
+export type DoctorMode = "probe" | "mount" | "relay";
+
+/** The transport a TURN url names, as a `relay` check reports it. */
+export type RelayTransport = "udp" | "tcp" | "tls";
 
 /**
  * The outcome of a single check. `warn` is a check that ran and does not block
@@ -54,6 +57,10 @@ export type DoctorCheck = {
   meaning?: string;
   /** What to do about it. */
   action?: string;
+  /** The TURN url a `relay` check asked, as the configuration lists it. */
+  url?: string;
+  /** The transport that url names. */
+  transport?: RelayTransport;
 };
 
 /**
@@ -175,6 +182,10 @@ export function verdictOf(report: DoctorReport): DoctorVerdict {
           status: check.status,
           ...(check.meaning !== undefined ? { meaning: check.meaning } : {}),
           ...(check.action !== undefined ? { action: check.action } : {}),
+          ...(check.url !== undefined ? { url: check.url } : {}),
+          ...(check.transport !== undefined
+            ? { transport: check.transport }
+            : {}),
         }) satisfies DoctorCheck,
     ),
   } satisfies DoctorVerdict;

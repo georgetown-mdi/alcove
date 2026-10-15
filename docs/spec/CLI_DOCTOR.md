@@ -4,7 +4,7 @@ title: "CLI Doctor Verdict"
 
 # CLI doctor verdict
 
-This document specifies the machine-readable verdict the `alcove doctor` subcommands emit under `--json`. It covers the document's fields, the byte encoding of the line holding them, the schema version and the compatibility rule a consumer applies before reading anything else, the `overall` and per-check status vocabularies, the fixed ordered check list each mode reports, what the verdict withholds, and the exit code each verdict maps to. It is the spec-tier complement to the operator-facing [Checking a network shared folder](../CLI.md#checking-a-network-shared-folder) section in [CLI.md](../CLI.md), which says what the two modes check and how an operator runs them; this document says what a caller may rely on. It does not cover the `SMB_*` inputs the checks read (see [CLI.md](../CLI.md#inputs)), the CLI-wide exit-code table these codes sit within (see [CLI.md](../CLI.md#exit-codes)), or the rendezvous semantics the checks are chosen to exercise (see [FILE_SYNC.md](FILE_SYNC.md)). Intended readers are implementors of a setup launcher or supervising process, and security auditors.
+This document specifies the machine-readable verdict the `alcove doctor` subcommands emit under `--json`. It covers the document's fields, the byte encoding of the line holding them, the schema version and the compatibility rule a consumer applies before reading anything else, the `overall` and per-check status vocabularies, the ordered check list each mode reports, the relay check's bound and outcomes, what the verdict withholds, and the exit code each verdict maps to. It is the spec-tier complement to the operator-facing [Checking a network shared folder](../CLI.md#checking-a-network-shared-folder) section in [CLI.md](../CLI.md), which says what the three modes check and how an operator runs them; this document says what a caller may rely on. It does not cover the `SMB_*` inputs the checks read (see [CLI.md](../CLI.md#inputs)), the CLI-wide exit-code table these codes sit within (see [CLI.md](../CLI.md#exit-codes)), or the rendezvous semantics the checks are chosen to exercise (see [FILE_SYNC.md](FILE_SYNC.md)). Intended readers are implementors of a setup launcher or supervising process, and security auditors.
 
 The verdict is a contract, not a formatted log: a launcher keys on the check ids and the `overall` value rather than parsing check lines, so a check keeps its id and a consumer reads `version` before anything else.
 
@@ -19,7 +19,7 @@ The verdict is a contract, not a formatted log: a launcher keys on the check ids
 | Field | Type | Value | Meaning |
 | ----- | ---- | ----- | ------- |
 | `version` | integer | `1` | Verdict schema version (see [Schema version](#schema-version-and-compatibility)). |
-| `mode` | string | `probe` or `mount` | Which checks produced the verdict, matching the subcommand that ran. |
+| `mode` | string | `probe`, `mount` or `relay` | Which checks produced the verdict, matching the subcommand that ran. |
 | `overall` | string | one of `ok`, `fix_and_retry`, `fatal` | The roll-up a caller branches on (see [Overall verdict](#overall-verdict)). |
 | `checks` | array of check objects | | The mode's full ordered check list (see [The check list](#the-check-list)). |
 
@@ -31,12 +31,14 @@ Each entry of `checks`:
 | `status` | string | always | One of `ok`, `warn`, `fail`, `skipped` (see [Check status](#check-status)). |
 | `meaning` | string | per status | What the outcome means. |
 | `action` | string | per status | What the operator does about it. |
+| `url` | string | `relay` mode only | The TURN url the check asked, as the run lists it. |
+| `transport` | string | `relay` mode only | The transport that url names: `udp`, `tcp` or `tls`. |
 
 No other member appears on either object. An optional field that has nothing to say is omitted rather than emitted as `null`, so a consumer tests presence, never a null value.
 
 ### The line is printable ASCII
 
-Every byte of the emitted line is printable ASCII (`U+0020`-`U+007E`). A `meaning` or an `action` interpolates text this codebase did not choose: the `SMB_PATH` subfolder reaches the `subdirectory` check's `meaning` verbatim, `SMB_SHARE` reaches the `authentication` and `share_open` checks' `meaning`, and `SMB_SERVER` reaches the `name_resolution` check's `action`. The doctor validates those three variables against the C0 controls and DEL alone as far as character content goes (the server and share names are also refused a path separator and a leading `-`), so a C1 control, a bidi override, an astral character, or `U+2028`/`U+2029` in any of them is accepted and reaches the document. The `authentication` and `share_open` checks also include an `smbclient` NT_STATUS token in a `meaning`; that token is bounded to `NT_STATUS_[A-Z_]+` where it is extracted, so it is ASCII by construction and cannot contain such a byte -- the three `SMB_*` values are the reachable sources. Bare `JSON.stringify` escapes only `U+0000`-`U+001F`, the quote and the backslash, passing DEL, the whole C1 range, and `U+2028`/`U+2029` through. The verdict therefore rides the same encoder the `probe-host-key` machine lines do (`asciiSafeJsonLine`, `apps/cli/src/util/jsonLine.ts`; see [SFTP host-key verification](SFTP_CONNECTION.md#sftp-host-key-verification), which specifies the encoder for those lines), which rewrites every UTF-16 code unit outside that range in the encoded text to the `\uHHHH` escape JSON already defines for it. A launcher that cannot classify a line prints it -- to a terminal, or into a log a person later reads -- and this is what makes doing so safe.
+Every byte of the emitted line is printable ASCII (`U+0020`-`U+007E`). A `meaning` or an `action` interpolates text this codebase did not choose: the `SMB_PATH` subfolder reaches the `subdirectory` check's `meaning` verbatim, `SMB_SHARE` reaches the `authentication` and `share_open` checks' `meaning`, and `SMB_SERVER` reaches the `name_resolution` check's `action`. The doctor validates those three variables against the C0 controls and DEL alone as far as character content goes (the server and share names are also refused a path separator and a leading `-`), so a C1 control, a bidi override, an astral character, or `U+2028`/`U+2029` in any of them is accepted and reaches the document. The `authentication` and `share_open` checks also include an `smbclient` NT_STATUS token in a `meaning`; that token is bounded to `NT_STATUS_[A-Z_]+` where it is extracted, so it is ASCII by construction and cannot contain such a byte -- the three `SMB_*` values are the reachable sources. In a `relay` verdict, each check's `url` is configuration text, and a url from `invitation_relay` was chosen by the partner's invitation. Bare `JSON.stringify` escapes only `U+0000`-`U+001F`, the quote and the backslash, passing DEL, the whole C1 range, and `U+2028`/`U+2029` through. The verdict therefore rides the same encoder the `probe-host-key` machine lines do (`asciiSafeJsonLine`, `apps/cli/src/util/jsonLine.ts`; see [SFTP host-key verification](SFTP_CONNECTION.md#sftp-host-key-verification), which specifies the encoder for those lines), which rewrites every UTF-16 code unit outside that range in the encoded text to the `\uHHHH` escape JSON already defines for it. A launcher that cannot classify a line prints it -- to a terminal, or into a log a person later reads -- and this is what makes doing so safe.
 
 The escapes are JSON's own, so the keys, the value types, and the values a consumer parses back are exactly what a bare `JSON.stringify` would have produced. **This is not a second escaping altitude and not a redaction**: a launcher that renders a parsed `meaning` or `action` to a human escapes it once, at its own display sink, with nothing here to double (see CONTRIBUTING.md, Operator-facing escaping), and material that must not be shown at all is withheld where the verdict is composed (see [What the verdict withholds](#what-the-verdict-withholds)).
 
@@ -74,7 +76,7 @@ The two failure classes are distinguished by `overall` alone; which check was th
 
 ## The check list
 
-The id set per mode is fixed and ordered. Every id below appears in every verdict that mode produces, in the order given, whatever stopped the run: a check that did not run is reported as `skipped`, never omitted, so a consumer can index the verdict by id without first discovering how far the run got.
+The id sets of `probe` and `mount` are fixed and ordered. Every id below appears in every verdict that mode produces, in the order given, whatever stopped the run: a check that did not run is reported as `skipped`, never omitted, so a consumer can index the verdict by id without first discovering how far the run got.
 
 `probe` -- the userspace checks, run over `smbclient` with nothing mounted:
 
@@ -104,6 +106,23 @@ The id set per mode is fixed and ordered. Every id below appears in every verdic
 
 The `fail`s of `exclusive_create` and `rename_onto_existing` are the occupied-working-name case, and it is the only `fail` either of those checks emits. Their three names are fixed -- `.alcove-x.tmp` for `exclusive_create`, `.alcove-a.tmp` and `.alcove-b.tmp` for `rename_onto_existing` -- and each is removed before its check runs; a name still present after that attempt puts `overall` at `fix_and_retry`, never `fatal`, and unlike the `write_rename` case the checks after it still run.
 
+`relay` -- one check per TURN url a run of the configuration lists, in the order the run lists them (`selectRunRelay`: the connection's own `turn` entries, then the `invitation_relay` turn urls no own entry already names):
+
+| Id | What a passing check establishes |
+| -- | -------------------------------- |
+| `turn_1`, `turn_2`, ... | The relay at the check's `url` gave this host a relay candidate, over the transport the url names. The number is the url's 1-based position in the run's list, so the id set is as long as that list, and a consumer reads `url` for which relay a check is about. |
+
+## The relay check
+
+`doctor relay` runs only when it is named: `doctor probe` and `doctor mount` contact no relay and no registrar.
+
+- **Refusals.** A configuration whose `connection.channel` is not `webrtc`, one that configures `ice_provision`, and one that lists no TURN url are each a usage error (exit 64), refused before anything is contacted.
+- **The host statement.** Before its first request, the check prints every TURN url it will ask, with the transport each names and whether it came from `connection.turn` or the invitation, and states that it contacts no relay registrar and enrolls nothing. It prints them to the destination the human check lines use -- stderr, or the `--log-file` -- with or without `--json`, under `--log-level` as those lines are. It contacts those urls alone: no registrar, no coordination server, and no STUN server.
+- **The request.** For each url the check builds the werift peer connection a run builds, with `ice_transport_policy` `relay` and that url as its only ICE server, presenting what the run presents there: the entry's own `username` and `credential`, or the credential the run mints from the shared secret (`relayCredentialForRun`). It creates a data channel and a local offer, and waits for gathering to complete.
+- **The bound.** Every url is asked at once under one timer of 30 seconds, an arbitrary working value. A url whose gathering has not completed when it expires is reported as not reached.
+- **The outcomes.** `ok` when a relay candidate is among this side's candidates (the same reading of the ICE statistics a run's failure diagnosis makes), and `fail` otherwise, with `no relay candidate gathered` in the summary and the remedy a run's relay failure has in [CLI.md](../CLI.md#when-a-webrtc-exchange-does-not-connect) as the `action`. werift reports no per-server error from the peer connection, so a relay that refused the allocation, one that never answered, and one whose certificate did not verify are one outcome, and the `meaning` says the reason is not reported. A relay that has not enrolled the exchange's relay key refuses the minted credential, so before a run has enrolled it at the invitation's relay, that url's check is a `fail` on any network.
+- **Rollup.** Any `fail` makes `overall` `fix_and_retry`; the check reports no `warn`, `skipped` or `fatal`.
+
 ## What the verdict withholds
 
 The record set behind both renderings has three fields the JSON document does not: the check's `summary` headline, a `detail` excerpt of the tool's own output behind a failure, and the marker for a failure that stopped the run.
@@ -124,7 +143,7 @@ The two nonzero values follow BSD `sysexits`, as the rest of the CLI does: `fix_
 
 Every code above is below 125, which Docker reserves for its own failure to start a container, so a caller running the doctor in a container can tell "Docker could not run it" from any verdict the command reaches.
 
-A usage error -- a missing or malformed input, or a bad flag -- is not in that set: it exits 64 (`EX_USAGE`) and prints no verdict on either stream, because the checks never ran. A caller that sees 64 has established nothing about the share.
+A usage error -- a missing or malformed input, a bad flag, or a configuration `doctor relay` refuses -- is not in that set: it exits 64 (`EX_USAGE`) and prints no verdict on either stream, because the checks never ran. A caller that sees 64 has established nothing about the share.
 
 A local fault that stops `doctor probe` before it can compose a verdict -- the temporary directory or the credentials file in it cannot be created or restricted to its owner, or a working file cannot be written locally -- also prints no verdict on either stream, and exits 69: something the checks depend on was not available, the same class a `fatal` verdict reports. A caller that sees 69 with nothing on stdout treats it as `fatal`.
 
