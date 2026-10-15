@@ -835,8 +835,7 @@ subjects stay where they are. The WebRTC inbound frame fixture set, which the
 CLI's parity tests and the web app's tests drive and which is built with the
 real `peerjs-js-binarypack` packer, is the exception: `packages/core` declares
 that packer, so the set could take the `@alcove/core/testing` channel. It stays
-in the testkit until it is moved into `@alcove/core/testing`, a change of its
-own.
+in the testkit as a stated exception to this rule.
 
 Anything a single workspace needs stays in that workspace's own test tree,
 whichever channel it would qualify for. The decision, the alternatives measured

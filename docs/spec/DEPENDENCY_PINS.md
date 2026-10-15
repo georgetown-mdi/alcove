@@ -60,10 +60,8 @@ with a message asking for an npm exclude entry that would be false.
   because the marker scan that parses the wire format lives there and its
   differential test drives the real encoder as its oracle -- so the guard over
   the shared bound holds whether or not an app keeps the dependency.
-  The CLI's WebRTC transport uses that framing, and the transports of the
-  WebSocket relay path will
-  ([web-websocket-transport.md](../notes/web-websocket-transport.md)); the web
-  transport decodes through PeerJS itself, plus its own bounded reassembly
+  The CLI's WebRTC transport uses that framing; the web transport decodes
+  through PeerJS itself, plus its own bounded reassembly
   (`apps/web/src/psi/transport/boundedReassembly.ts`).
   `packages/testkit` declares it at that same exact version as well, because
   the shared WebRTC inbound frame

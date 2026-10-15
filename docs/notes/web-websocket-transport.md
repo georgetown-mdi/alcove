@@ -336,7 +336,6 @@ The front on 443 and the broker's route on it are already built. Its open measur
 
 Relay path, in order:
 
-- **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
