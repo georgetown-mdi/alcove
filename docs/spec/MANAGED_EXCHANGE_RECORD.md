@@ -1536,11 +1536,13 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
 - **The invitation's relay is written whole.** The export writes the record's
   `invitation_relay` as the invitation named it, its `registrar` included, so
   a command-line run lists that relay and enrolls at the registrar the
-  invitation names, whichever build named it
+  invitation names, whichever build named it, only when it allocates on the
+  invitation's relay, which an export with its own `turn` entries does not
   ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)). Where the
-  invitation names a registrar, the export panel states that each
-  command-line run registers there before it connects and that whoever runs
-  it learns that machine's network address.
+  invitation names a registrar, the export panel states that a
+  command-line run registers there before it connects only when the export
+  lists no `turn` entry of its own, and that whoever runs that registrar
+  then learns that machine's network address.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not

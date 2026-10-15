@@ -1101,11 +1101,12 @@ invitation's registration is pending, since no command-line run can confirm
 that one: enroll the exchange again first. The export writes the relay your
 partner's invitation named as it was named, the site's
 [default relay](DEPLOYMENT.md#the-default-relay) and its registrar included: a
-command-line run lists it beside your own relay, as a run here does, and
-enrolls the exchange at the registrar the invitation names before it
-connects, whichever site's invitation named it. The export panel names that
-registrar, since whoever runs it learns the network address of the machine
-running the exchange.
+command-line run lists it beside your own relay, as a run here does. A run
+registers the exchange at that registrar before it connects only when it
+allocates on the invitation's relay, which an export with its own `turn`
+entries does not. The export panel names that registrar and says so, since
+whoever runs it then learns the network address of the machine running the
+exchange.
 
 ### Bringing a command-line configuration back
 

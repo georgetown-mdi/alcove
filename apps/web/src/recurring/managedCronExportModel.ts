@@ -64,9 +64,10 @@ export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
 /**
  * The line an export shows where the exported connection's `invitation_relay`
- * names a registrar, which every command-line run enrolls at before it
- * connects; `undefined` where it names none. The registrar is the partner's
- * choice, so it is escaped.
+ * names a registrar, which a command-line run enrolls at before it connects
+ * only when the export lists no `turn` entry of its own (a managed export with
+ * a relay registrar of its own writes such entries); `undefined` where it
+ * names none. The registrar is the partner's choice, so it is escaped.
  */
 export function invitationRegistrarExportLine(
   record: ManagedExchangeRecord,
@@ -76,9 +77,11 @@ export function invitationRegistrarExportLine(
   const registrar = connection.invitationRelay?.registrar;
   if (registrar === undefined) return undefined;
   return (
-    "Each command-line run of this exchange registers at " +
-    `${sanitizeForDisplay(registrar)} before it connects, and whoever runs ` +
-    "that registrar learns the network address of the machine it runs on."
+    "A command-line run of this exchange registers at " +
+    `${sanitizeForDisplay(registrar)} before it connects only when the ` +
+    "exported configuration lists no turn entry of its own, and whoever " +
+    "runs that registrar then learns the network address of the machine it " +
+    "runs on."
   );
 }
 

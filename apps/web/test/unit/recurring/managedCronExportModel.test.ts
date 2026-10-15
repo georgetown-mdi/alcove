@@ -278,10 +278,11 @@ describe("the line naming the invitation relay's registrar", () => {
     const line = invitationRegistrarExportLine(withRegistrar(registrar));
 
     expect(line).toBe(
-      "Each command-line run of this exchange registers at " +
-        `${sanitizeForDisplay(registrar)} before it connects, and whoever ` +
-        "runs that registrar learns the network address of the machine it " +
-        "runs on.",
+      "A command-line run of this exchange registers at " +
+        `${sanitizeForDisplay(registrar)} before it connects only when the ` +
+        "exported configuration lists no turn entry of its own, and whoever " +
+        "runs that registrar then learns the network address of the machine " +
+        "it runs on.",
     );
     expect(line).toContain(
       "https://registrar.example.org\\x1b[2J\\x0d\\x0a\\u202e" +

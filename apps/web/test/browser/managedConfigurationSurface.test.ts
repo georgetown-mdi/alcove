@@ -141,7 +141,7 @@ describe("the surface of an imported configuration", () => {
 });
 
 describe("the export's line naming the invitation relay's registrar", () => {
-  const REGISTRAR_LINE = "Each command-line run of this exchange registers at";
+  const REGISTRAR_LINE = "A command-line run of this exchange registers at";
 
   test("is shown, as the registrar's origin, where the relay names one", async () => {
     const created = await createManagedExchange({
@@ -166,8 +166,9 @@ describe("the export's line naming the invitation relay's registrar", () => {
       .element(
         page.getByText(
           `${REGISTRAR_LINE} https://registrar.partner.example.org before ` +
-            "it connects, and whoever runs that registrar learns the network " +
-            "address of the machine it runs on.",
+            "it connects only when the exported configuration lists no turn " +
+            "entry of its own, and whoever runs that registrar then learns " +
+            "the network address of the machine it runs on.",
         ),
       )
       .toBeInTheDocument();
