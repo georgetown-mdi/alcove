@@ -235,6 +235,38 @@ describe("selectRunRelay", () => {
     });
   });
 
+  test("the order is the connection's own entries in configuration order, then the invitation's remaining urls in invitation order", () => {
+    const secondOwnTurn = { url: "turn:own-second.example:3478" };
+    const selected = selectRunRelay({
+      turn: [ownStatic, secondOwnTurn],
+      stun: ["stun:own-a.example:3478", "stun:own-b.example:3478"],
+      invitationRelay: {
+        turn: [
+          "turn:partner-first.example:3478",
+          secondOwnTurn.url,
+          "turn:partner-second.example:3478",
+        ],
+        stun: [
+          "stun:partner-first.example:3478",
+          "stun:own-a.example:3478",
+          "stun:partner-second.example:3478",
+        ],
+      },
+    });
+    expect(selected.turn?.map((server) => server.url)).toEqual([
+      ownStatic.url,
+      secondOwnTurn.url,
+      "turn:partner-first.example:3478",
+      "turn:partner-second.example:3478",
+    ]);
+    expect(selected.stun).toEqual([
+      "stun:own-a.example:3478",
+      "stun:own-b.example:3478",
+      "stun:partner-first.example:3478",
+      "stun:partner-second.example:3478",
+    ]);
+  });
+
   test("a url present in both is listed once, as the connection's own entry", () => {
     expect(
       selectRunRelay({

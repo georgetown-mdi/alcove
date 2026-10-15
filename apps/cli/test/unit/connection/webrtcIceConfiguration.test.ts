@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { parseIceServers } from "werift";
 
 import { UsageError, mintRunRelayCredential } from "@alcove/core";
 
@@ -430,6 +431,72 @@ test("the warning names the default, what it discloses, and how to override", ()
   expect(NO_ICE_SERVERS_WARNING).toContain("unreachable");
   // And it must not overstate the disclosure: connection metadata, not content.
   expect(NO_ICE_SERVERS_WARNING).toContain("no exchange content is");
+});
+
+// --- what werift takes from the list ----------------------------------------
+
+test("werift's parser keeps the first TURN url and the first STUN url of the list a run passes it", () => {
+  const configuration = buildPeerConfiguration(
+    iceServersFromConnection(
+      {
+        stun: ["stun:own-first.example:3478", "stun:own-second.example:3478"],
+        turn: [
+          {
+            url: "turn:own-first.example:3478",
+            username: "first-user",
+            credential: "first-secret",
+          },
+          {
+            url: "turn:own-second.example:3478",
+            username: "second-user",
+            credential: "second-secret",
+          },
+        ],
+        invitationRelay: {
+          turn: ["turn:partner-first.example:3478"],
+          stun: ["stun:partner-first.example:3478"],
+        },
+      },
+      RUN_CREDENTIAL,
+    ),
+  );
+  expect(configuration.iceServers).toHaveLength(4);
+
+  const options = parseIceServers(configuration.iceServers ?? []);
+
+  expect(options).toEqual({
+    stunServer: ["own-first.example", 3478],
+    turnServer: ["own-first.example", 3478],
+    turnUsername: "first-user",
+    turnPassword: "first-secret",
+  });
+});
+
+test("werift's parser takes the invitation's first TURN url when the connection names no TURN of its own", () => {
+  const configuration = buildPeerConfiguration(
+    iceServersFromConnection(
+      {
+        invitationRelay: {
+          turn: [
+            "turn:partner-first.example:3478",
+            "turn:partner-second.example:3478",
+          ],
+          stun: [
+            "stun:partner-first.example:3478",
+            "stun:partner-second.example:3478",
+          ],
+        },
+      },
+      RUN_CREDENTIAL,
+    ),
+  );
+
+  expect(parseIceServers(configuration.iceServers ?? [])).toEqual({
+    stunServer: ["partner-first.example", 3478],
+    turnServer: ["partner-first.example", 3478],
+    turnUsername: RUN_CREDENTIAL.username,
+    turnPassword: RUN_CREDENTIAL.credential,
+  });
 });
 
 // --- plaintext signaling ----------------------------------------------------
