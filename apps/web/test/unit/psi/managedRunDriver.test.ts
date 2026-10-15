@@ -336,16 +336,11 @@ function acquireResources(side: RendezvousRole = "acceptor") {
   const conn = { close: vi.fn() };
   mockedRendezvous.mockResolvedValue(
     side === "inviter"
-      ? {
-          side: "inviter",
-          peer: peer as unknown as Peer,
-          defaultRelayNotEnrolled: false,
-        }
+      ? { side: "inviter", peer: peer as unknown as Peer }
       : {
           side: "acceptor",
           peer: peer as unknown as Peer,
           conn: conn as unknown as DataConnection,
-          defaultRelayNotEnrolled: false,
         },
   );
   // The inviter listens, so its channel arrives through the inbound wait rather
@@ -517,37 +512,36 @@ describe("runManagedExchangeInBrowser", () => {
     expect(peer.destroy).toHaveBeenCalledTimes(1);
   });
 
-  test.each<[string, Error, ReadonlyArray<ReadonlyArray<string>>]>([
-    [
-      "says so when the connection fails",
-      new Error("the connection did not open"),
-      [[DEFAULT_RELAY_NOT_ENROLLED_NOTICE]],
-    ],
-    [
-      "says nothing of the relay when no partner arrives",
-      new PartnerNoShowError("nobody arrived"),
-      [],
-    ],
-  ])(
-    "an inviter whose default relay was not enrolled %s",
-    async (_case, failure, notices) => {
-      const peer = { disconnect: vi.fn(), destroy: vi.fn() };
-      mockedRendezvous.mockResolvedValue({
-        side: "inviter",
-        peer: peer as unknown as Peer,
-        defaultRelayNotEnrolled: true,
+  test.each(["inviter", "acceptor"] as const)(
+    "the %s's notice that the default relay could not be set up is shown once, and a later connection failure adds nothing",
+    async (side) => {
+      const { peer, conn } = acquireResources(side);
+      mockedRendezvous.mockImplementation((_record, options) => {
+        options?.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+        return Promise.resolve(
+          side === "inviter"
+            ? { side, peer: peer as unknown as Peer }
+            : {
+                side,
+                peer: peer as unknown as Peer,
+                conn: conn as unknown as DataConnection,
+              },
+        );
       });
-      mockedWaitForIncoming.mockRejectedValue(failure);
+      const failure = new Error("the data channel did not open");
+      mockedOpen.mockRejectedValue(failure);
       const onWarning = vi.fn();
 
       const rejection = await runDriver(
         new AbortController().signal,
         onWarning,
-        recordForSide("inviter"),
+        recordForSide(side),
       ).catch((error: unknown) => error);
 
       expect(rejection).toBe(failure);
-      expect(onWarning.mock.calls).toEqual(notices);
+      expect(onWarning.mock.calls).toEqual([
+        [DEFAULT_RELAY_NOT_ENROLLED_NOTICE],
+      ]);
     },
   );
 

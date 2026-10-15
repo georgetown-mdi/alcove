@@ -16,8 +16,6 @@ import {
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
-import { PartnerNoShowError } from "./waitForConnection";
-
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayLocator } from "./rendezvous";
 import type { RelayUrls } from "./ownRelaySetting";
@@ -33,8 +31,8 @@ const log = getLogger("defaultRelay");
  */
 export const DEFAULT_RELAY_DIAL_WAIT_MS = 3_000;
 
-/** What the default relay's enrollment reads from its surroundings:
- * injectable for tests. */
+/** What the default relay's enrollment reads from its surroundings, and where
+ * it reports a failure: injectable for tests. */
 export interface DefaultRelayDependencies {
   /** The build's default relay; {@link defaultRelaySetting} when unset. */
   setting?: () => DefaultRelaySetting | undefined;
@@ -44,6 +42,9 @@ export interface DefaultRelayDependencies {
   signal?: AbortSignal;
   /** How long a dial waits; {@link DEFAULT_RELAY_DIAL_WAIT_MS} when unset. */
   dialWaitMs?: number;
+  /** Receives {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} when the enrollment
+   * fails. */
+  onRunNotice?: (message: string) => void;
 }
 
 /**
@@ -67,30 +68,24 @@ export function invitationRelayWithDefault(
 }
 
 /**
- * The run notice a run whose default relay enrollment failed shows when its
- * connection does not open.
+ * The run notice a run shows, as it connects, when its enrollment at the
+ * default relay fails.
  */
 export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
-  "The relay server could not be set up for this exchange, so the " +
-  "connection was tried without it. Try again; if it fails again, try " +
-  "from another network.";
+  "The site's relay server could not be set up for this exchange. " +
+  "Connecting without it.";
 
-/** The relay a run lists, and whether its default relay enrollment failed. */
-export interface RunRelay {
-  relay: RelayLocator | undefined;
-  defaultRelayNotEnrolled: boolean;
-}
+type Enrollment = "enrolled" | "failed" | "cancelled";
 
-// One enrollment attempt, true once the registrar holds the key. A refusal, a
-// registrar that cannot be reached, `waitMs` passing and `signal` aborting
-// are each false, and each but the abort is logged once.
-async function enrolledWithinDialWait(
+// One enrollment attempt. A refusal, a registrar that cannot be reached and
+// `waitMs` passing are each "failed", and logged once.
+async function enrollWithinDialWait(
   setting: DefaultRelaySetting,
   sharedSecret: string,
   dependencies: DefaultRelayDependencies,
-): Promise<boolean> {
+): Promise<Enrollment> {
   const { signal } = dependencies;
-  if (signal?.aborted === true) return false;
+  if (signal?.aborted === true) return "cancelled";
   const enroll = dependencies.enroll ?? enrollRelayKeyWithoutToken;
   const waitMs = dependencies.dialWaitMs ?? DEFAULT_RELAY_DIAL_WAIT_MS;
   const attempt = enroll(
@@ -120,13 +115,13 @@ async function enrolledWithinDialWait(
   });
   try {
     const first = await Promise.race([attempt, waited]);
-    if (first === true) return true;
-    if (first !== undefined)
-      log.warn(
-        `the default relay's registrar ${first}, so this run connects ` +
-          "without it",
-      );
-    return false;
+    if (first === true) return "enrolled";
+    if (first === undefined) return "cancelled";
+    log.warn(
+      `the default relay's registrar ${first}, so this run connects ` +
+        "without it",
+    );
+    return "failed";
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", stopWaiting);
@@ -139,62 +134,27 @@ async function enrolledWithinDialWait(
  * attempt to enroll the run's key at its registrar confirms, within
  * {@link DEFAULT_RELAY_DIAL_WAIT_MS}. A same-key repeat confirms. Otherwise
  * the default relay's TURN url is left out, even where the invitation names
- * it, and the run dials with the rest.
+ * it, and the run dials with the rest. A refused, unreachable or unanswered
+ * enrollment shows {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through
+ * `onRunNotice`, once, before this returns; a cancelled one shows nothing.
  */
 export async function relayWithDefaultForRun(
   sharedSecret: string,
   relay: RelayLocator | undefined,
   dependencies: DefaultRelayDependencies = {},
-): Promise<RunRelay> {
+): Promise<RelayLocator | undefined> {
   const setting = (dependencies.setting ?? defaultRelaySetting)();
-  if (setting === undefined) return { relay, defaultRelayNotEnrolled: false };
-  const enrolled = await enrolledWithinDialWait(
+  if (setting === undefined) return relay;
+  const enrollment = await enrollWithinDialWait(
     setting,
     sharedSecret,
     dependencies,
   );
+  if (enrollment === "failed")
+    dependencies.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
   const others = (relay?.turn ?? []).filter((url) => url !== setting.turnUrl);
-  const turn = enrolled ? [...others, setting.turnUrl] : others;
+  const turn =
+    enrollment === "enrolled" ? [...others, setting.turnUrl] : others;
   const stun = [...(relay?.stun ?? [])];
-  return {
-    relay: turn.length + stun.length === 0 ? undefined : { turn, stun },
-    defaultRelayNotEnrolled: !enrolled,
-  };
-}
-
-/**
- * Whether a run whose connection failed with `error` shows
- * {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE}: its default relay enrollment
- * failed, and the connection failed for a reason other than the partner never
- * arriving ({@link PartnerNoShowError}), which no relay would have changed.
- */
-export function showsDefaultRelayNotice(
-  runRelay: Pick<RunRelay, "defaultRelayNotEnrolled">,
-  error: unknown,
-): boolean {
-  return (
-    runRelay.defaultRelayNotEnrolled && !(error instanceof PartnerNoShowError)
-  );
-}
-
-/**
- * `connect`'s result, or its failure after showing
- * {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through `onRunNotice` when
- * {@link showsDefaultRelayNotice} holds and `signal` has not cancelled the run.
- */
-export async function connectNoticingDefaultRelay<T>(
-  runRelay: Pick<RunRelay, "defaultRelayNotEnrolled">,
-  options: { onRunNotice: (message: string) => void; signal?: AbortSignal },
-  connect: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await connect();
-  } catch (error) {
-    if (
-      showsDefaultRelayNotice(runRelay, error) &&
-      options.signal?.aborted !== true
-    )
-      options.onRunNotice(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
-    throw error;
-  }
+  return turn.length + stun.length === 0 ? undefined : { turn, stun };
 }

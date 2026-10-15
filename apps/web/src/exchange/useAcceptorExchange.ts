@@ -27,10 +27,7 @@ import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 
-import {
-  connectNoticingDefaultRelay,
-  relayWithDefaultForRun,
-} from "@psi/transport/defaultRelay";
+import { relayWithDefaultForRun } from "@psi/transport/defaultRelay";
 
 import { deploymentProfile } from "@utils/clientConfig";
 import { useRequestGeneration } from "@utils/requestGeneration";
@@ -526,20 +523,15 @@ export function useAcceptorExchange({
       // redundant destroy here.
       if (endpoint.channel !== "webrtc")
         throw new Error("the browser acceptor path requires a WebRTC endpoint");
-      const runRelay = await relayWithDefaultForRun(
+      const relay = await relayWithDefaultForRun(
         token.sharedSecret,
         relayForRun(endpoint.relay),
-        { signal },
+        { signal, onRunNotice },
       );
-      const [peer, conn] = await connectNoticingDefaultRelay(
-        runRelay,
-        { onRunNotice, signal },
-        () =>
-          dialAsAcceptor(token.sharedSecret, endpoint, {
-            signal,
-            relay: runRelay.relay,
-          }),
-      );
+      const [peer, conn] = await dialAsAcceptor(token.sharedSecret, endpoint, {
+        signal,
+        relay,
+      });
       return { peer, conn, psi, prepared };
     };
 

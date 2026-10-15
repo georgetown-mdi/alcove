@@ -37,15 +37,9 @@ import {
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayForRun } from "../transport/ownRelaySetting";
 
-import {
-  connectNoticingDefaultRelay,
-  relayWithDefaultForRun,
-} from "../transport/defaultRelay";
+import { relayWithDefaultForRun } from "../transport/defaultRelay";
 
-import type {
-  DefaultRelayDependencies,
-  RunRelay,
-} from "../transport/defaultRelay";
+import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
@@ -183,11 +177,9 @@ export function assertManagedRendezvousPossible(
  * peer with no channel yet (the caller awaits the acceptor's inbound connection);
  * the acceptor returns both the peer and the opened channel.
  */
-type ManagedRendezvousAcquisition = (
+type ManagedRendezvousAcquisition =
   | { side: "inviter"; peer: Peer }
-  | { side: "acceptor"; peer: Peer; conn: DataConnection }
-) &
-  Pick<RunRelay, "defaultRelayNotEnrolled">;
+  | { side: "acceptor"; peer: Peer; conn: DataConnection };
 
 /**
  * Begin the side-dispatched rendezvous. Returns the inviter's registered peer
@@ -211,9 +203,8 @@ type ManagedRendezvousAcquisition = (
  * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
  * enrolled there, right before it connects (`relayWithDefaultForRun`). A
- * failed enrollment is returned
- * as `defaultRelayNotEnrolled`, and reported through `onRunNotice` when the
- * flow itself fails.
+ * failed enrollment is reported through `onRunNotice` as it happens, and the
+ * flow starts without the default relay.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -232,18 +223,19 @@ export async function beginManagedRendezvous(
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
   const connection = exchangeFile.connection;
-  const runRelay = await relayWithDefaultForRun(
+  const relay = await relayWithDefaultForRun(
     sharedSecret,
     relayForRun(
       connection.channel === "webrtc" ? connection.invitationRelay : undefined,
     ),
-    { ...options.defaultRelay, ...(signal !== undefined ? { signal } : {}) },
+    {
+      ...options.defaultRelay,
+      ...(signal !== undefined ? { signal } : {}),
+      ...(options.onRunNotice !== undefined
+        ? { onRunNotice: options.onRunNotice }
+        : {}),
+    },
   );
-  const { relay, defaultRelayNotEnrolled } = runRelay;
-  const noticing = {
-    onRunNotice: options.onRunNotice ?? (() => {}),
-    ...(signal !== undefined ? { signal } : {}),
-  };
   const peerWaitTimeoutMs = options.peerWaitTimeoutMs;
   const registrationBound =
     peerWaitTimeoutMs !== undefined
@@ -255,27 +247,20 @@ export async function beginManagedRendezvous(
         }
       : {};
   if (endpoint === undefined) {
-    const peer = await connectNoticingDefaultRelay(runRelay, noticing, () =>
-      flows.listenAsInviter(sharedSecret, {
-        signal,
-        relay,
-        ...registrationBound,
-      }),
-    );
-    return { side: "inviter", peer, defaultRelayNotEnrolled };
+    const peer = await flows.listenAsInviter(sharedSecret, {
+      signal,
+      relay,
+      ...registrationBound,
+    });
+    return { side: "inviter", peer };
   }
-  const [peer, conn] = await connectNoticingDefaultRelay(
-    runRelay,
-    noticing,
-    () =>
-      flows.dialAsAcceptor(sharedSecret, endpoint, {
-        signal,
-        relay,
-        ...registrationBound,
-        ...(peerWaitTimeoutMs !== undefined
-          ? { totalTimeoutMs: peerWaitTimeoutMs }
-          : {}),
-      }),
-  );
-  return { side: "acceptor", peer, conn, defaultRelayNotEnrolled };
+  const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
+    signal,
+    relay,
+    ...registrationBound,
+    ...(peerWaitTimeoutMs !== undefined
+      ? { totalTimeoutMs: peerWaitTimeoutMs }
+      : {}),
+  });
+  return { side: "acceptor", peer, conn };
 }

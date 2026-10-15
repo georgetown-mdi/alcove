@@ -45,10 +45,6 @@ import {
 import { buildRunOutputs } from "../runOutputs";
 import { undeclaredColumnsRunNotice } from "../runWarnings";
 
-import {
-  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-  showsDefaultRelayNotice,
-} from "../transport/defaultRelay";
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
 import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
 import { authenticateExchange } from "../authenticateExchange";
@@ -344,8 +340,6 @@ export function runManagedExchangeInBrowser(
           }
         } catch (error) {
           acquisition.peer.destroy();
-          if (showsDefaultRelayNotice(acquisition, error))
-            emitRunNotice(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
           throw error;
         }
 
