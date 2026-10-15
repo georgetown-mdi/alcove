@@ -301,7 +301,8 @@ install -d -m 700 -o "$IMAGE_UID" -g "$IMAGE_GID" /var/lib/alcove-relay
 install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
-  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/render-front.sh" "$LIBEXEC/"
+  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/maintenance-lock.sh" \
+  "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$LIBEXEC/aws/"
@@ -398,7 +399,7 @@ systemctl enable --now alcove-relay-sweep.timer \
 if [ "$OS_UPDATES" = 1 ]; then
   systemctl enable --now alcove-relay-os-update.timer \
     || die "alcove-relay-os-update.timer did not start; this host would take no OS updates. journalctl -u alcove-relay-os-update.timer"
-  log "OS updates install daily between 05:00 and 05:30 UTC, then verify.sh runs"
+  log "OS updates install daily at 08:30 UTC; see The daily schedule in infra/relay/README.md"
 else
   systemctl disable --now alcove-relay-os-update.timer 2>/dev/null || true
   log "WARNING: not Amazon Linux 2023, so no automatic OS updates are set up; configure the distribution's own"

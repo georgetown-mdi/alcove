@@ -21,18 +21,19 @@ name: Nightly Relay Deployment
 
 on:
   schedule:
-    # 07:23 UTC nightly, off the hour per GitHub's guidance to avoid top-of-hour
-    # congestion on the shared scheduler, and after the host pull's window: the
-    # timer fires at 06:00 to 06:05 UTC and a run is stopped at one hour, so the
-    # pull has ended by 07:05. Clear of the other nightlies (03:43 to 04:57) and
-    # of the weekly scans (05:30 to 05:47 on Monday, 06:17 on Sunday). Two GitHub
-    # behaviors to know: a `schedule` trigger only fires from the workflow as it
-    # exists on the default branch, so no nightly runs until this file lands
-    # there (use the manual dispatch below to exercise it before then); and
-    # GitHub disables a scheduled workflow after ~60 days without repo activity,
-    # emailing the last committer -- re-enable it from the Actions tab if a
-    # long-quiet repo needs this check back.
-    - cron: "23 7 * * *"
+    # 11:23 UTC nightly, off the hour per GitHub's guidance to avoid top-of-hour
+    # congestion on the shared scheduler, and after the host pull: its timer
+    # fires at 09:30 UTC and a run is stopped at one hour, so the pull has ended
+    # by 10:30 (infra/relay/README.md, The daily schedule). Clear of the other
+    # nightlies (03:43 to 04:57) and of the weekly scans (05:30 to 05:47 on
+    # Monday, 06:17 on Sunday). Two GitHub behaviors to know: a `schedule`
+    # trigger only fires from the workflow as it exists on the default branch,
+    # so no nightly runs until this file lands there (use the manual dispatch
+    # below to exercise it before then); and GitHub disables a scheduled
+    # workflow after ~60 days without repo activity, emailing the last
+    # committer -- re-enable it from the Actions tab if a long-quiet repo needs
+    # this check back.
+    - cron: "23 11 * * *"
   # On-demand run, e.g. to confirm a host fix without waiting for the schedule.
   workflow_dispatch:
 

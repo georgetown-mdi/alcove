@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 const BROKER = resolve(here, "..", "infra/broker");
 const TEMPLATE = join(BROKER, "nginx.conf.tmpl");
+const MAINTENANCE_LOCK = resolve(here, "..", "infra/relay/maintenance-lock.sh");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
 // The fields PRIVACY.md lists for the front's access log. A signaling URL's
@@ -342,6 +343,10 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const root = fixtureDir("broker-host-");
   const source = join(root, "broker");
   cpSync(BROKER, source, { recursive: true });
+  // install.sh installs the relay's maintenance-lock.sh from beside its own
+  // directory.
+  mkdirSync(join(root, "relay"));
+  cpSync(MAINTENANCE_LOCK, join(root, "relay/maintenance-lock.sh"));
   const pinFront = (image) =>
     writeFileSync(join(source, "Dockerfile"), `FROM ${image}\n`);
   pinFront(pinnedImage());

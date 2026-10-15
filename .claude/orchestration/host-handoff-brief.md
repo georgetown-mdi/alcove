@@ -11,6 +11,9 @@ Filling it:
 - Credentials. Name each account a step uses and its identity check, run first: `AWS_PROFILE=<profile> aws sts get-caller-identity` for AWS, `gh auth status` for GitHub, the tool's own check otherwise. Session credentials expire, so the check comes before the work rather than at its first failure.
 - Platform. Name the `linux/<arch>` every image is built and run for, and put `--platform` on every `docker build` and `docker run`: the owner's shell has exported `DOCKER_DEFAULT_PLATFORM=linux/amd64` on an arm64 Mac.
 - Long commands. Write each as the bounded form the Host rules give, with the timeout sized to the step.
+- Relay host. A brief that acts on the relay host holds its maintenance lock for the whole run, so no daily job runs beside it (`infra/relay/README.md`, The daily schedule, lists the jobs' busy slots, 08:00-11:00 UTC). Its first host step takes the lock through SSM and leaves it held in a transient unit, bounded by the run's total timeout in seconds:
+  `systemd-run --unit=alcove-handoff-lock --collect -p RuntimeMaxSec=<seconds> /usr/bin/flock -n /run/lock/alcove-maintenance.lock /usr/bin/sleep infinity; sleep 2; systemctl is-active alcove-handoff-lock.service`
+  Expected: `active`. Anything else means a daily job holds the lock: write the result file (nothing changed) and stop. Clean up, and any Recovery, releases it: `systemctl stop alcove-handoff-lock.service`. While it is held, a daily job's unit started by hand blocks on the lock for up to two hours, so run that job's script directly instead.
 - Steps. Each step gives the exact command, then `Expected:` (what output means it worked) and `Record:` (the values the result file needs). A step the owner performs is one action, with the exact names and values and what he sees when it worked.
 
 ## Template

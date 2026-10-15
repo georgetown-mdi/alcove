@@ -5,4 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/etc/alcove-broker/renew.sh
+# Under the host's maintenance lock, stopped at 10 minutes
+# (infra/relay/README.md, The daily schedule). No start timeout of its own,
+# which would cut short the wait for the lock.
+ExecStart=/etc/alcove-broker/maintenance-lock.sh 600 /etc/alcove-broker/renew.sh
+TimeoutStartSec=infinity

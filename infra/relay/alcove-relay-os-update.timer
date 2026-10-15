@@ -1,14 +1,13 @@
 [Unit]
-Description=Install OS updates on the Alcove relay host daily, 05:00-05:30 UTC
+Description=Install OS updates on the Alcove relay host daily at 08:30 UTC
 
 [Timer]
-# After the certificate renewal windows of the relay (03:00-04:00 UTC) and of a
-# broker on the same host (04:30-04:45 UTC), so a package's restart does not
-# land with a certificate's.
-OnCalendar=*-*-* 05:00:00 UTC
-RandomizedDelaySec=30m
-# Off, so a host that was down at 05:00 does not update at boot, outside the
-# window; it updates at the next day's window.
+# After both certificate renewals and before the host pull, in the relay
+# host's daily schedule (README.md, The daily schedule).
+OnCalendar=*-*-* 08:30:00 UTC
+RandomizedDelaySec=0
+# Off, so a host that was down at 08:30 does not update at boot, outside the
+# schedule; it updates the next day.
 Persistent=false
 
 [Install]

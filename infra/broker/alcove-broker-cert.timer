@@ -2,9 +2,11 @@
 Description=Renew the alcove standalone broker's TLS certificate daily
 
 [Timer]
-# After the relay's renewal window (03:00 plus up to 1h).
-OnCalendar=*-*-* 04:30:00 UTC
-RandomizedDelaySec=15m
+# After the relay's renewal, in the relay host's daily schedule
+# (infra/relay/README.md, The daily schedule).
+OnCalendar=*-*-* 08:15:00 UTC
+# Let's Encrypt asks clients to randomize their renewal time.
+RandomizedDelaySec=5m
 Persistent=true
 
 [Install]

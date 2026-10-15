@@ -6,11 +6,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/alcove-host-pull/pull.sh
+# Under the host's maintenance lock, stopped at 1 hour, so a fetch or an image
+# build that hangs does not hold the unit active (infra/relay/README.md, The
+# daily schedule).
+ExecStart=/opt/alcove-host-pull/maintenance-lock.sh 3600 /opt/alcove-host-pull/pull.sh
 # npm and git as root read their configuration from here.
 Environment=HOME=/root
 StateDirectory=alcove-host-pull
 StateDirectoryMode=0755
-# A fetch or an image build that hangs would hold this unit active, and the
-# timer starts no run while it is.
-TimeoutStartSec=1h
+# No start timeout of its own, which would cut short the wait for the lock.
+TimeoutStartSec=infinity
