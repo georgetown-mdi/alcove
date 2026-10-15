@@ -1,5 +1,5 @@
 import {
-  PUBLISH_WITHOUT_RENAME_KEY,
+  WRITE_WITHOUT_RENAMING_KEY,
   describeUndeclaredColumns,
   redactPrivateKeyMaterial,
   termsStatingDeclaredPayloadSend,
@@ -54,14 +54,14 @@ export const BOTH_SWEPT_GUIDANCE =
  */
 export const RENAME_REFUSED_GUIDANCE =
   "If it does not, run again with --write-without-renaming (or set " +
-  `${PUBLISH_WITHOUT_RENAME_KEY}: true in the connection options).`;
+  `${WRITE_WITHOUT_RENAMING_KEY}: true in the connection options).`;
 
 /**
  * The warning a run writing without renaming raises before it connects,
  * naming the assumption the operator vouches for:
  * docs/EXCHANGE_REFERENCE.md, write_without_renaming.
  */
-export const PUBLISH_WITHOUT_RENAME_WARNING =
+export const WRITE_WITHOUT_RENAMING_WARNING =
   "Writing without renaming: each exchange file is written directly under " +
   "its final name. This is only safe if the shared folder never passes a " +
   "file to your partner while it is still being written; Alcove cannot " +

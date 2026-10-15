@@ -19,15 +19,15 @@ import {
   UNTAKEN_RECORD_CONFIRM_BODY,
 } from "@exchange/RunSurface";
 import {
-  PUBLISH_WITHOUT_RENAME_NOTICE,
-  RETAIN_MODE_BILATERAL_NOTICE,
-} from "@console/exchangeFilesModel";
-import {
   RECORD_UNANSWERED_LEAD,
   TERMINATED_RECORD_KEYS_NOTICE,
   TERMINATED_RECORD_LEAD,
   UNDESCRIBABLE_RECORD_LEAD,
 } from "@exchange/RecordDownload";
+import {
+  RETAIN_MODE_BILATERAL_NOTICE,
+  WRITE_WITHOUT_RENAMING_NOTICE,
+} from "@console/exchangeFilesModel";
 import {
   SHARED_FOLDER_EXPOSURE_NOTICE,
   SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT,
@@ -805,11 +805,11 @@ describe("console inviter file-handling gate", () => {
     await reachReviewCreate();
     await openExchangeFiles();
     expect(app.container.textContent).not.toContain(
-      PUBLISH_WITHOUT_RENAME_NOTICE,
+      WRITE_WITHOUT_RENAMING_NOTICE,
     );
 
     await setCheckbox("Write files without renaming them", true);
-    expect(app.container.textContent).toContain(PUBLISH_WITHOUT_RENAME_NOTICE);
+    expect(app.container.textContent).toContain(WRITE_WITHOUT_RENAMING_NOTICE);
     // The choice is its own: retain mode stays off.
     await expect
       .element(page.getByLabelText("Keep every exchange file"))

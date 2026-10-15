@@ -46,7 +46,7 @@ Retryable:
 
 - A `transport`-kind failure: the peer-silence timeout, an SFTP session lost past `max_reconnect_attempts` or a failed re-dial, a server rejecting an operation (69).
 - `TransportOperationStalledError`: exits 64, but its own step is to retry once the server recovers.
-- `TransportPublishIndeterminateError` (69), and the spent-slot `UsageError` the next `send()` raises after it (64). Both prescribe a fresh exchange, which a retry into the same directory is, since the next entry scan sweeps the marker.
+- `TransportWriteIndeterminateError` (69), and the spent-slot `UsageError` the next `send()` raises after it (64). Both prescribe a fresh exchange, which a retry into the same directory is, since the next entry scan sweeps the marker.
 - A frame failing the AEAD integrity or ordering check: `security`-kind but not an `AuthenticationError`, 69 on the writer. A retry runs under a fresh session key, so a transient corruption clears; a repeated tamper fails the writer's retries as well, and a supervisor's retry cap bounds both.
 
 Final:

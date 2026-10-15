@@ -9,12 +9,12 @@ import {
   ConnectionClosedError,
   InternalConsistencyError,
   PeerAbortError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   causeChainSome,
   isPeerWaitTimeout,
   isPsiLibraryFailure,
   isSetTooLargeError,
-  isTransportPublishIndeterminate,
+  isTransportWriteIndeterminate,
   markPeerWaitTimeout,
   markPsiLibraryFailure,
   markStatesItsOwnNextStep,
@@ -150,22 +150,22 @@ describe("the internal fault's recovery hint", () => {
 });
 
 describe("errors whose recovery hint is per instance, not per class", () => {
-  test("TransportPublishIndeterminateError sets no class-level mark and is not a UsageError", () => {
+  test("TransportWriteIndeterminateError sets no class-level mark and is not a UsageError", () => {
     // Not a UsageError, which the poll loop treats as terminal; what that
     // distinction buys is measured in fileSyncConnection.test.ts, not argued
     // here. The mark is absent from the CLASS because a transport raises this
-    // for several publishes at once -- a message, an ack, a rendezvous hello,
+    // for several writes at once -- a message, an ack, a rendezvous hello,
     // an abort marker -- which share no recovery, so the transport's own
     // instance holds no next step and suppresses nothing. The one caller
     // whose recovery is established re-raises the class marked and holding
     // it; that instance is pinned in fileSyncMessageLoop.test.ts.
     const cause = new Error("_rename: No such file or directory");
-    const err = new TransportPublishIndeterminateError("publish torn", {
+    const err = new TransportWriteIndeterminateError("write torn", {
       cause,
     });
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UsageError);
-    expect(err.name).toBe("TransportPublishIndeterminateError");
+    expect(err.name).toBe("TransportWriteIndeterminateError");
     expect(err.cause).toBe(cause);
     expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
@@ -272,9 +272,9 @@ describe("isPeerWaitTimeout cause-chain walk", () => {
   });
 });
 
-describe("isTransportPublishIndeterminate", () => {
-  const indeterminate = (): TransportPublishIndeterminateError =>
-    new TransportPublishIndeterminateError("publish torn", {
+describe("isTransportWriteIndeterminate", () => {
+  const indeterminate = (): TransportWriteIndeterminateError =>
+    new TransportWriteIndeterminateError("write torn", {
       cause: new Error("_rename: No such file or directory"),
     });
 
@@ -283,23 +283,23 @@ describe("isTransportPublishIndeterminate", () => {
     // re-raises whatever the transport threw as a transport ConnectionError
     // holding it as the cause, so a top-level instanceof would miss it.
     const wrapped = new ConnectionError(
-      "the publish could not be confirmed",
+      "the write could not be confirmed",
       "transport",
       { cause: indeterminate() },
     );
 
-    expect(isTransportPublishIndeterminate(wrapped)).toBe(true);
-    expect(isTransportPublishIndeterminate(indeterminate())).toBe(true);
+    expect(isTransportWriteIndeterminate(wrapped)).toBe(true);
+    expect(isTransportWriteIndeterminate(indeterminate())).toBe(true);
   });
 
-  test("is false for a publish the transport settled, and for what holds no error", () => {
+  test("is false for a write the transport settled, and for what holds no error", () => {
     expect(
-      isTransportPublishIndeterminate(
+      isTransportWriteIndeterminate(
         new ConnectionError("the connection dropped", "transport"),
       ),
     ).toBe(false);
-    expect(isTransportPublishIndeterminate(undefined)).toBe(false);
-    expect(isTransportPublishIndeterminate("publish torn")).toBe(false);
+    expect(isTransportWriteIndeterminate(undefined)).toBe(false);
+    expect(isTransportWriteIndeterminate("write torn")).toBe(false);
   });
 });
 

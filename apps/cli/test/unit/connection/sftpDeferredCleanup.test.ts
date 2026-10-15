@@ -102,7 +102,7 @@ describe("what the record admits", () => {
     for (const path of refused) record.record(path);
     expect(recordedPaths(record)).toEqual([]);
 
-    // Both admitted shapes: the message/ack temp, and the hello publish's own.
+    // Both admitted shapes: the message/ack temp, and the hello write's own.
     const ownTemp = protocolTempPath();
     const helloTemp = `/remote/temp-hello-${randomUUID()}.tmp`;
     record.record(ownTemp);

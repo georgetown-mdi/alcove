@@ -518,9 +518,9 @@ test("put with a chunk list and flags: 'a' appends the joined parts", async () =
   );
 });
 
-test("a short writev is completed rather than published truncated", async () => {
+test("a short writev is completed rather than written truncated", async () => {
   // writev may take fewer bytes than offered; the remainder must be re-offered
-  // until it lands, or a short write silently publishes a truncated frame as
+  // until it lands, or a short write silently writes a truncated frame as
   // complete. The first call here takes 3 of the 7 bytes -- a boundary INSIDE
   // the first (4-byte) header chunk, so the continuation must resume
   // mid-chunk, not re-send it.

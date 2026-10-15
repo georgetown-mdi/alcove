@@ -555,7 +555,7 @@ export class PartnerProtocolRefusalError extends ProtocolRefusalError {
 }
 
 /**
- * A publish torn by a session drop whose outcome the transport cannot determine:
+ * A write torn by a session drop whose outcome the transport cannot determine:
  * the operation rejects, and whether the peer holds the file is unknown
  * (docs/spec/SFTP_SESSION_RECOVERY.md). {@link FileSyncMessageLoop}'s send path, which
  * must not reuse a name the peer may have consumed, tells it apart from a
@@ -563,22 +563,22 @@ export class PartnerProtocolRefusalError extends ProtocolRefusalError {
  * (`fileSyncConnection.test.ts`); only an instance whose message states the
  * recovery is marked {@link markStatesItsOwnNextStep}.
  */
-export class TransportPublishIndeterminateError extends Error {
+export class TransportWriteIndeterminateError extends Error {
   constructor(message: string, options: { cause: unknown }) {
     super(message, options);
-    this.name = "TransportPublishIndeterminateError";
+    this.name = "TransportWriteIndeterminateError";
   }
 }
 
 /**
  * Whether `error` or any link in its `cause` chain is a
- * {@link TransportPublishIndeterminateError}: a send's rejection reaches callers
+ * {@link TransportWriteIndeterminateError}: a send's rejection reaches callers
  * wrapped by `MessageConnection.send` and by the message loop.
  */
-export function isTransportPublishIndeterminate(error: unknown): boolean {
+export function isTransportWriteIndeterminate(error: unknown): boolean {
   return causeChainSome(
     error,
-    (link) => link instanceof TransportPublishIndeterminateError,
+    (link) => link instanceof TransportWriteIndeterminateError,
   );
 }
 

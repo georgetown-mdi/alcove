@@ -41,7 +41,7 @@ import {
   InternalConsistencyError,
   PartnerProtocolRefusalError,
   UsageError,
-  isTransportPublishIndeterminate,
+  isTransportWriteIndeterminate,
   ConnectionError,
 } from "./errors.js";
 
@@ -837,7 +837,7 @@ async function sendPayloadReportingHandOff(
       partSent = true;
     });
   } catch (error) {
-    if (partSent || isTransportPublishIndeterminate(error)) report?.();
+    if (partSent || isTransportWriteIndeterminate(error)) report?.();
     throw error;
   }
   report?.();

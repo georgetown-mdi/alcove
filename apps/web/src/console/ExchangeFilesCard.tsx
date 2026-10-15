@@ -15,8 +15,8 @@ import { MAX_PEER_ID_LENGTH } from "@jobContract/intentSchemas";
 import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
-  PUBLISH_WITHOUT_RENAME_NOTICE,
   RETAIN_MODE_BILATERAL_NOTICE,
+  WRITE_WITHOUT_RENAMING_NOTICE,
   exchangeFilesProblems,
 } from "./exchangeFilesModel";
 
@@ -226,7 +226,7 @@ export function ExchangeFilesCard({
             icon={<IconAlertTriangle aria-hidden />}
             title="Only safe on some shared folders"
           >
-            {PUBLISH_WITHOUT_RENAME_NOTICE}
+            {WRITE_WITHOUT_RENAMING_NOTICE}
           </Alert>
         )}
 

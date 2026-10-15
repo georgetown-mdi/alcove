@@ -6,7 +6,7 @@ import path from "node:path";
 import { expect } from "vitest";
 import {
   DISPLAY_TRUNCATION_MARKER,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   getLogger,
   sanitizeErrorForDisplay,
@@ -21,7 +21,7 @@ import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
 import { preparedFor } from "../support";
 
-// What an operator is told after a mid-exchange message publish the transport
+// What an operator is told after a mid-exchange message write the transport
 // could not settle, and whether what they are told works.
 //
 // inflightDropExchange.test.ts pins the two FileSyncConnections' side of that
@@ -95,7 +95,7 @@ interface AttemptOptions {
   keyFiles: { receiver: string; sender: string };
   /**
    * Armed once both parties have completed their handshake, so the tear lands on
-   * a PSI message publish rather than on a rendezvous or handshake write, and
+   * a PSI message write rather than on a rendezvous or handshake write, and
    * lands where the generic advisory's own precondition (a rotated token) holds.
    */
   stageOnceAuthenticated?: (srv: InProcessSftpServer) => void;
@@ -205,7 +205,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
 }
 
 inProcessOnly(
-  "a message publish the transport could not settle prescribes the restart " +
+  "a message write the transport could not settle prescribes the restart " +
     "that works, and only that one",
   async () => {
     const srv = await startInProcessSftpServer();
@@ -218,15 +218,15 @@ inProcessOnly(
       saveKeyFile(keyFiles.receiver, { sharedSecret: INITIAL_SECRET });
       saveKeyFile(keyFiles.sender, { sharedSecret: INITIAL_SECRET });
 
-      const shared = "undetermined-publish";
+      const shared = "undetermined-write";
       await fsp.mkdir(path.join(srv.handle.backingDir, shared), {
         recursive: true,
       });
 
-      // The publish lands durably at the server and its destination is consumed
-      // by the partner before the publishing party's landed-confirmation probe of
+      // The write lands durably at the server and its destination is consumed
+      // by the partner before the writing party's landed-confirmation probe of
       // that same path is served, which is what leaves that party reading exactly
-      // what a publish that never landed reads.
+      // what a write that never landed reads.
       const first = await runAttempt({
         srv,
         remoteDir: `${srv.handle.remoteRoot}/${shared}`,
@@ -242,17 +242,17 @@ inProcessOnly(
       });
 
       // The staging really produced the condition, and produced it on a message
-      // publish: a message's name ends in its byte count, where every other
-      // publish this exchange makes ends in a word token.
+      // write: a message's name ends in its byte count, where every other
+      // write this exchange makes ends in a word token.
       expect(first.tornDestination).toMatch(/-\d+\.json$/);
-      const publisher = first.parties.find((party) =>
+      const writer = first.parties.find((party) =>
         causeChain(party.error).some(
-          (link) => link instanceof TransportPublishIndeterminateError,
+          (link) => link instanceof TransportWriteIndeterminateError,
         ),
       );
-      expect(publisher).toBeDefined();
+      expect(writer).toBeDefined();
       // A transport-availability failure, not a local usage error.
-      expect(publisher!.exitCode).toBe(69);
+      expect(writer!.exitCode).toBe(69);
 
       // The advisory's own precondition, so its absence below cannot pass
       // vacuously: it fires on a post-handshake failure whose token was already
@@ -264,26 +264,26 @@ inProcessOnly(
       // advisory runProtocol would emit, then the rendered terminal error. It is
       // absent only because the error suppresses it, which is what keeps the
       // operator from being given two recoveries. Read from the party the tear
-      // landed on, which is whichever one was publishing when the cut fell rather
+      // landed on, which is whichever one was writing when the cut fell rather
       // than a fixed side.
-      const publisherOutput = first.logs
-        .filter((message) => message.includes(`first-${publisher!.party}`))
+      const writerOutput = first.logs
+        .filter((message) => message.includes(`first-${writer!.party}`))
         .join("\n");
-      expect(publisherOutput).toContain(publisher!.rendered);
-      expect(publisherOutput).not.toContain(GENERIC_RETRY_ADVISORY);
+      expect(writerOutput).toContain(writer!.rendered);
+      expect(writerOutput).not.toContain(GENERIC_RETRY_ADVISORY);
       expect(first.logs.join("\n")).not.toContain(GENERIC_RETRY_ADVISORY);
 
       // The remedy reaches the operator whole. Asserted at the rendering
       // boundary, which caps each link of the cause chain: the mark above is what
       // makes this the only next step printed, so a remedy falling past the cap
       // would leave no next step at all.
-      const [publishLink, ...causeLinks] =
-        publisher!.rendered!.split("\ncaused by: ");
-      expect(publishLink).toContain(
+      const [writeLink, ...causeLinks] =
+        writer!.rendered!.split("\ncaused by: ");
+      expect(writeLink).toContain(
         "the message may or may not have reached the partner",
       );
-      expect(publishLink).toContain(REMEDY);
-      expect(publishLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
+      expect(writeLink).toContain(REMEDY);
+      expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
       // The transport's own rejection keeps its own link and its own budget, so
       // the destination and the SFTP status are still there.
       expect(causeLinks.join("\n")).toContain("Destination:");
@@ -292,7 +292,7 @@ inProcessOnly(
       // What the suppressed advisory would have prescribed, measured: a plain
       // retry, same directory, no re-invite, both parties on the token the
       // failed attempt rotated. In this shape of the condition the torn
-      // publish's destination was consumed before the tear, so the failed
+      // write's destination was consumed before the tear, so the failed
       // party's abort marker is the only residue, and entry recognizes and
       // sweeps a leftover marker under any id, leaving both parties a clean
       // slate to run a whole fresh exchange on.
@@ -316,13 +316,13 @@ inProcessOnly(
       ).toHaveLength(1 + RECEIVER_ROWS.length);
 
       // That success does not make a retry the recovery to prescribe: the
-      // publishing party cannot tell this shape from the one where its message
+      // writing party cannot tell this shape from the one where its message
       // landed and was not consumed, which leaves that message in the directory
       // for the clean-entry guard to refuse. That arm is the sibling case below,
       // driven rather than argued. So the remedy names a clean directory, which
-      // works whichever shape the publish was in: both parties fresh, reusing
+      // works whichever shape the write was in: both parties fresh, reusing
       // the same key files.
-      const clean = "undetermined-publish-clean";
+      const clean = "undetermined-write-clean";
       await fsp.mkdir(path.join(srv.handle.backingDir, clean), {
         recursive: true,
       });
@@ -361,11 +361,11 @@ function causeChain(error: unknown): Error[] {
 }
 
 inProcessOnly(
-  "a torn publish left unconsumed is refused at entry by a plain retry, and a " +
+  "a torn write left unconsumed is refused at entry by a plain retry, and a " +
     "clean directory runs",
   async () => {
-    // The other arm of the same indeterminate publish, and the one the
-    // clean-directory remedy exists for. Here the publish landed and was not
+    // The other arm of the same indeterminate write, and the one the
+    // clean-directory remedy exists for. Here the write landed and was not
     // consumed, so its message file is still in the directory: the entry guard
     // refuses it on both sides -- the widened abort-marker sweep matches only the
     // control grammar, so a leftover message is untouched by it -- which is why a
@@ -380,7 +380,7 @@ inProcessOnly(
       saveKeyFile(keyFiles.receiver, { sharedSecret: INITIAL_SECRET });
       saveKeyFile(keyFiles.sender, { sharedSecret: INITIAL_SECRET });
 
-      const shared = "unconsumed-publish";
+      const shared = "unconsumed-write";
       await fsp.mkdir(path.join(srv.handle.backingDir, shared), {
         recursive: true,
       });
@@ -394,7 +394,7 @@ inProcessOnly(
         stageOnceAuthenticated: (server) => {
           const tear = server.sessionControls.renameTear;
           tear.reset();
-          // The publish lands durably, the connection goes before its reply, and
+          // The write lands durably, the connection goes before its reply, and
           // the landed-confirmation probe of that same destination cannot settle
           // it either way -- the state a probe torn, expired, or refused on a
           // dead session reaches, staged deterministically here.
@@ -408,21 +408,21 @@ inProcessOnly(
         },
       });
 
-      // The staging produced the condition on a message publish, and the
-      // publishing party got the undetermined outcome rather than a determined
+      // The staging produced the condition on a message write, and the
+      // writing party got the undetermined outcome rather than a determined
       // failure.
       expect(first.tornDestination).toMatch(/-\d+\.json$/);
-      const publisher = first.parties.find((party) =>
+      const writer = first.parties.find((party) =>
         causeChain(party.error).some(
-          (link) => link instanceof TransportPublishIndeterminateError,
+          (link) => link instanceof TransportWriteIndeterminateError,
         ),
       );
-      expect(publisher).toBeDefined();
-      expect(publisher!.exitCode).toBe(69);
-      expect(publisher!.rendered).toContain(REMEDY);
+      expect(writer).toBeDefined();
+      expect(writer!.exitCode).toBe(69);
+      expect(writer!.rendered).toContain(REMEDY);
 
       // The residue this arm leaves, asserted before the retry so that retry is
-      // measured against a known directory: the message file the publish landed,
+      // measured against a known directory: the message file the write landed,
       // plus whatever abort marker the failing party wrote.
       const tornName = first.tornDestination!.split("/").pop()!;
       const residue = await fsp.readdir(
@@ -457,9 +457,9 @@ inProcessOnly(
         await fsp.readdir(path.join(srv.handle.backingDir, shared)),
       ).toContain(tornName);
 
-      // And the remedy the publish actually prescribed works: both parties
+      // And the remedy the write actually prescribed works: both parties
       // fresh in a clean directory, reusing the same key files.
-      const clean = "unconsumed-publish-clean";
+      const clean = "unconsumed-write-clean";
       await fsp.mkdir(path.join(srv.handle.backingDir, clean), {
         recursive: true,
       });

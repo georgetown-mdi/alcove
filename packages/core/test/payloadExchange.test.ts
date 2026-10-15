@@ -16,7 +16,7 @@ import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { disclosedColumnNames } from "../src/config/metadata";
 import {
   ProtocolRefusalError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   ConnectionError,
 } from "../src/errors";
@@ -1023,7 +1023,7 @@ test("exchangePayloads: the responder reports its send, the exchange's terminal 
 
 test("exchangePayloads: a send the transport refuses outright is not reported", async () => {
   // Every rejection but the indeterminate one below: the transport settled the
-  // publish as not having happened, so nothing was disclosed to report.
+  // write as not having happened, so nothing was disclosed to report.
   const refusing: MessageConnection = {
     send: () => Promise.reject(new Error("the transport refused the frame")),
     receive: () => Promise.resolve(partFrame({ hasData: false })),
@@ -1055,12 +1055,12 @@ function sendRejecting(
   };
 }
 
-/** The file-sync transport's rejection of a publish it can neither confirm nor
+/** The file-sync transport's rejection of a write it can neither confirm nor
  * retract. */
-function indeterminatePublish(): TransportPublishIndeterminateError {
-  return new TransportPublishIndeterminateError(
+function indeterminateWrite(): TransportWriteIndeterminateError {
+  return new TransportWriteIndeterminateError(
     "the message may or may not have reached the partner",
-    { cause: new Error("the publish was cut off mid-operation") },
+    { cause: new Error("the write was cut off mid-operation") },
   );
 }
 
@@ -1077,40 +1077,38 @@ test.each([
 ] as const)(
   "exchangePayloads: a send rejected as indeterminate is reported on the %s leg",
   async (handshakeRole, expectedReport) => {
-    // The publish may already sit in the partner's directory, so the caller's
+    // The write may already sit in the partner's directory, so the caller's
     // record-owed obligation opens on this rejection as it does on a
     // resolution. The responder holds the partner's payload by then and the
     // report hands it over, since the throw discards the step's return value.
     const reported: Array<PartnerPayload | undefined> = [];
     const raised = await exchangePayloads(
-      sendRejecting(indeterminatePublish(), inboundPayload),
+      sendRejecting(indeterminateWrite(), inboundPayload),
       handshakeRole,
       { hasData: false },
       PAYLOAD_ROWS_ADMITTED,
       (partnerPayload) => reported.push(partnerPayload),
     ).then(
       () => {
-        throw new Error(
-          "expected the indeterminate publish to reject the send",
-        );
+        throw new Error("expected the indeterminate write to reject the send");
       },
       (reason: unknown) => reason,
     );
 
-    expect(raised).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(raised).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(reported).toEqual([expectedReport]);
   },
 );
 
-test("exchangePayloads: an indeterminate publish the connection wrapped is reported all the same", async () => {
+test("exchangePayloads: an indeterminate write the connection wrapped is reported all the same", async () => {
   // The shape an application caller actually sees: MessageConnection.send
   // re-raises the transport's rejection as a transport ConnectionError holding
   // it as the cause, so the classification is read off the whole chain.
   const reported: string[] = [];
   const raised = await exchangePayloads(
     sendRejecting(
-      new ConnectionError("the publish could not be confirmed", "transport", {
-        cause: indeterminatePublish(),
+      new ConnectionError("the write could not be confirmed", "transport", {
+        cause: indeterminateWrite(),
       }),
     ),
     "initiator",

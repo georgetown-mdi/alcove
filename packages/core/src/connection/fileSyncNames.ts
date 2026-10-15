@@ -90,7 +90,7 @@ const isUuidV4Stem = (stem: string): boolean => {
   return uuidValidate(stem) && uuidVersion(stem) === 4;
 };
 
-// The in-flight temp name of a rendezvous hello publish,
+// The in-flight temp name of a rendezvous hello write,
 // `temp-hello-<uuidv4()>.tmp`; the only producer of what isHelloTempName matches.
 /** @internal */
 export const helloTempName = (): string =>

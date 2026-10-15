@@ -411,7 +411,7 @@ describe("readControlFileWithGate", () => {
     );
     expect(thrown).toBeInstanceOf(Error);
     expect(thrown).not.toBeInstanceOf(UsageError);
-    // A peer that published after this run's entry scan may simply still be
+    // A peer that wrote after this run's entry scan may simply still be
     // landing, so the message must not send the operator to delete its file.
     expect((thrown as Error).message).not.toContain("left over");
     expect((thrown as Error).message).toContain("appeared during this run");
@@ -655,7 +655,7 @@ describe("FileSyncRendezvous commit values", () => {
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
     placePeerAckOf(files, "zzz", "aaa");
-    // The peer's ack is published only after this party's strict-empty entry
+    // The peer's ack is written only after this party's strict-empty entry
     // scan; the peer hello is the single tolerated entry file.
     const p = makeParty("aaa", flags, files, {
       hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
@@ -853,7 +853,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expectResetToPreSync(p.state);
     expect(p.state.resetCount).toBe(1);
     expect(p.state.clearCount).toBe(1);
-    // The partner's hello is never deleted and no sentinel is published; this
+    // The partner's hello is never deleted and no sentinel is written; this
     // party's hello is advertised so the partner refuses on reading it.
     expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
     expect(files.has(`${DIR}/aaa${JOINING_SUFFIX}`)).toBe(false);
@@ -1958,10 +1958,10 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
 // server, so a boundary between two transport ops changes nothing durable: the
 // whole handshake state is the directory plus the coordinator's function-local
 // variables (FileSyncRendezvous holds no fields at all). What a boundary CAN
-// expose is a publish caught between its own ops, so each forced boundary
+// expose is a write caught between its own ops, so each forced boundary
 // records the directory exactly as the fresh session would find it and the
 // assertions below check that no final protocol name is ever observed
-// half-published.
+// half-written.
 //
 // No session transition is interposed here: the client below has no session to
 // drop, so a boundary is an observation point rather than a cut. Each test
@@ -2038,11 +2038,11 @@ function installSessionBoundaries(
 // Fails when the fresh session would find a protocol file that is not yet
 // complete: a hello or joining sentinel must hold a parseable envelope, an ack
 // marker and a lock must be zero-length. A `temp-*.tmp` is the in-flight half of
-// a temp-then-rename publish and is expected -- the property it exists to give
+// a temp-then-rename write and is expected -- the property it exists to give
 // is that the FINAL name never appears before the file is committed. Non-`.json`
 // names are foreign files and hold no protocol shape to check; a `.json` name
 // outside the grammar fails closed rather than passing unexamined.
-function expectNoHalfPublishedFile(
+function expectNoHalfWrittenFile(
   contents: Array<{ name: string; body: Buffer }>,
 ): void {
   for (const { name, body } of contents) {
@@ -2112,7 +2112,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     for (let boundary = 0; boundary < baseline.ops; boundary++) {
       const run = await start((at) => at === boundary);
       expect(run.boundaries).toHaveLength(1);
-      expectNoHalfPublishedFile(run.boundaries[0].contents);
+      expectNoHalfWrittenFile(run.boundaries[0].contents);
       check(run);
     }
   };
@@ -2143,8 +2143,8 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
       };
 
       // The ack's temp-then-rename gap: the sweep must reach a boundary sitting
-      // inside it, or it proves nothing about the publish it exists to protect.
-      let sawAckPublishGap = false;
+      // inside it, or it proves nothing about the write it exists to protect.
+      let sawAckWriteGap = false;
       const ownAck = ackMarkerName("aaa", helloStem("zzz"));
       await sweepBoundaries(start, (run) => {
         expect(run.party.state.role).toBe("starter");
@@ -2158,7 +2158,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
           // A fresh session opening in the gap finds the in-flight temp and no
           // ack: the final name never exists half-written for the peer to match.
           expect(atBoundary).not.toContain(ownAck);
-          sawAckPublishGap = true;
+          sawAckWriteGap = true;
         }
 
         const names = namesIn(run.party.files);
@@ -2166,7 +2166,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
         expect(names.filter((n) => n === ownAck)).toHaveLength(1);
         expect(names.filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
       });
-      expect(sawAckPublishGap).toBe(true);
+      expect(sawAckWriteGap).toBe(true);
     },
   );
 
@@ -2307,7 +2307,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
       boundaries.filter((b) => b.op === "list").length,
     ).toBeGreaterThanOrEqual(4);
     for (const boundary of boundaries)
-      expectNoHalfPublishedFile(boundary.contents);
+      expectNoHalfWrittenFile(boundary.contents);
   });
 
   test("the strict-empty entry guard does not re-run on a later cycle", async () => {
@@ -2348,7 +2348,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     expect(party.state.peerId).toBe("zzz");
     expect(boundaries).toHaveLength(ops());
     for (const boundary of boundaries)
-      expectNoHalfPublishedFile(boundary.contents);
+      expectNoHalfWrittenFile(boundary.contents);
     expect(listings.length).toBeGreaterThan(1);
     // The entry scan ran against a directory holding only the peer hello; every
     // later listing holds the self-hello the control run above rejects, and
@@ -2418,7 +2418,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     expect(files.has(`${DIR}/leftover.txt`)).toBe(true);
     expect(boundaries).toHaveLength(ops());
     for (const boundary of boundaries)
-      expectNoHalfPublishedFile(boundary.contents);
+      expectNoHalfWrittenFile(boundary.contents);
   });
 
   test("an op-boundary position mid-rendezvous does not re-enter the entry snapshot", async () => {
@@ -2452,7 +2452,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
   });
 });
 
-// --- hello publish discipline ------------------------------------------------
+// --- hello write discipline ------------------------------------------------
 
 // Records every transport op in call order, so a test can assert what was
 // written, in which order, and under which name.
@@ -2476,8 +2476,8 @@ function recordOps(
   }
 }
 
-describe("FileSyncRendezvous hello publish discipline", () => {
-  test("publishes the hello temp-then-rename, never under its final name", async () => {
+describe("FileSyncRendezvous hello write discipline", () => {
+  test("writes the hello temp-then-rename, never under its final name", async () => {
     const files = new Map<string, Buffer>();
     const p = makeParty(
       "aaa",
@@ -2487,14 +2487,14 @@ describe("FileSyncRendezvous hello publish discipline", () => {
     const ops: Array<{ op: TransportOp; args: string[] }> = [];
     recordOps(p.client, ops);
 
-    // No peer ever arrives, so the barrier times out after the hello publish.
+    // No peer ever arrives, so the barrier times out after the hello write.
     await expect(p.rdv.run(p.scope)).rejects.toThrow();
 
     const puts = ops.filter((entry) => entry.op === "put");
     expect(puts).toHaveLength(1);
     const putName = puts[0].args[0].slice(DIR.length + 1);
     // The single producer of the shape the entry sweep's exclusion recognizes:
-    // if the publish and isHelloTempName ever drift apart, this fails.
+    // if the write and isHelloTempName ever drift apart, this fails.
     expect(isHelloTempName(putName)).toBe(true);
     const renames = ops.filter((entry) => entry.op === "rename");
     expect(renames).toHaveLength(1);
@@ -2511,7 +2511,7 @@ describe("FileSyncRendezvous hello publish discipline", () => {
   test("writes nothing to the directory before the entry scan has listed it", async () => {
     // The assumption licensing the unconditional sweep of a message/ack temp:
     // those are written only after the peer has seen this party's hello, which
-    // is published only after this listing. Both parties run this same
+    // is written only after this listing. Both parties run this same
     // ordering, so no such temp of theirs can be in flight while this party
     // scans.
     const files = new Map<string, Buffer>();
@@ -2534,7 +2534,7 @@ describe("FileSyncRendezvous hello publish discipline", () => {
     expect(firstWrite).toBeGreaterThan(0);
   });
 
-  test("a hello publish that fails at the rename leaves neither the temp nor the hello", async () => {
+  test("a hello write that fails at the rename leaves neither the temp nor the hello", async () => {
     const files = new Map<string, Buffer>();
     const p = makeParty(
       "aaa",
@@ -2554,7 +2554,7 @@ describe("FileSyncRendezvous hello publish discipline", () => {
 });
 
 describe("FileSyncRendezvous entry temp disposition", () => {
-  test("leaves a concurrently publishing peer's hello temp alone but still sweeps a message temp", async () => {
+  test("leaves a concurrently writing peer's hello temp alone but still sweeps a message temp", async () => {
     const files = new Map<string, Buffer>();
     const peerHelloTemp = helloTempName();
     const messageTemp = `temp-${uuidv4()}.tmp`;
@@ -2572,7 +2572,7 @@ describe("FileSyncRendezvous entry temp disposition", () => {
       "Your partner did not arrive",
     );
 
-    // The peer's in-flight publish survives: deleting it would break the rename
+    // The peer's in-flight write survives: deleting it would break the rename
     // it is about to perform.
     expect(files.has(`${DIR}/${peerHelloTemp}`)).toBe(true);
     expect(files.has(`${DIR}/${messageTemp}`)).toBe(false);
@@ -2605,7 +2605,7 @@ describe("FileSyncRendezvous entry temp disposition", () => {
     );
 
     // The peer hello IS swept (the flag's assertion covers a durable protocol
-    // file); the in-flight temp is not, because a concurrent publish is exactly
+    // file); the in-flight temp is not, because a concurrent write is exactly
     // what the flag's assertion cannot rule out for a file this short-lived.
     expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(false);
     expect(files.has(`${DIR}/${peerHelloTemp}`)).toBe(true);
@@ -2637,7 +2637,7 @@ function withPartialSyncedHello(
 describe("FileSyncRendezvous bounded hello read", () => {
   // joinerRecoveryMs floors every rendezvous bound (rendezvousBoundMs), so a
   // test that wants the read bound to expire must model a transport on which a
-  // peer's publish-and-rename lands fast. At the shipped default (30 s) the
+  // peer's write-and-rename lands fast. At the shipped default (30 s) the
   // floor exceeds this budget and the read runs to the peer timeout instead --
   // which is the point of the floor, and is pinned separately below.
   const longBudget = () => ({
@@ -2709,7 +2709,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
   });
 
   // The same unresolvable hello, arriving after the entry scan instead of
-  // predating it: the run watched it appear, so a peer whose publish is still
+  // predating it: the run watched it appear, so a peer whose write is still
   // landing explains it as well as a leftover does, and the terminal message
   // must not tell the operator to remove a live partner's file.
   test.each([
@@ -2898,7 +2898,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
   });
 
   test("is not armed for a peer hello that appears after entry", async () => {
-    // An ordinary peer arriving: it publishes its hello only after this party's
+    // An ordinary peer arriving: it writes its hello only after this party's
     // entry scan, so it is never timed by the window and gets the full budget.
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
@@ -2929,7 +2929,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     await p.rdv.run(p.scope);
 
     expect(p.state.peerId).toBe("zzz");
-    // The peer's ack of a hello published after entry confirms a live peer, so
+    // The peer's ack of a hello written after entry confirms a live peer, so
     // the unconfirmed-hello fact is cleared for the attribution consumer.
     expect(p.state.entryPeerHello).toBeUndefined();
   });
@@ -3155,7 +3155,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
     placePeerAckOf(files, "zzz", "aaa");
-    // Both the peer hello and its ack are published only after this party's
+    // Both the peer hello and its ack are written only after this party's
     // entry scan, so the run enters against an empty directory.
     const p = makeParty("aaa", { ...flags, ...budget() }, files, {
       hideAtEntry: [helloName("zzz"), ackMarkerName("zzz", helloStem("aaa"))],

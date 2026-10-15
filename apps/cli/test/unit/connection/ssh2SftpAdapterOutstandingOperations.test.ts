@@ -6,7 +6,7 @@ import { Readable, Writable } from "node:stream";
 import { describe, expect, test, vi } from "vitest";
 import {
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
@@ -223,9 +223,9 @@ describe("an operation outstanding across a session transition", () => {
   });
 
   test("a rename torn off the wire by a server drop resolves through its recovery resolver", async () => {
-    // The same tear on the publish that matters most: a temp-file rename to its
+    // The same tear on the write that matters most: a temp-file rename to its
     // final name. The re-issue sees the source gone, confirms the self-prefixed
-    // destination present, and reports the landed publish as the success it was.
+    // destination present, and reports the landed write as the success it was.
     const { client, connect, landed, dropFromServer } =
       landedOnTearClient(wrapperMethods());
     const adapter = new SSH2SFTPClientAdapter();
@@ -234,20 +234,20 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 2 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
     dropFromServer();
 
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
     expect(landed.has("/remote/id-0-12.json")).toBe(true);
     expect(connect).toHaveBeenCalledTimes(2);
     expect(adapter.midExchangeReconnectCount).toBe(1);
   });
 
   test("a rename torn by a partner that withholds its connection close recovers on a transport the re-dial retires itself", async () => {
-    // The same landed publish, torn by a partner that drops only the SFTP
+    // The same landed write, torn by a partner that drops only the SFTP
     // channel: the session property is left set over a transport ssh2 has ended,
     // which the library's connect() will not dial past. Nothing else clears it
     // here -- no release runs -- so the re-dial's own retirement is what has to,
@@ -268,13 +268,13 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 2 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
     tearChannelWithholdingClose();
 
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
     expect(landed.has("/remote/id-0-12.json")).toBe(true);
     // The forced close is the retirement's own: the ssh2 Client's end() is driven
     // by a release in this mock and by nothing else, and no release runs here.
@@ -742,7 +742,7 @@ describe("an operation outstanding across a session transition", () => {
     // A boundary falling while it is outstanding therefore closes nothing: a
     // release that tore it would leave the probe unable to answer, and an
     // unanswered probe reports a rename that DID land as the failure that drove
-    // it -- a publish lost to a session this side closed on purpose.
+    // it -- a write lost to a session this side closed on purpose.
     const { client, connect, rawClient, state, landed, dropFromServer } =
       landedOnTearClient(wrapperMethods());
     const probe = pendingExists(client);
@@ -752,7 +752,7 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
@@ -777,10 +777,10 @@ describe("an operation outstanding across a session transition", () => {
     expect(adapter.heldBoundaryStretchCount).toBe(1);
 
     // The server applied the rename before the tear, so the probe finds the
-    // destination present and the publish is reported as the success it was.
+    // destination present and the write is reported as the success it was.
     expect(landed.has("/remote/id-0-12.json")).toBe(true);
     probe.answer(true);
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
     expect(connect).toHaveBeenCalledTimes(2);
   });
 
@@ -813,7 +813,7 @@ describe("an operation outstanding across a session transition", () => {
     // destination probe that says so. Its own bracket closes the count before the
     // probe's opens, and a release entering there would close the session the
     // probe has yet to answer on: the unanswered probe is treated as "the rename
-    // did not land", and a publish that reached the server fails terminally on the
+    // did not land", and a write that reached the server fails terminally on the
     // SSH_FX_NO_SUCH_FILE that drove the probe. The arm holds the count across the
     // whole of itself, so the boundary is held rather than closed.
     const adapter = new SSH2SFTPClientAdapter({
@@ -828,13 +828,13 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
     dropFromServer();
 
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
     expect(seam.reached()).toBe(true);
     expect(landed.has("/remote/id-0-12.json")).toBe(true);
     // The release closed nothing: the only thing that drives the ssh2 Client's
@@ -854,7 +854,7 @@ describe("an operation outstanding across a session transition", () => {
     // replacement session and the re-issue has not run on it yet; a release
     // entering there would close the very session just dialed, and the re-issue
     // would then reject with a dead-session error no recovery resolver reads at
-    // all -- so a rename that DID land shows up as a failed publish, the same
+    // all -- so a rename that DID land shows up as a failed write, the same
     // outcome as at the probe boundary and by a different route.
     const adapter = new SSH2SFTPClientAdapter({
       ephemeralSessions: true,
@@ -891,13 +891,13 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
     dropFromServer();
 
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
     // The boundary landed in the window and nowhere else: it was entered in its
     // caller's own tick, with the first attempt the only rename issued so far. A
     // boundary that fell past the re-issue would be held by the re-issue's own
@@ -915,12 +915,12 @@ describe("an operation outstanding across a session transition", () => {
     expect(adapter.heldBoundaryStretchCount).toBe(1);
   });
 
-  test("a landed rename torn mid-publish resolves with every boundary across its arm held", async () => {
-    // The publish this span exists for. A rename that DID land is torn before its
+  test("a landed rename torn mid-write resolves with every boundary across its arm held", async () => {
+    // The write this span exists for. A rename that DID land is torn before its
     // reply arrives, and what tells the adapter it landed is the re-issue's own
     // error plus the destination probe behind it -- both inside the arm. A
     // boundary closing anywhere across that arm would close the session the
-    // re-issue and the probe run on, and the landed publish would show up as a
+    // re-issue and the probe run on, and the landed write would show up as a
     // failure. Swept across the arm rather than placed at one point: the span
     // covers the whole of it, so every depth reads the operation counted and is
     // held.
@@ -943,7 +943,7 @@ describe("an operation outstanding across a session transition", () => {
 
       await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-      const publish = adapter.rename(
+      const write = adapter.rename(
         "/remote/temp-send.tmp",
         "/remote/id-0-12.json",
       );
@@ -955,7 +955,7 @@ describe("an operation outstanding across a session transition", () => {
       for (let tick = 0; tick < depth; tick += 1) await Promise.resolve();
       const release = adapter.releaseForIdle();
 
-      await expect(publish, `depth ${depth}`).resolves.toBeUndefined();
+      await expect(write, `depth ${depth}`).resolves.toBeUndefined();
       await expect(release, `depth ${depth}`).resolves.toBeUndefined();
       expect(landed.has("/remote/id-0-12.json"), `depth ${depth}`).toBe(true);
       // Nothing closed: the boundary was held for the operation still in its arm.
@@ -986,7 +986,7 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
@@ -1005,8 +1005,8 @@ describe("an operation outstanding across a session transition", () => {
     // The probe is never answered: its deadline is what settles it, and the
     // ORIGINAL rename error is what the rejection holds rather than the probe's
     // own stall.
-    const err = await publish.catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    const err = await write.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(sanitizeErrorForDisplay(err)).toContain("No such file");
     expect(probe.exists).toHaveBeenCalledOnce();
     expect(outstandingOperations(adapter)).toBe(0);
@@ -1018,7 +1018,7 @@ describe("an operation outstanding across a session transition", () => {
   });
 
   test("an operation outstanding at the boundary never reaches the stall-deadline or the session-still-live terminal reading", async () => {
-    // The publish that matters most -- a temp-file rename to its final name --
+    // The write that matters most -- a temp-file rename to its final name --
     // outstanding when the boundary falls. Held rather than torn, it reaches the
     // recovery path not at all, so neither of that path's terminal readings is on
     // its account: no re-dial is issued for it, and it does not reject.
@@ -1037,7 +1037,7 @@ describe("an operation outstanding across a session transition", () => {
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const publish = adapter.rename(
+    const write = adapter.rename(
       "/remote/temp-send.tmp",
       "/remote/id-0-12.json",
     );
@@ -1045,7 +1045,7 @@ describe("an operation outstanding across a session transition", () => {
     expect(rawClient.end).not.toHaveBeenCalled();
 
     await expect(release).resolves.toBeUndefined();
-    await expect(publish).resolves.toBeUndefined();
+    await expect(write).resolves.toBeUndefined();
 
     expect(landed.has("/remote/id-0-12.json")).toBe(true);
     expect(connect).toHaveBeenCalledTimes(1);

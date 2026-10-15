@@ -2,9 +2,9 @@
 // name and renamed into place, or, with `writeWithoutRenaming` on, written to
 // the final name directly. docs/spec/FILE_SYNC.md, Writing without renaming.
 
-import { PUBLISH_WITHOUT_RENAME_KEY } from "../config/connection";
+import { WRITE_WITHOUT_RENAMING_KEY } from "../config/connection";
 import {
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   errorMessage,
   statesItsOwnNextStep,
@@ -18,7 +18,7 @@ import type { FileTransportClient } from "./fileSyncConnection";
  * renames."
  */
 export const DEFAULT_RENAME_REFUSED_GUIDANCE =
-  `If it does not, set ${PUBLISH_WITHOUT_RENAME_KEY}: true in the ` +
+  `If it does not, set ${WRITE_WITHOUT_RENAMING_KEY}: true in the ` +
   "connection options and run again.";
 
 // How a failed rename is quoted in the refusal, following "failed". "No such
@@ -39,7 +39,7 @@ function describeRenameFailure(err: unknown): string {
  * terminal failure the server or folder answered with a status or error code
  * is rethrown as an error quoting it, naming the possible cause, a server that
  * does not allow renames, and ending on `guidance`. Every other failure (an
- * undetermined publish, one that already states its own next step, a dropped
+ * undetermined write, one that already states its own next step, a dropped
  * session, a refused host key on re-dial) is rethrown as itself.
  *
  * @internal
@@ -56,7 +56,7 @@ export async function renameOwnTemp(
   } catch (err: unknown) {
     const code = (err as { code?: unknown } | null | undefined)?.code;
     if (
-      err instanceof TransportPublishIndeterminateError ||
+      err instanceof TransportWriteIndeterminateError ||
       err instanceof UsageError ||
       statesItsOwnNextStep(err) ||
       (typeof code !== "number" && typeof code !== "string")

@@ -45,7 +45,7 @@ const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 // The budget for the arms that must TIME OUT. It is the test's runtime
 // floor: the second party learns nothing is coming only when its peer-wait
 // budget expires, and the first party's handshake receive is bounded by the
-// same value. Sized against what the arm actually needs -- publishing its
+// same value. Sized against what the arm actually needs -- writing its
 // hello and seeing the second party's, both local file operations -- rather
 // than a production wait.
 const TIMEOUT_PEER_TIMEOUT_MS = 5_000;
@@ -96,10 +96,10 @@ interface PairOptions {
  * Blocks until a rendezvous hello is on disk, which is what makes the second
  * party's entry STRICTLY later than the first party's: the collision this file
  * drives is the sequential one, and a race to enter would be the concurrent
- * shape instead. Bounded, so a first party that failed before publishing
+ * shape instead. Bounded, so a first party that failed before writing
  * reports that rather than hanging the file.
  */
-async function waitForHelloPublished(dropDir: string): Promise<void> {
+async function waitForHelloWritten(dropDir: string): Promise<void> {
   await waitFor(
     () => fs.readdirSync(dropDir).some((name) => name.endsWith("-hello.json")),
     {
@@ -112,7 +112,7 @@ async function waitForHelloPublished(dropDir: string): Promise<void> {
 
 /**
  * Runs two real runProtocol parties against one shared directory, the second
- * entering only once the first has published its hello. Both settlements are
+ * entering only once the first has written its hello. Both settlements are
  * attached before either is awaited, so a party that fails while the other is
  * still running is never an unhandled rejection.
  */
@@ -169,7 +169,7 @@ async function runSequentialPair(options: PairOptions): Promise<PairOutcome> {
   const [parties, logs] = await withCapturedLogs(
     async () => {
       const a = settle("a", start("a"));
-      await waitForHelloPublished(dropDir);
+      await waitForHelloWritten(dropDir);
       const b = settle("b", start("b"));
       return [await a, await b];
     },

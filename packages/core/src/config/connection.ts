@@ -747,7 +747,7 @@ export const INACTIVITY_TIMEOUT_KEY = "inactivity_timeout_ms";
  * The config key the operator sets {@link FileSyncOptions.writeWithoutRenaming}
  * by, as written in the configuration file.
  */
-export const PUBLISH_WITHOUT_RENAME_KEY = "write_without_renaming";
+export const WRITE_WITHOUT_RENAMING_KEY = "write_without_renaming";
 
 /**
  * Channel-agnostic tuning parameters shared by all connection types.

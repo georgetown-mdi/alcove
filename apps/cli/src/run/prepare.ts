@@ -55,7 +55,7 @@ import {
   entryHelloResidueGuidance,
   payloadSendBeyondConfigurationNotice,
   peerSilenceGuidance,
-  PUBLISH_WITHOUT_RENAME_WARNING,
+  WRITE_WITHOUT_RENAMING_WARNING,
   RENAME_REFUSED_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
   undeclaredColumnsNotice,
@@ -692,9 +692,9 @@ export async function prepareTransport(
     const writeWithoutRenaming =
       connection.options?.writeWithoutRenaming === true;
     if (writeWithoutRenaming) {
-      log.warn(PUBLISH_WITHOUT_RENAME_WARNING);
+      log.warn(WRITE_WITHOUT_RENAMING_WARNING);
       emit((e) =>
-        e.warning("writeWithoutRenaming", PUBLISH_WITHOUT_RENAME_WARNING),
+        e.warning("writeWithoutRenaming", WRITE_WITHOUT_RENAMING_WARNING),
       );
     }
     const client =

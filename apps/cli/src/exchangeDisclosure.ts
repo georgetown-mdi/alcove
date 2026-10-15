@@ -60,7 +60,7 @@ const DISCLOSURE_HEADING =
  * The line the display ends with on a file-sync run writing without
  * renaming, so the mode is on the record of what the run was set to do.
  */
-const PUBLISH_WITHOUT_RENAME_LINE =
+const WRITE_WITHOUT_RENAMING_LINE =
   "  exchange files written directly under their final names, without a " +
   "rename: yes (write_without_renaming)";
 
@@ -425,7 +425,7 @@ function showDisclosure(params: {
     (connection.channel === "sftp" || connection.channel === "filedrop") &&
     connection.options?.writeWithoutRenaming === true
   )
-    lines.push(PUBLISH_WITHOUT_RENAME_LINE);
+    lines.push(WRITE_WITHOUT_RENAMING_LINE);
   const digest = disclosureDigest(lines, linkageTerms, connection);
   const logRecordsDisplay =
     logFile !== undefined && log.getLevel() <= logLibrary.levels.WARN;

@@ -8,7 +8,7 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   TransportOperationStalledError,
-  TransportPublishIndeterminateError,
+  TransportWriteIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
@@ -928,7 +928,7 @@ describe("session recovery", () => {
     // The original rename error (code 2) is the cause, not the exists() rejection,
     // and it is the original that reaches the operator: asserted where they read
     // it, since the wrapper's own message names only the destination.
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(((err as Error).cause as NodeJS.ErrnoException).code).toBe(2);
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).toContain("No such file");
@@ -1013,7 +1013,7 @@ describe("session recovery", () => {
     // the source is not asked and a second deadline is not spent.
     expect(probe.exists).toHaveBeenCalledOnce();
     expect(err).not.toBeInstanceOf(TransportOperationStalledError);
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(((err as Error).cause as NodeJS.ErrnoException).code).toBe(2);
     expect(connect).toHaveBeenCalledTimes(2);
   });
@@ -1021,9 +1021,9 @@ describe("session recovery", () => {
   test("reports an absent destination whose source is gone too as undetermined", async () => {
     // Both probes answer, and both answer false. That is NOT evidence the rename
     // failed: in delete mode the peer's consume-delete removes exactly this
-    // party's own publish, so a rename that landed durably and was consumed
+    // party's own write, so a rename that landed durably and was consumed
     // inside the recovery window reads identically to one that never landed. The
-    // rejection stands -- nothing here reports an unpublished message as sent --
+    // rejection stands -- nothing here reports an unlanded message as sent --
     // but as the undetermined outcome it is.
     const wrapper = sessionWrapper();
     const { client, connect, state } = droppable(wrapper);
@@ -1046,7 +1046,7 @@ describe("session recovery", () => {
     const err = await adapter
       .rename("/remote/id-joining.json", "/remote/id-hello.json")
       .catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(((err as Error).cause as NodeJS.ErrnoException).code).toBe(2);
     expect(sanitizeErrorForDisplay(err)).toContain("No such file");
     expect(connect).toHaveBeenCalledTimes(2);
@@ -1055,7 +1055,7 @@ describe("session recovery", () => {
   // Renders the undetermined outcome of a rename into `toPath` exactly as a
   // terminal CLI error is rendered, so the assertions below read what an operator
   // would see rather than what went into the Error.
-  async function renderUndeterminedPublish(toPath: string): Promise<string> {
+  async function renderUndeterminedWrite(toPath: string): Promise<string> {
     const wrapper = sessionWrapper();
     const { client, state } = droppable(wrapper);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1077,29 +1077,29 @@ describe("session recovery", () => {
     const err = await adapter
       .rename("/remote/id-msg.json", toPath)
       .catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     return sanitizeErrorForDisplay(err);
   }
 
-  test("the undetermined publish's operative sentence outlives a destination that spends the display budget", async () => {
+  test("the undetermined write's operative sentence outlives a destination that spends the display budget", async () => {
     // The rendering boundary, not the raw message: sanitizeErrorForDisplay is the
     // only path a terminal CLI error takes to a terminal, and it caps each link of
     // the cause chain at COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH. The sentence the
-    // operator must act on -- that the publish MAY have arrived -- has to clear
+    // operator must act on -- that the write MAY have arrived -- has to clear
     // that cap even against an ack name long enough to spend the whole budget,
     // since a truncation reaching it would leave prose asserting the opposite.
-    const rendered = await renderUndeterminedPublish(
+    const rendered = await renderUndeterminedWrite(
       `/remote/${"a".repeat(COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH)}-ack.json`,
     );
-    const [publishLink, ...causeLinks] = rendered.split("\ncaused by: ");
-    expect(publishLink).toContain(
+    const [writeLink, ...causeLinks] = rendered.split("\ncaused by: ");
+    expect(writeLink).toContain(
       "the file may or may not have reached the partner",
     );
     // The truncation the cap does impose falls on the destination, which trails
     // the sentence rather than preceding it.
-    expect(publishLink).toContain(DISPLAY_TRUNCATION_MARKER);
-    expect(publishLink.indexOf("Destination:")).toBeGreaterThan(
-      publishLink.indexOf("may or may not"),
+    expect(writeLink).toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(writeLink.indexOf("Destination:")).toBeGreaterThan(
+      writeLink.indexOf("may or may not"),
     );
     // The transport's own status is a separate link with a separate budget.
     expect(causeLinks.join("\n")).toContain(
@@ -1107,12 +1107,12 @@ describe("session recovery", () => {
     );
   });
 
-  test("the undetermined publish escapes a destination containing ANSI and a line break", async () => {
+  test("the undetermined write escapes a destination containing ANSI and a line break", async () => {
     // `toPath` is partner-derived on the ack and rendezvous rename paths (the ack
     // name's middle segments are unconstrained), so the destination is escaped
     // like every other path this app names in an error -- a hostile name must not
     // drive the operator's terminal or forge a log line.
-    const rendered = await renderUndeterminedPublish(
+    const rendered = await renderUndeterminedWrite(
       "/remote/\u001b[31mid\n2026-01-01 not a real log line-ack.json",
     );
     expect(rendered).not.toContain("\u001b");
@@ -1126,7 +1126,7 @@ describe("session recovery", () => {
 
   test("reports the original rename error when the source is still on the server", async () => {
     // The other half of that pair: the destination is absent and the source is
-    // still there, so nothing moved this party's file and the publish
+    // still there, so nothing moved this party's file and the write
     // determinately did not land. Its own error is reported, unwrapped -- the
     // undetermined classification must not swallow a determinate failure.
     const wrapper = sessionWrapper();
@@ -1154,7 +1154,7 @@ describe("session recovery", () => {
     const err = await adapter
       .rename("/remote/id-joining.json", "/remote/id-hello.json")
       .catch((e: unknown) => e);
-    expect(err).not.toBeInstanceOf(TransportPublishIndeterminateError);
+    expect(err).not.toBeInstanceOf(TransportWriteIndeterminateError);
     expect((err as NodeJS.ErrnoException).code).toBe(2);
     expect((err as Error).message).toContain("No such file");
     expect(connect).toHaveBeenCalledTimes(2);
@@ -1229,7 +1229,7 @@ describe("session recovery", () => {
       await adapter.connect({ host: "h", maxReconnectAttempts: 2 });
       state.live = false;
 
-      const publish = adapter.rename(
+      const write = adapter.rename(
         "/remote/id-joining.json",
         "/remote/id-hello.json",
       );
@@ -1239,7 +1239,7 @@ describe("session recovery", () => {
       expect(client.realPath).not.toHaveBeenCalled();
 
       probe.answer(true);
-      await expect(publish).resolves.toBeUndefined();
+      await expect(write).resolves.toBeUndefined();
       // Same idle stretch, nothing outstanding: the beat fires, so the
       // suppression above was the probe's doing and not a stopped heartbeat.
       await vi.advanceTimersByTimeAsync(SFTP_HEARTBEAT_INTERVAL_MS);
