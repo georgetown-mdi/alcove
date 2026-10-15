@@ -10,8 +10,8 @@
 export const meta = {
   name: "light-review",
   description:
-    "One review round over the target ref's diff against staging: one schema-forced lens reviewer plus a consolidator, or one schema-forced role reviewer under a refutation contract",
-  phases: [{ title: "Review" }, { title: "Consolidate" }],
+    "One review round over the target ref's diff against staging: one schema-forced lens reviewer plus a verifier, or one schema-forced role reviewer under a refutation contract",
+  phases: [{ title: "Review" }, { title: "Verify" }],
 };
 
 const FINDING = {
@@ -36,7 +36,7 @@ const REVIEWER_SCHEMA = {
     },
   },
 };
-const CONSOLIDATOR_SCHEMA = {
+const VERIFIER_SCHEMA = {
   type: "object",
   required: ["clusters"],
   properties: {
@@ -453,30 +453,30 @@ const review = await agent(reviewerPrompt, {
 if (!review) throw new Error(salvage("The lens reviewer"));
 const reviews = [review];
 
-const consolidatorPrompt = `${workingTreeClause}
+const verifierPrompt = `${workingTreeClause}
 
-You are consolidating a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
+You are verifying a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
 ${JSON.stringify(review.findings, null, 1)}
 
 ${groundRules}
 
 ${docsClause}In a single pass -- no sub-agents, no iteration:
-1. Drop any finding that is not about ${targetRef}'s own changes (anything describing the branch's base moving, or staging's progress since the fork) -- discard it before clustering, do not even list it as refuted.
-2. Cluster findings that describe the same underlying issue; flaggedBy is 1 on every cluster.
-3. Verify each cluster's core claim by reading only the specific hunks or files it names -- not the whole diff -- and set verification confirmed/refuted/unverifiable with a one-line verificationNote.
+1. Drop any finding that is not about ${targetRef}'s own changes (anything describing the branch's base moving, or staging's progress since the fork) -- discard it, do not even list it as refuted.
+2. Return one cluster per remaining finding, never merging findings; flaggedBy is 1 on every cluster.
+3. Verify each finding's core claim by reading only the specific hunks or files it names -- not the whole diff -- and set verification confirmed/refuted/unverifiable with a one-line verificationNote.
 4. Set userVisibleString on every cluster: true when the issue touches text a user or operator reads -- UI copy, CLI output, an error, warning or log message shown to them, or user documentation -- and false otherwise. Every nit with userVisibleString false is batched with the other such nits into one stated limit that nobody fixes, so judge it on what the text is, not on how much the nit matters.
-5. For each confirmed cluster whose fix is determined -- one edit any careful engineer would make, with no design choice or open question in it -- write the fix as edits, each with the file, oldText copied verbatim from that file at ${targetRef} and long enough to occur exactly once in it, and newText; and write verifyCommand, one shell command scoped to the tree as above that shows the fix took (a test file run, a check script, a grep). When the fix needs a judgment call, and for every refuted or unverifiable cluster, leave edits empty and verifyCommand an empty string. Describe the edits only: do not apply them.
+5. For each confirmed finding whose fix is determined -- one edit any careful engineer would make, with no design choice or open question in it -- write the fix as edits, each with the file, oldText copied verbatim from that file at ${targetRef} and long enough to occur exactly once in it, and newText; and write verifyCommand, one shell command scoped to the tree as above that shows the fix took (a test file run, a check script, a grep). When the fix needs a judgment call, and for every refuted or unverifiable cluster, leave edits empty and verifyCommand an empty string. Describe the edits only: do not apply them.
 
-${requiredKeysClause(CONSOLIDATOR_SCHEMA)}`;
+${requiredKeysClause(VERIFIER_SCHEMA)}`;
 
-const consolidated = await agent(consolidatorPrompt, {
-  label: "consolidator",
-  phase: "Consolidate",
-  schema: CONSOLIDATOR_SCHEMA,
-  model: "opus",
+const verified = await agent(verifierPrompt, {
+  label: "verifier",
+  phase: "Verify",
+  schema: VERIFIER_SCHEMA,
+  model: "sonnet",
   effort: "high",
 });
-if (!consolidated) throw new Error(salvage("The consolidator"));
+if (!verified) throw new Error(salvage("The verifier"));
 
 const NIT_BATCH_NAME =
   "Nits touching no user-visible string, booked as one stated limit";
@@ -532,7 +532,7 @@ function nitBatch(allNits) {
 
 const clusters = [];
 const batchedNits = [];
-for (const cluster of consolidated.clusters) {
+for (const cluster of verified.clusters) {
   if (cluster.severity === "nit" && cluster.userVisibleString !== true) {
     batchedNits.push(coreOf(cluster));
   } else {

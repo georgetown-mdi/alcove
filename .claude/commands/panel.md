@@ -1,6 +1,6 @@
 ---
 name: panel
-description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no consolidator, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
+description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no agent merging their answers, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
 ---
 
 You are CONVENING a panel, not sitting on it. You do not answer the question

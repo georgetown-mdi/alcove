@@ -1,6 +1,6 @@
 ---
 name: light-review
-description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs one schema-forced Opus reviewer and an Opus consolidator, both at effort high. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
+description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs one schema-forced Opus reviewer and a Sonnet verifier, both at effort high. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
 ---
 
 You are ORCHESTRATING a code review. You do not review the code yourself and you
@@ -188,8 +188,8 @@ that target's ledger row and findings file.
 In lens mode every cluster has `name`, `description`, `severity`, `file`, `flaggedBy`,
 `verification` and `verificationNote`, and two kinds of cluster have more:
 
-- A confirmed cluster whose fix the consolidator found determined also has `edits`
-  (each `{file, oldText, newText}`, the old text the consolidator says it copied
+- A confirmed cluster whose fix the verifier found determined also has `edits`
+  (each `{file, oldText, newText}`, the old text the verifier says it copied
   verbatim from the file at the ref, which Step 3 verifies) and `verifyCommand`, the
   one command that shows the fix took. A cluster without them needs a judgment call
   to fix.
@@ -263,7 +263,7 @@ Common to both:
    `{"item": <its name>, "disposition": "limit", "surface": "internal", "note": "nits touching no user-visible string, not fixed"}`.
    It is a stated limit by rule, so it never reaches a fix brief. A batch whose
    verification is `unverifiable` is written `open` like any other cluster. A nit
-   the consolidator refuted is left out of the batch, so it does not appear in the
+   the verifier refuted is left out of the batch, so it does not appear in the
    round's output.
 9. Write the findings file: a header line (branch, target ref, round N, kind `light`,
    `reviewerCount` reviewers), then the clusters sorted by severity (critical first) then
@@ -278,7 +278,7 @@ Common to both:
    `node <PRIMARY>/.claude/scripts/verify-fix-shape.mjs <the target ref> <that file> [--worktree <TREE>]`,
    naming `--worktree` when a tree holds the ref. It prints `mechanical <name>` for a
    cluster whose every edit's `oldText` occurs exactly once in its file at the ref,
-   and `judgment <name> -- <reason>` otherwise; the Workflow passes the consolidator's
+   and `judgment <name> -- <reason>` otherwise; the Workflow passes the verifier's
    edits through unchecked, so this run is the check.
    Mark each confirmed cluster's row `mechanical` when it has `edits` and
    `verifyCommand` and the run printed `mechanical` for it, and `judgment` otherwise:
@@ -337,14 +337,14 @@ none"; and set no `maxLength` on free text -- the validator
 counts characters, the model cannot, so retries never converge; ask for brevity
 in the property's description instead. Every `agent()` call pins a literal
 `model` and a literal `effort` in its own options object, as the lens seats,
-the consolidator and the role reviewer here do; an omitted one inherits the
+the verifier and the role reviewer here do; an omitted one inherits the
 session's, and `npm run check:workflow-agent-models` refuses it.
 
 ## What you do NOT do
 
 - Do not enter a target's worktree, check a ref out, or change your working directory.
 - Do not review the diff yourself or add your own findings.
-- Do not edit, drop, or reorder the consolidator's clusters, or a role's verdicts.
+- Do not edit, drop, or reorder the verifier's clusters, or a role's verdicts.
   The one exception: a cluster `verify-fix-shape.mjs` reports as judgment loses its
   `edits` and `verifyCommand`, nothing else.
 - Do not soften a verdict, and do not re-verdict a role's claims yourself -- the role's

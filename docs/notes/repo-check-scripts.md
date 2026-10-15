@@ -744,7 +744,7 @@ Effort decides how deep a reviewer reads: the same lens round replayed on ten br
 So every call pins a literal `effort` beside its `model`, from the values the Workflow runtime accepts (`low`, `medium`, `high`, `xhigh`, `max`).
 A call missing both pins is reported once, naming both.
 
-The seats of the `/light-review` lens round, one Opus reviewer at high effort and an Opus consolidator at high, were chosen by the owner on 2026-10-09 after two ten-branch replays, and are revisited at the next retro.
+The seats of the `/light-review` lens round, one Opus reviewer at high effort and an Opus consolidator at high, were chosen by the owner on 2026-10-09 after two ten-branch replays. On 2026-10-15 the owner replaced the second seat with a Sonnet verifier at high effort. The round runs one reviewer, so there is nothing to consolidate, and verifying a finding by reading the hunks it names and copying exact edits is a checklist task. The measurement behind keeping the verification: across every lens round in the session ledgers the verdicts were 2276 confirmed, 74 refuted and 166 unverifiable, so about one finding in ten would otherwise reach a fix brief unvetted. The seats are revisited at the next retro.
 
 ### Why the options object is spelled out
 

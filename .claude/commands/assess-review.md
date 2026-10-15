@@ -34,7 +34,7 @@ has none, and any fix will need one made before it can be written).
 
 The branch's artifact key is its name with every character outside `A-Za-z0-9._-`
 replaced by `_` and any leading dots dropped. light-review has already deposited
-its consolidated findings at `PRIMARY/scratch/review-rounds/<key>.findings.md`.
+its findings at `PRIMARY/scratch/review-rounds/<key>.findings.md`.
 Read it.
 
 If that file is not there, stop and say so: light-review has not run for this

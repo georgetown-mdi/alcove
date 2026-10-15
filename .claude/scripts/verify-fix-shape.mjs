@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fix-shape verifier, run by the /light-review booking step
 // (.claude/commands/light-review.md, Step 3) before it drafts a fix brief:
-// decides whether each lens cluster the consolidator gave edits for is
+// decides whether each lens cluster the verifier gave edits for is
 // mechanical, which holds only when every edit's `oldText` occurs exactly once
 // in its file at the target ref.
 //

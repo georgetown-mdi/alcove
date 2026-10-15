@@ -437,7 +437,7 @@ Ratified by the owner:
   and a quick exchange refuses it; and the disclosure documents state what the
   relay's operator and any TLS interception point on the path see.
 - **Repo review 2026-09** (boards 9 and 10) -- Done is: every finding in the
-  2026-09 repo review's consolidated lists, including those its own review
+  2026-09 repo review's lists, including those its own review
   rounds raised, is landed or recorded as refused with a reason, and no source
   or test file the review named as oversized, misnamed, or misplaced remains in
   that state.
