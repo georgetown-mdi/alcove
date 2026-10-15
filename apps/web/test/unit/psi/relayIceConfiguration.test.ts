@@ -13,12 +13,12 @@ import {
 } from "@alcove/core";
 
 import {
-  RELAY_CREDENTIAL_TTL_SECONDS,
   buildIceServers,
   dialAsAcceptor,
   listenAsInviter,
 } from "../../../src/psi/transport/rendezvous.js";
 import { DEFAULT_PEER_WAIT_TIMEOUT_MS } from "../../../src/psi/transport/waitForConnection.js";
+import { RELAY_CREDENTIAL_TTL_SECONDS } from "../../../src/psi/transport/relayCredentialTtl.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
 import { relayForRun } from "../../../src/psi/transport/ownRelaySetting.js";
 import { relayWithDefaultForRun } from "../../../src/psi/transport/defaultRelay.js";

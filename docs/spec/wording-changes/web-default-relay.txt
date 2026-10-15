@@ -32,7 +32,7 @@
 - - -> **What the run lists.**
 - - -> Its ICE servers always hold the default STUN server.
 - - -> A confirmed enrollment adds the default relay's TURN url beside the TURN urls the invitation or the browser's own setting names, under the one credential minted from the secret.
-- - -> An unconfirmed one leaves it out: the run connects without it and, if no connection opens, says that the relay could not be set up.
+- - -> An unconfirmed one leaves it out: the run connects without it and, if the connection fails for any reason but the partner not arriving, says that the relay could not be set up.
 - - -> **Managed runs.**
 - - -> The registration of a managed run's own relay, above, is unchanged by it.
 - The inviter composes the locator from its own relay's urls alone (`relayLocatorFromOwnRelay`): the CLI from its connection's `stun` list and the `url` of each `turn` entry that sets no `username` or `credential` (`endpointFromConnection` in `packages/core/src/config/endpointProducer.ts`), the web app from the browser's own relay setting. -> The inviter composes the locator from relays it uses itself (`relayLocatorFromOwnRelay`): the CLI from its connection's `stun` list and the `url` of each `turn` entry that sets no `username` or `credential` (`endpointFromConnection` in `packages/core/src/config/endpointProducer.ts`), the web app from the browser's own relay setting and, once enrolled, a build's default relay ([Enrolling at a default relay](#enrolling-at-a-default-relay)).
@@ -40,5 +40,5 @@
 - - -> An inviter also enrolls when it creates an invitation, a one-shot invitation or a managed re-invite, and the invitation's relay locator names the default relay's TURN url only once that enrollment is confirmed, after the inviter's own TURN urls and only where the locator has room for it under `MAX_RELAY_LOCATOR_URLS`.
 - - -> A browser acceptor starts its enrollment when it opens the invitation, and a managed run when it starts, so the enrollment is under way or confirmed before the run dials.
 - - -> **How long a dial waits.**
-- - -> A run whose page already holds a confirmed enrollment of the same id and key does not repeat it.
+- - -> A run whose page already holds a confirmed enrollment of the same id and key, lapsing no sooner than the run's relay credential would expire if minted now (`RELAY_CREDENTIAL_TTL_SECONDS` in `apps/web/src/psi/transport/relayCredentialTtl.ts`), does not repeat it.
 - - -> Otherwise it waits for the page's enrollment under way, or makes one attempt of its own, for at most 3 seconds (`DEFAULT_RELAY_DIAL_WAIT_MS` in `apps/web/src/psi/transport/defaultRelay.ts`, an arbitrary working value), then dials without the default relay, as for an unconfirmed enrollment.

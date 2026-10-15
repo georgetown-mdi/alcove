@@ -2,7 +2,6 @@ import Peer from "peerjs";
 
 import {
   ConnectionError,
-  RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   deriveRelayKey,
   deriveRendezvousPeerId,
   getLogger,
@@ -28,6 +27,7 @@ import {
   resolvePeerDebugLevel,
 } from "./peerLogging";
 import { watchIceGathering, withIceServerFailure } from "./iceGathering";
+import { RELAY_CREDENTIAL_TTL_SECONDS } from "./relayCredentialTtl";
 import { boundPeerSignaling } from "./signalingBounds";
 
 import type { DataConnection, PeerOptions } from "peerjs";
@@ -121,13 +121,6 @@ export interface RelayLocator {
 
 /** The STUN server every run lists, whatever relay it also lists. */
 const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
-
-/**
- * Lifetime of the relay credential a run mints. It must outlast the peer wait
- * ({@link DEFAULT_PEER_WAIT_TIMEOUT_MS}) and the exchange after it, and core
- * refuses anything over one hour, so it is that ceiling.
- */
-export const RELAY_CREDENTIAL_TTL_SECONDS = RELAY_CREDENTIAL_MAX_TTL_SECONDS;
 
 /** The label in a minted credential's username, `<expiry>:<label>`. */
 const RELAY_CREDENTIAL_LABEL = "alcove";

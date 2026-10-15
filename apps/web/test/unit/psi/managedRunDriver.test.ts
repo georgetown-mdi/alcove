@@ -547,26 +547,39 @@ describe("runManagedExchangeInBrowser", () => {
     );
   });
 
-  test("an inviter whose default relay was not enrolled says so when no partner connects", async () => {
-    const peer = { disconnect: vi.fn(), destroy: vi.fn() };
-    mockedRendezvous.mockResolvedValue({
-      side: "inviter",
-      peer: peer as unknown as Peer,
-      defaultRelayNotEnrolled: true,
-    });
-    const noShow = new PartnerNoShowError("nobody arrived");
-    mockedWaitForIncoming.mockRejectedValue(noShow);
-    const onWarning = vi.fn();
+  test.each<[string, Error, ReadonlyArray<ReadonlyArray<string>>]>([
+    [
+      "says so when the connection fails",
+      new Error("the connection did not open"),
+      [[DEFAULT_RELAY_NOT_ENROLLED_NOTICE]],
+    ],
+    [
+      "says nothing of the relay when no partner arrives",
+      new PartnerNoShowError("nobody arrived"),
+      [],
+    ],
+  ])(
+    "an inviter whose default relay was not enrolled %s",
+    async (_case, failure, notices) => {
+      const peer = { disconnect: vi.fn(), destroy: vi.fn() };
+      mockedRendezvous.mockResolvedValue({
+        side: "inviter",
+        peer: peer as unknown as Peer,
+        defaultRelayNotEnrolled: true,
+      });
+      mockedWaitForIncoming.mockRejectedValue(failure);
+      const onWarning = vi.fn();
 
-    const rejection = await runDriver(
-      new AbortController().signal,
-      onWarning,
-      recordForSide("inviter"),
-    ).catch((error: unknown) => error);
+      const rejection = await runDriver(
+        new AbortController().signal,
+        onWarning,
+        recordForSide("inviter"),
+      ).catch((error: unknown) => error);
 
-    expect(rejection).toBe(noShow);
-    expect(onWarning.mock.calls).toEqual([[DEFAULT_RELAY_NOT_ENROLLED_NOTICE]]);
-  });
+      expect(rejection).toBe(failure);
+      expect(onWarning.mock.calls).toEqual(notices);
+    },
+  );
 
   test("records a receive list the terms exchange fills, then says which columns were taken", async () => {
     const { mc } = makeParkedCloseMc();

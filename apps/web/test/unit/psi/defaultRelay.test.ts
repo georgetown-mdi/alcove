@@ -15,6 +15,8 @@ import {
   relayWithDefaultForRun,
   startDefaultRelayEnrollment,
 } from "../../../src/psi/transport/defaultRelay.js";
+import { PartnerNoShowError } from "../../../src/psi/transport/waitForConnection.js";
+import { RELAY_CREDENTIAL_TTL_SECONDS } from "../../../src/psi/transport/relayCredentialTtl.js";
 
 import type { RelayRegistrationOutcome } from "@alcove/core";
 
@@ -249,6 +251,33 @@ describe("the dial's wait for the default relay enrollment", () => {
     expect(atDial).toHaveBeenCalledOnce();
   });
 
+  test.each<[string, number, number]>([
+    ["lapses a run's credential lifetime from now is reused", 0, 0],
+    ["lapses a moment sooner is made again", -1, 1],
+  ])("an enrollment that %s", async (_case, offsetMs, enrollmentsAtDial) => {
+    const now = Date.parse("2026-10-14T12:00:00Z");
+    vi.useFakeTimers({ toFake: ["Date"], now });
+    const secret = generateSharedSecret();
+    await enrollAtDefaultRelay(secret, {
+      setting: () => DEFAULT_RELAY,
+      enroll: answering({
+        kind: "registered",
+        maxAgeDays: null,
+        lapsesAt: new Date(
+          now + RELAY_CREDENTIAL_TTL_SECONDS * 1000 + offsetMs,
+        ).toISOString(),
+      }),
+    });
+    const atDial = answering(REGISTERED);
+    const run = await relayWithDefaultForRun(secret, OWN, {
+      setting: () => DEFAULT_RELAY,
+      enroll: atDial,
+      dialWaitMs: SHORT_WAIT_MS,
+    });
+    expect(atDial).toHaveBeenCalledTimes(enrollmentsAtDial);
+    expect(run).toEqual(WITH_DEFAULT);
+  });
+
   test("by default a dial waits DEFAULT_RELAY_DIAL_WAIT_MS and no longer", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const enroll = neverAnswering();
@@ -354,6 +383,19 @@ describe("connectNoticingDefaultRelay", () => {
         failing,
       ),
     ).rejects.toThrow();
+    expect(onRunNotice).not.toHaveBeenCalled();
+  });
+
+  test("shows nothing when the partner never arrived", async () => {
+    const onRunNotice = vi.fn();
+    const noShow = new PartnerNoShowError("nobody arrived");
+    await expect(
+      connectNoticingDefaultRelay(
+        { defaultRelayNotEnrolled: true },
+        { onRunNotice },
+        () => Promise.reject(noShow),
+      ),
+    ).rejects.toBe(noShow);
     expect(onRunNotice).not.toHaveBeenCalled();
   });
 });

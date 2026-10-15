@@ -22,6 +22,9 @@ import {
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
+import { PartnerNoShowError } from "./waitForConnection";
+import { RELAY_CREDENTIAL_TTL_SECONDS } from "./relayCredentialTtl";
+
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayLocator } from "./rendezvous";
 import type { RelayRegistrationEnvironment } from "@alcove/core";
@@ -69,8 +72,8 @@ interface PageEnrollment {
 
 // The enrollments this page has started or confirmed, by registrar, exchange
 // id and relay key. An unconfirmed one is dropped when it settles and a
-// confirmed one once it lapses, so a later run of the same exchange enrolls
-// again.
+// confirmed one once it would lapse before a run's relay credential expires,
+// so a later run of the same exchange enrolls again.
 const pageEnrollments = new Map<string, PageEnrollment>();
 
 async function pageEnrollmentKey(
@@ -86,7 +89,10 @@ async function pageEnrollmentKey(
 
 function heldEnrollment(key: string): PageEnrollment | undefined {
   const held = pageEnrollments.get(key);
-  if (held?.lapsesAtMs !== undefined && held.lapsesAtMs <= Date.now()) {
+  if (
+    held?.lapsesAtMs !== undefined &&
+    held.lapsesAtMs - Date.now() < RELAY_CREDENTIAL_TTL_SECONDS * 1000
+  ) {
     pageEnrollments.delete(key);
     return undefined;
   }
@@ -308,9 +314,24 @@ export async function relayWithDefaultForRun(
 }
 
 /**
+ * Whether a run whose connection failed with `error` shows
+ * {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE}: its default relay enrollment
+ * failed, and the connection failed for a reason other than the partner never
+ * arriving ({@link PartnerNoShowError}), which no relay would have changed.
+ */
+export function showsDefaultRelayNotice(
+  runRelay: Pick<RunRelay, "defaultRelayNotEnrolled">,
+  error: unknown,
+): boolean {
+  return (
+    runRelay.defaultRelayNotEnrolled && !(error instanceof PartnerNoShowError)
+  );
+}
+
+/**
  * `connect`'s result, or its failure after showing
- * {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through `onRunNotice` when the
- * run's default relay enrollment failed and `signal` has not cancelled it.
+ * {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through `onRunNotice` when
+ * {@link showsDefaultRelayNotice} holds and `signal` has not cancelled the run.
  */
 export async function connectNoticingDefaultRelay<T>(
   runRelay: Pick<RunRelay, "defaultRelayNotEnrolled">,
@@ -320,7 +341,10 @@ export async function connectNoticingDefaultRelay<T>(
   try {
     return await connect();
   } catch (error) {
-    if (runRelay.defaultRelayNotEnrolled && options.signal?.aborted !== true)
+    if (
+      showsDefaultRelayNotice(runRelay, error) &&
+      options.signal?.aborted !== true
+    )
       options.onRunNotice(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
     throw error;
   }

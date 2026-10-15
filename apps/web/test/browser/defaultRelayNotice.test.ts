@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 
 describe("the default relay notice", () => {
-  test("with a default relay states what the relay's operator learns and links the privacy statement", async () => {
+  test("with a default relay states what the relay's operator learns, naming no operator", async () => {
     app.render(
       createElement(DefaultRelayNotice, {
         setting: () => ({
@@ -35,14 +35,11 @@ describe("the default relay notice", () => {
     );
     await expect.element(page.getByRole("note")).toBeInTheDocument();
     const text = page.getByRole("note").element().textContent;
-    expect(text).toContain(DEFAULT_RELAY_NOTICE_LEAD);
-    expect(text).toContain(RELAY_OPERATOR_DISCLOSURE);
-    await expect
-      .element(page.getByRole("link", { name: "Read what the project keeps" }))
-      .toHaveAttribute(
-        "href",
-        "https://github.com/georgetown-mdi/alcove/blob/main/PRIVACY.md#hosted-web-application",
-      );
+    expect(text).toBe(
+      `${DEFAULT_RELAY_NOTICE_LEAD} ${RELAY_OPERATOR_DISCLOSURE}`,
+    );
+    expect(text).not.toMatch(/Alcove project/i);
+    expect(page.getByRole("note").getByRole("link").elements()).toHaveLength(0);
   });
 
   test("without a default relay renders nothing", async () => {
