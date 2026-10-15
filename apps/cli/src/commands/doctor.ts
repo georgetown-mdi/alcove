@@ -78,7 +78,10 @@ export function relayHandler(argv: Arguments): Promise<void> {
 export interface RelayCheckOptions {
   configFile: string;
   keyFile: string;
-  /** Writes one line of the host statement, before any request is made. */
+  /**
+   * Writes one line of the host statement, before any request is made. The
+   * caller writes it at every log level, `silent` included.
+   */
   writeStatementLine: (line: string) => void;
   gather?: RelayCandidateGathering;
   /** The fetch the enrollment at the invitation relay's registrar sends with. */
@@ -231,6 +234,8 @@ async function runDoctor(argv: Arguments, mode: DoctorMode): Promise<void> {
     if (log.getLevel() <= logLibrary.levels.INFO)
       writePlainLine(redactAndSanitizeForDisplay(line));
   };
+  const writeStatementLine = (line: string): void =>
+    writePlainLine(redactAndSanitizeForDisplay(line));
   try {
     const report =
       mode === "probe"
@@ -245,7 +250,7 @@ async function runDoctor(argv: Arguments, mode: DoctorMode): Promise<void> {
           : await checkRelay({
               configFile: configFileFlag(argv),
               keyFile: keyFileFlag(argv),
-              writeStatementLine: writeLine,
+              writeStatementLine,
             });
     emit(report, argv["json"] === true, writeLine);
     // Not process.exit: the verdict may still be draining to a pipe, and the

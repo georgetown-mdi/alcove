@@ -40,7 +40,11 @@ import {
 } from "../../../src/invitationRelayEnrollment";
 import { saveKeyFile } from "../../../src/keyFile";
 import { captureProcessExit, runToExit } from "../../exitCapture";
-import { argv, captureStdio } from "../../loggingTestSupport";
+import {
+  argv,
+  captureStdio,
+  snapshotDiagnosticSinkAndLevel,
+} from "../../loggingTestSupport";
 import {
   fakeRegistrar,
   jsonResponse,
@@ -58,6 +62,27 @@ vi.mock("werift", () => ({
     }
   },
 }));
+
+// The gathering `doctor relay` uses when a handler runs it: a test installs its
+// own stub for the run.
+const handlerGathering = vi.hoisted(() => ({
+  stub: undefined as RelayCandidateGathering | undefined,
+}));
+vi.mock(
+  "../../../src/connection/webrtc/weriftPeer",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../src/connection/webrtc/weriftPeer")
+    >()),
+    gatherRelayCandidate: (server: RTCIceServer, signal: AbortSignal) => {
+      if (handlerGathering.stub === undefined)
+        throw new Error("no gathering stub installed");
+      return handlerGathering.stub(server, signal);
+    },
+  }),
+);
+
+snapshotDiagnosticSinkAndLevel();
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
 const OWN_TURN = "turn:own-relay.example.org:3478?transport=tcp";
@@ -718,6 +743,109 @@ test("a registrar that cannot be reached is a WARN line, and the relay lines sti
   expect(enrollment?.action).toBe(ENROLLMENT_FAILED_ACTION);
   expect(checkFor(report, INVITATION_TURN).status).toBe("ok");
   expect(overallOf(report)).toBe("ok");
+});
+
+test.each([
+  ["--json at the default level", { json: true }],
+  ["--json at warn", { json: true, "log-level": "warn" }],
+  ["--json at silent", { json: true, "log-level": "silent" }],
+  ["the check lines at warn", { "log-level": "warn" }],
+  ["the check lines at silent", { "log-level": "silent" }],
+] as const)(
+  "the handler writes the host statement to stderr before its first request, %s",
+  async (_label, flags) => {
+    writeThreeRelayConfig();
+    const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
+    const { stdoutWrites, stderrWrites, restore } = captureStdio();
+    const logSpy = vi
+      .spyOn(console, "log")
+      .mockImplementation((...args: unknown[]) => {
+        stdoutWrites.push(args.map((a) => String(a)).join(" ") + "\n");
+      });
+    const stderrBefore: Array<string> = [];
+    fetchSpy.mockImplementation(
+      (input: string | URL | Request, init?: RequestInit) => {
+        stderrBefore.push(stderrWrites.join(""));
+        return registrar.fetch(input, init);
+      },
+    );
+    handlerGathering.stub = (server, signal) => {
+      stderrBefore.push(stderrWrites.join(""));
+      return scriptedGathering({}, [])(server, signal);
+    };
+    const previousExitCode = process.exitCode;
+    try {
+      await relayHandler(
+        argv({ "config-file": configFile, "key-file": keyFile, ...flags }),
+      );
+    } finally {
+      process.exitCode = previousExitCode;
+      logSpy.mockRestore();
+      restore();
+      handlerGathering.stub = undefined;
+    }
+
+    expect(stderrBefore).toHaveLength(4);
+    for (const statement of stderrBefore) {
+      for (const url of [OWN_TURN, STATIC_TURN, INVITATION_TURN, REGISTRAR])
+        expect(statement).toContain(url);
+    }
+    if ("json" in flags) {
+      const stdout = stdoutWrites.join("");
+      expect(stdout.trimEnd().split("\n")).toHaveLength(1);
+      expect(JSON.parse(stdout)).toMatchObject({ mode: "relay" });
+      expect(stdout).not.toContain("network address");
+    }
+  },
+);
+
+test("the handler writes the host statement to the log file before its first request, at silent and under --json", async () => {
+  writeThreeRelayConfig();
+  const logFile = path.join(dir, "doctor.log");
+  const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
+  const { stdoutWrites, stderrWrites, restore } = captureStdio();
+  const logSpy = vi
+    .spyOn(console, "log")
+    .mockImplementation((...args: unknown[]) => {
+      stdoutWrites.push(args.map((a) => String(a)).join(" ") + "\n");
+    });
+  const fileBefore: Array<string> = [];
+  fetchSpy.mockImplementation(
+    (input: string | URL | Request, init?: RequestInit) => {
+      fileBefore.push(fs.readFileSync(logFile, "utf8"));
+      return registrar.fetch(input, init);
+    },
+  );
+  handlerGathering.stub = (server, signal) => {
+    fileBefore.push(fs.readFileSync(logFile, "utf8"));
+    return scriptedGathering({}, [])(server, signal);
+  };
+  const previousExitCode = process.exitCode;
+  try {
+    await relayHandler(
+      argv({
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-file": logFile,
+        "log-level": "silent",
+        json: true,
+      }),
+    );
+  } finally {
+    process.exitCode = previousExitCode;
+    logSpy.mockRestore();
+    restore();
+    handlerGathering.stub = undefined;
+  }
+
+  expect(fileBefore).toHaveLength(4);
+  for (const statement of fileBefore) {
+    for (const url of [OWN_TURN, STATIC_TURN, INVITATION_TURN, REGISTRAR])
+      expect(statement).toContain(url);
+  }
+  expect(stderrWrites.join("")).toBe("");
+  expect(stdoutWrites.join("").trimEnd().split("\n")).toHaveLength(1);
+  expect(stdoutWrites.join("")).not.toContain("network address");
 });
 
 // --- the refusals --------------------------------------------------------------

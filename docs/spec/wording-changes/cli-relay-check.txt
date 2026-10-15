@@ -21,7 +21,7 @@
 - - -> Before its first request, the check prints every TURN url it will ask, with the transport each names and whether it came from `connection.turn` or the invitation.
 - - -> It names the first url as the one a run allocates on.
 - - -> Where `invitation_relay` names a `registrar`, it also prints that registrar, and states that it enrolls this exchange's relay key there as a run does when that relay is the one it allocates on, and that whoever runs the registrar learns this machine's network address; where it names none, the statement says the check contacts no registrar and enrolls nothing.
-- - -> It prints them to the destination the human check lines use -- stderr, or the `--log-file` -- with or without `--json`, under `--log-level` as those lines are.
+- - -> It prints them to the destination the human check lines use -- stderr, or the `--log-file` -- with or without `--json`, at every `--log-level`, `silent` included.
 - - -> It contacts those urls and that registrar alone: not `connection.relay_registrar`, no coordination server, and no STUN server.
 - - -> **The enrollment.**
 - - -> Where `invitation_relay` names a `registrar`, the check enrolls the exchange's relay key there before it asks any relay, through the call a run makes before it dials (`enrollAtInvitationRelay`; [PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)): one attempt without a token, under the run's wait.
