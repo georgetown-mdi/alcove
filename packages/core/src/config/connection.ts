@@ -1259,8 +1259,9 @@ const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
 
 const RELAY_REGISTRAR_URL_EXAMPLE = "https://registrar.example.org";
 
-// Why `url` cannot name a registrar, or undefined when it can. The url is never
-// repeated, since one holding a user may hold a password.
+// Why `url` cannot name a registrar, or undefined when it can: a registrar url
+// is accepted only when it is exactly its own origin, on https and not port 0.
+// The url is never repeated, since one holding a user may hold a password.
 function relayRegistrarUrlProblem(url: string): string | undefined {
   let parsed: URL;
   try {
@@ -1281,6 +1282,13 @@ function relayRegistrarUrlProblem(url: string): string | undefined {
       `fragment, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
     );
   if (parsed.port === "0") return "must not name port 0; a port is 1-65535";
+  // An empty `?` or `#`, a trailing slash, an upper-case host and port 443
+  // leave the parsed fields clean but would reach the invitation as written.
+  if (parsed.origin !== url)
+    return (
+      "must be written as https://, a lower-case host and an optional port " +
+      `other than 443, with nothing after them, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
+    );
   return undefined;
 }
 

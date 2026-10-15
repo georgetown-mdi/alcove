@@ -892,7 +892,7 @@ It holds no credential. The relay-owner token is asked for once, by `alcove enro
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | yes | The registrar's `https://` address: a host and an optional port, with no path, query, fragment, or user |
+| `url` | string | yes | The registrar's `https://` address, written as its origin: a lower-case host and an optional port other than 0 or 443, with no user and nothing after them, not even a trailing `/`, `?` or `#` |
 | `exchange_id` | string | yes | The id the registrar holds this exchange's key under: 1 to 128 of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, not starting with `-`, not starting with `alcove-verify-`, and holding no run of 64 hex characters. The registrar's refusals let anyone learn whether an id is enrolled, so choose one that reveals nothing about either party |
 
 It requires a `turn` entry that sets no `username` or `credential`. A run registers here whether or not it also lists the relay an invitation named ([`invitation_relay`](#connectioninvitation_relay)), since it lists your own `turn` entries either way.

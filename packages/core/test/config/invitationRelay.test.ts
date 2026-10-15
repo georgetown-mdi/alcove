@@ -34,6 +34,8 @@ const baseTerms = {
 };
 
 const REGISTRAR = "https://registrar.example.org:8443";
+const ONLY_HOST_AND_PORT = "must name only a host and an optional port";
+const EXACT_ORIGIN = "must be written as https://, a lower-case host";
 
 const RELAY = {
   turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -257,6 +259,56 @@ describe("the invitation's relay locator", () => {
       expect(message).toContain(`a relay locator's registrar ${refusal}`);
       expect(message).not.toContain("SECRET");
       await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+    },
+  );
+
+  test.each([
+    ["a query", "https://hidden-host.example.org?a=1", ONLY_HOST_AND_PORT],
+    ["a bare ?", "https://hidden-host.example.org?", EXACT_ORIGIN],
+    ["a fragment", "https://hidden-host.example.org#x", ONLY_HOST_AND_PORT],
+    ["a bare #", "https://hidden-host.example.org#", EXACT_ORIGIN],
+    [
+      "an empty query and fragment",
+      "https://hidden-host.example.org/?#",
+      EXACT_ORIGIN,
+    ],
+    ["a trailing slash", "https://hidden-host.example.org/", EXACT_ORIGIN],
+    ["port 0", "https://hidden-host.example.org:0", "must not name port 0"],
+  ])(
+    "a registrar url with %s is refused at decode and at mint without its value",
+    async (_, registrar, refusal) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      });
+      const decodeError: unknown = await decodeInvitation(
+        await encodeRawInvitation(token),
+      ).catch((caught: unknown) => caught);
+      const mintError: unknown = await encodeInvitation(token).catch(
+        (caught: unknown) => caught,
+      );
+      for (const error of [decodeError, mintError]) {
+        expect(error).toBeInstanceOf(ZodError);
+        const message = (error as ZodError).message;
+        expect(message).toContain(`a relay locator's registrar ${refusal}`);
+        expect(message).not.toContain("hidden-host");
+      }
+    },
+  );
+
+  test.each([["https://registrar.example.org"], [REGISTRAR]])(
+    "the registrar url %s, written as its origin, is accepted at mint and at decode",
+    async (registrar) => {
+      const endpoint = {
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { ...RELAY, registrar },
+      };
+      const decoded = await decodeInvitation(
+        await encodeInvitation(tokenWithEndpoint(endpoint)),
+      );
+      expect(decoded.connectionEndpoint).toEqual(endpoint);
     },
   );
 

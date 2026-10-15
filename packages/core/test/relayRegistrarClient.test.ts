@@ -226,6 +226,52 @@ describe("sendRelayRegistration", () => {
   });
 });
 
+// A timer left pending keeps a command-line process alive after its run.
+describe("sendRelayRegistration's timeout timer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test.each([
+    ["confirmed", 200, REGISTRAR_ANSWER, "registered"],
+    ["refused", 401, { error: "unknown key" }, "refused"],
+  ])(
+    "no timer remains after a request the registrar %s",
+    async (_, status, body, kind) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      let answerRequest: (() => void) | undefined;
+      const fetch = (() =>
+        new Promise<Response>((resolve) => {
+          answerRequest = () =>
+            resolve(new Response(JSON.stringify(body), { status }));
+        })) as typeof globalThis.fetch;
+      const pending = sendRelayRegistration(PROOF_REQUEST, { fetch });
+      expect(vi.getTimerCount()).toBe(1);
+      answerRequest?.();
+      expect((await pending).kind).toBe(kind);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test("a request aborts with a TimeoutError at the bound, not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fetch = neverAnswering();
+    const pending = sendRelayRegistration(PROOF_REQUEST, {
+      fetch,
+      timeoutMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetch.endings).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch.endings).toEqual(["TimeoutError"]);
+    expect(await pending).toMatchObject({
+      kind: "unavailable",
+      reason: "no answer within 1000 ms",
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe("registerRelayKey", () => {
   test("a proof outside the registrar's window is signed again once at its time", async () => {
     const secret = generateSharedSecret();

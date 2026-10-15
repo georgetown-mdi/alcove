@@ -63,6 +63,11 @@ test.each([
   ["https://relay.example.org:8443?x=1", "no path"],
   ["relay.example.org", "not a url"],
   ["https://relay.example.org:0", "1-65535"],
+  ["https://relay.example.org#x", "no path"],
+  ["https://relay.example.org?", "must be written as https://"],
+  ["https://relay.example.org#", "must be written as https://"],
+  ["https://relay.example.org/?#", "must be written as https://"],
+  ["https://relay.example.org/", "must be written as https://"],
 ])("the registrar url %s is refused", (url, expected) => {
   expect(messages(webrtc({ url, exchange_id: "exchange-1" }))).toContain(
     expected,
