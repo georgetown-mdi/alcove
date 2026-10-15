@@ -237,15 +237,6 @@ chmod 644 "$FRONT_CANDIDATE"
   -v "$FRONT_CHECK_CERTS:/etc/nginx/certs:ro" \
   --entrypoint nginx "$FRONT_IMAGE" -t \
   || die "the rendered front configuration fails nginx -t; $FRONT_CONF, coturn's configuration and the running services are unchanged. Fix front.conf.tmpl or the routes in $ENV_FILE and run again"
-# The new front.conf reads the key as root, so an existing certificate is given
-# to root before front.conf goes live: a run that dies after the move leaves the
-# front a key it can read on its next restart. A first install gets root's
-# ownership from the deploy hook that renew.sh runs.
-if [ -z "$THROWAWAY_CERTS" ]; then
-  log "certificate already present; re-owning it to root"
-  chown 0:0 "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem" \
-    || die "could not give root the certificate in $ETC/certs; the 443 front cannot read a key another account owns"
-fi
 mv "$FRONT_CANDIDATE" "$FRONT_CONF"
 [ -z "$THROWAWAY_CERTS" ] || rm -rf "$THROWAWAY_CERTS"
 trap - EXIT
@@ -332,6 +323,14 @@ install -m 755 "$HERE/certs/renew.sh" "$HERE/certs/deploy-hook.sh" "$LIBEXEC/cer
 if [ ! -s "$ETC/certs/fullchain.pem" ] || [ ! -s "$ETC/certs/privkey.pem" ]; then
   log "no certificate yet; obtaining one by DNS-01"
   "$LIBEXEC/certs/renew.sh" || die "certificate issuance failed; see Certificates in infra/relay/README.md"
+else
+  # A re-run with a certificate already here skips renew.sh, and the deploy hook
+  # with it, so the ownership the hook gives is converged here: root, which the
+  # front's nginx master reads the key as with every capability dropped. A key
+  # another account owns stops the front from starting.
+  log "certificate already present; re-owning it to root"
+  chown 0:0 "$ETC/certs" "$ETC/certs/fullchain.pem" "$ETC/certs/privkey.pem" \
+    || die "could not give root the certificate in $ETC/certs; the 443 front cannot read a key another account owns"
 fi
 
 # --- the configuration ------------------------------------------------------

@@ -115,7 +115,10 @@ other repository-level coupling is the docker Dependabot entry for
    that key.
 
 `install.sh` is idempotent. Run it again after an edit to the template, the unit,
-or the Dockerfile and it converges.
+or the Dockerfile and it converges. A re-run that stops partway through moving a
+host from the layout where coturn terminates TLS to the one where the front does
+can leave the front or coturn unable to start, until `install.sh` is run again to
+completion.
 
 These steps bring up a new host. On the project's host, later commits of
 `main` reach the relay through [the host pull](../host-pull/README.md), which
