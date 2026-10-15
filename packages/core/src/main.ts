@@ -877,6 +877,20 @@ export type {
   RelayRegistrationEnvironment,
   RelayRegistrationOutcome,
 } from "./relayRegistrarClient";
+export {
+  buildWebSocketRelayProof,
+  checkWebSocketRelayProof,
+  deriveWebSocketRelayProofKey,
+  parseWebSocketRelayProof,
+  WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
+  WebSocketRelayProofRefusedError,
+} from "./websocketRelayProof";
+export type {
+  BuildWebSocketRelayProofOptions,
+  CheckWebSocketRelayProofOptions,
+  WebSocketRelayProof,
+  WebSocketRelayProofRefusal,
+} from "./websocketRelayProof";
 // The shared chokepoint for parsing config/credential documents that may hold
 // secrets, so a parse error never leaks source bytes. Consumed by the CLI (file
 // reads, via its thin re-export) and the web app (an imported linkage-terms

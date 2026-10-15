@@ -135,6 +135,11 @@ export const UNCOVERED_VECTORS = [
       "the vendored lib/*.tgz it re-derives: a build-input manifest, not a wire artifact.",
   },
   {
+    vectors: "relay-proof-vectors.json",
+    versionedBy:
+      "the `-v2` of the `alcove-relay-websocket-v2:*` label family it pins (docs/spec/PROTOCOL.md, The domain-separation label space): a proof a party presents to the WebSocket relay, which no partner reads.",
+  },
+  {
     vectors: "signed-receipt-vectors.json",
     versionedBy:
       "the receipt and certificate formats, which move with the signing suite (docs/spec/EXCHANGE_RECORD.md) rather than with the linkage frames.",
