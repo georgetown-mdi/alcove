@@ -205,7 +205,7 @@ The derived rendezvous peer ids are redacted out of the PeerJS console output be
 
 When a browser exchange uses a relay (a TURN server, from the operator's own relay setting or the invitation) and the connection does not open, the failure alert says whether the relay gave the browser a relay address:
 
-- The relay gave none and the browser reported an error for it: the alert names the relay url and that error -- for example `error 701: Failed to establish connection` for a relay the browser could not reach -- instead of a bare "connection open timed out".
+- The relay gave none and the browser reported an error for it: the alert names the relay url and each distinct error the browser reported for it -- for example `error 701: Failed to establish connection` for a relay the browser could not reach -- instead of a bare "connection open timed out".
 - The relay gave none and the browser reported no error before the connection attempt ended: the alert names the relay url alone. The browser can take longer to give up on an unanswered UDP relay than the exchange waits for the connection.
 - The relay gave an address, or no relay is configured: the alert keeps the plain timeout, which points at the path between the two parties rather than at a relay that answered.
 

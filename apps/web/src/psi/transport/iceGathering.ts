@@ -29,7 +29,7 @@ export interface IceGatheringRecord {
   relayGathered: boolean;
   /** Whether gathering finished. */
   gatheringComplete: boolean;
-  /** Errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
+  /** Distinct url and code errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
   turnErrors: Array<IceServerError>;
 }
 
@@ -104,10 +104,17 @@ export function watchIceGathering(conn: DataConnection): void {
     const { url, errorCode, errorText } = event;
     if (typeof url !== "string" || !isConfiguredTurnUrl(url, record.turnUrls))
       return;
+    const code = typeof errorCode === "number" ? errorCode : 0;
+    if (
+      record.turnErrors.some(
+        (error) => error.url === url && error.errorCode === code,
+      )
+    )
+      return;
     if (record.turnErrors.length >= MAX_RECORDED_ICE_ERRORS) return;
     record.turnErrors.push({
       url,
-      errorCode: typeof errorCode === "number" ? errorCode : 0,
+      errorCode: code,
       errorText: typeof errorText === "string" ? errorText : "",
     });
   });
@@ -178,9 +185,11 @@ export function relayFailureMessage(
   if (record.turnErrors.length > 0) {
     const failures = describeFailures(record.turnErrors);
     const subject =
-      failures.length === 1
+      record.turnErrors.length === 1
         ? `The browser reported an error for relay server ${failures[0]}.`
-        : `The browser reported errors for relay servers ${listNamed(failures)}.`;
+        : failures.length === 1
+          ? `The browser reported errors for relay server ${failures[0]}.`
+          : `The browser reported errors for relay servers ${listNamed(failures)}.`;
     return `${lead} ${subject} ${RELAY_REMEDY}`;
   }
   if (!timedOut && !record.gatheringComplete) return undefined;
