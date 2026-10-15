@@ -59,6 +59,12 @@
 - - -> **What the run lists.**
 - - -> Its ICE servers always hold the default STUN server.
 - - -> A confirmed enrollment adds the default relay's TURN url after the TURN urls of the browser's own relay and the invitation's, under the one credential minted from the secret.
-- - -> An unconfirmed one leaves it out, even where the invitation names it: the run connects with its other relays and, if the connection fails for any reason but the partner not arriving, says once that the relay could not be set up.
+- - -> An unconfirmed one leaves it out, even where the invitation names it: the run says once, as the enrollment fails, that the relay could not be set up, and connects with its other relays.
 - - -> **Managed runs.**
 - - -> The registration of a managed run's own relay, above, is unaffected by it.
+- - -> **The key the default relay holds.**
+- - -> The key enrolled is the exchange's relay key, so the default relay's operator holds a key that the exchange's other relays and registrar also accept, until the secret rotates.
+- - -> No separate key is derived for the default relay.
+- - -> **The build's default relay is not counted.**
+- - -> The export reads the TURN url of the build's default relay ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)) and treats the invitation as if it did not name that url, since a command-line run does not enroll there: the url does not make a record one whose command-line runs relay through the partner's relay, and `invitation_relay` is written without it, or not written when no url remains.
+- - -> A build that names no default relay counts every url the invitation names.

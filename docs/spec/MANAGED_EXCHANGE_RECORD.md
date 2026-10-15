@@ -1535,6 +1535,14 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   `turn` entry and reads no relay setting; the configuration's
   `invitation_relay` is the relay its runs use. Such a record is also not refused for a pending re-invite
   registration, and its key file writes no pending marker.
+- **The build's default relay is not counted.** The export reads the TURN url
+  of the build's default relay
+  ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)) and treats the
+  invitation as if it did not name that url, since a command-line run does not
+  enroll there: the url does not make a record one whose command-line runs
+  relay through the partner's relay, and `invitation_relay` is written without
+  it, or not written when no url remains. A build that names no default relay
+  counts every url the invitation names.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not

@@ -6,8 +6,8 @@
  * (docs/notes/managed-exchange-design.md, "Who this is for").
  *
  * This module is the pure half -- no download, no store write, no spend; the
- * one thing it reads beyond the record is this browser's relay settings,
- * through an injected reader.
+ * two things it reads beyond the record are this browser's relay settings and
+ * the build's default relay, each through an injected reader.
  *
  * - It SPLITS the export artifact rather than serializing a second format.
  *   The config text is core's {@link serializeExchangeDocument}, the writer
@@ -51,7 +51,9 @@
  *   which the command line's next run retries before it dials. A record whose
  *   command-line runs would relay through the relay its invitation named
  *   ({@link commandLineRelaysThroughInvitation}) register nothing there, so
- *   it exports neither. A registrar with no own TURN url to write, and a
+ *   it exports neither. The build's default relay is left out of the
+ *   invitation's relay, since a command-line run does not enroll there. A
+ *   registrar with no own TURN url to write, and a
  *   registration a re-invite left pending, which no run can confirm, are
  *   refused.
  *
@@ -74,6 +76,8 @@ import {
   bindPathsIn,
 } from "@jobContract/handoffBindPaths";
 
+import { defaultRelaySetting } from "@utils/clientConfig";
+
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
 import {
@@ -90,6 +94,7 @@ import { shellJoinCommand } from "./recurringHandoff";
 import type {
   ConnectionConfig,
   ExchangeSpec,
+  RelayLocator,
   RelayRegistrar,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -98,6 +103,7 @@ import type {
   ManagedExchangeSchedule,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
@@ -210,19 +216,47 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
 }
 
 /**
+ * The invitation's relay as the export writes it: `invitationRelay` without
+ * `defaultTurnUrl`, the build's default relay, which a command-line run does
+ * not enroll at. Undefined when no url remains.
+ */
+function invitationRelayWithoutDefault(
+  invitationRelay: RelayLocator | undefined,
+  defaultTurnUrl: string | undefined,
+): RelayLocator | undefined {
+  if (invitationRelay === undefined || defaultTurnUrl === undefined)
+    return invitationRelay;
+  const turn = (invitationRelay.turn ?? []).filter(
+    (url) => url !== defaultTurnUrl,
+  );
+  const stun = invitationRelay.stun ?? [];
+  if (turn.length + stun.length === 0) return undefined;
+  return {
+    ...(turn.length > 0 ? { turn } : {}),
+    ...(stun.length > 0 ? { stun } : {}),
+  };
+}
+
+/**
  * Whether a command-line run of `record` relays through the relay the
  * invitation named rather than its own: the command line takes an
  * invitation's TURN urls in place of its own `turn` entries
  * (`selectRunRelay` in core) and then registers nothing, so the export
  * writes no registrar for it. A browser run lists both relays, and registers.
+ * The build's default relay, `defaultTurnUrl`, is not counted
+ * ({@link invitationRelayWithoutDefault}).
  */
 function commandLineRelaysThroughInvitation(
   record: Pick<ManagedExchangeRecord, "exchangeFile">,
+  defaultTurnUrl: string | undefined,
 ): boolean {
   const connection = record.exchangeFile.connection;
   return (
     connection.channel === "webrtc" &&
-    (connection.invitationRelay?.turn ?? []).length > 0
+    (
+      invitationRelayWithoutDefault(connection.invitationRelay, defaultTurnUrl)
+        ?.turn ?? []
+    ).length > 0
   );
 }
 
@@ -267,8 +301,9 @@ function relayRegistrationConnectionFields(
 
 /**
  * The connection the export writes: the stored one, with a webrtc `role` set
- * from the record's `side` and, on a record whose runs register at a relay
- * registrar, the fields that register there
+ * from the record's `side`, its `invitationRelay` without the build's default
+ * relay ({@link invitationRelayWithoutDefault}) and, on a record whose runs
+ * register at a relay registrar, the fields that register there
  * ({@link relayRegistrationConnectionFields}). A webrtc record always holds a
  * side (the record schema binds the two), so a missing one is refused rather
  * than exported roleless for the CLI to refuse at the operator's first
@@ -278,6 +313,7 @@ function exportedConnection(
   connection: ConnectionConfig,
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
+  defaultTurnUrl: string | undefined,
 ): ConnectionConfig {
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
@@ -287,14 +323,21 @@ function exportedConnection(
         "line needs. " +
         IMPORT_AGAIN_THEN_EXPORT,
     );
-  return {
+  const exported: WebRTCConnectionConfig = {
     ...connection,
     role: record.side,
     ...(record.relayRegistrar !== undefined &&
-    !commandLineRelaysThroughInvitation(record)
+    !commandLineRelaysThroughInvitation(record, defaultTurnUrl)
       ? relayRegistrationConnectionFields(record.relayRegistrar, readOwn)
       : {}),
   };
+  const invitationRelay = invitationRelayWithoutDefault(
+    connection.invitationRelay,
+    defaultTurnUrl,
+  );
+  if (invitationRelay === undefined) delete exported.invitationRelay;
+  else exported.invitationRelay = invitationRelay;
+  return exported;
 }
 
 /**
@@ -374,12 +417,13 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
 function composeCronExportDocument(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
+  defaultTurnUrl: string | undefined,
 ): ExchangeSpec {
   const connection = heldConnectionOrRefuse(record.exchangeFile);
   assertNoStoredAuthentication(record.exchangeFile);
   const document = ExchangeSpecSchema.parse({
     ...record.exchangeFile,
-    connection: exportedConnection(connection, record, readOwn),
+    connection: exportedConnection(connection, record, readOwn, defaultTurnUrl),
     ...(record.tokenMaxAgeDays !== undefined
       ? { authentication: { tokenMaxAgeDays: record.tokenMaxAgeDays } }
       : {}),
@@ -450,8 +494,13 @@ function exportedExchangeArgv(
 export function composeManagedCronExportConfig(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
+  readDefaultRelay: () => DefaultRelaySetting | undefined = defaultRelaySetting,
 ): ManagedCommandLineConfig {
-  const document = composeCronExportDocument(record, readOwn);
+  const document = composeCronExportDocument(
+    record,
+    readOwn,
+    readDefaultRelay()?.turnUrl,
+  );
   const argv = exportedExchangeArgv(record.schedule);
   return {
     config: {
@@ -469,7 +518,8 @@ export function composeManagedCronExportConfig(
  * Compose a managed record into the CLI's two files and the command that runs
  * them: the configuration half above, plus the key file. The record is read,
  * never written, and no marker, spend, or download is involved; `readOwn`
- * reads this browser's relay settings. The record type is the runnable one,
+ * reads this browser's relay settings and `readDefaultRelay` the build's
+ * default relay. The record type is the runnable one,
  * so the key half cannot be asked of a record that holds no secret.
  *
  * @throws {Error} if the record's stored connection holds a field or a
@@ -482,10 +532,19 @@ export function composeManagedCronExportConfig(
 export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
+  readDefaultRelay: () => DefaultRelaySetting | undefined = defaultRelaySetting,
 ): ManagedCronExport {
-  const relaysThroughInvitation = commandLineRelaysThroughInvitation(record);
+  const defaultRelay = readDefaultRelay();
+  const relaysThroughInvitation = commandLineRelaysThroughInvitation(
+    record,
+    defaultRelay?.turnUrl,
+  );
   if (!relaysThroughInvitation) assertNoReinviteRegistrationPending(record);
-  const commandLine = composeManagedCronExportConfig(record, readOwn);
+  const commandLine = composeManagedCronExportConfig(
+    record,
+    readOwn,
+    () => defaultRelay,
+  );
   const keyFields = keyFileFieldsFromRecord(record);
   if (relaysThroughInvitation) delete keyFields.relayRegistrationPendingSince;
   return {
