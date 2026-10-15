@@ -12,6 +12,7 @@ const PROOF_KEY_INFO = "alcove-relay-registrar-v2:proof-key";
 const PROOF_MESSAGE_LABEL = "alcove-relay-registrar-v2:request";
 const PROOF_KEY_BYTES = 32;
 
+const RELAY_KEY_BYTES = 32;
 const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 // The registrar's exchange-id rule (valid_exchange_id in
 // infra/relay/relay_table.py): the EXCHANGE_ID alphabet, which admits no
@@ -57,6 +58,29 @@ export interface RelayRegistrarProofOptions {
 }
 
 /**
+ * The 32 bytes a relay key's 64 lowercase hex characters decode to: the input
+ * keying material of every derivation from the relay key.
+ *
+ * @throws {Error} naming `caller` if `relayKey` is not 64 lowercase hex
+ *   characters.
+ */
+export function relayKeyBytes(
+  caller: string,
+  relayKey: string,
+): Uint8Array<ArrayBuffer> {
+  if (!RELAY_KEY_PATTERN.test(relayKey)) {
+    throw new InternalConsistencyError(
+      `${caller}: relayKey must be 64 lowercase hex characters`,
+    );
+  }
+  const bytes = new Uint8Array(RELAY_KEY_BYTES);
+  for (let i = 0; i < RELAY_KEY_BYTES; i++) {
+    bytes[i] = Number.parseInt(relayKey.slice(2 * i, 2 * i + 2), 16);
+  }
+  return bytes;
+}
+
+/**
  * Derive the key a registrar request proof is signed under from the relay
  * key's 32 decoded bytes.
  *
@@ -65,16 +89,11 @@ export interface RelayRegistrarProofOptions {
 export async function deriveRelayRegistrarProofKey(
   relayKey: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  if (!RELAY_KEY_PATTERN.test(relayKey)) {
-    throw new InternalConsistencyError(
-      "deriveRelayRegistrarProofKey: relayKey must be 64 lowercase hex characters",
-    );
-  }
-  const bytes = new Uint8Array(PROOF_KEY_BYTES);
-  for (let i = 0; i < PROOF_KEY_BYTES; i++) {
-    bytes[i] = Number.parseInt(relayKey.slice(2 * i, 2 * i + 2), 16);
-  }
-  return hkdfDerive(bytes, PROOF_KEY_INFO, PROOF_KEY_BYTES);
+  return hkdfDerive(
+    relayKeyBytes("deriveRelayRegistrarProofKey", relayKey),
+    PROOF_KEY_INFO,
+    PROOF_KEY_BYTES,
+  );
 }
 
 /**

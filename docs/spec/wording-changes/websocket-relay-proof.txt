@@ -1,0 +1,47 @@
+# The WebSocket relay proof: its label family in the label space, and its
+# subsection beside the registrar request proof.
+- The system's derivation labels form one disjoint space, enumerated here and cited from the sections that use each family: `alcove-kex-v2:*` (the session and confirmation derivations above), `alcove-aead-v2:*` (the application-layer AEAD), `alcove-shared-secret-rotation-v2` (the rotation below), `alcove-abort-token-v2:*` (the file-sync abort marker), `alcove-webrtc-peerid-v2:*` (the rendezvous peer ids below), `alcove-relay-key-v2` (the relay key below), `alcove-relay-exchange-id-v2` (the exchange id a relay key is enrolled under without a token, below), `alcove-relay-registrar-v2:*` (the registrar request proof below, derived from the relay key), the `alcove-signing-cert-*` domains (the certificate signature and fingerprint, below), the `alcove-signed-receipt-*` labels (the receipt-content domain, and the receipt payload-MAC and binder derivations, which take the same session key as their input keying material), and `alcove-terms-update-v2:*` (the terms update's partnership identifier and MAC key, derived from the shared secret; see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-update)). -> The system's derivation labels form one disjoint space, enumerated here and cited from the sections that use each family: `alcove-kex-v2:*` (the session and confirmation derivations above), `alcove-aead-v2:*` (the application-layer AEAD), `alcove-shared-secret-rotation-v2` (the rotation below), `alcove-abort-token-v2:*` (the file-sync abort marker), `alcove-webrtc-peerid-v2:*` (the rendezvous peer ids below), `alcove-relay-key-v2` (the relay key below), `alcove-relay-exchange-id-v2` (the exchange id a relay key is enrolled under without a token, below), `alcove-relay-registrar-v2:*` (the registrar request proof below, derived from the relay key), `alcove-relay-websocket-v2:*` (the WebSocket relay proof below, derived from the relay key), the `alcove-signing-cert-*` domains (the certificate signature and fingerprint, below), the `alcove-signed-receipt-*` labels (the receipt-content domain, and the receipt payload-MAC and binder derivations, which take the same session key as their input keying material), and `alcove-terms-update-v2:*` (the terms update's partnership identifier and MAC key, derived from the shared secret; see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-update)).
+- - -> The WebSocket relay proof
+- - -> A party shows a WebSocket relay that it holds the exchange's relay key with a proof made under a key of its own, derived from the relay key as the registrar proof's key is.
+- - -> The proof is the message and the tag below; how a relay's hello encodes them is specified with the relay service, apart from the key lookup below.
+- - -> proof_key = HKDF-SHA-256(ikm = unhex(relay_key), salt = 0x00 * 32, info = "alcove-relay-websocket-v2:proof-key", 32)
+- - -> message = "alcove-relay-websocket-v2:hello" LF role LF decimal(expiry)
+- - -> tag = HMAC-SHA-256(key = proof_key, msg = ascii(message))
+- - -> **The key.**
+- - -> The HKDF input is the relay key's 32 decoded bytes, as for the registrar proof, under a label of its own, and the tag is the whole 32-byte MAC.
+- - -> So a relay's proof is neither a coturn credential nor a registrar proof, and neither of those is a relay's proof: a captured relay hello mints no TURN credential, and a captured TURN credential opens no relay socket.
+- - -> The message starts with a letter, so it never parses as coturn's `<expiry>:<label>` username.
+- - -> **The message.**
+- - -> Three ASCII fields joined by LF (0x0A), with no trailing LF.
+- - -> `role` is the party's rendezvous role, `inviter` or `acceptor` (`RENDEZVOUS_ROLES` in `packages/core/src/rendezvous.ts`).
+- - -> `expiry` is decimal Unix seconds with no leading zero, the second from which the relay refuses the proof.
+- - -> No field's alphabet admits LF, so the layout parses one way.
+- - -> **The key lookup.**
+- - -> The hello MUST name the key the proof is under, by the exchange id (`exchange_id`, the `<exchange_id>` path segment of the enrollment request; `exchangeId` in `packages/core/src/relayRegistrarClient.ts`) under which the registrar stored the exchange's relay key, so the relay derives and checks one proof key, not one per enrolled exchange.
+- - -> The exchange id is not part of the signed message, since a tag verifies under one key only.
+- - -> **The expiry bound.**
+- - -> A party sets `expiry` to the current Unix second plus whole seconds from 1 to 300 (`WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS` in `packages/core/src/websocketRelayProof.ts`), the registrar's freshness window.
+- - -> A value outside these bounds is refused rather than clamped.
+- - -> As with the TURN credential, the bound covers only the proofs Alcove makes: anyone holding the relay key can make one with a later expiry, and a check does not refuse it.
+- - -> **What a check refuses.**
+- - -> The relay reads a presented message and tag (`parseWebSocketRelayProof`) and checks them under the proof key of a relay key it holds (`checkWebSocketRelayProof`).
+- - -> It refuses a message over 128 bytes, not UTF-8 or not exactly in the layout above, or a tag that is not 32 bytes, as malformed.
+- - -> It refuses a role other than the one the presenting party claims, and an expiry at or before its own current Unix second.
+- - -> It refuses a tag other than the one the proof key makes over the role and the expiry, compared in constant time.
+- - -> A party whose clock runs 300 seconds or more behind the relay's cannot present a proof the relay accepts, and one less than that behind is accepted only while the remaining margin has not elapsed.
+- - -> What the relay answers to a stale proof, a server time to sign again as the registrar gives or nothing, is specified with the relay service and not here.
+- - -> **Replay.**
+- - -> A captured proof can be replayed until its expiry, at most 300 seconds, which can open a relay socket in that role and take the role's slot first; it exposes no data, since the key exchange still needs the shared secret.
+- - -> The relay service's hello may bind the proof to its connection, a point left to that service's specification.
+- - -> **The label.**
+- - -> `alcove-relay-websocket-v2:*` sits in the [domain-separation label space](#p-256-authenticated-key-exchange).
+- - -> Its input keying material is the relay key, not the shared secret, so it gives the relay's operator, who holds the relay key, nothing derived from the secret.
+- - -> **Test vectors.**
+- - -> For the secret of bytes 0x00..0x1f, whose relay key is the `relay_key` of the registrar proof's vectors above, and `expiry` = 1767225900, the proof key and each role's tag are below.
+- - -> They are generated with Node's `crypto` by `packages/core/test/vectors/generate-relay-proof-vectors.mjs` into `relay-proof-vectors.json` beside it, held to that generator by `npm run check:vectors`, and core is held to the file by `packages/core/test/websocketRelayProof.test.ts`.
+- - -> The proof key and both tags were also computed by OpenSSL (`openssl kdf ...
+- - -> HKDF` and `openssl dgst -sha256 -mac HMAC`).
+- - -> proof_key = 8e7bace691bc317879934f5d621ab3efd53de90159a314b45ecd3f8e5358c637
+- - -> inviter_tag = 89fd30c0579df6cda9001ae31346888fecbd72cd719fb3817387bd6f92a4b758
+- - -> acceptor_tag = 862297ff4867555100900de9e235ec7e99128e4f1e800350d4a5afe8bc42c5a6
+- No single label or family prefix -- a suffix-taking family's name through its `:` separator -- is a prefix of another (`alcove-relay-key-v2`, `alcove-relay-exchange-id-v2` and `alcove-relay-registrar-v2:` share `alcove-relay-` and diverge after it), and a family that takes a suffix (`alcove-aead-v2:<context>`, `alcove-abort-token-v2:<role>`, `alcove-webrtc-peerid-v2:<role>`, `alcove-relay-registrar-v2:<use>` for `proof-key` and `request`, `alcove-signed-receipt-payload-v2:<direction>`, `alcove-signed-receipt-binder-v2:<role>`, `alcove-terms-update-v2:<use>`) draws it from a fixed, non-empty, colon-free and prefix-free set behind that separator, so no member of one family is a prefix of a member of another or of its own family. -> No single label or family prefix -- a suffix-taking family's name through its `:` separator -- is a prefix of another (`alcove-relay-key-v2`, `alcove-relay-exchange-id-v2`, `alcove-relay-registrar-v2:` and `alcove-relay-websocket-v2:` share `alcove-relay-` and diverge after it), and a family that takes a suffix (`alcove-aead-v2:<context>`, `alcove-abort-token-v2:<role>`, `alcove-webrtc-peerid-v2:<role>`, `alcove-relay-registrar-v2:<use>` for `proof-key` and `request`, `alcove-relay-websocket-v2:<use>` for `proof-key` and `hello`, `alcove-signed-receipt-payload-v2:<direction>`, `alcove-signed-receipt-binder-v2:<role>`, `alcove-terms-update-v2:<use>`) draws it from a fixed, non-empty, colon-free and prefix-free set behind that separator, so no member of one family is a prefix of a member of another or of its own family.

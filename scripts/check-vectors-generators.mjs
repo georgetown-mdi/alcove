@@ -95,6 +95,11 @@ export const GENERATED_VECTORS = [
     writes: "stdout",
   },
   {
+    vectors: "relay-proof-vectors.json",
+    generator: "generate-relay-proof-vectors.mjs",
+    writes: "stdout",
+  },
+  {
     vectors: "signed-receipt-vectors.json",
     generator: "generate-signed-receipt-vectors.mjs",
     writes: "file",

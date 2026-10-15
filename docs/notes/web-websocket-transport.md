@@ -4,9 +4,10 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; nothing here is built.
+_Status: design only; of it, only the relay proof derivation is built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2 to S8, none of which has run (S1 ran in a narrower form: its decisive part was met and the rest stays open, [recorded below](#the-spikes)), and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is open again after a later ruling on the TURN relay (2026-10-14, [fork 1](#the-forks-and-their-rulings)).
+What remains open is the spikes S2 to S8, none of which has run (S1 ran in a narrower form: its decisive part was met and the rest stays open, [recorded below](#the-spikes)), and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
+The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
 Nothing here is normative: the wrap rule is in
@@ -114,7 +115,8 @@ The relay below is that shape with binary frames, pause-and-resume forwarding, p
 - A party opens `wss://<relay name>/<fixed path>` and sends one hello frame: its role (`inviter` or `acceptor`) and a credential.
 - The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#relay-credential-derivation), with an expiry in the signed message, as the registrar's proof is built ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof)).
   A key of its own, rather than coturn's HMAC-SHA-1 credential reused, so a captured relay hello mints no TURN credential and a captured TURN credential opens no relay socket.
-- The relay verifies the proof against the per-exchange keys it holds -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
+  The derivation and the proof are specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
+- The relay looks up the one key the hello names by exchange id, and verifies the proof against it -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
   A second socket with a role already held under that key is refused, which is the broker's `ID-TAKEN` for this path.
 - A run with no shared secret cannot mint the proof and refuses the relay before dialing, as it refuses a `turn` entry with no static credential today ([CLI.md](../CLI.md#turn)).
 
@@ -337,6 +339,7 @@ Relay path, in order:
 
 - **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
+  Built: `packages/core/src/websocketRelayProof.ts`, specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
@@ -382,14 +385,22 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    None of it is built.
    What it changes for this fork:
 
-   - **The one-shot gap's cause goes away once that enrollment is built.** A one-shot production exchange will have a row in the table coturn reads, the table this fork's reading checks the relay's proof against, so registration as ruled would admit it with no change to the mechanism, if the later ruling reaches this relay (below).
-   - **The trade's argument against possession is weaker.** It rested on the direction that a relay is never public, which the later ruling reverses for the TURN relay; whether for this relay too is the first open question below.
+   - **The one-shot gap's cause goes away once that enrollment is built.** A one-shot production exchange will have a row in the table coturn reads, the table this fork's reading checks the relay's proof against, so registration as ruled admits it with no change to the mechanism, since the later ruling reaches this relay (below).
+   - **The trade's argument against possession is weaker.** It rested on the direction that a relay is never public, which the later ruling reverses for the TURN relay, and the ruling below for this relay too.
 
-   What it leaves open, for the maintainer:
+   **A ruling on the WebSocket relay (2026-10-15).**
+   Asked whether the later ruling reaches the WebSocket relay, whose operator sees more than TURN's -- the pairing, the handshake frames and every frame's AEAD envelope ([What the relay's operator sees](#what-the-relays-operator-sees-stated-for-the-disclosure-documents)) -- and so whether one-shot admission is still weighed after S3, the maintainer ruled, quoted verbatim:
+   "Yes, it's part of the default. We were planning on using a reverse proxy to split traffic, so it could all be the same host."
 
-   - Whether the later ruling reaches the WebSocket relay at all.
-     It names the TURN relay, and the WebSocket relay's operator sees more: the pairing, the handshake frames and every frame's AEAD envelope ([What the relay's operator sees](#what-the-relays-operator-sees-stated-for-the-disclosure-documents)).
-   - Whether one-shot admission is still weighed after S3, as the reading has it, or is decided by the later ruling.
+   What follows from it:
+
+   - **The relay admits any exchange with a registered key, one-shot included.** It checks each party's proof against the key the exchange enrolled ([PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof)); one-shot admission is decided by this ruling, not weighed after S3.
+   - **It is part of the production default**, as the TURN relay is.
+   - **The relay-restriction setting covers it.** The operator setting naming the relays a party's data may cross, not yet built, governs this relay as it governs the TURN relays.
+   - **It runs behind the 443 front by server name**, one more route on the host that runs coturn and the broker ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+
+   What the two rulings leave open, for the maintainer:
+
    - Whether a key enrolled for a short lifetime outlasts a relayed exchange, since the relay checks the proof at the hello.
    - How the relay's per-address quota reads a client's address behind the 443 front ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
 
