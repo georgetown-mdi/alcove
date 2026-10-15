@@ -304,7 +304,18 @@ class BoundedInboundFramesWithBounds extends BoundedInboundFrames {
 
   constructor(overrides: InboundBoundOverrides) {
     super();
-    this.limits = Object.freeze({ ...SPEC_INBOUND_FRAME_LIMITS, ...overrides });
+    const spec = SPEC_INBOUND_FRAME_LIMITS;
+    this.limits = Object.freeze({
+      maxFrameBytes: overrides.maxFrameBytes ?? spec.maxFrameBytes,
+      maxConcurrentReassemblies:
+        overrides.maxConcurrentReassemblies ?? spec.maxConcurrentReassemblies,
+      maxReassemblyDepth:
+        overrides.maxReassemblyDepth ?? spec.maxReassemblyDepth,
+      maxChunks: overrides.maxChunks ?? spec.maxChunks,
+      minChunkResidentBytes:
+        overrides.minChunkResidentBytes ?? spec.minChunkResidentBytes,
+      maxStringBytes: overrides.maxStringBytes ?? spec.maxStringBytes,
+    });
   }
 }
 

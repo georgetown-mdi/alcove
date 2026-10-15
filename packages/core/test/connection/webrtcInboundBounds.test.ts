@@ -275,6 +275,18 @@ test("a lowered limit leaves the others at the spec's", () => {
   });
 });
 
+test("an undefined override keeps the spec's limit and still refuses", () => {
+  const bounds = boundedInboundFramesWithBounds({
+    maxFrameBytes: undefined,
+    maxChunks: undefined,
+  });
+  expect(bounds.limits).toEqual(new BoundedInboundFrames().limits);
+  expect(
+    refusal(() => bounds.accept(new Uint8Array(MAX_WEBRTC_FRAME_BYTES + 1)))
+      .message,
+  ).toContain(`${MAX_WEBRTC_FRAME_BYTES}-byte size limit`);
+});
+
 test("the default chunk-count cap is core's", () => {
   const bounds = new BoundedInboundFrames();
   expect(

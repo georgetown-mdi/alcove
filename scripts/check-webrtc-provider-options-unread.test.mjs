@@ -8,6 +8,7 @@ import {
 import {
   CLI_FILES,
   CLI_WEBRTC_DIR,
+  CORE_FILES,
   WEB_ENTRY_POINTS,
   WEB_FILES,
   directoryDrift,
@@ -23,8 +24,16 @@ const webEntries = () =>
 
 describe("WebRTC provider_options unread check", () => {
   it("the tree as it stands passes: no scanned file reads either spelling", () => {
-    for (const file of [...CLI_FILES, ...WEB_FILES])
+    for (const file of [...CLI_FILES, ...CORE_FILES, ...WEB_FILES])
       expect(readsIn(readSource(file), file)).toEqual([]);
+  });
+
+  it("CORE_FILES names the framing and reassembly files in core, all on disk", () => {
+    expect(CORE_FILES).toEqual([
+      "packages/core/src/connection/peerjsWire.ts",
+      "packages/core/src/connection/webrtcInboundBounds.ts",
+    ]);
+    for (const file of CORE_FILES) expect(() => readSource(file)).not.toThrow();
   });
 
   it("CLI_FILES is exactly the CLI WebRTC directory's real listing", () => {
