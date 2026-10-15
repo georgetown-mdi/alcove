@@ -27,7 +27,8 @@
 - - -> `registrar` is the address of a registrar that enrolls the exchange's relay key without a token ([Enrolling at a default relay](#enrolling-at-a-default-relay)): one `https://` url naming a host and an optional port, the rule of [`relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar)'s `url`, at most `MAX_RELAY_LOCATOR_URL_LENGTH` UTF-16 code units.
 - - -> A locator that names it names at least one `turn` url.
 - - -> Host case, a default port and one trailing `/` are normalized away when the url is parsed, so a party holds and mints the url as its origin.
-- - -> A url naming a path, a query, a fragment, a user or port 0 is refused, an empty `?` or `#` included, and the refusal does not repeat it.
+- - -> A url naming a path, a query, a fragment, a user or port 0 is refused, an empty `?`
+- - -> or `#` included, and the refusal does not repeat it.
 - - -> Where the locator names the default relay's TURN url, the web app also names that relay's registrar as `registrar`; the CLI names none.
 - - -> `registrar` was added to the strict locator without a `version` bump too: a decoder predating it, an earlier web app or CLI build among them, refuses every invitation that names it, as every invitation a build with a default relay makes does.
 - - -> A browser run reads its own relay from the browser's relay setting (`relayForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`).
@@ -48,6 +49,8 @@
 - - -> **What the run reports.**
 - - -> A confirmed enrollment, the answer to a same-key repeat included, is stated on the log.
 - - -> A refusal (401 or 409), a 429, a registrar the run cannot reach, and no answer within the wait are each stated as a warning on the terminal and on the event stream under the source `invitationRelayEnrollment` ([CLI_EVENTS.md](CLI_EVENTS.md#warning-sources)), and the run goes on.
+- - -> **Any https host.**
+- - -> The registrar an invitation names may be any https host, a loopback or private address on the accepting machine's network included; the run sends it the fixed request above, with no credential and following no redirect, after the operator saw the address on the acceptance review and accepted, and nothing checks the address.
 - - -> The invitation's TURN urls after its own relay's ([Which relay a run uses](#the-invitations-relay-locator)), whether or not its enrollment confirmed, since the partner derives the same key and id and may have enrolled them.
 - - -> A `relay_registrar` of its own is registered as [above](#registering-the-rotated-relay-key) whatever the enrollment's outcome.
 - - -> The registrar holds at most 10 rows enrolled without a token for each client address ([infra/relay/README.md](../../infra/relay/README.md#enrollment-without-a-token)), so a host running more exchanges at once than that can be refused.
