@@ -310,22 +310,20 @@ const clusterCore = (fields = {}) => ({
   verificationNote: "read it",
   ...fields,
 });
-// A cluster as the consolidator's schema has it return one.
-const consolidatorCluster = (fields = {}) => ({
+// A cluster as the verifier's schema has it return one.
+const verifierCluster = (fields = {}) => ({
   ...clusterCore(),
   userVisibleString: false,
   edits: [],
   verifyCommand: "",
   ...fields,
 });
-const clusters = { clusters: [consolidatorCluster()] };
+const clusters = { clusters: [verifierCluster()] };
 const lensReply = (prompt, options) =>
-  options.label === "consolidator" ? clusters : review;
-const lensRound = (run, consolidatorClusters) =>
+  options.label === "verifier" ? clusters : review;
+const lensRound = (run, verifierClusters) =>
   run(lensArgs, (prompt, options) =>
-    options.label === "consolidator"
-      ? { clusters: consolidatorClusters }
-      : review,
+    options.label === "verifier" ? { clusters: verifierClusters } : review,
   );
 
 // Every delivery that is not an object of named arguments, and so resolves no
@@ -367,7 +365,7 @@ async function promptsFor(deliver, overrides) {
   const lens = [];
   await run({ ...lensArgs, ...overrides }, (prompt, options) => {
     lens.push(prompt);
-    return options.label === "consolidator" ? clusters : review;
+    return options.label === "verifier" ? clusters : review;
   });
   const role = [];
   await run({ ...roleArgs(["a claim"]), ...overrides }, (prompt) => {
@@ -436,7 +434,7 @@ describe.each(SHAPES)(
       }
       expect(keysByLabel).toMatchObject({
         reviewer: ["findings", "simplerShape"],
-        consolidator: ["clusters"],
+        verifier: ["clusters"],
         "adversarial-verifier": ["claims", "findings", "summary"],
       });
     });
@@ -493,14 +491,14 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     }
   });
 
-  it("consolidates what the reviewers that returned found", async () => {
+  it("verifies what the reviewer found", async () => {
     const result = await run(lensArgs, lensReply);
     expect(result.reviewerCount).toBe(1);
     expect(result.clusters).toEqual([clusterCore()]);
     expect(result.simplerShapeVotes).toEqual([review.simplerShape]);
   });
 
-  it("runs one Opus seat and an Opus consolidator at high effort", async () => {
+  it("runs one Opus reviewer and a Sonnet verifier at high effort", async () => {
     const spawned = [];
     await run(lensArgs, (prompt, options) => {
       spawned.push(options);
@@ -508,25 +506,26 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     });
     expect(spawned.map((options) => options.label)).toEqual([
       "reviewer",
-      "consolidator",
+      "verifier",
     ]);
+    const modelByLabel = { reviewer: "opus", verifier: "sonnet" };
     for (const options of spawned) {
-      expect(options.model, options.label).toBe("opus");
+      expect(options.model, options.label).toBe(modelByLabel[options.label]);
       expect(options.effort, options.label).toBe("high");
     }
   });
 
   it("batches every nit that touches no user-visible string into one stated limit", async () => {
     const result = await lensRound(run, [
-      consolidatorCluster({ name: "major one", severity: "major" }),
-      consolidatorCluster({
+      verifierCluster({ name: "major one", severity: "major" }),
+      verifierCluster({
         name: "nit one",
         severity: "nit",
         file: "a.ts",
         description: "rename x",
         flaggedBy: 2,
       }),
-      consolidatorCluster({
+      verifierCluster({
         name: "nit two",
         severity: "nit",
         file: "b.ts",
@@ -536,7 +535,7 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
         edits: [{ file: "b.ts", oldText: "y", newText: "z" }],
         verifyCommand: "true",
       }),
-      consolidatorCluster({
+      verifierCluster({
         name: "copy nit",
         severity: "nit",
         userVisibleString: true,
@@ -566,8 +565,8 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
 
   it("names the strongest outcome among the nits a batch holds", async () => {
     const result = await lensRound(run, [
-      consolidatorCluster({ severity: "nit", verification: "refuted" }),
-      consolidatorCluster({ severity: "nit", verification: "unverifiable" }),
+      verifierCluster({ severity: "nit", verification: "refuted" }),
+      verifierCluster({ severity: "nit", verification: "unverifiable" }),
     ]);
     expect(result.clusters).toHaveLength(1);
     expect(result.clusters[0].verification).toBe("unverifiable");
@@ -575,14 +574,14 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
 
   it("adds no batch when every batched nit is refuted", async () => {
     const result = await lensRound(run, [
-      consolidatorCluster({ severity: "nit", verification: "refuted" }),
+      verifierCluster({ severity: "nit", verification: "refuted" }),
     ]);
     expect(result.clusters).toEqual([]);
   });
 
   it("adds no batch when no nit is batched", async () => {
     const result = await lensRound(run, [
-      consolidatorCluster({ severity: "nit", userVisibleString: true }),
+      verifierCluster({ severity: "nit", userVisibleString: true }),
     ]);
     expect(result.clusters).toEqual([clusterCore({ severity: "nit" })]);
   });
@@ -590,23 +589,23 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
   it("returns the edit and its command for a confirmed cluster that has both", async () => {
     const edits = [{ file: "a.ts", oldText: "let x", newText: "const x" }];
     const result = await lensRound(run, [
-      consolidatorCluster({
+      verifierCluster({
         name: "mechanical",
         edits,
         verifyCommand: "  npx vitest run a.test.ts ",
       }),
-      consolidatorCluster({
+      verifierCluster({
         name: "no command",
         edits,
         verifyCommand: "  ",
       }),
-      consolidatorCluster({
+      verifierCluster({
         name: "refuted",
         verification: "refuted",
         edits,
         verifyCommand: "true",
       }),
-      consolidatorCluster({ name: "judgment" }),
+      verifierCluster({ name: "judgment" }),
     ]);
     expect(result.clusters).toEqual([
       clusterCore({
@@ -620,10 +619,10 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     ]);
   });
 
-  it("asks the consolidator for the nit flag and the fix shape", async () => {
+  it("asks the verifier for the nit flag and the fix shape", async () => {
     let asked = null;
     await run(lensArgs, (prompt, options) => {
-      if (options.label === "consolidator") asked = prompt;
+      if (options.label === "verifier") asked = prompt;
       return lensReply(prompt, options);
     });
     expect(asked).toContain("userVisibleString");
@@ -637,7 +636,7 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     const asked = [];
     await run({ ...lensArgs, docs: ["docs/DESIGN.md"] }, (prompt, options) => {
       asked.push(prompt);
-      return options.label === "consolidator" ? clusters : review;
+      return options.label === "verifier" ? clusters : review;
     });
     expect(asked).toHaveLength(2);
     for (const prompt of asked) {
@@ -653,11 +652,11 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     );
   });
 
-  it("throws a salvage path when the consolidator is lost", async () => {
+  it("throws a salvage path when the verifier is lost", async () => {
     await expect(
       run(lensArgs, (prompt, options) =>
-        options.label === "consolidator" ? null : review,
+        options.label === "verifier" ? null : review,
       ),
-    ).rejects.toThrow(/The consolidator returned no structured result/);
+    ).rejects.toThrow(/The verifier returned no structured result/);
   });
 });
