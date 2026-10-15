@@ -120,11 +120,29 @@ export function iceGatheringRecordFor(
   return records.get(conn);
 }
 
-function describeError(error: IceServerError): string {
+function describeCode(error: IceServerError): string {
   const text = error.errorText.trim().slice(0, MAX_ERROR_TEXT_LENGTH);
   return text === ""
-    ? `${error.url} (error ${error.errorCode})`
-    : `${error.url} (error ${error.errorCode}: ${text})`;
+    ? `error ${error.errorCode}`
+    : `error ${error.errorCode}: ${text}`;
+}
+
+function describeFailures(
+  errors: ReadonlyArray<IceServerError>,
+): Array<string> {
+  const byUrl = new Map<string, Map<number, string>>();
+  for (const error of errors) {
+    let codes = byUrl.get(error.url);
+    if (codes === undefined) {
+      codes = new Map();
+      byUrl.set(error.url, codes);
+    }
+    if (!codes.has(error.errorCode))
+      codes.set(error.errorCode, describeCode(error));
+  }
+  return [...byUrl].map(
+    ([url, codes]) => `${url} (${[...codes.values()].join("; ")})`,
+  );
 }
 
 function listNamed(items: ReadonlyArray<string>): string {
@@ -158,11 +176,7 @@ export function relayFailureMessage(
   if (record.turnUrls.length === 0 || record.relayGathered) return undefined;
   const lead = "The connection did not open: no relay candidate was gathered.";
   if (record.turnErrors.length > 0) {
-    const failures = [
-      ...new Map(
-        record.turnErrors.map((error) => [error.url, describeError(error)]),
-      ).values(),
-    ];
+    const failures = describeFailures(record.turnErrors);
     const subject =
       failures.length === 1
         ? `The browser reported an error for relay server ${failures[0]}.`
