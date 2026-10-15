@@ -116,7 +116,7 @@ The relay below is that shape with binary frames, pause-and-resume forwarding, p
 - The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#relay-credential-derivation), with an expiry in the signed message, as the registrar's proof is built ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof)).
   A key of its own, rather than coturn's HMAC-SHA-1 credential reused, so a captured relay hello mints no TURN credential and a captured TURN credential opens no relay socket.
   The derivation and the proof are specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
-- The relay verifies the proof against the per-exchange keys it holds -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
+- The relay looks up the one key the hello names by exchange id, and verifies the proof against it -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
   A second socket with a role already held under that key is refused, which is the broker's `ID-TAKEN` for this path.
 - A run with no shared secret cannot mint the proof and refuses the relay before dialing, as it refuses a `turn` entry with no static credential today ([CLI.md](../CLI.md#turn)).
 
