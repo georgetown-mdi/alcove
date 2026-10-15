@@ -28,15 +28,16 @@ import type {
   DoctorReport,
   RelayTransport,
 } from "./verdict";
-import { fail, ok } from "./verdict";
+import { fail, ok, warn } from "./verdict";
 
 // `alcove doctor relay`: whether this host reaches each TURN relay a webrtc
-// run lists, asked as the run's ICE gathering asks. Before it asks them it
-// enrolls at the registrar the invitation's relay names, as a run does before
-// it dials; it contacts nothing else -- not connection.relay_registrar, where
-// a run registers the key a rotation makes, and no coordination server -- and
-// runs only when the operator names it. Contract: docs/spec/CLI_DOCTOR.md;
-// operator page: docs/CLI.md, Checking the relay of a WebRTC exchange.
+// run lists, asked as the run's ICE gathering asks. werift allocates on the
+// first TURN url a peer is given and ignores the rest, so only the first url's
+// outcome decides the verdict. Before it asks them it enrolls at the registrar
+// the invitation's relay names, as a run does before it dials; it contacts
+// nothing else, and runs only when the operator names it. Contract:
+// docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the relay of a
+// WebRTC exchange.
 
 /**
  * The one bound on the whole check: every relay is asked at once, and one
@@ -133,8 +134,11 @@ export function relayCheckTargets(
   }));
 }
 
+// werift retries a failed UDP allocation over TCP to the same host and port,
+// for a url naming `?transport=udp` as for one naming no transport
+// (test/integration/webrtc/doctorRelayGathering.test.ts).
 const TRANSPORT_LABEL: Record<RelayTransport, string> = {
-  udp: "UDP",
+  udp: "UDP, then TCP",
   tcp: "TCP",
   tls: "TLS",
 };
@@ -146,22 +150,34 @@ function sourceLabel(server: RunTurnServer): string {
 }
 
 /**
- * The lines printed before any request: every host the check contacts, and
- * what it does and does not do there. `registrar` is the one the
- * configuration's `invitation_relay` names, if any. Raw: the urls are
- * configuration text, escaped where the lines are shown.
+ * The lines printed before any request: every host the check contacts, which
+ * url a run allocates on, and what the check does and does not do there.
+ * `registrar` is the one the configuration's `invitation_relay` names, if
+ * any. Raw: the urls are configuration text, escaped where the lines are
+ * shown.
  */
 export function relayHostStatement(
   targets: ReadonlyArray<RelayCheckTarget>,
   registrar: string | undefined,
 ): string[] {
+  const allocating = targets[0];
+  if (allocating === undefined)
+    throw new InternalConsistencyError(
+      "relayHostStatement: the relay check was given no TURN url",
+    );
   const relays = [
-    "This check contacts these relays, asking each for a relay address as " +
-      "an exchange run does:",
+    "This check contacts these relays, asking each for a relay address:",
     ...targets.map(
       ({ server, transport }) =>
         `  ${server.url} over ${TRANSPORT_LABEL[transport]}, ${sourceLabel(server)}`,
     ),
+    ...(targets.length === 1
+      ? ["A run allocates on this relay."]
+      : [
+          `A run allocates on the first of them alone, ${allocating.server.url}. ` +
+            "The check asks the others so you can tell whether one would " +
+            "work if listed first.",
+        ]),
     "It sends each relay the credential a run sends.",
   ];
   if (registrar === undefined)
@@ -281,9 +297,25 @@ function boundSeconds(boundMs: number): string {
   return `${Math.round(boundMs / 1000)} s`;
 }
 
+const NOT_ALLOCATED_MEANING =
+  "a run allocates on the first TURN url it lists alone, so it does not " +
+  "allocate on this relay, and this result does not block a run as " +
+  "configured.";
+
+/** What to do about a later url that was not reached. */
+export const NOT_ALLOCATED_ACTION =
+  "If this relay should be the one a run allocates on, list it first under " +
+  "connection.turn and run this check again.";
+
+function capitalized(sentence: string): string {
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
 /**
  * The check record for one url, given whether a relay candidate came back and
- * the enrollment made before it was asked, if any.
+ * the enrollment made before it was asked, if any. The url at `index` 0 is the
+ * one a run allocates on, and only its miss is a `fail`; a later url's miss is
+ * a `warn`.
  */
 export function relayCheckRecord(
   target: RelayCheckTarget,
@@ -294,7 +326,12 @@ export function relayCheckRecord(
 ): DoctorCheckRecord {
   const id = `turn_${index + 1}`;
   const { server, transport } = target;
-  const heading = `${server.url} over ${TRANSPORT_LABEL[transport]}`;
+  const allocating = index === 0;
+  const heading =
+    `${server.url} over ${TRANSPORT_LABEL[transport]}, ` +
+    (allocating
+      ? "the relay a run allocates on"
+      : "listed but not allocated on by a run");
   const located = { url: server.url, transport };
   if (relayGathered)
     return ok(
@@ -302,11 +339,15 @@ export function relayCheckRecord(
       `${heading}: reached; the relay gave a relay address.`,
       located,
     );
-  return fail(
+  const summary = `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`;
+  const meaning = notReachedMeaning(server, enrollment);
+  if (allocating)
+    return fail(id, summary, meaning, RELAY_NOT_REACHED_REMEDY, located);
+  return warn(
     id,
-    `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`,
-    notReachedMeaning(server, enrollment),
-    RELAY_NOT_REACHED_REMEDY,
+    summary,
+    `${NOT_ALLOCATED_MEANING} ${capitalized(meaning)}`,
+    NOT_ALLOCATED_ACTION,
     located,
   );
 }

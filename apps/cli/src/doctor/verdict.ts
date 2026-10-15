@@ -121,8 +121,9 @@ export function warn(
   summary: string,
   meaning: string,
   action: string,
+  extra: Partial<DoctorCheckRecord> = {},
 ): DoctorCheckRecord {
-  return { id, status: "warn", summary, meaning, action };
+  return { id, status: "warn", summary, meaning, action, ...extra };
 }
 
 export function fail(

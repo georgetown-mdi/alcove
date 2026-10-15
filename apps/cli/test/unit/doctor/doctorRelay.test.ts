@@ -17,6 +17,7 @@ import { runProbe } from "../../../src/doctor/probe";
 import type { ProbeDeps } from "../../../src/doctor/probe";
 import {
   ENROLLMENT_CHECK_ID,
+  NOT_ALLOCATED_ACTION,
   RELAY_CHECK_NO_TURN_URL,
   RELAY_CHECK_WEBRTC_ONLY,
   RELAY_NOT_REACHED_REMEDY,
@@ -249,7 +250,13 @@ test("doctor relay names every relay and the registrar before it contacts either
     `${INVITATION_TURN} over TLS, from your partner's invitation`,
   );
   expect(statement).toContain(`${OWN_TURN} over TCP, from connection.turn`);
-  expect(statement).toContain(`${STATIC_TURN} over UDP, from connection.turn`);
+  expect(statement).toContain(
+    `${STATIC_TURN} over UDP, then TCP, from connection.turn`,
+  );
+  expect(statement).toContain(
+    `A run allocates on the first of them alone, ${OWN_TURN}.`,
+  );
+  expect(statement).not.toContain("as an exchange run does");
   expect(statement).toContain(
     "it enrolls this exchange's relay key at the relay registrar your " +
       "partner's invitation names, as a run does just before it connects:",
@@ -356,12 +363,54 @@ test("a relay that gives a relay candidate is reported reached", async () => {
     ],
   });
   expect(verdictLines(report)[0]).toBe(
-    `OK: ${INVITATION_TURN} over TLS: reached; the relay gave a relay address.`,
+    `OK: ${INVITATION_TURN} over TLS, the relay a run allocates on: reached; ` +
+      "the relay gave a relay address.",
   );
   expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
 });
 
-test("a relay that gives none is reported not reached, with the run's remedy", async () => {
+test("the relay a run allocates on that gives none fails the check, with the run's remedy", async () => {
+  writeThreeRelayConfig();
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    fetch: fakeRegistrar([registrationAnswer()]).fetch,
+    gather: scriptedGathering(
+      { [OWN_TURN]: false, [STATIC_TURN]: true, [INVITATION_TURN]: true },
+      [],
+    ),
+  });
+
+  expect(overallOf(report)).toBe("fix_and_retry");
+  expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(78);
+  const own = checkFor(report, OWN_TURN);
+  expect(own).toMatchObject({
+    id: "turn_1",
+    status: "fail",
+    transport: "tcp",
+    action: RELAY_NOT_REACHED_REMEDY,
+  });
+  expect(own.summary).toBe(
+    `${OWN_TURN} over TCP, the relay a run allocates on: ` +
+      `${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
+  );
+  expect(own.meaning).toContain("the check cannot tell which");
+  expect(checkFor(report, STATIC_TURN)).toMatchObject({
+    id: "turn_2",
+    status: "ok",
+    summary:
+      `${STATIC_TURN} over UDP, then TCP, listed but not allocated on by a ` +
+      "run: reached; the relay gave a relay address.",
+  });
+  expect(checkFor(report, INVITATION_TURN).status).toBe("ok");
+  const lines = verdictLines(report).join("\n");
+  expect(lines).toContain(`FAIL: ${OWN_TURN} over TCP`);
+  expect(lines).toContain("ACTION:  Fix the relay, or arrange a direct path;");
+});
+
+test("a later relay that gives none is a warning and leaves the verdict ok", async () => {
   writeThreeRelayConfig();
 
   const report = await checkRelay({
@@ -375,25 +424,45 @@ test("a relay that gives none is reported not reached, with the run's remedy", a
     ),
   });
 
-  expect(overallOf(report)).toBe("fix_and_retry");
-  expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(78);
+  expect(overallOf(report)).toBe("ok");
+  expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
+  expect(checkFor(report, OWN_TURN)).toMatchObject({
+    id: "turn_1",
+    status: "ok",
+    summary:
+      `${OWN_TURN} over TCP, the relay a run allocates on: reached; the ` +
+      "relay gave a relay address.",
+  });
   const fixed = checkFor(report, STATIC_TURN);
   expect(fixed).toMatchObject({
     id: "turn_2",
-    status: "fail",
+    status: "warn",
     transport: "udp",
-    action: RELAY_NOT_REACHED_REMEDY,
+    action: NOT_ALLOCATED_ACTION,
   });
   expect(fixed.summary).toBe(
-    `${STATIC_TURN} over UDP: ${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
+    `${STATIC_TURN} over UDP, then TCP, listed but not allocated on by a ` +
+      `run: ${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
+  );
+  expect(fixed.meaning).toMatch(
+    /^a run allocates on the first TURN url it lists alone, so it does not allocate on this relay/,
   );
   expect(fixed.meaning).toContain("the check cannot tell which");
   expect(fixed.meaning).not.toContain("enrolled");
-  expect(checkFor(report, INVITATION_TURN).meaning).toBe(fixed.meaning);
+  expect(verdictOf(report).checks[2]).toEqual({
+    id: "turn_2",
+    status: "warn",
+    meaning: fixed.meaning,
+    action: NOT_ALLOCATED_ACTION,
+    url: STATIC_TURN,
+    transport: "udp",
+  });
+  expect(checkFor(report, INVITATION_TURN).status).toBe("warn");
   const lines = verdictLines(report).join("\n");
-  expect(lines).toContain(`FAIL: ${STATIC_TURN} over UDP`);
-  expect(lines).toContain("ACTION:  Fix the relay, or arrange a direct path;");
-  expect(checkFor(report, OWN_TURN).status).toBe("ok");
+  expect(lines).toContain(`WARN: ${STATIC_TURN} over UDP, then TCP`);
+  expect(lines).toContain(
+    "ACTION:  If this relay should be the one a run allocates on, list it first",
+  );
 });
 
 test("a relay that has not answered when the bound expires is reported not reached", async () => {
@@ -411,7 +480,9 @@ test("a relay that has not answered when the bound expires is reported not reach
   expect(Date.now() - started).toBeLessThan(5_000);
   expect(checkFor(report, OWN_TURN)).toMatchObject({
     status: "fail",
-    summary: `${OWN_TURN} over TCP: ${NO_RELAY_CANDIDATE_GATHERED} within 0 s.`,
+    summary:
+      `${OWN_TURN} over TCP, the relay a run allocates on: ` +
+      `${NO_RELAY_CANDIDATE_GATHERED} within 0 s.`,
   });
   expect(checkFor(report, OWN_TURN).meaning).toContain("alcove enroll-relay");
 });

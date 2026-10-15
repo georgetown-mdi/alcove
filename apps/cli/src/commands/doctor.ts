@@ -197,9 +197,11 @@ export function builder(cmd: Argv): Argv {
           .usage("Usage: $0 doctor relay [options]")
           .epilog(
             "Asks each TURN relay the configuration lists for a relay " +
-              "address, as an exchange run does, after naming every host " +
-              "it contacts. Where the invitation's relay names a registrar, " +
-              "first enrolls the exchange's relay key there, as a run does. " +
+              "address, after naming every host it contacts. A run " +
+              "allocates on the first alone, so a later relay not reached " +
+              "is a warning. Where the invitation's relay names a " +
+              "registrar, first enrolls the exchange's relay key there, as " +
+              "a run does. " +
               "See docs/CLI.md, Checking the relay of a WebRTC exchange.",
           ),
       relayHandler,
