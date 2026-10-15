@@ -1419,20 +1419,18 @@ derived from the rotated secret at the registrar the record names
 not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 
 - **Written** by the rotation write that stores the rotated secret, in the same
-  strict-durability transaction, whenever the record names a registrar and the
-  invitation it was accepted from names no TURN url -- whether or not the run
-  registers, since a run relaying elsewhere leaves the registrar holding the
-  key of a secret the record no longer holds; so no moment exists at which the
-  record holds the rotated secret without it. A record whose invitation names a
-  TURN url relays through the partner's relay, which the partner registers at,
-  so its rotation writes store none. A rotation write on a record naming no
-  registrar stores one only when it carries it in from a command-line key file
-  (**Carried in**, below).
-- **Written by a re-invite** on a record that names a registrar and whose
-  invitation names no TURN url: the re-invite's rotation write stores the
-  marker with `relayRegistrationPendingReason` `"reinvite"`. Still under the
-  run+rotate lock the write took, the re-invite then registers the key derived
-  from the fresh secret, signed under the key of the secret it replaced, from
+  strict-durability transaction, whenever the record names a registrar --
+  whether or not the run registers, since a run that does not leaves the
+  registrar holding the key of a secret the record no longer holds; so no
+  moment exists at which the record holds the rotated secret without it. The
+  relay the invitation names does not change that. A rotation write on a record
+  naming no registrar stores one only when it carries it in from a command-line
+  key file (**Carried in**, below).
+- **Written by a re-invite** on a record that names a registrar: the
+  re-invite's rotation write stores the marker with
+  `relayRegistrationPendingReason` `"reinvite"`. Still under the run+rotate
+  lock the write took, the re-invite then registers the key derived from the
+  fresh secret, signed under the key of the secret it replaced, from
   its own copy of the record it read in that transaction
   (`registerReinvitedManagedRelayKey`). A confirmed registration removes both
   fields; any other answer leaves them.
@@ -1469,7 +1467,7 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   recurring list, with since when and the step that registers the key: the
   retry before the next run where a run can still confirm it, owner-token
   re-enrollment for the reason `"reinvite"`, and enrollment on a record naming
-  no registrar. A record whose invitation names a TURN url shows none.
+  no registrar.
 - **Carried in** from a command-line key file holding the CLI's own field
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
   pair import and the hand-off re-take, so the exchange's first run here
@@ -1529,12 +1527,13 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   setting this build cannot read is refused apart, naming setting it again.
   The panel's preview and its download compose from one read of the relay
   settings, so the files name the urls the panel showed.
-- **A record whose runs relay through the partner's relay writes neither.**
-  When the invitation the record was accepted from names a TURN url, a run
-  relays there and registers nothing, here or on the command line, so the
-  export writes no `connection.relay_registrar` and no own `turn` entry and
-  reads no relay setting; the configuration's `invitation_relay` is the relay
-  its runs use. Such a record is also not refused for a pending re-invite
+- **A record whose command-line runs would relay through the partner's relay
+  writes neither.** When the invitation the record was accepted from names a
+  TURN url, a command-line run relays there in place of its own relay
+  ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)) and registers
+  nothing, so the export writes no `connection.relay_registrar` and no own
+  `turn` entry and reads no relay setting; the configuration's
+  `invitation_relay` is the relay its runs use. Such a record is also not refused for a pending re-invite
   registration, and its key file writes no pending marker.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
