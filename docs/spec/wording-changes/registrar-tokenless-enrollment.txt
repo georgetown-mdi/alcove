@@ -7,7 +7,7 @@
 - - -> A body naming any other `maxAgeDays` is answered 400 and nothing is written: the caller does not choose the lapse.
 - - -> **The lapse.**
 - - -> The registrar fixes it at 4200 s (70 minutes) after the enrollment, the web application's 10-minute wait for its partner followed by one credential's `ttl` of 3600 s, and states it in the answer: `maxAgeDays` is `null` and `lapsesAt` is that time.
-- - -> A `PUT` under a proof on such a row, a renewal or a rotation, keeps that lapse whatever `maxAgeDays` its body names, so a row enrolled without a token never outlives it; only the relay-owner token's `PUT`, the operator's recovery route, replaces it.
+- - -> A `PUT` under a proof on such a row, a renewal or a rotation, keeps that lapse whatever `maxAgeDays` its body names, so a row enrolled without a token is never extended past it; the key still authenticates until the next sweep removes the lapsed row, up to the sweep's interval later ([infra/relay/README.md](../../infra/relay/README.md#the-registrar)); only the relay-owner token's `PUT`, the operator's recovery route, replaces it.
 - - -> **The same key, and another.**
 - - -> An enrollment naming the key the id already holds is answered 200 with the registration as held, its lapse unchanged, so either party, each deriving the key from the same secret, may enroll it.
 - - -> An enrollment naming another key is answered 409, as for the token's, so a caller cannot replace or revoke an exchange whose key it does not hold.
