@@ -51,3 +51,4 @@
 - - -> A `relay_registrar` of its own is registered as [above](#registering-the-rotated-relay-key) whatever the enrollment's outcome.
 - - -> The registrar holds at most 10 rows enrolled without a token for each client address ([infra/relay/README.md](../../infra/relay/README.md#enrollment-without-a-token)), so a host running more exchanges at once than that can be refused.
 - - -> The refusal is a 429, reported as above.
+- - -> A registrar url is written as its https origin, a lower-case host and an optional port other than 0 or 443 and nothing after them; a url in any other form, including one a configuration or a stored exchange record carries from before this rule, is refused and must be rewritten.
