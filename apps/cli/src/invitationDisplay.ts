@@ -118,8 +118,10 @@ export function marked(
  */
 export function invitationRelayRegistrarLine(registrar: Displayable): string {
   return (
-    `Each run registers this exchange at ${registrar} before it connects, ` +
-    "and whoever runs that registrar learns your network address."
+    `A run registers this exchange at ${registrar} before it connects ` +
+    "only when that relay is the one it allocates on, with no turn entry " +
+    "of your own listed first, and whoever runs that registrar then " +
+    "learns your network address."
   );
 }
 
