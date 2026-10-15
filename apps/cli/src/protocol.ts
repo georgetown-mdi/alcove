@@ -426,12 +426,11 @@ async function runExchangeStage(params: {
   emit((e) => e.stages(stageDefinitions));
   onRunPhase();
   return runExchange(
-    // Encrypted path: `secure` is the AEAD decorator over mc (the
-    // handshake negotiated applyEncryption), so PSI frames are encrypted
-    // on the wire. Otherwise secure is undefined and the exchange runs
-    // over the unencrypted mc (transport security only): the no-auth
-    // zero-setup path (which runs the --save bootstrap), and the
-    // authenticated path where applyEncryption negotiated false.
+    // Every authenticated run reaches here with `secure`, the AEAD
+    // decorator over mc, since authenticateRun refuses a handshake that
+    // negotiated the wrap off; PSI frames are encrypted on the wire. Only
+    // the no-auth zero-setup path (which runs the --save bootstrap) runs
+    // over the bare mc, under transport security only.
     run.secure ?? mc,
     role,
     prepared,
