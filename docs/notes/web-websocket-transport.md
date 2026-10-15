@@ -43,7 +43,7 @@ The pieces a WebSocket path would build on, with where each is stated:
 - **The wrap is a decorator over any `MessageConnection`.**
   `EncryptedMessageConnection` (`packages/core/src/connection/encryptedMessageConnection.ts`) runs on WebCrypto, and the request bit is the fourth argument of `authenticateConnection` (`packages/core/src/auth.ts`).
   The web application requests and applies the wrap on every WebRTC exchange (`apps/web/src/psi/authenticateExchange.ts`; [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#application-layer-encryption)).
-  That no browser exchange has run the wrap is a stated limit of the earlier note, and this one inherits it ([browser-sftp-proxy.md](browser-sftp-proxy.md#channel-security)).
+  The earlier note stated as a limit that no browser exchange had run the wrap ([browser-sftp-proxy.md](browser-sftp-proxy.md#channel-security)); the web application now applies it on every WebRTC exchange, so this note does not inherit that limit.
 - **Every web WebRTC exchange has a shared secret.**
   No secret-less rendezvous is offered on the web ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), so a session key exists for the wrap on every browser exchange this note concerns.
 - **A per-exchange relay key exists.**
