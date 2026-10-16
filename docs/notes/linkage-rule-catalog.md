@@ -83,7 +83,8 @@ Chance agreement on a name and a date grows with the number of people the two fi
 Rule 30 puts the same condition into the rule itself, as a `STATE` or `COUNTY` element.
 
 A file drawn from one age group, such as one school class or one birth cohort, behaves like a far larger file, because its members share birth years.
-In one graduating class, 0.12% of students repeated a name and date of birth (Fong 2018), and at least 0.5% of California's K-12 records did (Barrat et al. 2013).
+In one graduating class of 428,410 students, about 500 combinations of name and date of birth appeared more than once, 0.12% (Fong et al. 2018), so at least about 0.23% of the students shared theirs (computed here).
+Among California's 5,969,112 K-12 records, 14,781 combinations appeared more than once, 0.25% (Barrat and Berliner 2013), so at least 0.49% of the records shared theirs (computed here).
 The bands assume files spanning all ages (reasoning).
 
 ### One loosened element
@@ -137,7 +138,7 @@ Eleven of the fourteen shipped rules are in the 99% band; rules 26, 31 and 32 ar
 
 Rules 1 to 13 rest on one measurement.
 Grannis et al. (2002) linked the registries of two Indiana hospitals to the Indiana Death Master File by SSN, with partial review of the links, in one 1990s dataset.
-Grannis et al. (2003) and Grannis et al. (2004) reused that dataset rather than replicating the result.
+Grannis et al. (2003) and Grannis et al. (2004) used the same two registries and the same pairs, so they do not replicate the result.
 SSN availability in health systems' records fell from 83% in 2005 to 50% in 2014 (Culbertson et al. 2017), so the measured file had more SSNs than a file collected today.
 
 The most common SSN error there "appeared to be" a spousal mix-up, a woman's record linked to a man's sharing her last name, read as the guarantor's number on the spouse's record (Grannis et al. 2002).
@@ -202,7 +203,7 @@ A full first name separates spouses who share a surname and an SSN.
 Catches names spelled differently that keep their phonetic code; it runs after rule 7, a refinement of it.
 In Grannis et al. (2002), SSN + NYSIIS-coded names found 234 and 90 more correct links than rule 7 (4,775 and 5,247), at the same count of wrong links (7 and 2).
 Alcove's phonetic transform is Soundex, not NYSIIS.
-Three sources compare the two codes (Sun and Golden 2019; Bailey et al. 2020; Christen 2006), none beside an SSN; [linkage-rule-grounding.md](linkage-rule-grounding.md#phonetic-names) sets them out.
+Three sources compare the two codes (Sun and Golden 2019; Bailey et al. 2020; Christen 2006); only Sun and Golden compare them beside a full SSN, and they count the pairs each code agrees on, not false agreements; [linkage-rule-grounding.md](linkage-rule-grounding.md#phonetic-names) sets them out.
 
 #### 9. `SSN + LN + FN1`
 
@@ -244,7 +245,8 @@ The spousal mix-up behind rule 6's wrong links would also need the same birth ye
 ### Rules with the last four SSN digits
 
 Some record systems collect only the last four SSN digits.
-By Hillestad et al.'s (2008) collision counts, adding those four digits to a name + date key divides its chance agreements by about 5,900 (computed here); removing them from a name + DOB + ZIP key created nearly 1,000 false positives in a 79-million-record file.
+The four digits take 10,000 values, so adding them to a name + date key divides its chance agreements by about 10,000 where the digits are spread evenly (computed here).
+In Hillestad et al.'s (2008) collision counts, removing them from a name + DOB + ZIP key created nearly 1,000 false positives in a 79-million-record file.
 
 #### 14. `SSN4 + LN + DOB`
 
@@ -268,7 +270,7 @@ Cook County added a two-last-names step after its validation that found 1,988 mo
 
 Catches a changed last name when only the last four SSN digits are held.
 A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
-It appeared in 48 of the 200 sampled matches Cook County's rules missed, 24% (computed here), and some matches had several errors (Trick et al. 2019).
+It was a reason in 48 of the 200 sampled matches Cook County's rules missed, which Table 3 prints as 23% of the reasons listed, some matches having several (Trick et al. 2019).
 Naessens et al. (2015) found last four SSN + DOB + sex at 99.9%; this rule replaces sex with the first name (reasoning).
 
 #### 17. `SSN4 + LN + FN + DOB +/-1 year`
@@ -281,7 +283,7 @@ linkja emits a hash of the date plus one year, and its matching component compar
 Cook County's rule of the same shape found 313 matches its EHR process missed (Trick et al. 2019).
 Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable, which is 189 of 190 adjudicable (computed here).
 The sample holds only matches the EHR process missed, the matches both systems found being assumed true, so it is not the six rules' precision.
-With the last four SSN digits dividing chance agreement by about 5,900 (Hillestad et al. 2008, computed here), three candidate years add few chance agreements (reasoning).
+With the last four SSN digits dividing chance agreement by about 10,000 (computed here, from their 10,000 values), three candidate years add few chance agreements (reasoning).
 
 #### 18. `SSN4 + LN + FN + DOB +/-1 day`
 
@@ -348,7 +350,7 @@ It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rul
 
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0% at two sites, and this rule adds the date of birth, so its false pairs are a subset (reasoning).
 That measurement is one setting, its truth is mother-child relationships only, and its phone cleaning is not described.
-A mother-child reference table can be incomplete: Rogerson (2026) found 55% of 200 reviewed false positives were true relationships missing from the gold standard, so the measured figure may understate precision; that source is new and not yet cited elsewhere.
+A gold standard of mother-child relationships drawn from EHR records can be incomplete: Rogerson et al. (2026), testing a maternal-child linkage against relationships taken from maternity encounters and EHR relationship tables, reviewed 200 randomly selected false positives and found 55% were true relationships the gold standard lacked, so the measured figure may understate precision; that source is new and not yet cited elsewhere.
 It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rule 31 drops as ambiguous within one party's file, mostly one person recorded twice (reasoning).
 
 #### 24. `FN + DOB + PHONE`
@@ -358,9 +360,9 @@ It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rul
 Catches a changed last name with no SSN.
 The reasoning:
 
-1. Polubriaginof et al. (2018) measured first name + phone at 98.9% at two sites, with no date.
+1. Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites, with no date.
 2. What a first name and a phone leave is the same-name parent and child on a household phone, and the date of birth removes it (reasoning).
-3. The measurement's mother-child truth may understate its precision (Rogerson 2026), as for rule 23.
+3. The measurement's mother-child truth may understate its precision (Rogerson et al. 2026), as for rule 23.
 
 The N3C configuration ships first name + cell phone (Regenstrief Institute 2021).
 The shared-contact screen (rule 36a) shrinks this rule's floor too.
@@ -429,7 +431,7 @@ The evidence spans a range, and both ends are stated.
 
 Within one state or county:
 
-- **Cole and Lee (2004)** found name + date false positives of 0.2% to 6.5% by state, against a probabilistic reference, and 11.8% for infants.
+- **Cole and Lee (2004)** matched WIC to food stamp records in Florida, Iowa and Kentucky and found name + date false positives of 0.2% to 6.5% by state, against a probabilistic reference, and 11.8% for infants in Iowa.
   It is cited at low weight; Nechuta and Bian are the main in-state evidence.
   Iowa is the one in-state outlier, at 6.5% (93.5% precision on the one reading of Table 27 that reconciles its rows, computed here), and plausibly an error in the reference.
   Iowa's WIC file had no SSN field, SSNs were taken from participant identifiers for women only, and the "false" pairs fall where the reference was weakest: women 0.0%, children 6.9%, infants 11.8%.
@@ -466,9 +468,10 @@ linkja (MRAIA 2020) and Cook County use the same device.
 95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31. New.
 
 Catches one part of a compound last name dropped or the parts reversed.
-Barrat et al. (2013) found steps splitting names added 9.1% of a statewide two-file match's pairs, with 0 of 20 reviewed pairs false; the 9.1% is an upper bound, since the steps also cut compound first names.
-On that gain the 95% band is met where rule 31's own false share is under about 3% (computed here).
-A hyphenated last name appeared in 50 of the 200 sampled matches Cook County's rules missed, 25% (computed here) (Trick et al. 2019).
+Barrat and Berliner (2013), matching California's foster-care records to its K-12 records, found two steps splitting names added 9.1% of the final matches (memorandum Table 4); the 9.1% is an upper bound, since the steps also cut compound first names.
+A review of 20 matches from each step found all 40 true, but the review was run while the steps were being refined, so the sample was not drawn blind.
+With the factor `k` by which splitting multiplies rule 31's chance agreement taken as 0.3 (reasoning), the 95% band is met where rule 31's own false share is under about 1.6% at that 9.1% gain, and under about 0.7% at a 4% gain (computed here, from the formula in [linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)).
+A hyphenated last name was a reason in 50 of the 200 sampled matches Cook County's rules missed, which Table 3 prints as 24% of the reasons listed; Cook County changed its name processing after the project to catch them (Trick et al. 2019).
 linkja's overview describes hashing each part of a compound surname, but the shipped code disables it (MRAIA 2020).
 
 #### 34. `LN + FN + YOB + MOB + ZIP5`
@@ -522,7 +525,7 @@ See [The email rules](#the-email-rules).
 95%. Any coverage. The maintainer's judgment, pending evidence. Needs `name_suffix`.
 
 Catches any date-of-birth error with no SSN, for records with an email address.
-Kim (2019) is its nearest measurement.
+Kim et al. (2019) is its nearest measurement.
 It is stricter than first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
 
 #### 39. `EMAIL + SDX(LN) + FN + SFX`
@@ -534,12 +537,12 @@ As rule 38, with a last name that keeps its Soundex code; it runs after rule 38,
 ### The Soundex-surname rules
 
 Rules 28, 36 and 39 are the least supported in the catalog.
-Every measurement of a Soundex surname as the only loosened name element, without geography or a contact field, falls far below 95%:
+Every measurement of a Soundex surname as the only loosened name element, without geography or a contact field, falls below 95%:
 
-- Rogot et al. (1983) found 2 of 34 pairs true where the last name agreed only by Soundex.
+- Rogot et al. (1983) found 2 of 34 reviewed pairs true where the last name agreed only by Soundex, the first name and birth year and month agreed exactly, and no SSN was available (Table 1).
 - In Mirel et al. (2022), the Soundex-names token alone was 81.4% false.
-- Ocampo et al. (2016) confirmed 46.7% to 79.1% of its Soundex-level matches.
-- NCHS moved the National Death Index to NYSIIS on last names after finding Soundex added few true positives (Patterson 1985).
+- In Ocampo et al. (2016), the tier that pools Soundex-coded first and last names + DOB with an exact last name + DOB rule had 46.7% to 90.3% of its matches confirmed across six jurisdiction checks (Tables 3 to 5); the Maryland figures come from a 5% sample.
+- NCHS planned to drop Soundex from National Death Index matching and use NYSIIS on last names, after evaluations found Soundex agreed on dissimilar names, adding false positives and very few true positives; no counts are given (Patterson and Bilgrad 1985).
 
 The three rules are unmeasured rather than contradicted, since each has a ZIP or a contact field.
 Beside a ZIP, a Soundex surname admits about three times the chance pairs (Randall et al. 2013), far inside the band; beside a phone or email the floor is household sharing, where the surname is the same anyway (reasoning).
@@ -550,7 +553,7 @@ Whether Alcove adds a NYSIIS transform is open ([linkage-rule-grounding.md](link
 
 The three email rules are in the 95% band by the maintainer's judgment, an exception to the evidence standard while evidence for them is gathered.
 No source measures an email rule on program records.
-One measurement exists outside program data: Kim (2019) found pairs sharing a full email address were the same author in 26,870 of 26,942 (99.73%) against ORCID identifiers.
+One measurement exists outside program data: Kim et al. (2019) found pairs sharing a full email address were the same author in 26,870 of 26,942 (99.73%) against ORCID identifiers.
 The email was attached only where it resembled the author's name, so it is nearest rule 38 on researchers' institutional addresses.
 UCLA found 13 of 100 pairs agreeing on an email alone were the same person, in a stratum its EHR module had left unlinked (Ross et al. 2020).
 The HL7 identity-matching guide grades first + last name + DOB + email "Superior" on uniqueness rather than measured precision (HL7 International 2025).
@@ -579,45 +582,44 @@ An operator reaches them only by authoring them in the expert key editor.
 
 Each entry begins with the short form the text cites it by.
 The list includes the sources the design rationale cites for the bands; the rationale's other sources are listed in [linkage-rule-grounding.md](linkage-rule-grounding.md#sources).
-An entry reading "full reference not recorded here" names a source whose bibliographic detail is still to be added.
 
 - **Ansolabehere and Hersh 2016.** Ansolabehere S, Hersh ED. "ADGN: An Algorithm for Record Linkage Using Address, Date of Birth, Gender and Name." Author manuscript, 2016. https://www.eitanhersh.com/uploads/7/9/7/5/7975685/agdn_v1_4.pdf
-- **Bailey et al. 2020.** Bailey, Cole, Henderson, Massey. "How Well Do Automated Linking Methods Perform?" Journal of Economic Literature, 2020. https://pmc.ncbi.nlm.nih.gov/articles/PMC8294155/
-- **Barrat et al. 2013.** Barrat VX, et al. A statewide two-file match of California K-12 student records. Full reference not recorded here.
-- **Beauchamp et al. 2011.** Beauchamp A, Tonkin AM, Kelsall H, et al. "Validation of de-identified record linkage to ascertain hospital admissions in a cohort study." BMC Medical Research Methodology 11:42, 2011.
+- **Bailey et al. 2020.** Bailey, Cole, Henderson, Massey. "How Well Do Automated Linking Methods Perform? Lessons from U.S. Historical Data." Journal of Economic Literature 58(4):997-1044, 2020. doi:10.1257/jel.20191526. https://pmc.ncbi.nlm.nih.gov/articles/PMC8294155/
+- **Barrat and Berliner 2013.** Barrat VX, Berliner B. "The Invisible Achievement Gap, Part 1: Education Outcomes of Students in Foster Care in California's Public Schools." WestEd, 2013; with its "Technical Memorandum for The Invisible Achievement Gap, Part 1: Linkage Between Data From the California Department of Education and From the California Department of Social Services," WestEd, 2013, Table 4. https://courts.ca.gov/sites/default/files/courts/default/2024-12/btb_xxii_iiia_13.pdf and https://web.archive.org/web/20140711145758id_/http://www.cftl.org/documents/2013/IAG/IAG_TM.pdf
+- **Beauchamp et al. 2011.** Beauchamp A, Tonkin AM, Kelsall H, et al. "Validation of de-identified record linkage to ascertain hospital admissions in a cohort study." BMC Medical Research Methodology 11:42, 2011. doi:10.1186/1471-2288-11-42
 - **Bell et al. 2026.** Bell DS, Saleh T, Sanz Vidorreta FJ, Pirani CN, Pevnick JM, Jenders RA, et al. "Accuracy of an XGBoost-based privacy preserving record linkage system compared with an electronic health record patient matching module in identifying patients shared between nearby academic health centers." Journal of the American Medical Informatics Association 33(4):901-908, 2026; Supplementary Table 1. doi:10.1093/jamia/ocag020
 - **Bernstam et al. 2022.** Bernstam EV, Applegate RJ, Yu A, Chaudhari D, Liu T, Coda A, et al. "Real-World Matching Performance of Deidentified Record-Linking Tokens." Applied Clinical Informatics 13(4):865-873, 2022. doi:10.1055/a-1910-4154
 - **Bian et al. 2019.** Bian J, Loiacono A, Sura A, Mendoza Viramontes T, Lipori G, Guo Y, et al. "Implementing a hash-based privacy-preserving record linkage tool in the OneFlorida clinical research network." JAMIA Open 2(4):562-569, 2019. doi:10.1093/jamiaopen/ooz050
 - **Cao et al. 2026.** Cao C, Pillai J, Daraei S, Ghadermarzi S. "Linking patient records at scale with a hybrid approach combining contrastive learning and deterministic rules." Biology Methods and Protocols 11(1):bpag009, 2026. doi:10.1093/biomethods/bpag009
-- **Christen 2006.** Christen P. A comparison of Soundex and NYSIIS. Full reference not recorded here.
-- **Cole and Lee 2004.** Cole N, Lee E. A match of WIC and other program records by state, with name + date false-positive rates by state and by participant category (Table 27). Full reference not recorded here.
+- **Christen 2006.** Christen P. "A comparison of personal name matching: techniques and practical issues." Joint Computer Science Technical Report Series TR-CS-06-02, Department of Computer Science, Australian National University, 2006; Table 4. A version appeared in the ICDM 2006 workshops, doi:10.1109/icdmw.2006.2.
+- **Cole and Lee 2004.** Cole N, Lee E. "Feasibility and Accuracy of Record Linkage To Estimate Multiple Program Participation, Volume III: Results of Record Linkage." Abt Associates for the U.S. Department of Agriculture, Economic Research Service, E-FAN-03-008-3, 2004; Table 27. https://www.ers.usda.gov/webdocs/publications/43308/30264_efan03008-3_002.pdf
 - **Culbertson et al. 2017.** Culbertson A, Goel S, Madden MB, Safaeinili N, Jackson KL, Carton T, et al. "The Building Blocks of Interoperability: A Multisite Analysis of Patient Demographic Attributes Available for Matching." Applied Clinical Informatics 8(2):322-336, 2017. doi:10.4338/ACI-2016-11-RA-0196
-- **Fong 2018.** Fong AB. Repeated name and date-of-birth combinations within one graduating class. Full reference not recorded here.
+- **Fong et al. 2018.** Fong A, Barrat V, Finkelstein N. "Examination of data usability options for assessing eligibility for higher education in California." WestEd, 2018.
 - **Goel et al. 2020.** Goel S, Meredith M, Morse M, Rothschild D, Shirani-Mehr H. "One Person, One Vote: Estimating the Prevalence of Double Voting in U.S. Presidential Elections." American Political Science Review 114(2):456-469, 2020; supplementary appendix, Figure A.3. doi:10.1017/S000305541900087X
 - **Grannis 2005.** Grannis SJ. Slides presented to the National Committee on Vital and Health Statistics, 2005 (presentation, not peer-reviewed); the no-SSN rule's specificity against the Indiana subset and the full Death Master File.
 - **Grannis et al. 2002.** Grannis SJ, Overhage JM, McDonald CJ. "Analysis of Identifier Performance Using a Deterministic Linkage Algorithm." Proceedings of the AMIA Annual Symposium 2002:305-309. https://pmc.ncbi.nlm.nih.gov/articles/PMC2244404/
 - **Grannis et al. 2003.** Grannis SJ, Overhage JM, Hui S, et al. "Analysis of a probabilistic record linkage technique without human review." Proceedings of the AMIA Annual Symposium 2003:259-263.
-- **Grannis et al. 2004.** Grannis SJ, et al. A further analysis of the 2002 dataset. Full reference not recorded here.
+- **Grannis et al. 2004.** Grannis SJ, Overhage JM, McDonald C. "Real world performance of approximate string comparators for use in patient matching." Studies in Health Technology and Informatics 107(Pt 1):43-47, 2004 (MEDINFO 2004). https://lhncbc.nlm.nih.gov/LHC-publications/PDF/pub9111.pdf
 - **Hillestad et al. 2008.** Hillestad R, Bigelow JH, Chaudhry B, Dreyer P, Greenberg MD, Meili RC, et al. "Identity Crisis: An Examination of the Costs and Benefits of a Unique Patient Identifier for the U.S. Health Care System." RAND Corporation, MG-753-HLTH, 2008. https://www.rand.org/content/dam/rand/pubs/monographs/2008/RAND_MG753.pdf
 - **HL7 International 2025.** HL7 International, Patient Administration Work Group. "Patient Matching," in Interoperable Digital Identity and Patient Matching, v2.0.0 (STU 2), HL7 FHIR US implementation guide, 2025. https://hl7.org/fhir/us/identity-matching/patient-matching.html
 - **Just et al. 2016.** Just BH, Marc D, Munns M, Sandefer R. "Why Patient Matching Is a Challenge: Research on Master Patient Index (MPI) Data Discrepancies in Key Identifying Fields." Perspectives in Health Information Management 13(Spring):1e, 2016. https://pmc.ncbi.nlm.nih.gov/articles/PMC4832129/
 - **Karmel and Gibson 2007.** Karmel R, Gibson D. "Event-based record linkage in health and aged care services data: a methodological innovation." BMC Health Services Research 7:154, 2007. doi:10.1186/1472-6963-7-154
-- **Kim 2019.** Kim J. Author-name disambiguation against ORCID identifiers, with email addresses attached where they resemble the author's name. Full reference not recorded here.
+- **Kim et al. 2019.** Kim J, Kim J, Owen-Smith J. "Generating automatically labeled data for author name disambiguation: an iterative clustering method." Scientometrics 118(1):253-280, 2019; Table 4. doi:10.1007/s11192-018-2968-3
 - **Landsbach 2016.** Landsbach GD. "Study Analyzes Causes and Consequences of Patient Overlay Errors." Journal of AHIMA 87(9):40-43, 2016.
 - **Mirel et al. 2022.** Mirel LB, Resnick DM, Aram J, Cox CS. "A methodological assessment of privacy preserving record linkage using survey and administrative data." Statistical Journal of the IAOS 38(2):413-421, 2022; Figure 1 and Table 1. doi:10.3233/sji-210891
 - **MRAIA 2020.** Medical Research Analytics and Informatics Alliance. linkja-hashing and linkja-matching, source code as shipped, with "Privacy Preserving Record Linkage: Linkja Overview" (2019). GitHub, last revised 2020. https://github.com/MRAIA-ORG/linkja-hashing
 - **Naessens et al. 2015.** Naessens JM, Visscher SL, Peterson SM, Swanson KM, Johnson MG, Rahman PA, et al. "Incorporating the Last Four Digits of Social Security Numbers Substantially Improves Linking Patient Data from De-identified Hospital Claims Databases." Health Services Research 50(Suppl 1):1339-1350, 2015. doi:10.1111/1475-6773.12323
-- **Nechuta et al. 2020.** Nechuta S, Mukhopadhyay S, Krishnaswami S, Golladay M, McPheeters M. "Record Linkage Approaches Using Prescription Drug Monitoring Program and Mortality Data for Public Health Analyses and Epidemiologic Studies." Epidemiology 31(1):22-31, 2020.
-- **Newman and Brown 1997.** Newman TB, Brown AN. "Use of Commercial Record Linkage Software and Vital Statistics to Identify Patient Deaths." Journal of the American Medical Informatics Association 4(3):233-237, 1997.
+- **Nechuta et al. 2020.** Nechuta S, Mukhopadhyay S, Krishnaswami S, Golladay M, McPheeters M. "Record Linkage Approaches Using Prescription Drug Monitoring Program and Mortality Data for Public Health Analyses and Epidemiologic Studies." Epidemiology 31(1):22-31, 2020. doi:10.1097/EDE.0000000000001110
+- **Newman and Brown 1997.** Newman TB, Brown AN. "Use of Commercial Record Linkage Software and Vital Statistics to Identify Patient Deaths." Journal of the American Medical Informatics Association 4(3):233-237, 1997. doi:10.1136/jamia.1997.0040233
 - **Ocampo et al. 2016.** Ocampo JMF, Smart JC, Allston A, Bhattacharjee R, Boggavarapu S, Carter S, et al. "Improving HIV Surveillance Data for Public Health Action in Washington, DC: A Novel Multiorganizational Data-Sharing Method." JMIR Public Health and Surveillance 2(1):e3, 2016. doi:10.2196/publichealth.5317
-- **Ong et al. 2024.** Ong T, et al. Disguised missing values in clinical data. Journal of the American Medical Informatics Association 31(11):2651, 2024. https://academic.oup.com/jamia/article/31/11/2651/7762307
+- **Ong et al. 2024.** Ong T, et al. "Linkability measures to assess the data characteristics for record linkage." Journal of the American Medical Informatics Association 31(11):2651-2659, 2024. doi:10.1093/jamia/ocae248
 - **Park and Finnell 2012.** Park SC, Finnell JT. "Indianapolis Emergency Medical Service and the Indiana Network for Patient Care: Evaluating the Patient Match Algorithm." AMIA Annual Symposium Proceedings 2012:1221-1228. https://pmc.ncbi.nlm.nih.gov/articles/PMC3540486/
-- **Patterson 1985.** Patterson JE. On the National Death Index's change from Soundex to NYSIIS for last names; its supplement gives a table of the comparison with no method stated. Full reference not recorded here.
-- **Polubriaginof et al. 2018.** Polubriaginof FCG, et al. Name and phone combinations measured at two sites against mother-child relationships. Full reference not recorded here.
+- **Patterson and Bilgrad 1985.** Patterson JE, Bilgrad R. "The National Death Index Experience: 1981-1985." In Record Linkage Techniques - 1985, Internal Revenue Service, Statistics of Income, 1985, pp. 245-254. https://www.irs.gov/pub/irs-soi/1985preprintar17.pdf
+- **Polubriaginof et al. 2018.** Polubriaginof FCG, Vanguri R, Quinnies K, et al. "Disease Heritability Inferred from Familial Relationships Reported in Medical Records." Cell 173(7):1692-1704, 2018; Table S4. doi:10.1016/j.cell.2018.04.032
 - **Randall et al. 2013.** Randall SM, Ferrante AM, Boyd JH, Semmens JB. "The effect of data cleaning on record linkage quality." BMC Medical Informatics and Decision Making 13:64, 2013. doi:10.1186/1472-6947-13-64
 - **Regenstrief Institute 2021.** Regenstrief Institute. "N3C Linkage Honest Broker - Site Technical Engagement Packet," version 6, 2021; Appendix H. https://www.regenstrief.org/wp-content/uploads/2022/04/siteengagementpacket-pre-nda-v06.pdf
-- **Rogerson 2026.** Rogerson, 2026: a review of 200 false positives of a mother-child linkage against its reference table. Full reference not recorded here.
-- **Rogot et al. 1983.** Rogot E, Feinleib M, Ockay KA, et al. "On the feasibility of linking census samples to the National Death Index for epidemiologic studies: a progress report." American Journal of Public Health 73(11):1265-1269, 1983.
+- **Rogerson et al. 2026.** Rogerson CM, Bartlett CW, Price J, Li L, Mendonca EA, Grannis S. "Derivation and validation of an algorithm for maternal-child linkage in electronic health records." Journal of the American Medical Informatics Association 33(2):451-456, 2026. doi:10.1093/jamia/ocaf177
+- **Rogot et al. 1983.** Rogot E, Schwartz SH, O'Conor KV, Olsen CL. "The Use of Probabilistic Methods in Matching Census Samples to the National Death Index." In Record Linkage Techniques preprints, Internal Revenue Service, Statistics of Income, 1983; Table 1. https://www.irs.gov/pub/irs-soi/1983preprintar30.pdf
 - **Ross et al. 2020.** Ross MK, Sanz J, Tep B, Follett R, Soohoo SL, Bell DS. "Accuracy of an Electronic Health Record Patient Linkage Module Evaluated between Neighboring Academic Health Care Centers." Applied Clinical Informatics 11(5):725-732, 2020. doi:10.1055/s-0040-1718374
-- **Sun and Golden 2019.** Sun and Golden, 2019: a comparison of Soundex and NYSIIS. Full reference not recorded here.
+- **Sun and Golden 2019.** Sun Y, Golden C. "Comparing Multiple SAS Functions for Text Field Matching in Data Linkage: SOUNDEX, NYSIIS, COMPGED." SAS Global Forum 2019, paper 3755-2019. https://support.sas.com/resources/papers/proceedings19/3755-2019.pdf
 - **Trick et al. 2019.** Trick WE, Doshi K, Ray MJ, Angulo F. "Development and Evaluation of Record Linkage Rules in a Safety-Net Health System Serving Disadvantaged Communities." ACI Open 3:e63-e70, 2019. doi:10.1055/s-0039-1693129

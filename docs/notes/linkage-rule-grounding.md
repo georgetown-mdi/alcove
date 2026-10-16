@@ -108,9 +108,12 @@ Virginia, confirmed by each jurisdiction's own check. It is a data point for
 the name + date rules, not a precedent for the metropolitan-area condition.
 
 A file drawn from one age group behaves like a far larger file, since its
-members share birth years: 0.12% of one graduating class repeated a name and
-date (Fong 2018), and at least 0.5% of California's K-12 records did (Barrat et
-al. 2013). The bands assume files spanning all ages (reasoning).
+members share birth years. In one graduating class, 0.12% of name and date
+combinations appeared more than once (Fong et al. 2018), so at least about
+0.23% of the students shared theirs; across California's K-12 records the
+figure was 0.25% of combinations (Barrat and Berliner 2013), at least 0.49% of
+the records (both computed). The bands assume files spanning all ages
+(reasoning).
 
 ### The person's own ZIP
 
@@ -156,8 +159,10 @@ own false share, which grows with file size (reasoning).
 - **A common error with a narrow tolerance passes.** Name swaps are about 1.75%
   of true pairs (Just et al. 2016), and only records whose two names are each
   plausible in the other slot are loosened (rule 32). Splitting compound names
-  added up to 9.1% of a statewide match's pairs (Barrat et al. 2013), which
-  meets the 95% band wherever `f` is under about 3% (rule 33, computed).
+  added up to 9.1% of a statewide match's pairs (Barrat and Berliner 2013).
+  With `k` taken as 0.3 (reasoning), that meets the 95% band wherever `f` is
+  under about 1.6%, and under about 0.7% if the gain is nearer 4% (rule 33,
+  computed).
 
 Two loosenings in one rule multiply their factors, while the true pairs they
 add are only those with both errors, the intersection of two small shares. So
@@ -189,9 +194,10 @@ published matching rule is its 2005 unduplication guidance: agreement on any two
 of first name, last name, DOB and a partial SSN makes a potential match, as does
 a full-SSN match alone. A match is deleted when two fields conflict unless the
 full SSN and two of the names and date agree, a null never counting as a
-conflict. A separate rule deletes a match on last name + DOB where the SSN does
-not match, the clients are under 18 and the first names conflict, which targets
-twins (Sokol and Gutierrez 2005).
+conflict. A separate rule, its twin check, deletes a match on last name + DOB
+where the SSNs do not match, a missing SSN counting as not matching, both
+clients were under 18 at program entry, and both first names are present and
+differ (Sokol and Gutierrez 2005, Part 7, p. 9).
 
 ### The token sets are unordered
 
@@ -249,11 +255,16 @@ leaves 10 true and none false). SSA's BENDEX accepts a Soundex-equivalent
 surname with the SSN (SSA 2022).
 
 **As the only loosened name element, without geography or a contact field, a
-Soundex surname does badly.** Rogot et al. (1983) found 2 of 34 pairs true
-where the last name agreed only by Soundex; the Soundex-names token alone was
-81.4% false in Mirel; Ocampo et al. (2016) confirmed 46.7% to 79.1% of its
-Soundex-level matches; and NCHS moved the National Death Index to NYSIIS on
-last names after finding Soundex added few true positives (Patterson 1985).
+Soundex surname does badly.** Rogot et al. (1983, Table 1) found 2 of 34
+reviewed pairs true where the last name agreed only by Soundex, the first name
+and birth year and month agreed exactly, and no SSN was available; the
+Soundex-names token alone was 81.4% false in Mirel; in Ocampo et al. (2016),
+the tier pooling Soundex-coded first and last names + DOB with an exact last
+name + DOB rule had 46.7% to 90.3% of its matches confirmed across six
+jurisdiction checks (Tables 3 to 5); and NCHS planned to drop Soundex from
+National Death Index matching for NYSIIS on last names, after evaluations
+found Soundex added false positives and very few true positives, with no
+counts given (Patterson and Bilgrad 1985).
 Cook County left phonetic codes out to preserve specificity (Trick et al.
 2019).
 
@@ -265,9 +276,13 @@ is household sharing, where the surname is the same anyway (reasoning).
 
 **Soundex and NYSIIS.** Grannis measured NYSIIS, and Alcove's phonetic
 transform is Soundex. Three sources compare the two codes (Sun and Golden 2019;
-Bailey et al. 2020; Christen 2006), none beside an SSN, so rule 8's measurement
-reaches Soundex by extrapolation. Whether Alcove adds a NYSIIS transform is an
-open question.
+Bailey et al. 2020; Christen 2006). Christen found Soundex had the higher
+f-measure on known name variants, with no SSN involved. Sun and Golden compared
+them beside a full SSN, on 2,037 pairs agreeing on the SSN, birth month and
+year and sex but not exactly on name, and Soundex agreed on more of them; they
+state no false-agreement rate. So no source measures either code's false
+agreements beside an SSN, and rule 8's measurement reaches Soundex by
+extrapolation. Whether Alcove adds a NYSIIS transform is an open question.
 
 ### The operating cascades
 
@@ -380,8 +395,8 @@ two-party intersection, not only an upper bound (reasoning).
 **Standards manufacture shared errors.** The mechanisms that put one wrong value
 in two files are the ones a shared operating context supplies: a person
 repeating a made-up name, a document copied between agencies, and a shared
-convention. A filler entered for an unknown value looks like a real one (Ong et
-al. 2024 study such disguised missing values in clinical data). HUD tells staff
+convention. A filler entered for an unknown value looks like a real one, a
+disguised missing value (Ong et al. 2024). HUD tells staff
 to record `01` for an unknown month and day, unless the Continuum has its own
 filler (HUD 2025a), so two records independently agree on a date neither knows,
 and its name data-quality codes admit placeholder and made-up names entered to
@@ -619,7 +634,8 @@ These gaps were searched for and not found:
 - **No per-position precision** for any published cascade.
 - **No precision for a five-digit ZIP rule, and none for an email rule on
   program records.** The ZIP5 band is an extrapolation (rule 22), and the one
-  email measurement is of researchers' institutional addresses (Kim 2019).
+  email measurement is of researchers' institutional addresses (Kim et al.
+  2019).
   UCLA's selected strata are the nearest figures from program-like records:
   among pairs its EHR module had not linked, 13 of 100 agreeing only on email,
   26 of 100 only on phone, and 94 of 100 on first name + DOB + ZIP were the
@@ -628,7 +644,7 @@ These gaps were searched for and not found:
   people it serves, and none of the same-name parent and child on a household
   phone or email.
 - **No net effect of an SSN veto** on the 95% rules.
-- **No comparison of Soundex and NYSIIS beside an SSN.**
+- **No comparison of Soundex and NYSIIS false agreements beside an SSN.**
 - **No ZIP-stability figure for a highly mobile population.** Phone turnover is
   measured: 54.5% of homeless adults with a cell phone reported two or more
   numbers in three months (Rhoades et al. 2017).
@@ -650,7 +666,7 @@ Sources cited by both notes are in the catalog's
 
 - **Campbell et al. 2006.** Campbell K, Deck D, Cox A, Broderick C. "The Link King: User Manual, Version v5.2." Washington State Department of Social and Health Services, 2006. https://web.archive.org/web/20070106073145id_/http://www.the-link-king.com:80/user_manual.zip
 - **Cole and Logan 2006.** Cole N, Logan C. "Data Matching in the National School Lunch Program: 2005. Volume 2: State Case Studies." Abt Associates for the U.S. Department of Agriculture, Food and Nutrition Service, Report CN-06-DM2, 2006. https://www.fns.usda.gov/sites/default/files/DataMatching-V2.pdf
-- **Dynarski et al. 2013.** Dynarski SM, Hemelt SW, Hyman JM. "The Missing Manual: Using National Student Clearinghouse Data to Track Postsecondary Outcomes." NBER Working Paper 19552, 2013. http://www.nber.org/papers/w19552
+- **Dynarski et al. 2013.** Dynarski SM, Hemelt SW, Hyman JM. "The Missing Manual: Using National Student Clearinghouse Data to Track Postsecondary Outcomes." NBER Working Paper 19552, 2013. doi:10.3386/w19552
 - **Eliazar et al. 2025.** Eliazar A, Brown JT, Cinamon S, Kantarcioglu M, Malin B. "Re-identification risk for common privacy preserving patient matching strategies when shared with de-identified demographics." Journal of the American Medical Informatics Association 33(2):336-346, 2026 (online 2025). doi:10.1093/jamia/ocaf183
 - **Fu et al. 2022.** Fu S, Davis C, Rothstein J, Ramesh A, White E. "Hashed Linkages for Administrative Datasets: A Technical How-to Guide." California Policy Lab, 2022. https://capolicylab.org/wp-content/uploads/2022/03/Hashed-Linkages-for-Administrative-Datasets.-A-Technical-How-to-Guide.pdf
 - **Gilbert et al. 2018.** Gilbert R, Lafferty R, Hagger-Johnson G, Harron K, Zhang LC, Smith P, et al. "GUILD: GUidance for Information about Linking Data sets." Journal of Public Health 40(1):191-198, 2018. doi:10.1093/pubmed/fdx037
@@ -658,7 +674,7 @@ Sources cited by both notes are in the catalog's
 - **Hawaii Department of Education 2016.** Hawaii Department of Education, Hawaii Child Nutrition Programs. "Direct Certification Module User Guide for All Schools." 2016. https://hcnp.hawaii.gov/wp-content/uploads/2016/07/Direct-Certification-User-Guide-for-All-Schools.pdf
 - **Heins et al. 2022.** Heins S, Predmore Z, Hoch E, Baxi S. "Linking Medicaid Claims, Birth Certificates, and Other Sources to Advance Maternal and Infant Health: Final Report." RAND, PR-A1961-1, for the HHS Office of the Assistant Secretary for Planning and Evaluation, 2022. https://aspe.hhs.gov/sites/default/files/documents/db89f9777de0142dc5b6562692f67032/linking-medicaid-claims-other-data.pdf
 - **Hood and Bullock 2008.** Hood MV III, Bullock CS III. "Worth a Thousand Words? An Analysis of Georgia's Voter Identification Statute." American Politics Research 36(4):555-579, 2008. doi:10.1177/1532673X08316608
-- **HUD 2004.** U.S. Department of Housing and Urban Development. "Homeless Management Information Systems (HMIS); Data and Technical Standards Final Notice." Federal Register 69(146):45888, 2004. https://www.govinfo.gov/content/pkg/FR-2004-07-30/html/04-17097.htm
+- **HUD 2004.** U.S. Department of Housing and Urban Development. "Homeless Management Information Systems (HMIS); Data and Technical Standards Final Notice." Federal Register 69(146):45888-45934, 2004. https://www.govinfo.gov/content/pkg/FR-2004-07-30/html/04-17097.htm
 - **HUD 2010.** U.S. Department of Housing and Urban Development. "Homeless Management Information System (HMIS) Data Standards Revised Notice." March 2010. https://web.archive.org/web/20170829223119id_/https://www.hudexchange.info/resources/documents/FinalHMISDataStandards_March2010.pdf
 - **HUD 2025a.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Standards Manual." 2025. https://files.hudexchange.info/resources/documents/HMIS-Data-Standards.pdf
 - **HUD 2025b.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Dictionary." HUD Exchange, 2025.
