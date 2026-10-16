@@ -4,6 +4,7 @@ import {
   authoredLinkageFields,
   getDefaultLinkageTerms,
 } from "../../src/defaults/builtInLinkageTerms";
+import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
 
 import type { ColumnMetadata, Metadata } from "../../src/config/metadata";
 import type { Standardization } from "../../src/config/standardizationSchema";
@@ -26,9 +27,10 @@ describe("authoredLinkageFields", () => {
     ];
     const fields = authoredLinkageFields(metadata);
     // DEFAULT_LINKAGE_FIELDS order is ssn, ssn4, first_name, last_name,
-    // date_of_birth; ssn4 and last_name are absent here.
+    // date_of_birth; last_name is absent here, and ssn4 is derived from ssn.
     expect(fields.map((f) => f.name)).toEqual([
       "ssn",
+      "ssn4",
       "first_name",
       "date_of_birth",
     ]);
@@ -132,6 +134,34 @@ describe("authoredLinkageFields", () => {
       type: "first_name",
       constraints: NAME_CONSTRAINTS,
     });
+  });
+
+  test("the default cleaning's ssn4 output over an ssn column declares an ssn4 field", () => {
+    const metadata: Metadata = [
+      col("s", "ssn"),
+      col("l", "last_name"),
+      col("d", "date_of_birth"),
+    ];
+    const fields = authoredLinkageFields(
+      metadata,
+      getDefaultStandardization(metadata, getDefaultLinkageTerms("", metadata)),
+    );
+    expect(fields.find((f) => f.name === "ssn4")).toEqual({
+      name: "ssn4",
+      type: "ssn4",
+      constraints: { validOnly: true },
+    });
+    expect(fields.find((f) => f.name === "ssn")?.type).toBe("ssn");
+  });
+
+  test("an authored standardization with no ssn4 output declares no ssn4 field", () => {
+    const metadata: Metadata = [col("s", "ssn")];
+    const standardization: Standardization = [
+      { output: "ssn", input: "s", steps: [] },
+    ];
+    expect(
+      authoredLinkageFields(metadata, standardization).map((f) => f.name),
+    ).toEqual(["ssn"]);
   });
 
   test("a present matchable type with no default field and no binding declares a synthetic field", () => {

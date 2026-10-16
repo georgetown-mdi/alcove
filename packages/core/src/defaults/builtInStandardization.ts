@@ -6,64 +6,9 @@ import type {
 } from "../config/standardizationSchema.js";
 import type { ColumnMetadata } from "../config/metadata.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
+import { SSN4_STEPS, SSN_STEPS } from "./ssnSteps.js";
 
 // --- Step arrays -------------------------------------------------------------
-
-/**
- * The fewest digits a full SSN value may have before `pad_left` restores its
- * leading zeros: an SSN area number is never 000, so a 9-digit SSN stored as
- * a number loses at most two leading zeros.
- */
-const MIN_SSN_DIGITS = 7;
-
-// Explicitly allow invalid SSNs for now.
-const SSN_STEPS: StandardizationStep[] = [
-  { function: "trim_whitespace" },
-  { function: "remove_non_ascii" },
-  // A masked value (***-**-8924, XXX-XX-8924) is not a full SSN; its last
-  // four still reach ssn4 through that field's own pipeline.
-  { function: "filter_regex", params: { pattern: "^[^*Xx#]*$" } },
-  { function: "remove_dashes" },
-  { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
-  // Drop a value that cleaned to empty (a blank or all-non-digit cell) here,
-  // before pad_left can mask it: an empty string would otherwise pad to
-  // "000000000" and be dropped only as a side effect of the placeholder
-  // null_if below happening to list that value. The linkage layer does not
-  // drop "" together with the no-key sentinel, so the blank-cell hazard
-  // must be prevented explicitly here -- and stays prevented even if an
-  // operator removes "000000000" from the placeholder list for their own
-  // data.
-  { function: "null_if", params: { value: "" } },
-  // Zero-pad to 9 digits for SSNs stored without their leading zeros, from no
-  // fewer than MIN_SSN_DIGITS so a fragment is never padded into an SSN.
-  {
-    function: "filter_regex",
-    params: { pattern: `^\\d{${MIN_SSN_DIGITS},}$` },
-  },
-  { function: "pad_left", params: { length: 9 } },
-  { function: "filter_regex", params: { pattern: "^\\d{9}$" } },
-  {
-    function: "null_if",
-    params: { values: ["000000000", "111111111", "123456789"] },
-  },
-];
-
-// SSN4 accepts either a bare 4-digit value or a full 9-digit SSN and extracts
-// the last 4 digits in both cases.
-const SSN4_STEPS: StandardizationStep[] = [
-  { function: "trim_whitespace" },
-  { function: "remove_non_ascii" },
-  { function: "remove_dashes" },
-  { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
-  // Drop a value that cleaned to empty before pad_left masks it as "0000"; see
-  // SSN_STEPS for why this explicit blank-drop is needed.
-  { function: "null_if", params: { value: "" } },
-  // Zero-pad to 4 digits for SSN4 values stored without a leading zero.
-  { function: "pad_left", params: { length: 4 } },
-  { function: "extract_regex", params: { pattern: "(\\d{4})$" } },
-  { function: "filter_regex", params: { pattern: "^\\d{4}$" } },
-  { function: "null_if", params: { values: ["0000"] } },
-];
 
 // Shared pipeline for first and last names. Produces uppercase letters and
 // spaces only, with affixes (Dr., Jr., etc.) removed, matching the
@@ -216,18 +161,20 @@ export function getDefaultStandardization(
   // Derive each field's input column from the same resolution primitive the
   // builder and satisfiability checker use, so the default-term mapping
   // cannot diverge from how the exchange actually binds columns. With no
-  // explicit standardization this is the pure type fallback (first
-  // `role: linkage` metadata column of the field's type); a semantic type
-  // with no default pipeline still falls through to the builder's own
-  // identity type-fallback at exchange time.
+  // explicit standardization this is the type fallback (first `role: linkage`
+  // metadata column of the field's type) or a derived binding, which states
+  // its own steps; a semantic type with no default pipeline still falls
+  // through to the builder's own identity type-fallback at exchange time.
   const resolution = resolveFieldColumns(terms, undefined, metadata);
   const result: Standardization = [];
 
   for (const field of terms.linkageFields) {
-    const steps = stepsForType(field.type, options);
-    if (steps === undefined) continue;
-    const column = resolution.get(field.name)?.column;
+    const resolved = resolution.get(field.name);
+    const column = resolved?.column;
     if (column === undefined) continue;
+    const steps =
+      resolved?.transform?.steps ?? stepsForType(field.type, options);
+    if (steps === undefined) continue;
     // The step arrays are module constants shared across fields and calls.
     result.push({
       output: field.name,

@@ -386,6 +386,21 @@ describe("default SSN pipeline", () => {
   ])("drops the masked value %j", (input) => {
     expect(run(input)).toBeNull();
   });
+
+  test.each(["000-00-8924", "000008924", "000-12-3456", "00008924"])(
+    "drops %j, whose area number is 000",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each([
+    ["001-23-4567", "001234567"],
+    ["010-00-0001", "010000001"],
+    ["100-00-0001", "100000001"],
+  ])("keeps %j, whose area number is not 000", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
 });
 
 // --- ssn4 derived from a full SSN column -------------------------------------
@@ -427,6 +442,17 @@ describe("default ssn4 derived from a full SSN column", () => {
       expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: "8924" });
     },
   );
+
+  test("a zero-masked value is dropped from ssn and kept as ssn4", () => {
+    expect(cleaned(ssnOnly, "000-00-8924")).toEqual({
+      ssn: null,
+      ssn4: "8924",
+    });
+  });
+
+  test("a value masked in its last four is dropped from both fields", () => {
+    expect(cleaned(ssnOnly, "078-05-XXXX")).toEqual({ ssn: null, ssn4: null });
+  });
 
   test("a leading-zero SSN stored as a number keeps both fields", () => {
     expect(cleaned(ssnOnly, "1234567")).toEqual({
@@ -488,6 +514,23 @@ describe("default SSN4 pipeline", () => {
   test("zero-pads a 3-digit SSN4 missing a leading zero", () => {
     expect(run("123")).toBe("0123");
   });
+
+  test.each([
+    ["***-**-8924", "8924"],
+    ["8924", "8924"],
+    ["078-05-1120", "1120"],
+    ["078 05 1120", "1120"],
+    ["078-05-11 20", "1120"],
+  ])("keeps %j, whose last four are digits, as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test.each(["078-05-XXXX", "XXXX", "078-05-112X", "07805****", "78*"])(
+    "drops %j, masked in its last four",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
 });
 
 // --- Name pipelines ----------------------------------------------------------

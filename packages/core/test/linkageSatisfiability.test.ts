@@ -2470,8 +2470,9 @@ describe("unsatisfiedLinkageFields", () => {
           },
           { name: "tax_id", type: "ssn", role: "linkage", isPayload: false },
         ],
-      ),
-    ).toEqual([]);
+      ).map((f) => f.name),
+      // ssn4 stays unbound: an authored standardization gets no derived binding.
+    ).toEqual(["ssn4"]);
   });
 
   test("an explicit standardization with an absent input preempts the type fallback", () => {
@@ -2649,19 +2650,19 @@ describe("assessLinkageSatisfiability", () => {
 
   test("an input missing one field keeps the keys that do not need it", () => {
     // No ssn column, but first/last name and dob are present. Keys that require
-    // ssn become unsatisfiable; the name+dob keys survive, so the count is
+    // ssn or ssn4 become unsatisfiable; the name+dob keys survive, so the count is
     // positive but short of the declared total.
     const { unsatisfied, satisfiableKeyCount } = assessLinkageSatisfiability(
       ["last_name", "first_name", "dob"],
       fullTerms,
     );
-    expect(unsatisfied.map((f) => f.name)).toEqual(["ssn"]);
+    expect(unsatisfied.map((f) => f.name)).toEqual(["ssn", "ssn4"]);
     expect(satisfiableKeyCount).toBeGreaterThan(0);
     expect(satisfiableKeyCount).toBeLessThan(fullTerms.linkageKeys.length);
   });
 
-  // Built without metadata so it keeps every default key -- including the ssn4
-  // keys and the swap key -- that the type-filtered `fullTerms` fixture drops.
+  // Built without metadata so it keeps every default key -- including the swap
+  // key -- that the type-filtered `fullTerms` fixture drops.
   const allKeyTerms = getDefaultLinkageTerms("Agency A");
 
   test("with the default cleaning, an ssn column satisfies an ssn4 field", () => {

@@ -2325,7 +2325,16 @@ test("validateInvite: a config whose payload.send names other columns states the
 });
 
 test("validateInvite: a config's explicit standardization lets an otherwise-unsatisfying input pass", async () => {
-  const terms = defaultTerms();
+  // Without the ssn4 keys: an authored standardization derives no ssn4 field,
+  // and this one maps only ssn.
+  const allKeys = defaultTerms();
+  const terms: LinkageTerms = {
+    ...allKeys,
+    linkageFields: allKeys.linkageFields.filter((f) => f.name !== "ssn4"),
+    linkageKeys: allKeys.linkageKeys.filter(
+      (k) => !k.elements.some((e) => e.field === "ssn4"),
+    ),
+  };
   // The config maps tax_id -> ssn explicitly; the input has tax_id (inferred
   // as an identifier, not ssn) rather than an ssn column, so without the
   // standardization the ssn field would be unsatisfiable. The remap binds only a

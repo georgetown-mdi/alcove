@@ -522,9 +522,19 @@ function reconcileStandardization(
     const prevType = prevTypeByName.get(transformation.input);
     return prevType === undefined || prevType === column.type;
   });
+  // Typed by the field each transformation declares rather than its input
+  // column, so an ssn4 field derived from an ssn column covers ssn4, not ssn.
+  const fieldTypeByOutput = (standardization: Standardization) =>
+    new Map(
+      authoredLinkageFields(metadata, standardization).map((field) => [
+        field.name,
+        field.type,
+      ]),
+    );
+  const keptFieldTypes = fieldTypeByOutput(kept);
   const coveredTypes = new Set(
     kept
-      .map((transformation) => columnByName.get(transformation.input)?.type)
+      .map((transformation) => keptFieldTypes.get(transformation.output))
       .filter((type) => type !== undefined),
   );
   // Default cleaning for a present type the kept set does not cover. Derived the
@@ -542,9 +552,10 @@ function reconcileStandardization(
     rawRows,
     dateInputFormats,
   );
+  const defaultFieldTypes = fieldTypeByOutput(fullDefault);
   const additions = fullDefault.filter((transformation) => {
-    const column = columnByName.get(transformation.input);
-    return column !== undefined && !coveredTypes.has(column.type);
+    const type = defaultFieldTypes.get(transformation.output);
+    return type !== undefined && !coveredTypes.has(type);
   });
   return [...kept, ...additions];
 }

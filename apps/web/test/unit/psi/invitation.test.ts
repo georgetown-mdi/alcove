@@ -518,38 +518,54 @@ describe("generateInvitation", () => {
     const inviterName = "County Health Dept";
     const result = await generateInvitation({
       inviterName,
-      file: csvStream(PARTIAL_CSV),
+      file: csvStream(NO_SSN_CSV),
       location,
     });
 
     // The embedded terms are the defaults filtered to the file's columns
-    // (inferred metadata -> default terms): a CSV without ssn4 drops every
-    // ssn4-keyed combination. Every column is a linkage column, so the send
-    // is stated empty.
+    // (inferred metadata -> default terms): a CSV with no SSN column of either
+    // kind drops every SSN- and ssn4-keyed combination. Every column is a
+    // linkage column, so the send is stated empty.
     const expected = {
       ...getDefaultLinkageTerms(
         inviterName,
-        inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
+        inferMetadata(["first_name", "last_name", "dob"], []),
       ),
       payload: { send: [] },
     };
     const token = await decodeInvitation(result.encoded);
     expect(token.linkageTerms).toStrictEqual(expected);
     // It is filtered, not the full default set: fewer keys, and none of
-    // the dropped ssn4 keys remain.
+    // the dropped SSN keys remain.
     expect(token.linkageTerms.linkageKeys.length).toBeGreaterThan(0);
     expect(token.linkageTerms.linkageKeys.length).toBeLessThan(
       getDefaultLinkageTerms(inviterName).linkageKeys.length,
     );
     expect(
       token.linkageTerms.linkageKeys.some((k) =>
-        k.elements.some((e) => e.field === "ssn4"),
+        k.elements.some((e) => e.field === "ssn" || e.field === "ssn4"),
       ),
     ).toBe(false);
 
     // The returned terms object IS the embedded one, exposed for the inviter's
     // own exchange to reuse verbatim (no re-derivation).
     expect(result.linkageTerms).toStrictEqual(token.linkageTerms);
+  });
+
+  test("a file with a full SSN column and no ssn4 column embeds the SSN4 keys", async () => {
+    // The default cleaning derives ssn4 from the full SSN column, so the quick
+    // path offers the SSN4 keys to a party holding only full SSNs.
+    const { linkageTerms } = await generateInvitation({
+      inviterName: "Inviter",
+      file: csvStream(PARTIAL_CSV),
+      location,
+    });
+    expect(
+      linkageTerms.linkageKeys.some((k) =>
+        k.elements.some((e) => e.field === "ssn4"),
+      ),
+    ).toBe(true);
+    expect(linkageTerms.linkageFields.map((f) => f.name)).toContain("ssn4");
   });
 
   test("returns the exact parsed rows and columns the terms came from", async () => {
@@ -604,7 +620,7 @@ describe("generateInvitation", () => {
     // own identity substituted), so the two sides have an identical key set.
     const { linkageTerms } = await generateInvitation({
       inviterName: "Inviter",
-      file: csvStream(PARTIAL_CSV),
+      file: csvStream(NO_SSN_CSV),
       location,
     });
     const acceptorAdopted = { ...linkageTerms, identity: "Acceptor" };
@@ -1066,14 +1082,12 @@ describe("generateInvitation", () => {
   test.each(["cascade", "single-pass"] as const)(
     "mints a cleaning-step fan-out under %s",
     async (linkageStrategy) => {
-      const metadata = inferMetadata(
-        ["ssn", "first_name", "last_name", "dob"],
-        [],
-      );
+      // No SSN column: an authored standardization derives no ssn4 field.
+      const metadata = inferMetadata(["first_name", "last_name", "dob"], []);
       await expect(
         generateInvitation({
           inviterName: "Org",
-          file: csvStream(PARTIAL_CSV),
+          file: csvStream(NO_SSN_CSV),
           location,
           linkageTerms: {
             ...getDefaultLinkageTerms("Org", metadata),
@@ -1162,14 +1176,12 @@ describe("generateInvitation", () => {
   });
 
   test("refuses to mint when the authored standardization cannot be built", async () => {
-    const metadata = inferMetadata(
-      ["ssn", "first_name", "last_name", "dob"],
-      [],
-    );
+    // No SSN column: an authored standardization derives no ssn4 field.
+    const metadata = inferMetadata(["first_name", "last_name", "dob"], []);
     await expect(
       generateInvitation({
         inviterName: "Org",
-        file: csvStream(PARTIAL_CSV),
+        file: csvStream(NO_SSN_CSV),
         location,
         linkageTerms: getDefaultLinkageTerms("Org", metadata),
         metadata,

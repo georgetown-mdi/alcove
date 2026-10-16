@@ -8,6 +8,10 @@ import type {
 } from "../config/linkageTermsSchema";
 import type { Metadata } from "../config/metadata";
 import { canonicalString } from "../utils/canonical";
+import {
+  fieldSourceColumnTypes,
+  fieldTypesSuppliedByDefault,
+} from "../standardization";
 import type {
   Standardization,
   StandardizationTransformation,
@@ -730,14 +734,10 @@ export function linkageTermsFromRuleSet(
 ): LinkageTerms {
   let linkageKeys: LinkageKey[];
   if (metadata !== undefined) {
-    // Only `role: linkage` columns supply a matchable type: a key kept because a
-    // non-linkage column (identifier/payload/ignored) is the only instance of its
-    // type would bind nothing at exchange time (resolveFieldColumns binds only a
-    // `role: linkage` column, so the field would resolve to nothing) -- drop the
-    // key here instead of building an unusable one.
-    const availableTypes = new Set(
-      metadata.filter((m) => m.role === "linkage").map((m) => m.type),
-    );
+    // The types resolveFieldColumns binds with no authored standardization: a
+    // key resting on any other type would bind nothing at exchange time, so it
+    // is dropped here instead of built unusable.
+    const availableTypes = fieldTypesSuppliedByDefault(metadata);
     linkageKeys = ruleSet.linkageKeys.filter((key) =>
       key.elements.every((el) => availableTypes.has(el.field as SemanticType)),
     );
@@ -895,9 +895,7 @@ const OPT_IN_LINKAGE_KEYS: Record<OptInLinkageFieldType, LinkageKey> =
  * own is running.
  */
 export function optInLinkageKeys(metadata: Metadata): Array<LinkageKey> {
-  const available = new Set<SemanticType>(
-    metadata.filter((column) => column.role === "linkage").map((c) => c.type),
-  );
+  const available = fieldTypesSuppliedByDefault(metadata);
   return OPT_IN_LINKAGE_FIELD_TYPES.map(
     (type) => OPT_IN_LINKAGE_KEYS[type],
   ).filter((key) =>
@@ -945,6 +943,22 @@ function isLinkageFieldType(type: SemanticType): type is LinkageField["type"] {
   return type !== "identifier" && type !== "other";
 }
 
+// The type of the field an explicit transformation declares: its input
+// column's, unless the output names a default field derived from a column of
+// that type (`ssn4` from an `ssn` column), whose type the field keeps.
+function explicitFieldType(
+  transformation: StandardizationTransformation,
+  columnType: LinkageField["type"],
+): LinkageField["type"] {
+  const derived = DEFAULT_LINKAGE_FIELDS.find(
+    (def) =>
+      def.name === transformation.output &&
+      def.type !== columnType &&
+      fieldSourceColumnTypes(def.type).includes(columnType),
+  );
+  return derived?.type ?? columnType;
+}
+
 /**
  * The linkage fields a `(metadata, standardization)` pair declares: the
  * single source the web invite editors derive both their pickable field
@@ -954,13 +968,17 @@ function isLinkageFieldType(type: SemanticType): type is LinkageField["type"] {
  * express two fields of the same type -- e.g. a maiden and a current name
  * -- bound to different columns; this can.
  *
- * Per present `role: linkage` semantic type in `metadata`:
+ * Per present semantic type -- that of a `role: linkage` column in
+ * `metadata`, one an explicit transformation declares, and, with no
+ * `standardization`, one {@link fieldTypesSuppliedByDefault} derives:
  *
- * - When `standardization` holds one or more transformations whose
- *   `input` column has that type, one field is emitted per
- *   transformation: `name` is the transformation's `output`, `type` is
- *   the column's type, and `constraints` are that type's default
- *   constraints (a same-typed field is bounded like the default one). The
+ * - When `standardization` holds one or more transformations declaring
+ *   that type, one field is emitted per transformation: `name` is the
+ *   transformation's `output`, `type` is the input column's type -- or the
+ *   default field's, for an output naming a default field derived from a
+ *   column of that type (`ssn4` from an `ssn` column) -- and `constraints`
+ *   are that type's default constraints (a same-typed field is bounded like
+ *   the default one). The
  *   distinct `output` names -- the standardization schema forbids a
  *   duplicate `output` -- are what let two same-typed fields coexist, and
  *   the explicit `input` each transformation holds is what binds them to
@@ -1011,14 +1029,18 @@ export function authoredLinkageFields(
     const column = columnByName.get(transformation.input);
     if (column === undefined || column.role !== "linkage") continue;
     if (!isLinkageFieldType(column.type)) continue;
-    const forType = explicitByType.get(column.type) ?? [];
+    const fieldType = explicitFieldType(transformation, column.type);
+    const forType = explicitByType.get(fieldType) ?? [];
     forType.push(transformation);
-    explicitByType.set(column.type, forType);
+    explicitByType.set(fieldType, forType);
   }
 
-  const presentTypes = new Set(
-    metadata.filter((column) => column.role === "linkage").map((c) => c.type),
-  );
+  const presentTypes = new Set<SemanticType>([
+    ...(standardization === undefined
+      ? fieldTypesSuppliedByDefault(metadata)
+      : metadata.filter((c) => c.role === "linkage").map((c) => c.type)),
+    ...explicitByType.keys(),
+  ]);
 
   const fields: LinkageField[] = [];
   const emittedTypes = new Set<SemanticType>();

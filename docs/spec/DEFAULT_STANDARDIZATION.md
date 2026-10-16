@@ -127,15 +127,15 @@ steps:
   - function: null_if
     params:
       value: ""
-  - function: filter_regex
-    params:
-      pattern: "^\\d{7,}$"
   - function: pad_left
     params:
       length: 9
   - function: filter_regex
     params:
       pattern: "^\\d{9}$"
+  - function: filter_regex
+    params:
+      pattern: "^0{0,2}[1-9]"
   - function: null_if
     params:
       values: ["000000000", "111111111", "123456789"]
@@ -150,30 +150,35 @@ Result: exactly nine digits.
   alone.
 - **Digits only.** Every non-digit is removed (dashes, spaces, dots,
   parentheses), and a cell that cleans to empty is dropped.
-- **Minimum digit count.** A value of fewer than seven digits is dropped. A
-  value of seven or eight digits is zero-padded to nine, for an SSN stored as a
+- **Padding.** A short value is zero-padded to nine, for an SSN stored as a
   number that lost its leading zeros. Anything that is not nine digits after
   padding -- ten digits, say -- is dropped.
+- **Area number `000`.** A value whose first three digits are `000` after
+  padding is dropped.
 - **Placeholders.** Three placeholder values are then dropped.
 
-The minimum of seven digits rests on one Social Security Administration rule:
-no SSN is issued with the area number `000`, so a nine-digit SSN stored as a
-number loses at most two leading zeros and keeps at least seven digits. A
-shorter digit string is a fragment, such as a last four or a value masked with
-a character the screen does not list, and padding it would make it an `ssn`
-key matching on fewer digits than the field states.
+The area-number rule rests on one Social Security Administration rule: no SSN
+is issued with the area number `000`. A value with that area is therefore not
+a full SSN but one of two things, and keeping either would make an `ssn` key
+matching on fewer digits than the field states:
+
+- A fragment of six digits or fewer, such as a last four or a value masked with
+  a character the screen does not list, which padding would turn into area
+  `000`. A nine-digit SSN stored as a number loses at most two leading zeros, so
+  it keeps at least seven digits and is not dropped.
+- A value masked with zeros, such as `000-00-8924`. Its last four still reach
+  `ssn4` (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
 
 The empty-value drop precedes `pad_left` by design: a blank cell padded to
-`"000000000"` would be dropped only as a side effect of that value appearing in
-the placeholder list, so an operator who tuned the list for their own data
-would silently reintroduce the blank-cell match. The digit floor drops an empty
-value as well; the explicit drop keeps the blank-cell guarantee independent of
-the floor's value.
+`"000000000"` would be dropped only as a side effect of a later step, the
+area-number rule or the placeholder list, so an operator who edited either for
+their own data would silently reintroduce the blank-cell match.
 
-Beyond the area-number rule behind the digit floor, the pipeline applies no
-SSA structural rule: an area, group, or serial that the SSA never issues
-passes through. The `valid_only` constraint the default `ssn` field declares is
-a data-quality signal reported against the cleaned dataset (see
+Area `000` is the one SSA structural rule the pipeline applies, because a value
+with that area is a fragment or a mask rather than an SSN: any other area, and
+any group or serial, that the SSA never issues passes through. The `valid_only`
+constraint the default `ssn` field declares is a data-quality signal reported
+against the cleaned dataset (see
 [Constraints](../EXCHANGE_REFERENCE.md#constraints)), not a step here.
 
 | Input | Result |
@@ -185,6 +190,7 @@ a data-quality signal reported against the cleaned dataset (see
 | `"123456"` | `null` |
 | `"***-**-8924"` | `null` |
 | `"XXX-XX-8924"` | `null` |
+| `"000-00-8924"` | `null` |
 | `"1234567890"` | `null` |
 | `"123-45-6789"` | `null` |
 | `"abc"` | `null` |
@@ -196,6 +202,13 @@ steps:
   - function: trim_whitespace
   - function: remove_non_ascii
   - function: remove_dashes
+  - function: replace_regex
+    params:
+      pattern: " "
+      replacement: ""
+  - function: filter_regex
+    params:
+      pattern: "^\\d{1,3}$|\\d{4}$"
   - function: replace_regex
     params:
       pattern: "[^0-9]"
@@ -224,6 +237,12 @@ same value once both are declared `ssn4`. A cleaned-empty cell is dropped before
 padding, a short value is zero-padded to four, and the all-zero serial is
 dropped.
 
+A value whose last four characters, after spaces and hyphens are removed, are
+not all digits is dropped: it is masked there, as in `078-05-XXXX`, and taking
+the last four digits wherever they sit would key it on other digits of the SSN.
+A value of one to three digits is the exception, kept as a last four that lost
+its leading zeros.
+
 | Input | Result |
 | ----- | ------ |
 | `"6789"` | `"6789"` |
@@ -231,6 +250,8 @@ dropped.
 | `"***-**-8924"` | `"8924"` |
 | `"XXX-XX-8924"` | `"8924"` |
 | `"89"` | `"0089"` |
+| `"078-05-XXXX"` | `null` |
+| `"XXXX"` | `null` |
 | `"0000"` | `null` |
 | `"abcd"` | `null` |
 
@@ -245,7 +266,8 @@ one pipeline.
 
 The pipeline reads the cell as written, not the `ssn` result, so the `ssn` mask
 screen does not reach it: `***-**-8924` is `null` as `ssn` and `"8924"` as
-`ssn4`.
+`ssn4`. Nor does the `ssn` area-number rule: `000-00-8924` is likewise `null`
+as `ssn` and `"8924"` as `ssn4`.
 
 A file with its own `ssn4` column keeps using it, and nothing is derived. An
 authored standardization gets no derived binding either: a linkage field it

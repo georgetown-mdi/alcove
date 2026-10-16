@@ -604,6 +604,8 @@ export type {
 } from "./records/signingIdentity";
 export {
   FAN_OUT_FUNCTION_NAMES,
+  fieldSourceColumnTypes,
+  fieldTypesSuppliedByDefault,
   heldBackColumnNames,
   matchedFieldColumns,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,

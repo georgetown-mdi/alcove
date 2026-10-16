@@ -50,6 +50,8 @@ import {
 } from "./linkageTermsPolicy.js";
 import { isDisclosedToPartner } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
+import type { SemanticType } from "./types.js";
+import { SSN4_STEPS } from "./defaults/ssnSteps.js";
 import { readRowColumn } from "./file.js";
 import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
 import type { CSVRow } from "./file.js";
@@ -2034,25 +2036,86 @@ interface FieldColumnResolution {
   column: string | undefined;
   /**
    * The explicit standardization transformation that bound the field, when the
-   * binding came from one; `undefined` for a semantic-type-fallback binding. The
-   * builder takes its `steps`; presence-only consumers ignore it.
+   * binding came from one, or the derivation's default pipeline for a derived
+   * binding (rule 3 of {@link resolveFieldColumns}); `undefined` for a
+   * semantic-type-fallback binding. The builder takes its `steps`;
+   * presence-only consumers ignore it.
    */
   transform: StandardizationTransformation | undefined;
 }
 
 // The semantic type whose column the default cleaning derives a field of the
-// keyed type from, when the input has no column of that type.
-const DERIVED_FIELD_SOURCE_TYPE: Readonly<Record<string, string>> = {
-  ssn4: "ssn",
-};
+// keyed type from, when the input has no column of that type, and the steps
+// that derive it.
+const DERIVED_FIELD_SOURCE_TYPE: ReadonlyMap<
+  SemanticType,
+  { sourceType: SemanticType; steps: ReadonlyArray<StandardizationStep> }
+> = new Map([["ssn4", { sourceType: "ssn", steps: SSN4_STEPS }]]);
 
-function derivedSourceColumn(
-  fieldType: string,
-  metadata: ColumnMetadata[],
+function linkageColumnOfType(
+  type: SemanticType,
+  metadata: ReadonlyArray<ColumnMetadata>,
 ): ColumnMetadata | undefined {
-  if (!Object.hasOwn(DERIVED_FIELD_SOURCE_TYPE, fieldType)) return undefined;
-  const sourceType = DERIVED_FIELD_SOURCE_TYPE[fieldType];
-  return metadata.find((c) => c.type === sourceType && c.role === "linkage");
+  return metadata.find((c) => c.type === type && c.role === "linkage");
+}
+
+// Rules 2 and 3 of resolveFieldColumns: the binding a field takes with no
+// authored standardization.
+function defaultFieldResolution(
+  field: { name: string; type: SemanticType },
+  metadata: ReadonlyArray<ColumnMetadata>,
+): FieldColumnResolution {
+  const own = linkageColumnOfType(field.type, metadata);
+  if (own !== undefined) return { column: own.name, transform: undefined };
+  const derived = DERIVED_FIELD_SOURCE_TYPE.get(field.type);
+  const source =
+    derived === undefined
+      ? undefined
+      : linkageColumnOfType(derived.sourceType, metadata);
+  if (derived === undefined || source === undefined)
+    return { column: undefined, transform: undefined };
+  return {
+    column: source.name,
+    transform: {
+      output: field.name,
+      input: source.name,
+      steps: structuredClone([...derived.steps]),
+    },
+  };
+}
+
+/**
+ * The column types a field of `fieldType` may read: its own, then the type
+ * the default cleaning derives it from ({@link resolveFieldColumns}, rule 3),
+ * if any.
+ */
+export function fieldSourceColumnTypes(
+  fieldType: SemanticType,
+): Array<SemanticType> {
+  const derived = DERIVED_FIELD_SOURCE_TYPE.get(fieldType);
+  return derived === undefined ? [fieldType] : [fieldType, derived.sourceType];
+}
+
+/**
+ * The semantic types a field may take from `metadata` with no authored
+ * standardization: each type {@link resolveFieldColumns} binds to a column
+ * there, by a `role: linkage` column of the type or by derivation from one
+ * of another type.
+ */
+export function fieldTypesSuppliedByDefault(
+  metadata: ReadonlyArray<ColumnMetadata>,
+): Set<SemanticType> {
+  const candidates = new Set<SemanticType>([
+    ...metadata.map((c) => c.type),
+    ...DERIVED_FIELD_SOURCE_TYPE.keys(),
+  ]);
+  return new Set(
+    [...candidates].filter(
+      (type) =>
+        defaultFieldResolution({ name: type, type }, metadata).column !==
+        undefined,
+    ),
+  );
 }
 
 /**
@@ -2083,7 +2146,8 @@ function derivedSourceColumn(
  *    one of its type, so it never participates in matching by type alone.
  * 3. Derived fallback, defaults only: with no `standardization` at all, an
  *    `ssn4` field that rule 2 leaves unbound binds to the first `role: linkage`
- *    `ssn` column, whose default `ssn4` pipeline takes the last four digits.
+ *    `ssn` column, with the default `ssn4` pipeline as its transformation, so
+ *    every consumer -- the builder included -- takes the last four digits.
  *    An authored standardization gets no derived binding: an uncovered field's
  *    identity transformation would hash the whole SSN as its last four.
  *
@@ -2153,11 +2217,11 @@ export function resolveFieldColumns(
     // default-standardization derivation share, so narrowing it once keeps a
     // non-linkage column out of all three. Transmission is a separate axis
     // (`isDisclosedToPartner`); see this function's header.
-    const col =
-      metadata.find((c) => c.type === field.type && c.role === "linkage") ??
-      (standardization === undefined
-        ? derivedSourceColumn(field.type, metadata)
-        : undefined);
+    if (standardization === undefined) {
+      resolution.set(field.name, defaultFieldResolution(field, metadata));
+      continue;
+    }
+    const col = linkageColumnOfType(field.type, metadata);
     resolution.set(field.name, { column: col?.name, transform: undefined });
   }
   return resolution;
