@@ -1152,7 +1152,7 @@ Every protocol file on `sftp` and `filedrop` channels is named `<id>-...-<token>
 
 A control file is never read as a message, and a message ack's mid-name `<NNN>`/`<byteCount>` digits do not route it as a message.
 
-The receiver reads a file only once its on-disk size reaches the byte count its name states, so a partially synced file is never consumed prematurely. A file larger than its name states is refused: a message or hello ends the run, and an abort marker is not believed.
+The receiver reads a file only once its on-disk size reaches the byte count its name states, so a partially synced file is never consumed prematurely. A file larger than its name states is refused: a message or hello ends the run; an abort marker listed larger than its name is not believed, and one found larger while being read ends the run as a message does.
 
 Both parties must run the same Alcove version. A version whose hello, joining and abort names have no byte count (`<id>-hello.json`) cannot exchange with this one: a run that finds such a hello under any id but its own ends naming the earlier version. That includes a hello left over in the folder by an earlier-version run of your own, since a new run has a fresh id. The refusal comes before `--sweep-exchange-files` runs, so the flag does not clear such a hello: remove it by hand, as the message says.
 
