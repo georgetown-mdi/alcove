@@ -67,6 +67,9 @@ const ALL_COLUMNS_CSV =
 // reference ssn4 drop out, the rest survive.
 const PARTIAL_CSV =
   "ssn,first_name,last_name,dob\n123456789,Alice,Smith,1990-01-02\n";
+// A CSV with no SSN column of either kind: the default cleaning derives ssn4 from
+// a full SSN column, so only a file without one cannot produce ssn4.
+const NO_SSN_CSV = "first_name,last_name,dob\nAlice,Smith,1990-01-02\n";
 
 /** A fresh readable CSV stream. `loadCSVFile` consumes its input once, so each
  * generateInvitation call needs its own stream; this is core's parse boundary in
@@ -664,8 +667,8 @@ describe("generateInvitation", () => {
     // A defense-in-depth safety check on the mint boundary: even if the
     // editor's gate were bypassed, authored terms whose every key references a
     // field the file cannot produce must not mint a token (it would run to a
-    // silent empty result). The only key needs ssn4; PARTIAL_CSV has no ssn4
-    // column.
+    // silent empty result). The only key needs ssn4; NO_SSN_CSV has no SSN
+    // column of either kind.
     const base = getDefaultLinkageTerms(
       "Org",
       inferMetadata(["ssn", "ssn4", "first_name", "last_name", "dob"], []),
@@ -679,7 +682,7 @@ describe("generateInvitation", () => {
     await expect(
       generateInvitation({
         inviterName: "Org",
-        file: csvStream(PARTIAL_CSV),
+        file: csvStream(NO_SSN_CSV),
         location,
         linkageTerms: needsSsn4,
       }),
@@ -690,14 +693,15 @@ describe("generateInvitation", () => {
     // The mint is held to the rule the inviter's own run is: every declared key.
     // Minting here would seal a token the partner accepts and the inviter's own run
     // then refuses -- discovered after the accept, when the terms are already
-    // settled. The full default set needs ssn4; PARTIAL_CSV covers everything else.
+    // settled. The full default set needs an SSN; NO_SSN_CSV covers the
+    // name-and-date keys only.
     const full = getDefaultLinkageTerms(
       "Org",
       inferMetadata(["ssn", "ssn4", "first_name", "last_name", "dob"], []),
     );
     const error = await generateInvitation({
       inviterName: "Org",
-      file: csvStream(PARTIAL_CSV),
+      file: csvStream(NO_SSN_CSV),
       location,
       linkageTerms: full,
     }).catch((e: unknown) => e);

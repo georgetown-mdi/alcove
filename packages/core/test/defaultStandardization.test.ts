@@ -95,11 +95,16 @@ describe("getDefaultStandardization — structure", () => {
 
   test("skips linkage fields whose type is absent from metadata", () => {
     const metadata: ColumnMetadata[] = [
-      { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+      {
+        name: "FIRST_NAME",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
     ];
     const result = getDefaultStandardization(metadata, minimalTerms);
     expect(result).toHaveLength(1);
-    expect(result[0].output).toBe("ssn");
+    expect(result[0].output).toBe("first_name");
   });
 
   test("returns empty array when metadata is empty", () => {
@@ -356,6 +361,97 @@ describe("default SSN pipeline", () => {
 
   test("returns null for placeholder value", () => {
     expect(run("123456789")).toBeNull();
+  });
+
+  test("zero-pads a 7-digit SSN missing two leading zeros", () => {
+    expect(run("1234567")).toBe("001234567");
+  });
+
+  test.each(["123456", "8924", "1", "45-6789"])(
+    "drops %j, too few digits to be an SSN missing leading zeros",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each([
+    "***-**-8924",
+    "XXX-XX-8924",
+    "xxx-xx-8924",
+    "###-##-8924",
+    "*****8924",
+    "XXXXX8924",
+    "X78-05-1120",
+    "078-05-112*",
+  ])("drops the masked value %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+});
+
+// --- ssn4 derived from a full SSN column -------------------------------------
+
+describe("default ssn4 derived from a full SSN column", () => {
+  const ssnTerms: LinkageTerms = {
+    ...minimalTerms,
+    linkageFields: [
+      { name: "ssn", type: "ssn" },
+      { name: "ssn4", type: "ssn4" },
+    ],
+  };
+  const ssnOnly: ColumnMetadata[] = [
+    { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+  ];
+
+  function cleaned(metadata: ColumnMetadata[], input: string) {
+    const transformations = getDefaultStandardization(metadata, ssnTerms);
+    return Object.fromEntries(
+      transformations.map((t) => [t.output, runPipeline(input, t.steps!)]),
+    );
+  }
+
+  test("derives ssn4 from the SSN column when there is no ssn4 column", () => {
+    const result = getDefaultStandardization(ssnOnly, ssnTerms);
+    expect(result.map((t) => [t.output, t.input])).toEqual([
+      ["ssn", "SSN"],
+      ["ssn4", "SSN"],
+    ]);
+    expect(cleaned(ssnOnly, "078-05-1120")).toEqual({
+      ssn: "078051120",
+      ssn4: "1120",
+    });
+  });
+
+  test.each(["***-**-8924", "XXX-XX-8924", "xxx-xx-8924", "###-##-8924"])(
+    "a masked value %j is dropped from ssn and kept as ssn4",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: "8924" });
+    },
+  );
+
+  test("a leading-zero SSN stored as a number keeps both fields", () => {
+    expect(cleaned(ssnOnly, "1234567")).toEqual({
+      ssn: "001234567",
+      ssn4: "4567",
+    });
+  });
+
+  test("an ssn4 column is used when present, and nothing is derived", () => {
+    const both: ColumnMetadata[] = [
+      { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+      { name: "LAST4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    const result = getDefaultStandardization(both, ssnTerms);
+    expect(result.map((t) => [t.output, t.input])).toEqual([
+      ["ssn", "SSN"],
+      ["ssn4", "LAST4"],
+    ]);
+  });
+
+  test("an SSN column not roled for linkage supplies no ssn4", () => {
+    const payloadSsn: ColumnMetadata[] = [
+      { name: "SSN", type: "ssn", role: "payload", isPayload: true },
+    ];
+    expect(getDefaultStandardization(payloadSsn, ssnTerms)).toEqual([]);
   });
 });
 

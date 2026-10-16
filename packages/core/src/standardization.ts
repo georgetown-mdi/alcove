@@ -2040,6 +2040,21 @@ interface FieldColumnResolution {
   transform: StandardizationTransformation | undefined;
 }
 
+// The semantic type whose column the default cleaning derives a field of the
+// keyed type from, when the input has no column of that type.
+const DERIVED_FIELD_SOURCE_TYPE: Readonly<Record<string, string>> = {
+  ssn4: "ssn",
+};
+
+function derivedSourceColumn(
+  fieldType: string,
+  metadata: ColumnMetadata[],
+): ColumnMetadata | undefined {
+  if (!Object.hasOwn(DERIVED_FIELD_SOURCE_TYPE, fieldType)) return undefined;
+  const sourceType = DERIVED_FIELD_SOURCE_TYPE[fieldType];
+  return metadata.find((c) => c.type === sourceType && c.role === "linkage");
+}
+
 /**
  * Resolve every declared linkage field to the input column an exchange would
  * bind it to, encoding the column-to-field resolution rules in ONE place so the
@@ -2066,6 +2081,11 @@ interface FieldColumnResolution {
  *    column" -- because the exchange reads exactly that column. A column roled
  *    `identifier`, `payload`, or `ignored` is skipped even when it is the only
  *    one of its type, so it never participates in matching by type alone.
+ * 3. Derived fallback, defaults only: with no `standardization` at all, an
+ *    `ssn4` field that rule 2 leaves unbound binds to the first `role: linkage`
+ *    `ssn` column, whose default `ssn4` pipeline takes the last four digits.
+ *    An authored standardization gets no derived binding: an uncovered field's
+ *    identity transformation would hash the whole SSN as its last four.
  *
  * Matching participation keys on `role: linkage`, NOT on semantic type: a
  * column is hashed into a PSI key only when the operator roled it for linkage.
@@ -2133,9 +2153,11 @@ export function resolveFieldColumns(
     // default-standardization derivation share, so narrowing it once keeps a
     // non-linkage column out of all three. Transmission is a separate axis
     // (`isDisclosedToPartner`); see this function's header.
-    const col = metadata.find(
-      (c) => c.type === field.type && c.role === "linkage",
-    );
+    const col =
+      metadata.find((c) => c.type === field.type && c.role === "linkage") ??
+      (standardization === undefined
+        ? derivedSourceColumn(field.type, metadata)
+        : undefined);
     resolution.set(field.name, { column: col?.name, transform: undefined });
   }
   return resolution;

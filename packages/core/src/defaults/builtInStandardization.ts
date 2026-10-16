@@ -9,10 +9,20 @@ import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 
 // --- Step arrays -------------------------------------------------------------
 
+/**
+ * The fewest digits a full SSN value may have before `pad_left` restores its
+ * leading zeros: an SSN area number is never 000, so a 9-digit SSN stored as
+ * a number loses at most two leading zeros.
+ */
+const MIN_SSN_DIGITS = 7;
+
 // Explicitly allow invalid SSNs for now.
 const SSN_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "remove_non_ascii" },
+  // A masked value (***-**-8924, XXX-XX-8924) is not a full SSN; its last
+  // four still reach ssn4 through that field's own pipeline.
+  { function: "filter_regex", params: { pattern: "^[^*Xx#]*$" } },
   { function: "remove_dashes" },
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
   // Drop a value that cleaned to empty (a blank or all-non-digit cell) here,
@@ -24,7 +34,12 @@ const SSN_STEPS: StandardizationStep[] = [
   // operator removes "000000000" from the placeholder list for their own
   // data.
   { function: "null_if", params: { value: "" } },
-  // Zero-pad to 9 digits for SSNs stored without a leading zero.
+  // Zero-pad to 9 digits for SSNs stored without their leading zeros, from no
+  // fewer than MIN_SSN_DIGITS so a fragment is never padded into an SSN.
+  {
+    function: "filter_regex",
+    params: { pattern: `^\\d{${MIN_SSN_DIGITS},}$` },
+  },
   { function: "pad_left", params: { length: 9 } },
   { function: "filter_regex", params: { pattern: "^\\d{9}$" } },
   {
@@ -182,7 +197,8 @@ function stepsForType(
  * a transformation maps the first `role: linkage` metadata column of that
  * type to the field name. Semantic types without defaults (`identifier`,
  * `other`) are skipped, as are linkage fields with no `role: linkage`
- * column of their type.
+ * column of their type, except an `ssn4` field, which is derived from the
+ * first `role: linkage` `ssn` column when the input has no `ssn4` one.
  *
  * The returned value can be passed directly to
  * {@link buildStandardizedDataset} and is appropriate when the user has
