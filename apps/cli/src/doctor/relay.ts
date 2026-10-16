@@ -194,13 +194,18 @@ function registrarNotContactedReason(plan: RelayCheckPlan): string {
     : "the relay it allocates on is not one the invitation names";
 }
 
+function transportAndSource(server: RunTurnServer): string {
+  return `over ${TRANSPORT_LABEL[turnUrlTransport(server.url)]}, ${sourceLabel(server)}`;
+}
+
 /**
  * The lines printed before any request: the hosts the check contacts, then
  * each host the configuration names that a run of it, and so the check, does
  * not contact, with the reason. Raw: the urls and the registrar are
- * configuration text, escaped where the lines are shown. Each host is on a
- * line of its own and each explanation on the lines below it, every one short
- * of the display bound that cuts a longer line.
+ * configuration text, escaped where the lines are shown. Each host is alone
+ * on its line, so a host longer than the display bound loses only its own
+ * tail; its transport, source and explanation are on the lines below it,
+ * every one short of that bound.
  */
 export function relayHostStatement(
   plan: RelayCheckPlan,
@@ -209,10 +214,11 @@ export function relayHostStatement(
   const { contacted, notContacted, registrar } = plan;
   const lines = [
     "This check contacts these hosts, as a run of this configuration does:",
-    `  ${contacted.server.url} over ${TRANSPORT_LABEL[contacted.transport]}, ` +
-      sourceLabel(contacted.server),
-    "    The relay a run allocates on. The check asks it for a relay " +
-      "address, sending the credential a run sends there.",
+    `  ${contacted.server.url}`,
+    `    The relay a run allocates on, ${transportAndSource(contacted.server)}. ` +
+      "The check asks it for a relay address, sending the credential a run " +
+      "sends there.",
+    "    Whoever runs that relay learns this machine's network address.",
   ];
   if (registrar?.contacted === true)
     lines.push(
@@ -229,8 +235,9 @@ export function relayHostStatement(
       "It does not contact these hosts, because a run of this configuration " +
         "does not:",
       ...notContacted.flatMap((server) => [
-        `  ${server.url}, ${sourceLabel(server)}`,
-        `    ${capitalized(LATER_URL_NOT_CONTACTED)}.`,
+        `  ${server.url}`,
+        `    ${capitalized(transportAndSource(server))}. ` +
+          `${capitalized(LATER_URL_NOT_CONTACTED)}.`,
       ]),
       ...(skippedRegistrar === undefined
         ? []

@@ -6,6 +6,7 @@ import YAML from "yaml";
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   deriveRelayExchangeId,
+  redactAndSanitizeForDisplay,
   UsageError,
 } from "@alcove/core";
 
@@ -207,22 +208,34 @@ function checkFor(report: DoctorReport, url: string) {
   return check;
 }
 
-const CONTACTED_RELAY_LINE =
-  "    The relay a run allocates on. The check asks it for a relay address, " +
-  "sending the credential a run sends there.";
-const LATER_URL_LINE =
-  "    A run allocates on the first TURN url it lists alone.";
+function contactedRelayLine(transportAndSource: string): string {
+  return (
+    `    The relay a run allocates on, ${transportAndSource}. The check asks ` +
+    "it for a relay address, sending the credential a run sends there."
+  );
+}
+const CONTACTED_RELAY_DISCLOSURE =
+  "    Whoever runs that relay learns this machine's network address.";
+const REGISTRAR_DISCLOSURE =
+  "    Whoever runs that registrar learns this machine's network address.";
+function laterUrlLine(transportAndSource: string): string {
+  return (
+    `    ${transportAndSource}. A run allocates on the first TURN url it ` +
+    "lists alone."
+  );
+}
 
 const OWN_FIRST_STATEMENT = [
   "This check contacts these hosts, as a run of this configuration does:",
-  `  ${OWN_TURN} over TCP, from connection.turn`,
-  CONTACTED_RELAY_LINE,
+  `  ${OWN_TURN}`,
+  contactedRelayLine("over TCP, from connection.turn"),
+  CONTACTED_RELAY_DISCLOSURE,
   "It does not contact these hosts, because a run of this configuration " +
     "does not:",
-  `  ${STATIC_TURN}, from connection.turn`,
-  LATER_URL_LINE,
-  `  ${INVITATION_TURN}, from your partner's invitation`,
-  LATER_URL_LINE,
+  `  ${STATIC_TURN}`,
+  laterUrlLine("Over UDP, then TCP, from connection.turn"),
+  `  ${INVITATION_TURN}`,
+  laterUrlLine("Over TLS, from your partner's invitation"),
   `  ${REGISTRAR}`,
   "    The relay registrar your partner's invitation names. A run does not " +
     "enroll there, because the relay it allocates on is not one the " +
@@ -233,17 +246,18 @@ const OWN_FIRST_STATEMENT = [
 
 const INVITATION_FIRST_STATEMENT = [
   "This check contacts these hosts, as a run of this configuration does:",
-  `  ${INVITATION_TURN} over TLS, from your partner's invitation`,
-  CONTACTED_RELAY_LINE,
+  `  ${INVITATION_TURN}`,
+  contactedRelayLine("over TLS, from your partner's invitation"),
+  CONTACTED_RELAY_DISCLOSURE,
   `  ${REGISTRAR}`,
   "    The relay registrar your partner's invitation names. Before it asks " +
     "the relay, the check enrolls this exchange's relay key there, as a run " +
     "does just before it connects.",
-  "    Whoever runs that registrar learns this machine's network address.",
+  REGISTRAR_DISCLOSURE,
   "It does not contact these hosts, because a run of this configuration " +
     "does not:",
-  `  ${SECOND_INVITATION_TURN}, from your partner's invitation`,
-  LATER_URL_LINE,
+  `  ${SECOND_INVITATION_TURN}`,
+  laterUrlLine("Over UDP, then TCP, from your partner's invitation"),
   "It contacts nothing else.",
   "",
 ];
@@ -260,6 +274,82 @@ test("every line of the host statement fits the display bound, so none is cut", 
     STATIC_FIRST_REGISTRAR_LINE,
   ])
     expect(line.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
+});
+
+test("the statement says whoever runs the contacted relay learns this machine's network address, as it says of the registrar", async () => {
+  writeInvitationFirstConfig();
+  const lines: Array<string> = [];
+
+  await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    fetch: fakeRegistrar([registrationAnswer(null, LAPSES_AT)]).fetch,
+    gather: scriptedGathering({ [INVITATION_TURN]: true }, []),
+  });
+
+  const relayIndex = lines.indexOf(`  ${INVITATION_TURN}`);
+  const registrarIndex = lines.indexOf(`  ${REGISTRAR}`);
+  expect(lines[relayIndex + 2]).toBe(
+    "    Whoever runs that relay learns this machine's network address.",
+  );
+  expect(lines[registrarIndex + 2]).toBe(
+    "    Whoever runs that registrar learns this machine's network address.",
+  );
+});
+
+test("a url whose hostname is 252 characters is clipped on its own line alone, and its transport and source show on the line below", async () => {
+  const longHost = [
+    "a".repeat(63),
+    "b".repeat(63),
+    "c".repeat(63),
+    "d".repeat(60),
+  ].join(".");
+  expect(longHost).toHaveLength(252);
+  const firstLongUrl = `turn:${longHost}:3478`;
+  const laterLongUrl = `turn:${longHost}:3479`;
+  writeConfig(
+    webrtcConnection({
+      invitation_relay: {
+        turn: [firstLongUrl, laterLongUrl],
+        registrar: REGISTRAR,
+      },
+    }),
+  );
+  const lines: Array<string> = [];
+  const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    fetch: registrar.fetch,
+    gather: scriptedGathering({ [firstLongUrl]: true }, []),
+  });
+
+  const firstIndex = lines.indexOf(`  ${firstLongUrl}`);
+  const laterIndex = lines.indexOf(`  ${laterLongUrl}`);
+  expect(firstIndex).toBeGreaterThan(0);
+  expect(laterIndex).toBeGreaterThan(firstIndex);
+  expect(lines[firstIndex + 1]).toBe(
+    contactedRelayLine("over UDP, then TCP, from your partner's invitation"),
+  );
+  expect(lines[firstIndex + 2]).toBe(CONTACTED_RELAY_DISCLOSURE);
+  expect(lines[laterIndex + 1]).toBe(
+    laterUrlLine("Over UDP, then TCP, from your partner's invitation"),
+  );
+  for (const [index, line] of lines.entries()) {
+    const shown = String(redactAndSanitizeForDisplay(line));
+    if (index === firstIndex || index === laterIndex) {
+      expect(shown).not.toBe(line);
+      expect(shown.startsWith(`  turn:${longHost.slice(0, 200)}`)).toBe(true);
+    } else expect(shown).toBe(line);
+  }
+  expect(report.checks.map((check) => check.url)).toEqual([
+    undefined,
+    firstLongUrl,
+    laterLongUrl,
+  ]);
 });
 
 // --- a plain doctor contacts no relay and no registrar ------------------------
