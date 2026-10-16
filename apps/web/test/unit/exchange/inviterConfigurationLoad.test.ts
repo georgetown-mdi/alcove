@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   assertFanOutImplemented,
+  assertStandardizationMatchesTerms,
   disclosedColumnNames,
   getDefaultLinkageTerms,
   inferMetadataForEveryColumn,
@@ -66,6 +67,13 @@ import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { inviterServerJobConfig } from "@exchange/useInviterExchange";
 import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
+import { importLinkageTerms } from "@psi/linkageTermsIO";
+
+import {
+  referenceConfigurationYaml,
+  referenceCsv,
+  referenceMetadata,
+} from "../../utils/referenceFanOutConfiguration";
 import { testSftpServerEntry } from "../../utils/jobFixtures";
 
 import type { ColumnMetadata, LinkageTerms, Metadata } from "@alcove/core";
@@ -1868,4 +1876,77 @@ describe("a configuration whose cleaning splits a value", () => {
       ).not.toThrow();
     },
   );
+});
+
+// docs/EXCHANGE_REFERENCE.md's own fan-out configuration, whose split field
+// cleans from the column the plain last name already cleans from.
+describe("the reference's fan-out configuration", () => {
+  test("opens, saves and runs unchanged", () => {
+    const imported = importLinkageTerms(referenceConfigurationYaml());
+    if (!imported.success) throw new Error(imported.error);
+    const authored = imported.standardization;
+    if (authored === undefined) throw new Error("expected a standardization");
+    const state = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          linkageTerms: imported.terms,
+          standardization: authored,
+          metadata: referenceMetadata(),
+        }),
+      ),
+      referenceCsv(),
+    );
+    const editor = state.editor;
+    if (editor === undefined) throw new Error("expected an editor");
+    const byOutput = (
+      standardization: ReadonlyArray<{ output: string }> | undefined,
+    ) =>
+      [...(standardization ?? [])].sort((a, b) =>
+        a.output.localeCompare(b.output),
+      );
+    expect(byOutput(editor.draft.standardization)).toEqual(byOutput(authored));
+    expect(noticesOf(state)).toEqual([]);
+    expect(spineProblems(editor)).toEqual([]);
+
+    const validation = reviewValidation(editor);
+    expect(validation.canGenerate).toBe(true);
+    const terms = validation.terms;
+    if (terms === undefined) throw new Error("expected reviewed terms");
+    expect(terms.linkageKeys.map((key) => key.name)).toEqual(
+      imported.terms.linkageKeys.map((key) => key.name),
+    );
+
+    const saved = configurationHandBack({
+      editor,
+      terms,
+      csvDelimiter: undefined,
+      receipts: RECEIPTS_DEFAULT,
+    });
+    expect(byOutput(saved.standardization)).toEqual(byOutput(authored));
+
+    const intent = intentFor(
+      inviterServerJobConfig({
+        minted: {
+          linkageTerms: terms,
+          sharedSecret: "a".repeat(43),
+          standardization: saved.standardization,
+        },
+        inputSource: { kind: "workFile", name: "clients.csv" },
+        transport: { channel: "sftp" },
+      }),
+    );
+    if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
+    const spec = composeSftpConfigSpec(intent, testSftpServerEntry());
+    expect(spec.standardization).toEqual(saved.standardization);
+    const specStandardization = spec.standardization;
+    if (specStandardization === undefined)
+      throw new Error("expected the composed standardization");
+    expect(() =>
+      assertStandardizationMatchesTerms(specStandardization, spec.linkageTerms),
+    ).not.toThrow();
+    expect(() =>
+      assertFanOutImplemented(spec.linkageTerms, specStandardization),
+    ).not.toThrow();
+  });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { FAN_OUT_FUNCTION_NAMES } from "@alcove/core";
+import {
+  FAN_OUT_FUNCTION_NAMES,
+  OperatorConfigError,
+  assertFanOutImplemented,
+} from "@alcove/core";
 
 import { buildAdvancedTerms } from "@psi/authoring/advancedInviteTerms";
 import { seedAdvancedInvite } from "@psi/authoring/advancedInviteDraft";
@@ -8,6 +12,7 @@ import { setColumnDisclosure } from "@psi/metadataEditing";
 import { validateAdvancedInvite } from "@psi/authoring/advancedInviteValidation";
 
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInviteTypes";
+import type { LinkageStrategy } from "@alcove/core";
 
 // The count-only shape gate at the web AUTHORING boundary. Each of the five rules
 // is reached through `buildAdvancedTerms`; the rules themselves read the
@@ -200,6 +205,12 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
   // as well as in a linkage key, so both stay refused at Generate.
   const [fanOutFunction] = FAN_OUT_FUNCTION_NAMES;
   const fanOutStep = { function: fanOutFunction, params: { delimiter: "-" } };
+  // Keyed by the strategy union, so a strategy added to core fails to compile
+  // here until it is listed.
+  const EVERY_STRATEGY = Object.keys({
+    cascade: true,
+    "single-pass": true,
+  } satisfies Record<LinkageStrategy, true>) as Array<LinkageStrategy>;
 
   function withCleaningFanOut(draft: AdvancedInviteDraft): AdvancedInviteDraft {
     return {
@@ -236,6 +247,53 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
     expect(result.errors.standardization).toMatch(
       /Reveal the matched identifiers/,
     );
+  });
+
+  test("names the step, the field it cleans, and where the method is set", () => {
+    const { draft, seed } = countOnlyDraft();
+    const split: AdvancedInviteDraft = {
+      ...draft,
+      standardization: draft.standardization.map((transformation) =>
+        transformation.output === "last_name"
+          ? { ...transformation, steps: [fanOutStep] }
+          : transformation,
+      ),
+    };
+    expect(
+      validateAdvancedInvite(split, seed, NOW).errors.standardization,
+    ).toBe(
+      "A count-only exchange matches one value per record, but the Split on " +
+        "step in the cleaning for last_name splits a value into parts. Remove " +
+        'that step, or on the Matching on tab set Matching method to "Reveal ' +
+        'the matched identifiers (standard)".',
+    );
+  });
+
+  test("refuses a cleaning split exactly where core's mint assert does", () => {
+    const { draft, seed } = countOnlyDraft();
+    for (const algorithm of ["psi", "psi-c"] as const)
+      for (const linkageStrategy of EVERY_STRATEGY) {
+        const edited: AdvancedInviteDraft = {
+          ...withCleaningFanOut(draft),
+          algorithm,
+          linkageStrategy,
+        };
+        let coreRefuses = false;
+        try {
+          assertFanOutImplemented(
+            buildAdvancedTerms(edited),
+            edited.standardization,
+          );
+        } catch (error) {
+          if (!(error instanceof OperatorConfigError)) throw error;
+          coreRefuses = true;
+        }
+        expect(
+          validateAdvancedInvite(edited, seed, NOW).errors.standardization !==
+            undefined,
+          `${algorithm} under ${linkageStrategy}`,
+        ).toBe(coreRefuses);
+      }
   });
 
   test("blocks Generate on a count-only draft whose key splits a value", () => {

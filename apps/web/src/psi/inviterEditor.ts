@@ -12,6 +12,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 
 import {
   draftFromTerms,
+  draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
   gradeAuthoredKeys,
@@ -33,6 +34,7 @@ import { LIFETIME_CHOICES } from "./formatting";
 import type {
   AdvancedInviteDraft,
   AdvancedInviteSeed,
+  CleaningNotLoaded,
   DraftLegalAgreement,
   OutputDirection,
   ProfiledDateInputFormats,
@@ -310,37 +312,39 @@ export function editorWithFieldInput(
 }
 
 /**
- * Load a configuration's `standardization` block onto the draft, field by
- * field: a transformation lands, input and steps, where the draft declares its
- * output and the draft's columns hold its input as a linkage column. Returns
- * the outputs of the transformations that did not land, so the caller names
- * them rather than dropping them unseen.
+ * Load a configuration's `standardization` block onto a just-imported draft
+ * ({@link draftWithConfigurationCleaning}); an absent block leaves the draft's
+ * cleaning as the import built it. Returns each transformation that did not
+ * load, so the caller names it rather than dropping it unseen.
  */
 export function editorWithConfigurationCleaning(
   editor: InviterEditor,
-  standardization: Standardization,
-): { editor: InviterEditor; notCarried: Array<string> } {
-  let next = editor;
-  const notCarried: Array<string> = [];
-  for (const transformation of standardization) {
-    const declared = next.draft.standardization.some(
-      (declaration) => declaration.output === transformation.output,
-    );
-    const bindable = next.draft.metadata.some(
-      (column) =>
-        column.name === transformation.input && column.role === "linkage",
-    );
-    if (!declared || !bindable) {
-      notCarried.push(transformation.output);
-      continue;
-    }
-    next = editorWithFieldSteps(
-      editorWithFieldInput(next, transformation.output, transformation.input),
-      transformation.output,
-      transformation.steps,
-    );
-  }
-  return { editor: next, notCarried };
+  standardization: Standardization | undefined,
+): { editor: InviterEditor; notLoaded: Array<CleaningNotLoaded> } {
+  if (editor.sealed === true || standardization === undefined)
+    return { editor, notLoaded: [] };
+  const cleaned = draftWithConfigurationCleaning(editor.draft, standardization);
+  return {
+    editor: { ...editor, draft: cleaned.draft },
+    notLoaded: cleaned.notLoaded,
+  };
+}
+
+/**
+ * Load terms and a configuration's cleaning pasted into the import box,
+ * bound against the columns as the operator has set them, so a column edit
+ * made before the paste holds across it.
+ */
+export function editorWithPastedConfiguration(
+  editor: InviterEditor,
+  csv: AcquiredCsv,
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): { editor: InviterEditor; notLoaded: Array<CleaningNotLoaded> } {
+  return editorWithConfigurationCleaning(
+    editorWithImportedTerms(editor, csv, terms, editor.draft.metadata),
+    standardization,
+  );
 }
 
 /** Remove an authored same-typed field's transformation. */

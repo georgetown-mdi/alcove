@@ -32,6 +32,7 @@ export type {
   ProfiledDateInputFormats,
 } from "./advancedInviteTypes";
 export { outputForDirection } from "./advancedInviteTypes";
+export type { CleaningNotLoaded } from "./advancedInviteDraft";
 
 export {
   addElement,
@@ -39,6 +40,7 @@ export {
   dateInputFormatsForColumns,
   defaultStandardizationForRows,
   draftFromTerms,
+  draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
   inferDateInputFormat,

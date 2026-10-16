@@ -10,13 +10,18 @@
  */
 
 import {
+  FAN_OUT_FUNCTION_NAMES,
+  OperatorConfigError,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
+  UsageError,
+  assertFanOutImplemented,
   coalesceSubstitutesConstant,
   sanitizeForDisplay,
   stepCanEmptyRealizedValue,
 } from "@alcove/core";
 
 import type {
+  LinkageTerms,
   Standardization,
   StandardizationFunctionDescriptor,
   StandardizationStep,
@@ -202,6 +207,71 @@ export const expertFunctionNames: ReadonlySet<string> = new Set(
     (group) => group.functionNames,
   ),
 );
+
+/** The advanced groups with every function core classes as fan-out
+ * (`FAN_OUT_FUNCTION_NAMES`) removed, for a menu under terms that refuse one
+ * ({@link cleaningFanOutRefusedUnder}). */
+export const EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT: Array<StandardizationFunctionGroup> =
+  STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map((group) => ({
+    ...group,
+    functionNames: group.functionNames.filter(
+      (name) => !FAN_OUT_FUNCTION_NAMES.includes(name),
+    ),
+  })).filter((group) => group.functionNames.length > 0);
+
+/** A cleaning step core refuses under the terms: the field it cleans and the
+ * step's function. */
+export interface RefusedCleaningFanOut {
+  output: string;
+  functionName: string;
+}
+
+/**
+ * The first cleaning step that splits a value into several match candidates,
+ * where the terms refuse one. Read from core's own refusal
+ * (`assertFanOutImplemented`, whose cleaning half throws an
+ * `OperatorConfigError`), so this refuses exactly the cleaning the mint and the
+ * run refuse. A refusal of the terms' own keys is not this question.
+ */
+export function refusedCleaningFanOut(
+  terms: LinkageTerms,
+  standardization: Standardization,
+): RefusedCleaningFanOut | undefined {
+  try {
+    assertFanOutImplemented(terms, standardization);
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof OperatorConfigError)) {
+      if (error instanceof UsageError) return undefined;
+      throw error;
+    }
+  }
+  for (const transformation of standardization) {
+    const step = (transformation.steps ?? []).find((candidate) =>
+      FAN_OUT_FUNCTION_NAMES.includes(candidate.function),
+    );
+    if (step !== undefined)
+      return { output: transformation.output, functionName: step.function };
+  }
+  throw new Error(
+    "core refused a cleaning fan-out, but no cleaning step is a fan-out",
+  );
+}
+
+/** Whether `terms` refuse any cleaning step that splits a value, asked of
+ * {@link refusedCleaningFanOut} over one step of each fan-out function. */
+export function cleaningFanOutRefusedUnder(terms: LinkageTerms): boolean {
+  return (
+    refusedCleaningFanOut(
+      terms,
+      FAN_OUT_FUNCTION_NAMES.map((name) => ({
+        output: name,
+        input: name,
+        steps: [{ function: name }],
+      })),
+    ) !== undefined
+  );
+}
 
 /**
  * The plain-language label the add-step menu and the step rows show for

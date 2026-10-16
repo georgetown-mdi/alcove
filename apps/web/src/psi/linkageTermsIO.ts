@@ -145,9 +145,7 @@ export function importLinkageTerms(text: string): LinkageTermsImportResult {
   if (!standardization.success)
     return {
       success: false,
-      error:
-        "The standardization block in this configuration is not valid. " +
-        "Correct it, or paste the configuration without it.",
+      error: readableStandardizationError(standardization.error),
     };
   return {
     success: true,
@@ -258,6 +256,29 @@ function configurationBlockWithin(
 function readableTermsError(error: ZodError): string {
   if (error.issues.length === 0)
     return "The imported terms are not valid linkage terms.";
+  return readableSchemaError(error, "The imported terms are not valid", []);
+}
+
+/** {@link readableTermsError} for a configuration's `standardization` block,
+ * its path written from the block's own key. */
+function readableStandardizationError(error: ZodError): string {
+  const remedy = "Correct it, or paste the configuration without it.";
+  if (error.issues.length === 0)
+    return `The standardization block in this configuration is not valid. ${remedy}`;
+  return `${readableSchemaError(
+    error,
+    "The standardization block in this configuration is not valid",
+    ["standardization"],
+  )} ${remedy}`;
+}
+
+/** The first issue of `error` as `<lead>: <path> <reason>.`, its path under
+ * `root`; see {@link readableTermsError} for what it leaves out. */
+function readableSchemaError(
+  error: ZodError,
+  lead: string,
+  root: ReadonlyArray<string>,
+): string {
   const issue = error.issues[0];
 
   // Locate the problem by its structural path (schema field names and array
@@ -272,8 +293,10 @@ function readableTermsError(error: ZodError): string {
   // file {@link exportLinkageTerms} wrote -- through {@link snakeizeKeys}, of
   // which {@link snakeizeKey} is the per-key half.
   const paramsIndex = issue.path.indexOf("params");
-  const safePath =
-    paramsIndex >= 0 ? issue.path.slice(0, paramsIndex + 1) : issue.path;
+  const safePath = [
+    ...root,
+    ...(paramsIndex >= 0 ? issue.path.slice(0, paramsIndex + 1) : issue.path),
+  ];
   const where =
     safePath.length > 0
       ? safePath.map((segment) => snakeizeKey(String(segment))).join(".")
@@ -304,7 +327,5 @@ function readableTermsError(error: ZodError): string {
       ? ` (and ${error.issues.length - 1} more problem${error.issues.length - 1 === 1 ? "" : "s"})`
       : "";
 
-  return sanitizeForDisplay(
-    `The imported terms are not valid: ${where} ${reason}.${more}`,
-  );
+  return sanitizeForDisplay(`${lead}: ${where} ${reason}.${more}`);
 }

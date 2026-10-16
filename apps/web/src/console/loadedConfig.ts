@@ -534,13 +534,13 @@ export function editorWithLoadedTerms(
         heldTermsSettings: payload === undefined ? {} : { payload },
       },
     },
-    loaded.standardization ?? [],
+    loaded.standardization,
   );
   return {
     editor: cleaning.editor,
     notApplied: [
       ...(columns.whole ? [] : ["metadata"]),
-      ...(cleaning.notCarried.length === 0 ? [] : ["standardization"]),
+      ...(cleaning.notLoaded.length === 0 ? [] : ["standardization"]),
     ],
     notCovered: columns.covered ? [] : ["metadata"],
   };

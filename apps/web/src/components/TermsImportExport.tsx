@@ -13,6 +13,7 @@ import { IconAlertCircle, IconDownload, IconUpload } from "@tabler/icons-react";
 
 import { sanitizeForDisplay } from "@alcove/core";
 
+import { DISCLOSURE_LABELS, SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
 import { exportLinkageTerms, importLinkageTerms } from "@psi/linkageTermsIO";
 import { importedConstraintDivergenceMessage } from "@psi/authoring/advancedInvite";
 
@@ -20,25 +21,50 @@ import { triggerBlobDownload } from "./blobDownload";
 
 import type {
   AdvancedInviteSeed,
+  CleaningNotLoaded,
   ProfiledDateInputFormats,
 } from "@psi/authoring/advancedInvite";
 import type { CSVRow, LinkageTerms, Standardization } from "@alcove/core";
 
-const IMPORT_SUCCESS =
-  "Imported. Review the loaded terms before creating the invitation.";
+const IMPORT_SUCCESS = "Imported. Review the loaded terms before you continue.";
 
-/** The import confirmation, naming each field whose cleaning steps in the
- * pasted configuration were not loaded. The names come from the pasted
- * document, so each is sanitized for display. */
-function importConfirmation(notCarried: ReadonlyArray<string>): string {
-  if (notCarried.length === 0) return IMPORT_SUCCESS;
-  const names = notCarried.map((name) => sanitizeForDisplay(name)).join(", ");
-  return (
-    `Imported, but the cleaning steps for ${names} were not loaded: these ` +
-    "terms declare no such field, or your file has no linkage column with " +
-    "the input name the configuration gives. Add those steps on the " +
-    "Cleaning tab, and review the loaded terms before creating the invitation."
-  );
+/** Why one field's cleaning did not load, and what to do where a column
+ * setting under Matching & sharing would load it on the next paste. */
+function notLoadedSentence(entry: CleaningNotLoaded): string {
+  const field = sanitizeForDisplay(entry.output);
+  const column = sanitizeForDisplay(entry.input);
+  switch (entry.reason) {
+    case "no-field":
+      return `${field}: these terms declare no field of that name.`;
+    case "no-column":
+      return `${field}: your file has no column named ${column}.`;
+    case "not-matching":
+      return (
+        `${field}: your column ${column} is not used to match. Set it to ` +
+        `"${DISCLOSURE_LABELS.match}" under Matching & sharing, then paste ` +
+        "the configuration again."
+      );
+    case "other-type":
+      return (
+        `${field}: your column ${column} is not a ` +
+        `${SEMANTIC_TYPE_LABELS[entry.fieldType]} column. Set its type under ` +
+        "Matching & sharing, then paste the configuration again."
+      );
+  }
+}
+
+/** The import confirmation, stating for each field whose cleaning in the
+ * pasted configuration did not load why it did not. The names come from the
+ * pasted document, so each is sanitized for display. */
+function importConfirmation(
+  notLoaded: ReadonlyArray<CleaningNotLoaded>,
+): string {
+  if (notLoaded.length === 0) return IMPORT_SUCCESS;
+  return [
+    "Imported, but some cleaning steps were not loaded.",
+    ...notLoaded.map(notLoadedSentence),
+    "Review the loaded terms before you continue.",
+  ].join(" ");
 }
 
 /**
@@ -74,18 +100,17 @@ export function TermsImportExport({
    * reconstruction never re-derives them from the rows (the console has none). */
   dateInputFormats?: ProfiledDateInputFormats;
   /** Called with validated terms, and a pasted configuration's cleaning steps,
-   * to load into the editor. Returns the outputs of the cleaning steps that
-   * were not loaded. */
+   * to load into the editor. Returns the cleaning that was not loaded. */
   onImport: (
     terms: LinkageTerms,
     standardization: Standardization | undefined,
-  ) => ReadonlyArray<string>;
+  ) => ReadonlyArray<CleaningNotLoaded>;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
-  // The fields whose cleaning steps the last import did not load; undefined
-  // until an import succeeds.
-  const [imported, setImported] = useState<ReadonlyArray<string>>();
+  // The cleaning the last import did not load; undefined until an import
+  // succeeds.
+  const [imported, setImported] = useState<ReadonlyArray<CleaningNotLoaded>>();
 
   const handleImport = () => {
     setImported(undefined);

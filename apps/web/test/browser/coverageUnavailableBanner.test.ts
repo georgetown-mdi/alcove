@@ -119,6 +119,7 @@ describe("the Cleaning surfaces' coverage-unavailable banner", () => {
         coverageRefusedColumns: [],
         deadKeyCount: 0,
         cleaningResetKey: "",
+        withholdFanOut: false,
         onFieldSteps: () => undefined,
         onFieldInput: () => undefined,
         onReset: () => undefined,

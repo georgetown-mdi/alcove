@@ -1,11 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { authoredLinkageFields, snakeizeKeys } from "@alcove/core";
 
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 
-import { buildAdvancedTerms } from "@psi/authoring/advancedInvite";
+import {
+  buildAdvancedTerms,
+  importedConstraintDivergenceMessage,
+} from "@psi/authoring/advancedInvite";
 
 import {
   byteSizeLabel,
@@ -20,7 +23,6 @@ import {
   editorWithAuthoredDraft,
   editorWithColumnDisclosure,
   editorWithColumnType,
-  editorWithConfigurationCleaning,
   editorWithDeduplicate,
   editorWithFieldAdded,
   editorWithFieldSteps,
@@ -32,6 +34,7 @@ import {
   editorWithLifetime,
   editorWithLinkageStrategy,
   editorWithOutputDirection,
+  editorWithPastedConfiguration,
   editorWithTransport,
   enabledKeys,
   identifierProblem,
@@ -70,6 +73,12 @@ import { signingIdentityDivergence } from "@psi/receiptsModel";
 // literal FSI/PDI expectations live in
 // apps/web/test/unit/components/columnNameDisplay.test.ts.
 import { isolatedColumnName } from "@components/ColumnName";
+
+import {
+  REFERENCE_STANDARDIZATION_YAML,
+  referenceConfigurationYaml,
+  referenceCsv,
+} from "../../utils/referenceFanOutConfiguration";
 
 import type { AcquiredCsv } from "@psi/inviterEditor";
 import type { InviterCreateGates } from "@psi/inviterModel";
@@ -1496,11 +1505,15 @@ describe("customize tabs", () => {
     });
     const result = importLinkageTerms(pasted);
     if (!result.success) throw new Error(result.error);
-    const loaded = editorWithConfigurationCleaning(
-      editorWithImportedTerms(editor, csv, result.terms),
-      result.standardization ?? [],
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      csv,
+      result.terms,
+      result.standardization,
     );
-    expect(loaded.notCarried).toEqual(["first_name"]);
+    expect(loaded.notLoaded).toEqual([
+      { output: "first_name", input: "given_name", reason: "no-column" },
+    ]);
     expect(
       loaded.editor.draft.standardization.find(
         (transformation) => transformation.output === "last_name",
@@ -1511,6 +1524,151 @@ describe("customize tabs", () => {
     ]);
     expect(spineProblems(loaded.editor)).toEqual([]);
     expect(reviewValidation(loaded.editor).canGenerate).toBe(true);
+  });
+
+  test("the reference's fan-out configuration loads whole by paste", () => {
+    // docs/EXCHANGE_REFERENCE.md's example cleans last_name and its split
+    // variant from the one LAST_NAME column. SSN_RAW is set to a matched SSN
+    // column before the paste, and the paste keeps that setting.
+    const reference = referenceCsv();
+    let editor = editorFromCsv("County Health", reference);
+    editor = editorWithColumnType(editor, reference, "SSN_RAW", "ssn").editor;
+    editor = editorWithColumnDisclosure(
+      editor,
+      reference,
+      "SSN_RAW",
+      "match",
+    ).editor;
+    const result = importLinkageTerms(referenceConfigurationYaml());
+    if (!result.success) throw new Error(result.error);
+    const pasted = parseYaml(REFERENCE_STANDARDIZATION_YAML) as {
+      standardization: unknown;
+    };
+    expect(snakeizeKeys(result.standardization)).toEqual(
+      pasted.standardization,
+    );
+    expect(
+      importedConstraintDivergenceMessage(
+        result.terms,
+        editor.seed,
+        reference.rawRows,
+      ),
+    ).toBeUndefined();
+
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      reference,
+      result.terms,
+      result.standardization,
+    );
+    expect(loaded.notLoaded).toEqual([]);
+    expect(
+      [...loaded.editor.draft.standardization].sort((a, b) =>
+        a.output.localeCompare(b.output),
+      ),
+    ).toEqual(
+      [...(result.standardization ?? [])].sort((a, b) =>
+        a.output.localeCompare(b.output),
+      ),
+    );
+    expect(loaded.editor.draft.keys.every((entry) => entry.enabled)).toBe(true);
+    expect(spineProblems(loaded.editor)).toEqual([]);
+    const terms = mintedTerms(loaded.editor);
+    expect(terms.linkageFields.map((field) => field.name)).toContain(
+      "last_name_variants",
+    );
+    expect(terms.linkageKeys.map((key) => key.name)).toContain(
+      "LN variants + DOB",
+    );
+  });
+
+  test("fields a pasted configuration leaves out are cleaned with no steps", () => {
+    // As the CLI cleans them: a configuration that authors a standardization
+    // gives every field it does not name the identity transformation.
+    const editor = editorFromCsv("Dana", csv);
+    const pasted = stringifyYaml({
+      linkage_terms: snakeizeKeys(mintedTerms(editor)),
+      standardization: [
+        {
+          output: "last_name",
+          input: "last_name",
+          steps: [{ function: "to_upper_case" }],
+        },
+      ],
+    });
+    const result = importLinkageTerms(pasted);
+    if (!result.success) throw new Error(result.error);
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      csv,
+      result.terms,
+      result.standardization,
+    );
+    expect(loaded.notLoaded).toEqual([]);
+    const stepsByField = new Map(
+      loaded.editor.draft.standardization.map((transformation) => [
+        transformation.output,
+        transformation.steps,
+      ]),
+    );
+    expect(stepsByField.get("last_name")).toEqual([
+      { function: "to_upper_case" },
+    ]);
+    const others = [...stepsByField].filter(([field]) => field !== "last_name");
+    expect(others.length).toBeGreaterThan(0);
+    for (const [, steps] of others) expect(steps).toEqual([]);
+  });
+
+  test("a pasted terms document with no cleaning keeps the recommended cleaning", () => {
+    const editor = editorFromCsv("Dana", csv);
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      csv,
+      mintedTerms(editor),
+      undefined,
+    );
+    expect(loaded.notLoaded).toEqual([]);
+    expect(loaded.editor.draft.standardization).toEqual(
+      editor.draft.standardization,
+    );
+  });
+
+  test("a pasted configuration names why each field's cleaning did not load", () => {
+    let editor = editorFromCsv("Dana", csv);
+    editor = editorWithColumnDisclosure(
+      editor,
+      csv,
+      "first_name",
+      "ignored",
+    ).editor;
+    const result = importLinkageTerms(
+      stringifyYaml({
+        linkage_terms: snakeizeKeys(mintedTerms(editorFromCsv("Dana", csv))),
+        standardization: [
+          { output: "middle_name", input: "last_name", steps: [] },
+          { output: "first_name", input: "first_name", steps: [] },
+          { output: "last_name", input: "dob", steps: [] },
+        ],
+      }),
+    );
+    if (!result.success) throw new Error(result.error);
+    expect(
+      editorWithPastedConfiguration(
+        editor,
+        csv,
+        result.terms,
+        result.standardization,
+      ).notLoaded,
+    ).toEqual([
+      { output: "middle_name", input: "last_name", reason: "no-field" },
+      { output: "first_name", input: "first_name", reason: "not-matching" },
+      {
+        output: "last_name",
+        input: "dob",
+        reason: "other-type",
+        fieldType: "last_name",
+      },
+    ]);
   });
 
   test("column edits preserve authored keys", () => {

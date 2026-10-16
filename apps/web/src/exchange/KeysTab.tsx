@@ -49,12 +49,15 @@ import type {
   KeyVerdict,
 } from "@psi/inviterEditor";
 import type {
+  AdvancedInviteDraft,
+  CleaningNotLoaded,
+} from "@psi/authoring/advancedInvite";
+import type {
   Algorithm,
   LinkageStrategy,
   LinkageTerms,
   Standardization,
 } from "@alcove/core";
-import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 
 /** The guided-list badge copy and CSS class for each per-key verdict
  * ({@link KeyVerdict}). A dead key displays amber ("won't match") rather than red:
@@ -163,11 +166,11 @@ export function KeysTab({
   onAlgorithm: (algorithm: Algorithm) => void;
   onDeduplicate: (deduplicate: boolean) => void;
   /** Load imported terms and a pasted configuration's cleaning steps; returns
-   * the fields whose steps did not load. */
+   * the cleaning that did not load. */
   onImport: (
     terms: LinkageTerms,
     standardization: Standardization | undefined,
-  ) => ReadonlyArray<string>;
+  ) => ReadonlyArray<CleaningNotLoaded>;
   /** The validation message for the key set, rendered inline beside the list
    * it names (the work column's Problems block shows it too). */
   keysError: string | undefined;

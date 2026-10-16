@@ -28,6 +28,7 @@ import { useIsomorphicEffect } from "@mantine/hooks";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import {
+  EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT,
   INERT_COALESCE_ADVICE,
   NULL_IF_BOTH_VALUES_REFUSAL,
   STANDARDIZATION_EXPERT_FUNCTION_GROUPS,
@@ -365,6 +366,7 @@ export function StepListEditor({
   addStepLabel = "Add a step",
   emptyHint = "No steps: the value is used as-is. Add a step to clean it.",
   allowRawPatterns = false,
+  withholdFanOut = false,
 }: {
   /** The ordered pipeline steps. */
   steps: Array<EditableStep>;
@@ -381,6 +383,9 @@ export function StepListEditor({
    * read-only; the per-party cleaning editors pass `true`, since a raw pattern there
    * changes only this party's own match rate. */
   allowRawPatterns?: boolean;
+  /** When set, the add menu offers no step that splits a value into several
+   * match candidates, for a host whose terms refuse one. */
+  withholdFanOut?: boolean;
 }) {
   // A stable React key per step, tracked by object identity so a reorder follows
   // the logical step (rather than its array position) and a param edit keeps the
@@ -584,7 +589,10 @@ export function StepListEditor({
               element-transform editor). */}
           {allowRawPatterns && <Menu.Divider />}
           {allowRawPatterns &&
-            STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map(renderMenuGroup)}
+            (withholdFanOut
+              ? EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT
+              : STANDARDIZATION_EXPERT_FUNCTION_GROUPS
+            ).map(renderMenuGroup)}
         </Menu.Dropdown>
       </Menu>
     </Stack>

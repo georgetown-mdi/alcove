@@ -51,6 +51,7 @@ export function AcceptorCleaningStep({
   deadKeyCount,
   cleaningResetKey,
   coveragePendingLabel,
+  withholdFanOut,
   onFieldSteps,
   onFieldInput,
   onReset,
@@ -86,6 +87,9 @@ export function AcceptorCleaningStep({
    * console-sweep phrasing, so the readout does not look like an instant local
    * check. Undefined keeps the default local copy. */
   coveragePendingLabel?: string;
+  /** Whether the invitation's terms refuse a cleaning step that splits a
+   * value, so the add menu offers none. */
+  withholdFanOut: boolean;
   onFieldSteps: (output: string, steps: Array<StandardizationStep>) => void;
   onFieldInput: (output: string, column: string) => void;
   onReset: () => void;
@@ -197,6 +201,7 @@ export function AcceptorCleaningStep({
             return rate !== undefined && isSilentEmpty(rate);
           }}
           onMissingField="throw"
+          withholdFanOut={withholdFanOut}
         />
       </CleaningErrorBoundary>
       {/* One polite, atomic region announces a silent-empty collapse for the whole

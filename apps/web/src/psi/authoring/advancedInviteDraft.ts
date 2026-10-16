@@ -1143,3 +1143,97 @@ export function draftFromTerms(
     },
   };
 }
+
+/** A transformation of a configuration's `standardization` block that did not
+ * load onto the draft, and why: the terms declare no field named by its
+ * `output`, the file has no column named by its `input`, that column is not
+ * used to match, or it holds another type than the field (`fieldType`). */
+export type CleaningNotLoaded = { output: string; input: string } & (
+  | { reason: "no-field" | "no-column" | "not-matching" }
+  | { reason: "other-type"; fieldType: LinkageField["type"] }
+);
+
+/**
+ * Load a configuration's `standardization` block onto a draft just built by
+ * {@link draftFromTerms}, as the CLI reads the same block: a transformation
+ * binds its declared field to its `input` column with its steps, and a field
+ * the block does not name is cleaned with no steps.
+ *
+ * A transformation binds only a `role: linkage` column of its field's type,
+ * the rule the reconstruction keeps. It may bind a column another field
+ * already cleans from, which the reconstruction never does on its own: a
+ * fan-out field cleaned beside its plain one from the same column. A key the
+ * reconstruction disabled for want of such a field is enabled once the field
+ * is declared, and the rule-set citation is re-decided against the result.
+ */
+export function draftWithConfigurationCleaning(
+  draft: AdvancedInviteDraft,
+  standardization: Standardization,
+): { draft: AdvancedInviteDraft; notLoaded: Array<CleaningNotLoaded> } {
+  const fields =
+    draft.importedLinkageFields ??
+    authoredLinkageFields(draft.metadata, draft.standardization);
+  const notLoaded: Array<CleaningNotLoaded> = [];
+  const loaded = new Map<string, Standardization[number]>();
+  for (const transformation of standardization) {
+    const { output, input } = transformation;
+    const field = fields.find((declared) => declared.name === output);
+    const column = draft.metadata.find((candidate) => candidate.name === input);
+    if (field === undefined)
+      notLoaded.push({ output, input, reason: "no-field" });
+    else if (column === undefined)
+      notLoaded.push({ output, input, reason: "no-column" });
+    else if (column.role !== "linkage")
+      notLoaded.push({ output, input, reason: "not-matching" });
+    else if (column.type !== field.type)
+      notLoaded.push({
+        output,
+        input,
+        reason: "other-type",
+        fieldType: field.type,
+      });
+    else loaded.set(output, transformation);
+  }
+
+  const named = new Set(standardization.map(({ output }) => output));
+  const cleaned = draft.standardization.map(
+    (transformation) =>
+      loaded.get(transformation.output) ??
+      (named.has(transformation.output)
+        ? transformation
+        : { ...transformation, steps: [] }),
+  );
+  const present = new Set(cleaned.map(({ output }) => output));
+  const next = [
+    ...cleaned,
+    ...[...loaded.values()].filter(({ output }) => !present.has(output)),
+  ];
+
+  const before = declarableFieldNames(draft.metadata, draft.standardization);
+  const after = declarableFieldNames(draft.metadata, next);
+  const keys = draft.keys.map((entry) =>
+    !entry.enabled &&
+    !keyIsSupplyable(entry.key, before) &&
+    keyIsSupplyable(entry.key, after)
+      ? { ...entry, enabled: true }
+      : entry,
+  );
+  const result: AdvancedInviteDraft = {
+    ...draft,
+    standardization: next,
+    keys,
+  };
+  const citation = result.importedRuleSetCitation;
+  if (citation?.kind !== "cited") return { draft: result, notLoaded };
+  return {
+    draft: {
+      ...result,
+      importedRuleSetCitation: {
+        ...citation,
+        honoredAtImport:
+          buildAdvancedTerms(result).linkageRuleSet !== undefined,
+      },
+    },
+    notLoaded,
+  };
+}

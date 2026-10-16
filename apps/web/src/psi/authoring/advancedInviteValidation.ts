@@ -1,6 +1,5 @@
 import {
   CanonicalEncodingError,
-  FAN_OUT_FUNCTION_NAMES,
   INVITATION_LIFETIME_SECONDS,
   MAX_DISPLAYED_PARAMS,
   MAX_INVITATION_LIFETIME_SECONDS,
@@ -23,6 +22,7 @@ import {
   disclosedColumnNames,
   loneSurrogateIndex,
   safeParseLinkageTerms,
+  sanitizeForDisplay,
   summarizeLinkageShortfall,
   swapPairTransformsDiffer,
   termsDeclareCandidateSet,
@@ -30,8 +30,10 @@ import {
 
 import {
   descriptorFor,
+  functionDisplay,
   isStepValid,
   pipelineHasInertCoalesce,
+  refusedCleaningFanOut,
 } from "../standardizationAuthoring";
 import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 
@@ -54,6 +56,7 @@ import type {
 } from "@alcove/core";
 
 import type { ImportedCitationDropCause } from "./advancedInviteTerms";
+import type { RefusedCleaningFanOut } from "../standardizationAuthoring";
 
 import type {
   AdvancedField,
@@ -94,18 +97,6 @@ function todayIso(now: Date): string {
 const UNSUPPLYABLE_KEY_MESSAGE =
   "A linkage key needs a field your columns cannot supply. Add a column of that " +
   "type, or turn that key off.";
-
-/** Whether a step list declares a function core classes as fan-out -- one that
- * expands a value into several match candidates. Read from core's
- * `FAN_OUT_FUNCTION_NAMES` rather than a second web-side list, so a producer
- * added there is gated here with no second edit. */
-function declaresFanOut(
-  steps: ReadonlyArray<{ function: string }> | undefined,
-): boolean {
-  return (steps ?? []).some((step) =>
-    FAN_OUT_FUNCTION_NAMES.includes(step.function),
-  );
-}
 
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
@@ -288,12 +279,26 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
   REVEAL_IDENTIFIERS_INSTEAD;
 
 /** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
- * core refuses a count-only exchange whose own cleaning splits a value
- * (`assertFanOutImplemented`), which the terms alone do not show. */
-const COUNT_ONLY_CLEANING_FAN_OUT_MESSAGE =
-  "A count-only exchange matches one value per record, but a cleaning step " +
-  "here splits a value into parts. Remove that step, or " +
-  REVEAL_IDENTIFIERS_INSTEAD;
+ * core refuses an exchange whose own cleaning splits a value under a
+ * count-only algorithm or a strategy that matches none
+ * ({@link refusedCleaningFanOut}), which the terms alone do not show. Names
+ * the step by its menu label and the field it cleans, which the Cleaning tab
+ * also shows. */
+function cleaningFanOutMessage(
+  refused: RefusedCleaningFanOut,
+  countOnly: boolean,
+): string {
+  const step =
+    `the ${functionDisplay(refused.functionName).label} step in the ` +
+    `cleaning for ${sanitizeForDisplay(refused.output)}`;
+  return countOnly
+    ? `A count-only exchange matches one value per record, but ${step} ` +
+        "splits a value into parts. Remove that step, or on the Matching on " +
+        `tab ${REVEAL_IDENTIFIERS_INSTEAD}`
+    : `This linkage strategy matches one value per record, but ${step} ` +
+        "splits a value into parts. Remove that step, or on the Matching on " +
+        "tab change Linkage strategy.";
+}
 
 /** Shown when the draft asks for a deduplicating match under a linkage strategy
  * that cannot run one. Core refuses that pair on both parties before matching
@@ -634,16 +639,14 @@ export function validateAdvancedInvite(
       "Finish, fix, or remove the highlighted cleaning steps before generating.";
   }
 
-  // The count-only cleaning fan-out gate. Both linkage strategies match a
-  // fan-out, so only the count-only algorithm refuses one; the key-transform
-  // half is the candidate-set gate below.
-  if (
-    terms.algorithm === "psi-c" &&
-    draft.standardization.some((transformation) =>
-      declaresFanOut(transformation.steps),
-    )
-  )
-    errors.standardization = COUNT_ONLY_CLEANING_FAN_OUT_MESSAGE;
+  // The cleaning fan-out gate, core's own refusal; the key-transform half is
+  // the candidate-set gate below.
+  const refusedFanOut = refusedCleaningFanOut(terms, draft.standardization);
+  if (refusedFanOut !== undefined)
+    errors.standardization = cleaningFanOutMessage(
+      refusedFanOut,
+      terms.algorithm === "psi-c",
+    );
 
   // The unrecognized-step gate, the key-element counterpart of the descriptor
   // gate above: a step whose function has no descriptor is one core's compile

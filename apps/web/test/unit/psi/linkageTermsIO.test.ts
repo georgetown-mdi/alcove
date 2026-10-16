@@ -344,14 +344,30 @@ describe("importLinkageTerms on a pasted configuration's cleaning steps", () => 
     );
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error).toContain("standardization block");
+    expect(result.error).toBe(
+      "The standardization block in this configuration is not valid: " +
+        "standardization.0.input is missing or has the wrong type. (and 1 " +
+        "more problem) Correct it, or paste the configuration without it.",
+    );
     expect(result.error).not.toContain("secret-value-xyz");
   });
 
   test("a bare terms document's standardization key is not read", () => {
     // Only a configuration wrapping its terms in linkage_terms has cleaning
     // steps of its own; a terms document has no such block.
-    const result = importLinkageTerms(exportLinkageTerms(TERMS, "json"));
+    const result = importLinkageTerms(
+      JSON.stringify({
+        ...(JSON.parse(exportLinkageTerms(TERMS, "json")) as object),
+        standardization: [
+          {
+            output: "last_name",
+            input: "last_name",
+            steps: [{ function: "to_upper_case" }],
+          },
+        ],
+      }),
+    );
+    expect(result.success).toBe(true);
     expect(result.success && result.standardization).toBeUndefined();
   });
 });

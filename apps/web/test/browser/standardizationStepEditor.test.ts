@@ -414,6 +414,25 @@ describe("StandardizationStepEditor raw-pattern authoring (per-party, ungated)",
       .toBeInTheDocument();
   });
 
+  test("a host whose terms refuse a split withholds it from the menu", async () => {
+    app.render(
+      createElement(StandardizationStepEditor, {
+        fieldLabel: "First name",
+        inputColumn: "n",
+        steps: [],
+        onStepsChange: () => {},
+        withholdFanOut: true,
+      }),
+    );
+    await userEvent.click(page.getByRole("button", { name: "Add a step" }));
+    await expect
+      .element(page.getByRole("menuitem", { name: "Filter (regex)" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("menuitem", { name: "Split on" }).elements(),
+    ).toHaveLength(0);
+  });
+
   test("a default pipeline's regex step is editable, with its advanced badge", async () => {
     app.render(
       createElement(EditorWithPreview, {
