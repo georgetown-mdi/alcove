@@ -38,8 +38,12 @@ import {
 import { clearManagedExchangeTermsProposal } from "@psi/managed/managedLocalState";
 
 import {
+  TERMS_UPDATE_APPLIED_TEXT,
+  TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_NOT_APPLIED_TEXT,
+  termsUpdateAppliedText,
   termsUpdateNotAppliedText,
+  termsUpdateReadingText,
 } from "@recurring/managedTermsUpdateModel";
 
 import {
@@ -585,6 +589,79 @@ describe("applying a partner's terms update", () => {
       FIRST_NAME_STANDARDIZATION,
     );
     expect(applied.exchangeFile.linkageTerms.identity).toBe("Agency B");
+  });
+
+  /** Agency B's stored exchange, its result file naming the matched key. */
+  async function agencyBRecordNamingTheKey(): Promise<RunnableManagedExchangeRecord> {
+    const agencyB = await agencyBRecord();
+    const record = runnableManagedExchangeOrRefuse({
+      ...agencyB,
+      exchangeFile: { ...agencyB.exchangeFile, includeMatchingKey: true },
+    });
+    storedBytes.set(record.id, JSON.stringify(record));
+    return record;
+  }
+
+  test("applies single-pass terms to an exchange naming the matched key, turns the key off, and says so", async () => {
+    const record = await agencyBRecordNamingTheKey();
+    const update = await updateStating({
+      ...OWN_TERMS,
+      linkageStrategy: "single-pass",
+    });
+
+    const reading = await readManagedTermsUpdate(record, update);
+    expect(reading.matchingKeyTurnedOff).toBe("single-pass");
+    expect(termsUpdateReadingText(reading, true)).toBe(
+      `${TERMS_UPDATE_CHANGE_TEXT} ` +
+        "Accepting also turns off the setting to name the linkage key each " +
+        "match was made on, because the new terms use the single-pass " +
+        "linkage strategy, where the party that sends its records first is " +
+        "not told which key matched.",
+    );
+
+    const applied = await applyManagedTermsUpdate(record.id, reading);
+    expect(applied.exchangeFile.linkageTerms.linkageStrategy).toBe(
+      "single-pass",
+    );
+    expect(storedRecord(record.id).exchangeFile).not.toHaveProperty(
+      "includeMatchingKey",
+    );
+    expect(termsUpdateAppliedText(reading)).toBe(
+      `${TERMS_UPDATE_APPLIED_TEXT} The setting to name the linkage key each ` +
+        "match was made on was turned off, because the new terms use the " +
+        "single-pass linkage strategy, where the party that sends its " +
+        "records first is not told which key matched.",
+    );
+  });
+
+  test("keeps the matched key on terms that still admit it", async () => {
+    const record = await agencyBRecordNamingTheKey();
+
+    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+    expect(reading).not.toHaveProperty("matchingKeyTurnedOff");
+    expect(termsUpdateAppliedText(reading)).toBe(TERMS_UPDATE_APPLIED_TEXT);
+
+    await applyManagedTermsUpdate(record.id, reading);
+    expect(storedRecord(record.id).exchangeFile.includeMatchingKey).toBe(true);
+  });
+
+  test("refuses as changed where the matched key was turned on after the update was read", async () => {
+    const record = await agencyBRecord();
+    const reading = await readManagedTermsUpdate(
+      record,
+      await updateStating({ ...OWN_TERMS, linkageStrategy: "single-pass" }),
+    );
+    expect(reading).not.toHaveProperty("matchingKeyTurnedOff");
+    storedBytes.set(
+      record.id,
+      JSON.stringify({
+        ...record,
+        exchangeFile: { ...record.exchangeFile, includeMatchingKey: true },
+      }),
+    );
+    expect(await refusalOf(applyManagedTermsUpdate(record.id, reading))).toBe(
+      "changed",
+    );
   });
 
   test("refuses as not applicable where the record cannot hold the terms", async () => {

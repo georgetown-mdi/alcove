@@ -87,3 +87,56 @@ export const MATCHING_KEY_WITHHELD_COPY: Record<
     "file is written for you. Choose to receive the results yourself to turn " +
     "this on.",
 };
+
+/** Why the control is unavailable on a stored exchange, whose terms are not
+ * edited where the control is: what happened, and the agreed terms that
+ * would need to change. */
+export const MATCHING_KEY_STORED_WITHHELD_COPY: Record<
+  MatchingKeyUnavailableReason,
+  string
+> = {
+  "count-only":
+    "Not available: this exchange reveals only the count of matches and " +
+    "writes no result file. It is available on terms that reveal the " +
+    "matched identifiers.",
+  "single-pass":
+    "Not available with the single-pass linkage strategy, where the party " +
+    "that sends its records first is not told which key matched. It is " +
+    "available on terms that use the cascade strategy.",
+  "no-output":
+    "Not available: only your partner receives the results, so no result " +
+    "file is written for you. It is available on terms that give you the " +
+    "results.",
+};
+
+/** Why a terms change turned the setting off, completing "because". */
+const MATCHING_KEY_TURNED_OFF_BECAUSE: Record<
+  MatchingKeyUnavailableReason,
+  string
+> = {
+  "count-only":
+    "the new terms reveal only the count of matches and write no result file",
+  "single-pass":
+    "the new terms use the single-pass linkage strategy, where the party " +
+    "that sends its records first is not told which key matched",
+  "no-output":
+    "under the new terms only your partner receives the results, so no " +
+    "result file is written for you",
+};
+
+/**
+ * What a terms update says about the setting it turns off: before it is
+ * accepted (`will`), and once it has been (`did`).
+ */
+export function matchingKeyTurnedOffNotice(
+  reason: MatchingKeyUnavailableReason,
+  when: "will" | "did",
+): string {
+  const lead =
+    when === "will"
+      ? "Accepting also turns off the setting to name the linkage key each " +
+        "match was made on"
+      : "The setting to name the linkage key each match was made on was " +
+        "turned off";
+  return `${lead}, because ${MATCHING_KEY_TURNED_OFF_BECAUSE[reason]}.`;
+}

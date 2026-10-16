@@ -105,12 +105,13 @@ function unrunnablePartsSentences(
 }
 
 /** The document settings the configuration surface shows: the connection and
- * the terms read-only, and the three this party's settings editor edits. Every
+ * the terms read-only, and the four this party's settings editor edits. Every
  * other setting the document states is held without being shown. */
 const SHOWN_DOCUMENT_FIELDS: ReadonlySet<string> = new Set([
   "connection",
   "linkageTerms",
   "includeOwnColumns",
+  "includeMatchingKey",
   "csvDelimiter",
   "retentionDisposition",
 ]);

@@ -29,6 +29,7 @@ import {
   assembleExchangeSpec,
   connectionFromLocator,
   deriveAcceptedLinkageTerms,
+  matchingKeyUnavailableReason,
   maxCodeUnits,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
@@ -46,6 +47,7 @@ import type {
   ExchangeSpec,
   KeyFile,
   LinkageTerms,
+  MatchingKeyUnavailableReason,
   OwnColumnSelection,
   RelayRegistrar,
   TermsUpdate,
@@ -1287,6 +1289,11 @@ export function applyManagedExchangePayloadReceiveFill(
  *   later visit has nothing left to answer.
  * - `update`: the operator applied a partner's terms update, as `alcove
  *   apply` writes one: as `apply` with the update's `linkageTerms`.
+ *
+ * In every scope, a stored `includeMatchingKey` the new terms do not admit
+ * (`matchingKeyUnavailableReason`) is dropped with the terms change
+ * ({@link matchingKeyTurnedOffBy}), since the config parse refuses the key
+ * beside those terms and the operator cannot clear it first.
  */
 export type ManagedTermsChangeWrite =
   | { scope: "run"; adoptedTerms: LinkageTerms; partnerTerms: LinkageTerms }
@@ -1332,10 +1339,30 @@ export function applyManagedExchangeTermsChange(
       expectedPartnerDeduplicate: partnerTerms.deduplicate,
     };
   }
+  if (
+    exchangeFile.includeMatchingKey === true &&
+    matchingKeyUnavailableReason(exchangeFile.linkageTerms) !== undefined
+  )
+    delete exchangeFile.includeMatchingKey;
   const next: ManagedExchangeRecord = { ...record, exchangeFile };
   if (write.scope !== "run" && record.lastRun?.failureKind === "terms-change")
     delete next.lastRun;
   return parseManagedExchangeRecord(next);
+}
+
+/**
+ * Why a terms change turned off the matched-key column, or `undefined` where
+ * it did not: `before` asked for the column and `after`, the document
+ * {@link applyManagedExchangeTermsChange} wrote, does not, because its terms
+ * leave this party no key to name.
+ */
+export function matchingKeyTurnedOffBy(
+  before: ExchangeSpec,
+  after: ExchangeSpec,
+): MatchingKeyUnavailableReason | undefined {
+  if (before.includeMatchingKey !== true || after.includeMatchingKey === true)
+    return undefined;
+  return matchingKeyUnavailableReason(after.linkageTerms);
 }
 
 /**
@@ -1956,9 +1983,10 @@ export function applyManagedExchangeWorkingDirectory(
 }
 
 /** The local fields an operator may edit in place without a re-invite: the
- * display label, the run schedule, the max-token-age policy, and the three
+ * display label, the run schedule, the max-token-age policy, and the four
  * per-party settings of the document that are not terms (its own-columns
- * choice, its field delimiter, and its retention note). The agreed terms, the
+ * choice, its matched-key choice, its field delimiter, and its retention
+ * note). The agreed terms, the
  * connection, and the secret are not editable here: the columns this party
  * sends change in place through {@link applyManagedExchangeSentColumns}, while
  * a change to the match or identifier columns is a new exchange. */
@@ -1971,6 +1999,8 @@ export interface ManagedExchangeLocalEdits {
   tokenMaxAgeDays?: number | null;
   /** A new `includeOwnColumns` for the document, or `null` to drop it. */
   includeOwnColumns?: OwnColumnSelection | null;
+  /** `true` to set the document's `includeMatchingKey`, or `null` to drop it. */
+  includeMatchingKey?: true | null;
   /** A new `csvDelimiter` for the document, or `null` to drop it (a comma). */
   csvDelimiter?: string | null;
   /** A new `retentionDisposition` for the document, or `null` to drop it. */
@@ -1980,6 +2010,7 @@ export interface ManagedExchangeLocalEdits {
 /** The edits that change the document rather than a record field. */
 const LOCAL_DOCUMENT_EDIT_FIELDS = [
   "includeOwnColumns",
+  "includeMatchingKey",
   "csvDelimiter",
   "retentionDisposition",
 ] as const satisfies ReadonlyArray<
@@ -1988,11 +2019,12 @@ const LOCAL_DOCUMENT_EDIT_FIELDS = [
 
 /**
  * Apply local edits to a record, producing a validated new record. Only the
- * label, schedule, max-token-age policy, and the document's three per-party
+ * label, schedule, max-token-age policy, and the document's four per-party
  * settings update in place; a `null` drops the corresponding optional field. The
  * result is re-validated through the schema, so an over-long label, a refused
- * delimiter, or an own-columns choice on a count-only exchange is rejected here
- * exactly as at create or import. The input record is not mutated.
+ * delimiter, or an own-columns or matched-key choice on terms that cannot act
+ * on it is rejected here exactly as at create or import. The input record is
+ * not mutated.
  *
  * An edit to `tokenMaxAgeDays` re-derives `expires` conservatively through
  * {@link deriveEditedExpiry}: a shorter policy recomputes the bound from the
@@ -2022,6 +2054,10 @@ export function applyManagedExchangeLocalEdits(
     if (edits.includeOwnColumns === null) delete exchangeFile.includeOwnColumns;
     else if (edits.includeOwnColumns !== undefined)
       exchangeFile.includeOwnColumns = edits.includeOwnColumns;
+    if (edits.includeMatchingKey === null)
+      delete exchangeFile.includeMatchingKey;
+    else if (edits.includeMatchingKey !== undefined)
+      exchangeFile.includeMatchingKey = edits.includeMatchingKey;
     if (edits.csvDelimiter === null) delete exchangeFile.csvDelimiter;
     else if (edits.csvDelimiter !== undefined)
       exchangeFile.csvDelimiter = edits.csvDelimiter;
