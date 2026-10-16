@@ -456,9 +456,15 @@ browser's relay entry can come only from the deployment.
   the partner has none, choose a managed relay that signs a BAA or document a
   conduit determination, and set its credential lifetime.
 - **Every profile:** name the relay in the data sharing agreement, as the SFTP
-  server is. **Proposed, not built:** a pre-flight check that dials the relay
-  from the operator's host, which would turn the egress question into a step
-  onboarding can check before the first exchange.
+  server is. A command line party can check the egress question at onboarding
+  with `alcove doctor relay`, which dials the relay a run allocates on, the
+  first the configuration lists, from the operator's host. It is opt-in:
+  `alcove doctor probe` and `alcove doctor mount` contact no relay. The check
+  contacts only the hosts a run of the configuration contacts, and names them,
+  and each listed host it does not contact, before it contacts one
+  ([CLI.md](../CLI.md#checking-the-relay-of-a-webrtc-exchange)). Its
+  enrollment at the invitation's registrar and its outcomes:
+  [CLI_DOCTOR.md](../spec/CLI_DOCTOR.md#the-relay-check).
 
 ## What this record leaves to separate work
 

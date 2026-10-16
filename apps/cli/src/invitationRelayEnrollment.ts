@@ -58,6 +58,41 @@ function registrarOrigin(registrarUrl: string): string {
 }
 
 /**
+ * The line a run states when the invitation relay's registrar enrolls the
+ * exchange, with the lapse the registrar states. Composed raw, as the warning
+ * below is.
+ */
+export function invitationRelayEnrolledNotice(
+  registrarUrl: string,
+  lapsesAt: string | null,
+): string {
+  const lapse = lapsesAt === null ? "" : `, until ${lapsesAt}`;
+  return (
+    `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
+    `partner's invitation names enrolled this exchange${lapse}`
+  );
+}
+
+/**
+ * The first sentence of {@link invitationRelayNotEnrolledWarning}: the
+ * registrar and what it answered.
+ */
+export function invitationRelayNotEnrolledStatement(
+  registrarUrl: string,
+  detail: string,
+): string {
+  return (
+    `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
+    `partner's invitation names did not enroll this exchange (${detail}).`
+  );
+}
+
+/** The second sentence of {@link invitationRelayNotEnrolledWarning}. */
+export const INVITATION_RELAY_NOT_ENROLLED_REMEDY =
+  "The run continues with its other relays, and that relay takes it only " +
+  "if your partner enrolled the exchange there.";
+
+/**
  * The warning a run states when its enrollment at the invitation relay's
  * registrar fails. Composed raw: the registrar url and the detail are the
  * partner's or the registrar's text, escaped at each sink.
@@ -66,12 +101,7 @@ export function invitationRelayNotEnrolledWarning(
   registrarUrl: string,
   detail: string,
 ): string {
-  return (
-    `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
-    `partner's invitation names did not enroll this exchange (${detail}). ` +
-    "The run continues with its other relays, and that relay takes it only " +
-    "if your partner enrolled the exchange there."
-  );
+  return `${invitationRelayNotEnrolledStatement(registrarUrl, detail)} ${INVITATION_RELAY_NOT_ENROLLED_REMEDY}`;
 }
 
 /**
@@ -89,12 +119,9 @@ export function reportInvitationRelayEnrollment(
 ): void {
   if (enrollment.kind === "cancelled") return;
   if (enrollment.kind === "enrolled") {
-    const lapse =
-      enrollment.lapsesAt === null ? "" : `, until ${enrollment.lapsesAt}`;
     sinks.log.info(
       redactAndSanitizeForDisplay(
-        `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
-          `partner's invitation names enrolled this exchange${lapse}`,
+        invitationRelayEnrolledNotice(registrarUrl, enrollment.lapsesAt),
       ),
     );
     return;

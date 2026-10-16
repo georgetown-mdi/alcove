@@ -60,6 +60,12 @@ export function describeIceTransportPolicy(
 const RELAY_CANDIDATE_TYPE = "relay";
 
 /**
+ * The clause a failure states when this side gathered no relay candidate,
+ * shared by a run's ICE diagnosis and `alcove doctor relay`.
+ */
+export const NO_RELAY_CANDIDATE_GATHERED = "no relay candidate gathered";
+
+/**
  * How many distinct candidate types one side's tally names before the rest
  * are summarized as a count. ICE defines four, so a report naming more than
  * this is a peer sending types no gatherer produces rather than a wide
@@ -243,8 +249,8 @@ export function iceFailureDetails(
   const relay = report.localRelayGathered
     ? "relay candidate gathered"
     : iceTransportPolicy === "relay"
-      ? "no relay candidate gathered under ice_transport_policy relay"
-      : "no relay candidate gathered";
+      ? `${NO_RELAY_CANDIDATE_GATHERED} under ice_transport_policy relay`
+      : NO_RELAY_CANDIDATE_GATHERED;
   const pairs =
     report.pairCount === 0
       ? "none formed"

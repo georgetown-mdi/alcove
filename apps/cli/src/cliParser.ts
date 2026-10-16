@@ -194,11 +194,11 @@ export function buildCli(argv: string[]): Argv {
         probeHostKeyHandler,
       )
       // Registered with a builder and no handler: the builder demands one of the
-      // `probe` / `mount` subcommands, so there is no bare `alcove doctor` for a
-      // handler to serve.
+      // `probe` / `mount` / `relay` subcommands, so there is no bare
+      // `alcove doctor` for a handler to serve.
       .command(
         "doctor",
-        "Check a network shared folder before an exchange (probe | mount)",
+        "Check a network shared folder or a WebRTC relay before an exchange (probe | mount | relay)",
         doctorBuilder,
       )
       // Fail fast on a misspelled option (e.g. --server-user for

@@ -19,7 +19,10 @@ import { asciiSafeJsonLine } from "../util/jsonLine";
 export const DOCTOR_VERDICT_VERSION = 1;
 
 /** Which check set produced a verdict. */
-export type DoctorMode = "probe" | "mount";
+export type DoctorMode = "probe" | "mount" | "relay";
+
+/** The transport a TURN url names, as a `relay` check reports it. */
+export type RelayTransport = "udp" | "tcp" | "tls";
 
 /**
  * The outcome of a single check. `warn` is a check that ran and does not block
@@ -54,6 +57,17 @@ export type DoctorCheck = {
   meaning?: string;
   /** What to do about it. */
   action?: string;
+  /** The TURN url a `relay` check asked, as the configuration lists it. */
+  url?: string;
+  /** The transport that url names. */
+  transport?: RelayTransport;
+  /**
+   * The registrar of a `relay` run's enrollment check, as the configuration's
+   * `invitation_relay` names it: enrolled at, or not contacted when `skipped`.
+   */
+  registrar?: string;
+  /** When that enrollment lapses, as the registrar stated it. */
+  lapses_at?: string;
 };
 
 /**
@@ -107,8 +121,9 @@ export function warn(
   summary: string,
   meaning: string,
   action: string,
+  extra: Partial<DoctorCheckRecord> = {},
 ): DoctorCheckRecord {
-  return { id, status: "warn", summary, meaning, action };
+  return { id, status: "warn", summary, meaning, action, ...extra };
 }
 
 export function fail(
@@ -175,6 +190,16 @@ export function verdictOf(report: DoctorReport): DoctorVerdict {
           status: check.status,
           ...(check.meaning !== undefined ? { meaning: check.meaning } : {}),
           ...(check.action !== undefined ? { action: check.action } : {}),
+          ...(check.url !== undefined ? { url: check.url } : {}),
+          ...(check.transport !== undefined
+            ? { transport: check.transport }
+            : {}),
+          ...(check.registrar !== undefined
+            ? { registrar: check.registrar }
+            : {}),
+          ...(check.lapses_at !== undefined
+            ? { lapses_at: check.lapses_at }
+            : {}),
         }) satisfies DoctorCheck,
     ),
   } satisfies DoctorVerdict;
@@ -277,7 +302,8 @@ function labelOf(check: DoctorCheckRecord): string {
  * failure leaves every check after it skipped, and each of them carries that
  * reason in the JSON verdict; printing it under every one of them buries the
  * check names between repetitions of a single sentence. The human rendering
- * prints it once, under the last check of the run that shares it.
+ * prints it once, under the last check of the run that shares it, and an
+ * action they also share with it.
  */
 function sharesMeaningWithNext(
   checks: DoctorCheckRecord[],
@@ -297,12 +323,13 @@ export function verdictLines(report: DoctorReport): string[] {
     lines.push(`${labelOf(check)}: ${check.summary}`);
     if (check.detail !== undefined)
       for (const line of clampDetail(check.detail)) lines.push(`      ${line}`);
-    if (
-      check.meaning !== undefined &&
-      !sharesMeaningWithNext(report.checks, index)
-    )
+    const sharesMeaning = sharesMeaningWithNext(report.checks, index);
+    if (check.meaning !== undefined && !sharesMeaning)
       lines.push(...wrapLabelled("MEANING: ", check.meaning));
-    if (check.action !== undefined)
+    if (
+      check.action !== undefined &&
+      !(sharesMeaning && check.action === report.checks[index + 1]?.action)
+    )
       lines.push(...wrapLabelled("ACTION:  ", check.action));
   }
   const overall = overallOf(report);

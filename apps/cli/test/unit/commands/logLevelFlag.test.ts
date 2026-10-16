@@ -15,7 +15,11 @@ import {
 
 import { handler as acceptHandler } from "../../../src/commands/accept";
 import { handler as applyHandler } from "../../../src/commands/apply";
-import { mountHandler, probeHandler } from "../../../src/commands/doctor";
+import {
+  mountHandler,
+  probeHandler,
+  relayHandler,
+} from "../../../src/commands/doctor";
 import { handler as enrollRelayHandler } from "../../../src/commands/enrollRelay";
 import { handler as exchangeHandler } from "../../../src/commands/exchange";
 import { handler as fingerprintHandler } from "../../../src/commands/fingerprint";
@@ -114,6 +118,7 @@ const COMMAND_ENTRY_POINTS: CommandEntryPoint[] = [
   { entryPoint: "apply.ts#handler", run: applyHandler },
   { entryPoint: "doctor.ts#mountHandler", run: mountHandler },
   { entryPoint: "doctor.ts#probeHandler", run: probeHandler },
+  { entryPoint: "doctor.ts#relayHandler", run: relayHandler },
   { entryPoint: "enrollRelay.ts#handler", run: enrollRelayHandler },
   { entryPoint: "exchange.ts#handler", run: exchangeHandler },
   { entryPoint: "fingerprint.ts#handler", run: fingerprintHandler },

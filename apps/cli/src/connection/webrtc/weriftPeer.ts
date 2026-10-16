@@ -539,6 +539,11 @@ export function brokerLocationFromConnection(
   };
 }
 
+/** The refusal of a webrtc connection that configures `ice_provision`. */
+export const ICE_PROVISION_REFUSAL =
+  "this webrtc connection configures `ice_provision`, which the CLI does " +
+  "not support: list the servers directly under `stun` and `turn` instead";
+
 /**
  * Resolve a webrtc connection's relay servers into the ICE server list the
  * peer connection is built with: the connection's own `stun`/`turn` entries
@@ -563,34 +568,48 @@ export function iceServersFromConnection(
   >,
   runRelayCredential?: RelayCredential,
 ): Array<RTCIceServer> {
-  if (connection.iceProvision !== undefined) {
-    throw new UsageError(
-      "this webrtc connection configures `ice_provision`, which the CLI does " +
-        "not support: list the servers directly under `stun` and `turn` instead",
-    );
-  }
+  if (connection.iceProvision !== undefined)
+    throw new UsageError(ICE_PROVISION_REFUSAL);
   const { stun, turn } = selectRunRelay(connection);
   const servers: Array<RTCIceServer> = [];
   if (stun !== undefined && stun.length > 0) {
     servers.push({ urls: stun });
   }
-  const minted = (): RelayCredential => {
-    if (runRelayCredential === undefined)
-      throw new InternalConsistencyError(
-        "iceServersFromConnection: a TURN url that takes the run's credential " +
-          "is selected but no relay credential was minted for this run",
-      );
-    return runRelayCredential;
-  };
-  for (const server of turn ?? []) {
-    // `credential_type: hmac-sha1` describes how a deployment MINTS a
-    // time-limited credential, not how a client presents it: the minted value
-    // is still sent as the password, so both types take the same shape here.
-    const { username, credential } =
-      server.credential === undefined ? minted() : server;
-    servers.push({ urls: server.url, username, credential });
-  }
+  for (const server of turn ?? [])
+    servers.push(turnIceServer(server, runRelayCredential));
   return servers;
+}
+
+/**
+ * The ICE server entry a run lists for one selected TURN url: the entry's own
+ * static pair, or else the run's minted credential.
+ *
+ * @throws {Error} if the url takes the run's credential and none was
+ *   supplied, which is a fault in the caller.
+ */
+export function turnIceServer(
+  server: RunTurnServer,
+  runRelayCredential: RelayCredential | undefined,
+): RTCIceServer {
+  if (server.credential !== undefined)
+    return {
+      urls: server.url,
+      username: server.username,
+      credential: server.credential,
+    };
+  if (runRelayCredential === undefined)
+    throw new InternalConsistencyError(
+      "turnIceServer: a TURN url that takes the run's credential " +
+        "is selected but no relay credential was minted for this run",
+    );
+  // `credential_type: hmac-sha1` describes how a deployment MINTS a
+  // time-limited credential, not how a client presents it: the minted value
+  // is still sent as the password, so both types take the same shape here.
+  return {
+    urls: server.url,
+    username: runRelayCredential.username,
+    credential: runRelayCredential.credential,
+  };
 }
 
 /**
@@ -831,6 +850,59 @@ async function closePeer(peer: RTCPeerConnection): Promise<void> {
   } catch {
     // A peer connection already closed by a failure path throws on a second
     // close, and the caller is tearing it down either way.
+  }
+}
+
+/**
+ * Ask one TURN server for a relay address the way a run's ICE gathering does:
+ * a peer connection listing `server` alone, under the relay-only policy,
+ * gathering for a local offer. Resolves whether a relay candidate is among
+ * this side's once gathering completes or `signal` aborts, and closes the
+ * peer connection either way, so an abort ends a gather still in progress.
+ *
+ * werift reports no per-server error, so a relay that refused the allocation
+ * and one that never answered both resolve `false`.
+ */
+export async function gatherRelayCandidate(
+  server: RTCIceServer,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return false;
+  const peer = await defaultPeerConnection(
+    buildPeerConfiguration([server], "relay"),
+  );
+  let onAbort: (() => void) | undefined;
+  try {
+    const aborted = new Promise<"aborted">((resolve) => {
+      if (signal.aborted) {
+        resolve("aborted");
+        return;
+      }
+      onAbort = () => resolve("aborted");
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const gatheringEnded = new Promise<"gathered">((resolve) => {
+      peer.onicegatheringstatechange = () => {
+        if (peer.iceGatheringState === "complete") resolve("gathered");
+      };
+    });
+    peer.createDataChannel("relay-check");
+    // werift gathers inside setLocalDescription, so it is raced against the
+    // abort; once the bound has cut it short, its settling is ignored.
+    const described = peer
+      .setLocalDescription(await peer.createOffer())
+      .then(() => "described" as const);
+    described.catch(() => undefined);
+    if (
+      (await Promise.race([described, aborted])) === "described" &&
+      peer.iceGatheringState !== "complete"
+    )
+      await Promise.race([gatheringEnded, aborted]);
+    const report = await readIceStats(peer);
+    return report?.localRelayGathered === true;
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
+    await closePeer(peer);
   }
 }
 
