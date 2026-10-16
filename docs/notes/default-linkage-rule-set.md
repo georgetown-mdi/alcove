@@ -181,9 +181,11 @@ which is the differencing exposure [SECURITY_DESIGN.md](../SECURITY_DESIGN.md)
 scopes the guarantee against. And a contact value is a shared value in
 program-application data -- one phone number or email address is shared across a
 household, and across the people an organization files for -- so a key over one
-alone reports different people as the same person. The shapes, the evidence
-behind each, and the cascade position each has to sit at are derived in
-`docs/notes/linkage-rule-grounding.md`.
+alone reports different people as the same person. The evidence for the phone
+and ZIP shapes is in [linkage-rule-catalog.md](linkage-rule-catalog.md), which
+lists the email shape, `FN + EMAIL`, among the shapes it does not propose; where
+a refinement sits in the order is in
+[linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
 
 One shape per type is the whole offer, not a builder over the types: any other
 combination is a rule nothing here has grounded, and authoring one is what the

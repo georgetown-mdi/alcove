@@ -133,7 +133,8 @@ export const DEFAULT_LINKAGE_KEY_SET_VERSION = "1.0.0";
  * above SSN-bearing ones, and a key holding an SSN but no last name sits
  * above both. What the published cascades order on instead, and what the
  * per-key measurements say about either arrangement, is set out in
- * `docs/notes/linkage-rule-grounding.md`.
+ * `docs/notes/linkage-rule-grounding.md` and
+ * `docs/notes/linkage-rule-catalog.md`.
  *
  * The ordering the set does hold to is over the date of birth: coarsening
  * it to a year and month is a fallback for a key's own full-date form
@@ -815,7 +816,8 @@ type OptInLinkageFieldType = (typeof OPT_IN_LINKAGE_FIELD_TYPES)[number];
  * offered as: the type's own field together with the backbone the
  * published evidence pairs it with, each element naming a field
  * {@link authoredLinkageFields} declares for a column of that type. The
- * shapes and their cascade placement are derived in
+ * evidence for the shapes is in `docs/notes/linkage-rule-catalog.md`, and
+ * their cascade placement is derived in
  * `docs/notes/linkage-rule-grounding.md`.
  *
  * Compound and never the type alone, for two reasons that point the same

@@ -41,6 +41,7 @@ stands, from a direction still open to a decision taken and built.
 | [hash-keyed-value-lookup.md](hash-keyed-value-lookup.md) | Decided and built; the three lookup keys measured at 2^24 and why the hash was taken. |
 | [hosted-environment-opentofu.md](hosted-environment-opentofu.md) | Decided and applied; the resources it held no longer exist. |
 | [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md) | Decided and implemented. |
+| [linkage-rule-catalog.md](linkage-rule-catalog.md) | Proposed; bands the shipped keys and proposes the rest, each rule with its precision band and evidence. |
 | [linkage-rule-grounding.md](linkage-rule-grounding.md) | Proposal, pending adoption -- nothing here is adopted or shipped. |
 | [lockless-rendezvous-barrier.md](lockless-rendezvous-barrier.md) | Weighed and set aside; the shipped symmetric barrier stands. |
 | [managed-exchange-design.md](managed-exchange-design.md) | Decided and built; the grace window is deferred and not designed. |
