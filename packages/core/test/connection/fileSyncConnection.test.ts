@@ -5158,6 +5158,8 @@ test("poll(): recognized loop files (hellos, acks, lock, our writes, temp) never
     const conn = await makeConnectedConn(client, { pollingFrequency: 5 });
     conn.id = "me";
     conn.peerId = "peer";
+    // Committed by rendezvous alongside peerId.
+    conn.helloNames = { self: helloName("me"), peer: helloName("peer") };
 
     const recognized = [
       helloName("me"), // our hello

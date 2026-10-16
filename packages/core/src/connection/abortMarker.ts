@@ -21,6 +21,7 @@ import { redactAndSanitizeForDisplay } from "../utils/sanitizeErrorForDisplay";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../utils/crypto";
 import { parseBoundedJson } from "../utils/boundedJson";
 import { TransportOperationStalledError, UsageError } from "../errors";
+import { ABORT_TOKEN_BYTES } from "../auth";
 import { sizedControlName } from "./fileSyncNames";
 import { joinFileSyncPath } from "./fileSyncPath";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
@@ -44,12 +45,31 @@ export const abortMarkerName = (
   token: Uint8Array<ArrayBuffer>,
 ): string => sizedControlName(writerId, "abort", abortMarkerBody(token).length);
 
+// The marker name `writerId` writes. Every token is ABORT_TOKEN_BYTES long, so
+// the name is known before the tokens are derived.
+const expectedAbortMarkerName = (writerId: string): string =>
+  abortMarkerName(writerId, new Uint8Array(ABORT_TOKEN_BYTES));
+
+/**
+ * True only for this party's or the peer's abort marker under its exact name,
+ * the byte count included. The poll loop tolerates these two, so a planted
+ * `<other>-abort-<n>.json`, or one under either id with another byte count,
+ * still meets the unexpected-files policy.
+ */
+export const isExpectedAbortName = (
+  name: string,
+  selfId: string,
+  peerId: string,
+): boolean =>
+  name === expectedAbortMarkerName(selfId) ||
+  name === expectedAbortMarkerName(peerId);
+
 // Hard cap on the abort marker read. The envelope is ~80 bytes; 1 KiB is
 // generous slack. Not MAX_FRAME_SIZE_BYTES (~512 MB): the recognizer is
 // unconditional and the admin controls the bytes, and the marker is
 // re-read every poll cycle, so a large cap on an admin-plantable file
-// would be an availability vector. Both the pre-get() listed-size refusal
-// and the bounded get() use this.
+// would be an availability vector. The pre-get() listed-size refusal uses
+// this; the bounded get() reads at most the count the marker's name states.
 const ABORT_MARKER_MAX_BYTES = 1024;
 
 // Short per-operation budget (put + rename) for the abort marker write. The
@@ -415,8 +435,9 @@ export class AbortMarkerSubsystem {
     // Not the byte count its name states: still arriving, or not the marker.
     if (listed.size !== declaredSize) return false;
     try {
-      // Bounded get() with the small cap (not MAX_FRAME_SIZE_BYTES, which
-      // the message path uses) as the hard safety check against a server
+      // Bounded get() at the count the name states, never over
+      // ABORT_MARKER_MAX_BYTES since the listed size equals it, as the hard
+      // safety check against a file that grew after listing or a server
       // under-reporting the listed size above. This rides this.client (the
       // boundTransport poll-loop budget), not the short rawClient budget
       // the write uses: it is one read among the cycle's list() and
@@ -426,7 +447,7 @@ export class AbortMarkerSubsystem {
       // held open.
       const raw = await client.get(joinFileSyncPath(path, markerName), {
         encoding: "utf-8",
-        maxBytes: ABORT_MARKER_MAX_BYTES,
+        maxBytes: declaredSize,
       });
       if (raw.length !== declaredSize) return false;
       const parsed = parseBoundedJson(raw.toString());

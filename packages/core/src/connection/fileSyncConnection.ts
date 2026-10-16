@@ -27,7 +27,7 @@ import {
   errorMessage,
 } from "../errors";
 import { cancellableDelay } from "./fileSyncConstants";
-import { ackMarkerName } from "./fileSyncNames";
+import { ackMarkerName, type AgreedHelloNames } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -349,6 +349,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private arrivalBudgetMs: number | undefined;
 
   peerId: string | undefined;
+  // The two hello names rendezvous agreed, committed with peerId: the poll
+  // loop recognizes these and the files named after them by exact name.
+  /** @internal */
+  helloNames: AgreedHelloNames | undefined;
   handshakeRole: HandshakeRole | undefined;
   // The host key the SFTP server presented, or undefined where none was
   // observed (filedrop, the browser SFTP path, a refused connection). Read
@@ -490,8 +494,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       setRole: (role) => {
         this.role = role;
       },
-      setPeerId: (peerId) => {
+      setPeerId: (peerId, helloNames) => {
         this.peerId = peerId;
+        this.helloNames = helloNames;
       },
       setHandshakeRole: (role) => {
         this.handshakeRole = role;
@@ -517,6 +522,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       path: () => this.path,
       outbound: () => this.outbound,
       peerId: () => this.peerId,
+      helloNames: () => this.helloNames,
       connected: () => this.connected,
       abortArmed: () => this.abortArmed,
       wait: (ms) => this.wait(ms),

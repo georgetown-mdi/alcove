@@ -61,6 +61,7 @@ import {
   peerIdFromControlName,
   sizedControlName,
   type SizedControlType,
+  type AgreedHelloNames,
   helloTempName,
   isHelloTempName,
   isProtocolTempName,
@@ -215,9 +216,11 @@ export async function readControlFileWithGate(
   do {
     let raw: Buffer<ArrayBufferLike>;
     try {
+      // Bounded by the count the name states, already refused above when
+      // over HELLO_MAX_BYTES: a larger body is never buffered past it.
       raw = await client.get(filePath, {
         encoding: "utf-8",
-        maxBytes: HELLO_MAX_BYTES,
+        maxBytes: declaredSize,
       });
     } catch (err) {
       // A typed UsageError from get() (FrameSizeExceededError,
@@ -741,7 +744,12 @@ export interface RendezvousDeps {
   peerId: () => string | undefined;
   handshakeRole: () => HandshakeRole | undefined;
   setRole: (role: string) => void;
-  setPeerId: (peerId: string | undefined) => void;
+  // Commits the peer id with the two hello names the message loop recognizes,
+  // or clears both with undefined.
+  setPeerId: (
+    peerId: string | undefined,
+    helloNames: AgreedHelloNames | undefined,
+  ) => void;
   setHandshakeRole: (role: HandshakeRole | undefined) => void;
   // Records the peer hello found in the directory at entry, and clears it (with
   // undefined) at the first observation attributable to a LIVE peer. The
@@ -777,6 +785,10 @@ export class FileSyncRendezvous {
 
   private ownControlName(type: Exclude<SizedControlType, "abort">): string {
     return sizedControlName(this.deps.id(), type, this.helloBody().length);
+  }
+
+  private agreedHelloNames(peerHelloName: string): AgreedHelloNames {
+    return { self: this.ownControlName("hello"), peer: peerHelloName };
   }
 
   /**
@@ -1555,7 +1567,7 @@ export class FileSyncRendezvous {
     if (refusal) {
       await this.advertiseHelloBeforeRefusal(scope);
       // Reset role/peer fields, mirroring the outer catch.
-      deps.setPeerId(undefined);
+      deps.setPeerId(undefined, undefined);
       deps.setRole("unknown role");
       deps.setHandshakeRole(undefined);
       deps.clearAbortMarker();
@@ -1643,7 +1655,7 @@ export class FileSyncRendezvous {
     // not actually exist.
     deps.setHandshakeRole("initiator");
     deps.setRole("joiner");
-    deps.setPeerId(peerId);
+    deps.setPeerId(peerId, this.agreedHelloNames(otherFile.name));
   }
 
   // The joiner's sentinel delete after a direct hello write. The hello is
@@ -1927,7 +1939,7 @@ export class FileSyncRendezvous {
           const arrivedFirst = this.ownControlName("hello") < peerHello.name;
           deps.setHandshakeRole(arrivedFirst ? "responder" : "initiator");
           deps.setRole(arrivedFirst ? "starter" : "joiner");
-          deps.setPeerId(peerId);
+          deps.setPeerId(peerId, this.agreedHelloNames(peerHello.name));
 
           deps
             .log()
@@ -2177,9 +2189,8 @@ export class FileSyncRendezvous {
             throw new Error("lock file does not reference this connection");
 
           // I5: read the peer hello body through the partial-sync gate
-          // before committing roles. The hello name has no byte-count
-          // segment, so a half-synced body cannot be caught by a size
-          // check.
+          // before committing roles, which waits until the body reaches the
+          // byte count its name states.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
             joinFileSyncPath(scope.inboundPath, otherFile.name),
@@ -2216,7 +2227,7 @@ export class FileSyncRendezvous {
           deps.setRole(
             deps.handshakeRole() === "initiator" ? "joiner" : "starter",
           );
-          deps.setPeerId(otherId);
+          deps.setPeerId(otherId, this.agreedHelloNames(otherFile.name));
 
           deps
             .log()
@@ -2260,9 +2271,8 @@ export class FileSyncRendezvous {
           const otherPath = joinFileSyncPath(scope.inboundPath, otherFile.name);
 
           // I5: read the joiner's hello body through the partial-sync gate
-          // before deleting it. The joiner's hello has no byte-count
-          // segment, so a half-synced body would be silently misread
-          // without this gate.
+          // before deleting it, which waits until the body reaches the byte
+          // count its name states.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
             otherPath,
@@ -2290,7 +2300,10 @@ export class FileSyncRendezvous {
           // arrived first, should wait for a message
           deps.setHandshakeRole("responder");
           deps.setRole("starter");
-          deps.setPeerId(controlWriterId(otherFile.name));
+          deps.setPeerId(
+            controlWriterId(otherFile.name),
+            this.agreedHelloNames(otherFile.name),
+          );
 
           deps
             .log()
@@ -2325,7 +2338,10 @@ export class FileSyncRendezvous {
           const arrivedFirst = thisFile.name < otherFile.name;
           deps.setHandshakeRole(arrivedFirst ? "responder" : "initiator");
           deps.setRole(arrivedFirst ? "starter" : "joiner");
-          deps.setPeerId(controlWriterId(otherFile.name));
+          deps.setPeerId(
+            controlWriterId(otherFile.name),
+            this.agreedHelloNames(otherFile.name),
+          );
 
           // I5 (closes the documented two-hellos gap): read the peer hello
           // body through the partial-sync gate, validating the bilateral
@@ -2537,7 +2553,7 @@ export class FileSyncRendezvous {
       // committed this.peerId, this.role, and this.handshakeRole. Reset
       // them so the "already synchronized" guard does not block a retry
       // and the stale role does not appear in the retry's first log line.
-      deps.setPeerId(undefined);
+      deps.setPeerId(undefined, undefined);
       deps.setRole("unknown role");
       deps.setHandshakeRole(undefined);
       deps.clearAbortMarker();

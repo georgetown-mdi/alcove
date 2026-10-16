@@ -6,6 +6,7 @@ import type { FileDropConnectionConfig } from "../../src/config/connection";
 import {
   PeerAbortError,
   ConnectionError,
+  UsageError,
   statesItsOwnNextStep,
 } from "../../src/errors";
 import {
@@ -447,7 +448,7 @@ test.each([
   },
 );
 
-test("a verifying marker named for a byte count other than the genuine one is not read, and is no error", async () => {
+test("a verifying marker named for a byte count other than the genuine one is not read, and is an unexpected file", async () => {
   const { client, files, ops } = makeAbortTestClient();
   const conn = await makeArmedConn(client, {
     peerId: PEER_ID,
@@ -457,10 +458,14 @@ test("a verifying marker named for a byte count other than the genuine one is no
   const name = abortNameFor(PEER_ID, padded);
   files.set(`${TEST_DIR}/${name}`, padded);
 
-  // The peer's id makes it an expected abort name, so the strict policy does
-  // not fire on it; only the exact name is read.
+  // Only the exact name is an expected abort name, so the strict policy fires
+  // on this one; it is never read.
   const errors = await pollAndCollectErrors(conn);
-  expect(errors).toHaveLength(0);
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toBeInstanceOf(UsageError);
+  expect((errors[0] as Error).message).toContain(
+    `during the exchange: ${name}.`,
+  );
   expect(ops).not.toContain(`get:${name}`);
 });
 

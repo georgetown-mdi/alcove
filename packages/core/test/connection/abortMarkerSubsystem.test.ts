@@ -14,6 +14,7 @@ import {
   TransportOperationStalledError,
 } from "../../src/errors";
 import { fromBase64Url, toBase64Url } from "../../src/utils/crypto";
+import { capReadsAtMaxBytes } from "../utils/support";
 
 // Direct unit tests of the subsystem with injected fakes: a pass-through budget,
 // a recording logger, and a client whose every method is a vi.fn(), so each
@@ -379,7 +380,7 @@ test("verifyPeerMarker on an unarmed subsystem returns false without reading", a
   expect(client.get).not.toHaveBeenCalled();
 });
 
-test("verifyPeerMarker reads a verifying marker from the inbound directory under the small cap", async () => {
+test("verifyPeerMarker reads a verifying marker from the inbound directory capped at its name's byte count", async () => {
   const client = makeClient({
     get: vi.fn(async () => envelope(toBase64Url(TOKEN_PEER))),
   });
@@ -394,8 +395,29 @@ test("verifyPeerMarker reads a verifying marker from the inbound directory under
   ).toBe(true);
   expect(client.get).toHaveBeenCalledWith(`${DIR}/${PEER_MARKER}`, {
     encoding: "utf-8",
-    maxBytes: MARKER_MAX_BYTES,
+    maxBytes: PEER_MARKER_BYTES,
   });
+});
+
+test("verifyPeerMarker refuses a body served past its name's byte count, reading no more than that count", async () => {
+  // Listed at the count its name states, but the server serves more: a file
+  // that grew after listing, or a listing that under-reports its size.
+  const body = Buffer.from(
+    `${envelope(toBase64Url(TOKEN_PEER)).toString()}${" ".repeat(512)}`,
+  );
+  const client = makeClient({ get: vi.fn(async () => body) });
+  const reads = capReadsAtMaxBytes(client);
+  const { subsystem } = armed(client);
+
+  await expect(
+    subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
+  ).rejects.toBeInstanceOf(FrameSizeExceededError);
+  expect(reads).toEqual([{ name: PEER_MARKER, maxBytes: PEER_MARKER_BYTES }]);
 });
 
 test("verifyPeerMarker on a listing without the peer's marker returns false without reading", async () => {

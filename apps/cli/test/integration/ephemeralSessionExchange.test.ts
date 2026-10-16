@@ -1308,6 +1308,16 @@ inProcessOnly(
       expect(outcome.afterClose).toContain(
         abortMarkerNameFor(failing.id, failingToken),
       );
+      // Put in place at the byte count its name states.
+      const markerName = abortMarkerNameFor(failing.id, failingToken);
+      expect(
+        srv.inject.filesPlaced.filter((file) => file.name === markerName),
+      ).toEqual([
+        {
+          name: markerName,
+          size: Number(/-(\d+)\.json$/.exec(markerName)![1]),
+        },
+      ]);
       // The waiting peer fast-failed on the marker rather than riding out its
       // peer-inactivity budget, which would show up as a transport error instead.
       expect(waitingErrors).toHaveLength(1);

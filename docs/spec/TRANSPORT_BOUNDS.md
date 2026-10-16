@@ -26,9 +26,10 @@ As a headroom check against the realistic worst-case legitimate frame: the large
 **Enforcement.**
 The bound is enforced at the transport read layer, which is the meaningful enforcement point.
 The poll loop refuses a message file whose listed or declared size exceeds the cap before calling `get()`.
-The rendezvous gate holds a peer hello to a much smaller control-file cap of **1,024 bytes** (`HELLO_MAX_BYTES`), since it may re-read the hello every poll cycle: it refuses a hello listed over that size before calling `get()`, with a terminal `FrameSizeExceededError`, and passes the same value as the read's byte cap.
+The rendezvous gate holds a peer hello to a much smaller control-file cap of **1,024 bytes** (`HELLO_MAX_BYTES`), since it may re-read the hello every poll cycle: it refuses a hello listed or named over that size before calling `get()`, with a terminal `FrameSizeExceededError`.
 In both cases -- so a server that under-reports a file's size in its directory listing cannot slip past that check -- each `FileTransportClient` adapter also enforces a hard per-read byte cap.
 The local-filesystem adapter `fstat`s the open handle and reads exactly that many bytes, closing the append-after-stat TOCTOU; the SFTP adapter streams into a counting sink that aborts the transfer once the running total crosses the cap, buffering at most one stream chunk past it.
+Each reader passes as its per-read cap the byte count the file's name states, which the refusals above hold within the static cap, so a file that grows after listing is refused at that count rather than buffered up to the static cap.
 A binary length check on the AEAD decorator's inbound envelope caps it at the same single value -- a byte-length check on the raw envelope -- but that is documented defense-in-depth only, not the primary control: by the time the decorator runs, the inner transport has already read the frame, so the dominant allocation has already happened.
 
 The bound is a fixed constant rather than a configurable option: a configurable bound risks an operator raising it high enough to reintroduce the DoS.

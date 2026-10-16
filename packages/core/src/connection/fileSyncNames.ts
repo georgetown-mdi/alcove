@@ -134,16 +134,23 @@ export const peerIdFromControlName = (
   return parsed.id.length > 0 ? parsed.id : undefined;
 };
 
-// True when `name` is a `<id>-<type>-<byteCount>.json` control file written
-// under exactly `id`, whatever its byte count.
+/**
+ * The two hello names rendezvous agreed: this party's own and the peer's it
+ * read. The poll loop recognizes these, and the joining sentinels and hello
+ * acks named after them, by exact name.
+ */
+export interface AgreedHelloNames {
+  self: string;
+  peer: string;
+}
+
+// The joining sentinel paired with a hello: same writer, same byte count, since
+// the sentinel holds the hello body. Undefined for a name that is not a hello.
 /** @internal */
-export const isControlNameFor = (
-  name: string,
-  type: SizedControlType,
-  id: string,
-): boolean => {
-  const parsed = parseSizedControlName(name);
-  return parsed !== undefined && parsed.type === type && parsed.id === id;
+export const joiningNameForHello = (helloName: string): string | undefined => {
+  const parsed = parseSizedControlName(helloName);
+  if (parsed === undefined || parsed.type !== "hello") return undefined;
+  return sizedControlName(parsed.id, "joining", parsed.byteCount);
 };
 
 // The writer id of a hello in the shape an earlier version wrote,
@@ -200,26 +207,13 @@ export const isProtocolTempName = (name: string): boolean => {
 
 /**
  * True for any `<id>-abort-<byteCount>.json` under any id, so the entry guard
- * sweeps a leftover marker rather than refusing it as foreign. Every name
- * {@link isExpectedAbortName} accepts also matches. A bare `-abort-<n>.json`
- * matches too but is never swept, so it fails closed as an unexpected protocol
- * file.
+ * sweeps a leftover marker rather than refusing it as foreign. Every name the
+ * poll loop expects as an abort marker (`isExpectedAbortName` in
+ * abortMarker.ts) also matches. A bare `-abort-<n>.json` matches too but is
+ * never swept, so it fails closed as an unexpected protocol file.
  */
 export const isAbortMarkerName = (name: string): boolean =>
   parseSizedControlName(name)?.type === "abort";
-
-/**
- * True only for this party's or the peer's abort marker, whatever its byte
- * count. The poll loop tolerates these by writer id, so a planted
- * `<other>-abort-<n>.json` still meets the unexpected-files policy.
- */
-export const isExpectedAbortName = (
-  name: string,
-  selfId: string,
-  peerId: string,
-): boolean =>
-  isControlNameFor(name, "abort", selfId) ||
-  isControlNameFor(name, "abort", peerId);
 
 // The single inverse of "foreign" the entry guard and the foreign-file snapshot
 // share, so no name is both. A message-shaped `<id>-<digits>.json` is a protocol

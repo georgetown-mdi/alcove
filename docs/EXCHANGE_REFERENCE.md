@@ -1154,7 +1154,7 @@ A control file is never read as a message, and a message ack's mid-name `<NNN>`/
 
 The receiver reads a file only once its on-disk size reaches the byte count its name states, so a partially synced file is never consumed prematurely. A file larger than its name states is refused: a message or hello ends the run, and an abort marker is not believed.
 
-Both parties must run the same Alcove version. A version whose hello, joining and abort names have no byte count (`<id>-hello.json`) cannot exchange with this one: a run that finds such a partner hello ends naming the earlier version, and such a file left over in the folder is refused at start-up like any other leftover protocol file.
+Both parties must run the same Alcove version. A version whose hello, joining and abort names have no byte count (`<id>-hello.json`) cannot exchange with this one: a run that finds such a hello under any id but its own ends naming the earlier version. That includes a hello left over in the folder by an earlier-version run of your own, since a new run has a fresh id. The refusal comes before `--sweep-exchange-files` runs, so the flag does not clear such a hello: remove it by hand, as the message says.
 
 #### Moving files out of the folder
 

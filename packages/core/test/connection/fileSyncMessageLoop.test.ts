@@ -25,6 +25,8 @@ import {
   parseTimestampedMessageNNN,
 } from "../../src/connection/fileSyncNames";
 import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import { abortMarkerName } from "../../src/connection/abortMarker";
+import { ABORT_TOKEN_BYTES } from "../../src/auth";
 import { cancellableDelay } from "../../src/connection/fileSyncConstants";
 import {
   UsageError,
@@ -43,7 +45,11 @@ import {
   makeRendezvousPair,
   makeRetainConn,
 } from "../utils/fileSyncConnectionFixture";
-import { makeMockClient, type MockClientOptions } from "../utils/support";
+import {
+  capReadsAtMaxBytes,
+  makeMockClient,
+  type MockClientOptions,
+} from "../utils/support";
 
 describe("messageFilename", () => {
   test("no-timestamp form is <id>-<byteCount>.json", () => {
@@ -142,10 +148,13 @@ describe("resolveUnexpectedFilesPolicy", () => {
 describe("isRecognizedLoopFile", () => {
   const self = "alice";
   const peer = "bob";
+  const helloNames = { self: "alice-hello-48.json", peer: "bob-hello-47.json" };
   const recognized = (
     name: string,
     snapshot: ReadonlySet<string> = new Set(),
-  ) => isRecognizedLoopFile(name, self, peer, snapshot);
+  ) => isRecognizedLoopFile(name, self, peer, snapshot, helloNames);
+  const abortName = (id: string) =>
+    abortMarkerName(id, new Uint8Array(ABORT_TOKEN_BYTES));
 
   test("a foreign file snapshotted at entry is tolerated", () => {
     const snapshot = new Set(["leftover.txt"]);
@@ -158,25 +167,36 @@ describe("isRecognizedLoopFile", () => {
     expect(recognized("temp-notauuid.tmp")).toBe(false);
   });
 
-  test("both expected abort markers are recognized, a foreign one is not", () => {
-    expect(recognized("alice-abort-80.json")).toBe(true);
-    expect(recognized("bob-abort-80.json")).toBe(true);
-    expect(recognized("eve-abort-80.json")).toBe(false);
+  test("both expected abort markers are recognized by exact name, a foreign one or another count is not", () => {
+    expect(recognized(abortName("alice"))).toBe(true);
+    expect(recognized(abortName("bob"))).toBe(true);
+    expect(recognized(abortName("eve"))).toBe(false);
+    expect(recognized("bob-abort-80.json")).toBe(false);
+    expect(recognized("alice-abort-0.json")).toBe(false);
   });
 
   // Any own-prefixed name with a numeric terminal is admitted as an own
-  // message, so the exact-writer-id match is pinned on the peer's prefix.
-  test("hellos match by exact writer id only", () => {
+  // message, so the exact-name match is pinned on the peer's prefix.
+  test("hellos match the names rendezvous agreed only", () => {
     expect(recognized("alice-hello-48.json")).toBe(true);
     expect(recognized("bob-hello-47.json")).toBe(true);
+    expect(recognized("bob-hello-48.json")).toBe(false);
     expect(recognized("bob-x-hello-48.json")).toBe(false);
   });
 
-  test("both joining sentinels match by exact writer id only", () => {
-    expect(recognized("bob-joining-48.json")).toBe(true);
+  test("before rendezvous agrees names, no hello or sentinel is recognized", () => {
+    for (const name of ["bob-hello-47.json", "bob-joining-47.json"])
+      expect(isRecognizedLoopFile(name, self, peer, new Set(), undefined)).toBe(
+        false,
+      );
+  });
+
+  test("both joining sentinels match their agreed hello's name only", () => {
+    expect(recognized("bob-joining-47.json")).toBe(true);
     expect(recognized("alice-joining-48.json")).toBe(true);
-    expect(recognized("bob-x-joining-48.json")).toBe(false);
-    expect(recognized("carol-joining-48.json")).toBe(false);
+    expect(recognized("bob-joining-48.json")).toBe(false);
+    expect(recognized("bob-x-joining-47.json")).toBe(false);
+    expect(recognized("carol-joining-47.json")).toBe(false);
   });
 
   test("the lock matches by exact name in either arrival order", () => {
@@ -197,7 +217,8 @@ describe("isRecognizedLoopFile", () => {
 
   test("an ack is recognized only when its inner target is a legal name", () => {
     expect(recognized("bob-alice-hello-48-ack.json")).toBe(true);
-    expect(recognized("alice-bob-hello-48-ack.json")).toBe(true);
+    expect(recognized("alice-bob-hello-47-ack.json")).toBe(true);
+    expect(recognized("alice-bob-hello-48-ack.json")).toBe(false);
     expect(recognized("bob-alice-50-ack.json")).toBe(true);
     expect(recognized("alice-x-y-ack.json")).toBe(false);
   });
@@ -219,6 +240,10 @@ describe("isRecognizedLoopFile", () => {
 const DIR = "/loop";
 const SELF = "self";
 const PEER = "peer";
+const HELLO_NAMES = {
+  self: `${SELF}-hello-48.json`,
+  peer: `${PEER}-hello-48.json`,
+};
 
 // The on-disk bytes of a peer JSON message in the binary envelope poll() reads.
 const objectMessage = (payload: unknown, seq = 0): Buffer =>
@@ -327,6 +352,7 @@ function makeLoop(
     path: () => DIR,
     outbound: () => undefined,
     peerId: () => PEER,
+    helloNames: () => HELLO_NAMES,
     connected: () => state.connected,
     abortArmed: () => state.abortArmed,
     wait: (ms) => cancellableDelay(ms, controller.signal),
@@ -1152,6 +1178,68 @@ describe("FileSyncMessageLoop exact message size gate", () => {
       expectTerminalMismatch(f, body.length, declared);
     },
   );
+
+  test("a body longer than the listed byte count is read only up to that count and refused", async () => {
+    const body = objectMessage({ m: 1 });
+    const declared = body.length - 1;
+    const { f, name } = plantSized(body, declared, declared);
+    const reads = capReadsAtMaxBytes(f.client);
+
+    await f.pollOnce();
+
+    expect(reads).toEqual([{ name, maxBytes: declared }]);
+    expect(internals(f.loop).pollerActive).toBe(false);
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
+  });
+});
+
+describe("FileSyncMessageLoop control names", () => {
+  const exactAbortName = (id: string) =>
+    abortMarkerName(id, new Uint8Array(ABORT_TOKEN_BYTES));
+
+  test.each([
+    `${PEER}-hello-47.json`,
+    `${PEER}-joining-49.json`,
+    `${PEER}-abort-66.json`,
+    `${SELF}-hello-49.json`,
+    `${SELF}-joining-47.json`,
+    `${SELF}-abort-68.json`,
+  ])(
+    "a same-id control file with another byte count is unexpected: %s",
+    async (stray) => {
+      const files = new Map<string, Buffer>();
+      const f = makeLoop({ unexpectedFiles: "error" }, {}, files);
+      files.set(`${DIR}/${stray}`, Buffer.from("{}"));
+
+      await f.pollOnce();
+
+      expect(f.emitted).toHaveLength(1);
+      expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+      expect((f.emitted[0].arg as Error).message).toContain(
+        `during the exchange: ${stray}.`,
+      );
+    },
+  );
+
+  test("the agreed hellos, their sentinels and both exact abort names are not unexpected", async () => {
+    const files = new Map<string, Buffer>();
+    const f = makeLoop({ unexpectedFiles: "error" }, {}, files);
+    for (const name of [
+      HELLO_NAMES.self,
+      HELLO_NAMES.peer,
+      `${SELF}-joining-48.json`,
+      `${PEER}-joining-48.json`,
+      exactAbortName(SELF),
+      exactAbortName(PEER),
+    ])
+      files.set(`${DIR}/${name}`, Buffer.alloc(48));
+
+    await f.pollOnce();
+    f.loop.stop();
+
+    expect(f.emitted).toEqual([]);
+  });
 });
 
 describe("FileSyncMessageLoop resetSessionState", () => {

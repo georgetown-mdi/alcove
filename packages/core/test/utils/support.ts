@@ -6,6 +6,7 @@
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import type { PsiElementBounds } from "../../src/connection/frameSize";
+import { FrameSizeExceededError } from "../../src/errors";
 import type {
   FileInfo,
   FileTransportClient,
@@ -492,6 +493,34 @@ export function makeMockClient(opts: MockClientOptions = {}): {
   };
 
   return { client, files };
+}
+
+/** One read through {@link capReadsAtMaxBytes}. */
+export interface CappedRead {
+  name: string;
+  maxBytes: number;
+}
+
+/**
+ * Wraps `client.get` so it honors `maxBytes` the way both production adapters
+ * do: a body over the cap is refused with a FrameSizeExceededError, never
+ * returned. Returns the record of each read's file name and cap.
+ */
+export function capReadsAtMaxBytes(client: FileTransportClient): CappedRead[] {
+  const reads: CappedRead[] = [];
+  const uncapped = client.get.bind(client);
+  client.get = async (path, options) => {
+    const body = await uncapped(path, options);
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    reads.push({ name, maxBytes: options.maxBytes });
+    if (body.length > options.maxBytes)
+      throw new FrameSizeExceededError(
+        `an inbound file exceeds the maximum frame size of ` +
+          `${options.maxBytes} bytes; refusing to read it into memory`,
+      );
+    return body;
+  };
+  return reads;
 }
 
 // --- Invitation tokens ----------------------------------------------------------

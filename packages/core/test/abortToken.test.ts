@@ -6,10 +6,11 @@ import {
   deriveAeadKey,
   AEAD_CONTEXTS,
 } from "../src/auth";
+import { isAbortMarkerName } from "../src/connection/fileSyncNames";
 import {
-  isAbortMarkerName,
+  abortMarkerName,
   isExpectedAbortName,
-} from "../src/connection/fileSyncNames";
+} from "../src/connection/abortMarker";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../src/utils/crypto";
 
 const sessionKeyA = new Uint8Array(32).fill(0xa1);
@@ -145,4 +146,22 @@ test("isExpectedAbortName rejects a foreign abort marker that isAbortMarkerName 
   // A bare `-abort-<n>.json` recovers no id and is neither expected nor (for
   // the entry guard's purposes) attributable to a party.
   expect(isExpectedAbortName("-abort-67.json", "self", "peer")).toBe(false);
+});
+
+test("isExpectedAbortName accepts each party's marker only under the byte count a derived token writes", async () => {
+  for (const role of ABORT_TOKEN_ROLES) {
+    const token = await deriveAbortToken(sessionKeyA, role);
+    const name = abortMarkerName("peer", token);
+    expect(isExpectedAbortName(name, "self", "peer")).toBe(true);
+    expect(
+      isExpectedAbortName(abortMarkerName("self", token), "self", "peer"),
+    ).toBe(true);
+  }
+  for (const count of [0, 66, 68, 1024]) {
+    for (const id of ["self", "peer"]) {
+      const sameIdOtherCount = `${id}-abort-${count}.json`;
+      expect(isAbortMarkerName(sameIdOtherCount)).toBe(true);
+      expect(isExpectedAbortName(sameIdOtherCount, "self", "peer")).toBe(false);
+    }
+  }
 });

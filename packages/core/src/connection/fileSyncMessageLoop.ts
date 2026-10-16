@@ -49,14 +49,15 @@ import {
 import type { DeserializedMessage } from "./fileSyncFraming";
 import {
   LOCK_SUFFIX,
-  isControlNameFor,
   isMessageName,
+  joiningNameForHello,
   parseMessageByteCount,
   parseTimestampedMessageNNN,
   ackMarkerName,
   isProtocolTempName,
-  isExpectedAbortName,
+  type AgreedHelloNames,
 } from "./fileSyncNames";
+import { isExpectedAbortName } from "./abortMarker";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
@@ -146,16 +147,17 @@ export function resolveUnexpectedFilesPolicy(options: {
 
 // True when `name` is a file legitimately present during the message loop
 // (Phase 2), judged against the two known party ids and the filename grammar.
-// Recognized: an in-flight `temp-<uuidv4()>.tmp` write; the two hellos and the
-// lock tiebreaker, matched by exact name (each has exactly one legal form);
-// and, for the unbounded-name cases, anything matching the terminal grammar
+// Recognized: an in-flight `temp-<uuidv4()>.tmp` write; the two hellos
+// rendezvous agreed (`helloNames`; none before it commits) and the lock
+// tiebreaker, matched by exact name (each has exactly one legal form); and,
+// for the unbounded-name cases, anything matching the terminal grammar
 // token -- a message byte count (own writes only; a peer message is taken by
 // the scan above) or `ack` (either writer's rendezvous or message ack).
-// Both parties' `<id>-joining-<n>.json` are recognized by exact name: a lock
-// joiner writing without renaming deletes its sentinel only after its hello
-// is written, so the peer's sentinel can still be listed once this party's
-// loop has started, and this party's own outlives a delete that failed until
-// cleanup() removes it.
+// Both parties' `<id>-joining-<n>.json` are recognized by exact name, the
+// count of that party's agreed hello: a lock joiner writing without renaming
+// deletes its sentinel only after its hello is written, so the peer's
+// sentinel can still be listed once this party's loop has started, and this
+// party's own outlives a delete that failed until cleanup() removes it.
 //
 // Anchored to the grammar discriminant, not a bare `<id>-*` glob, so a
 // conflict copy or partial download (e.g.
@@ -177,6 +179,7 @@ export function isRecognizedLoopFile(
   selfId: string,
   peerId: string,
   foreignFileSnapshot: ReadonlySet<string>,
+  helloNames: AgreedHelloNames | undefined,
 ): boolean {
   // Foreign files snapshotted at synchronize() entry are tolerated for the
   // session: they predate the exchange and are not new noise. The
@@ -190,24 +193,27 @@ export function isRecognizedLoopFile(
   // the foreign-file policy, the same as any other foreign name.
   if (isProtocolTempName(name)) return true;
   // The two expected abort markers (this party's and the peer's) are
-  // recognized by exact name, unconditionally -- so a not-yet-armed reader
-  // still recognizes an abort-named file (it cannot trip the unexpected-files
-  // policy on one) even though it does not verify it. A foreign
-  // `<other>-abort-<n>.json` is not exact-name and falls through to the policy.
+  // recognized by exact name, byte count included, unconditionally -- so a
+  // not-yet-armed reader still recognizes an abort-named file (it cannot trip
+  // the unexpected-files policy on one) even though it does not verify it. A
+  // foreign `<other>-abort-<n>.json`, or either id's with another count, is
+  // not exact-name and falls through to the policy.
   if (isExpectedAbortName(name, selfId, peerId)) return true;
   if (!name.endsWith(".json")) return false;
   const ownPrefixed = name.startsWith(`${selfId}-`);
   if (!ownPrefixed && !name.startsWith(`${peerId}-`)) return false;
-  // Hellos are matched by exact writer id and the lock tiebreaker by exact
-  // name rather than by terminal token: a stray `<id>-x-hello-<n>.json` from
-  // the peer or `<id>-x-lock.json` is not admitted. The lock pair may arrive
-  // in either order, but both reconstructions name the same file. Recognized
-  // in either rendezvous mode on purpose (the recognized set is mode-agnostic
-  // by spec): admitting a stray lock avoids a false-positive abort on
-  // cross-mode or legacy residue.
+  // Hellos, sentinels and the lock are matched by exact name, not terminal
+  // token: one under either id with a byte count rendezvous did not agree, or
+  // a stray `<id>-x-lock.json`, is not admitted. Both lock reconstructions
+  // name the same file. Recognized in either rendezvous mode (the set is
+  // mode-agnostic by spec), so a stray lock from cross-mode or legacy residue
+  // is no false-positive abort.
   if (
-    isControlNameFor(name, "hello", selfId) ||
-    isControlNameFor(name, "hello", peerId)
+    helloNames !== undefined &&
+    (name === helloNames.self ||
+      name === helloNames.peer ||
+      name === joiningNameForHello(helloNames.self) ||
+      name === joiningNameForHello(helloNames.peer))
   )
     return true;
   if (
@@ -215,19 +221,14 @@ export function isRecognizedLoopFile(
     name === `${peerId}-${selfId}${LOCK_SUFFIX}`
   )
     return true;
-  if (
-    isControlNameFor(name, "joining", peerId) ||
-    isControlNameFor(name, "joining", selfId)
-  )
-    return true;
   const stem = name.slice(0, -".json".length);
   const token = stem.slice(stem.lastIndexOf("-") + 1);
-  // Our own messages hold a variable counter/byte-count terminal, so they
-  // stay anchored to the numeric grammar token. Scoped to our own prefix: a
-  // peer numeric-terminal file is the message scan's job (poll() routes or
-  // rejects it), so recognizing one here would be a false "recognized" for a
-  // caller consulting this baseline directly -- e.g. `<peerId>-foo-5.json`.
-  if (ownPrefixed && /^\d+$/.test(token)) return true;
+  // Our own messages are matched by the message grammar (isMessageName), which
+  // a sized control name under our id fails. Own prefix only: a peer
+  // numeric-terminal file is the message scan's job (poll() routes or rejects
+  // it), so recognizing one here, e.g. `<peerId>-foo-5.json`, would be a false
+  // "recognized" for a caller consulting this baseline directly.
+  if (ownPrefixed && isMessageName(name)) return true;
   if (token !== "ack") return false;
   // An ack marker is `<writerId>-<originalName>-ack.json`. Recognized only
   // when `<originalName>` is itself a full, legal target for one of the two
@@ -243,8 +244,9 @@ export function isRecognizedLoopFile(
     if (!inner.startsWith(`${writer}-`)) continue;
     const original = inner.slice(`${writer}-`.length);
     const isHello =
-      isControlNameFor(`${original}.json`, "hello", selfId) ||
-      isControlNameFor(`${original}.json`, "hello", peerId);
+      helloNames !== undefined &&
+      (`${original}.json` === helloNames.self ||
+        `${original}.json` === helloNames.peer);
     const isMessage =
       (original.startsWith(`${selfId}-`) ||
         original.startsWith(`${peerId}-`)) &&
@@ -302,7 +304,7 @@ const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
 //     foreignFileSnapshot are the same Set instances poll()/send()/cleanup()/
 //     close() hold, so every add/delete/has/forEach here is observed there.
 //   - LIVE ACCESSORS (read fresh per call, never hoisted): client/id/role/log/
-//     options/path/outbound/peerId/connected/abortArmed, reflecting the
+//     options/path/outbound/peerId/helloNames/connected/abortArmed, reflecting the
 //     current values (open() rebinds the logger, and the role commits at
 //     rendezvous).
 //   - DELEGATES: wait forwards to the connection's cancellable wait; emit is
@@ -323,6 +325,7 @@ export interface MessageLoopDeps {
   path: () => string | undefined;
   outbound: () => string | undefined;
   peerId: () => string | undefined;
+  helloNames: () => AgreedHelloNames | undefined;
   connected: () => boolean;
   abortArmed: () => boolean;
   wait: (ms: number) => Promise<void>;
@@ -873,6 +876,7 @@ export class FileSyncMessageLoop {
             deps.id(),
             peerId,
             deps.foreignFileSnapshot,
+            deps.helloNames(),
           )
         )
           unexpected.push(name);
@@ -1017,9 +1021,10 @@ export class FileSyncMessageLoop {
             // Buffer regardless, but this states the intent).
             encoding: null,
             // The safety check behind the pre-get size check above, for a
-            // server that under-reports the file's size in its listing: the
-            // same per-exchange frameCap (or the static cap when none is set).
-            maxBytes: frameCap,
+            // file that grew after listing or a server that under-reports its
+            // size: the count the name states, already refused above when
+            // over frameCap, so a larger body is never buffered past it.
+            maxBytes: declaredSize,
           });
           reachedGet = false;
           if (message.length !== declaredSize)

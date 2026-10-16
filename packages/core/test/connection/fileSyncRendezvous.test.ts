@@ -26,6 +26,7 @@ import {
   isHelloTempName,
   isProtocolTempName,
   parseSizedControlName,
+  type AgreedHelloNames,
   sizedControlName,
 } from "../../src/connection/fileSyncNames";
 import type {
@@ -37,6 +38,7 @@ import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import type { HandshakeRole } from "../../src/types";
 import { getLoggerForVerbosity } from "../../src/utils/logger";
 import {
+  capReadsAtMaxBytes,
   makeMockClient,
   type ListScript,
   type MockClientOptions,
@@ -416,6 +418,33 @@ describe("readControlFileWithGate", () => {
     expect(maxBytesSeen).toEqual([HELLO_MAX_BYTES]);
   });
 
+  test("refuses a hello served past its name's byte count, reading no more than that count", async () => {
+    // Listed at the count its name states, but the server serves more: a file
+    // that grew after listing, or a listing that under-reports its size.
+    const client = stubClient(
+      async () =>
+        Buffer.from(
+          lockBody.toString().padEnd(HELLO_MAX_BYTES, " "),
+        ) as Buffer<ArrayBufferLike>,
+    );
+    const reads = capReadsAtMaxBytes(client);
+    await expect(
+      readControlFileWithGate(
+        client,
+        helloPath,
+        listedSize,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toBeInstanceOf(FrameSizeExceededError);
+    expect(reads).toEqual([
+      { name: helloPath.slice("in/".length), maxBytes: listedSize },
+    ]);
+  });
+
   test("rethrows a terminal UsageError from get() without retrying", async () => {
     let calls = 0;
     const terminal = new UsageError("frame too large");
@@ -680,6 +709,7 @@ const DIR = "/d";
 interface PartyState {
   role: string;
   peerId: string | undefined;
+  helloNames: AgreedHelloNames | undefined;
   handshakeRole: HandshakeRole | undefined;
   entryPeerHello: string | undefined;
   resetCount: number;
@@ -724,6 +754,7 @@ function makeParty(
   const state: PartyState = {
     role: "unknown role",
     peerId: undefined,
+    helloNames: undefined,
     handshakeRole: undefined,
     entryPeerHello: undefined,
     resetCount: 0,
@@ -752,8 +783,9 @@ function makeParty(
     setRole: (role) => {
       state.role = role;
     },
-    setPeerId: (peerId) => {
+    setPeerId: (peerId, helloNames) => {
       state.peerId = peerId;
+      state.helloNames = helloNames;
     },
     setHandshakeRole: (role) => {
       state.handshakeRole = role;
@@ -871,6 +903,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa", flags),
+      peer: helloName("zzz", flags),
+    });
   });
 
   test("lockless barrier commits joiner/initiator when the peer arrived first", async () => {
@@ -887,6 +923,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("joiner");
     expect(p.state.handshakeRole).toBe("initiator");
     expect(p.state.peerId).toBe("aaa");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("zzz", flags),
+      peer: helloName("aaa", flags),
+    });
   });
 
   test("lock two-hellos winner commits by filename-order tiebreak", async () => {
@@ -896,8 +936,10 @@ describe("FileSyncRendezvous commit values", () => {
     // The peer hello is absent at entry (so the dispatch takes the hello-exchange
     // path, not the lock-joiner fast-path) and appears on the first poll, where
     // this party wins the createExclusive lock.
+    const ops: string[] = [];
     const p = makeParty("aaa", flags, files, {
       hideAtEntry: [helloName("zzz")],
+      ops,
     });
 
     await p.rdv.run(p.scope);
@@ -906,8 +948,14 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
-    // The winner leaves its lock on disk for the loser to clean up.
-    expect(files.has(`${DIR}/aaa-zzz${LOCK_SUFFIX}`)).toBe(true);
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa"),
+      peer: helloName("zzz"),
+    });
+    // The winner leaves its lock on disk for the loser to clean up: created
+    // empty by createExclusive under a name with no byte count, never put.
+    expect(files.get(`${DIR}/aaa-zzz${LOCK_SUFFIX}`)).toEqual(Buffer.alloc(0));
+    expect(ops.filter((op) => op.includes(LOCK_SUFFIX))).toEqual([]);
   });
 
   test("lock detection (lock already present) commits at its own site", async () => {
@@ -926,6 +974,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa"),
+      peer: helloName("zzz"),
+    });
     // Lock-detection sweeps the lock and both hellos.
     expect(files.has(`${DIR}/aaa-zzz${LOCK_SUFFIX}`)).toBe(false);
     expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(false);
@@ -949,6 +1001,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa"),
+      peer: helloName("zzz"),
+    });
   });
 
   test("two-hellos responder branch commits when the self hello was consumed", async () => {
@@ -969,6 +1025,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa"),
+      peer: helloName("zzz"),
+    });
   });
 
   test("lock-joiner fast-path commits joiner/initiator", async () => {
@@ -982,6 +1042,10 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.role).toBe("joiner");
     expect(p.state.handshakeRole).toBe("initiator");
     expect(p.state.peerId).toBe("zzz");
+    expect(p.state.helloNames).toEqual({
+      self: helloName("aaa"),
+      peer: helloName("zzz"),
+    });
     // The sentinel was renamed into this party's hello.
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
     expect(files.has(`${DIR}/${joiningName("aaa")}`)).toBe(false);
@@ -991,6 +1055,7 @@ describe("FileSyncRendezvous commit values", () => {
 describe("FileSyncRendezvous identity reset per rejected path", () => {
   const expectResetToPreSync = (state: PartyState) => {
     expect(state.peerId).toBeUndefined();
+    expect(state.helloNames).toBeUndefined();
     expect(state.role).toBe("unknown role");
     expect(state.handshakeRole).toBeUndefined();
   };
@@ -1265,6 +1330,7 @@ describe("FileSyncRendezvous id-pair refusal ahead of each write", () => {
 
 const expectResetToPreSyncState = (state: PartyState) => {
   expect(state.peerId).toBeUndefined();
+  expect(state.helloNames).toBeUndefined();
   expect(state.role).toBe("unknown role");
   expect(state.handshakeRole).toBeUndefined();
 };
