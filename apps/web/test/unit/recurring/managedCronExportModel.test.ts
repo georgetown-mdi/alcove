@@ -328,8 +328,8 @@ describe("the line naming the invitation relay's registrar", () => {
       );
     expect(invitationRegistrarExportLine(state.composed.connection)).toBe(
       "A command-line run of this exchange does not contact the registrar " +
-        `at ${PARTNER_REGISTRAR}: it allocates its relay on this party's own ` +
-        "relay.",
+        `at ${PARTNER_REGISTRAR}: it uses your own relay, which comes ` +
+        "first in the file.",
     );
   });
 

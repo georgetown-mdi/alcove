@@ -89,8 +89,8 @@ export function invitationRegistrarExportLine(
     );
   return (
     "A command-line run of this exchange does not contact the registrar at " +
-    `${sanitizeForDisplay(registrar)}: it allocates its relay on this ` +
-    "party's own relay."
+    `${sanitizeForDisplay(registrar)}: it uses your own relay, which comes ` +
+    "first in the file."
   );
 }
 
