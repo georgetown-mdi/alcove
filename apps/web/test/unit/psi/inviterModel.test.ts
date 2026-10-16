@@ -1706,6 +1706,70 @@ describe("customize tabs", () => {
     ]);
   });
 
+  // The CLI cleans an ssn4 field from an ssn column with the configuration's
+  // own steps, so a pasted configuration doing so loads them as written.
+  const ssnOnlyCsv: AcquiredCsv = {
+    ...csv,
+    rawRows: [
+      {
+        client_id: "1",
+        first_name: "Ann",
+        last_name: "Lee",
+        dob: "01/02/1990",
+        ssn: "078-05-1120",
+        program_code: "A",
+      },
+    ],
+    columns: csv.columns.map((column) => (column === "ssn4" ? "ssn" : column)),
+  };
+
+  test("a pasted configuration cleaning ssn4 from an ssn column loads its own steps", () => {
+    const editor = editorFromCsv("Dana", ssnOnlyCsv);
+    const steps = [{ function: "trim_whitespace" }];
+    const result = importLinkageTerms(
+      stringifyYaml({
+        linkage_terms: snakeizeKeys(mintedTerms(editorFromCsv("Dana", csv))),
+        standardization: [{ output: "ssn4", input: "ssn", steps }],
+      }),
+    );
+    if (!result.success) throw new Error(result.error);
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      ssnOnlyCsv,
+      result.terms,
+      result.standardization,
+    );
+    expect(loaded.notLoaded).toEqual([]);
+    expect(
+      loaded.editor.draft.standardization.find(
+        (transformation) => transformation.output === "ssn4",
+      ),
+    ).toEqual({ output: "ssn4", input: "ssn", steps });
+  });
+
+  test("a pasted configuration cleaning ssn from an ssn4 column is refused", () => {
+    const editor = editorFromCsv("Dana", csv);
+    const result = importLinkageTerms(
+      stringifyYaml({
+        linkage_terms: snakeizeKeys(
+          mintedTerms(editorFromCsv("Dana", ssnOnlyCsv)),
+        ),
+        standardization: [{ output: "ssn", input: "ssn4", steps: [] }],
+      }),
+    );
+    if (!result.success) throw new Error(result.error);
+    expect(
+      editorWithPastedConfiguration(
+        editor,
+        csv,
+        result.terms,
+        result.standardization,
+      ).notLoaded,
+    ).toEqual([
+      { output: "ssn", input: "ssn4", reason: "other-type", fieldType: "ssn" },
+    ]);
+  });
+
   test("column edits preserve authored keys", () => {
     const seeded = editorFromCsv("Dana", csv);
     const keyNames = (candidate: typeof seeded) =>

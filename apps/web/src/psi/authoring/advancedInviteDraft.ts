@@ -4,6 +4,7 @@ import {
   authoredLinkageFields,
   canonicalString,
   columnValues,
+  fieldSourceColumnTypes,
   getDefaultLinkageTerms,
   getDefaultStandardization,
   inferDateFormat,
@@ -1158,7 +1159,7 @@ export function draftFromTerms(
 /** A transformation of a configuration's `standardization` block that did not
  * load onto the draft, and why: the terms declare no field named by its
  * `output`, the file has no column named by its `input`, that column is not
- * used to match, or it holds another type than the field (`fieldType`). */
+ * used to match, or it holds a type the field may not read (`fieldType`). */
 export type CleaningNotLoaded = { output: string; input: string } & (
   | { reason: "no-field" | "no-column" | "not-matching" }
   | { reason: "other-type"; fieldType: LinkageField["type"] }
@@ -1170,10 +1171,12 @@ export type CleaningNotLoaded = { output: string; input: string } & (
  * binds its declared field to its `input` column with its steps, and a field
  * the block does not name is cleaned with no steps.
  *
- * A transformation binds only a `role: linkage` column of its field's type,
- * the rule the reconstruction keeps. It may bind a column another field
- * already cleans from, which the reconstruction never does on its own: a
- * fan-out field cleaned beside its plain one from the same column. A key the
+ * A transformation binds only a `role: linkage` column of a type its field
+ * may read (`fieldSourceColumnTypes`): its own, or the type the CLI derives
+ * it from, such as `ssn4` from an `ssn` column, keeping the block's own
+ * steps. It may bind a column another field already cleans from, which the
+ * reconstruction never does on its own: a fan-out field cleaned beside its
+ * plain one from the same column. A key the
  * reconstruction disabled for want of such a field is enabled once the field
  * is declared, and the rule-set citation is re-decided against the result.
  */
@@ -1196,7 +1199,7 @@ export function draftWithConfigurationCleaning(
       notLoaded.push({ output, input, reason: "no-column" });
     else if (column.role !== "linkage")
       notLoaded.push({ output, input, reason: "not-matching" });
-    else if (column.type !== field.type)
+    else if (!fieldSourceColumnTypes(field.type).includes(column.type))
       notLoaded.push({
         output,
         input,
