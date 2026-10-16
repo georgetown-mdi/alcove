@@ -2,7 +2,7 @@
 
 import { expect, inject, test } from "vitest";
 
-import { WEBRTC_MALFORMED_DATAGRAM_FIXTURES } from "@alcove/testkit/webrtcInboundFrames";
+import { WEBRTC_MALFORMED_DATAGRAM_FIXTURES } from "@alcove/core/testing";
 import { generateSharedSecret } from "@alcove/core";
 
 import { openPeerMessageConnection } from "../../src/psi/transport/peerMessageConnection.js";

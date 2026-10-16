@@ -9,11 +9,9 @@
   "exports": {
     "./loopbackTlsCert": "./src/loopbackTlsCert.ts",
     "./preflightInventory": "./src/preflightInventory.ts",
-    "./prerequisiteGate": "./src/prerequisiteGate.ts",
-    "./webrtcInboundFrames": "./src/webrtcInboundFrames.ts"
+    "./prerequisiteGate": "./src/prerequisiteGate.ts"
   },
   "dependencies": {
-    "@alcove/core": "file:../../packages/core",
-    "peerjs-js-binarypack": "2.1.0"
+    "@alcove/core": "file:../../packages/core"
   }
 }

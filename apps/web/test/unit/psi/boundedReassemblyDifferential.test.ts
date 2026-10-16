@@ -8,7 +8,7 @@ import {
   scanFrameStructure,
 } from "@alcove/core";
 
-import { normalizeBinary } from "@alcove/testkit/webrtcInboundFrames";
+import { normalizeBinary } from "@alcove/core/testing";
 
 import { boundChunkReassembly } from "../../../src/psi/transport/boundedReassembly.js";
 
@@ -23,8 +23,8 @@ import type { DataConnection } from "peerjs";
 // dependency), so a divergence between the defensive pre-scan and the real
 // unpacker is caught. The pre-scan under test is core's
 // (`connection/binaryPackBounds.ts`), imported rather than mocked; this suite
-// lives here, not beside that module, because only this workspace declares the
-// real packer.
+// lives here, not beside that module, because the reassembler it drives is this
+// app's.
 
 /** The real PeerJS chunk MTU (peerjs/dist/bundler chunker), the boundary at which
  * a packed frame is split into `_handleChunk` slices on the wire. */

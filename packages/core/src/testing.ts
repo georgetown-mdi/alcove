@@ -130,6 +130,29 @@ export {
 export { boundedInboundFramesWithBounds } from "./connection/webrtcInboundBounds.js";
 export type { InboundBoundOverrides } from "./connection/webrtcInboundBounds.js";
 
+// The labelled WebRTC inbound frames, chunk envelopes and malformed datagrams
+// both transports' suites hold their receive paths to, built with the real
+// packer core declares.
+export {
+  WEBRTC_CHUNK_ENVELOPE_FIXTURES,
+  WEBRTC_INBOUND_FRAME_FIXTURES,
+  WEBRTC_MALFORMED_DATAGRAM_FIXTURES,
+  comparableVerdict,
+  frameScanRefusal,
+  normalizeBinary,
+  packWithLibrary,
+  preScanVerdict,
+  unpackWithLibrary,
+} from "./connection/webrtcInboundFrameFixtures.js";
+export type {
+  CappedRule,
+  FrameScanLimits,
+  FrameVerdict,
+  WebrtcChunkEnvelopeFixture,
+  WebrtcFrameFixture,
+  WebrtcMalformedDatagramFixture,
+} from "./connection/webrtcInboundFrameFixtures.js";
+
 // The header each part of a PSI set begins with, and the byte bound a set's
 // first part is held to, so each WebRTC transport's suite can join the parts a
 // round sent back into the set and drive a first part at that bound's edge.

@@ -5,24 +5,21 @@ import {
   WEBRTC_INBOUND_FRAME_FIXTURES,
   WEBRTC_MALFORMED_DATAGRAM_FIXTURES,
   comparableVerdict,
-  packValue,
+  packWithLibrary,
   preScanVerdict,
-} from "@alcove/testkit/webrtcInboundFrames";
+} from "@alcove/core/testing";
 
 import { boundChunkReassembly } from "../../../src/psi/transport/boundedReassembly.js";
 
-import type {
-  FrameVerdict,
-  WebrtcFrameFixture,
-} from "@alcove/testkit/webrtcInboundFrames";
+import type { FrameVerdict, WebrtcFrameFixture } from "@alcove/core/testing";
 import type { ConnectionError } from "@alcove/core";
 import type { DataConnection } from "peerjs";
 
 // Core's structural pre-scan (packages/core/src/connection/binaryPackBounds.ts) and
 // this app's PeerJS wrap (src/psi/transport/boundedReassembly.ts) enforce the same
 // bound; the wrap calls the scan at the unpack chokepoint for every datagram and
-// reassembled frame. The fixture set (`@alcove/testkit/webrtcInboundFrames`), also
-// driven by the CLI's own parity suite, drives both here, and every divergence
+// reassembled frame. The fixture set on `@alcove/core/testing`, also driven by
+// the CLI's own parity suite, drives both here, and every divergence
 // fails -- including a rule that fires on a whole frame but not the same frame in
 // chunks.
 
@@ -174,7 +171,7 @@ function chunkedDatagrams(fixture: WebrtcFrameFixture): Array<Uint8Array> {
   const datagrams: Array<Uint8Array> = [];
   for (let start = 0; start < frame.byteLength; start += mtu) {
     datagrams.push(
-      packValue({
+      packWithLibrary({
         __peerData: CHUNK_MESSAGE_ID,
         n: datagrams.length,
         data: frame.subarray(start, Math.min(frame.byteLength, start + mtu)),

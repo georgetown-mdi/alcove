@@ -6,23 +6,21 @@ import {
   toFrameBytes,
 } from "@alcove/core";
 import {
-  boundedInboundFramesWithBounds,
-  chunkPacked,
-} from "@alcove/core/testing";
-import {
   WEBRTC_CHUNK_ENVELOPE_FIXTURES,
   WEBRTC_INBOUND_FRAME_FIXTURES,
   WEBRTC_MALFORMED_DATAGRAM_FIXTURES,
+  boundedInboundFramesWithBounds,
+  chunkPacked,
   comparableVerdict,
   frameScanRefusal,
   preScanVerdict,
-} from "@alcove/testkit/webrtcInboundFrames";
+} from "@alcove/core/testing";
 
 import type {
   CappedRule,
   FrameVerdict,
   WebrtcFrameFixture,
-} from "@alcove/testkit/webrtcInboundFrames";
+} from "@alcove/core/testing";
 
 // The WebRTC inbound bound has two enforcement points over one wire format: core's
 // structural pre-scan (packages/core/src/connection/binaryPackBounds.ts), which
@@ -35,13 +33,13 @@ import type {
 // different rules, and a rule that fires on a whole frame but not on the same frame
 // arriving in chunks.
 //
-// The set itself is `@alcove/testkit/webrtcInboundFrames`, shared with the web app's
-// PeerJS wrap, which is held to it the same way (apps/web/test/unit/
+// The set itself is on `@alcove/core/testing`, shared with the web app's PeerJS
+// wrap, which is held to it the same way (apps/web/test/unit/
 // webrtcInboundParity.test.ts) -- so the two transports' verdicts are compared against
-// one reference and therefore against each other. The reassembler is core's, but
-// the set's package depends on core, so the assertion driving it lives in this
-// app's test tree. The reassembler and the scan it is driven against are the ones
-// this app links from core's BUILD, not a source copy.
+// one reference and therefore against each other. The reassembler is core's, and
+// the assertion driving it lives in this app's test tree so that the reassembler
+// and the scan it is driven against are the ones this app links from core's
+// BUILD, not a source copy.
 
 /** A reassembler at a fixture's limits. Only the two limits the fixture set
  * varies are set; every other bound stays at its production default, as it does

@@ -63,12 +63,10 @@ with a message asking for an npm exclude entry that would be false.
   The CLI's WebRTC transport uses that framing; the web transport decodes
   through PeerJS itself, plus its own bounded reassembly
   (`apps/web/src/psi/transport/boundedReassembly.ts`).
-  `packages/testkit` declares it at that same exact version as well, because
-  the shared WebRTC inbound frame
-  fixtures both transports are held to are built with the real packer
-  (`packages/testkit/src/webrtcInboundFrames.ts`), and a workspace's own imports
-  are declared in its own manifest rather than resolved through a consumer's
-  hoisting. All three declarations must move together -- a browser peer and a CLI
+  The shared WebRTC inbound frame fixtures both transports are held to are
+  built with the real packer in core as well
+  (`packages/core/src/connection/webrtcInboundFrameFixtures.ts`, published on
+  `@alcove/core/testing`). Both declarations must move together -- a browser peer and a CLI
   peer that pack differently cannot exchange a frame, and a core scan or a
   shared fixture set differentiated against a different version than either app
   ships is not testing the shipped assumption.
@@ -643,9 +641,9 @@ Then run `npm run test:integration -w apps/cli` against the new version. The con
 
 The web WebRTC data-channel inbound bound specified in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) reaches past the public `DataConnection` API into PeerJS reassembly/unpack internals (`apps/web/src/psi/transport/boundedReassembly.ts`) and parses the `peerjs-js-binarypack` wire format directly (`packages/core/src/connection/binaryPackBounds.ts`), so it rests on assumptions about both packages' internal behavior that an upgrade can silently break. The outbound path does the same in the other direction: Alcove encodes every frame itself (`packages/core/src/connection/binaryPackEncode.ts`), because the library's packer recurses once per element and cannot encode a record-scaling frame at all, and the web app installs that encoder over the PeerJS connection's own send internals (`apps/web/src/psi/transport/iterativePacking.ts`). Re-verify the following on any `peerjs` or `peerjs-js-binarypack` version bump, before the bump merges.
 
-A `peerjs-js-binarypack` bump is one edit across three declaration sites: `apps/web/package.json` (the web transport's decoder, and the packer its tests drive), `packages/core/package.json` (a dependency: the unpacker the PeerJS framing in core decodes with, and the real packer and unpacker both of core's differential suites oracle against), and `packages/testkit/package.json` (the shared frame fixtures both transports are driven through, `packages/testkit/src/webrtcInboundFrames.ts`). A site left behind puts the wire format the guards are measured against out of step with the one a partner decodes with.
+A `peerjs-js-binarypack` bump is one edit across two declaration sites: `apps/web/package.json` (the web transport's decoder, and the packer its tests drive) and `packages/core/package.json` (a dependency: the unpacker the PeerJS framing in core decodes with, the real packer and unpacker both of core's differential suites oracle against, and the packer the shared frame fixtures both transports are driven through are built with, `packages/core/src/connection/webrtcInboundFrameFixtures.ts`). A site left behind puts the wire format the guards are measured against out of step with the one a partner decodes with.
 
-The library is the ORACLE for Alcove's own encoder, not a runtime dependency of it: `binaryPackEncode.ts` does not import the library, and the encoder's differential suite requires byte equality against the real `pack` for every frame shape and marker. A bump that moves the encoding fails there rather than at a partner's browser.
+The library is the ORACLE for Alcove's own encoder, not a runtime dependency of it: `binaryPackEncode.ts` does not import the library, and the encoder's differential suite requires byte equality against the real `pack` for every frame shape and marker. A bump that moves the encoding fails there rather than at a partner's browser. A scoped `no-restricted-imports` rule in `eslint.config.mjs` fails lint when `binaryPackEncode.ts` or `binaryPackBounds.ts` imports the library statically, covered by `scripts/eslint-binarypack-library-import-ban.test.mjs`; a dynamic `import()` is outside what it matches.
 
 The internal assumptions the bound relies on:
 

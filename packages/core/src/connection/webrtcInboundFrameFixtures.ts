@@ -14,12 +14,9 @@
 // differently, and a rule that fires on a whole frame but not on the same frame
 // arriving in chunks.
 //
-// The set lives here rather than in either test tree because both apps need it and
-// neither may import the other; `@alcove/core/testing` could hold it, since core
-// declares the packer, and it stays here as a stated exception to the testkit's
-// admission rule (docs/TESTING.md, Shared test material). What each transport
-// contributes is the half that cannot move: the assertion that drives its own
-// reassembler.
+// Test-only, published on `@alcove/core/testing` because both apps' test trees
+// need it and neither may import the other. What each transport contributes is
+// the half that cannot move: the assertion that drives its own reassembler.
 //
 // Every frame is the real packer's output. The three shapes that packer never emits
 // -- a container declaring more elements than the bytes behind it, nested containers
@@ -35,9 +32,9 @@ import {
   MAX_WEBRTC_STRING_BYTES,
   describeFrameStructureRefusal,
   scanFrameStructure,
-} from "@alcove/core";
+} from "./binaryPackBounds.js";
 
-import type { FrameStructureRefusal } from "@alcove/core/testing";
+import type { FrameStructureRefusal } from "./binaryPackBounds.js";
 import type { Unpackable } from "peerjs-js-binarypack";
 
 /** The two limits `scanFrameStructure` measures a frame against. A fixture has
@@ -92,12 +89,13 @@ const BACKED_ELEMENTS = 1000;
  * element per byte of. */
 const TOTAL_ELEMENTS_TRAILER = 1024;
 
-/** BinaryPack-encode one value with the real packer. `pack` returns a promise only
- * for a `Blob` input, which no fixture is, so the synchronous branch is the only
- * reachable one -- asserted rather than assumed, since an awaited-by-accident promise
- * would put `[object Promise]` in a fixture's bytes. Exported for the chunk envelopes
- * a transport's leg wraps a fixture in, which are frames too. */
-export function packValue(value: unknown): Uint8Array {
+/** BinaryPack-encode one value with the real packer, not core's own encoder
+ * (`packValue`). `pack` returns a promise only for a `Blob` input, which no fixture
+ * is, so the synchronous branch is the only reachable one -- asserted rather than
+ * assumed, since an awaited-by-accident promise would put `[object Promise]` in a
+ * fixture's bytes. Exported for the chunk envelopes a transport's leg wraps a
+ * fixture in, which are frames too. */
+export function packWithLibrary(value: unknown): Uint8Array {
   // `pack` accepts far more than its `Packable` type admits (these frames are plain
   // objects of strings, numbers and byte arrays); the cast is the boundary between
   // the fixtures' `unknown` values and its declared input type.
@@ -108,13 +106,14 @@ export function packValue(value: unknown): Uint8Array {
   return new Uint8Array(packed);
 }
 
-/** BinaryPack-decode a frame with the real unpacker. Its published type declares an
- * `ArrayBuffer`, which is what PeerJS's data channel delivers, while what the CLI
- * transport holds on the wire is a view over the datagram's bytes; the real call reads
- * that view (measured, along with the decode shape a view argument produces -- see
- * {@link comparableVerdict}), so this cast is the one place bridging the declared type
- * to the real call. */
-export function unpackFrame(bytes: Uint8Array | ArrayBuffer): unknown {
+/** BinaryPack-decode a frame with the real unpacker, without the refusal wrapping
+ * core's `unpackFrame` adds, so the reference verdict does not run through the code
+ * under test. Its published type declares an `ArrayBuffer`, which is what PeerJS's
+ * data channel delivers, while what the CLI transport holds on the wire is a view
+ * over the datagram's bytes; the real call reads that view (measured, along with the
+ * decode shape a view argument produces -- see {@link comparableVerdict}), so this
+ * cast is the one place bridging the declared type to the real call. */
+export function unpackWithLibrary(bytes: Uint8Array | ArrayBuffer): unknown {
   return unpack<Unpackable>(bytes as unknown as ArrayBuffer);
 }
 
@@ -181,21 +180,21 @@ function concatBytes(parts: Array<Uint8Array>): Uint8Array {
 }
 
 /** One refused frame per pre-scan rule, keyed by the rule it must draw rather than
- * listed, so a fifth rule added to `FrameStructureRefusal` fails this file's
- * typecheck -- in every workspace that consumes it -- until it has a fixture. */
+ * listed, so a fifth rule added to `FrameStructureRefusal` fails core's typecheck
+ * and build until it has a fixture. */
 const refusedFrames: Record<
   FrameStructureRefusal["rule"],
   Omit<WebrtcFrameFixture, "refusedBy">
 > = {
   "nesting-depth": {
     label: "arrays nested one level past the depth cap",
-    frame: packValue(nestedArrays(REDUCED_DEPTH)),
+    frame: packWithLibrary(nestedArrays(REDUCED_DEPTH)),
     limits: { ...PRODUCTION_LIMITS, maxDepth: REDUCED_DEPTH },
     cap: { rule: "nesting-depth", side: "past" },
   },
   "string-bytes": {
     label: "a string one byte over the per-string cap",
-    frame: packValue("x".repeat(REDUCED_STRING_BYTES + 1)),
+    frame: packWithLibrary("x".repeat(REDUCED_STRING_BYTES + 1)),
     limits: { ...PRODUCTION_LIMITS, maxStringBytes: REDUCED_STRING_BYTES },
     cap: { rule: "string-bytes", side: "past" },
   },
@@ -204,7 +203,7 @@ const refusedFrames: Record<
       "an array32 declaring one element more than the one-byte values behind it",
     frame: concatBytes([
       array32Header(BACKED_ELEMENTS + 1),
-      ...oneByteValues(BACKED_ELEMENTS).map(packValue),
+      ...oneByteValues(BACKED_ELEMENTS).map(packWithLibrary),
     ]),
     limits: PRODUCTION_LIMITS,
     cap: { rule: "unbacked-elements", side: "past" },
@@ -218,7 +217,11 @@ const refusedFrames: Record<
   },
   "map-key": {
     label: "a fixmap keyed by a packed integer",
-    frame: concatBytes([FIXMAP_ONE_PAIR, packValue(7), packValue("iteration")]),
+    frame: concatBytes([
+      FIXMAP_ONE_PAIR,
+      packWithLibrary(7),
+      packWithLibrary("iteration"),
+    ]),
     limits: PRODUCTION_LIMITS,
   },
 };
@@ -337,7 +340,7 @@ const totalElementsAtCap: WebrtcFrameFixture = {
  * recursion ceiling, which the CLI's outbound suite holds the send path to. */
 const unbackedFarPastCap: WebrtcFrameFixture = {
   label: "an array32 declaring a million elements over one packed value",
-  frame: concatBytes([array32Header(1_000_000), packValue("alcove")]),
+  frame: concatBytes([array32Header(1_000_000), packWithLibrary("alcove")]),
   limits: PRODUCTION_LIMITS,
   refusedBy: "unbacked-elements",
 };
@@ -352,7 +355,7 @@ export const WEBRTC_INBOUND_FRAME_FIXTURES: Array<WebrtcFrameFixture> = [
   unbackedFarPastCap,
   ...admittedValues.map(({ label, value, limits, cap }) => ({
     label,
-    frame: packValue(value),
+    frame: packWithLibrary(value),
     limits,
     refusedBy: undefined,
     ...(cap === undefined ? {} : { cap }),
@@ -383,7 +386,7 @@ export function preScanVerdict(fixture: WebrtcFrameFixture): FrameVerdict {
       message: `inbound WebRTC frame ${describeFrameStructureRefusal(refusal)}`,
     };
   }
-  return { kind: "delivered", value: unpackFrame(fixture.frame) };
+  return { kind: "delivered", value: unpackWithLibrary(fixture.frame) };
 }
 
 /** Rewrite every `ArrayBuffer`/typed array in a decoded value to a plain number
@@ -445,7 +448,7 @@ function sliceAsPrototype(): Record<string, unknown> {
 }
 
 function chunkEnvelope(fields: Record<string, unknown>): Uint8Array {
-  return packValue({
+  return packWithLibrary({
     __peerData: 1,
     n: 0,
     data: new Uint8Array(4),

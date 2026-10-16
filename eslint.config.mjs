@@ -281,6 +281,19 @@ const cliSourceRestrictedSyntax = [
   ...cliSourceDisplayRestrictedSyntax,
 ];
 
+// The named-import route to the raw YAML parsers, closed across
+// packages/core/src. Factored out so the narrower core block below that sets
+// its own no-restricted-imports options can re-carry it.
+const coreYamlRawParserImportBan = {
+  name: "yaml",
+  importNames: ["parse", "parseDocument", "parseAllDocuments"],
+  message:
+    "Parse operator/credential files through packages/core/src/sensitiveFile.ts; do not import yaml's raw parsers directly.",
+};
+
+const BINARYPACK_LIBRARY_IMPORT_MESSAGE =
+  "Do not import peerjs-js-binarypack here: Alcove's encoder and the structural pre-scan implement the wire format themselves, and the library is only the oracle their differential suites compare against (docs/spec/DEPENDENCY_PINS.md).";
+
 export default tseslint.config(
   {
     ignores: [
@@ -507,14 +520,7 @@ export default tseslint.config(
       "no-restricted-imports": [
         "error",
         {
-          paths: [
-            {
-              name: "yaml",
-              importNames: ["parse", "parseDocument", "parseAllDocuments"],
-              message:
-                "Parse operator/credential files through packages/core/src/sensitiveFile.ts; do not import yaml's raw parsers directly.",
-            },
-          ],
+          paths: [coreYamlRawParserImportBan],
           patterns: crossWorkspaceImportBans.packages,
         },
       ],
@@ -558,6 +564,39 @@ export default tseslint.config(
         "error",
         ...noDisplayableAsErrorArgument,
         ...noBareStringLengthBound,
+      ],
+    },
+  },
+  {
+    // Alcove's BinaryPack encoder and the structural pre-scan never import the
+    // library they are differentially tested against, so a test comparing
+    // either with it compares two implementations rather than one with itself.
+    // Re-carries the packages/core/src block's entries, since flat config
+    // replaces a rule's options. A dynamic import() is not matched.
+    // Coverage: scripts/eslint-binarypack-library-import-ban.test.mjs.
+    files: [
+      "packages/core/src/connection/binaryPackEncode.ts",
+      "packages/core/src/connection/binaryPackBounds.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            coreYamlRawParserImportBan,
+            {
+              name: "peerjs-js-binarypack",
+              message: BINARYPACK_LIBRARY_IMPORT_MESSAGE,
+            },
+          ],
+          patterns: [
+            ...crossWorkspaceImportBans.packages,
+            {
+              group: ["peerjs-js-binarypack/**"],
+              message: BINARYPACK_LIBRARY_IMPORT_MESSAGE,
+            },
+          ],
+        },
       ],
     },
   },
