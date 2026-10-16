@@ -1581,9 +1581,10 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
 [CLI.md](CLI.md#changing-the-terms-of-an-established-partnership)).
 
 - **Columns you send.** Where the terms send your partner columns for matched
-  records, each of your own payload columns has a checkbox. Columns used to
-  match, or as the record identifier, are listed but change only with the
-  linkage terms. **Save columns** changes the stored exchange: the next run
+  records, each of your own payload columns and your record identifier has a
+  checkbox. Unticking the record identifier stops sending it, and it stays
+  your record identifier. Columns used to match are listed but change only
+  with the linkage terms. **Save columns** changes the stored exchange: the next run
   sends the chosen columns and states them in its terms. It is refused while a
   run of the exchange is in progress.
 - **Send a terms update.** **Make a terms update** makes the same update

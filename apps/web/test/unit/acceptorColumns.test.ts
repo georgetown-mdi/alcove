@@ -1360,6 +1360,51 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toContain("Your file does have that column");
   });
 
+  test.each([
+    { receive: ["id"], sent: ["id"] },
+    { receive: ["id", "identifier"], sent: ["id", "identifier"] },
+  ])(
+    "with two record identifiers, the offer sends $receive as payload and changes no other column",
+    ({ receive, sent }) => {
+      // Both `id` and `identifier` infer to the identifier role, so the file has
+      // no one record identifier: the offer marks no column identifier-and-sent,
+      // demotes no identifier, and does not use the identifier wording.
+      const twoIdentifierColumns = [
+        "id",
+        "identifier",
+        "first_name",
+        "last_name",
+      ];
+      const terms: LinkageTerms = {
+        ...nameTerms,
+        payload: { receive: receive.map((name) => ({ name })) },
+      };
+      const { state } = editorFor(twoIdentifierColumns, terms);
+      expect(
+        state.metadata
+          .filter((column) => column.role === "identifier")
+          .map((column) => column.name),
+      ).toEqual(["id", "identifier"]);
+
+      const widened = acceptorWidenedMetadata(terms, state.metadata);
+      for (const column of widened) {
+        const before = state.metadata.find((c) => c.name === column.name)!;
+        if (receive.includes(column.name))
+          expect(disclosureOf(column), column.name).toBe("payload");
+        else expect(column, column.name).toEqual(before);
+      }
+      expect(acceptorDisclosedColumns(widened)).toEqual(sent);
+      expect(
+        acceptorPayloadDeclarationConflict(terms, widened),
+      ).toBeUndefined();
+      expect(
+        acceptorWideningOfferSentence(twoIdentifierColumns, terms, state),
+      ).toBe(
+        ` Where your file does have such a column, you can set it to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`,
+      );
+    },
+  );
+
   test("the offer costs an agreed key when a declared column is one this file matches on", () => {
     // The case the offer is unusable in: the column the partner expects is one this
     // file matches on, so taking the offer trades the key for the disclosure and the

@@ -29,7 +29,9 @@ import {
 import { ManagedTermsUpdate } from "@recurring/ManagedTermsUpdate";
 
 import {
+  IDENTIFIER_COLUMN_NOTE,
   MAKE_TERMS_UPDATE_LABEL,
+  MATCHING_COLUMN_NOTE,
   READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
   TERMS_UPDATE_APPLIED_TEXT,
@@ -145,6 +147,68 @@ describe("changing a saved exchange's terms", () => {
     await expect
       .element(page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }))
       .toBeDisabled();
+  });
+});
+
+describe("the record identifier's send choice", () => {
+  beforeEach(clearManagedExchanges);
+  afterEach(clearManagedExchanges);
+
+  test("unticking a sent identifier saves it as the identifier, not sent", async () => {
+    const recordId = {
+      name: "record_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    } as const;
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange({
+        label: "Riverbend quarterly",
+        exchangeFile: composeManagedExchangeFile({
+          connection: {
+            channel: "webrtc",
+            host: "signaling.example.org",
+            port: 3000,
+            path: "/api/",
+          },
+          linkageTerms: getDefaultLinkageTerms(
+            "County Health Dept",
+            inferMetadata(LINKAGE_COLUMNS, []),
+          ),
+          metadata: [...METADATA, recordId],
+        }),
+        side: "inviter",
+        sharedSecret: "A".repeat(43),
+      }),
+    );
+    const onChanged = vi.fn();
+    renderSection(record, false, onChanged);
+
+    const identifier = page.getByRole("checkbox", { name: "record_id" });
+    await expect.element(identifier).toBeChecked();
+    await expect.element(identifier).toBeEnabled();
+    await expect
+      .element(page.getByText(IDENTIFIER_COLUMN_NOTE))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(MATCHING_COLUMN_NOTE).first())
+      .toBeInTheDocument();
+
+    await userEvent.click(identifier);
+    await userEvent.click(
+      page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }),
+    );
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+
+    const saved = await getManagedExchange(record.id);
+    expect(
+      saved?.exchangeFile.metadata?.find(
+        (column) => column.name === "record_id",
+      ),
+    ).toEqual({ ...recordId, isPayload: false });
+    expect(saved?.exchangeFile.linkageTerms.payload?.send).toEqual([
+      { name: "notes" },
+    ]);
   });
 });
 

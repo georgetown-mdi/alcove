@@ -1211,6 +1211,64 @@ describe("a column whose is_payload does not follow its role", () => {
     expect(merged.draftSends).toEqual(merged.documentSends);
     expect(merged.notApplied).toContain("metadata");
   });
+
+  // The pairs docs/spec/EXCHANGE_FILE.md, "Writing a configuration back",
+  // names as not loaded, and the pair the console writes back for each.
+  test.each([
+    {
+      stated: {
+        name: "dob",
+        type: "date_of_birth",
+        role: "linkage",
+        isPayload: true,
+      },
+      written: { role: "payload", isPayload: true },
+    },
+    {
+      stated: {
+        name: "program_code",
+        type: "other",
+        role: "payload",
+        isPayload: false,
+      },
+      written: { role: "ignored", isPayload: false },
+    },
+    {
+      stated: {
+        name: "program_code",
+        type: "other",
+        role: "ignored",
+        isPayload: true,
+      },
+      written: { role: "ignored", isPayload: false },
+    },
+  ] satisfies Array<{
+    stated: ColumnMetadata;
+    written: Pick<ColumnMetadata, "role" | "isPayload">;
+  }>)(
+    "role $stated.role with is_payload $stated.isPayload is reported and written back as $written.role, $written.isPayload",
+    ({ stated, written }) => {
+      const metadata: Metadata = statedColumns().map((own) =>
+        own.name === stated.name ? stated : own,
+      );
+      const applied = withFileRead(
+        loadedInto(INVITER_SCREEN_INITIAL, sftpDocument({ metadata })),
+      );
+      if (applied.editor === undefined) throw new Error("expected an editor");
+      const handedBack = configurationHandBack({
+        editor: applied.editor,
+        terms: getDefaultLinkageTerms("County Health"),
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      });
+      expect(
+        noticesOf(applied).find((text) => text.includes("cannot supply")),
+      ).toContain("metadata");
+      expect(
+        handedBack.metadata?.find((column) => column.name === stated.name),
+      ).toEqual({ ...stated, ...written });
+    },
+  );
 });
 
 // A document stating `metadata` states the column set whole, the way the command

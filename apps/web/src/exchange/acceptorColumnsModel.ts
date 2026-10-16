@@ -12,6 +12,7 @@ import {
   DISCLOSURE_LABELS,
   SEMANTIC_TYPE_LABELS,
   disclosedColumnNames,
+  disclosureOf,
   hasMultipleIdentifiers,
   normalizeForEditor,
   setColumnDisclosure,
@@ -770,14 +771,17 @@ function widenableDeclaredColumns(
 }
 
 /**
- * The choice the notice's widening offer sets a column to: the file's record
- * identifier takes `identifier-sent`, so it stays the identifier its own result
- * file begins with, and any other column takes `payload`.
+ * The choice the notice's widening offer sets a column to: the file's one
+ * record identifier takes `identifier-sent`, so it stays the identifier its own
+ * result file begins with, and any other column takes `payload`. While the
+ * marks hold more than one identifier ({@link hasMultipleIdentifiers}) no
+ * column is the record identifier, so every column takes `payload`.
  */
 function widenedDisclosure(
   metadata: Metadata,
   name: string,
 ): "identifier-sent" | "payload" {
+  if (hasMultipleIdentifiers(metadata)) return "payload";
   return metadata.some(
     (column) => column.name === name && column.role === "identifier",
   )
@@ -787,7 +791,9 @@ function widenedDisclosure(
 
 /** The marks after the notice's widening offer is taken: every
  * {@link widenableDeclaredColumns} column set to its {@link widenedDisclosure},
- * through the grid's own edit. */
+ * through the grid's own edit. At most one column takes `identifier-sent`, and
+ * only when it is the sole identifier, so no edit demotes another identifier
+ * and no column outside the declared set changes. */
 export function acceptorWidenedMetadata(
   linkageTerms: LinkageTerms,
   metadata: Metadata,
@@ -805,9 +811,9 @@ export function acceptorWidenedMetadata(
  * `undefined` when the file has none of the declared columns it does not send.
  * Counts columns, not declaration entries: a declaration naming one held
  * column twice offers one column.
- * Names the choice {@link acceptorWidenedMetadata} applies to each column -- the
- * record identifier's own sending choice for that column, "Sent to your partner"
- * for the rest -- and, where taking it would cost an agreed linkage key
+ * Names the choice {@link acceptorWidenedMetadata} applies to each column, read
+ * from the marks it returns -- the record identifier's own sending choice for
+ * that column, "Sent to your partner" for the rest -- and, where taking it would cost an agreed linkage key
  * ({@link acceptorSendingExpectedColumnsCostsKey}), states that instead. A
  * column that costs a key is one used to match, never the record identifier.
  */
@@ -820,8 +826,11 @@ export function acceptorWideningOfferSentence(
   if (widenable.length === 0) return undefined;
   const sent = `"${DISCLOSURE_LABELS.payload}"`;
   const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
-  const identifierCount = widenable.filter(
-    (name) => widenedDisclosure(state.metadata, name) === "identifier-sent",
+  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
+  const identifierCount = widened.filter(
+    (column) =>
+      widenable.includes(column.name) &&
+      disclosureOf(column) === "identifier-sent",
   ).length;
   if (acceptorSendingExpectedColumnsCostsKey(columns, linkageTerms, state)) {
     if (widenable.length === 1)

@@ -27,11 +27,19 @@ export const SENT_COLUMNS_SAVED_TEXT =
   "Saved. Your next run sends these columns. Make a terms update and send " +
   "it to your partner to apply before then.";
 
-/** Why a declared column's send choice is not offered, by its role. */
-export function fixedColumnNote(column: ColumnMetadata): string {
-  return column.role === "identifier"
-    ? "Record identifier; changes with the linkage terms"
-    : "Used to match; changes with the linkage terms";
+/** Why a column used to match offers no send choice. */
+export const MATCHING_COLUMN_NOTE =
+  "Used to match; changes with the linkage terms";
+
+/** What the send choice of the record identifier controls. */
+export const IDENTIFIER_COLUMN_NOTE =
+  "Your record identifier. This box sets only whether it is sent; it stays " +
+  "your record identifier either way.";
+
+/** The note beside an offered column's send choice, where it has one: the
+ * record identifier's states what the box controls. */
+export function sentColumnNote(column: ColumnMetadata): string | undefined {
+  return column.role === "identifier" ? IDENTIFIER_COLUMN_NOTE : undefined;
 }
 
 /**
