@@ -582,14 +582,14 @@ The list includes the sources the design rationale cites for the bands; the rati
 An entry reading "full reference not recorded here" names a source whose bibliographic detail is still to be added.
 
 - **Ansolabehere and Hersh 2016.** Ansolabehere S, Hersh ED. "ADGN: An Algorithm for Record Linkage Using Address, Date of Birth, Gender and Name." Author manuscript, 2016. https://www.eitanhersh.com/uploads/7/9/7/5/7975685/agdn_v1_4.pdf
-- **Bailey et al. 2020.** Bailey MJ, Cole C, Henderson M, Massey C. "How Well Do Automated Linking Methods Perform? Lessons from US Historical Data." Journal of Economic Literature 58(4):997-1044, 2020. https://pmc.ncbi.nlm.nih.gov/articles/PMC8294155/
+- **Bailey et al. 2020.** Bailey, Cole, Henderson, Massey. "How Well Do Automated Linking Methods Perform?" Journal of Economic Literature, 2020. https://pmc.ncbi.nlm.nih.gov/articles/PMC8294155/
 - **Barrat et al. 2013.** Barrat VX, et al. A statewide two-file match of California K-12 student records. Full reference not recorded here.
 - **Beauchamp et al. 2011.** Beauchamp A, Tonkin AM, Kelsall H, et al. "Validation of de-identified record linkage to ascertain hospital admissions in a cohort study." BMC Medical Research Methodology 11:42, 2011.
 - **Bell et al. 2026.** Bell DS, Saleh T, Sanz Vidorreta FJ, Pirani CN, Pevnick JM, Jenders RA, et al. "Accuracy of an XGBoost-based privacy preserving record linkage system compared with an electronic health record patient matching module in identifying patients shared between nearby academic health centers." Journal of the American Medical Informatics Association 33(4):901-908, 2026; Supplementary Table 1. doi:10.1093/jamia/ocag020
 - **Bernstam et al. 2022.** Bernstam EV, Applegate RJ, Yu A, Chaudhari D, Liu T, Coda A, et al. "Real-World Matching Performance of Deidentified Record-Linking Tokens." Applied Clinical Informatics 13(4):865-873, 2022. doi:10.1055/a-1910-4154
 - **Bian et al. 2019.** Bian J, Loiacono A, Sura A, Mendoza Viramontes T, Lipori G, Guo Y, et al. "Implementing a hash-based privacy-preserving record linkage tool in the OneFlorida clinical research network." JAMIA Open 2(4):562-569, 2019. doi:10.1093/jamiaopen/ooz050
 - **Cao et al. 2026.** Cao C, Pillai J, Daraei S, Ghadermarzi S. "Linking patient records at scale with a hybrid approach combining contrastive learning and deterministic rules." Biology Methods and Protocols 11(1):bpag009, 2026. doi:10.1093/biomethods/bpag009
-- **Christen 2006.** Christen P. "A Comparison of Personal Name Matching: Techniques and Practical Issues." Workshops of the Sixth IEEE International Conference on Data Mining, 2006.
+- **Christen 2006.** Christen P. A comparison of Soundex and NYSIIS. Full reference not recorded here.
 - **Cole and Lee 2004.** Cole N, Lee E. A match of WIC and other program records by state, with name + date false-positive rates by state and by participant category (Table 27). Full reference not recorded here.
 - **Culbertson et al. 2017.** Culbertson A, Goel S, Madden MB, Safaeinili N, Jackson KL, Carton T, et al. "The Building Blocks of Interoperability: A Multisite Analysis of Patient Demographic Attributes Available for Matching." Applied Clinical Informatics 8(2):322-336, 2017. doi:10.4338/ACI-2016-11-RA-0196
 - **Fong 2018.** Fong AB. Repeated name and date-of-birth combinations within one graduating class. Full reference not recorded here.
@@ -613,8 +613,7 @@ An entry reading "full reference not recorded here" names a source whose bibliog
 - **Ong et al. 2024.** Ong T, et al. Disguised missing values in clinical data. Journal of the American Medical Informatics Association 31(11):2651, 2024. https://academic.oup.com/jamia/article/31/11/2651/7762307
 - **Park and Finnell 2012.** Park SC, Finnell JT. "Indianapolis Emergency Medical Service and the Indiana Network for Patient Care: Evaluating the Patient Match Algorithm." AMIA Annual Symposium Proceedings 2012:1221-1228. https://pmc.ncbi.nlm.nih.gov/articles/PMC3540486/
 - **Patterson 1985.** Patterson JE. On the National Death Index's change from Soundex to NYSIIS for last names; its supplement gives a table of the comparison with no method stated. Full reference not recorded here.
-- **Pew 2014.** Pew, 2014. Full reference not recorded here.
-- **Polubriaginof et al. 2018.** Polubriaginof FCG, et al. "Disease Heritability Inferred from Familial Relationships Reported in Medical Records." Cell 173(7):1692-1704, 2018.
+- **Polubriaginof et al. 2018.** Polubriaginof FCG, et al. Name and phone combinations measured at two sites against mother-child relationships. Full reference not recorded here.
 - **Randall et al. 2013.** Randall SM, Ferrante AM, Boyd JH, Semmens JB. "The effect of data cleaning on record linkage quality." BMC Medical Informatics and Decision Making 13:64, 2013. doi:10.1186/1472-6947-13-64
 - **Regenstrief Institute 2021.** Regenstrief Institute. "N3C Linkage Honest Broker - Site Technical Engagement Packet," version 6, 2021; Appendix H. https://www.regenstrief.org/wp-content/uploads/2022/04/siteengagementpacket-pre-nda-v06.pdf
 - **Rogerson 2026.** Rogerson, 2026: a review of 200 false positives of a mother-child linkage against its reference table. Full reference not recorded here.
