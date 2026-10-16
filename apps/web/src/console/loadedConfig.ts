@@ -41,11 +41,7 @@ import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { OWN_COLUMNS_DEFAULT } from "@psi/ownColumnsModel";
 import { buildAdvancedTerms } from "@psi/authoring/advancedInviteTerms";
 
-import {
-  disclosureOf,
-  setColumnDisclosure,
-  setColumnType,
-} from "@psi/metadataEditing";
+import { disclosureOf, setColumnDisclosure } from "@psi/metadataEditing";
 import {
   editorWithConfigurationCleaning,
   editorWithImportedTerms,
@@ -422,8 +418,11 @@ function loadedDisclosureOf(column: ColumnMetadata): DisclosureChoice {
 /**
  * The column set the import binds against: the operator's own inferred columns
  * with each role, type, and description the document states for a column of
- * that name put back, through the same editing helpers the columns step uses,
- * so the single-identifier rule holds exactly as it does for a hand edit. A
+ * that name put back. Each column's stated role is applied through the
+ * disclosure helper the columns step uses, so the single-identifier rule holds
+ * as it does for a hand edit, while its type is set as stated with no change
+ * of role, so a payload or ignored column of the identifier type never
+ * displaces the document's record identifier. A
  * column the document names that this file does not have leaves the whole
  * setting unapplied, since nothing in the editor can hold it.
  *
@@ -451,7 +450,9 @@ function metadataWithLoadedColumns(
   let metadata = inferred;
   for (const column of loaded) {
     if (!metadata.some((own) => own.name === column.name)) continue;
-    metadata = setColumnType(metadata, column.name, column.type).metadata;
+    metadata = metadata.map((own) =>
+      own.name === column.name ? { ...own, type: column.type } : own,
+    );
     metadata = setColumnDisclosure(
       metadata,
       column.name,

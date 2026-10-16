@@ -1271,6 +1271,70 @@ describe("a column whose is_payload does not follow its role", () => {
   );
 });
 
+// A column of the identifier type the document states as sent or ignored is
+// not a second record identifier, so loading it in either order leaves the
+// document's own identifier where the document states it.
+describe("a record identifier beside another identifier-typed column", () => {
+  const cases = [true, false].flatMap((identifierSent) =>
+    (
+      [
+        { role: "payload", isPayload: true },
+        { role: "ignored", isPayload: false },
+      ] as const
+    ).flatMap((other) =>
+      [true, false].map((identifierFirst) => ({
+        identifierSent,
+        otherRole: other.role,
+        otherSent: other.isPayload,
+        identifierFirst,
+      })),
+    ),
+  );
+
+  test.each(cases)(
+    "identifier sent $identifierSent, program_code $otherRole/$otherSent, identifier first $identifierFirst",
+    ({ identifierSent, otherRole, otherSent, identifierFirst }) => {
+      const identifier: ColumnMetadata = {
+        name: "client_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: identifierSent,
+      };
+      const other: ColumnMetadata = {
+        name: "program_code",
+        type: "identifier",
+        role: otherRole,
+        isPayload: otherSent,
+      };
+      const rest = statedColumns().filter(
+        (column) =>
+          column.name !== identifier.name && column.name !== other.name,
+      );
+      const metadata: Metadata = identifierFirst
+        ? [identifier, other, ...rest]
+        : [other, identifier, ...rest];
+      const applied = withFileRead(
+        loadedInto(INVITER_SCREEN_INITIAL, sftpDocument({ metadata })),
+      );
+      if (applied.editor === undefined) throw new Error("expected an editor");
+      const handedBack = configurationHandBack({
+        editor: applied.editor,
+        terms: getDefaultLinkageTerms("County Health"),
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      });
+      expect(
+        noticesOf(applied).find((text) => text.includes("cannot supply")),
+      ).toBeUndefined();
+      for (const stated of metadata) {
+        expect(
+          handedBack.metadata?.find((column) => column.name === stated.name),
+        ).toEqual(stated);
+      }
+    },
+  );
+});
+
 // A document stating `metadata` states the column set whole, the way the command
 // line reads it, so a column of this file the document does not name is held
 // back.
