@@ -1458,16 +1458,16 @@ metadata:
 What inference assigns, when it runs, depends on the kind of exchange:
 
 - **Configuration or invitation.** An `alcove exchange` configuration with no `metadata` block, and an invitation composed from an input file, infer only the columns they recognize; every other column is undeclared and not sent.
-- **Quick exchange.** A run on an input file with no invitation and no configuration -- the [quick exchange](CLI.md#quick-exchange) on the command line and in the console -- declares every column: each column whose name is not a recognized linkage name is sent, every id column among them. A linkage column under a name the table does not list, such as `First Name`, is sent, and the display the run shows before it connects lists it.
+- **Quick exchange.** A run on an input file with no invitation and no configuration -- the [quick exchange](CLI.md#quick-exchange) on the command line and in the console -- declares every column: each column whose name is not a recognized linkage name is sent, every id column among them. A linkage column under a name the table does not list, such as `Given Name`, is sent, and the display the run shows before it connects lists it.
 
 | Column | `type` | Configuration or invitation: `role`, `is_payload` | Quick exchange: `role`, `is_payload` |
 |--------|--------|------------------------------------|--------------------------------------|
 | A recognized linkage name (`ssn`, `dob`, `first_name`, `phone`, `email`, `zip`, and their aliases) | the matching semantic type | `linkage`, `false` | `linkage`, `false` |
 | `id` or `identifier` | `identifier` | `identifier`, `true` | `identifier`, `true` |
-| A name ending in `_id` | `identifier` | `identifier` when it is the header's only `identifier`-typed column, otherwise undeclared; `false` | `identifier` when it is the header's only `identifier`-typed column, otherwise `payload`; `true` |
+| A name ending in `_id`, such as `case_id` or `Medicaid ID` | `identifier` | `identifier` when it is the header's only `identifier`-typed column, otherwise undeclared; `false` | `identifier` when it is the header's only `identifier`-typed column, otherwise `payload`; `true` |
 | A name the table does not list | `other` | undeclared: no entry, not sent | `payload`, `true` |
 
-The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names). Those names are the only ones recognized: a header is matched whole after lowercasing, exactly, so `ZIP` is recognized while `First Name`, `Date of Birth`, `E-mail` and `zip_area` are not.
+The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names). Those names are the only ones recognized. Before a header is compared, letter case and whitespace at either end are ignored, and each run of whitespace, `_`, `-` and `.` inside it counts as one `_`; the result is then matched whole and exactly. So `ZIP`, `First Name`, ` ssn` and `Date-of-Birth` are recognized, while `Given Name`, `Birthdate`, `E-mail`, `zip_area` and `ssn_last4` are not. The column keeps its header as written: that is the name the run displays, binds and writes in the result.
 
 Both identifier rows produce `type: identifier`, and that type is what decides the `role`: a header carrying exactly one `identifier`-typed column roles it `identifier` whatever its name, so a lone `case_id` indexes the records. A header carrying several gives `role: identifier` to a column named `id` or `identifier` when one is present, and to no column at all otherwise -- two `_id` columns and nothing else leaves both undeclared, or on a quick exchange sends both as payload, and either way none of this party's columns indexes its own records in the result.
 

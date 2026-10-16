@@ -122,6 +122,19 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
   "runs.";
 
 /**
+ * What the confirm screen states of which columns a direct exchange sends: the
+ * header names core's inference recognizes as linkage keys
+ * (`columnNameLookupKey`) and keeps back, and that every other column is sent.
+ */
+export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
+  "A column whose header Alcove recognizes as a linkage key, such as " +
+  "first_name, date_of_birth, ssn, phone, email or zip, is never sent: it is " +
+  "matched on or kept back. Letter case, spaces at either end, and the " +
+  "separators between words (a space, _, - or .) are ignored, so First Name " +
+  "and Social Security Number are recognized. Every other column is sent, id " +
+  "columns included.";
+
+/**
  * The deduplicate field a zero-setup intent holds for the operator's choice,
  * emitted only for a non-default one for the reason
  * {@link directLinkageStrategyIntentFields} states: the CLI flag defaults to

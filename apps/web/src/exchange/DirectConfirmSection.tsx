@@ -47,6 +47,7 @@ import {
   DEFAULT_PREVIEW_IDENTITY,
   DIRECT_DEDUPLICATE_SIDE_NOTICE,
   DIRECT_LINKAGE_STRATEGY_AGREEMENT_NOTICE,
+  DIRECT_RECOGNIZED_COLUMNS_NOTICE,
   directBothSidedDeduplicateNotice,
   previewInferredTerms,
 } from "./directExchangeModel";
@@ -337,6 +338,9 @@ export function DirectConfirmSection({
       </section>
 
       <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {DIRECT_RECOGNIZED_COLUMNS_NOTICE}
+        </Text>
         <Text size="sm" c="dimmed">
           Terms are read from your file automatically. To choose which columns
           match or are shared, use the{" "}
