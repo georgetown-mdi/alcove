@@ -825,6 +825,7 @@ export {
   assertDisclosedNamesCarriable,
   assertPayloadSendDisclosed,
   buildOutputTable,
+  MATCHED_KEY_COLUMN,
   termsStatingDeclaredPayloadSend,
   termsAsTheRunStatedThem,
 } from "./payloadExchange";

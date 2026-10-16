@@ -172,3 +172,215 @@ test("rules match in order", async () => {
     [0, 1],
   ]);
 });
+
+test("each matched pair reports the round of the key it matched on", async () => {
+  const [starterConn, joinerConn] = createMessagePipe();
+  const starter = makeParticipant(psiLibrary, "starter");
+  const joiner = makeParticipant(psiLibrary, "joiner");
+
+  // Starter row 0 and joiner row 1 agree on every field, so they pair on the
+  // first key. Starter row 1 and joiner row 2 differ on date of birth alone,
+  // so they pair on the second.
+  const starterRows = [
+    {
+      id: "a",
+      first_name: "James",
+      last_name: "HEARD",
+      ssn: "559811301",
+      date_of_birth: "19750716",
+    },
+    {
+      id: "b",
+      first_name: "Albert",
+      last_name: "IORIO",
+      ssn: "322842281",
+      date_of_birth: "19750817",
+    },
+  ];
+  const joinerRows = [
+    {
+      id: "x",
+      first_name: "Maria",
+      last_name: "LOPEZ",
+      ssn: "111223333",
+      date_of_birth: "19800101",
+    },
+    {
+      id: "y",
+      first_name: "Jim",
+      last_name: "HEARD",
+      ssn: "559811301",
+      date_of_birth: "19750716",
+    },
+    {
+      id: "z",
+      first_name: "Albert",
+      last_name: "IORIO",
+      ssn: "322842281",
+      date_of_birth: "19750818",
+    },
+  ];
+
+  const starterKeys = makeIterables(starterRows);
+  const joinerKeys = makeIterables(joinerRows);
+  let starterRounds: Array<number> | undefined;
+  let joinerRounds: Array<number> | undefined;
+
+  const [starterTable, joinerTable] = await Promise.all([
+    linkViaPSI(
+      { cardinality: "one-to-one" },
+      starter,
+      starterConn,
+      starterKeys,
+      fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
+      -1,
+      undefined,
+      undefined,
+      (rounds) => {
+        starterRounds = rounds;
+      },
+    ),
+    linkViaPSI(
+      { cardinality: "one-to-one" },
+      joiner,
+      joinerConn,
+      joinerKeys,
+      fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
+      -1,
+      undefined,
+      undefined,
+      (rounds) => {
+        joinerRounds = rounds;
+      },
+    ),
+  ]);
+
+  expect(starterTable).toEqual([
+    [0, 1],
+    [1, 2],
+  ]);
+  expect(joinerTable).toEqual([
+    [1, 2],
+    [0, 1],
+  ]);
+  // Both parties count the same rounds, entry for entry with their own table.
+  expect(starterRounds).toEqual([0, 1]);
+  expect(joinerRounds).toEqual([0, 1]);
+});
+
+// The "one" side's partner keeps its duplicates, so that side builds its table
+// from the expanded list; the "many" side builds it from the distinct one.
+test.each(["starter", "joiner"] as const)(
+  "each matched pair reports its round when the %s keeps duplicates",
+  async (manySide) => {
+    const [starterConn, joinerConn] = createMessagePipe();
+    const starter = makeParticipant(psiLibrary, "starter");
+    const joiner = makeParticipant(psiLibrary, "joiner");
+
+    // One-side row 0 agrees on every field with many-side rows 2 and 4, so all
+    // three pair on the first key. One-side row 1 differs on date of birth
+    // alone from many-side rows 1 and 3, so those pair on the second.
+    const oneRows = [
+      {
+        id: "a",
+        first_name: "James",
+        last_name: "HEARD",
+        ssn: "559811301",
+        date_of_birth: "19750716",
+      },
+      {
+        id: "b",
+        first_name: "Albert",
+        last_name: "IORIO",
+        ssn: "322842281",
+        date_of_birth: "19750817",
+      },
+    ];
+    const heard = {
+      first_name: "Jim",
+      last_name: "HEARD",
+      ssn: "559811301",
+      date_of_birth: "19750716",
+    };
+    const iorio = {
+      first_name: "Albert",
+      last_name: "IORIO",
+      ssn: "322842281",
+      date_of_birth: "19750818",
+    };
+    const manyRows = [
+      {
+        id: "v",
+        first_name: "Maria",
+        last_name: "LOPEZ",
+        ssn: "111223333",
+        date_of_birth: "19800101",
+      },
+      { id: "w", ...iorio },
+      { id: "x", ...heard },
+      { id: "y", ...iorio },
+      { id: "z", ...heard },
+    ];
+
+    const [starterRows, joinerRows] =
+      manySide === "starter" ? [manyRows, oneRows] : [oneRows, manyRows];
+    const starterKeys = makeIterables(starterRows);
+    const joinerKeys = makeIterables(joinerRows);
+    const cardinalityOf = (party: "starter" | "joiner") =>
+      party === manySide ? "many-to-one" : "one-to-many";
+    let starterRounds: Array<number> | undefined;
+    let joinerRounds: Array<number> | undefined;
+
+    const [starterTable, joinerTable] = await Promise.all([
+      linkViaPSI(
+        { cardinality: cardinalityOf("starter") },
+        starter,
+        starterConn,
+        starterKeys,
+        fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
+        -1,
+        undefined,
+        undefined,
+        (rounds) => {
+          starterRounds = rounds;
+        },
+      ),
+      linkViaPSI(
+        { cardinality: cardinalityOf("joiner") },
+        joiner,
+        joinerConn,
+        joinerKeys,
+        fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
+        -1,
+        undefined,
+        undefined,
+        (rounds) => {
+          joinerRounds = rounds;
+        },
+      ),
+    ]);
+
+    const oneSide = {
+      table: [
+        [0, 0, 1, 1],
+        [2, 4, 1, 3],
+      ],
+      rounds: [0, 0, 1, 1],
+    };
+    const manySideResult = {
+      table: [
+        [1, 2, 3, 4],
+        [1, 0, 1, 0],
+      ],
+      rounds: [1, 0, 1, 0],
+    };
+    const [starterExpected, joinerExpected] =
+      manySide === "starter"
+        ? [manySideResult, oneSide]
+        : [oneSide, manySideResult];
+    expect(starterTable).toEqual(starterExpected.table);
+    expect(joinerTable).toEqual(joinerExpected.table);
+    expect(starterRounds).toEqual(starterExpected.rounds);
+    expect(joinerRounds).toEqual(joinerExpected.rounds);
+  },
+);

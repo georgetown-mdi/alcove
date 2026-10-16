@@ -654,7 +654,7 @@ The connection block and every other key keep their values and order, every line
 ## Recurring exchange
 
 ```sh
-alcove exchange [--invitation INVITATION] [--sweep-exchange-files [--force-retain-sweep]] INPUT_FILE [OUTPUT_FOLDER]
+alcove exchange [--invitation INVITATION] [--include-matching-key] [--sweep-exchange-files [--force-retain-sweep]] INPUT_FILE [OUTPUT_FOLDER]
 ```
 
 The application loads configuration and key files and conducts the exchange without further coordination. The shared secret is rotated after each successful authentication handshake, before the data exchange begins; if the data exchange subsequently fails, both parties already hold the rotated token and can retry without re-inviting. If `OUTPUT_FOLDER` is given, the results of the exchange are written in that folder; otherwise, they are written to `stdout` ([The result file](#the-result-file)).
@@ -845,6 +845,15 @@ To learn whether this host reaches the relay a run allocates on before the run t
 
 **A run configured for an environment proxy is told no certificate was checked.** The check dials the coordination server itself and never through a proxy, so on a `wss://` run that turns Node's environment proxying on -- `NODE_USE_ENV_PROXY` set to `1`, or `--use-env-proxy` on the command line or in `NODE_OPTIONS` -- with a proxy address in `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, or `http_proxy`, it cannot tell whether the failed connection went through the proxy, and no certificate verdict is reported at all: the failure states that, and names the same remedy, since an intercepting proxy is the likely cause there too. A run whose `NO_PROXY` or `no_proxy` excludes the signaling host is answered the same way, since that exclusion applies per dial and the check does not read it.
 
+### Naming the key each match was made on
+
+`--include-matching-key` adds a last column, `matched_on_key`, to the result file. It holds the `name` of the linkage key each pair matched on, as the agreed terms spell it, so a match made on the most precise key can be told from one made on a later, looser key. The column is always headed `matched_on_key` when the flag is set: a partner payload column or one of your own columns with that name is renamed instead, and only an identifier column already named `matched_on_key` moves the key column to `own_matched_on_key`.
+
+- **It is local to your run.** Each party counts its own cascade rounds, so nothing extra is sent, your partner's result is unchanged, and the agreed terms and the exchange record's commitments are the same with or without it. Your partner passes the flag on its own run, or not.
+- **It requires the `cascade` linkage strategy and the `psi` algorithm.** Under `single-pass` the party that sends its records first is handed the finished table and is not told which key matched, and a count-only (`psi-c`) exchange writes no result. The flag is refused on either with exit 64, before your partner is contacted. Under `single-pass` it is refused whichever role your run takes, since the role is decided at the terms exchange. It is refused the same way when your own terms set `expects_output: false`, since you receive no result file.
+- **It names the key, not the value.** A key that matched through `split_on`, `swap`, or `generate_fuzzy_comparisons` is named once; which of its candidate values matched is not written.
+- **It is a command-line flag only.** No configuration setting turns it on, so a scheduled run passes it on its command line.
+
 ### Sweeping a stale exchange directory
 
 A crashed or mismatched prior run can leave protocol files in an `sftp`/`filedrop` directory that stall the next rendezvous. `--sweep-exchange-files` deletes every protocol file in the directory before the rendezvous -- this party's and the peer's hellos, acks, locks, joining sentinels, and messages -- and starts a fresh exchange. Foreign (non-protocol) files are never touched. It is accepted by `alcove exchange` and the quick exchange form, is CLI-only, and is never persisted to `alcove.yaml`. Confirm that no other session is using the directory before passing it: a sweep during a live exchange destroys that exchange's state.
@@ -864,6 +873,7 @@ An exchange writes its matched records to a file in the `OUTPUT_FOLDER` it was g
 - **Your own matched record comes first.** The first column holds the identifier value of the record that matched, under the name of the column your metadata flags as the identifier.
 - **`row_id` holds your partner's 0-based row index** for that match -- the position of the matched record in the input your partner supplied, on every run and not only on an identifier-free one. Your own row index is absent: with an identifier column the first column names the record instead.
 - **The partner's payload columns follow**, each under its own name, and after them the columns of your own input [`include_own_columns`](EXCHANGE_REFERENCE.md#include_own_columns) selects, if any. Every header is distinct, so a name already taken is written as `their_<name>` or `own_<name>`, then numbered.
+- **`matched_on_key` comes last** when `alcove exchange` runs with [`--include-matching-key`](#naming-the-key-each-match-was-made-on), naming the linkage key the pair matched on. It keeps that name whatever your partner's columns are called; only an identifier column of the same name moves it to `own_matched_on_key`.
 - **An input that declares no identifier column shifts both index columns.** The first column is then headed `row_id` and holds your own 0-based row index, and your partner's index moves to `their_row_id` beside it.
 - **There is one row per matched pair**, which is one row per matched record under `one-to-one` matching, and more than one where a deduplicating cardinality pairs several records on one side.
 

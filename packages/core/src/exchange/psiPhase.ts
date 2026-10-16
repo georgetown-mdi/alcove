@@ -9,6 +9,7 @@ import {
   linkViaSinglePassPSI,
 } from "../psi/link.js";
 import { connectionEndReader } from "../connection/messageConnection.js";
+import { InternalConsistencyError } from "../errors.js";
 import { getLogger } from "../utils/logger.js";
 import { sanitizeErrorForDisplay } from "../utils/sanitizeErrorForDisplay.js";
 
@@ -31,6 +32,12 @@ import type { AssociationTable } from "../types.js";
  * crypto engine and participant, run the count-only, single-pass or cascade
  * link the terms select, and dispose the engine and close each round's row
  * reporting on every exit path. A link failure is rethrown unchanged.
+ *
+ * `reportMatchedKeys` asks for `matchedKeyOfPair`: the name of the linkage
+ * key each pair of the association table was matched on, entry for entry.
+ * Only the cascade realizes it, since each party counts its own rounds there;
+ * a single-pass sender is handed the resolved table and holds no round, and a
+ * count-only run has no table. The caller refuses both before the run.
  */
 export async function runPsiPhase(p: {
   conn: MessageConnection;
@@ -53,10 +60,12 @@ export async function runPsiPhase(p: {
   singlePassBounds: SinglePassSessionBounds;
   withholdSenderTable: boolean;
   onStage: (id: string) => void;
+  reportMatchedKeys?: boolean;
 }): Promise<{
   associationTable: AssociationTable | undefined;
   intersectionCount: number | undefined;
   entityClusters: EntityClusterSummary | undefined;
+  matchedKeyOfPair: Array<string> | undefined;
 }> {
   const {
     conn,
@@ -79,7 +88,17 @@ export async function runPsiPhase(p: {
     singlePassBounds,
     withholdSenderTable,
     onStage,
+    reportMatchedKeys = false,
   } = p;
+
+  if (
+    reportMatchedKeys &&
+    (countOnly || linkageTerms.linkageStrategy === "single-pass")
+  )
+    throw new InternalConsistencyError(
+      "the matching key of each pair was asked for on a run that does not " +
+        "count its own rounds",
+    );
 
   // Single-pass is allowlisted; any other value (including the default) runs the
   // cascade. No mismatch guard needed here -- validateCompatibility already
@@ -113,6 +132,7 @@ export async function runPsiPhase(p: {
   let associationTable: AssociationTable | undefined;
   let intersectionCount: number | undefined;
   let entityClusters: EntityClusterSummary | undefined;
+  let roundOfPair: Array<number> | undefined;
   try {
     participant = new PSIParticipant(
       psiId,
@@ -193,6 +213,11 @@ export async function runPsiPhase(p: {
               (summary) => {
                 entityClusters = summary;
               },
+              reportMatchedKeys
+                ? (rounds) => {
+                    roundOfPair = rounds;
+                  }
+                : undefined,
             );
   } finally {
     // Dispose the crypto engine once the PSI phase is done (or has thrown); the
@@ -216,5 +241,42 @@ export async function runPsiPhase(p: {
     for (const round of linkageKeyIterables) round.closeRowReporting();
   }
 
-  return { associationTable, intersectionCount, entityClusters };
+  return {
+    associationTable,
+    intersectionCount,
+    entityClusters,
+    matchedKeyOfPair: reportMatchedKeys
+      ? matchedKeyNames(linkageTerms, associationTable, roundOfPair)
+      : undefined,
+  };
+}
+
+/**
+ * The agreed linkage key's name for each pair's round. A round count or table
+ * length that does not line up is an internal fault, refused rather than
+ * written into a result column that would name the wrong key.
+ */
+function matchedKeyNames(
+  linkageTerms: LinkageTerms,
+  associationTable: AssociationTable | undefined,
+  roundOfPair: Array<number> | undefined,
+): Array<string> {
+  if (associationTable === undefined || roundOfPair === undefined)
+    throw new InternalConsistencyError(
+      "the cascade returned no round for its matched pairs",
+    );
+  if (roundOfPair.length !== associationTable[0].length)
+    throw new InternalConsistencyError(
+      `the cascade reported ${roundOfPair.length} round(s) for ` +
+        `${associationTable[0].length} matched pair(s)`,
+    );
+  return roundOfPair.map((round) => {
+    const key = linkageTerms.linkageKeys[round];
+    if (key === undefined)
+      throw new InternalConsistencyError(
+        `a pair was matched in round ${round}, outside the ` +
+          `${linkageTerms.linkageKeys.length} agreed linkage key(s)`,
+      );
+    return key.name;
+  });
 }
