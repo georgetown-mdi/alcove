@@ -198,8 +198,7 @@ priced -- not this note.
   living in a published package.
 - `webrtcInboundFrameFixtures.ts` -- test-only. The labelled WebRTC inbound
   frames, chunk envelopes and malformed datagrams both transports' parity suites
-  drive, built with the packer core declares. It came from the testkit once core
-  declared that packer, and it ships.
+  drive, built with the packer core declares.
 - The helpers `testing.ts` defines -- `sortAssociationTable`,
   `withCapturedLogs`, `installCapturedLogsInterceptor`, and the `LogEntry`
   shape -- test-only. No product code calls them.

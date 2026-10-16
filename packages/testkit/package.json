@@ -10,8 +10,5 @@
     "./loopbackTlsCert": "./src/loopbackTlsCert.ts",
     "./preflightInventory": "./src/preflightInventory.ts",
     "./prerequisiteGate": "./src/prerequisiteGate.ts"
-  },
-  "dependencies": {
-    "@alcove/core": "file:../../packages/core"
   }
 }
