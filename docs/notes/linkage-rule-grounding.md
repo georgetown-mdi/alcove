@@ -1,15 +1,16 @@
 ---
-title: "Grounding the Linkage Rules: Comparison, Precision Order, and an Evidence Bar"
+title: "Grounding the Linkage Rules: Bands, Precision Order, and an Evidence Bar"
 ---
 
-# Grounding the linkage rules: comparison, precision order, and an evidence bar
+# Grounding the linkage rules: bands, precision order, and an evidence bar
 
 _Status: proposal, pending adoption. This note records the design rationale
-behind the rules proposed in [linkage-rule-catalog.md](linkage-rule-catalog.md):
-how they compare with published practice, why they run in precision order, what
-transfers to two-party exact matching, the features they need, and the evidence
-a rule set must show before it ships. Nothing here is adopted or shipped; the
-shipped field and key sets are in
+behind the rules in [linkage-rule-catalog.md](linkage-rule-catalog.md): why
+there are two bands, why a rule loosens one element, where the coverage
+condition comes from, how the rules compare with published practice, why they
+run in precision order, what transfers to two-party exact matching, the
+features they need, and the evidence a rule set must show before it ships.
+Nothing here is adopted or shipped; the shipped field and key sets are in
 [default-linkage-rule-set.md](default-linkage-rule-set.md). See
 [docs/notes/README.md](README.md)._
 
@@ -20,7 +21,7 @@ This is design rationale. Nothing here binds an implementation.
 Sources are cited by author and year. The full reference for each, with its DOI
 or URL, is in the catalog's [Sources](linkage-rule-catalog.md#sources) list, or
 in this note's own [Sources](#sources) for those cited only here. Rules are
-cited by their position in the catalog, 1 to 33. A statement marked
+cited by their number in the catalog, 1 to 39 with 36a. A statement marked
 "(reasoning)" is this note's own inference, not a sourced fact.
 
 Three limits on the sources apply throughout:
@@ -34,69 +35,163 @@ Three limits on the sources apply throughout:
 - **The per-key measurements are not a benchmark.** They are of unordered
   tokens, of a key over an SSN-blocked sample, of a blocked candidate set from
   one institution, or of a stratum another matcher missed. None measures a key
-  inside an ordered cascade, every one is from health, death, voter or school
-  records, and none is from HMIS.
+  inside an ordered cascade, almost all are from health, death, voter and
+  school records, and none is of two agencies' program records matched
+  exactly.
 
-## The deployment the rules assume
+## Why two bands
 
-Three facts about the deployment shape the bands in the catalog.
+The catalog offers two bands, 99% and above and 95% to 99%, and nothing below
+95%.
 
-**Exchanges run within one county.** The rules assume each exchange runs within one
-county, with exchanges in many counties. Chance agreement grows with the size of the two
-files: Zech et al. (2016) found 0.18% of individuals in an 11-million-record
-random sample (13.1% of the national records) of the Death Master File sharing their first name, last name and date of
-birth with someone else, against 1.19% in the full 85.8-million-record file, and
-Hillestad et al. (2008) found last name + DOB gave a 33% chance of a false match
-in 79 million records. Zech's two figures differ by the number of people
-covered, not by geography, so their carrying over to a county is reasoning. The
-geography of the counterparty matters as much: in
-Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4%
-false where the state token did not agree and 0.3% where it agreed. A token is
-not created when any of its fields is missing, so the first row includes pairs
-with a state missing on one side. A county exchange is
-closer to the second row, which is why rule 12 is banded above 99.5% for one
-county and for nothing wider.
+A third band above 99.5% was considered and dropped. Full-SSN rules do reach
+it: Grannis et al. (2002) bound `SSN + DOB` at a false share under 0.14%
+(computed). No rule without an SSN does, so the band would contain SSN rules
+only, and the difference between it and 99% is one the evidence cannot show for most
+of the catalog. A deployment that checks a band by reviewing a sample needs 300
+reviewed pairs with no false pair to support 99%, and 600 to support 99.5% (the
+rule of three, computed). An operator cannot be expected to weigh a distinction
+that costs twice the review to show.
 
-**HUD's only ZIP is the project's.** HUD's FY2026 HMIS standards have no client
-ZIP field. Their one ZIP is the project's: the ZIP of its principal site, or
-where most of a scattered-site project's clients are housed (HUD 2025a; HUD
-2025b), and in the CSV export it sits in the project file, not the client file
-(HUD 2025c). Every client of a shelter shares it, so a party must never supply
-it as the client's ZIP. A party with no client ZIP brings none, and rules 11,
-23, 27 and 28 drop out of its exchanges. The owner ruled that a county may
-supply HUD's older client ZIP instead, as the catalog records.
+A band below 95%, such as 90%, would be added only for a rule with evidence
+placing it there. None is offered today.
 
-**The last four SSN digits are the HMIS norm.** Since the FY2024 standards HUD
-has required an HMIS to collect only the last four digits, leaving each
-Continuum to decide whether to collect all nine (HUD 2025d). A record holding
-only those four digits is compliant collection, not a degraded one, which is why
-rules 9, 13 to 16, 19 and 20 use the last four digits rather than a full SSN.
-Two details of HUD's own handling bear on that:
+### The evidence standard
 
-- HUD's hashed CSV export writes the SSN as the unhashed last four digits
-  followed by a hash of the full SSN, and each name as the hash of its Soundex
-  code (HUD 2025c).
-- A partial SSN is any SSN other than a complete and valid nine-digit one,
-  whatever the reason (HUD 2025a). The glossary's data-quality rule requires the
-  last four digits present and not "0000", and applies its checks on the first
-  five only where they are present, so the first five may be missing and the
-  last four may not (HUD 2025d).
+A rule gets a band when there is evidence for it: a measurement of the rule, a
+measurement of a close relative, or an extrapolation from one that the catalog
+spells out. The band must apply wherever the rule is offered. A rule with no
+such evidence is not offered, and an operator reaches it only through the
+expert key editor.
+
+The split between measured and reasoned bands is not the axis that matters
+(reasoning). Every measurement comes from a pool of records unlike the
+operator's, so a measured band is itself an extrapolation to the operator's
+files. What decides whether a rule is offered is whether its band applies
+across the files it will be offered for. Where it applies only within one
+state or metropolitan area, the rule is offered only there; that is the
+coverage condition on rules 31 to 33.
+
+The three email rules are the one exception: the maintainer placed them at 95%
+while evidence for them is gathered, and the catalog says so.
+
+The catalog keeps each band's evidence and reasoning; the screens an operator
+sees show the band alone.
+
+## Coverage and file size
+
+Chance agreement grows with the number of people two files cover. Zech et al.
+(2016) found 0.18% of individuals in an 11-million-record random sample (13.1%
+of the national records) of the Death Master File sharing their first name,
+last name and date of birth with someone else, against 1.19% in the full
+85.8-million-record file. Zech's two figures differ by the number of people
+covered, not by geography. Hillestad et al. (2008) found last name + DOB gave a
+33% chance of a false match in 79 million records.
+
+Geography matters beyond size. A local file concentrates names and dates:
+Hillestad's 42,000-record regional subset collided thirty times more often than
+scaling from the national file predicts. And the counterparty's geography
+matters: in Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN
+were 41.4% false where the state token did not agree and 0.3% where it agreed.
+A token is not created when any of its fields is missing, so the first row
+includes pairs with a state missing on one side.
+
+The catalog's entry for rule 31 sets out the measured range: Florida, Tennessee
+and Cook County at or above 95%, most at or above 99%; Iowa the one in-state
+outlier, plausibly an error in the reference; and cross-state pairings where
+only about three-quarters were confirmed duplicates (Goel et al. 2020). So name
++ date rules with no SSN, contact field or geography are offered only when both
+files draw their members from one state or one metropolitan area.
+
+Ocampo et al. (2016) matched case records across the whole of DC, Maryland and
+Virginia, confirmed by each jurisdiction's own check. It is a data point for
+the name + date rules, not a precedent for the metropolitan-area condition.
+
+A file drawn from one age group behaves like a far larger file, since its
+members share birth years: 0.12% of one graduating class repeated a name and
+date (Fong 2018), and at least 0.5% of California's K-12 records did (Barrat et
+al. 2013). The bands assume files spanning all ages (reasoning).
+
+### The person's own ZIP
+
+A ZIP rule needs the ZIP of the person's own address. Some data standards
+record only the ZIP of the site that serves a person: HUD's FY2026 HMIS
+standards have no client ZIP, and their one ZIP is the project's principal site
+(HUD 2025a; HUD 2025b), held in the project file of the export, not the client
+file (HUD 2025c). Everyone served at one site shares it, so a party must never
+supply it as the person's ZIP. A party with no person's ZIP brings none, and
+the ZIP rules drop out of its exchanges.
+
+A former address's ZIP may be supplied instead, such as the ZIP of the last
+permanent address that HUD's earlier standards recorded (HUD 2010). Where the
+other party records a current address, it costs matches rather than precision
+(reasoning): ZIP change caused 95.7% of the true readmissions Naessens et al.'s
+(2015) DOB + sex + ZIP rules missed.
+
+### The last four SSN digits
+
+Some systems collect only the last four SSN digits: HUD's standards since FY2024
+require only those four, leaving each Continuum to decide whether to collect
+all nine (HUD 2025d). A record holding only the four digits is a normal record
+in such a system, which is why rules 14 to 20 and 26 use them.
+
+## Why one loosened element
+
+A rule that tolerates an error in a base rule runs after it, so it adds only
+the true pairs that have that error and the chance pairs its tolerance opens.
+Its precision is about
+
+    g / (g + k * f)
+
+where `g` is the share of true pairs with the error, `k` the factor by which the
+tolerance multiplies the base rule's chance agreement, and `f` the base rule's
+own false share, which grows with file size (reasoning).
+
+- **A rare error with a wide tolerance fails.** `LN + FN + DOB` with day and
+  month exchanged catches an error behind only 2.6% of date discrepancies (Just
+  et al. 2016), and the exchange opens a second candidate date for most
+  records. Across the range of `f` from a small file to a large one its
+  precision runs from 99% to under 50% (computed), so it is not offered;
+  rule 19, with the last four SSN digits, covers the error.
+- **A common error with a narrow tolerance passes.** Name swaps are about 1.75%
+  of true pairs (Just et al. 2016), and only records whose two names are each
+  plausible in the other slot are loosened (rule 32). Splitting compound names
+  added up to 9.1% of a statewide match's pairs (Barrat et al. 2013), which
+  meets the 95% band wherever `f` is under about 3% (rule 33, computed).
+
+Two loosenings in one rule multiply their factors, while the true pairs they
+add are only those with both errors, the intersection of two small shares. So
+precision falls fast with each loosening added (reasoning). The argument
+applies only when each single loosening runs as its own rule: the pairs with
+one error are then claimed by the single-loosening rule, and the double rule
+adds only pairs with both.
+
+Beside a full SSN, `f` is small enough that a product of factors stays small,
+which is why the full-SSN rules may loosen two elements. Rule 26 loosens two
+beside the last four digits and is placed at 95% for it.
+
+### Bits per field do not add
+
+A budget that sums the bits each field contributes is a screen for rules not
+worth measuring, not a band (reasoning). Hillestad et al. (2008) measured the
+increments: a ZIP divided name + date collisions about 700-fold in the national
+file and about threefold in the 42,000-record regional file. A field's
+contribution depends on the file and on the fields beside it.
 
 ## How the rules compare with published practice
 
-### HUD HMIS collects; it does not match
+### Published unduplication guidance
 
-The standard Alcove's primary users export from defines what is collected and
-how it is coded, and leaves matching to the vendor. Its one statement on it is
-that HMIS software "should allow for the effective matching of partial SSNs"
-(HUD 2025a). HUD's one published matching rule is its 2005 unduplication
-guidance: agreement on any two of first name, last name, DOB and a partial SSN
-makes a potential match, as does a full-SSN match alone. A match is deleted
-when two fields conflict unless the full SSN and two of the names and date
-agree, a null never counting as a conflict. A separate rule deletes a match on
-last name + DOB where the SSN does not match, the clients are under 18 and the
-first names conflict, which targets twins (Sokol and Gutierrez 2005). Rule 20
-and the conflict veto below come from it.
+HUD's HMIS standards define what is collected and how it is coded, and leave
+matching to the software vendor; their one statement on it is that the software
+"should allow for the effective matching of partial SSNs" (HUD 2025a). HUD's one
+published matching rule is its 2005 unduplication guidance: agreement on any two
+of first name, last name, DOB and a partial SSN makes a potential match, as does
+a full-SSN match alone. A match is deleted when two fields conflict unless the
+full SSN and two of the names and date agree, a null never counting as a
+conflict. A separate rule deletes a match on last name + DOB where the SSN does
+not match, the clients are under 18 and the first names conflict, which targets
+twins (Sokol and Gutierrez 2005).
 
 ### The token sets are unordered
 
@@ -108,55 +203,71 @@ specifies fields and declines to specify keys at all (MITRE 2022). Each yields n
 token for a key whose field is missing or invalid, as Alcove does, so a missing
 field costs a match rather than adding a false one.
 
-What the proposed rules take from them:
+What the catalog takes from them:
 
 - **linkja's error variants.** linkja aims hashes at named entry errors: a
   swapped name order, a transposed day and month, a date off by one day or one
-  year, and a three-letter first name. Rules 13 to 15 and 22 are those devices;
-  linkja's SSN is the last four digits, so its date variants are rules 13 to 15
-  exactly. Three details of the shipped code (MRAIA 2020):
+  year, and a three-letter first name. Its SSN is the last four digits, so its
+  date and name variants are rules 17 to 20. Three details of the shipped code
+  (MRAIA 2020):
   - It computes only a date plus one day and a date plus one year, and only in
-    the hashes that carry an SSN. Its matching component compares each record's
+    the hashes that include an SSN. Its matching component compares each record's
     exact-date hash with every record's offset hash, which covers a one-step
     difference in either direction within a pair.
-  - Its overview describes hashing each part of a compound surname, which rule
-    24 follows, but the shipped code disables it and collapses a hyphenated
-    surname into one word.
+  - Its overview describes hashing each part of a compound surname, which rules
+    15 and 33 follow, but the shipped code disables it and collapses a
+    hyphenated surname into one word.
   - The overview's data dictionary lists the three-letter first-name hash
-    that carries an SSN without the date of birth, but the code includes it.
+    with an SSN and without the date of birth, but the code includes the date.
 - **N3C's contact and geography tokens.** Every N3C token with a ZIP also has a
   last name, and email and cell phone each appear once, beside a first name.
-  Rules 11 and 28 are N3C tokens (28 without gender), and rules 25, 26, 29 and
-  31 are stricter forms of its first name + phone and first name + email tokens.
+  Rules 22 and 34 are N3C tokens (34 without gender), and the phone and email
+  rules are stricter forms of its first name + phone and first name + email
+  tokens.
 
 Two divergences remain, both in the shipped rules:
 
 - **No sex field.** Most measured name + DOB keys include sex or gender, and
   Alcove's fields have none. Each catalog entry with a sex-bearing relative
   treats the missing field as loosening the rule (reasoning).
-- **Truncated last names.** Rules 2 to 4, 18 and 19 truncate the last name to
+- **Truncated last names.** Rules 2, 3, 10, 13 and 26 truncate the last name to
   three or four letters. The published sets truncate only the first name and
   keep the last name whole.
 
 ### Phonetic names
 
-The evidence on a phonetic name code splits by what else a key requires. Beside an
-SSN, phonetic names added true links and no false ones: in Grannis et al.
-(2002), SSN + NYSIIS-coded names found 234 and 90 more correct links (4,775 and
-5,247) than SSN + exact names (4,541 and 5,157) at the same count of wrong ones
-(7 and 2), and in Mirel et al. (2022), links
-where an SSN token and the Soundex-names token agreed without an exact-name
-token were 531 true and none false (rows 9 and 10 of Table 1, 10 and 521; the
-521 also agreed on the SSN + exact first-name token, so counting that as an
-exact-name token leaves 10 true and none false). As the only name evidence it does badly: the
-Soundex-names token alone was 81.4% false in Mirel. SSA's BENDEX accepts a
-Soundex-equivalent surname with the SSN (SSA 2022), and Cook County left
-phonetic codes out to preserve specificity (Trick et al. 2019).
+The evidence on a phonetic name code splits by what else a key requires.
 
-So the catalog uses a Soundex surname only beside a ZIP, phone or email plus the
-full first name and DOB (rules 23, 27, 30 and 32), and rejects Soundex names
-with no SSN and no geography (reasoning). No source compares NYSIIS with
-Soundex.
+**Beside an SSN, phonetic names added true links and no false ones.** In
+Grannis et al. (2002), SSN + NYSIIS-coded names found 234 and 90 more correct
+links (4,775 and 5,247) than SSN + exact names (4,541 and 5,157) at the same
+count of wrong ones (7 and 2). In Mirel et al. (2022), links where an SSN token
+and the Soundex-names token agreed without an exact-name token were 531 true
+and none false (rows 9 and 10 of Table 1, 10 and 521; the 521 also agreed on
+the SSN + exact first-name token, so counting that as an exact-name token
+leaves 10 true and none false). SSA's BENDEX accepts a Soundex-equivalent
+surname with the SSN (SSA 2022).
+
+**As the only loosened name element, without geography or a contact field, a
+Soundex surname does badly.** Rogot et al. (1983) found 2 of 34 pairs true
+where the last name agreed only by Soundex; the Soundex-names token alone was
+81.4% false in Mirel; Ocampo et al. (2016) confirmed 46.7% to 79.1% of its
+Soundex-level matches; and NCHS moved the National Death Index to NYSIIS on
+last names after finding Soundex added few true positives (Patterson 1985).
+Cook County left phonetic codes out to preserve specificity (Trick et al.
+2019).
+
+So the catalog uses a Soundex surname only beside a ZIP, phone or email plus
+the full first name (rules 28, 36 and 39), where it is unmeasured rather than
+contradicted: beside a ZIP it admits about 2.9 times the false agreements of
+the exact surname (Randall et al. 2013), and beside a contact field the floor
+is household sharing, where the surname is the same anyway (reasoning).
+
+**Soundex and NYSIIS.** Grannis measured NYSIIS, and Alcove's phonetic
+transform is Soundex. Three sources compare the two codes (Sun and Golden 2019;
+Bailey et al. 2020; Christen 2006), none beside an SSN, so rule 8's measurement
+reaches Soundex by extrapolation. Whether Alcove adds a NYSIIS transform is an
+open question.
 
 ### The operating cascades
 
@@ -197,9 +308,10 @@ Running rules in precision order means the rule that claims a record is the most
 precise one that could, and a less precise rule sees only what every more
 precise rule left (reasoning). Each band is information a party consents to, so
 the order is what makes a rule's band describe the pairs it actually claims.
-The shipped `hmis-keys` order is not a precision order, as the comment on
+The shipped built-in key set's order is not a precision order: its two rules
+with no SSN run above SSN-bearing rules, as the comment on
 `DEFAULT_LINKAGE_KEYS` in `packages/core/src/defaults/builtInLinkageTerms.ts`
-records.
+records, and three of its rules are in the catalog's 95% band.
 
 Published practice is split. NCHS orders strictest first. Cook County and Ong
 put name + DOB first, but their later rules are not stricter forms of it: Cook
@@ -215,33 +327,32 @@ tokens breaking ties, against an earlier NCHS linkage as the truth.
 
 Within a band two tie-breaks apply (reasoning):
 
-1. A rule that another rule contains runs first, so a match is credited to the
-   stricter rule. Rule 5 runs before 6, 7 before 8, 10 and 11 before 12, 11
-   before 23, 12 before 21, 22 and 24, 15 before 21, 23 before 27, 29 before
-   30, and 31 before 32.
+1. A refinement runs before the rule that contains it, so a match is credited
+   to the stricter rule. Rules 1 to 5 run before 6; 7 before 8, 9 and 10; 11
+   before 12; 15 before 16; 21 before 22; 35 before 36; and 38 before 39.
+   Rules 22 and 23 are refinements of rule 31 and run in the band above it.
 2. Otherwise full-SSN rules run before last-four rules, and those before rules
    with neither.
 
-Rules 10 and 11 are refinements of rule 12: rule 12's elements plus one more. A
-refinement adds a match only by splitting a value two of one party's records
+A refinement adds a match only by splitting a value two of one party's records
 share, which a one-to-one round drops as ambiguous
 ([PROTOCOL.md](../spec/PROTOCOL.md#value-level-round-participation)). Records
-dropped as ambiguous stay eligible for later rounds, and a value ambiguous in
-one round can become unique in a later one, so a refinement resolves those
-values on either side of the looser rule. Tie-break 1 puts rules 10 and 11
-first.
+dropped as ambiguous stay eligible for later rounds, so the order of a
+refinement and the rule containing it decides which rule is credited with a
+pair, not whether the pair matches.
 
-Two placements are the maintainer's:
+The claim for rules 22 and 23 is about candidate pairs. Their candidate pairs
+are a subset of rule 31's, and the pairs they accept beyond it are those rule
+31 drops as ambiguous within one party's file, mostly one person recorded twice
+(reasoning).
 
-- **Rule 12 runs above rules 13 to 16.** All five are banded above 99.5%;
-  tie-break 2 alone would put rule 12 below rule 16.
-- **Rules 22 and 24 run below the last-four-SSN date rules.** Their bands are
-  lower, and Cook County's reversed-name rule, the one measured, is reported
-  both with and without the last four digits (Trick et al. 2019); rule 22 has no
-  SSN element.
+The refinements of rule 6 (rules 1 to 5) stay in the catalog although rule 6
+contains them: they add a match only where one party holds two records tied on
+the broader value, and an operator cannot be expected to know whether their
+file does. Their cost is rounds, not precision.
 
-Orders not forced by containment or a placement above are left open among rules
-of one band.
+Orders not forced by containment or a tie-break are left open among rules of
+one band.
 
 ## What transfers to two-party exact matching
 
@@ -254,7 +365,8 @@ parties derive the same key value. An error confined to one party that produces
 a value nobody holds destroys the key and costs a match. A false match needs a
 real collision (two people whose true values agree on every element), an error
 present in both files, or a one-sided error that lands on another real person's
-correct value.
+correct value, as an overlay does, one person's information recorded on
+another's record (Landsbach 2016).
 
 The last case is the dominant measured SSN error. In Grannis et al. (2002) the
 most common SSN error "appeared to be" a spousal mix-up, a woman's record linked
@@ -266,14 +378,15 @@ name. So for SSN rules the reference-file error rates are an estimate under
 two-party intersection, not only an upper bound (reasoning).
 
 **Standards manufacture shared errors.** The mechanisms that put one wrong value
-in two files are the ones a shared operating context supplies: a client
-repeating a code name, a document copied between agencies, and a shared
-convention. HUD tells staff to record `01` for an unknown month and day, unless
-the Continuum has its own filler (HUD 2025a), so two records independently agree
-on a date neither knows. HUD's name data-quality codes admit placeholder and
-made-up names entered to create a record (HUD 2025a). `baseline-pii` excludes
-placeholder SSNs, but nothing bounds a filler date or a placeholder name, and
-the data-quality codes that flag both are not matchable fields.
+in two files are the ones a shared operating context supplies: a person
+repeating a made-up name, a document copied between agencies, and a shared
+convention. A filler entered for an unknown value looks like a real one (Ong et
+al. 2024 study such disguised missing values in clinical data). HUD tells staff
+to record `01` for an unknown month and day, unless the Continuum has its own
+filler (HUD 2025a), so two records independently agree on a date neither knows,
+and its name data-quality codes admit placeholder and made-up names entered to
+create a record (HUD 2025a). `baseline-pii` excludes placeholder SSNs, but
+nothing bounds a filler date or a placeholder name.
 
 **A missing field yields no key.** A record missing any element of a rule
 contributes nothing to that round and stays eligible for later ones. A rule's
@@ -282,41 +395,64 @@ found 94.6% of records filled the phone number field, while the cell-phone
 token's pair fill was 68.01%. A rule's reach must be quoted as pair fill or it
 is overstated.
 
+## No SSN conflict veto by default
+
+A rule with no SSN element accepts pairs whose valid SSNs disagree. A veto
+would stop it there, and the catalog adopts none by default.
+
+- **Its cost is the true pairs whose SSNs differ by a keying error.** Just et
+  al. (2016) put pairs with a one- or two-digit SSN difference at about 1.7% of
+  true pairs, an approximate figure from a vendor's cleanup-project sample, and
+  larger differences add more: Newman and Brown (1997) found SSNs differed in
+  7.6% of a matcher's links.
+- **A hashed exact match cannot tolerate the difference.** NCHS accepts
+  agreement on at least 8 of 9 SSN digits in its Class 1 matches and 7 of 9 in
+  Class 2 (NCHS 2005), the independent support for tolerating a keying error.
+  An exact match on a hashed SSN cannot take that route.
+- **Its net effect on the 95% rules is unmeasured.** Their false share may reach
+  the veto's cost, so it could help or harm them, and no source measures which.
+
 ## Rule features the evidence calls for
 
 These are requirements, not designs. None exists in Alcove.
 
-- **A date expansion of one day either side.** linkja, through its matching
-  component, and Cook County use one, and Cook County's largest spike in date differences was at one day (Trick et
-  al. 2019). Rule 14 needs it.
-- **A conflict veto.** A rule must be able to fire only where a named field is
-  not present and different on both sides. HUD's 2005 guidance deletes a
-  potential match with conflicting values in two of gender, name suffix, the
-  parts of the date and the full SSN (Sokol and Gutierrez 2005). Without a veto,
-  every rule with no SSN element accepts pairs whose valid SSNs disagree; in
-  Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN token and
-  no state token were 41.4% false. Exact equality of hashed values cannot express this per pair, so it
-  needs a protocol feature. Rule 20 needs it, on the date of birth.
-- **A name-frequency condition.** Rule 33 may fire only for uncommon names,
-  which needs a frequency score for the first and last name combination with a
-  cut point, as The Link King computes (Campbell et al. 2006). No source gives
-  a cut point tied to a measured precision.
+- **A date expansion of one day either side** (`adjacent_days`). linkja,
+  through its matching component, and Cook County use one, and Cook County's
+  largest spike in date differences was at one day (Trick et al. 2019). Rule
+  18 needs it.
+- **A per-side missing-field condition**: a rule that fires only where a named
+  field is absent on one side. It is not called a conflict veto: a veto
+  implies comparing the two sides' values per pair, which exact equality of
+  hashed values cannot do, while a condition stated per side, which both
+  parties resolve the same way, needs only the terms. HUD's 2005 guidance
+  deletes a potential match with conflicting values in two of gender, name
+  suffix, the parts of the date and the full SSN (Sokol and Gutierrez 2005).
+  The follow-on rule `FN + LN + SSN4`, for a side with no valid date of birth,
+  needs it, and counts a filler date as absent.
+- **A name suffix element** (`name_suffix`, `SFX` in the catalog), for rules
+  35, 36, 36a, 38 and 39; see [Name suffixes](#name-suffixes).
+- **Address and area types**: a street number (rule 21), a three-digit ZIP
+  (rule 27), and state and county (rule 30).
+- **A shared-contact screen.** The default cleaning drops a phone or email held
+  by more than five distinct people in a party's file. Without it, a shelter's,
+  clinic's or case manager's number on many clients gives each client one
+  unique first-name-plus-phone value, which the one-to-one rule cannot catch.
+  Rule 36a is offered only with it, and it shrinks the sharing floor of every
+  phone and email rule. No source states a count cap for contact values: Cao et
+  al. (2026) caught placeholder SSNs with a name-DOB consistency rule, not a
+  count, and Culbertson et al. (2017) count 999-9999 as a default rather than a
+  value.
 - **Phone type.** The Sequoia Project (2018) had to tag numbers so work and
   mobile phones were not compared. `phone_number` is one untyped field. No
-  proposed rule depends on it.
+  rule depends on it.
 
-Two features were weighed and declined by the maintainer:
+Two features are not built:
 
-- **A per-party cap on shared contact values**, nulling a value held by more
-  than some number of one party's records before keys are built. The reasons
-  given: a one-to-one round already drops a value two of a party's records
-  share, and every contact rule requires a full name. No source states a count
-  cap for contact values: Cao et al. (2026) caught placeholder SSNs with a
-  name-DOB consistency rule, not a count, and Culbertson et al. (2017) count
-  999-9999 as a default rather than a value. The round does not drop a shelter
-  phone held by clients with different names, whose rule values differ
-  (reasoning). The full-name reason does not cover rules 25 and 26, which have
-  no last name, or rules 30 and 32, which have its Soundex code.
+- **A name-frequency condition**, which `FN3 + LN + DOB` for uncommon names
+  would need: a frequency score for the first and last name combination with a
+  cut point, as The Link King computes (Campbell et al. 2006). A general tool
+  cannot define a common name except relative to a particular population, so
+  the rule is parked.
 - **Email local-part canonicalization**, folding dots and plus tags. Email is
   standardized by trimming and lowercasing only, so one mailbox written two ways
   gives two values and a missed match, not a false one (reasoning).
@@ -340,25 +476,31 @@ a father and son make a false match.
   2019), and a Texas voter match removed them as "often not standard"
   (Ansolabehere and Hersh 2016). HUD's 2005 guidance instead counts a suffix
   conflict toward deleting a potential match (Sokol and Gutierrez 2005).
-- **Father-and-son pairs exist but are uncounted as false matches.** Matching
-  voter records on first name, last name, DOB and address, Goel et al. (2020)
-  found 7,504 in-state duplicates in Mississippi and 2,350 in Wisconsin, most
-  differing on middle name or suffix, which the authors read as a parent and
-  child given each other's birthdate. Hood and Bullock (2008) found "a small
-  number" of fathers and sons with the same full name at one address. Kho et al.
-  (2015) count suffixes only inside a mixed category of name disagreements.
+- **Parent-and-child pairs are counted in voter files.** Matching voter records
+  on first name, last name, DOB and address, Goel et al. (2020) found 7,504
+  in-state duplicates in Mississippi and 2,350 in Wisconsin, most differing on
+  middle name or suffix, which the authors read as a parent and child given each
+  other's birthdate. Their Figure A.3 puts same-name, same-date, same-address
+  duplicates near zero in most states, about 1.25% of records in Mississippi and
+  0.9% in DC, and requiring the suffix cut them to 0.65% and 0.27%. Hood and
+  Bullock (2008) found "a small number" of fathers and sons with the same full
+  name at one address. Kho et al. (2015) count suffixes only inside a mixed
+  category of name disagreements.
 - **The trade-off is stated, not measured.** Removing "Jr" risks a parent-child
   false match, and keeping it risks missing a son's own record that lacks it (Fu
   et al. 2022).
 
-What follows (reasoning): requiring suffix agreement in a rule would cost
-matches, since a suffix is often missing or misplaced on one side. As a veto --
-a suffix present on both sides and different -- it targets the father-and-son
-case, most of all in the rules with no date of birth to separate the
-generations (rules 20, 29 to 32), and in rules 10 to 12 for the Goel case. It
-would belong to the conflict veto, with suffixes still stripped from the name
-fields. Its gain is bounded by how often both parties record a suffix, which no
-source reports.
+So the catalog uses the suffix as an element only in the contact rules with no
+date of birth, where the same-name parent and child on a household phone or
+email is the floor (rules 35, 36, 36a, 38 and 39). `SFX` is a code (JR, SR, II,
+III, IV) or the empty string, from a column of its own or taken from the name
+column, so two records without a suffix still match, and suffixes stay stripped
+from the name fields. The element removes the parent-and-child pair where both
+sides record the suffix, at the cost of the pair where only one side did, which
+loses that rule and keeps every rule without the element. Where one party's
+file has no suffix at all, the rule runs without the element rather than being
+dropped, since otherwise every junior recorded in the other file would fail it.
+The bands do not rise, because the phone and email floor is unmeasured.
 
 ## The acceptance-evidence bar
 
@@ -373,15 +515,15 @@ specific linkage or analysis", and that whether measured differences matter
 interest" (Harron et al. 2017).
 
 So the bar below is a measurement and disclosure obligation -- what must be
-measured, on what, and reported alongside -- not a threshold. A pass-mark would
-be Alcove's own choice, defensible only by an argument about the harm of a false
-match in this setting, and this note does not propose one.
+measured, on what, and reported alongside -- not a threshold. The catalog's
+bands are Alcove's own choice, and the bar is what a rule set must show for a
+band to be checked rather than extrapolated.
 
 **The state of practice is worse than the guidance.** Of forty-five published
 studies linking Medicaid claims to birth certificates, four mentioned a
 validation study and "none of the studies provided results of the validation
-exercises" (Heins et al. 2022). The published Medicaid-to-homeless-services match
-closest to Alcove's pairing states no matching method, and its quality
+exercises" (Heins et al. 2022). A published match of Medicaid claims to a
+housing-services information system states no matching method, and its quality
 assessment is that "manual inspection of the matches indicates that those that
 matched appeared accurate" (Nescott et al. 2023).
 
@@ -409,9 +551,17 @@ weaker rules against the pairs the strong identifier decided, and count how
 often they would have been wrong. Its bias goes with every number it produces:
 the subset is better kept than the file, and "records with high quality data
 may differ systematically from those of poorer quality data" (Harron et al.
-2017). For an HMIS-class file a benefit-program subset covers the low-income
-stratum well and almost nobody else. Either way, the error rate reaches the rest
-of the file only by extrapolation.
+2017). Labels from a shared SSN also count a true pair with a keying error in
+one SSN as false, so they put a ceiling on the precision they can show (rule
+22). Either way, the error rate reaches the rest of the file only by
+extrapolation.
+
+### Sample review
+
+A deployment can check a band without a gold standard by reviewing a random
+sample of a rule's accepted pairs: 300 reviewed pairs with no false pair support
+99%, and 600 support 99.5% (the rule of three, computed). A reviewed false pair
+needs a larger sample to support the same band.
 
 ### Per-key ablation, and its one precedent
 
@@ -438,7 +588,7 @@ guidance:
 
 - **Report pair fill, not record fill.**
 - **Enumerate the shared-error modes and test them**: a filler date, a repeated
-  code name, a placeholder both agencies inherited.
+  made-up name, a placeholder both agencies inherited.
 - **Measure precision on the population that will be intersected**, not a
   deduplication of one file, whose candidate set comes from blocking rules with
   no counterpart in a two-party exchange.
@@ -467,19 +617,25 @@ the field's triad. None has a pass-mark.
 These gaps were searched for and not found:
 
 - **No per-position precision** for any published cascade.
-- **No precision for ZIP alone, or for any email rule**, in any sector. The
-  nearest figures are UCLA's selected strata: among pairs its EHR module had not
-  linked, 13 of 100 agreeing only on email, 26 of 100 only on phone, and 94 of
-  100 on first name + DOB + ZIP were the same person (Ross et al. 2020).
-- **No sharing rate for a phone or email across people**, and nothing on a
-  shelter or case manager's number appearing on many client records.
+- **No precision for a five-digit ZIP rule, and none for an email rule on
+  program records.** The ZIP5 band is an extrapolation (rule 22), and the one
+  email measurement is of researchers' institutional addresses (Kim 2019).
+  UCLA's selected strata are the nearest figures from program-like records:
+  among pairs its EHR module had not linked, 13 of 100 agreeing only on email,
+  26 of 100 only on phone, and 94 of 100 on first name + DOB + ZIP were the
+  same person (Ross et al. 2020).
+- **No measure of a phone or email shared by an organization** across the
+  people it serves, and none of the same-name parent and child on a household
+  phone or email.
+- **No net effect of an SSN veto** on the 95% rules.
+- **No comparison of Soundex and NYSIIS beside an SSN.**
 - **No ZIP-stability figure for a highly mobile population.** Phone turnover is
   measured: 54.5% of homeless adults with a cell phone reported two or more
   numbers in three months (Rhoades et al. 2017).
 - **No obtainable evaluation corpus** for a two-party exact-key product: every
   holder of labelled truth gates it behind review and a data use agreement.
-- **No baseline for this user class.** No published HMIS-class linkage reports a
-  precision or recall figure a rule set could be measured against.
+- **No published baseline** for an exact-key linkage between two agencies'
+  program records that a rule set could be measured against.
 
 Two analyses of re-identification attacks on hashed match-keys assume an
 adversary holding exchanged tokens together with clear-text quasi-identifiers
@@ -492,23 +648,34 @@ decide.
 Sources cited by both notes are in the catalog's
 [Sources](linkage-rule-catalog.md#sources) list. Those cited only here:
 
-- **Culbertson et al. 2017.** Culbertson A, Goel S, Madden MB, Safaeinili N, Jackson KL, Carton T, et al. "The Building Blocks of Interoperability: A Multisite Analysis of Patient Demographic Attributes Available for Matching." Applied Clinical Informatics 8(2):322-336, 2017. doi:10.4338/ACI-2016-11-RA-0196
+- **Campbell et al. 2006.** Campbell K, Deck D, Cox A, Broderick C. "The Link King: User Manual, Version v5.2." Washington State Department of Social and Health Services, 2006. https://web.archive.org/web/20070106073145id_/http://www.the-link-king.com:80/user_manual.zip
+- **Cole and Logan 2006.** Cole N, Logan C. "Data Matching in the National School Lunch Program: 2005. Volume 2: State Case Studies." Abt Associates for the U.S. Department of Agriculture, Food and Nutrition Service, Report CN-06-DM2, 2006. https://www.fns.usda.gov/sites/default/files/DataMatching-V2.pdf
 - **Dynarski et al. 2013.** Dynarski SM, Hemelt SW, Hyman JM. "The Missing Manual: Using National Student Clearinghouse Data to Track Postsecondary Outcomes." NBER Working Paper 19552, 2013. http://www.nber.org/papers/w19552
 - **Eliazar et al. 2025.** Eliazar A, Brown JT, Cinamon S, Kantarcioglu M, Malin B. "Re-identification risk for common privacy preserving patient matching strategies when shared with de-identified demographics." Journal of the American Medical Informatics Association 33(2):336-346, 2026 (online 2025). doi:10.1093/jamia/ocaf183
 - **Fu et al. 2022.** Fu S, Davis C, Rothstein J, Ramesh A, White E. "Hashed Linkages for Administrative Datasets: A Technical How-to Guide." California Policy Lab, 2022. https://capolicylab.org/wp-content/uploads/2022/03/Hashed-Linkages-for-Administrative-Datasets.-A-Technical-How-to-Guide.pdf
 - **Gilbert et al. 2018.** Gilbert R, Lafferty R, Hagger-Johnson G, Harron K, Zhang LC, Smith P, et al. "GUILD: GUidance for Information about Linking Data sets." Journal of Public Health 40(1):191-198, 2018. doi:10.1093/pubmed/fdx037
-- **Goel et al. 2020.** Goel S, Meredith M, Morse M, Rothschild D, Shirani-Mehr H. "One Person, One Vote: Estimating the Prevalence of Double Voting in U.S. Presidential Elections." American Political Science Review 114(2):456-469, 2020; supplementary appendix. doi:10.1017/S000305541900087X
 - **Harron et al. 2017.** Harron KL, Doidge JC, Knight HE, Gilbert RE, Goldstein H, Cromwell DA, et al. "A guide to evaluating linkage quality for the analysis of linked data." International Journal of Epidemiology 46(5):1699-1710, 2017. doi:10.1093/ije/dyx177
 - **Hawaii Department of Education 2016.** Hawaii Department of Education, Hawaii Child Nutrition Programs. "Direct Certification Module User Guide for All Schools." 2016. https://hcnp.hawaii.gov/wp-content/uploads/2016/07/Direct-Certification-User-Guide-for-All-Schools.pdf
 - **Heins et al. 2022.** Heins S, Predmore Z, Hoch E, Baxi S. "Linking Medicaid Claims, Birth Certificates, and Other Sources to Advance Maternal and Infant Health: Final Report." RAND, PR-A1961-1, for the HHS Office of the Assistant Secretary for Planning and Evaluation, 2022. https://aspe.hhs.gov/sites/default/files/documents/db89f9777de0142dc5b6562692f67032/linking-medicaid-claims-other-data.pdf
 - **Hood and Bullock 2008.** Hood MV III, Bullock CS III. "Worth a Thousand Words? An Analysis of Georgia's Voter Identification Statute." American Politics Research 36(4):555-579, 2008. doi:10.1177/1532673X08316608
 - **HUD 2004.** U.S. Department of Housing and Urban Development. "Homeless Management Information Systems (HMIS); Data and Technical Standards Final Notice." Federal Register 69(146):45888, 2004. https://www.govinfo.gov/content/pkg/FR-2004-07-30/html/04-17097.htm
+- **HUD 2010.** U.S. Department of Housing and Urban Development. "Homeless Management Information System (HMIS) Data Standards Revised Notice." March 2010. https://web.archive.org/web/20170829223119id_/https://www.hudexchange.info/resources/documents/FinalHMISDataStandards_March2010.pdf
+- **HUD 2025a.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Standards Manual." 2025. https://files.hudexchange.info/resources/documents/HMIS-Data-Standards.pdf
+- **HUD 2025b.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Dictionary." HUD Exchange, 2025.
+- **HUD 2025c.** U.S. Department of Housing and Urban Development. "HMIS CSV Format Specifications, Version 1.0 (FY 2026)." HUD Exchange, 2025.
+- **HUD 2025d.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Standard Reporting Terminology Glossary." 2025. https://files.hudexchange.info/resources/documents/HMIS-Standard-Reporting-Terminology-Glossary.pdf
 - **Kho et al. 2015.** Kho AN, Cashy JP, Jackson KL, Pah AR, Goel S, Boehnke J, et al. "Design and implementation of a privacy preserving electronic health record linkage tool in Chicago." Journal of the American Medical Informatics Association 22(5):1072-1080, 2015. doi:10.1093/jamia/ocv038
 - **MITRE 2022.** The MITRE Corporation. "HL7 FHIR Implementation Guide: PPRL Release 1 - US Realm, STU1" (CODI). GitHub, 2022. https://github.com/mitre/codi-fhir-pprl-ig
+- **NCHS 2005.** National Center for Health Statistics. "The Third National Health and Nutrition Examination Survey (NHANES III) Linked Mortality File: Matching Methodology." December 2005.
 - **NCHS 2022.** National Center for Health Statistics. "The Linkage of the 2016 National Hospital Care Survey to 2015-2017 Centers for Medicare & Medicaid Services Transformed Medicaid Statistical Information System Claims Data: Matching Methodology and Analytic Considerations." 2022. https://www.cdc.gov/nchs/data/datalinkage/2016-nhcs-cms-medicaid-linkage-methodology.pdf
 - **NCHS 2023.** National Center for Health Statistics. "The Linkage of the National Center for Health Statistics (NCHS) Survey Data to U.S. Department of Housing and Urban Development (HUD) Administrative Data: Linkage Methodology and Analytic Considerations." 2023. https://www.cdc.gov/nchs/data/datalinkage/NCHS-HUD-Linked-Data-Methodology-and-Analytic-Considerations.pdf
 - **NCHS 2024.** National Center for Health Statistics. "The Linkage of National Center for Health Statistics Survey Data to Centers for Medicare & Medicaid Services Transformed Medicaid Statistical Information System Claims Data (2014-2019): Matching Methodology and Analytic Considerations." 2024. https://www.cdc.gov/nchs/data/datalinkage/NCHS-CMS-TMSIS-Linkage-Methodology_1.pdf
 - **Nescott et al. 2023.** Nescott E, Metraux S, McDuffie MJ, Brown E. "Health & Housing in Delaware: Matching Medicaid Claims and Encounters and the Community Management Information System Databases." Delaware Journal of Public Health 9(2):18-22, 2023. doi:10.32481/djph.2023.06.005
+- **Ong et al. 2020.** Ong TC, Duca LM, Kahn MG, Crume TL. "A hybrid approach to record linkage using a combination of deterministic and probabilistic methodology." Journal of the American Medical Informatics Association 27(4):505-513, 2020. doi:10.1093/jamia/ocz232
+- **Rhoades et al. 2017.** Rhoades H, Wenzel S, Rice E, Winetrobe H, Henwood B. "No Digital Divide? Technology Use among Homeless Adults." Journal of Social Distress and the Homeless 26(1):73-77, 2017. doi:10.1080/10530789.2017.1305140
+- **Sokol and Gutierrez 2005.** Sokol B, Gutierrez O. "Technical Guidelines for Unduplicating and De-identifying HMIS Client Records." U.S. Department of Housing and Urban Development, 2005. https://web.archive.org/web/2017id_/https://www.hudexchange.info/resources/documents/TechnicalGuidelinesForUnduplicatingAndDeIdentifyingClientRecords.pdf
 - **SSA 2022.** Social Security Administration. "Beneficiary Earnings and Data Exchange (BENDEX) Handbook for Daily Process." 2022. https://web.archive.org/web/20230605183520id_/https://www.ssa.gov/dataexchange/documents/BENDEXMANUAL2022.pdf
+- **The Sequoia Project 2018.** The Sequoia Project. "A Framework for Cross-Organizational Patient Identity Management." 2018. https://sequoiaproject.org/wp-content/uploads/2018/06/The-Sequoia-Project-Framework-for-Patient-Identity-Management-v31.pdf
 - **Vidanage et al. 2020.** Vidanage A, Ranbaduge T, Christen P, Randall S. "A Privacy Attack on Multiple Dynamic Match-key based Privacy-Preserving Record Linkage." International Journal of Population Data Science 5(1):1345, 2020. doi:10.23889/ijpds.v5i1.1345
 - **Westat 2012.** Westat. "Evaluation of the Accuracy of E-Verify Findings." Report to the U.S. Department of Homeland Security, 2012. https://www.e-verify.gov/sites/default/files/everify/data/FindingsEVerifyAccuracyEval2012.pdf
+- **Zech et al. 2016.** Zech J, Husk G, Moore T, Shapiro JS. "Measuring the Degree of Unmatched Patient Records in a Health Information Exchange Using Exact Matching." Applied Clinical Informatics 7(2):330-340, 2016. doi:10.4338/ACI-2015-11-RA-0158
