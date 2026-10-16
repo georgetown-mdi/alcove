@@ -1,6 +1,7 @@
 // A partner on an earlier version writes its hello as `<id>-hello.json`, with
 // no byte count. This version cannot exchange with it, so it refuses such a
-// hello naming the earlier version, at entry and during rendezvous, rather
+// hello naming the earlier version, at entry (under --sweep-exchange-files as
+// well, before anything is deleted) and during rendezvous, rather
 // than waiting out the peer timeout for a hello it never recognizes.
 
 import { describe, expect, test } from "vitest";
@@ -73,17 +74,27 @@ describe("a partner hello with no byte count in its name", () => {
     );
   }
 
-  test("left over in the folder is swept by --sweep-exchange-files", async () => {
+  test("refuses --sweep-exchange-files before anything is deleted", async () => {
+    const leftoverMessage = `/test/${PEER}-5.json`;
+    const files = new Map([
+      [`/test/${LEGACY_PEER_HELLO}`, LOCK_HELLO_BODY],
+      [leftoverMessage, Buffer.from("hello")],
+    ]);
+    const { conn } = makeConn({ files }, { sweepExchangeFiles: true });
+    await refusesNamingTheEarlierVersion(conn.synchronize());
+    expect([...files.keys()].sort()).toEqual(
+      [`/test/${LEGACY_PEER_HELLO}`, leftoverMessage].sort(),
+    );
+  });
+
+  test("refusal does not point at --sweep-exchange-files", async () => {
     const files = new Map([[`/test/${LEGACY_PEER_HELLO}`, LOCK_HELLO_BODY]]);
-    const { conn } = makeConn({ files }, { sweepExchangeFiles: true }, 200);
-    // Nothing answers, so the run ends at the peer timeout once the sweep has
-    // cleared the leftover.
+    const { conn } = makeConn({ files });
     const err = await conn.synchronize().then(
       () => undefined,
       (e: unknown) => e,
     );
-    expect((err as Error).message).not.toContain("earlier Alcove version");
-    expect(files.has(`/test/${LEGACY_PEER_HELLO}`)).toBe(false);
+    expect((err as Error).message).not.toContain("--sweep-exchange-files");
   });
 
   test("written under this party's own id is not a partner hello", async () => {

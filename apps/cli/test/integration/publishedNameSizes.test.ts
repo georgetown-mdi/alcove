@@ -15,8 +15,8 @@ import { inProcessOnly } from "../sftpBackendGate";
 import { preparedFor } from "../support";
 
 // The rule an operator's external mover applies to a file an exchange put in
-// the folder: a file under its final name is complete when it is zero-length
-// or when its size equals the byte count its name ends with
+// the folder: a name ending in a byte count is complete only when the file's
+// size equals that count, and any other final name is zero-length
 // (docs/EXCHANGE_REFERENCE.md, Moving files out of the folder). Two whole
 // runProtocol parties exchange over the real SSH/SFTP stack in each publish
 // mode and rendezvous mode, and the server records the size of every file at
@@ -149,7 +149,7 @@ const RENDEZVOUS_MODES: Array<{
   },
 ];
 
-describe("every file an exchange puts in place under its final name is zero-length or states its size", () => {
+describe("every file an exchange puts in place under its final name states its size or is zero-length with no size", () => {
   for (const publish of [
     { name: "renaming into place", writeWithoutRenaming: false },
     { name: "writing without renaming", writeWithoutRenaming: true },
@@ -180,9 +180,11 @@ describe("every file an exchange puts in place under its final name is zero-leng
               expect(temp.name).toMatch(/^temp-[0-9a-z-]+\.tmp$/);
 
           const offending = finals.filter((file) => {
-            if (file.size === 0) return false;
+            // The record is taken at CLOSE or RENAME, so a sized name is held
+            // to its count even at 0 bytes.
             const match = SIZED_NAME.exec(file.name);
-            return match === null || Number(match[1]) !== file.size;
+            if (match === null) return file.size !== 0;
+            return Number(match[1]) !== file.size;
           });
           expect(offending).toEqual([]);
 

@@ -445,7 +445,8 @@ const controlWriterId = (name: string): string =>
 
 // Refuses a partner hello in the name shape an earlier version wrote, with no
 // byte count: that partner cannot read this party's names either, so waiting
-// for it would end only at the peer timeout.
+// for it would end only at the peer timeout. The entry scan applies it ahead of
+// --sweep-exchange-files too, whose retain inspection cannot read that hello.
 /** @internal */
 export function legacyPeerHelloRefusal(
   files: ReadonlyArray<FileInfo>,
@@ -460,8 +461,7 @@ export function legacyPeerHelloRefusal(
     `the partner hello ${redactPrivateKeyMaterial(legacy.name)} has no byte ` +
       "count in its name, so it was written by an earlier Alcove version " +
       "this one cannot exchange with. Both parties must run the same Alcove " +
-      "version; if the file is left over from an earlier run, remove it or " +
-      "re-run with --sweep-exchange-files.",
+      "version; if the file is left over from an earlier run, remove it.",
   );
 }
 
@@ -1338,6 +1338,8 @@ export class FileSyncRendezvous {
           );
     }
 
+    const legacyRefusal = legacyPeerHelloRefusal(files, deps.id());
+    if (legacyRefusal) throw legacyRefusal;
     if (deps.options().sweepExchangeFiles) {
       // Opt-in sweep: clear this exchange's protocol files (its own AND the
       // peer's) and rendezvous against a clean slate, after a retain-signal
@@ -1354,8 +1356,6 @@ export class FileSyncRendezvous {
       // Default strict-empty entry guard: only a single peer hello and the
       // snapshotted foreign files are tolerated; any other protocol file is a
       // terminal usage error pointing at the opt-in sweep.
-      const legacyRefusal = legacyPeerHelloRefusal(files, deps.id());
-      if (legacyRefusal) throw legacyRefusal;
       if (unexpectedProtocol.length > 0)
         throw entryGuardRefusal(
           "the exchange directory must be empty except for a single peer " +
