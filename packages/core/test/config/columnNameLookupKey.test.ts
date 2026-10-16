@@ -255,6 +255,12 @@ describe("the _id rule on the lookup key", () => {
     ]);
   });
 
+  test("a second identifier-typed header leaves no identifier among _id columns", () => {
+    expect(inferMetadata(["case_id", "Record ID", "ssn"], [])).toEqual([
+      { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    ]);
+  });
+
   test("MedicaidID, with no separator, is not an identifier", () => {
     expect(inferMetadata(["MedicaidID"], [], { mode: "direct" })).toEqual([
       { name: "MedicaidID", type: "other", role: "payload", isPayload: true },

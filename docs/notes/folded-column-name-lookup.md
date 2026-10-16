@@ -11,7 +11,7 @@ See [docs/notes/README.md](README.md)._
 Inference recognizes a linkage-key column by its header, and the CSV reader keeps header whitespace.
 A lookup on the lowercased header alone does not recognize `First Name`, ` ssn` or `Social Security Number`: a quick exchange sends such a column as payload, and every other inference leaves it undeclared.
 
-The lookup folds the header first: outer whitespace trimmed, letters lowercased, and each run of whitespace, `_`, `-` and `.` collapsed to one `_`.
+The lookup folds the header first, as the spec describes.
 The fold makes a lookup key only; the column keeps its raw header as its name.
 
 ## What was weighed
@@ -40,9 +40,12 @@ The fold only adds recognized headers, and each added header changes what a run 
 - **A quick exchange** keeps back a column the lowercase-only lookup sends.
   The partner receives one payload column fewer, and the pre-run display lists the column as matched on or held back.
 - **A configuration or invitation with no `metadata` block** declares a column the lowercase-only lookup leaves undeclared.
-  The column is not sent either way, but where the configuration also has no `linkage_terms`, the terms are inferred from the metadata, so a header such as `Date of Birth` adds a field and the keys that use it.
+  The column is not sent either way, except a header such as `ID ` whose key is `id` or `identifier`, which the table's `identifier` row sends, so the declared send set changes.
+  Where the configuration also has no `linkage_terms`, the terms are inferred from the metadata, so a header such as `Date of Birth` adds a field and the keys that use it.
   The terms change at the next handshake.
 - **A configuration with explicit terms but no `metadata` block** can bind a field by its type to a header the fold recognizes, in place of a later column of that type or of no column.
+- **A configuration with no `metadata` block and one `_id` column** loses it as the identifier when the fold recognizes a second identifier-typed header, such as `Record ID`.
+  The promotion needs exactly one identifier-typed column, so neither column indexes this party's own records and, declared-only, neither is declared.
 
 A changed set of terms meets a partner on a build with the lowercase-only lookup, which still infers the old terms, and the run stops with a terms mismatch before any record is compared.
 Alcove is pre-release, so the two parties upgrade together rather than through a compatibility rule; a configuration that must keep its old meaning authors a `metadata` block.
