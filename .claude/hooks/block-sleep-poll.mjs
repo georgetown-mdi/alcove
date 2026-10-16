@@ -39,7 +39,11 @@
 import { commandOf, eventForTools } from "./lib/event.mjs";
 import { posix } from "node:path";
 
-import { tokenizeRaw } from "./lib/shell.mjs";
+import {
+  DURATION_UNIT_SECONDS,
+  timeoutWrapperSeconds,
+  tokenizeRaw,
+} from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
 export const EXPIRES_ON = "2027-06-30";
@@ -50,13 +54,13 @@ const MINIMUM_BLOCKED_SECONDS = 5;
 // unit suffix. A bare number is seconds.
 const SLEEP_ONLY = /^sleep\s+(\d+(?:\.\d+)?)([smhd]?)$/;
 
-const UNIT_SECONDS = { "": 1, s: 1, m: 60, h: 3600, d: 86400 };
-
 // The duration in seconds of a command that is a naked `sleep` and nothing else,
 // or null when the command is anything more than that.
 function nakedSleepSeconds(command) {
   const match = SLEEP_ONLY.exec(command.trim());
-  return match === null ? null : Number(match[1]) * UNIT_SECONDS[match[2]];
+  return match === null
+    ? null
+    : Number(match[1]) * DURATION_UNIT_SECONDS[match[2]];
 }
 
 // A loop's condition and body, split on the first `do` and the first `done`
@@ -107,24 +111,11 @@ function hasUnboundedWaitLoop(command) {
   return false;
 }
 
-// `timeout` options that take the next word as their value when not joined to
-// it (`-s KILL`, `--kill-after 5`).
-const TIMEOUT_VALUE_OPTIONS = new Set(["-s", "-k", "--signal", "--kill-after"]);
-const DURATION = /^(\d+(?:\.\d*)?|\.\d+)[smhd]?$/;
-
 // True when the command opens with `timeout <N>` (or `gtimeout <N>`), N a
 // non-zero duration, followed by a command for it to bound.
 function opensWithTimeout(command) {
-  const words = tokenizeRaw(command);
-  if (words[0] !== "timeout" && words[0] !== "gtimeout") return false;
-  let i = 1;
-  while (i < words.length && words[i].startsWith("-")) {
-    i += TIMEOUT_VALUE_OPTIONS.has(words[i]) ? 2 : 1;
-  }
-  const duration = words[i];
-  if (duration === undefined || !DURATION.test(duration)) return false;
-  if (Number.parseFloat(duration) === 0) return false;
-  return i + 1 < words.length;
+  const seconds = timeoutWrapperSeconds(tokenizeRaw(command));
+  return seconds !== undefined && seconds !== 0;
 }
 
 // Split text at the separators `separatorWidth(text, i)` finds outside quotes:

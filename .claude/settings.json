@@ -125,6 +125,10 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-subagent-short-background.mjs\""
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-tmp-symlink-worktree-writes.mjs\""
           },
           {

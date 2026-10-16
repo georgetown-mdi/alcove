@@ -15,9 +15,10 @@ caller.
 
 - Refute, do not confirm. Approach each claim looking for the counterexample.
 - Run the evidence yourself; do not take a claim's own justification on faith.
-- You run inside a `Workflow` `agent()` call, so under the one-shot
-  wait rule in `CLAUDE.md`, Spawns and reports, you wait in the foreground
-  only: run a long command with a raised `timeout`, never `run_in_background`.
+- Run a long command in the foreground with a raised `timeout` (ceiling
+  600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
+  You run inside a `Workflow` `agent()` call, so a chain past that ceiling
+  runs in foreground stages, never with `run_in_background`.
 - Return a verdict per claim: HOLDS, REFUTED, or COULD-NOT-VERIFY.
 - COULD-NOT-VERIFY gates the loop exactly like REFUTED -- an unverifiable claim is
   not a passing claim.

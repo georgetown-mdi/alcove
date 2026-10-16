@@ -474,6 +474,28 @@ Its caller is notified twice: first with the turn-end message, flagged as possib
 First observed 2026-09-24 and re-run 2026-09-25 on a macOS host, where the probe's command ran unwrapped because no `timeout` was on PATH.
 Re-run the probe after a harness upgrade and record the date and build in the hook's header.
 
+## Short subagent background guard
+
+[`.claude/hooks/block-subagent-short-background.mjs`](../../.claude/hooks/block-subagent-short-background.mjs)
+
+### Why it exists
+
+The probe above shows that a subagent which backgrounds a command and ends its turn sends its caller an interim notification, and each one is a caller turn that re-bills the caller's whole context.
+A command that fits the Bash tool's 600000 ms ceiling waits in the foreground for nothing, so backgrounding it only adds caller turns.
+The cost closed is token spend, not wall-clock time.
+
+### Why the predicate is the caller and the wrapper
+
+An earlier decision declined a hook over the background rule, because a Bash event names no role and no predicate over it separates "background, then end the turn" from a legitimate use.
+This hook does not try to tell those apart.
+It keys on two fields the event does contain: an `agent_id`, present only on a subagent's call, and the length of the command's `timeout` wrapper.
+A wrapper over the ceiling is a command that may not fit the foreground, the one case backgrounding is for, so it is admitted.
+A wrapper at or under the ceiling is refused on the assumption that such a command fits the foreground.
+
+### Why the largest wrapper, not the sum
+
+The rule the hook enforces asks for a chain past the ceiling to run as one call under one wrapper, so several short wrappers whose sum passes the ceiling are refused, and the refusal names the one-wrapper form.
+
 ## Pull-request check timing
 
 [`.claude/scripts/measure-pr-checks.mjs`](../../.claude/scripts/measure-pr-checks.mjs)
