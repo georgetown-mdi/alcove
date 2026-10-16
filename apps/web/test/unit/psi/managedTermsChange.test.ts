@@ -18,6 +18,7 @@ import {
   applyManagedTermsProposal,
   declineManagedTermsProposal,
   managedTermsChangeHandler,
+  managedTermsChangeWrite,
   managedTermsProposalDelta,
   managedTermsProposalFor,
 } from "@psi/managed/managedTermsProposal";
@@ -25,12 +26,18 @@ import {
   applyManagedExchangeTermsChange,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  matchingKeyTurnedOffByWrite,
 } from "@psi/managed/managedExchangeRecord";
 import {
   clearManagedExchangeTermsProposal,
   getManagedLocalState,
   recordManagedExchangeTermsProposal,
 } from "@psi/managed/managedLocalState";
+import {
+  termsChangeQuestionText,
+  termsProposalText,
+} from "@recurring/managedTermsChangeModel";
+import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import { persistManagedExchangeTermsChange } from "@psi/managed/managedExchangeStore";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
@@ -268,6 +275,91 @@ describe("applying the stored proposal", () => {
     ).rejects.toBeInstanceOf(ManagedTermsProposalNotStoredError);
     expect(persist).not.toHaveBeenCalled();
     expect(clear).not.toHaveBeenCalled();
+  });
+});
+
+describe("the matched-key column a partner's terms change turns off", () => {
+  const namingTheKey = (): ManagedExchangeRecord => {
+    const record = acceptorRecord();
+    return {
+      ...record,
+      exchangeFile: { ...record.exchangeFile, includeMatchingKey: true },
+    };
+  };
+  const singlePassTerms: LinkageTerms = {
+    ...partnerTerms,
+    linkageStrategy: "single-pass",
+  };
+  const singlePassChange = {
+    delta: validateCompatibility(aTerms, singlePassTerms).delta,
+    partnerTerms: singlePassTerms,
+    adoptedTerms: deriveAcceptedLinkageTerms(singlePassTerms, "Agency B"),
+    continuable: false,
+  } satisfies TermsChange;
+  const TURNED_OFF_NOTICE =
+    "This change also turns off the setting to name the linkage key each " +
+    "match was made on, because the new terms use the single-pass linkage " +
+    "strategy, where the party that sends its records first is not told " +
+    "which key matched.";
+
+  test("the kept proposal's panel says applying it turns the key off, and why", () => {
+    const reason = matchingKeyTurnedOffByWrite(namingTheKey(), {
+      scope: "apply",
+      partnerTerms: singlePassTerms,
+    });
+    expect(reason).toBe("single-pass");
+    expect(termsProposalText(reason)).toBe(
+      `${termsProposalText()} ${TURNED_OFF_NOTICE}`,
+    );
+    expect(TURNED_OFF_NOTICE).toBe(
+      matchingKeyTurnedOffNotice("single-pass", "will"),
+    );
+  });
+
+  test("an attended run's question says accepting turns the key off, and why", () => {
+    const reason = matchingKeyTurnedOffByWrite(
+      namingTheKey(),
+      managedTermsChangeWrite(singlePassChange),
+    );
+    expect(reason).toBe("single-pass");
+    expect(termsChangeQuestionText(false, reason)).toBe(
+      `${termsChangeQuestionText(false)} ${TURNED_OFF_NOTICE}`,
+    );
+  });
+
+  test("names nothing where the exchange does not name the key or the terms keep it", () => {
+    expect(
+      matchingKeyTurnedOffByWrite(acceptorRecord(), {
+        scope: "apply",
+        partnerTerms: singlePassTerms,
+      }),
+    ).toBeUndefined();
+    expect(
+      matchingKeyTurnedOffByWrite(
+        namingTheKey(),
+        managedTermsChangeWrite(changeFor(acceptorRecord())),
+      ),
+    ).toBeUndefined();
+    expect(
+      matchingKeyTurnedOffByWrite(namingTheKey(), {
+        scope: "apply",
+        partnerTerms,
+      }),
+    ).toBeUndefined();
+    expect(termsProposalText(undefined)).toBe(termsProposalText());
+  });
+
+  test("names nothing for a change the write refuses, which reports its own refusal", () => {
+    const record = namingTheKey();
+    const { identity: _identity, ...linkageTerms } =
+      record.exchangeFile.linkageTerms;
+    const unnamed: ManagedExchangeRecord = {
+      ...record,
+      exchangeFile: { ...record.exchangeFile, linkageTerms },
+    };
+    const write = { scope: "apply", partnerTerms: singlePassTerms } as const;
+    expect(() => applyManagedExchangeTermsChange(unnamed, write)).toThrow();
+    expect(matchingKeyTurnedOffByWrite(unnamed, write)).toBeUndefined();
   });
 });
 

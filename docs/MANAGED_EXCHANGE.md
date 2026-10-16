@@ -1655,6 +1655,11 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   asks about the change again. Apply and Decline are not offered while a run
   of the exchange is in progress.
 
+Where your result file names the linkage key each match was made on and the
+new terms leave you no key to name -- count-only, single-pass, or no result for
+you -- the question and the kept change say so, and **Accept** or **Apply**
+turns that setting off with the terms.
+
 Your partner's run ends with a partner refusal whenever you decline or a
 scheduled run stops; it is not asked anything. How the kept change and the
 run's bookkeeping are stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-refused-terms-change).

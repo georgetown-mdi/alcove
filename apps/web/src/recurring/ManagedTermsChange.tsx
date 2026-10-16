@@ -8,12 +8,12 @@ import {
   APPLY_TERMS_PROPOSAL_LABEL,
   DECLINE_TERMS_CHANGE_LABEL,
   TERMS_CHANGE_QUESTION_TITLE,
-  TERMS_PROPOSAL_TEXT,
   termsChangeQuestionText,
+  termsProposalText,
 } from "./managedTermsChangeModel";
 
+import type { MatchingKeyUnavailableReason, TermsChange } from "@alcove/core";
 import type { ManagedTermsProposal } from "@psi/managed/managedLocalStateShape";
-import type { TermsChange } from "@alcove/core";
 
 /**
  * The question an attended run asks at the terms exchange when the partner's
@@ -24,9 +24,13 @@ import type { TermsChange } from "@alcove/core";
  */
 export function TermsChangeQuestion({
   change,
+  matchingKeyTurnedOff,
   onAnswer,
 }: {
   change: TermsChange;
+  /** Why accepting turns off the matched-key column, absent where it does
+   * not. */
+  matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
   onAnswer: (accept: boolean) => void;
 }) {
   return (
@@ -37,7 +41,7 @@ export function TermsChangeQuestion({
       size="lg"
     >
       <Text size="sm" mb="sm">
-        {termsChangeQuestionText(change.continuable)}
+        {termsChangeQuestionText(change.continuable, matchingKeyTurnedOff)}
       </Text>
       <TermsChangeDelta delta={change.delta} escaped={false} />
       <Group mt="md">
@@ -58,6 +62,7 @@ export function TermsChangeQuestion({
  */
 export function TermsProposalPanel({
   proposal,
+  matchingKeyTurnedOff,
   busy,
   disabled,
   failure,
@@ -65,6 +70,9 @@ export function TermsProposalPanel({
   onDecline,
 }: {
   proposal: ManagedTermsProposal;
+  /** Why applying the proposal turns off the matched-key column, absent
+   * where it does not. */
+  matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
   busy: boolean;
   disabled: boolean;
   /** What went wrong with the last Apply or Decline, when one did not
@@ -76,7 +84,7 @@ export function TermsProposalPanel({
   return (
     <Alert color="yellow" title={TERMS_CHANGE_QUESTION_TITLE} mb="md">
       <Text size="sm" mb="sm">
-        {TERMS_PROPOSAL_TEXT}
+        {termsProposalText(matchingKeyTurnedOff)}
       </Text>
       <TermsChangeDelta
         delta={managedTermsProposalDelta(proposal)}

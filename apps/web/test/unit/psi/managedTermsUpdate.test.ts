@@ -613,7 +613,7 @@ describe("applying a partner's terms update", () => {
     expect(reading.matchingKeyTurnedOff).toBe("single-pass");
     expect(termsUpdateReadingText(reading, true)).toBe(
       `${TERMS_UPDATE_CHANGE_TEXT} ` +
-        "Accepting also turns off the setting to name the linkage key each " +
+        "This change also turns off the setting to name the linkage key each " +
         "match was made on, because the new terms use the single-pass " +
         "linkage strategy, where the party that sends its records first is " +
         "not told which key matched.",

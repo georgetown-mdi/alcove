@@ -15,7 +15,12 @@ import {
   managedStoreReadsReducer,
 } from "./managedSurfaceReadsModel";
 
-import type { Displayable, ResolvedMatching, TermsChange } from "@alcove/core";
+import type {
+  Displayable,
+  MatchingKeyUnavailableReason,
+  ResolvedMatching,
+  TermsChange,
+} from "@alcove/core";
 
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
@@ -70,6 +75,9 @@ export interface LiveManagedRunFailure {
  * question; the surface's abort answers no. */
 export interface ManagedTermsChangeQuestion {
   change: TermsChange;
+  /** Why accepting turns off the matched-key column, absent where it does
+   * not. */
+  matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
   answer: (accept: boolean) => void;
 }
 

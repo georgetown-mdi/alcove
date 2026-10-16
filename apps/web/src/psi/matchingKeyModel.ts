@@ -125,8 +125,8 @@ const MATCHING_KEY_TURNED_OFF_BECAUSE: Record<
 };
 
 /**
- * What a terms update says about the setting it turns off: before it is
- * accepted (`will`), and once it has been (`did`).
+ * What a partner's terms change says about the setting it turns off: before
+ * it is accepted or applied (`will`), and once it has been (`did`).
  */
 export function matchingKeyTurnedOffNotice(
   reason: MatchingKeyUnavailableReason,
@@ -134,7 +134,7 @@ export function matchingKeyTurnedOffNotice(
 ): string {
   const lead =
     when === "will"
-      ? "Accepting also turns off the setting to name the linkage key each " +
+      ? "This change also turns off the setting to name the linkage key each " +
         "match was made on"
       : "The setting to name the linkage key each match was made on was " +
         "turned off";

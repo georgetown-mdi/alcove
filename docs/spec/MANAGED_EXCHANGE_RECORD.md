@@ -652,6 +652,8 @@ A partner whose linkage terms changed since the last run is met at the terms exc
 
 **What the surfaces show.** A `"terms-change"` failure is shown from two stored facts alone: the `lastRun` kind and whether a proposal is stored. With one, the run surface's alert, the saved-exchanges row, and the between-visit notification state that the partner's terms changed and point at Apply or Decline. Without one -- declined at the question or on the panel, not kept, or dropped as invalid -- they state that the change was declined and that the next run the operator starts asks about it again, and name no Apply.
 
+**The matched-key setting.** Either write drops a stored `includeMatchingKey` where the terms it stores leave this party no key to name, as [a terms update](#a-terms-update) does. The question an attended run asks and the kept proposal's panel then state that taking the change on turns the setting off, and why; the alert after an accepted change the run cannot continue under states that it was turned off.
+
 **Clearing.** A successful run removes any kept proposal, best-effort: terms agreed with the partner leave nothing a proposal could still take on, and one left behind is one the operator can still decline. So does an attended run that accepted the change.
 
 Neither write changes the secret, the connection block, or the schedule, and the record's `schemaVersion` does not move: the `"terms-change"` kind widens an enum, and the proposal is a sibling rather than a record member.

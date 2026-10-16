@@ -1366,6 +1366,28 @@ export function matchingKeyTurnedOffBy(
 }
 
 /**
+ * Why `write` would turn off `record`'s matched-key column
+ * ({@link matchingKeyTurnedOffBy}), or `undefined` where it would not. A
+ * write {@link applyManagedExchangeTermsChange} refuses turns nothing off:
+ * its refusal is reported where the write is made.
+ */
+export function matchingKeyTurnedOffByWrite(
+  record: ManagedExchangeRecord,
+  write: ManagedTermsChangeWrite,
+): MatchingKeyUnavailableReason | undefined {
+  if (record.exchangeFile.includeMatchingKey !== true) return undefined;
+  let applied: ManagedExchangeRecord;
+  try {
+    applied = applyManagedExchangeTermsChange(record, write);
+  } catch (error) {
+    if (error instanceof UsageError || error instanceof z.ZodError)
+      return undefined;
+    throw error;
+  }
+  return matchingKeyTurnedOffBy(record.exchangeFile, applied.exchangeFile);
+}
+
+/**
  * Whether the operator can choose which of this party's own columns an
  * exchange sends: the document declares its columns (`metadata`), and its
  * terms send the partner payload columns at all -- not a count-only exchange,
