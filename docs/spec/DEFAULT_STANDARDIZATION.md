@@ -118,7 +118,7 @@ steps:
   - function: trim_whitespace
   - function: filter_regex
     params:
-      pattern: "^[0-9 -]*$"
+      pattern: "^[0-9 \\-\\x{2010}-\\x{2014}\\x{2212}]*$"
   - function: replace_regex
     params:
       pattern: "[^0-9]"
@@ -143,13 +143,16 @@ steps:
 Result: exactly nine digits.
 
 - **Character screen.** After surrounding whitespace is trimmed, a value
-  holding any character other than an ASCII digit, a space or a hyphen is
-  dropped, before any character is removed from it. This drops a masked value
+  holding any character other than an ASCII digit, a space or a dash is
+  dropped, before any character is removed from it. A dash is the ASCII hyphen
+  or one of the Unicode dashes U+2010 to U+2014 and U+2212 (hyphen,
+  non-breaking hyphen, figure dash, en dash, em dash, minus sign) that a
+  spreadsheet or word processor substitutes for it. This drops a masked value
   (`***-**-8924`, `123-??-8924`), a value holding a non-ASCII digit, and a
   number written with a decimal point (`78051120.0`). Stripped to its remaining
   digits and padded, each would become an `ssn` key on digits other than the
   SSN's.
-- **Digits only.** Spaces and hyphens are removed, and a cell that cleans to
+- **Digits only.** Spaces and dashes are removed, and a cell that cleans to
   empty is dropped.
 - **Padding.** A short value is zero-padded to nine, for an SSN stored as a
   number that lost its leading zeros. Anything that is not nine digits after
@@ -185,6 +188,7 @@ against the cleaned dataset (see
 | ----- | ------ |
 | `"078-05-1120"` | `"078051120"` |
 | `"  078 05 1120  "` | `"078051120"` |
+| `"078\u201305\u20131120"` | `"078051120"` |
 | `"12345678"` | `"012345678"` |
 | `"1234567"` | `"001234567"` |
 | `"123456"` | `null` |
@@ -205,7 +209,7 @@ steps:
   - function: trim_whitespace
   - function: filter_regex
     params:
-      pattern: "^[0-9 -]*$|(?:[0-9][ -]*){4}$"
+      pattern: "^[0-9 \\-\\x{2010}-\\x{2014}\\x{2212}]*$|(?:[0-9][ \\-\\x{2010}-\\x{2014}\\x{2212}]*){4}$"
   - function: replace_regex
     params:
       pattern: "[^0-9]"
@@ -237,9 +241,10 @@ dropped.
 After surrounding whitespace is trimmed, and before any character is removed, a
 value is kept only in one of two forms:
 
-- It holds nothing but ASCII digits, spaces and hyphens. A value of one to three
-  digits is kept as a last four that lost its leading zeros.
-- It ends in four ASCII digits, spaces and hyphens aside. Its mask lies before
+- It holds nothing but ASCII digits, spaces and dashes (the dashes of the
+  [`ssn` character screen](#ssn)). A value of one to three digits is kept as a
+  last four that lost its leading zeros.
+- It ends in four ASCII digits, spaces and dashes aside. Its mask lies before
   its last four, as in `***-**-8924` or `123-??-8924`, and its last four are
   kept.
 
@@ -252,6 +257,7 @@ the SSN.
 | ----- | ------ |
 | `"6789"` | `"6789"` |
 | `"123-45-6789"` | `"6789"` |
+| `"123\u201345\u20136789"` | `"6789"` |
 | `"***-**-8924"` | `"8924"` |
 | `"XXX-XX-8924"` | `"8924"` |
 | `"123-??-8924"` | `"8924"` |

@@ -319,6 +319,16 @@ describe("default SSN / SSN4 pipelines: explicit blank-drop before pad_left", ()
 
 // --- SSN pipeline ------------------------------------------------------------
 
+// Hyphen, non-breaking hyphen, figure dash, en dash, em dash, minus sign.
+const UNICODE_DASHES = [
+  "\u2010",
+  "\u2011",
+  "\u2012",
+  "\u2013",
+  "\u2014",
+  "\u2212",
+];
+
 describe("default SSN pipeline", () => {
   function run(input: string) {
     const [t] = getDefaultStandardization(
@@ -351,6 +361,18 @@ describe("default SSN pipeline", () => {
     ["parentheses", "(987) 65-4321"],
   ])("drops a value holding %s (%j)", (_label, input) => {
     expect(run(input)).toBeNull();
+  });
+
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(run(`987${dash}65${dash}4321`)).toBe(run("987-65-4321"));
+      expect(run(`987${dash}65${dash}4321`)).toBe("987654321");
+    },
+  );
+
+  test("drops a value holding a Unicode dash and a fullwidth digit", () => {
+    expect(run("987\u201065\u2010432\uff11")).toBeNull();
   });
 
   test("trims surrounding whitespace", () => {
@@ -478,6 +500,27 @@ describe("default ssn4 derived from a full SSN column", () => {
     });
   });
 
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(cleaned(ssnOnly, `078${dash}05${dash}1120`)).toEqual({
+        ssn: "078051120",
+        ssn4: "1120",
+      });
+      expect(cleaned(ssnOnly, `***${dash}**${dash}8924`)).toEqual({
+        ssn: null,
+        ssn4: "8924",
+      });
+    },
+  );
+
+  test("a fullwidth digit drops the value from both fields", () => {
+    expect(cleaned(ssnOnly, "078-05-112\uff10")).toEqual({
+      ssn: null,
+      ssn4: null,
+    });
+  });
+
   test("a leading-zero SSN stored as a number keeps both fields", () => {
     expect(cleaned(ssnOnly, "1234567")).toEqual({
       ssn: "001234567",
@@ -538,6 +581,15 @@ describe("default SSN4 pipeline", () => {
   test("zero-pads a 3-digit SSN4 missing a leading zero", () => {
     expect(run("123")).toBe("0123");
   });
+
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(run(`078${dash}05${dash}1120`)).toBe("1120");
+      expect(run(`***${dash}**${dash}8924`)).toBe("8924");
+      expect(run(`${dash}1120`)).toBe("1120");
+    },
+  );
 
   test.each([
     ["***-**-8924", "8924"],

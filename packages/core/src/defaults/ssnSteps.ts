@@ -4,15 +4,20 @@ import type { StandardizationStep } from "../config/standardizationSchema.js";
 // field resolution (standardization.ts) derives `ssn4` from an `ssn` column
 // with SSN4_STEPS, and builtInStandardization.ts imports standardization.ts.
 
+// The ASCII hyphen and the Unicode dashes spreadsheet or word-processor
+// autocorrect substitutes for it (U+2010 to U+2014 and the minus sign U+2212),
+// as the body of a regex character class. A period is not among them.
+const DASHES = "\\-\\x{2010}-\\x{2014}\\x{2212}";
+
 // Explicitly allow invalid SSNs for now, area number 000 excepted.
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
-  // Only ASCII digits, spaces and hyphens, checked before any character is
+  // Only ASCII digits, spaces and dashes, checked before any character is
   // removed: deleting a mask (***-**-8924), a non-ASCII digit or a decimal
   // point would leave other digits that pad to a different SSN. A masked
   // value's last four still reach ssn4 through that field's own pipeline.
-  { function: "filter_regex", params: { pattern: "^[0-9 -]*$" } },
+  { function: "filter_regex", params: { pattern: `^[0-9 ${DASHES}]*$` } },
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
   // Drop a value that cleaned to empty (a blank or all-hyphen cell) here,
   // before pad_left can mask it: an empty string would otherwise pad to
@@ -37,14 +42,16 @@ export const SSN_STEPS: StandardizationStep[] = [
 /** The default `ssn4` pipeline, which also derives `ssn4` from an `ssn` column. */
 export const SSN4_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
-  // Keep a value of only ASCII digits, spaces and hyphens, or one ending in
-  // four ASCII digits (spaces and hyphens aside), whose mask lies before its
+  // Keep a value of only ASCII digits, spaces and dashes, or one ending in
+  // four ASCII digits (spaces and dashes aside), whose mask lies before its
   // last four (***-**-8924). Any other value is masked in its last four, by
   // ASCII or non-ASCII characters (078-05-XXXX): removing the mask would key
   // it on other digits of the SSN.
   {
     function: "filter_regex",
-    params: { pattern: "^[0-9 -]*$|(?:[0-9][ -]*){4}$" },
+    params: {
+      pattern: `^[0-9 ${DASHES}]*$|(?:[0-9][ ${DASHES}]*){4}$`,
+    },
   },
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
   // Drop a value that cleaned to empty before pad_left masks it as "0000"; see
