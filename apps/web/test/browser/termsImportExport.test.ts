@@ -16,11 +16,13 @@ import { TermsImportExport } from "@components/TermsImportExport";
 
 import { createAppMount } from "./renderApp";
 
+import type { CleaningNotLoaded } from "@psi/authoring/advancedInvite";
+
 const COLUMNS = ["ssn", "ssn4", "first_name", "last_name", "dob"];
 
 const app = createAppMount();
 
-function mountEditor() {
+function mountEditor(notLoaded: ReadonlyArray<CleaningNotLoaded> = []) {
   const { draft, seed } = seedAdvancedInvite("County Health Dept", COLUMNS);
   const currentTerms = buildAdvancedTerms(draft);
   app.render(
@@ -28,7 +30,7 @@ function mountEditor() {
       currentTerms,
       seed,
       rawRows: [],
-      onImport: () => undefined,
+      onImport: () => notLoaded,
     }),
   );
   return currentTerms;
@@ -72,10 +74,42 @@ describe("TermsImportExport", () => {
     await expect
       .element(
         page
-          .getByText("Imported. Review the loaded terms before generating.")
+          .getByText("Imported. Review the loaded terms before you continue.")
           .first(),
       )
       .toBeInTheDocument();
     expect(page.getByText("Could not import these terms").query()).toBeNull();
+  });
+
+  test("states why each field's cleaning did not load", async () => {
+    const currentTerms = mountEditor([
+      { output: "middle_name", input: "middle", reason: "no-field" },
+      { output: "ssn", input: "SSN_RAW", reason: "no-column" },
+      { output: "first_name", input: "first_name", reason: "not-matching" },
+      {
+        output: "last_name",
+        input: "dob",
+        reason: "other-type",
+        fieldType: "last_name",
+      },
+    ]);
+    await userEvent.fill(pasteBox(), exportLinkageTerms(currentTerms, "json"));
+    await userEvent.click(importButton());
+    await expect
+      .element(
+        page.getByText("Some cleaning steps were not loaded", { exact: true }),
+      )
+      .toBeInTheDocument();
+    expect(page.getByRole("status").element().textContent).toBe(
+      "Imported, but some cleaning steps were not loaded. " +
+        "middle_name: these terms declare no field of that name. " +
+        "ssn: your file has no column named SSN_RAW. " +
+        "first_name: your column first_name is not used to match. Set it " +
+        'to "Used to match - not sent" under Matching & sharing, then paste ' +
+        "the configuration again. " +
+        "last_name: your column dob is not a Last name column. Set its type " +
+        "under Matching & sharing, then paste the configuration again. " +
+        "Review the loaded terms before you continue.",
+    );
   });
 });

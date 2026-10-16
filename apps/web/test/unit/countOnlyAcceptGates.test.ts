@@ -10,6 +10,13 @@ import {
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { setColumnDisclosure } from "@psi/metadataEditing";
 
+import {
+  EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT,
+  cleaningFanOutRefusedUnder,
+} from "@psi/standardizationAuthoring";
+
+import { FAN_OUT_FUNCTION_NAMES } from "@alcove/core";
+
 import type { CSVRow, LinkageTerms } from "@alcove/core";
 
 // The count-only shape refusals as the ACCEPTING web operator meets them: an
@@ -88,6 +95,43 @@ describe("the count-only launch gate (the acceptor's own marked columns)", () =>
     expect(
       acceptorLaunchBlockedReason(verdict, editorState, asPsi),
     ).toBeUndefined();
+  });
+
+  test("blocks launch on a split in the acceptor's own cleaning under count-only terms", () => {
+    // The algorithm is the partner's choice, so the remedy is the step.
+    const columns = ["first_name"];
+    const { editorState, verdict } = editorFor(columns, countOnlyTerms);
+    const split = {
+      ...editorState,
+      standardization: editorState.standardization.map((transformation) => ({
+        ...transformation,
+        steps: [{ function: "split_on", params: { delimiter: "-" } }],
+      })),
+    };
+    expect(acceptorLaunchBlockedReason(verdict, split, countOnlyTerms)).toBe(
+      "Your partner chose a count-only exchange, which matches one value per " +
+        "record, so remove the Split on step from your cleaning before you " +
+        "can start.",
+    );
+    expect(
+      acceptorLaunchBlockedReason(verdict, split, {
+        ...countOnlyTerms,
+        algorithm: "psi",
+      }),
+    ).toBeUndefined();
+  });
+
+  test("the acceptor's cleaning menu withholds a split exactly under count-only terms", () => {
+    expect(cleaningFanOutRefusedUnder(countOnlyTerms)).toBe(true);
+    expect(
+      cleaningFanOutRefusedUnder({ ...countOnlyTerms, algorithm: "psi" }),
+    ).toBe(false);
+    const withheld = EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT.flatMap(
+      (group) => group.functionNames,
+    );
+    for (const name of FAN_OUT_FUNCTION_NAMES)
+      expect(withheld).not.toContain(name);
+    expect(withheld.length).toBeGreaterThan(0);
   });
 
   test("count-only terms over a file that sends nothing launch", () => {

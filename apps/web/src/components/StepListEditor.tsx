@@ -28,9 +28,10 @@ import { useIsomorphicEffect } from "@mantine/hooks";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import {
+  EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT,
   INERT_COALESCE_ADVICE,
   NULL_IF_BOTH_VALUES_REFUSAL,
-  OFFERED_EXPERT_FUNCTION_GROUPS,
+  STANDARDIZATION_EXPERT_FUNCTION_GROUPS,
   STANDARDIZATION_FUNCTION_GROUPS,
   declaresBothNullIfValues,
   describeParamFields,
@@ -365,6 +366,7 @@ export function StepListEditor({
   addStepLabel = "Add a step",
   emptyHint = "No steps: the value is used as-is. Add a step to clean it.",
   allowRawPatterns = false,
+  withholdFanOut = false,
 }: {
   /** The ordered pipeline steps. */
   steps: Array<EditableStep>;
@@ -374,13 +376,16 @@ export function StepListEditor({
   addStepLabel?: string;
   /** Hint shown when the list is empty. */
   emptyHint?: ReactNode;
-  /** When set, the raw-pattern ({@link OFFERED_EXPERT_FUNCTION_GROUPS})
+  /** When set, the raw-pattern ({@link STANDARDIZATION_EXPERT_FUNCTION_GROUPS})
    * functions appear in the add menu and existing regex steps' patterns become
    * editable. Defaults to OFF so the cross-party element-transform editor (a
    * token-embedded transform that runs on the partner's data) keeps regex steps
    * read-only; the per-party cleaning editors pass `true`, since a raw pattern there
    * changes only this party's own match rate. */
   allowRawPatterns?: boolean;
+  /** When set, the add menu offers no step that splits a value into several
+   * match candidates, for a host whose terms refuse one. */
+  withholdFanOut?: boolean;
 }) {
   // A stable React key per step, tracked by object identity so a reorder follows
   // the logical step (rather than its array position) and a param edit keeps the
@@ -501,12 +506,6 @@ export function StepListEditor({
       }),
     );
 
-  // The expert section renders only where the host enables it AND some raw-pattern
-  // function is still offered, so a family entirely withheld leaves no dangling
-  // divider under an empty heading.
-  const showExpertGroups =
-    allowRawPatterns && OFFERED_EXPERT_FUNCTION_GROUPS.length > 0;
-
   // Shared by the standard and the gated expert groups so both render identically.
   const renderMenuGroup = (group: StandardizationFunctionGroup) => (
     <div key={group.label}>
@@ -587,12 +586,13 @@ export function StepListEditor({
           {/* The raw-pattern (regex) family appears after a divider, only where the
               host enables it, so it is never mixed into the standard menu or offered
               as a recommended step (and never offered at all in the cross-party
-              element-transform editor). The offered set withholds the fan-out
-              family at every strategy, wider than core's own refusal by design;
-              see OFFERED_EXPERT_FUNCTION_GROUPS. */}
-          {showExpertGroups && <Menu.Divider />}
-          {showExpertGroups &&
-            OFFERED_EXPERT_FUNCTION_GROUPS.map(renderMenuGroup)}
+              element-transform editor). */}
+          {allowRawPatterns && <Menu.Divider />}
+          {allowRawPatterns &&
+            (withholdFanOut
+              ? EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT
+              : STANDARDIZATION_EXPERT_FUNCTION_GROUPS
+            ).map(renderMenuGroup)}
         </Menu.Dropdown>
       </Menu>
     </Stack>

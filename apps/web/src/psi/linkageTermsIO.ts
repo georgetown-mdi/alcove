@@ -9,12 +9,13 @@ import {
   parseSensitiveYaml,
   safeParseLinkageTerms,
   safeParseMetadata,
+  safeParseStandardizationTheReaderWrote,
   sanitizeForDisplay,
   snakeizeKey,
   snakeizeKeys,
 } from "@alcove/core";
 
-import type { LinkageTerms, Metadata } from "@alcove/core";
+import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
 import type { ZodError } from "zod";
 
 /**
@@ -48,15 +49,20 @@ type LinkageTermsFormat = "json" | "yaml";
  */
 export const MAX_IMPORT_CHARS = 1_000_000;
 
-/** A successfully imported, validated set of linkage terms. */
+/** A successfully imported, validated set of linkage terms, with the
+ * `standardization` block of the configuration that wrapped them where it
+ * held one. */
 interface LinkageTermsImportSuccess {
   success: true;
   terms: LinkageTerms;
+  standardization?: Standardization;
 }
 
 /** Imported terms, with the `metadata` block of the configuration that
  * wrapped them where it held one. */
-interface LinkageTermsDocumentImportSuccess extends LinkageTermsImportSuccess {
+interface LinkageTermsDocumentImportSuccess {
+  success: true;
+  terms: LinkageTerms;
   metadata?: Metadata;
 }
 
@@ -96,9 +102,7 @@ export function exportLinkageTerms(
  * it IS a terms document, or its `linkage_terms` block when it is an exchange
  * configuration wrapping one. Mirrors the CLI's `readConfigLinkageSource`
  * (both spellings), so a pasted `alcove.yaml` reads the same as
- * `--config-file`; only that one key is read, so nothing else in the
- * configuration is parsed or validated here. A document holding no such key
- * passes through unchanged.
+ * `--config-file`. A document holding no such key passes through unchanged.
  */
 function linkageTermsWithin(raw: unknown): unknown {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return raw;
@@ -118,11 +122,36 @@ function linkageTermsWithin(raw: unknown): unknown {
  * a document from {@link exportLinkageTerms} round-trips. Length-capped at
  * {@link MAX_IMPORT_CHARS} before either parse; YAML alias expansion is
  * bounded by the `maxAliasCount` that `parseSensitiveYaml` sets.
+ *
+ * A configuration's `standardization` block is returned beside the terms,
+ * validated as the operator's own file, so the editor can load its cleaning
+ * steps; an invalid block refuses the import rather than being left behind.
  */
 export function importLinkageTerms(text: string): LinkageTermsImportResult {
-  const imported = importLinkageTermsDocument(text);
-  if (!imported.success) return imported;
-  return { success: true, terms: imported.terms };
+  const document = readImportDocument(text);
+  if (!document.success) return document;
+  const parsed = safeParseLinkageTerms(linkageTermsWithin(document.raw));
+  if (!parsed.success)
+    return { success: false, error: readableTermsError(parsed.error) };
+
+  const rawStandardization = configurationBlockWithin(
+    document.raw,
+    "standardization",
+  );
+  if (rawStandardization === undefined)
+    return { success: true, terms: parsed.data };
+  const standardization =
+    safeParseStandardizationTheReaderWrote(rawStandardization);
+  if (!standardization.success)
+    return {
+      success: false,
+      error: readableStandardizationError(standardization.error),
+    };
+  return {
+    success: true,
+    terms: parsed.data,
+    standardization: standardization.data,
+  };
 }
 
 /**
@@ -135,6 +164,32 @@ export function importLinkageTerms(text: string): LinkageTermsImportResult {
 export function importLinkageTermsDocument(
   text: string,
 ): LinkageTermsDocumentImportResult {
+  const document = readImportDocument(text);
+  if (!document.success) return document;
+  const raw = document.raw;
+
+  const parsed = safeParseLinkageTerms(linkageTermsWithin(raw));
+  if (!parsed.success)
+    return { success: false, error: readableTermsError(parsed.error) };
+
+  const rawMetadata = configurationBlockWithin(raw, "metadata");
+  if (rawMetadata === undefined) return { success: true, terms: parsed.data };
+  const metadata = safeParseMetadata(rawMetadata);
+  if (!metadata.success)
+    return {
+      success: false,
+      error:
+        "The metadata block in this configuration is not valid. Check it " +
+        "against the configuration the exchange ran with.",
+    };
+  return { success: true, terms: parsed.data, metadata: metadata.data };
+}
+
+/** The bounded JSON-then-YAML parse both imports share, refusing an oversize
+ * or unparseable document with value-free copy. */
+function readImportDocument(
+  text: string,
+): { success: true; raw: unknown } | LinkageTermsImportFailure {
   if (text.length > MAX_IMPORT_CHARS)
     return {
       success: false,
@@ -168,27 +223,15 @@ export function importLinkageTermsDocument(
       };
     }
   }
-
-  const parsed = safeParseLinkageTerms(linkageTermsWithin(raw));
-  if (!parsed.success)
-    return { success: false, error: readableTermsError(parsed.error) };
-
-  const rawMetadata = metadataWithin(raw);
-  if (rawMetadata === undefined) return { success: true, terms: parsed.data };
-  const metadata = safeParseMetadata(rawMetadata);
-  if (!metadata.success)
-    return {
-      success: false,
-      error:
-        "The metadata block in this configuration is not valid. Check it " +
-        "against the configuration the exchange ran with.",
-    };
-  return { success: true, terms: parsed.data, metadata: metadata.data };
+  return { success: true, raw };
 }
 
-/** The `metadata` block of an exchange configuration that wraps its terms in
+/** A top-level block of an exchange configuration that wraps its terms in
  * `linkage_terms`; undefined for a bare terms document. */
-function metadataWithin(raw: unknown): unknown {
+function configurationBlockWithin(
+  raw: unknown,
+  block: "metadata" | "standardization",
+): unknown {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw))
     return undefined;
   const document = raw as Record<string, unknown>;
@@ -197,7 +240,7 @@ function metadataWithin(raw: unknown): unknown {
     document["linkageTerms"] === undefined
   )
     return undefined;
-  return document["metadata"];
+  return document[block];
 }
 
 /**
@@ -213,6 +256,29 @@ function metadataWithin(raw: unknown): unknown {
 function readableTermsError(error: ZodError): string {
   if (error.issues.length === 0)
     return "The imported terms are not valid linkage terms.";
+  return readableSchemaError(error, "The imported terms are not valid", []);
+}
+
+/** {@link readableTermsError} for a configuration's `standardization` block,
+ * its path written from the block's own key. */
+function readableStandardizationError(error: ZodError): string {
+  const remedy = "Correct it, or paste the configuration without it.";
+  if (error.issues.length === 0)
+    return `The standardization block in this configuration is not valid. ${remedy}`;
+  return `${readableSchemaError(
+    error,
+    "The standardization block in this configuration is not valid",
+    ["standardization"],
+  )} ${remedy}`;
+}
+
+/** The first issue of `error` as `<lead>: <path> <reason>.`, its path under
+ * `root`; see {@link readableTermsError} for what it leaves out. */
+function readableSchemaError(
+  error: ZodError,
+  lead: string,
+  root: ReadonlyArray<string>,
+): string {
   const issue = error.issues[0];
 
   // Locate the problem by its structural path (schema field names and array
@@ -227,8 +293,10 @@ function readableTermsError(error: ZodError): string {
   // file {@link exportLinkageTerms} wrote -- through {@link snakeizeKeys}, of
   // which {@link snakeizeKey} is the per-key half.
   const paramsIndex = issue.path.indexOf("params");
-  const safePath =
-    paramsIndex >= 0 ? issue.path.slice(0, paramsIndex + 1) : issue.path;
+  const safePath = [
+    ...root,
+    ...(paramsIndex >= 0 ? issue.path.slice(0, paramsIndex + 1) : issue.path),
+  ];
   const where =
     safePath.length > 0
       ? safePath.map((segment) => snakeizeKey(String(segment))).join(".")
@@ -259,7 +327,5 @@ function readableTermsError(error: ZodError): string {
       ? ` (and ${error.issues.length - 1} more problem${error.issues.length - 1 === 1 ? "" : "s"})`
       : "";
 
-  return sanitizeForDisplay(
-    `The imported terms are not valid: ${where} ${reason}.${more}`,
-  );
+  return sanitizeForDisplay(`${lead}: ${where} ${reason}.${more}`);
 }

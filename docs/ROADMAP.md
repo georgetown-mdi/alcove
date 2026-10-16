@@ -26,7 +26,6 @@ Work required before the 1.0 release.
 ## Version 1.1
 
 - PSI-Sum
-- Authoring fan-out matching (the `split_on` standardization function, e.g. last names split on `-`) in the web invite editor: its cleaning-step menu offers no splitting function and its Generate gate refuses an imported document that declares one, so a fan-out exchange is authored in a configuration file and run from the command line. The matching half is built: fan-out runs under both `linkage_strategy: cascade` and `single-pass` (see [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#fan-out-multi-value-fields))
 - Synchronous protocol execution for the CLI (the web WebRTC path is already synchronous; this eliminates file-based polling latency where the channel allows)
 - Provisioning of supporting services (peer coordination, STUN/TURN, SFTP, WebSocket-to-TCP proxy)
 - Reference configurations and deployment guides for each supporting service; the section pointers in [DEPLOYMENT.md](DEPLOYMENT.md) will be replaced with concrete guidance

@@ -11,13 +11,17 @@
 
 import {
   FAN_OUT_FUNCTION_NAMES,
+  OperatorConfigError,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
+  UsageError,
+  assertFanOutImplemented,
   coalesceSubstitutesConstant,
   sanitizeForDisplay,
   stepCanEmptyRealizedValue,
 } from "@alcove/core";
 
 import type {
+  LinkageTerms,
   Standardization,
   StandardizationFunctionDescriptor,
   StandardizationStep,
@@ -204,30 +208,75 @@ export const expertFunctionNames: ReadonlySet<string> = new Set(
   ),
 );
 
-/**
- * The advanced groups as the add-step menu offers them: the raw-pattern family
- * minus every function core classes as fan-out (`FAN_OUT_FUNCTION_NAMES`). A
- * fan-out has consequences of its own (matching per candidate, the removal that
- * follows a match, the candidate grouping the single-pass receiver is handed)
- * that this editor gives the operator no control to weigh, so it offers no step
- * that declares one, and its Generate gate refuses one an imported document
- * holds (`advancedInviteValidation.ts`) -- wider than core's own refusal, by
- * design and not by drift.
- *
- * Derived from core's list rather than a second web-side one, so the menu
- * follows whatever core classes as a fan-out with no edit here. An imported
- * document's fan-out step still RENDERS -- {@link STANDARDIZATION_EXPERT_FUNCTION_GROUPS}
- * keeps the full family for the descriptor-backed read-only row and its parity
- * test -- so the operator can see and remove it rather than meet an unlabeled
- * step.
- */
-export const OFFERED_EXPERT_FUNCTION_GROUPS: Array<StandardizationFunctionGroup> =
+/** The advanced groups with every function core classes as fan-out
+ * (`FAN_OUT_FUNCTION_NAMES`) removed, for a menu under terms that refuse one
+ * ({@link cleaningFanOutRefusedUnder}). */
+export const EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT: Array<StandardizationFunctionGroup> =
   STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map((group) => ({
     ...group,
     functionNames: group.functionNames.filter(
       (name) => !FAN_OUT_FUNCTION_NAMES.includes(name),
     ),
   })).filter((group) => group.functionNames.length > 0);
+
+/** A cleaning step core refuses under the terms: the field it cleans, the
+ * column that field is cleaned from, and the step's function. */
+export interface RefusedCleaningFanOut {
+  output: string;
+  input: string;
+  functionName: string;
+}
+
+/**
+ * The first cleaning step that splits a value into several match candidates,
+ * where the terms refuse one. Read from core's own refusal
+ * (`assertFanOutImplemented`, whose cleaning half throws an
+ * `OperatorConfigError`), so this refuses exactly the cleaning the mint and the
+ * run refuse. A refusal of the terms' own keys is not this question.
+ */
+export function refusedCleaningFanOut(
+  terms: LinkageTerms,
+  standardization: Standardization,
+): RefusedCleaningFanOut | undefined {
+  try {
+    assertFanOutImplemented(terms, standardization);
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof OperatorConfigError)) {
+      if (error instanceof UsageError) return undefined;
+      throw error;
+    }
+  }
+  for (const transformation of standardization) {
+    const step = (transformation.steps ?? []).find((candidate) =>
+      FAN_OUT_FUNCTION_NAMES.includes(candidate.function),
+    );
+    if (step !== undefined)
+      return {
+        output: transformation.output,
+        input: transformation.input,
+        functionName: step.function,
+      };
+  }
+  throw new Error(
+    "core refused a cleaning fan-out, but no cleaning step is a fan-out",
+  );
+}
+
+/** Whether `terms` refuse any cleaning step that splits a value, asked of
+ * {@link refusedCleaningFanOut} over one step of each fan-out function. */
+export function cleaningFanOutRefusedUnder(terms: LinkageTerms): boolean {
+  return (
+    refusedCleaningFanOut(
+      terms,
+      FAN_OUT_FUNCTION_NAMES.map((name) => ({
+        output: name,
+        input: name,
+        steps: [{ function: name }],
+      })),
+    ) !== undefined
+  );
+}
 
 /**
  * The plain-language label the add-step menu and the step rows show for

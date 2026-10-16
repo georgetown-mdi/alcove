@@ -35,6 +35,7 @@ export function StandardizationStepEditor({
   onStepsChange,
   inputColumnOptions,
   onInputColumnChange,
+  withholdFanOut = false,
 }: {
   /** Human-readable label for the field this pipeline produces (a safe
    * semantic-type label, never the partner-controlled field name). */
@@ -58,6 +59,8 @@ export function StandardizationStepEditor({
   inputColumnOptions?: Array<string>;
   /** Rebind this field to the chosen input column. Omitted where binding is fixed. */
   onInputColumnChange?: (column: string) => void;
+  /** Offer no step that splits a value ({@link StepListEditor}). */
+  withholdFanOut?: boolean;
 }) {
   // Never announce the initial pipeline: each field card seeds one, so a mount-time
   // announcement would be a chorus. Comparing against the last announced summary
@@ -120,6 +123,7 @@ export function StandardizationStepEditor({
         // Per-party cleaning surface: raw patterns change only this party's own
         // match rate (see the prop's JSDoc).
         allowRawPatterns
+        withholdFanOut={withholdFanOut}
       />
 
       <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">

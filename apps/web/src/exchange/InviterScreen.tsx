@@ -71,7 +71,6 @@ import {
   editorWithFieldInput,
   editorWithFieldRemoved,
   editorWithFieldSteps,
-  editorWithImportedTerms,
   editorWithIncludeMatchingKey,
   editorWithIncludeOwnColumns,
   editorWithKeyEnabled,
@@ -80,6 +79,7 @@ import {
   editorWithLifetime,
   editorWithLinkageStrategy,
   editorWithOutputDirection,
+  editorWithPastedConfiguration,
   editorWithRecommendedCleaning,
   editorWithTransport,
   resetToRecommended,
@@ -2044,14 +2044,21 @@ export function InviterScreen() {
               onDeduplicate={(deduplicate) =>
                 applyEditor(editorWithDeduplicate(editor, deduplicate))
               }
-              onImport={(terms) =>
+              onImport={(terms, standardization) => {
+                const loaded = editorWithPastedConfiguration(
+                  editor,
+                  acquired,
+                  terms,
+                  standardization,
+                );
+                // The import box's own status region announces the outcome.
                 dispatch({
                   type: "editor-replaced",
-                  editor: editorWithImportedTerms(editor, acquired, terms),
-                  announcement:
-                    "Imported. Review the loaded terms before creating.",
-                })
-              }
+                  editor: loaded.editor,
+                  announcement: "",
+                });
+                return loaded.notLoaded;
+              }}
               keysError={reviewValidation(editor).errors.keys}
               announce={(message) =>
                 dispatch({ type: "editor-announced", announcement: message })

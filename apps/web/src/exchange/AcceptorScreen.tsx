@@ -38,6 +38,7 @@ import {
   savedExchangeColumnRefusalAlert,
   unnameableColumnsAlert,
 } from "@psi/columnNames";
+import { cleaningFanOutRefusedUnder } from "@psi/standardizationAuthoring";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
@@ -1768,6 +1769,7 @@ function AcceptorInvitationScreen({
               coverageRefusedColumns={coverageRefusedColumns}
               deadKeyCount={verdict.deadKeyCount}
               cleaningResetKey={cleaningResetKey}
+              withholdFanOut={cleaningFanOutRefusedUnder(linkageTerms)}
               {...(consoleSource !== undefined
                 ? { coveragePendingLabel: CONSOLE_COVERAGE_PENDING_LABEL }
                 : {})}

@@ -47,8 +47,7 @@ import {
   setColumnType,
 } from "@psi/metadataEditing";
 import {
-  editorWithFieldInput,
-  editorWithFieldSteps,
+  editorWithConfigurationCleaning,
   editorWithImportedTerms,
 } from "@psi/inviterEditor";
 
@@ -482,11 +481,14 @@ function metadataWithLoadedColumns(
  * their own columns ({@link editorWithImportedTerms}), so nothing here can run
  * before a file is read.
  *
- * The document's own cleaning is adopted per field, over the binding the import
- * reconstructed, for a field the import declared whose input the document binds
- * to a `role: linkage` column -- the rule the import's own reconstruction binds
- * by, so a configuration cannot clean a column into a matching key that this
- * party's roles do not offer for matching.
+ * The document's own cleaning is loaded as the CLI reads the same block
+ * ({@link editorWithConfigurationCleaning}): a transformation binds the field
+ * the terms declare, including one the import's reconstruction did not produce
+ * (a second field of a type, cleaned from the same column), to its `input`
+ * column and steps. The column must be `role: linkage` and of the field's type,
+ * so a configuration cannot clean a column into a matching key that this
+ * party's roles do not offer for matching. A field the block does not name is
+ * cleaned with no steps, not with the reconstruction's default ones.
  *
  * A setting the operator's file cannot supply whole is named rather than
  * dropped, as the file spells it, for the notice beside the load control: a
@@ -527,37 +529,21 @@ export function editorWithLoadedTerms(
     columns.metadata,
   );
   const { payload } = loaded.linkageTerms;
-  let next: InviterEditor = {
-    ...imported,
-    draft: {
-      ...imported.draft,
-      heldTermsSettings: payload === undefined ? {} : { payload },
+  const cleaning = editorWithConfigurationCleaning(
+    {
+      ...imported,
+      draft: {
+        ...imported.draft,
+        heldTermsSettings: payload === undefined ? {} : { payload },
+      },
     },
-  };
-  let cleaningWhole = true;
-  for (const transformation of loaded.standardization ?? []) {
-    const declared = next.draft.standardization.some(
-      (declaration) => declaration.output === transformation.output,
-    );
-    const bindable = columns.metadata.some(
-      (column) =>
-        column.name === transformation.input && column.role === "linkage",
-    );
-    if (!declared || !bindable) {
-      cleaningWhole = false;
-      continue;
-    }
-    next = editorWithFieldSteps(
-      editorWithFieldInput(next, transformation.output, transformation.input),
-      transformation.output,
-      transformation.steps,
-    );
-  }
+    loaded.standardization,
+  );
   return {
-    editor: next,
+    editor: cleaning.editor,
     notApplied: [
       ...(columns.whole ? [] : ["metadata"]),
-      ...(cleaningWhole ? [] : ["standardization"]),
+      ...(cleaning.notLoaded.length === 0 ? [] : ["standardization"]),
     ],
     notCovered: columns.covered ? [] : ["metadata"],
   };

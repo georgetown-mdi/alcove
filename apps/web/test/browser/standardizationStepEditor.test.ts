@@ -408,9 +408,26 @@ describe("StandardizationStepEditor raw-pattern authoring (per-party, ungated)",
     await expect
       .element(page.getByRole("menuitem", { name: "Filter (regex)" }))
       .toBeInTheDocument();
-    // ...minus the fan-out step: the exchange refuses a pipeline that splits one
-    // value into several match candidates, so the menu does not offer authoring
-    // one to be refused at the run.
+    // ...the fan-out step among them.
+    await expect
+      .element(page.getByRole("menuitem", { name: "Split on" }))
+      .toBeInTheDocument();
+  });
+
+  test("a host whose terms refuse a split withholds it from the menu", async () => {
+    app.render(
+      createElement(StandardizationStepEditor, {
+        fieldLabel: "First name",
+        inputColumn: "n",
+        steps: [],
+        onStepsChange: () => {},
+        withholdFanOut: true,
+      }),
+    );
+    await userEvent.click(page.getByRole("button", { name: "Add a step" }));
+    await expect
+      .element(page.getByRole("menuitem", { name: "Filter (regex)" }))
+      .toBeInTheDocument();
     expect(
       page.getByRole("menuitem", { name: "Split on" }).elements(),
     ).toHaveLength(0);

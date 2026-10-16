@@ -12,6 +12,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 
 import {
   draftFromTerms,
+  draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
   gradeAuthoredKeys,
@@ -33,6 +34,7 @@ import { LIFETIME_CHOICES } from "./formatting";
 import type {
   AdvancedInviteDraft,
   AdvancedInviteSeed,
+  CleaningNotLoaded,
   DraftLegalAgreement,
   OutputDirection,
   ProfiledDateInputFormats,
@@ -47,6 +49,7 @@ import type {
   LinkageTerms,
   Metadata,
   SemanticType,
+  Standardization,
 } from "@alcove/core";
 
 import type { DisclosureChoice } from "./metadataEditing";
@@ -306,6 +309,42 @@ export function editorWithFieldInput(
       ),
     },
   };
+}
+
+/**
+ * Load a configuration's `standardization` block onto a just-imported draft
+ * ({@link draftWithConfigurationCleaning}); an absent block leaves the draft's
+ * cleaning as the import built it. Returns each transformation that did not
+ * load, so the caller names it rather than dropping it unseen.
+ */
+export function editorWithConfigurationCleaning(
+  editor: InviterEditor,
+  standardization: Standardization | undefined,
+): { editor: InviterEditor; notLoaded: Array<CleaningNotLoaded> } {
+  if (editor.sealed === true || standardization === undefined)
+    return { editor, notLoaded: [] };
+  const cleaned = draftWithConfigurationCleaning(editor.draft, standardization);
+  return {
+    editor: { ...editor, draft: cleaned.draft },
+    notLoaded: cleaned.notLoaded,
+  };
+}
+
+/**
+ * Load terms and a configuration's cleaning pasted into the import box,
+ * bound against the columns as the operator has set them, so a column edit
+ * made before the paste holds across it.
+ */
+export function editorWithPastedConfiguration(
+  editor: InviterEditor,
+  csv: AcquiredCsv,
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): { editor: InviterEditor; notLoaded: Array<CleaningNotLoaded> } {
+  return editorWithConfigurationCleaning(
+    editorWithImportedTerms(editor, csv, terms, editor.draft.metadata),
+    standardization,
+  );
 }
 
 /** Remove an authored same-typed field's transformation. */

@@ -119,93 +119,74 @@ function withFirstElementTransform(
   };
 }
 
-describe("the fan-out gate (the run refuses what the schema admits)", () => {
-  // Core refuses an exchange whose standardization or linkage-key transforms
-  // declare a fan-out step, so an invitation holding one is refused at its own
-  // run. These pin the refusal at the moment of authoring instead: the operator
-  // learns the capability is missing before minting, not after the partner has
-  // the token. The declaring function is read from core's list, so a fan-out
-  // function added there is gated without a web edit.
+describe("fan-out authoring under each linkage strategy", () => {
+  // Core matches a fan-out under both linkage strategies, so the Generate gate
+  // admits one on either surface it can sit: a cleaning step and a linkage-key
+  // element transform. The function is read from core's list.
   const [fanOutFunction] = FAN_OUT_FUNCTION_NAMES;
   const fanOutStep = {
     function: fanOutFunction,
     params: { delimiter: "-" },
   };
   const now = new Date("2026-01-01T00:00:00Z");
+  const strategies: Array<LinkageStrategy> = ["cascade", "single-pass"];
 
-  test("blocks Generate on an authored cleaning step that fans out", () => {
+  test.each(strategies)(
+    "generates with a cleaning step that fans out under %s",
+    (linkageStrategy) => {
+      const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+      const fanning: AdvancedInviteDraft = {
+        ...draft,
+        linkageStrategy,
+        standardization: draft.standardization.map((transformation) =>
+          transformation.output === "last_name"
+            ? {
+                ...transformation,
+                steps: [...(transformation.steps ?? []), fanOutStep],
+              }
+            : transformation,
+        ),
+      };
+      expect(
+        fanning.standardization.some((transformation) =>
+          (transformation.steps ?? []).includes(fanOutStep),
+        ),
+      ).toBe(true);
+      const result = validateAdvancedInvite(fanning, seed, now);
+      expect(result.errors).toEqual({});
+      expect(result.canGenerate).toBe(true);
+      expect(result.terms?.linkageStrategy).toBe(linkageStrategy);
+    },
+  );
+
+  test.each(strategies)(
+    "generates with a linkage-key element transform that fans out under %s",
+    (linkageStrategy) => {
+      const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+      const fanning: AdvancedInviteDraft = {
+        ...withFirstElementTransform(draft, [fanOutStep]),
+        linkageStrategy,
+      };
+      const result = validateAdvancedInvite(fanning, seed, now);
+      expect(result.errors).toEqual({});
+      expect(result.canGenerate).toBe(true);
+      expect(result.terms?.linkageKeys[0].elements[0].transform).toEqual([
+        fanOutStep,
+      ]);
+    },
+  );
+
+  test("an imported document whose key fans out passes the gate", () => {
     const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
-    expect(validateAdvancedInvite(draft, seed, now).canGenerate).toBe(true);
-    const fanning = {
-      ...draft,
-      standardization: draft.standardization.map((transformation, i) =>
-        i === 0
-          ? {
-              ...transformation,
-              steps: [...(transformation.steps ?? []), fanOutStep],
-            }
-          : transformation,
-      ),
-    };
-    const result = validateAdvancedInvite(fanning, seed, now);
-    expect(result.canGenerate).toBe(false);
-    expect(result.terms).toBeUndefined();
-    // The message names the surface that does author a fan-out rather than
-    // reporting a schema fault -- the step is well-formed, and this editor is
-    // what does not author it.
-    expect(result.errors.standardization).toMatch(
-      /this editor does not author/,
+    const built = buildAdvancedTerms(
+      withFirstElementTransform(draft, [fanOutStep]),
     );
-    expect(result.errors.standardization).toMatch(/several values/);
-  });
-
-  test("blocks Generate on a linkage-key element transform that fans out", () => {
-    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
-    const fanning = {
-      ...draft,
-      keys: draft.keys.map((entry, i) =>
-        i === 0
-          ? {
-              ...entry,
-              enabled: true,
-              key: {
-                ...entry.key,
-                elements: entry.key.elements.map((element, j) =>
-                  j === 0 ? { ...element, transform: [fanOutStep] } : element,
-                ),
-              },
-            }
-          : entry,
-      ),
-    };
-    const result = validateAdvancedInvite(fanning, seed, now);
-    expect(result.canGenerate).toBe(false);
-    expect(result.errors.keys).toMatch(/this editor does not author/);
-  });
-
-  test("a disabled key's fan-out transform does not block Generate", () => {
-    // A disabled key is dropped from the built terms, so it declares nothing the
-    // run would refuse; blocking on it would refuse an exchange that is fine.
-    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
-    const parked = {
-      ...draft,
-      keys: draft.keys.map((entry, i) =>
-        i === draft.keys.length - 1
-          ? {
-              ...entry,
-              enabled: false,
-              key: {
-                ...entry.key,
-                elements: entry.key.elements.map((element, j) =>
-                  j === 0 ? { ...element, transform: [fanOutStep] } : element,
-                ),
-              },
-            }
-          : entry,
-      ),
-    };
-    const result = validateAdvancedInvite(parked, seed, now);
-    expect(result.errors.keys).toBeUndefined();
+    const parsed = safeParseLinkageTerms(built);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    const imported = draftFromTerms(parsed.data, seed);
+    const result = validateAdvancedInvite(imported, seed, now);
+    expect(result.errors).toEqual({});
     expect(result.canGenerate).toBe(true);
   });
 });

@@ -1,6 +1,5 @@
 import {
   CanonicalEncodingError,
-  FAN_OUT_FUNCTION_NAMES,
   INVITATION_LIFETIME_SECONDS,
   MAX_DISPLAYED_PARAMS,
   MAX_INVITATION_LIFETIME_SECONDS,
@@ -23,6 +22,7 @@ import {
   disclosedColumnNames,
   loneSurrogateIndex,
   safeParseLinkageTerms,
+  sanitizeForDisplay,
   summarizeLinkageShortfall,
   swapPairTransformsDiffer,
   termsDeclareCandidateSet,
@@ -30,8 +30,10 @@ import {
 
 import {
   descriptorFor,
+  functionDisplay,
   isStepValid,
   pipelineHasInertCoalesce,
+  refusedCleaningFanOut,
 } from "../standardizationAuthoring";
 import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 
@@ -54,6 +56,7 @@ import type {
 } from "@alcove/core";
 
 import type { ImportedCitationDropCause } from "./advancedInviteTerms";
+import type { RefusedCleaningFanOut } from "../standardizationAuthoring";
 
 import type {
   AdvancedField,
@@ -94,33 +97,6 @@ function todayIso(now: Date): string {
 const UNSUPPLYABLE_KEY_MESSAGE =
   "A linkage key needs a field your columns cannot supply. Add a column of that " +
   "type, or turn that key off.";
-
-/** Whether a step list declares a function core classes as fan-out -- one that
- * expands a value into several match candidates. Read from core's
- * `FAN_OUT_FUNCTION_NAMES` rather than a second web-side list, so a producer
- * added there is gated here with no second edit. */
-function declaresFanOut(
-  steps: ReadonlyArray<{ function: string }> | undefined,
-): boolean {
-  return (steps ?? []).some((step) =>
-    FAN_OUT_FUNCTION_NAMES.includes(step.function),
-  );
-}
-
-/** Shown when a cleaning step or a linkage-key transform splits one value into
- * several match candidates. This editor authors no fan-out -- its add-step menu
- * offers none (`OFFERED_EXPERT_FUNCTION_GROUPS`), so one can only arrive on an
- * imported document -- and is blocked at the moment of choice rather than left to
- * mint an invitation whose consequences the editor cannot show the operator. Wider
- * than core's own refusal, which admits a fan-out under single-pass, so the
- * message points at the surface that does author one. Names the capability, not
- * the offending step: the step's function name can be partner-influenced, the
- * same reason {@link UNSUPPLYABLE_KEY_MESSAGE} names no field. */
-const FAN_OUT_MESSAGE_BODY =
-  "splits one value into several values to match on, which this editor does " +
-  "not author. Remove that step before generating; an exchange that matches " +
-  "on several values per record is authored from the command line, and runs " +
-  "under single-pass linkage only.";
 
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
@@ -251,7 +227,7 @@ const UNENCODABLE_TERMS_MESSAGE =
 
 /** The control each count-only shape rule reports against. Every rule but the
  * payload one is a property of the matching arrangement the key list holds, which
- * is also where the fan-out and satisfiability messages land. */
+ * is also where the satisfiability messages land. */
 const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
   linkageKeys: "keys",
   linkageStrategy: "keys",
@@ -301,6 +277,36 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
   "matches on several. Open that key and remove its fuzzy comparison, its " +
   "either-order swap, or the step that splits a value into parts; or " +
   REVEAL_IDENTIFIERS_INSTEAD;
+
+/** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
+ * core refuses an exchange whose own cleaning splits a value under a
+ * count-only algorithm or a strategy that matches none
+ * ({@link refusedCleaningFanOut}), which the terms alone do not show. Names
+ * the step by its menu label, and the card by what the Cleaning tab shows: the
+ * field's type label and the operator's input column. The field's own name is
+ * left out: the tab never shows it, and an imported one is
+ * partner-influenceable, the same reason {@link UNSUPPLYABLE_KEY_MESSAGE} names
+ * no field. */
+function cleaningFanOutMessage(
+  refused: RefusedCleaningFanOut,
+  fieldType: string | undefined,
+  countOnly: boolean,
+): string {
+  const card =
+    fieldType !== undefined && Object.hasOwn(SEMANTIC_TYPE_LABELS, fieldType)
+      ? SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]
+      : "a field";
+  const step =
+    `the ${functionDisplay(refused.functionName).label} step in the ` +
+    `${card} cleaning from the ${sanitizeForDisplay(refused.input)} column`;
+  return countOnly
+    ? `A count-only exchange matches one value per record, but ${step} ` +
+        "splits a value into parts. Remove that step, or on the Matching on " +
+        `tab ${REVEAL_IDENTIFIERS_INSTEAD}`
+    : `This linkage strategy matches one value per record, but ${step} ` +
+        "splits a value into parts. Remove that step, or on the Matching on " +
+        "tab change Linkage strategy.";
+}
 
 /** Shown when the draft asks for a deduplicating match under a linkage strategy
  * that cannot run one. Core refuses that pair on both parties before matching
@@ -388,9 +394,9 @@ function shortfallRemedy(verdict: LinkageTermsVerdict): string {
  * only the gates the schema does not express: the invitation-lifetime bounds, a
  * not-yet-passed legal-agreement expiry, at least one column-satisfiable linkage
  * key, a canonical-encode dry run (the byte form both parties hash), and the
- * three pairings the schema admits but the run refuses (a declared fan-out step,
- * a deduplicating term under a linkage strategy that matches one value per
- * record, and a candidate set under the count-only algorithm).
+ * pairings the schema admits but the run refuses (a deduplicating term under a
+ * linkage strategy that matches one value per record, and a candidate set or a
+ * splitting cleaning step under the count-only algorithm).
  *
  * Schema errors are mapped back to the offending control by their issue path,
  * since the referential-integrity refines report at the array path, echoing no
@@ -641,33 +647,21 @@ export function validateAdvancedInvite(
       "Finish, fix, or remove the highlighted cleaning steps before generating.";
   }
 
-  // The fan-out gate, read from the same list core's own refusal
-  // (`assertFanOutImplemented`) reads, and wider than it: core admits a fan-out
-  // under single-pass, while this editor authors none at any strategy. Both
-  // surfaces a fan-out can reach are checked: an authored cleaning step, and a
-  // linkage-key element transform, which an imported document holds (the step
-  // editor offers the family on neither). Written last and unconditionally -- a
-  // fan-out step blocks generation whatever else the control reports, and
-  // removing it is the only fix.
-  if (
-    draft.standardization.some((transformation) =>
-      declaresFanOut(transformation.steps),
-    )
-  )
-    errors.standardization = `A cleaning step ${FAN_OUT_MESSAGE_BODY}`;
-  if (
-    terms.linkageKeys.some((key) =>
-      key.elements.some((element) => declaresFanOut(element.transform)),
-    )
-  )
-    errors.keys = `A linkage key's transform ${FAN_OUT_MESSAGE_BODY}`;
+  // The cleaning fan-out gate, core's own refusal; the key-transform half is
+  // the candidate-set gate below.
+  const refusedFanOut = refusedCleaningFanOut(terms, draft.standardization);
+  if (refusedFanOut !== undefined)
+    errors.standardization = cleaningFanOutMessage(
+      refusedFanOut,
+      terms.linkageFields.find((field) => field.name === refusedFanOut.output)
+        ?.type,
+      terms.algorithm === "psi-c",
+    );
 
   // The unrecognized-step gate, the key-element counterpart of the descriptor
   // gate above: a step whose function has no descriptor is one core's compile
   // refuses at the mint, so the alert the element editor marks that step with
-  // stands beside a Generate that is shut rather than one that mints. Written
-  // under the fan-out message, whose remedy is the same removal on a step this
-  // one does recognize.
+  // stands beside a Generate that is shut rather than one that mints.
   if (
     errors.keys === undefined &&
     terms.linkageKeys.some((key) =>
@@ -681,8 +675,8 @@ export function validateAdvancedInvite(
     errors.keys = UNRECOGNIZED_KEY_TRANSFORM_MESSAGE;
 
   // The deduplicating-pair gate, run as core's own refusal rather than a second
-  // web-side copy of the pair it names -- the same reading-from-core the fan-out
-  // gate above does, so a pair added there is refused here with no second edit.
+  // web-side copy of the pair it names, so a pair added there is refused here
+  // with no second edit.
   // Core refuses it symmetrically from the agreed terms, so an exchange configured
   // on it aborts both parties at the run boundary; refusing it at Generate puts the
   // answer where the operator still holds both controls. Written over whatever
@@ -698,21 +692,19 @@ export function validateAdvancedInvite(
 
   // The count-only candidate-set gate: a count-only document whose keys expand a
   // record into several match candidates is refused before the exchange runs
-  // (`assertFanOutImplemented`), and nothing above catches the two declarations
-  // that expand a key without a fan-out step -- a fuzzy comparison and a swap.
-  // The verdict is core's own predicate over all three declarations
+  // (`assertFanOutImplemented`). The verdict is core's own predicate over all
+  // three declarations -- a fan-out step, a fuzzy comparison and a swap
   // (`termsDeclareCandidateSet`), not a second web-side list of them, so this
   // gate refuses exactly the documents the run refuses. Written ahead of the
   // shape gate below, whose rules the terms schema refuses first.
   if (terms.algorithm === "psi-c" && termsDeclareCandidateSet(terms))
     errors.keys = COUNT_ONLY_CANDIDATE_SET_MESSAGE;
 
-  // The count-only shape gate, at the same altitude as the fan-out one above and
-  // read from core's own rules rather than a second web-side list, so this editor
-  // refuses exactly the documents core refuses at parse and at accept. Written
-  // last for the same reason: a count-only document outside the shape blocks
-  // generation whatever else a control reports, and bringing it into the shape
-  // (or choosing the identifier-revealing algorithm) is the only fix.
+  // The count-only shape gate, read from core's own rules rather than a second
+  // web-side list, so this editor refuses exactly the documents core refuses at
+  // parse and at accept. Written last: a count-only document outside the shape
+  // blocks generation whatever else a control reports, and bringing it into the
+  // shape (or choosing the identifier-revealing algorithm) is the only fix.
   const countOnlyViolation = countOnlyShapeViolation(terms);
   if (countOnlyViolation !== undefined)
     errors[COUNT_ONLY_FIELDS[countOnlyViolation]] =

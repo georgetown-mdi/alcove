@@ -1057,26 +1057,65 @@ describe("generateInvitation", () => {
     ).rejects.toThrow(/count-only/);
   });
 
-  test("mints a fan-out under the default cascade terms", async () => {
-    // The admitted half: both linkage strategies resolve a candidate set, so a
-    // fan-out under the editor's default terms is minted rather than refused.
-    const metadata = inferMetadata(
-      ["ssn", "first_name", "last_name", "dob"],
-      [],
-    );
-    await expect(
-      generateInvitation({
+  // The admitted half: both linkage strategies resolve a candidate set, so a
+  // fan-out is minted under either, as a cleaning step or a key transform.
+  test.each(["cascade", "single-pass"] as const)(
+    "mints a cleaning-step fan-out under %s",
+    async (linkageStrategy) => {
+      const metadata = inferMetadata(
+        ["ssn", "first_name", "last_name", "dob"],
+        [],
+      );
+      await expect(
+        generateInvitation({
+          inviterName: "Org",
+          file: csvStream(PARTIAL_CSV),
+          location,
+          linkageTerms: {
+            ...getDefaultLinkageTerms("Org", metadata),
+            linkageStrategy,
+          },
+          metadata,
+          standardization: [
+            { output: "last_name", input: "last_name", steps: [fanOutStep] },
+          ],
+        }),
+      ).resolves.toBeDefined();
+    },
+  );
+
+  test.each(["cascade", "single-pass"] as const)(
+    "mints a linkage-key element transform fan-out under %s",
+    async (linkageStrategy) => {
+      const metadata = inferMetadata(
+        ["ssn", "first_name", "last_name", "dob"],
+        [],
+      );
+      const base = getDefaultLinkageTerms("Org", metadata);
+      const fanning: LinkageTerms = {
+        ...base,
+        linkageStrategy,
+        linkageKeys: base.linkageKeys.map((key, i) =>
+          i === 0
+            ? {
+                ...key,
+                elements: key.elements.map((element, j) =>
+                  j === 0 ? { ...element, transform: [fanOutStep] } : element,
+                ),
+              }
+            : key,
+        ),
+      };
+      const minted = await generateInvitation({
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
-        linkageTerms: getDefaultLinkageTerms("Org", metadata),
+        linkageTerms: fanning,
         metadata,
-        standardization: [
-          { output: "last_name", input: "last_name", steps: [fanOutStep] },
-        ],
-      }),
-    ).resolves.toBeDefined();
-  });
+      });
+      expect(minted).toBeDefined();
+    },
+  );
 
   // The mint-boundary compile safety check, the sibling of the fan-out one
   // above and reached by the same callers: a step whose factory refuses its

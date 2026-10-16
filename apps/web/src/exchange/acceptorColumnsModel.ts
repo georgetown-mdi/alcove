@@ -19,7 +19,9 @@ import {
 import {
   applyInputOverrides,
   applyStepOverrides,
+  functionDisplay,
   isStepValid,
+  refusedCleaningFanOut,
 } from "@psi/standardizationAuthoring";
 
 import { defaultStandardizationForRows } from "@psi/authoring/advancedInvite";
@@ -381,8 +383,9 @@ const NO_STEP_BLOCKS: AcceptorLaunchStepBlocks = {
  * set the invitation declares for this party
  * ({@link acceptorPayloadDeclarationConflict}), a marked column's name is too long
  * to fit in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
- * more than one identifier column, an authored cleaning step is invalid or
- * mid-edit, or one of the step's own blocks holds.
+ * more than one identifier column, an authored cleaning step is invalid,
+ * mid-edit, or splits a value under terms that refuse one
+ * ({@link refusedCleaningFanOut}), or one of the step's own blocks holds.
  *
  * The gate and the explanation are ONE derivation, so a state that disables the
  * button while telling a screen-reader operator nothing is unrepresentable. The
@@ -460,6 +463,19 @@ export function acceptorLaunchBlockedReason(
     return "Choose a single record identifier column above before you can start.";
   if (!acceptorStandardizationValid(editorState.standardization))
     return "Finish, fix, or remove the highlighted cleaning steps above before you can start.";
+  const refusedFanOut = refusedCleaningFanOut(
+    invitationTerms,
+    editorState.standardization,
+  );
+  if (refusedFanOut !== undefined)
+    return (
+      (invitationTerms.algorithm === "psi-c"
+        ? "Your partner chose a count-only exchange, which matches"
+        : "Your partner chose a linkage strategy that matches") +
+      " one value per record, so remove the " +
+      `${functionDisplay(refusedFanOut.functionName).label} step from your ` +
+      "cleaning before you can start."
+    );
   if (stepBlocks.connectionBlocked)
     return "Set up the SFTP connection above before you can start.";
   if (stepBlocks.splitDirectoryProblem !== undefined)

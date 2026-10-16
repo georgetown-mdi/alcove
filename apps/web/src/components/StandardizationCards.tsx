@@ -57,6 +57,7 @@ export function StandardizationCards({
   renderCoverage,
   isFieldSilentEmpty,
   onMissingField,
+  withholdFanOut = false,
 }: {
   /** The effective standardization: one transformation per declared field. */
   standardization: Standardization;
@@ -104,6 +105,8 @@ export function StandardizationCards({
    * a miss is an invariant violation, asserted as a check). No default: each host
    * declares intent. */
   onMissingField: "skip" | "throw";
+  /** Offer no step that splits a value, for a host whose terms refuse one. */
+  withholdFanOut?: boolean;
 }) {
   const fieldByName = useMemo(
     () => new Map(declaredFields.map((field) => [field.name, field])),
@@ -191,6 +194,7 @@ export function StandardizationCards({
             }
             coverage={renderCoverage?.(transformation.output)}
             silentEmpty={isFieldSilentEmpty?.(transformation.output) ?? false}
+            withholdFanOut={withholdFanOut}
             // Removing is offered only for an added same-typed field, so the
             // recommended single field per type cannot be removed by accident.
             onRemove={
@@ -237,6 +241,7 @@ function StandardizationCard({
   onStepsChange,
   coverage,
   silentEmpty,
+  withholdFanOut,
   onRemove,
 }: {
   field: LinkageField;
@@ -250,6 +255,7 @@ function StandardizationCard({
   /** Whether this field's whole-file coverage is a silent-empty collapse; shown as a
    * compact warning in the collapsed card header so it is not hidden with the body. */
   silentEmpty: boolean;
+  withholdFanOut: boolean;
   onRemove?: () => void;
 }) {
   const [cardOpen, setCardOpen] = useState(false);
@@ -294,6 +300,7 @@ function StandardizationCard({
             inputColumnOptions={inputColumnOptions}
             onInputColumnChange={onInputColumnChange}
             onStepsChange={onStepsChange}
+            withholdFanOut={withholdFanOut}
           />
           {/* Full-CSV coverage, visible once the card is open: the silent-empty
               safety net (also flagged in the collapsed card header). */}
