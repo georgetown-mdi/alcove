@@ -488,8 +488,8 @@ function metadataWithLoadedColumns(
  * ({@link editorWithConfigurationCleaning}): a transformation binds the field
  * the terms declare, including one the import's reconstruction did not produce
  * (a second field of a type, cleaned from the same column), to its `input`
- * column and steps. The column must be `role: linkage` and of the field's type,
- * so a configuration cannot clean a column into a matching key that this
+ * column and steps. The column must be `role: linkage` and of a type the field
+ * may read, so a configuration cannot clean a column into a matching key that this
  * party's roles do not offer for matching. A field the block does not name is
  * cleaned with no steps, not with the reconstruction's default ones.
  *

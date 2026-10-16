@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { authoredLinkageFields, snakeizeKeys } from "@alcove/core";
+import {
+  authoredLinkageFields,
+  derivedFieldSteps,
+  runPipeline,
+  snakeizeKeys,
+} from "@alcove/core";
 
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 
@@ -25,6 +30,7 @@ import {
   editorWithColumnType,
   editorWithDeduplicate,
   editorWithFieldAdded,
+  editorWithFieldInput,
   editorWithFieldSteps,
   editorWithIdentity,
   editorWithImportedTerms,
@@ -1438,6 +1444,35 @@ describe("customize tabs", () => {
     expect(noop.draft).toBe(seeded.draft);
   });
 
+  test("an ssn4 field rebound to an ssn column takes the default ssn4 steps", () => {
+    const ssnCsv: AcquiredCsv = {
+      ...csv,
+      rawRows: [{ ...csv.rawRows[0], ssn: "078-05-1120" }],
+      columns: [...csv.columns, "ssn"],
+    };
+    const seeded = editorFromCsv("Dana", ssnCsv);
+    const ssnColumn = seeded.draft.metadata.find((c) => c.name === "ssn");
+    expect(ssnColumn?.type).toBe("ssn");
+    expect(ssnColumn?.role).toBe("linkage");
+    const cleared = editorWithFieldSteps(seeded, "ssn4", []);
+
+    const rebound = editorWithFieldInput(cleared, "ssn4", "ssn");
+    const ssn4 = rebound.draft.standardization.find((t) => t.output === "ssn4");
+    expect(ssn4?.input).toBe("ssn");
+    expect(ssn4?.steps).toEqual(derivedFieldSteps("ssn4", "ssn"));
+    expect(runPipeline("078-05-1120", ssn4?.steps ?? [])).toBe("1120");
+
+    // Back on its own type, the field keeps the steps it has.
+    const restored = editorWithFieldInput(
+      editorWithFieldSteps(rebound, "ssn4", []),
+      "ssn4",
+      "ssn4",
+    );
+    expect(
+      restored.draft.standardization.find((t) => t.output === "ssn4")?.steps,
+    ).toEqual([]);
+  });
+
   test("importing terms with an unsupplyable field degrades gracefully", () => {
     const donor = editorFromCsv("Dana", {
       ...csv,
@@ -1668,6 +1703,70 @@ describe("customize tabs", () => {
         reason: "other-type",
         fieldType: "last_name",
       },
+    ]);
+  });
+
+  // The CLI cleans an ssn4 field from an ssn column with the configuration's
+  // own steps, so a pasted configuration doing so loads them as written.
+  const ssnOnlyCsv: AcquiredCsv = {
+    ...csv,
+    rawRows: [
+      {
+        client_id: "1",
+        first_name: "Ann",
+        last_name: "Lee",
+        dob: "01/02/1990",
+        ssn: "078-05-1120",
+        program_code: "A",
+      },
+    ],
+    columns: csv.columns.map((column) => (column === "ssn4" ? "ssn" : column)),
+  };
+
+  test("a pasted configuration cleaning ssn4 from an ssn column loads its own steps", () => {
+    const editor = editorFromCsv("Dana", ssnOnlyCsv);
+    const steps = [{ function: "trim_whitespace" }];
+    const result = importLinkageTerms(
+      stringifyYaml({
+        linkage_terms: snakeizeKeys(mintedTerms(editorFromCsv("Dana", csv))),
+        standardization: [{ output: "ssn4", input: "ssn", steps }],
+      }),
+    );
+    if (!result.success) throw new Error(result.error);
+    const loaded = editorWithPastedConfiguration(
+      editor,
+      ssnOnlyCsv,
+      result.terms,
+      result.standardization,
+    );
+    expect(loaded.notLoaded).toEqual([]);
+    expect(
+      loaded.editor.draft.standardization.find(
+        (transformation) => transformation.output === "ssn4",
+      ),
+    ).toEqual({ output: "ssn4", input: "ssn", steps });
+  });
+
+  test("a pasted configuration cleaning ssn from an ssn4 column is refused", () => {
+    const editor = editorFromCsv("Dana", csv);
+    const result = importLinkageTerms(
+      stringifyYaml({
+        linkage_terms: snakeizeKeys(
+          mintedTerms(editorFromCsv("Dana", ssnOnlyCsv)),
+        ),
+        standardization: [{ output: "ssn", input: "ssn4", steps: [] }],
+      }),
+    );
+    if (!result.success) throw new Error(result.error);
+    expect(
+      editorWithPastedConfiguration(
+        editor,
+        csv,
+        result.terms,
+        result.standardization,
+      ).notLoaded,
+    ).toEqual([
+      { output: "ssn", input: "ssn4", reason: "other-type", fieldType: "ssn" },
     ]);
   });
 

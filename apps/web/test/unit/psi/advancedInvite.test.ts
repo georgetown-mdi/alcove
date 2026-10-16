@@ -66,6 +66,7 @@ function ssnKeyNames(draft: AdvancedInviteDraft): Array<string> {
 // (like the bundled fake data): keys referencing ssn4 drop from the seed.
 const ALL_COLUMNS = ["ssn", "ssn4", "first_name", "last_name", "dob"];
 const PARTIAL_COLUMNS = ["ssn", "first_name", "last_name", "dob"];
+const NO_SSN_COLUMNS = ["first_name", "last_name", "dob"];
 
 /** Disable every key except the named one. */
 function onlyKeyEnabled(
@@ -245,19 +246,38 @@ describe("seedAdvancedInvite + buildAdvancedTerms", () => {
 
   test("(b) metadata-aware seeding drops keys the columns cannot satisfy", () => {
     const full = seedAdvancedInvite("Org", ALL_COLUMNS).seed.terms;
-    const { seed } = seedAdvancedInvite("Org", PARTIAL_COLUMNS);
+    const { seed } = seedAdvancedInvite("Org", NO_SSN_COLUMNS);
 
-    // No ssn4-referencing key survives a file without an ssn4 column, and the set
-    // is smaller than the all-columns one.
+    // No SSN-referencing key survives a file with no SSN column of either kind,
+    // and the set is smaller than the all-columns one.
     expect(
       seed.terms.linkageKeys.some((k) =>
-        k.elements.some((e) => e.field === "ssn4"),
+        k.elements.some((e) => e.field === "ssn" || e.field === "ssn4"),
       ),
     ).toBe(false);
     expect(seed.terms.linkageKeys.length).toBeGreaterThan(0);
     expect(seed.terms.linkageKeys.length).toBeLessThan(full.linkageKeys.length);
-    // The dropped field is no longer declared either.
-    expect(seed.terms.linkageFields.some((f) => f.name === "ssn4")).toBe(false);
+    // The dropped fields are no longer declared either.
+    expect(
+      seed.terms.linkageFields.some(
+        (f) => f.name === "ssn" || f.name === "ssn4",
+      ),
+    ).toBe(false);
+  });
+
+  test("(b) a full SSN column alone keeps the ssn4 keys, and an unedited seed builds them", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", PARTIAL_COLUMNS);
+    expect(
+      seed.terms.linkageKeys.some((k) =>
+        k.elements.some((e) => e.field === "ssn4"),
+      ),
+    ).toBe(true);
+    expect(draft.standardization).toContainEqual(
+      expect.objectContaining({ output: "ssn4", input: "ssn" }),
+    );
+    // The derived ssn4 field keeps its own type and constraints, so the built
+    // terms equal the quick path's.
+    expect(buildAdvancedTerms(draft)).toStrictEqual(seed.terms);
   });
 
   test("reordering keys reorders the built linkage keys in place", () => {

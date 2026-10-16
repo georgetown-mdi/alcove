@@ -95,11 +95,16 @@ describe("getDefaultStandardization — structure", () => {
 
   test("skips linkage fields whose type is absent from metadata", () => {
     const metadata: ColumnMetadata[] = [
-      { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+      {
+        name: "FIRST_NAME",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
     ];
     const result = getDefaultStandardization(metadata, minimalTerms);
     expect(result).toHaveLength(1);
-    expect(result[0].output).toBe("ssn");
+    expect(result[0].output).toBe("first_name");
   });
 
   test("returns empty array when metadata is empty", () => {
@@ -314,6 +319,16 @@ describe("default SSN / SSN4 pipelines: explicit blank-drop before pad_left", ()
 
 // --- SSN pipeline ------------------------------------------------------------
 
+// Hyphen, non-breaking hyphen, figure dash, en dash, em dash, minus sign.
+const UNICODE_DASHES = [
+  "\u2010",
+  "\u2011",
+  "\u2012",
+  "\u2013",
+  "\u2014",
+  "\u2212",
+];
+
 describe("default SSN pipeline", () => {
   function run(input: string) {
     const [t] = getDefaultStandardization(
@@ -334,8 +349,30 @@ describe("default SSN pipeline", () => {
     expect(run("987 65 4321")).toBe("987654321");
   });
 
-  test("strips other non-digit characters", () => {
-    expect(run("987.65.4321")).toBe("987654321");
+  // Each would otherwise lose characters and pad to a different SSN.
+  test.each([
+    ["fullwidth digits", "1234567\uff18\uff19"],
+    ["Arabic-Indic digits", "123-45-67\u0668\u0669"],
+    ["a group masked with ?", "123-??-8924"],
+    ["a group masked with _", "123-__-8924"],
+    ["a group masked with bullets", "123-\u2022\u2022-8924"],
+    ["a float-formatted number", "78051120.0"],
+    ["dots", "987.65.4321"],
+    ["parentheses", "(987) 65-4321"],
+  ])("drops a value holding %s (%j)", (_label, input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(run(`987${dash}65${dash}4321`)).toBe(run("987-65-4321"));
+      expect(run(`987${dash}65${dash}4321`)).toBe("987654321");
+    },
+  );
+
+  test("drops a value holding a Unicode dash and a fullwidth digit", () => {
+    expect(run("987\u201065\u2010432\uff11")).toBeNull();
   });
 
   test("trims surrounding whitespace", () => {
@@ -356,6 +393,158 @@ describe("default SSN pipeline", () => {
 
   test("returns null for placeholder value", () => {
     expect(run("123456789")).toBeNull();
+  });
+
+  test("zero-pads a 7-digit SSN missing two leading zeros", () => {
+    expect(run("1234567")).toBe("001234567");
+  });
+
+  test.each(["123456", "8924", "1", "45-6789"])(
+    "drops %j, too few digits to be an SSN missing leading zeros",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each([
+    "***-**-8924",
+    "XXX-XX-8924",
+    "xxx-xx-8924",
+    "###-##-8924",
+    "*****8924",
+    "XXXXX8924",
+    "X78-05-1120",
+    "078-05-112*",
+  ])("drops the masked value %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each(["000-00-8924", "000008924", "000-12-3456", "00008924"])(
+    "drops %j, whose area number is 000",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each([
+    ["001-23-4567", "001234567"],
+    ["010-00-0001", "010000001"],
+    ["100-00-0001", "100000001"],
+  ])("keeps %j, whose area number is not 000", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+});
+
+// --- ssn4 derived from a full SSN column -------------------------------------
+
+describe("default ssn4 derived from a full SSN column", () => {
+  const ssnTerms: LinkageTerms = {
+    ...minimalTerms,
+    linkageFields: [
+      { name: "ssn", type: "ssn" },
+      { name: "ssn4", type: "ssn4" },
+    ],
+  };
+  const ssnOnly: ColumnMetadata[] = [
+    { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+  ];
+
+  function cleaned(metadata: ColumnMetadata[], input: string) {
+    const transformations = getDefaultStandardization(metadata, ssnTerms);
+    return Object.fromEntries(
+      transformations.map((t) => [t.output, runPipeline(input, t.steps!)]),
+    );
+  }
+
+  test("derives ssn4 from the SSN column when there is no ssn4 column", () => {
+    const result = getDefaultStandardization(ssnOnly, ssnTerms);
+    expect(result.map((t) => [t.output, t.input])).toEqual([
+      ["ssn", "SSN"],
+      ["ssn4", "SSN"],
+    ]);
+    expect(cleaned(ssnOnly, "078-05-1120")).toEqual({
+      ssn: "078051120",
+      ssn4: "1120",
+    });
+  });
+
+  test.each(["***-**-8924", "XXX-XX-8924", "xxx-xx-8924", "###-##-8924"])(
+    "a masked value %j is dropped from ssn and kept as ssn4",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: "8924" });
+    },
+  );
+
+  test("a zero-masked value is dropped from ssn and kept as ssn4", () => {
+    expect(cleaned(ssnOnly, "000-00-8924")).toEqual({
+      ssn: null,
+      ssn4: "8924",
+    });
+  });
+
+  test.each([
+    "078-05-XXXX",
+    "078-05-\u2022\u2022\u2022\u2022",
+    "078-05-\uff38\uff38\uff38\uff38",
+  ])(
+    "a value masked in its last four (%j) is dropped from both fields",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: null });
+    },
+  );
+
+  test("a group-masked value is dropped from ssn and keeps its ssn4", () => {
+    expect(cleaned(ssnOnly, "123-??-8924")).toEqual({
+      ssn: null,
+      ssn4: "8924",
+    });
+  });
+
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(cleaned(ssnOnly, `078${dash}05${dash}1120`)).toEqual({
+        ssn: "078051120",
+        ssn4: "1120",
+      });
+      expect(cleaned(ssnOnly, `***${dash}**${dash}8924`)).toEqual({
+        ssn: null,
+        ssn4: "8924",
+      });
+    },
+  );
+
+  test("a fullwidth digit drops the value from both fields", () => {
+    expect(cleaned(ssnOnly, "078-05-112\uff10")).toEqual({
+      ssn: null,
+      ssn4: null,
+    });
+  });
+
+  test("a leading-zero SSN stored as a number keeps both fields", () => {
+    expect(cleaned(ssnOnly, "1234567")).toEqual({
+      ssn: "001234567",
+      ssn4: "4567",
+    });
+  });
+
+  test("an ssn4 column is used when present, and nothing is derived", () => {
+    const both: ColumnMetadata[] = [
+      { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+      { name: "LAST4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    const result = getDefaultStandardization(both, ssnTerms);
+    expect(result.map((t) => [t.output, t.input])).toEqual([
+      ["ssn", "SSN"],
+      ["ssn4", "LAST4"],
+    ]);
+  });
+
+  test("an SSN column not roled for linkage supplies no ssn4", () => {
+    const payloadSsn: ColumnMetadata[] = [
+      { name: "SSN", type: "ssn", role: "payload", isPayload: true },
+    ];
+    expect(getDefaultStandardization(payloadSsn, ssnTerms)).toEqual([]);
   });
 });
 
@@ -391,6 +580,49 @@ describe("default SSN4 pipeline", () => {
 
   test("zero-pads a 3-digit SSN4 missing a leading zero", () => {
     expect(run("123")).toBe("0123");
+  });
+
+  test.each(UNICODE_DASHES)(
+    "a Unicode dash %j separates the digits as a hyphen does",
+    (dash) => {
+      expect(run(`078${dash}05${dash}1120`)).toBe("1120");
+      expect(run(`***${dash}**${dash}8924`)).toBe("8924");
+      expect(run(`${dash}1120`)).toBe("1120");
+    },
+  );
+
+  test.each([
+    ["***-**-8924", "8924"],
+    ["8924", "8924"],
+    ["078-05-1120", "1120"],
+    ["078 05 1120", "1120"],
+    ["078-05-11 20", "1120"],
+  ])("keeps %j, whose last four are digits, as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test.each([
+    "078-05-XXXX",
+    "XXXX",
+    "078-05-112X",
+    "07805****",
+    "78*",
+    "078-05-\u2022\u2022\u2022\u2022",
+    "078-05-\uff38\uff38\uff38\uff38",
+    "1234567\uff18\uff19",
+    "123-45-67\u0668\u0669",
+    "78051120.0",
+    "1120.0",
+  ])("drops %j, not four ASCII digits at its end", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each([
+    ["123-??-8924", "8924"],
+    ["123-\u2022\u2022-8924", "8924"],
+    ["\u2022\u2022\u2022-\u2022\u2022-8924", "8924"],
+  ])("keeps %j, masked only before its last four, as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
   });
 });
 

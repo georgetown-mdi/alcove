@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import { Button, Group, Paper, Stack, Text } from "@mantine/core";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 
+import { fieldSourceColumnTypes } from "@alcove/core";
+
 import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
 
 import { DisclosureSection } from "@components/DisclosureSection";
@@ -132,9 +134,12 @@ export function StandardizationCards({
     return map;
   }, [metadata]);
   // More than one column of a type makes the input column a real choice (and lets two
-  // same-typed fields each take their own).
+  // same-typed fields each take their own). A derived field also offers the columns
+  // it is derived from, so an ssn4 field read from an ssn column lists that column.
   const columnsForType = (type: LinkageField["type"]): Array<string> =>
-    columnsByType.get(type) ?? [];
+    fieldSourceColumnTypes(type).flatMap(
+      (sourceType) => columnsByType.get(sourceType) ?? [],
+    );
 
   // The rendered-card count per type, so the add control offers only a type with a
   // free column and the remove control appears only on a same-typed pair. Counted

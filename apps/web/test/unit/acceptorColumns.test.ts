@@ -160,6 +160,27 @@ describe("acceptor columns editor state", () => {
       "lastName",
     ]);
   });
+
+  test("an ssn4 field may be bound to an ssn column, the type it is derived from", () => {
+    const ssn4Terms: LinkageTerms = {
+      ...nameTerms,
+      linkageFields: [{ name: "ssn4", type: "ssn4" }],
+      linkageKeys: [{ name: "s4", elements: [{ field: "ssn4" }] }],
+    };
+    const metadata: Metadata = [
+      { name: "primary", type: "ssn", role: "linkage", isPayload: false },
+      { name: "secondary", type: "ssn", role: "linkage", isPayload: false },
+      { name: "given", type: "first_name", role: "linkage", isPayload: false },
+    ];
+    const bound = (column: string) =>
+      editorFor(["primary", "secondary", "given"], ssn4Terms, {
+        metadata,
+        inputOverrides: new Map([["ssn4", column]]),
+      }).editorState.standardization.find((t) => t.output === "ssn4")?.input;
+    expect(bound("secondary")).toBe("secondary");
+    // A column of a type the field neither has nor derives from is stale.
+    expect(bound("given")).toBe("primary");
+  });
 });
 
 describe("the acceptor's date-of-birth format follows the bound column", () => {

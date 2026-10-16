@@ -1069,6 +1069,52 @@ describe("a loaded configuration reaches the editor once a file is read", () => 
     expect(cleaned?.steps).toEqual(steps);
   });
 
+  // The CLI cleans an ssn4 field from an ssn column with the configuration's
+  // own steps, so the console opens it with those steps and no notice.
+  function withSsnColumn(column: "ssn" | "ssn4"): AcquiredCsv {
+    const csv = acquired();
+    return {
+      ...csv,
+      rawRows: csv.rawRows.map((row) => ({ ...row, [column]: "078-05-1120" })),
+      columns: [...csv.columns, column],
+    };
+  }
+
+  test("an ssn4 field cleaned from an ssn column keeps the document's steps", () => {
+    const steps = [{ function: "trim_whitespace" }];
+    const applied = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          standardization: [{ output: "ssn4", input: "ssn", steps }],
+        }),
+      ),
+      withSsnColumn("ssn"),
+    );
+    expect(
+      applied.editor?.draft.standardization.find(
+        (transformation) => transformation.output === "ssn4",
+      ),
+    ).toEqual({ output: "ssn4", input: "ssn", steps });
+    expect(noticesOf(applied)).toEqual([]);
+  });
+
+  test("an ssn field cleaned from an ssn4 column is named beside the load", () => {
+    const applied = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          standardization: [{ output: "ssn", input: "ssn4", steps: [] }],
+        }),
+      ),
+      withSsnColumn("ssn4"),
+    );
+    const notice = noticesOf(applied).find((text) =>
+      text.includes("cannot supply"),
+    );
+    expect(notice).toContain("standardization");
+  });
+
   test("the description the document states rides each column", () => {
     const described = statedColumns().map((column) =>
       column.name === "program_code" || column.name === "dob"

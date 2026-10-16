@@ -85,7 +85,9 @@ export function referenceMetadata(): Metadata {
 }
 
 /** The terms the configuration wraps: the default fields and keys over these
- * columns, plus `last_name_variants` and a key matching on it. */
+ * columns, plus `last_name_variants` and a key matching on it. The block
+ * cleans no `ssn4`, and an authored standardization derives none from the SSN
+ * column, so the default `ssn4` field and its keys are left out. */
 export function referenceTerms(): LinkageTerms {
   const { linkageRuleSet: _cited, ...terms } = getDefaultLinkageTerms(
     "County Health",
@@ -99,11 +101,13 @@ export function referenceTerms(): LinkageTerms {
   return {
     ...terms,
     linkageFields: [
-      ...terms.linkageFields,
+      ...terms.linkageFields.filter((field) => field.name !== "ssn4"),
       { ...lastName, name: "last_name_variants" },
     ],
     linkageKeys: [
-      ...terms.linkageKeys,
+      ...terms.linkageKeys.filter((key) =>
+        key.elements.every((element) => element.field !== "ssn4"),
+      ),
       {
         name: "LN variants + DOB",
         elements: [{ field: "last_name_variants" }, { field: "date_of_birth" }],

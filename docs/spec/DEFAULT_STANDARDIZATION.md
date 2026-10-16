@@ -77,7 +77,12 @@ terms declare the fields:
   dataset builder and the satisfiability pre-flight: absent an authored
   transformation, the first `role: linkage` column whose semantic `type` equals
   the field's type (see
-  [Linkage participation](PROTOCOL.md#linkage-participation-the-role-axis)). A
+  [Linkage participation](PROTOCOL.md#linkage-participation-the-role-axis)).
+  One field is derived when the input has no `role: linkage` column of its
+  type: an `ssn4`
+  field with no `role: linkage` column of type `ssn4` binds to the first
+  `role: linkage` column of type `ssn` (see
+  [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)). A
   field that binds to no column yields no transformation and is reported as
   unsatisfiable before the exchange runs.
 - The field's **steps** are the pipeline this document lists for the field's
@@ -111,8 +116,9 @@ linkage key referencing it.
 ```yaml
 steps:
   - function: trim_whitespace
-  - function: remove_non_ascii
-  - function: remove_dashes
+  - function: filter_regex
+    params:
+      pattern: "^[0-9 \\-\\x{2010}-\\x{2014}\\x{2212}]*$"
   - function: replace_regex
     params:
       pattern: "[^0-9]"
@@ -126,33 +132,72 @@ steps:
   - function: filter_regex
     params:
       pattern: "^\\d{9}$"
+  - function: filter_regex
+    params:
+      pattern: "^0{0,2}[1-9]"
   - function: null_if
     params:
       values: ["000000000", "111111111", "123456789"]
 ```
 
-Result: exactly nine digits. Every non-digit is removed (dashes, spaces, dots,
-parentheses), a cell that cleans to empty is dropped, a short value is
-zero-padded to nine for an SSN stored without its leading zero, and anything
-that is not nine digits after padding -- ten digits, say -- is dropped. Three
-placeholder values are then dropped.
+Result: exactly nine digits.
 
-The empty-value drop precedes `pad_left` by design: without it a blank cell
-would pad to `"000000000"` and be dropped only as a side effect of that value
-appearing in the placeholder list, so an operator who tuned the list for their
-own data would silently reintroduce the blank-cell match.
+- **Character screen.** After surrounding whitespace is trimmed, a value
+  holding any character other than an ASCII digit, a space or a dash is
+  dropped, before any character is removed from it. A dash is the ASCII hyphen
+  or one of the Unicode dashes U+2010 to U+2014 and U+2212 (hyphen,
+  non-breaking hyphen, figure dash, en dash, em dash, minus sign) that a
+  spreadsheet or word processor substitutes for it. This drops a masked value
+  (`***-**-8924`, `123-??-8924`), a value holding a non-ASCII digit, and a
+  number written with a decimal point (`78051120.0`). Stripped to its remaining
+  digits and padded, each would become an `ssn` key on digits other than the
+  SSN's.
+- **Digits only.** Spaces and dashes are removed, and a cell that cleans to
+  empty is dropped.
+- **Padding.** A short value is zero-padded to nine, for an SSN stored as a
+  number that lost its leading zeros. Anything that is not nine digits after
+  padding -- ten digits, say -- is dropped.
+- **Area number `000`.** A value whose first three digits are `000` after
+  padding is dropped.
+- **Placeholders.** Three placeholder values are then dropped.
 
-The pipeline applies no Social Security Administration structural rule: an
-area, group, or serial that the SSA never issues passes through. The
-`valid_only` constraint the default `ssn` field declares is a data-quality
-signal reported against the cleaned dataset (see
+The area-number rule rests on one Social Security Administration rule: no SSN
+is issued with the area number `000`. A value with that area is therefore not
+a full SSN but one of two things, and keeping either would make an `ssn` key
+matching on fewer digits than the field states:
+
+- A fragment of six digits or fewer, such as a last four, which padding would
+  turn into area `000`. A nine-digit SSN stored as a number loses at most two leading zeros, so
+  it keeps at least seven digits and is not dropped.
+- A value masked with zeros, such as `000-00-8924`. Its last four still reach
+  `ssn4` (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
+
+The empty-value drop precedes `pad_left` by design: a blank cell padded to
+`"000000000"` would be dropped only as a side effect of a later step, the
+area-number rule or the placeholder list, so an operator who edited either for
+their own data would silently reintroduce the blank-cell match.
+
+Area `000` is the one SSA structural rule the pipeline applies, because a value
+with that area is a fragment or a mask rather than an SSN: any other area, and
+any group or serial, that the SSA never issues passes through. The `valid_only`
+constraint the default `ssn` field declares is a data-quality signal reported
+against the cleaned dataset (see
 [Constraints](../EXCHANGE_REFERENCE.md#constraints)), not a step here.
 
 | Input | Result |
 | ----- | ------ |
 | `"078-05-1120"` | `"078051120"` |
 | `"  078 05 1120  "` | `"078051120"` |
+| `"078\u201305\u20131120"` | `"078051120"` |
 | `"12345678"` | `"012345678"` |
+| `"1234567"` | `"001234567"` |
+| `"123456"` | `null` |
+| `"***-**-8924"` | `null` |
+| `"XXX-XX-8924"` | `null` |
+| `"123-??-8924"` | `null` |
+| `"1234567\uff18\uff19"` | `null` |
+| `"78051120.0"` | `null` |
+| `"000-00-8924"` | `null` |
 | `"1234567890"` | `null` |
 | `"123-45-6789"` | `null` |
 | `"abc"` | `null` |
@@ -162,8 +207,9 @@ signal reported against the cleaned dataset (see
 ```yaml
 steps:
   - function: trim_whitespace
-  - function: remove_non_ascii
-  - function: remove_dashes
+  - function: filter_regex
+    params:
+      pattern: "^[0-9 \\-\\x{2010}-\\x{2014}\\x{2212}]*$|(?:[0-9][ \\-\\x{2010}-\\x{2014}\\x{2212}]*){4}$"
   - function: replace_regex
     params:
       pattern: "[^0-9]"
@@ -192,13 +238,67 @@ same value once both are declared `ssn4`. A cleaned-empty cell is dropped before
 padding, a short value is zero-padded to four, and the all-zero serial is
 dropped.
 
+After surrounding whitespace is trimmed, and before any character is removed, a
+value is kept only in one of two forms:
+
+- It holds nothing but ASCII digits, spaces and dashes (the dashes of the
+  [`ssn` character screen](#ssn)). A value of one to three digits is kept as a
+  last four that lost its leading zeros.
+- It ends in four ASCII digits, spaces and dashes aside. Its mask lies before
+  its last four, as in `***-**-8924` or `123-??-8924`, and its last four are
+  kept.
+
+Any other value is dropped. It is masked in its last four, by ASCII or
+non-ASCII characters as in `078-05-XXXX`, or ends in a non-ASCII digit or a
+decimal point, and removing those characters would key it on other digits of
+the SSN.
+
 | Input | Result |
 | ----- | ------ |
 | `"6789"` | `"6789"` |
 | `"123-45-6789"` | `"6789"` |
+| `"123\u201345\u20136789"` | `"6789"` |
+| `"***-**-8924"` | `"8924"` |
+| `"XXX-XX-8924"` | `"8924"` |
+| `"123-??-8924"` | `"8924"` |
 | `"89"` | `"0089"` |
+| `"078-05-XXXX"` | `null` |
+| `"078-05-\u2022\u2022\u2022\u2022"` | `null` |
+| `"XXXX"` | `null` |
+| `"1120.0"` | `null` |
 | `"0000"` | `null` |
 | `"abcd"` | `null` |
+
+#### Last four derived from a full SSN
+
+When the input has no `role: linkage` column of type `ssn4`, the defaults bind
+the `ssn4` field to the first `role: linkage` column of type `ssn` and run this
+pipeline over it, beside the `ssn` pipeline over the same column. A file holding
+full SSNs and no last-four column therefore supplies `ssn4`, and its values
+equal those a partner holding only the last four derives, since both run this
+one pipeline.
+
+The pipeline reads the cell as written, not the `ssn` result, so the `ssn`
+character screen does not reach it: `***-**-8924` is `null` as `ssn` and
+`"8924"` as `ssn4`. Nor does the `ssn` area-number rule: `000-00-8924` is
+likewise `null` as `ssn` and `"8924"` as `ssn4`.
+
+A file with its own `role: linkage` column of type `ssn4` keeps using it, and
+nothing is derived. An `ssn4` column with any other role does not stop the
+derivation, so a file that keeps its `ssn4` column out of matching still
+supplies `ssn4` keys derived from a matched `ssn` column.
+
+An authored standardization gets no derived binding either: a linkage field it
+leaves uncovered falls back to the identity transformation, which over a full
+SSN column would hash the whole SSN as its last four. An authored
+transformation that binds `ssn4` to an `ssn` column runs the steps the operator
+wrote: steps that do not reduce the value to its last four hash more of the
+SSN. Rebinding the web inviter's `ssn4` cleaning card to an `ssn` column
+replaces the card's steps with this pipeline's. A configuration loaded into the
+web inviter or the console keeps its own steps, as the command line runs them.
+A second card for an `ssn4`-typed field, named other than `ssn4`, that is
+rebound to an `ssn` column is declared with type `ssn` and keeps the steps it
+had.
 
 ### `first_name`
 

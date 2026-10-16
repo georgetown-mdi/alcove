@@ -154,3 +154,33 @@ describe("StandardizationCards: per-field binding and multi-field affordances", 
     ).toHaveLength(0);
   });
 });
+
+describe("StandardizationCards: an ssn4 field derived from an ssn column", () => {
+  test("offers the ssn columns it may be derived from", async () => {
+    const ssnMetadata: Metadata = [
+      { name: "ssn_a", type: "ssn", role: "linkage", isPayload: false },
+      { name: "ssn_b", type: "ssn", role: "linkage", isPayload: false },
+    ];
+    const standardization: Standardization = [
+      { output: "ssn4", input: "ssn_a", steps: [] },
+    ];
+    app.render(
+      createElement(StandardizationCards, {
+        standardization,
+        declaredFields: authoredLinkageFields(ssnMetadata, standardization),
+        metadata: ssnMetadata,
+        columnSamples: columnSamplesFromRows(
+          [{ ssn_a: "078-05-1120", ssn_b: "219-09-9999" }],
+          ["ssn_a", "ssn_b"],
+        ),
+        onStepsChange: () => {},
+        onInputColumnChange: () => {},
+        onMissingField: "throw",
+      }),
+    );
+    await expandFieldCards();
+    await expect
+      .element(page.getByRole("combobox", { name: "Column to clean" }))
+      .toBeInTheDocument();
+  });
+});

@@ -2470,8 +2470,9 @@ describe("unsatisfiedLinkageFields", () => {
           },
           { name: "tax_id", type: "ssn", role: "linkage", isPayload: false },
         ],
-      ),
-    ).toEqual([]);
+      ).map((f) => f.name),
+      // ssn4 stays unbound: an authored standardization gets no derived binding.
+    ).toEqual(["ssn4"]);
   });
 
   test("an explicit standardization with an absent input preempts the type fallback", () => {
@@ -2649,28 +2650,39 @@ describe("assessLinkageSatisfiability", () => {
 
   test("an input missing one field keeps the keys that do not need it", () => {
     // No ssn column, but first/last name and dob are present. Keys that require
-    // ssn become unsatisfiable; the name+dob keys survive, so the count is
+    // ssn or ssn4 become unsatisfiable; the name+dob keys survive, so the count is
     // positive but short of the declared total.
     const { unsatisfied, satisfiableKeyCount } = assessLinkageSatisfiability(
       ["last_name", "first_name", "dob"],
       fullTerms,
     );
-    expect(unsatisfied.map((f) => f.name)).toEqual(["ssn"]);
+    expect(unsatisfied.map((f) => f.name)).toEqual(["ssn", "ssn4"]);
     expect(satisfiableKeyCount).toBeGreaterThan(0);
     expect(satisfiableKeyCount).toBeLessThan(fullTerms.linkageKeys.length);
   });
 
-  // Built without metadata so it keeps every default key -- including the ssn4
-  // keys and the swap key -- that the type-filtered `fullTerms` fixture drops.
+  // Built without metadata so it keeps every default key -- including the swap
+  // key -- that the type-filtered `fullTerms` fixture drops.
   const allKeyTerms = getDefaultLinkageTerms("Agency A");
 
-  test("an ssn column does not satisfy an ssn4 field (distinct semantic types)", () => {
-    // The full default terms reference both ssn and ssn4. An `ssn` column infers
-    // as ssn only, never ssn4, so ssn4 stays unsatisfiable -- matching runtime,
-    // where the absence of an ssn4-typed column collapses the ssn4 keys.
+  test("with the default cleaning, an ssn column satisfies an ssn4 field", () => {
+    // The default cleaning derives ssn4 from the full SSN column when the input
+    // has no ssn4 column, so both SSN fields are producible.
     const { unsatisfied } = assessLinkageSatisfiability(
       ["first_name", "last_name", "dob", "ssn"],
       allKeyTerms,
+    );
+    expect(unsatisfied).toEqual([]);
+  });
+
+  test("with an authored standardization, an ssn column does not satisfy an ssn4 field", () => {
+    const authored: Standardization = [
+      { output: "ssn", input: "ssn", steps: [{ function: "trim_whitespace" }] },
+    ];
+    const { unsatisfied } = assessLinkageSatisfiability(
+      ["first_name", "last_name", "dob", "ssn"],
+      allKeyTerms,
+      authored,
     );
     const names = unsatisfied.map((f) => f.name);
     expect(names).toContain("ssn4");

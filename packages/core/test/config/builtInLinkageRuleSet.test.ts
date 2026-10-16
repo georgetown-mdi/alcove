@@ -316,6 +316,41 @@ describe("linkageTermsFromRuleSet", () => {
     );
   });
 
+  test("a file with a full SSN column and no ssn4 column keeps the SSN4 keys", () => {
+    const terms = getDefaultLinkageTerms("Party A", [
+      col("s", "ssn"),
+      col("l", "last_name"),
+      col("d", "date_of_birth"),
+    ]);
+    expect(terms.linkageKeys.map((key) => key.name)).toEqual(
+      expect.arrayContaining(["SSN4 + LN + DOB", "SSN4 + LN4 + YOB + MOB"]),
+    );
+    expect(terms.linkageFields.map((field) => field.name)).toContain("ssn4");
+  });
+
+  test("a file with neither SSN column keeps no SSN or SSN4 key", () => {
+    const terms = getDefaultLinkageTerms("Party A", [
+      col("f", "first_name"),
+      col("l", "last_name"),
+      col("d", "date_of_birth"),
+    ]);
+    const fields = terms.linkageFields.map((field) => field.name);
+    expect(fields).not.toContain("ssn4");
+    expect(fields).not.toContain("ssn");
+    expect(terms.linkageKeys.length).toBeGreaterThan(0);
+  });
+
+  test("an SSN column not roled for linkage supplies no SSN4 key", () => {
+    const terms = getDefaultLinkageTerms("Party A", [
+      col("s", "ssn", "payload"),
+      col("l", "last_name"),
+      col("d", "date_of_birth"),
+    ]);
+    expect(terms.linkageFields.map((field) => field.name)).not.toContain(
+      "ssn4",
+    );
+  });
+
   test("draws its rules from the set it is given, not from the default", () => {
     const ruleSet = {
       reference: {

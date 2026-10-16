@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   buildStandardizedDataset,
@@ -6,6 +6,8 @@ import {
 } from "../../src/standardization";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { ColumnMetadata } from "../../src/config/metadata";
+import type { Standardization } from "../../src/config/standardizationSchema";
+import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
 
 // --- Shared fixtures ---------------------------------------------------------
 
@@ -115,4 +117,52 @@ test("identity transform: mixed-case last_name is passed through as-is (no stand
   const iters = makeIterables(rows);
   // Without a to_upper_case cleaning step the raw value is used unchanged.
   expect(iters[0].at(0)).toBe("123456789Smith20000101");
+});
+
+// --- ssn4 derived from a full SSN column -------------------------------------
+
+describe("an ssn4 field over a file with only a full SSN column", () => {
+  const ssnOnly: ColumnMetadata[] = [
+    { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+  ];
+  const ssn4Terms: LinkageTerms = {
+    ...terms,
+    linkageFields: [{ name: "ssn4", type: "ssn4" }],
+    linkageKeys: [{ name: "SSN4", elements: [{ field: "ssn4" }] }],
+  };
+  const rows = [{ ssn: "559-81-1301" }, { ssn: "***-**-2281" }];
+
+  function ssn4Values(standardization: Standardization | undefined) {
+    const dataset = buildStandardizedDataset(
+      standardization,
+      rows,
+      ssnOnly,
+      ssn4Terms,
+    );
+    return [
+      ...new StandardizedKeyIterable(
+        ssn4Terms.linkageKeys[0],
+        dataset,
+        rows.length,
+      ),
+    ];
+  }
+
+  test("with no standardization, the builder takes the last four digits", () => {
+    expect(ssn4Values(undefined)).toEqual(["1301", "2281"]);
+  });
+
+  test("with the default standardization, the builder takes the last four digits", () => {
+    expect(ssn4Values(getDefaultStandardization(ssnOnly, ssn4Terms))).toEqual([
+      "1301",
+      "2281",
+    ]);
+  });
+
+  test("with an authored standardization naming no ssn4 output, ssn4 binds nothing", () => {
+    const authored: Standardization = [
+      { output: "other", input: "ssn", steps: [] },
+    ];
+    expect(ssn4Values(authored)).toEqual([undefined, undefined]);
+  });
 });

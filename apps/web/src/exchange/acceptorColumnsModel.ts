@@ -1,6 +1,7 @@
 import {
   countOnlyTransmitsColumn,
   decideLinkageTermsVerdict,
+  fieldSourceColumnTypes,
   inferMetadataForEveryColumn,
   overlongDisclosedColumnPositions,
   sanitizeForDisplay,
@@ -135,7 +136,8 @@ export function acceptorInitialColumnsState(
  *    rows ({@link defaultStandardizationForRows}) -- so an ISO-dated file is not
  *    parsed as US-format and under-matched.
  * 2. Input-column overrides are applied FIRST, but only the ones that still bind to a
- *    `role: linkage` column of the field's type (a stale override is dropped so it
+ *    `role: linkage` column of a type the field may read
+ *    ({@link fieldSourceColumnTypes}; a stale override is dropped so it
  *    never drives a column the core would refuse).
  * 3. Authored step overrides are applied over that; {@link applyStepOverrides} gates
  *    each on the current input column, so a step authored against the old column is
@@ -163,7 +165,9 @@ export function acceptorColumnsEditorState(
       field !== undefined &&
       metadata.some(
         (c) =>
-          c.name === column && c.role === "linkage" && c.type === field.type,
+          c.name === column &&
+          c.role === "linkage" &&
+          fieldSourceColumnTypes(field.type).includes(c.type),
       )
     )
       effectiveInputOverrides.set(output, column);
