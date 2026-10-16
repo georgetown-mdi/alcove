@@ -4,8 +4,9 @@ title: "Linkage Rule Catalog: Proposed Rules and Their Precision Bands"
 
 # Linkage rule catalog: proposed rules and their precision bands
 
-_Status: proposed, not shipped.
-Nothing here is built, and the operator-facing form follows when the rules ship.
+_Status: proposed.
+The rules marked as in `hmis-keys` today are shipped, and this catalog gives them bands.
+The other rules are not built, and the operator-facing form follows when they ship.
 The shipped key set, `hmis-keys`, is described in [default-linkage-rule-set.md](default-linkage-rule-set.md).
 The design rationale behind this catalog -- how the rules compare with published practice, why they run in precision order, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -371,17 +372,20 @@ Against it: in Mirel et al. (2022), links on which only the first-initial and th
 With an SSN token also agreeing, the same links were 720 true and none false.
 A county's smaller files and the condition might bring it into 95% to 99% (reasoning, low confidence); no source measures the restricted rule.
 
-## Open questions for the owner
+## Owner questions and rulings
 
 - **Rule 33.**
   Its nearest measured relative is below 95% precision, and so below every other rule's band.
-  Whether it runs before it is measured is open.
+  It stays in the list while the owner consults the partner who uses rules of this shape.
 - **HUD's older client ZIP.**
   HUD's FY2026 standards have no client ZIP; their only ZIP is the project's (HUD 2025a; HUD 2025b).
   HUD's earlier standards had a client ZIP, the ZIP of the last permanent address, where the client last lived for 90 days or more (HUD 2010).
   For a client already homeless it is a former address, while a Medicaid plan records a current one.
   ZIP change caused 95.7% of the true readmissions Naessens et al.'s (2015) DOB + sex + ZIP rules missed.
-  Whether a county may supply that ZIP as the client ZIP for rules 11, 23, 27 and 28 is open.
+  The owner ruled that a county may supply that ZIP as the client ZIP for rules 11, 23, 27 and 28.
+- **The shipped email opt-in.**
+  The web app's guided offer adds `FN + EMAIL`, a shape this catalog does not propose; rule 31 is its stricter form.
+  Whether the offer is retired, or changed to rule 31, is open.
 
 ## Shapes considered and not proposed
 

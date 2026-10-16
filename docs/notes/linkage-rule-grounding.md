@@ -41,8 +41,8 @@ Three limits on the sources apply throughout:
 
 Three facts about the deployment shape the bands in the catalog.
 
-**Exchanges run within one county.** Alcove's exchanges each run within one
-county, across many counties. Chance agreement grows with the size of the two
+**Exchanges run within one county.** The rules assume each exchange runs within one
+county, with exchanges in many counties. Chance agreement grows with the size of the two
 files: Zech et al. (2016) found 0.18% of individuals in an 11-million-record
 sample of the Death Master File sharing their first name, last name and date of
 birth with someone else, against 1.19% in the full 85.8-million-record file, and
@@ -59,8 +59,8 @@ where most of a scattered-site project's clients are housed (HUD 2025a; HUD
 2025b), and in the CSV export it sits in the project file, not the client file
 (HUD 2025c). Every client of a shelter shares it, so a party must never supply
 it as the client's ZIP. A party with no client ZIP brings none, and rules 11,
-23, 27 and 28 drop out of its exchanges. Whether HUD's older client ZIP may be
-used instead is an open question in the catalog.
+23, 27 and 28 drop out of its exchanges. The owner ruled that a county may
+supply HUD's older client ZIP instead, as the catalog records.
 
 **The last four SSN digits are the HMIS norm.** Since the FY2024 standards HUD
 has required an HMIS to collect only the last four digits, leaving each
@@ -174,8 +174,9 @@ Running rules in precision order means the rule that claims a record is the most
 precise one that could, and a less precise rule sees only what every more
 precise rule left (reasoning). Each band is information a party consents to, so
 the order is what makes a rule's band describe the pairs it actually claims.
-The shipped `hmis-keys` order is not a precision order, as
-[default-linkage-rule-set.md](default-linkage-rule-set.md) records.
+The shipped `hmis-keys` order is not a precision order, as the comment on
+`DEFAULT_LINKAGE_KEYS` in `packages/core/src/defaults/builtInLinkageTerms.ts`
+records.
 
 Published practice is split. NCHS orders strictest first. Cook County and Ong
 put name + DOB first, but their later rules are not stricter forms of it: Cook
