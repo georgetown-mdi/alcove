@@ -10,9 +10,9 @@ their validation rests on, and the criticisms on record against them are in
 [default-linkage-rule-set.md](default-linkage-rule-set.md). This note supplies
 the three things that one records as still to be produced -- a comparison of the
 built-in keys against named external standards and operating practice, candidate
-rules for the three recognized matchable fields no built-in key uses, and the
-evidence a candidate built-in set would have to show before it could ship. See
-[docs/notes/README.md](README.md)._
+keys -- over the existing fields and over the three recognized matchable fields
+no built-in key uses -- and the evidence a candidate built-in set would have to
+show before it could ship. See [docs/notes/README.md](README.md)._
 
 This is design rationale. Nothing here binds an implementation.
 
@@ -23,7 +23,7 @@ Every claim below is sourced to a primary document. Those documents live in a
 distributed with it, so a citation here does not resolve for every reader.
 
 Each is therefore cited by title, year, and the filename it uses in that
-library (`research/linkage/<filename>`), and every source named is a public
+library (`linkage-kb/papers/<filename>`), and every source named is a public
 document whose title and year are enough to find it independently. Where a claim
 rests on a secondary reading rather than a primary document, the note says so in
 the sentence that makes the claim. The full list, with what each one is, is in
@@ -39,9 +39,11 @@ Three of the sources have limits that several claims below depend on:
   short deterministic pre-pass. They do not run an ordered key cascade, so they
   cannot directly adjudicate a question about cascade order; where this note
   draws on them for that question, it says the inference is analogical.
-- Two of the per-key measurement sources report **precision and recall within a
-  blocked candidate set on one institution's data**. They are the only per-key
-  figures published anywhere, and they are not a benchmark.
+- The per-key measurements are **not a benchmark**. They are of unordered
+  tokens, of a key over an SSN-blocked sample, of a blocked candidate set on one
+  institution's data, or of a stratum another matcher missed. None measures a key
+  inside an ordered cascade, every one is from health or vital records, and none
+  is from HMIS.
 
 ## What is being compared
 
@@ -193,8 +195,9 @@ the population Alcove serves contradicts harder: of 421 homeless adults studied
 in 2017, 94% owned a cellphone, but "most had experienced high phone and phone
 number turnover in the preceding three months".
 
-**The 2014 federal patient-matching report** adds the only published
-false-positive figures that include a ZIP. On a 42,000-record sample, first name
+**The 2014 federal patient-matching report** adds false-positive figures that
+include a ZIP, taken from RAND's 2008 analysis of the Death Master File. On a
+42,000-record sample, first name
 plus last name plus birth year plus ZIP gave about one possible false match in
 3,500; on an 80-million-record file, last name alone ran at 98% false positives,
 adding date of birth brought it to 33%, and adding first name, ZIP and the last
@@ -217,7 +220,7 @@ address is unusable, the ZIP is the fragment worth keeping.
 
 ### The operating cascades
 
-Three published deterministic cascades are close enough in shape to compare
+Four published deterministic cascades are close enough in shape to compare
 against.
 
 **Maryland's longitudinal data system**, read here through a secondary survey
@@ -249,11 +252,27 @@ corroboration of the weaker key, not less: a ratio of agreeing to non-missing
 identifiers above one half for the full SSN, above two thirds plus at least five
 agreeing fields for the last four.
 
+**Cook County Health's hashed rules** (Trick et al. 2019, a safety-net health
+system) run in a stated hierarchical order with the no-SSN rule first: (1)
+complete name + DOB; (2) transposed complete name + DOB; (3) complete name +
+transposed DOB (month-day); (4) first three letters of the first name + last
+name + DOB; (5) complete name + DOB with a 1-day offset + last four SSN; (6)
+complete name + DOB with a 1-year offset + last four SSN. The last four SSN is
+required on the rules that loosen the date, and on the transposed-name rule
+too, which the methods list omits and the results table states. The paper
+counts, per rule, the matches beyond complete name + DOB that the health
+system's own EHR process missed: 454 by transposed DOB, 371 by the 1-day
+offset, 313 by the 365-day offset. Of 201 sampled episodes the local rules
+matched and the EHR did not, 189 were confirmed, 11 could not be adjudicated, and one
+was a mismatch, caused by the first-three-letters rule. Homelessness was
+associated with the two processes disagreeing (adjusted odds ratio 2.4).
+
 Two things these cascades do NOT determine, stated plainly because it would be
 easy to over-read them:
 
 - **None publishes per-position precision.** No source in this library publishes
-  an ordered cascade with a measured false-match rate per position. That is
+  an ordered cascade with a measured false-match rate per position: Cook County
+  counts matches per rule and validates the six rules together. That is
   genuinely unpublished, not merely unfetched, and it is exactly the measurement
   an order argument would want.
 - **The NCHS fourteen passes are not a cascade.** They are "multiple, overlapping
@@ -433,9 +452,9 @@ checkable against the declaration:
 
 ### What the published cascades order on
 
-Where a published cascade exists, it is ordered strictest-first on the strength
-of its SSN evidence, and the no-SSN name rule is its floor rather than its
-middle. Maryland's four orders, on the secondary reading above, run from
+Three of the four published cascades are ordered strictest-first on the
+strength of their SSN evidence, with the no-SSN name rule as the floor rather
+than the middle. Maryland's four orders, on the secondary reading above, run from
 everything-agrees down to SSN-only and only then to name-and-date-with-no-SSN.
 The Census person-key system, on that same secondary reading, runs its exact
 SSN-and-name-and-date verification first and everything else after. NCHS's
@@ -443,9 +462,15 @@ deterministic pre-pass runs full SSN, then last-four, and demands *more*
 corroboration of the weaker key, and places its swapped-name handling late, as
 the Census system does on that same secondary reading.
 
-Set against that, the built-in order is the opposite arrangement at positions 10
-to 14. Nothing in this library publishes an ordered cascade that places a no-SSN
-name key above an SSN-bearing one.
+Set against those three, the built-in order is the opposite arrangement at
+positions 10 to 14. The fourth orders as the built-in set does: Cook County's
+rules put complete name + DOB first and its two last-four-SSN rules fifth and
+sixth. A Colorado
+congenital heart disease linkage (Ong et al. 2020) did the same in two steps,
+running first name + last name + DOB first and last name + last four SSN + year
+of birth after it, and the second step produced no new links. In both, the
+later SSN4 rules are not stricter forms of the name rule they follow: Cook
+County's loosen the date, and Ong's drops the first name and the day and month.
 
 ### What the per-key measurements say
 
@@ -483,14 +508,22 @@ are one health system's internal analysis, and the framework says so: "It remain
 to be determined how these introspectively-derived rules would work across
 organizational boundaries."
 
+The one population-scale exact-token evaluation in this library cuts against
+the first reading. In Mirel et al.'s hospital-to-death-index linkage, links
+agreeing on the name + sex + DOB tokens with no SSN token split on geography:
+41.4% false where the name + DOB + state token did not also agree, 0.3% where
+it did. The figures are
+set out under [Per-key ablation](#per-key-ablation-and-its-one-precedent).
+
 ### The SSN failure mode nobody's ordering rule addresses
 
 The oldest per-identifier study in this library found that using an SSN as the
 exclusive linkage variable produced error rates of 9.2% and 4.7% at two
-hospitals, and then characterized what the errors were. The most common was a
-spousal mix-up -- 56% and 39% of errors -- "in that a female of one record was
-linked to a male record sharing the same last name", almost certainly a
-guarantor's number recorded for the beneficiary. Its conclusion names the remedy:
+hospitals, and then characterized what the errors were. "The most common error
+appeared to be due to spousal mix-ups" -- 56% and 39% of the SSN errors analyzed
+-- "in that a female of one record was linked to a male record sharing the same
+last name", which the paper reads as a guarantor's number recorded for the
+beneficiary. Its conclusion names the remedy:
 "Additional linkage identifiers such as gender and first name help to avoid
 incorrect links between beneficiaries and guarantors", and "Linkage criteria that
 include SSN combined with variables from both name and birth date maximize the
@@ -526,15 +559,21 @@ Every error model above comes from linking a file against a reference file, or
 deduplicating one file, in clear text. A two-party exact-key intersection is a
 different failure geometry, and three differences change what the evidence means.
 
-**A false match must be SHARED.** A match happens only when both parties
-independently derive the same key string. An error confined to one party does not
-create a false match -- it destroys the key and costs a missed match instead. A
-false match therefore requires either a genuine collision (two different people
-whose true values agree on every element of the key) or an error present in
-*both* files. The wife recorded under her husband's SSN at one agency and again
-at the other is, under intersection, a correct match on a wrong number; the same
-record matched against a reference file holding the husband is a false link. So
-the reference-file error rates are an upper bound here, not an estimate.
+**A false match needs a value both files hold.** A match happens only when both
+parties independently derive the same key string. An error confined to one party
+that produces a value nobody holds does not create a false match -- it destroys
+the key and costs a missed match instead. A false match therefore requires a
+genuine collision (two different people whose true values agree on every element
+of the key), an error present in *both* files, or a one-sided error that lands on
+**another real person's correct value**.
+
+The last case is the dominant measured SSN error. The wife recorded under her
+husband's SSN at both agencies is, under intersection, a correct match on a wrong
+number. The wife recorded under his SSN at one agency, against a counterparty
+that holds the husband under his own number, is a false match wherever the key's
+other elements also agree -- and the spousal mix-up shares the last name. So for
+SSN-led keys this note takes the reference-file error rates as an estimate under
+two-party intersection, not only as an upper bound.
 
 **Shared error is not rare, and standards manufacture it.** The mechanisms that
 put the same wrong value in two files are exactly the ones a shared operating
@@ -571,44 +610,60 @@ This section sets out the evidence on both sides and does not, by design, decide
 the built-in cascade's order. The choice between reordering the set (a content
 change, taking a key-set version bump) and re-documenting it (the order is
 deliberate and the precision claim in the source comment is what is wrong) is a
-decision for the maintainer, not for this note.
+decision for the maintainer, not for this note. The sharper form of the question
+that Mirel's rows raise is set out with the other open question in [Decisions
+left to the owner](#decisions-left-to-the-owner).
 
-## Candidate rules for the unused fields
+## Candidate keys
 
 ### The substrate already exists
 
-Nothing needs to be built to standardize these three. The shipped pipelines
-already produce exactly the forms the published token sets consume -- ten digits
-for a phone with a leading US country code stripped, a lowercased `local@domain`
-shape, and a five-digit ZIP with a ZIP+4 truncated to its prefix and a New
-England leading zero restored
+Nothing needs to be built to standardize the three contact fields. The shipped
+pipelines already produce exactly the forms the published token sets consume --
+ten digits for a phone with a leading US country code stripped, a lowercased
+`local@domain` shape, and a five-digit ZIP with a ZIP+4 truncated to its prefix
+and a New England leading zero restored
 ([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#zip_code)). What
 is missing is keys.
 
-### A constraint that governs all three candidates
+### Every built-in key must match between the two parties
 
-None of these fields can enter the BUILT-IN zero-setup set as things stand. The
-zero-setup property holds because every built-in key is over the
-guaranteed-minimum substrate both parties are sure to bring; a key over a field
-outside it strands the party whose file does not have it, at run time, on an
-operator who authored nothing. That property is held by a check rather than by
-review, and the check fails a built-in key naming any of these three fields
-(`npm run check:zero-setup-keys`; see
-[default-linkage-rule-set.md](default-linkage-rule-set.md)). A candidate rule
-over them is therefore necessarily a rule of an ALTERNATE selectable set, not an
-addition to the default -- or it takes a deliberate widening of the field set,
-whose consequences for zero setup would have to be argued separately.
+Every built-in key, existing and candidate, has to match exactly between the two
+parties' terms. A zero-setup party derives its terms from its own file, keeping
+the built-in keys that file can satisfy. A party whose file lacks a candidate's
+contact field therefore derives a key list that differs from its partner's, and
+the exchange is cancelled, at run time, on an operator who authored nothing.
 
-A second constraint follows from the cascade. A candidate key that is a strict
-refinement of an existing key -- the same elements plus one more -- matches a
-subset of what the looser key matches, so it must be placed ABOVE that key or it
-can never fire. Three of the candidates below are strict refinements of the
-built-in `LN + FN + DOB` key -- the two ZIP forms and the compound phone form --
-so each of those is a placement decision as much as a membership decision. The
-rest stand in no refinement relation to any built-in key:
-`LN + FN + YOB + MOB + ZIP5` coarsens the date while adding a ZIP, so it is
-neither narrower nor wider, and the two thin contact keys share no shape with any
-built-in key at all.
+That is why the zero-setup property is held by a check rather than by review:
+the check fails a built-in key naming any of the three contact fields (`npm run
+check:zero-setup-keys`; see
+[default-linkage-rule-set.md](default-linkage-rule-set.md)). Adopting any
+candidate over `phone_number` or `zip_code` into the built-in set depends on
+exchanges running on the keys both files can supply, which is not built. Until
+then such a candidate is a rule of an alternate selectable set, or it takes a
+deliberate widening of the field set, whose consequences for zero setup would
+have to be argued separately. The three SSN4 candidates below are over
+`baseline-pii` fields alone, so this constraint does not bear on them.
+
+### Placing a refinement
+
+A candidate key that is a strict refinement of an existing key -- the same
+elements plus one more -- matches a subset of what the looser key matches. This
+note's reading of what that means in a cascade:
+
+- **Placed above the looser key**, a refinement adds matches only by resolving
+  ambiguity within one party's file. A one-to-one round drops a value that two or
+  more of one party's records hold
+  ([PROTOCOL.md](../spec/PROTOCOL.md#value-level-round-participation)), and the refinement can split those
+  records. Otherwise it matches the pairs the looser key would have matched, so
+  its main effect is attribution: which key a match is recorded under.
+- **Placed below**, it runs only on the records the looser key left unmatched,
+  which in a one-to-one round include the records whose looser value was dropped
+  as ambiguous.
+
+Two candidates below, N4 and N5, are strict refinements of `LN + FN + DOB`, so
+each is a placement and attribution decision as much as a membership one. The
+rest stand in no refinement relation to any built-in key.
 
 ### The bearing of the served population, stated once
 
@@ -623,6 +678,196 @@ implementation may collect contact information outside the federal elements --
 but it does mean a candidate rule's realistic pair fill rate on this user class
 is bounded by whichever side has the field, which is at most one of them.
 
+### Notation
+
+Keys are written as the built-in set names them: `LN`, `FN`, `DOB` and `SSN4`
+are `last_name`, `first_name`, `date_of_birth` and `ssn4`, and `YOB + MOB` is
+`date_of_birth` cut to its first six characters with `substring`. `PHONE` and
+`ZIP5` are `phone_number` and `zip_code` in their standardized forms. Existing
+keys are cited by position, 1 to 14.
+
+A date expansion (`adjacent_years`, `day_month_swaps`) needs a `parse_date`
+emitting the default `YYYYMMDD` layout ahead of it
+([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termslinkage_keys)).
+`date_of_birth` is already standardized to that layout, so the element repeats
+the parse with input `YYYYMMDD`. Both kinds expand on the receiving party only,
+and the expansion keeps the original value beside the expanded ones, so N1 and N2
+also match an exact DOB -- a pair that `SSN4 + LN + DOB` at position 8 claims
+first.
+
+### Tier A: recommended
+
+**N1. `SSN4 + LN + FN + DOB`, with the birth year +/- 1**
+
+```
+{ name: "SSN4 + LN + FN + DOB~Y", elements: [
+  { field: "ssn4" }, { field: "last_name" }, { field: "first_name" },
+  { field: "date_of_birth",
+    transform: [{ function: "parse_date", params: { input_format: "YYYYMMDD", output_format: "YYYYMMDD" } }],
+    generate_fuzzy_comparisons: "adjacent_years" } ] }
+```
+
+- **Grounding:** linkja emits this hash, `fnamelnamedobYssn`, whenever an SSN is
+  present: the DOB plus one year, over linkja's SSN, which is the last four
+  digits. Cook County's rule 6 has the same shape, and found 313 matches beyond
+  complete name + DOB that its EHR process missed; it also observed spikes in DOB
+  differences at 1 and 365 days among patients with rare names. HUD's manual lets
+  staff estimate an unremembered birth year from the client's age, and defines
+  "Approximate or partial DOB reported" as a client who can give their age within
+  one year. Both produce a birth year off by one.
+- **What it adds:** records whose birth year differs by one. In a ten-state study
+  of confirmed duplicate pairs in master patient indexes (Just et al. 2016), the
+  year differed in 40.0% of the pairs with any DOB discrepancy.
+- **Position:** after position 9 (`SSN4 + LN4 + YOB + MOB`).
+- **Shared-value risk:** low. A father and son with one name would need the same
+  SSN4 and birth years one apart (this note's inference).
+
+**N2. `SSN4 + LN + FN + DOB`, with day and month exchanged**
+
+- **Shape:** as N1, with `generate_fuzzy_comparisons: "day_month_swaps"`.
+- **Grounding:** linkja's `fnamelnameTdobssn`. Cook County's rule 3 used complete
+  name + transposed DOB (month-day) without the last four SSN, and found 454
+  matches beyond complete name + DOB that its EHR process missed.
+- **What it adds:** a swapped month and day, which is 2.6% of DOB discrepancies in
+  the same duplicate-pair study, so the contribution is small. The expansion
+  costs 2 candidates.
+- **Position:** after N1.
+- **Shared-value risk:** low. HUD's `01` / `01` filler for an unknown month and
+  day is unchanged by a swap.
+
+**N3. `SSN4 + FN + DOB`, with no last name**
+
+- **Shape:** `ssn4`, `first_name`, `date_of_birth`, with no transforms: the SSN4
+  counterpart of position 12 (`SSN + DOB + FN`).
+- **Grounding:** a measured close relative. Naessens et al. 2015 found last four
+  SSN + DOB + sex at 99.9% positive predictive value, with 3 false positives for
+  30-day readmissions and 2 for deaths within 30 days of discharge. N3 replaces
+  sex with the first name, which this note takes to be more discriminating. What
+  does not transfer: the readmission test links one health system's own
+  discharges to each other, the death test is for Minnesota residents only, and
+  the SSN4 values were cut from complete SSNs held in both reference sources. UCLA
+  used this exact shape -- last four SSN, first name, DOB -- to screen Care
+  Everywhere links for false positives. That is a check, not a matching key, so
+  it is weak grounding.
+- **What it adds:** a changed surname. Ross et al. 2020 report 44% of the 379
+  classified errors in their reviewed sample of links Care Everywhere missed as
+  due to last-name changes, and call them the most common error. A changed last
+  name was 48 of a sample of 200 EHR matches Cook County's local rules missed.
+- **Position:** after N2.
+- **Shared-value risk:** low. Siblings sharing a first name and a DOB are
+  same-sex twins given the same name (this note's inference).
+
+**N4. `LN + FN + DOB + PHONE`**
+
+- **Shape:** `last_name`, `first_name`, `date_of_birth`, `phone_number`: the key
+  the web app's guided list already offers for a phone column.
+- **Grounding:** Sequoia's FN + LN + DOB + sex + phone reached 99.5% uniqueness at
+  76.2% completeness, and "became the highest precedence rule" in that one health
+  system's inward-facing analysis. Uniqueness is not precision.
+- **What it adds:** a strict refinement of `LN + FN + DOB`, so it adds matches
+  only by resolving ambiguity within one party's file (see [Placing a
+  refinement](#placing-a-refinement)). In the Death Master File, Zech et al.
+  found 0.18% of individuals in an 11-million-record sample, and 1.19% in the
+  full file, sharing their FN + LN + DOB with someone else.
+- **Position:** after N3, above N5.
+- **Shared-value risk:** a household or shelter phone. A false match needs the
+  same full name and DOB as well (this note's inference).
+
+**N5. `LN + FN + DOB + ZIP5`**
+
+- **Shape:** `last_name`, `first_name`, `date_of_birth`, `zip_code`: the key the
+  guided list already offers for a ZIP column.
+- **Grounding:** N3C's `token_26` exactly. In Mirel, agreement on the name + DOB +
+  state token separated 41.4% false from 0.3% false among no-SSN name + sex + DOB
+  links ([the rows](#per-key-ablation-and-its-one-precedent)), and a ZIP5 is a
+  finer geography than a state (this note's inference). Sequoia's FN + LN + DOB +
+  sex + ZIP5 reached 99.2% uniqueness at 91.1% completeness, in a table the
+  source calls simplified. Cao et al. 2026, a data vendor's evaluation, measured
+  FN + LN + DOB + ZIP3 at 0.97 precision against 0.95 for FN + LN + gender + DOB,
+  within an SSN-labelled cohort from which SSNs with conflicting name-DOB
+  combinations were dropped before labelling.
+- **What it adds:** as N4, ambiguity resolution only. Mirel's rows argue for
+  more: geography required on the no-SSN name + DOB rung. That is an open
+  question below.
+- **Position:** after N4, immediately above position 10 (`LN + FN + DOB`).
+- **Shared-value risk:** a shelter ZIP. In Park et al. 2012's Indianapolis EMS
+  lookups, ZIP caused the largest share (54%) of no-match errors, and some of the
+  mismatched ZIPs were homeless shelters and nursing homes. The full-name + DOB
+  requirement contains this (this note's inference).
+
+### Tier B: grounded but unmeasured
+
+**N6. `LN + FN + YOB + MOB + ZIP5`**
+
+- **Shape:** `last_name`, `first_name`, `date_of_birth` cut to six characters,
+  `zip_code`.
+- **Grounding:** N3C's `token_18` without gender. RAND's 2008 analysis put first
+  name + last name + birth year + ZIP at about one possible false match in 3,500
+  in a 42,000-record file, with error-free keys and no birth month. Grannis's
+  2005 NCVHS slides report a combination of three no-SSN ZIP keys (ZIP + NYSIIS
+  first name + gender + one DOB part each) at 100% specificity at both
+  hospitals, against a reference set the slides do not state. On other slides
+  the no-SSN rule's specificity was 100% against the Indiana subset of the Death
+  Master File and 89.1% and 89.5% against the full file. The slides do not define
+  their field abbreviations; the reading here is from Table 1 of the 2002 paper.
+- **What it adds:** a wrong day of birth with no SSN. Day is the most frequent DOB
+  discrepancy, 48.3% in the duplicate-pair study, and positions 10 and 11 have no
+  DOB tolerance.
+- **Position:** after position 14, the last SSN key.
+- **Shared-value risk:** a shelter ZIP pools many clients into one ZIP. A Jr/Sr
+  pair differs in birth year.
+
+**N7. `LN + FN + PHONE`**
+
+- **Shape:** `last_name`, `first_name`, `phone_number`.
+- **Grounding:** a stricter form of N3C's `token_30` (first name + cell phone) and
+  of Bernstam's cell-phone-alone token, which measured 95.6% precision. Its false
+  pairs are a subset of each (this note's inference).
+- **What it adds:** a DOB error with no SSN.
+- **Position:** after N6.
+- **Shared-value risk:** a household phone shared by a Jr and Sr with suffixes
+  removed, or a case manager's or shelter's number on two clients with the same
+  name. UCLA's pairs agreeing only on a phone were the same person in 26 of 100
+  reviewed. Pew notes that patients share numbers with others and, citing Rhoades
+  et al. (not read here), reports high phone-number turnover among homeless
+  adults. `phone_number` is one untyped field, so work and mobile numbers cannot
+  be told apart.
+
+### Proposed cascade order
+
+Twenty-one keys, keeping the existing order and slotting each candidate by its
+SSN evidence and its refinement relations:
+
+1. Positions 1 to 9, unchanged, ending at `SSN4 + LN4 + YOB + MOB`.
+2. N1 `SSN4 + LN + FN + DOB` with the year +/- 1.
+3. N2 `SSN4 + LN + FN + DOB` with day and month exchanged.
+4. N3 `SSN4 + FN + DOB`.
+5. N4 `LN + FN + DOB + PHONE`.
+6. N5 `LN + FN + DOB + ZIP5`.
+7. Positions 10 and 11, `LN + FN + DOB` and `swap(LN, FN) + DOB`.
+8. Positions 12 to 14, the SSN keys with no last name.
+9. N6 `LN + FN + YOB + MOB + ZIP5`.
+10. N7 `LN + FN + PHONE`.
+
+This does not decide whether positions 10 and 11 belong above 12 to 14; see
+[Decisions left to the owner](#decisions-left-to-the-owner).
+
+### Shapes considered and not proposed
+
+| Shape | Grounding | Why not |
+| --- | --- | --- |
+| `FN + DOB + ZIP5` | UCLA: 94 of 100 reviewed pairs in that stratum were the same person | The stratum was selected by a match score above 20, so the figure is not key precision. It is the only shape here that would catch a surname change with no SSN, and could be offered as an opt-in |
+| `FN + EMAIL`, `LN + FN + EMAIL` | N3C `token_29` (`First Name + Email`), unmeasured | No precision for any email key in the library. UCLA's email-only pairs were the same person in 13 of 100. ONC warns that attributes including email are used for knowledge-based authentication. Alcove does not canonicalize the local part |
+| `FN + PHONE` | N3C `token_30` | Household sharing (UCLA's phone-only stratum, Pew). N7 is the stricter form |
+| `SSN4 + LN + FN`, no DOB | Ong's last name + last four SSN + year of birth | Run after first name + last name + DOB, it produced no new links. Four digits separate few people among common names in a large file (this note's inference) |
+| `FN3 + LN + DOB`, Soundex `FN` + Soundex `LN` + DOB | Bernstam's Tokens 7 and 2 | In Mirel, Token 2 alone was 81.4% false and Token 1 (first initial) alone 95.7%. Cook County's one confirmed mismatch came from its first-three-letters rule |
+| `LN + FN + ZIP5`, no date | N3C `token_12`, with gender | Unmeasured, and N6 recovers a wrong day of birth while keeping a year-and-month anchor |
+| Any contact field alone | Bernstam's Token 22 | A membership oracle and a shared value ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)). UCLA: phone-only 26 of 100, email-only 13 of 100 |
+| `SSN4 + LN + FN + DOB` with the date +/- 1 day | linkja's `fnamelnamedobDssn`; Cook County's rule 5, 371 matches | Not expressible: there is no day expansion (see below). It would be tier A if it were |
+
+The ZIP3 form N3C ships, `LN + FN + DOB + ZIP3` (`token_3`), is neither proposed
+nor ruled out here.
+
 ### `zip_code`
 
 **Never alone, and never without a name.** The evidence here is unusually
@@ -633,24 +878,16 @@ component; none stands alone. And the key-design analysis of frequency attacks
 on hashed match-keys found that two- and three-attribute keys retain a discrete
 frequency
 distribution, with frequencies approaching uniform only "with match-keys with
-four or more attributes".
-
-Candidate shapes, in the order they would have to sit relative to the existing
-keys:
-
-| Candidate | Basis | Placement |
-| --- | --- | --- |
-| `LN + FN + DOB + ZIP5` | N3C `token_26` exactly; the measured `FN+LN+DoB+Sex+ZIP5` combination reached 99.2% uniqueness at 91.1% completeness | Above `LN + FN + DOB`, which it refines |
-| `LN + FN + DOB + ZIP3` | N3C `token_3` exactly; ZIP3 trades locating power for tolerance of a move within a metro | Above `LN + FN + DOB`, below the ZIP5 form |
-| `LN + FN + YOB + MOB + ZIP5` | N3C `token_18` without gender; recovers a day-of-birth error at the cost of a coarser date | Below both, and below `LN + FN + DOB` |
+four or more attributes". The ZIP candidates are N5 and N6.
 
 **Precision rationale.** Adding a ZIP5 to a name-and-date key bought 3.3 points
-of uniqueness in the one published measurement, and the only published
-false-positive figures that include a ZIP put first name plus last name plus
-birth year plus ZIP at about one false match in 3,500 on a 42,000-record file.
-Both are consistent with ZIP as a corroborator that meaningfully narrows a
-name-and-date collision -- which is precisely where the built-in set's exposure
-is, since `LN + FN + DOB` is a key two different people can satisfy correctly.
+of uniqueness in Sequoia's measurement, RAND's figures put first name plus last
+name plus birth year plus ZIP at about one false match in 3,500 on a
+42,000-record file, and Cao's ZIP3 key measured above its gender-bearing name +
+DOB key. All are consistent with ZIP as a corroborator that meaningfully narrows
+a name-and-date collision -- which is precisely where the built-in set's
+exposure is, since `LN + FN + DOB` is a key two different people can satisfy
+correctly.
 
 **Recall rationale, and the caution.** ZIP's stability is rated **Low**, and the
 one longitudinal figure in this library is severe: in a state voter file, street
@@ -684,14 +921,7 @@ prone to error on input". It has the weight of one research team's judgement
 about their own experiment, and not even consistently: the combination they
 defined retains the address-bearing token that same note excludes. The one
 shipped configuration that has a phone pairs it with a first name
-(`First Name + Cell Phone Number`).
-
-Candidate shapes:
-
-| Candidate | Basis | Placement |
-| --- | --- | --- |
-| `LN + FN + DOB + phone` | The measured `FN+LN+DoB+Sex+Phone` combination reached 99.5% uniqueness at 76.2% completeness, the highest-precedence rule in that framework | Above `LN + FN + DOB`, which it refines |
-| `FN + phone` | N3C `token_30` exactly; a recall rule for records a name-and-date key misses | Low; a thin key by construction |
+(`First Name + Cell Phone Number`). The phone candidates are N4 and N7.
 
 **Precision rationale.** A ten-digit phone is high-cardinality, so a compound key
 with one inherits most of its discriminating power -- distinctiveness is
@@ -710,13 +940,16 @@ helpful attributes precisely "because it links patients to a household", which i
 the benefit in their setting and the failure mode in this one. A shelter's or a
 case manager's number on many client records is the same mechanism at a larger
 fan-out. **No published figure exists for how often a phone number is shared
-across people, in any sector.**
+across people, in any sector.** The nearest is UCLA's stratum of pairs agreeing
+only on a phone, 26 of 100 of them the same person, which is not a sharing rate.
 
 ### `email_address`
 
 **The weakest evidence of the three, and the only one with a stated security
 objection.** No precision, recall, m/u weight, or stability figure for email as a
-matching field exists anywhere in this library. The one shipped configuration
+matching field exists anywhere in this library. The nearest figure is UCLA's: of
+the pairs agreeing only on email, 13 of 100 reviewed were the same person, a
+selected stratum rather than key precision. The one shipped configuration
 that includes it has a single token (`First Name + Email`), unmeasured. The one
 published exclusion of an email token is the same evaluation choice made for
 phone, by the same study authors about their own combination and on the same
@@ -735,12 +968,12 @@ establish a patient's identity through knowledge-based authentication ... As
 such, the capture and exchange of these data attributes may contribute to
 decreased security of consumer information."
 
-Candidate shape, if any: `FN + email`, the shipped token, placed low. The
-argument for it is structural rather than measured -- an email address is
-high-cardinality and near-unique when present and correct, which is the same
-property that makes `SSN + first name` a defensible key. The arguments against it
-are that the property is unmeasured, that a family or household address defeats
-it in exactly the shared way a household phone does, and that the shipped
+No email key is proposed. The argument for `FN + email`, the shipped token, is
+structural rather than measured -- an email address is high-cardinality and
+near-unique when present and correct, which is the same property that makes
+`SSN + first name` a defensible key. The arguments against it are that the
+property is unmeasured, that a family or household address defeats it in
+exactly the shared way a household phone does, and that the shipped
 standardization is a shape test rather than a canonicalization: it lowercases and
 trims, and does not fold plus-addressing or dots, so two parties holding the same
 person's address in two alias forms produce two different keys.
@@ -749,6 +982,108 @@ person's address in two alias forms produce two different keys.
 judgement about the field:** email is the candidate where a measurement would
 have to come before a rule, because there is no published figure to reason from
 at all.
+
+## Capabilities the candidates need
+
+Requirements, not designs. None exists in Alcove today.
+
+- **A day expansion.** A date expansion of +/- 1 day beside `adjacent_years` and
+  `day_month_swaps`. linkja and Cook County use one, and Cook County saw a spike
+  in DOB differences at 1 day. Without it, `SSN4 + LN + FN + DOB` with the date
+  +/- 1 day cannot be written.
+- **A conflict veto.** A key must be able to fire only where a named field is not
+  present and different on both sides. HUD's 2005 unduplication guidance deletes
+  a potential match with non-null conflicting information in any two of gender,
+  name suffix, day, month or year of birth, and full SSN, unless the records
+  match on complete SSN and two of first name, last name and DOB. Without a veto,
+  positions 10 and 11 and N4 to N7 accept pairs whose valid SSNs disagree; Mirel's
+  row 26 links agreed on no SSN token and not on the name + DOB + state token,
+  and were 41.4% false. Exact
+  equality of hashed values cannot express this per pair, so it needs a protocol
+  feature.
+- **Phone type.** Work and mobile numbers must be told apart: Sequoia's case
+  study had to tag numbers so that work and mobile phones were not compared.
+  `phone_number` is one untyped field.
+- **A per-party cap on shared contact values.** A contact value held by more than
+  some number of one party's records must be nulled before keys are built. No
+  source in the library states such a count for contact values: Cao et al. saw
+  placeholder SSNs shared by many records ("e.g. more than 50") and caught them
+  with a name-DOB consistency rule, not a count, and Culbertson et al. count
+  999-9999 as a default value rather than an available one. A one-to-one round
+  drops a key value two of a party's records share, but not a shelter phone on
+  clients with different names, whose `LN + FN + PHONE` values differ (this
+  note's inference). The ZIP pipeline keeps `00000` as a real ZIP, and the phone
+  pipeline screens no placeholder value.
+- **Email local-part canonicalization.** Folding dots and plus-addressing, needed
+  only if an email key is adopted. The library has no source for the practice.
+
+## Decisions left to the owner
+
+Two questions this note leaves open. Each is set out with the evidence on both
+sides and no recommendation.
+
+### Whether the tier B keys are adopted
+
+For adopting N6 and N7:
+
+- Each is a stricter form of a shipped N3C token (`token_18` without gender,
+  `token_30` with a last name added).
+- Each recovers a record no other key reaches without an SSN: N6 a wrong day of
+  birth, the most frequent DOB discrepancy (48.3%), and N7 any DOB error.
+  Positions 10 and 11 have no DOB tolerance.
+- RAND's error-free figure for first name + last name + birth year + ZIP is
+  about one possible false match in 3,500 in a 42,000-record file, and N6 adds a
+  birth month to that key.
+
+Against:
+
+- Neither key is measured in any source read here.
+- Both run on a residual after every SSN key, the setting where Mirel's no-SSN
+  name + DOB links without state agreement were 41.4% false. Grannis's no-SSN
+  rule lost specificity against the full Death Master File (89.1% and 89.5%).
+- Both rest on a value shared across people: a shelter ZIP for N6, and for N7 a
+  household, shelter or case manager's phone, with UCLA's phone-only pairs the
+  same person in 26 of 100 and high phone turnover reported among homeless
+  adults.
+- Both use a contact field, so as built-in keys both depend on exchanges running
+  on the keys both files can supply, which is not built.
+
+### Whether `LN + FN + DOB` and its twin move down, or require geography
+
+The question is whether positions 10 and 11 move below positions 12 to 14, or
+require a ZIP wherever both parties have one.
+
+For moving them down or adding geography:
+
+- Mirel's rows 26 and 27: among no-SSN links agreeing on name + sex + DOB, 1,638
+  false against 2,314 true without state agreement (41.4%), 315 against 79,757
+  with it (0.3%).
+- Collisions grow with file size. Zech et al. found 0.18% of individuals sharing
+  their FN + LN + DOB in an 11-million-record sample of the Death Master File and
+  1.19% in the full file; RAND found last name + DOB gave a 33% chance of a false
+  match in 80 million records. This note infers that a statewide or national
+  counterparty is a different regime from a county one.
+- Every per-key measurement of a name + DOB key cited here includes sex or
+  gender, and the built-in key does not.
+- Maryland, the Census person-key system (both on a secondary reading) and NCHS
+  all put the no-SSN name rule below their SSN rules.
+
+For keeping them where they are:
+
+- Cook County puts complete name + DOB first, and Ong et al. ran first name +
+  last name + DOB before an SSN4 key that then added no links.
+- Bernstam's name + gender + DOB token measured the highest precision of the
+  eight tokens scored (99.9%), in one data warehouse. Cao's measured 0.95, within
+  an SSN-labelled cohort whose labelling may flatter name tokens.
+- Mirel's counts are patient-level links after best-candidate selection, scored
+  against a gold standard with its own 0.2% type I error.
+- The current order is the one the operational validation used, and moving it
+  takes a key-set version bump
+  ([default-linkage-rule-set.md](default-linkage-rule-set.md#what-the-versions-mean)).
+
+Bearing on either choice: HUD's standards collect no client ZIP, so a ZIP
+requirement that applies only where both parties have one would not apply to a
+party exporting a standard HMIS.
 
 ## The acceptance-evidence bar
 
@@ -855,16 +1190,35 @@ before the results were run: drop any combination whose false positives exceed
 50% of its false positives plus true positives. Four combinations crossed that
 line -- Token 1 alone, Token 2 alone, Tokens 1 and 7 together, and Tokens 1 and 2
 together -- and all four rest on first or last name, sex, and date of birth, with
-no SSN-bearing token in the mix. (The paper never defines what its numbered
-tokens concatenate; the definitions are in a figure this library holds only as an
-image, so no claim about which of them is phonetic or first-initial is
-supportable from the text held here.) Removing those four combinations moved the
+no SSN-bearing token in the mix. The paper's Figure 1, held in the library as an
+image, defines every token: Token 1 is last name + first initial + sex + DOB,
+Token 2 Soundex last name + Soundex first name + sex + DOB, Token 4 last name +
+first name + sex + DOB, Token 7 last name + first three letters of the first
+name + sex + DOB, Token 5 SSN + sex + DOB, Token 16 SSN + first name, and Token
+40, custom coded for this analysis, first name + last name + DOB + state.
+Removing those four combinations moved the
 full result set from 93.8% precision and 98.7% recall to 98.9% precision and
 97.8% recall, and the paper reports the cost beside the gain: 11,515 false
 positives were removed at the price of 1,738 true positives, which is the entire
 reason recall fell. That is the shape of the measurement, and it is the reason to
 require it: the combinations that cost the most precision were exactly the
 coarsened, no-SSN kind the built-in set has several of.
+
+Two rows of the same table bear most directly on the built-in `LN + FN + DOB`
+and on any ZIP key. Links on which Tokens 1, 2, 4 and 7 all agreed, with no SSN
+token, split on Token 40:
+
+| Tokens agreeing (no SSN token) | True positives | False positives | False-positive rate |
+| --- | --- | --- | --- |
+| 1, 2, 4, 7 without Token 40 (row 26) | 2,314 | 1,638 | 41.4% |
+| 1, 2, 4, 7 with Token 40 (row 27) | 79,757 | 315 | 0.3% |
+
+What the counts are: patient-level links, after keeping for each hospital
+record the death record that shared the most high-precision tokens and then the
+most others, scored against NCHS's earlier clear-text linkage, which itself had
+a 0.2% type I and 1.1% type II error. A row's rate is conditional on that
+selection, so it is the nearest analogue in this library to a residual cascade
+round, not a measurement of one.
 
 For a cascade, one methodological point makes the requirement stricter than it
 sounds. A key's marginal contribution is what it adds AFTER the earlier keys have
@@ -919,7 +1273,11 @@ bound what any of the above can claim.
   ordered key cascade with a measured false-match rate per position.
 - **No m/u value, precision, or recall for ZIP alone, phone in a compound key, or
   email in any form**, in any sector. The published method for a ZIP agreement
-  probability exists; the value does not.
+  probability exists; the value does not. The nearest figures are UCLA's
+  (Ross et al. 2020): among pairs Care Everywhere had not linked, the share that
+  were the same person was 13 of 100 reviewed for pairs agreeing only on email,
+  26 of 100 for only on phone, and 94 of 100 for first name + DOB + ZIP. These
+  are selected strata, not key precision.
 - **No sharing rate for a phone number or an email address across people**, and
   nothing at all on a shelter or case-manager number appearing on many client
   records.
@@ -946,91 +1304,121 @@ note does not decide and should not be read as deciding.
 
 ## Sources
 
-Every source below is a public document. The filename is the name it uses in
-the host-local reference library described at the top of this note; the title and
-year are what identify it independently.
+Every source below is a public document. The filename is its path under
+`linkage-kb/papers/` in the host-local reference library described at the top
+of this note; the title and year are what identify it independently.
 
 **Collection and export standards.** HUD HMIS Data Standards Manual, Data
-Dictionary, and CSV Format Specifications, FY2026 (`hud-hmis-data-standards-manual.pdf`,
-`hud-hmis-data-dictionary.pdf`, `hud-hmis-csv-format-specifications.pdf`), with
-the HUD Exchange pages for data elements 3.01, 3.02 and 3.03
-(`hud-hmis-universal-data-elements-name-ssn-dob.md`, fetched 2026-08-25). HUD's
-homelessness and health data sharing toolkit
-(`hud-homelessness-and-health-data-sharing-toolkit.pdf`) is operating context,
-not a rule set.
+Dictionary, and CSV Format Specifications, FY2026
+(`agencies/hud/files.hudexchange.info-2025-99eaf85d.pdf`,
+`agencies/hud/unknown-2025-6e4f3b02.pdf`,
+`agencies/hud/unknown-2025-a6f64ae9.pdf`), with the HUD Exchange pages for data
+elements 3.01, 3.02 and 3.03 (fetched 2026-08-25; not held in the library).
+HUD's homelessness and health data sharing toolkit, 2019
+(`agencies/hud/unknown-2019-fec4d121.pdf`) is operating context, not a rule set.
+Sokol and Gutierrez for HUD, *Technical Guidelines for Unduplicating and
+De-identifying HMIS Client Records*, 2005
+(`agencies/hud/sokol-2005-343c8a64.pdf`).
 
 **Health-sector attribute analyses.** The Sequoia Project, *A Framework for
 Cross-Organizational Patient Identity Management*, v3.1, 2018
-(`sequoia-2018-framework-patient-identity-management-v31.pdf`) -- Tables 6 and 7.
-Pew Charitable Trusts, *Enhanced Patient Matching Is Critical to Achieving Full
-Promise of Digital Health Records*, 2018 (`pew-2018-enhanced-patient-matching.pdf`);
-its technical appendices do not exist as a separate publication. ONC, *Patient
-Identification and Matching Final Report*, 2014
-(`onc-2014-patient-identification-and-matching-final-report.pdf`). ONC, *Project
-US@ Technical Specification*, v1.0 (`onc-project-us-at-technical-specification-v1.0.pdf`).
+(`agencies/sequoia/sequoiaproject.org-2018-f746eb75.pdf`) -- Tables 6 and 7, and
+the Intermountain case study. Pew Charitable Trusts, *Enhanced Patient Matching
+Is Critical to Achieving Full Promise of Digital Health Records*, 2018
+(`pewtrusts.org-2018-879f6b9e.pdf`); its technical appendices do not exist as a
+separate publication. ONC, *Patient Identification and Matching Final Report*,
+2014 (`morris-2014-edba2db9.pdf`). ONC, *Project US@ Technical Specification for
+Patient Addresses*, v1.0, 2022 (`agencies/onc/unknown-2022-db6d09cb.pdf`).
+Hillestad et al., *Identity Crisis: An Examination of the Costs and Benefits of
+a Unique Patient Identifier for the U.S. Health Care System*, RAND, 2008
+(`hillestad-2008-1711772b.pdf`). Just et al., "Why Patient Matching Is a
+Challenge: Research on Master Patient Index (MPI) Data Discrepancies in Key
+Identifying Fields", 2016 (`just-2016-ac9b20ed.html`). Zech et al., "Measuring
+the Degree of Unmatched Patient Records in a Health Information Exchange Using
+Exact Matching", 2016 (`zech-2016-b110dd3f.html`). Culbertson et al., "The
+Building Blocks of Interoperability. A Multisite Analysis of Patient Demographic
+Attributes Available for Matching", 2017 (`culbertson-2017-ea9fafd0.html`).
 
 **Per-key measurements.** Bernstam et al., "Real-world matching performance of
-deidentified record-linking tokens", 2022
-(`bernstam-2022-deidentified-record-linking-token-performance.md`) -- Tables 1, 2
-and 3. Grannis, Overhage and McDonald, "Analysis of Identifier Performance using
-a Deterministic Linkage Algorithm", AMIA 2002
-(`grannis-2002-identifier-performance-deterministic-linkage.pdf`) -- Tables 2, 3
-and 4. Avoundjian et al., "Comparing Methods for Record Linkage for Public Health
-Action", 2020 (`avoundjian-2020-comparing-methods-record-linkage-public-health.md`).
-Grannis et al., manual evaluation of record linkage across four real-world
-datasets, 2024 (`grannis-2024-manual-evaluation-record-linkage-four-real-world-datasets.md`).
+deidentified record-linking tokens", 2022 (`bernstam-2022-369b92f3.html`) --
+Tables 1, 2 and 3. Grannis, Overhage and McDonald, "Analysis of Identifier
+Performance using a Deterministic Linkage Algorithm", AMIA 2002
+(`grannis-2002-9a4ab674.pdf`) -- Tables 1 to 4. Grannis, "Patient Linkage",
+slides to NCVHS, 2005 (`grannis-2005-1631bb13.pdf`), a presentation, not
+peer-reviewed. Naessens et al., "Incorporating the Last Four Digits of Social
+Security Numbers Substantially Improves Linking Patient Data from De-identified
+Hospital Claims Databases", 2015 (`naessens-2015-d75f4991.html`) -- Tables 1 and
+2. Ross et al., "Accuracy of an Electronic Health Record Patient Linkage Module
+Evaluated between Neighboring Academic Health Care Centers", 2020
+(`ross-2020-5d3138a6.html`) -- Tables 2 and 4. Cao et al., "Linking patient
+records at scale with a hybrid approach combining contrastive learning and
+deterministic rules", 2026 (`cao-2026-5865e118.html`) -- Table 1; the authors
+work for Truveta, a data vendor. Park et al., "Indianapolis Emergency Medical
+Service and the Indiana Network for Patient Care: Evaluating the Patient Match
+Algorithm", AMIA 2012 (`park-2012-f5d0ef3e.html`). Avoundjian et al., "Comparing
+Methods for Record Linkage for Public Health Action", 2020
+(`avoundjian-2020-35f3b7e6.html`). Grannis et al., "Manual Evaluation of Record
+Linkage Algorithm Performance in Four Real-World Datasets", 2024
+(`grannis-2024-ff678f39.md`).
 
-**PPRL key and token sets.** linkja-hashing shipped key definitions, assembled
-from repository source, 2026 (`linkja-hashing-shipped-key-definitions.md`) -- read
-as evidence of what linkja does, not as a specification linkja published. CODI
-FHIR PPRL Implementation Guide (`codi-fhir-pprl-implementation-guide.md`). N3C /
-Regenstrief Linkage Honest Broker site engagement packet, v6, 2021
-(`n3c-regenstrief-linkage-honest-broker-site-engagement-packet.pdf`) -- Appendix H
-is the token list. Datavant Tokenization User Guide, 2023
-(`datavant-tokenization-user-guide.pdf`); the vendor publishes no enumeration of
-its numbered tokens, so the eighteen tokens cited here are the N3C
-configuration's selection. No vendor recommendation about which tokens to combine
-is cited anywhere in this note: the exclusion of phone- and email-based tokens
-quoted under the candidate rules is Bernstam et al.'s own evaluation choice about
-their own experiment, recorded in their Table 1.
+**PPRL key and token sets.** linkja-hashing source code, as shipped
+(`software/linkja-hashing/`; `HashingStep.java` and `NormalizationStep.java`) --
+read as evidence of what linkja does, not as a specification linkja published.
+CODI FHIR PPRL Implementation Guide (`software/codi-fhir-pprl-ig/`). N3C /
+Regenstrief Linkage Honest Broker site technical engagement packet, v6, 2021
+(`agencies/ncats/regenstrief.org-2021-19e49d61.pdf`) -- Appendix H is the token
+list. Datavant Tokenization User Guide, 2023
+(`software/datavant/datavant-aws-marketplace-files.s3.amazonaws.com-2023-882d0612.pdf`);
+the vendor publishes no enumeration of its numbered tokens, so the eighteen
+tokens cited here are the N3C configuration's selection. No vendor
+recommendation about which tokens to combine is cited anywhere in this note: the
+exclusion of phone- and email-based tokens quoted under the candidate keys is
+Bernstam et al.'s own evaluation choice about their own experiment, recorded in
+their Table 1.
 
-**Operating methodologies.** NCHS-CMS T-MSIS Medicaid linkage methodology
-(`nchs-cms-tmsis-medicaid-linkage-methodology.pdf`), NCHS 2016 NHCS-CMS Medicaid
-linkage methodology (`nchs-2016-nhcs-cms-medicaid-linkage-methodology.pdf`), and
-NCHS-HUD linked data methodology (`nchs-hud-linked-data-methodology.pdf`). The
-NCHS survey-to-death-index rule quoted under cascade order is from the NHANES-III
-matching methodology, cited in the survey below rather than fetched here.
+**Operating methodologies and cascades.** NCHS survey data to CMS T-MSIS
+Medicaid linkage methodology, 2024 (`agencies/nchs/cdc.gov-2024-1dbafb3a.pdf`),
+NCHS 2016 NHCS to CMS T-MSIS linkage methodology, 2022
+(`agencies/nchs/cdc.gov-2022-ecb410b2.pdf`), and NCHS survey data to HUD
+administrative data linkage methodology, 2023
+(`agencies/nchs/cdc.gov-2023-761bb20b.pdf`). The NCHS survey-to-death-index rule
+quoted under cascade order is from the NHANES III matching methodology, which
+the library holds (`agencies/nchs/ftp.cdc.gov-2005-c3985acc.pdf`) and this note
+cites through the survey below without having re-read it. Trick et al.,
+"Development and Evaluation of Record Linkage Rules in a Safety-Net Health
+System Serving Disadvantaged Communities", 2019 (`trick-2019-a2182977.pdf`) --
+Methods, Tables 2 and 3. Ong et al., "A hybrid approach to record linkage using a
+combination of deterministic and probabilistic methodology", 2020
+(`ong-2020-7e69b55d.html`) -- Tables 1 and 3.
 
 **Evaluation guidance.** Gilbert et al., GUILD: "Guidance for Information about
-Linking Data sets", 2018
-(`gilbert-2018-guild-guidance-for-information-about-linking-datasets.md`) --
-Table 1. Harron et al., "A guide to evaluating linkage quality for the analysis of
-linked data", 2017 (`harron-2017-guide-to-evaluating-linkage-quality.md`) --
-Box 1 and Table 2.
+Linking Data sets", 2018 (`gilbert-2018-d745404d.xml`) -- Table 1. Harron et
+al., "A guide to evaluating linkage quality for the analysis of linked data",
+2017 (`harron-2017-2c48d61d.xml`) -- Box 1 and Table 2.
 
 **Evaluations and the corpus question.** Mirel, Resnick, Aram and Cox, "A
 methodological assessment of privacy preserving record linkage using survey and
-administrative data", 2022 (`mirel-2022-pprl-linkage-quality-sjiaos.txt`, fetched
-2026-08-25) -- Table 1, Table 2, pp. 7-9. ASPE/NCHS PPRL evaluation, NHCS to
-Medicaid T-MSIS, final report, 2024
-(`aspe-2024-pprl-evaluation-nhcs-medicaid-tmsis-final-report.pdf`). RAND for
-ASPE, *Linking Medicaid Claims, Birth Certificates, and Other Sources*
-(`aspe-linking-medicaid-claims-birth-certificates-other-sources.pdf`). Nescott,
-Metraux, McDuffie and Brown, "Matching Medicaid Claims and Encounters and the
-Community Management Information System Databases", *Delaware Journal of Public
-Health*, 2023 (`delaware-2023-matching-medicaid-claims-to-community-mis-housing.md`).
+administrative data", 2022 (`mirel-2022-d624179f.html`, with Figure 1 as
+`cdn.ncbi.nlm.nih.gov-nd-58b835b8.jpg`) -- Figure 1, Table 1, Table 2, pp. 7-9.
+NCHS for ASPE, PPRL evaluation of the NHCS to Medicaid T-MSIS linkage, final
+report, 2024 (`unknown-2024-09cdc4f9.pdf`). RAND for ASPE, *Linking Medicaid
+Claims, Birth Certificates, and Other Sources to Advance Maternal and Infant
+Health*, 2022 (`heins-2022-cd3cdadb.pdf`). Nescott, Metraux, McDuffie and Brown,
+"Matching Medicaid Claims and Encounters and the Community Management
+Information System Databases", *Delaware Journal of Public Health*, 2023
+(`nescott-2023-5941cf38.pdf`).
 
-**Key-design consequences of frequency structure.** Vidanage et al., graph and
-frequency attacks on multiple dynamic match-key encoding, 2020
-(`vidanage-2020-graph-matching-attack-pprl.md`). Eliazar et al., re-identification
-risk of PPRL encodings shared with de-identified demographics, 2025
-(`eliazar-2025-token-count-reidentification-risk.md`).
+**Key-design consequences of frequency structure.** Vidanage et al., "A Privacy
+Attack on Multiple Dynamic Match-key based Privacy-Preserving Record Linkage",
+2020 (`vidanage-2020-cdcf4dd9.html`). Eliazar et al., re-identification risk of
+PPRL encodings shared with de-identified demographics, 2025
+(`eliazar-2025-88dc21e7.xml`).
 
-**Secondary source.** *Record Linkage in Practice: Connecting K-12,
-Postsecondary, and Workforce Data* (`real-world-linkage-survey.md`), a survey held
-in the same library. The Maryland cascade, the Census person-key system, the
-NHANES-III SSN rule, the Australian fixed-key comparisons, the Census person-key
-differentials, the controlled study of name cleaning, and the federal evaluation
-of commercial matching systems are cited through it; each names its own
-underlying publication, and this note has not re-verified those against the
-originals.
+**Secondary source.** *Record Linkage in Practice*, a survey held in the same
+library outside `papers/` (`legacy-survey/real-world-linkage-*.md`), which the
+library marks as unverified leads. The Maryland cascade, the Census person-key
+system, the NHANES-III SSN rule, the Australian fixed-key comparisons, the
+Census person-key differentials, the controlled study of name cleaning, and the
+federal evaluation of commercial matching systems are cited through it; each
+names its own underlying publication, and this note has not re-verified those
+against the originals.
