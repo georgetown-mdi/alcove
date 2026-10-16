@@ -44,10 +44,12 @@ Three facts about the deployment shape the bands in the catalog.
 **Exchanges run within one county.** The rules assume each exchange runs within one
 county, with exchanges in many counties. Chance agreement grows with the size of the two
 files: Zech et al. (2016) found 0.18% of individuals in an 11-million-record
-sample of the Death Master File sharing their first name, last name and date of
+random sample (13.1% of the national records) of the Death Master File sharing their first name, last name and date of
 birth with someone else, against 1.19% in the full 85.8-million-record file, and
 Hillestad et al. (2008) found last name + DOB gave a 33% chance of a false match
-in 79 million records. The geography of the counterparty matters as much: in
+in 79 million records. Zech's two figures differ by the number of people
+covered, not by geography, so their carrying over to a county is reasoning. The
+geography of the counterparty matters as much: in
 Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4%
 false where the state token did not agree and 0.3% where it agreed. A token is
 not created when any of its fields is missing, so the first row includes pairs
@@ -121,7 +123,7 @@ What the proposed rules take from them:
     24 follows, but the shipped code disables it and collapses a hyphenated
     surname into one word.
   - The overview's data dictionary lists the three-letter first-name hash
-    without the date of birth, but the code includes it.
+    that carries an SSN without the date of birth, but the code includes it.
 - **N3C's contact and geography tokens.** Every N3C token with a ZIP also has a
   last name, and email and cell phone each appear once, beside a first name.
   Rules 11 and 28 are N3C tokens (28 without gender), and rules 25, 26, 29 and
@@ -140,8 +142,9 @@ Two divergences remain, both in the shipped rules:
 
 The evidence on a phonetic name code splits by what else a key requires. Beside an
 SSN, phonetic names added true links and no false ones: in Grannis et al.
-(2002), SSN + NYSIIS-coded names found 234 and 90 more correct links than SSN +
-exact names at the same count of wrong ones, and in Mirel et al. (2022), links
+(2002), SSN + NYSIIS-coded names found 234 and 90 more correct links (4,775 and
+5,247) than SSN + exact names (4,541 and 5,157) at the same count of wrong ones
+(7 and 2), and in Mirel et al. (2022), links
 where an SSN token and the Soundex-names token agreed without an exact-name
 token were 531 true and none false (rows 9 and 10 of Table 1, 10 and 521; the
 521 also agreed on the SSN + exact first-name token, so counting that as an
@@ -203,7 +206,10 @@ put name + DOB first, but their later rules are not stricter forms of it: Cook
 County's loosen the date, and Ong's drops the first name and the day and month.
 Mirel et al. (2022) is the nearest measurement of a residual round: it charges a
 weak token only for links no stronger token also supported, and that is where
-the no-SSN name tokens failed.
+the no-SSN name tokens failed. It is still a pattern stratum, not a precision:
+each row counts the links on which exactly that set of tokens agreed, after
+each link was chosen for having the most high-precision (SSN) tokens, other
+tokens breaking ties, against an earlier NCHS linkage as the truth.
 
 ### Placements the evidence forces
 
@@ -288,8 +294,8 @@ These are requirements, not designs. None exists in Alcove.
   potential match with conflicting values in two of gender, name suffix, the
   parts of the date and the full SSN (Sokol and Gutierrez 2005). Without a veto,
   every rule with no SSN element accepts pairs whose valid SSNs disagree; in
-  Mirel et al. (2022), links agreeing on no SSN token and no state token were
-  41.4% false. Exact equality of hashed values cannot express this per pair, so it
+  Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN token and
+  no state token were 41.4% false. Exact equality of hashed values cannot express this per pair, so it
   needs a protocol feature. Rule 20 needs it, on the date of birth.
 - **A name-frequency condition.** Rule 33 may fire only for uncommon names,
   which needs a frequency score for the first and last name combination with a
