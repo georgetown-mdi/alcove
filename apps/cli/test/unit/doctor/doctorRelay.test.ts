@@ -377,6 +377,26 @@ test("a configuration whose invitation relay names no registrar contacts none, a
   expect(report.checks.map((check) => check.id)).toEqual(["turn_1", "turn_2"]);
 });
 
+test("a configuration with no invitation_relay block says it contacts nothing else, and does not name the block", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ url: OWN_TURN, username: "u", credential: "c" }],
+    }),
+  );
+  const lines: Array<string> = [];
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    gather: scriptedGathering({ [OWN_TURN]: true }, []),
+  });
+
+  expect(lines).toContain("It contacts nothing else.");
+  expect(lines.join("\n")).not.toContain("invitation_relay");
+  expect(report.checks.map((check) => check.id)).toEqual(["turn_1"]);
+});
+
 test("doctor relay asks each url alone, in the run's order, with what the run presents there", async () => {
   writeThreeRelayConfig();
   const requests: Array<RTCIceServer> = [];

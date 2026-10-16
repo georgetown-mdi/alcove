@@ -186,8 +186,10 @@ export function relayHostStatement(
   if (registrar === undefined)
     return [
       ...relays,
-      "It contacts nothing else. This configuration's invitation_relay " +
-        "names no relay registrar, so it contacts none and enrolls nothing.",
+      connection.invitationRelay === undefined
+        ? "It contacts nothing else."
+        : "It contacts nothing else. This configuration's invitation_relay " +
+          "names no relay registrar, so it contacts none and enrolls nothing.",
       "",
     ];
   return [
