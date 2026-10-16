@@ -47,10 +47,11 @@ Run only when the owner invokes this command; never start the docket unasked.
 4. Number the items once, as N of M, and keep that numbering to the end.
 5. Before presenting an item that touches screen copy, a user flow, CLI
    ergonomics, or a consent surface, spawn `ux-reviewer` on the code it
-   concerns. An item on a security surface takes `security-reviewer`, run
-   under the refutation contract in `.claude/orchestration/ruleset.md`,
-   Review flow; an item
-   touching both takes both. Their findings go into the item's background.
+   concerns. An item on a security surface has each premise its background
+   rests on measured by the session on `origin/staging`, one call per
+   premise: `security-reviewer` runs only as a `/light-review` role round,
+   which needs a branch diff a docket item does not have. The review's
+   findings and the measured premises go into the item's background.
    An item on a security surface also takes a `/panel` round, its seats chosen
    for the question's dimensions as `.claude/commands/panel.md` says.
 
