@@ -194,7 +194,9 @@ function ConfigurationExportPanel({
   const configFile = composed.config;
   const credentialNote = sftpCredentialNote(record);
   const referenceNote = fileReferenceExportNote(record);
-  const invitationRegistrarLine = invitationRegistrarExportLine(record);
+  const invitationRegistrarLine = invitationRegistrarExportLine(
+    composed.connection,
+  );
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run it from the command line</h2>

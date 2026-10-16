@@ -112,14 +112,16 @@ export function marked(
 
 /**
  * The line the acceptance review shows under a relay whose invitation names a
- * registrar, `registrar` escaped in the summary: each run enrolls there before
- * it connects (`invitationRelayEnrollment.ts`), so its operator sees this
- * party's address.
+ * registrar, `registrar` escaped in the summary: a run enrolls there before it
+ * connects only when that relay is the one it allocates on
+ * (`invitationRelayEnrollment.ts`), and then its operator sees this party's
+ * address.
  */
 export function invitationRelayRegistrarLine(registrar: Displayable): string {
   return (
-    `Each run registers this exchange at ${registrar} before it connects, ` +
-    "and whoever runs that registrar learns your network address."
+    `A run registers this exchange at ${registrar} before it connects ` +
+    "only when that relay is the one it allocates on, and whoever runs " +
+    "that registrar then learns your network address."
   );
 }
 

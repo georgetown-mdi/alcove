@@ -1395,7 +1395,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     );
     expect(without).not.toContain("relay your partner named");
     expect(without).not.toContain(CONSENT_FACTS.invitationRelay.note);
-    expect(without).not.toContain("Each run registers this exchange");
+    expect(without).not.toContain("registers this exchange at");
   });
 
   test("displayInvitation: a relay naming a registrar gains one line saying its operator learns this party's address", () => {
@@ -1415,9 +1415,10 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     const heading = lines.indexOf("  relay your partner named (enforced):");
     expect(lines.slice(heading + 1, heading + 4)).toEqual([
       "    TURN turns:default-relay.example.net:443?transport=tcp",
-      "    Each run registers this exchange at " +
-        "https://default-relay.example.net before it connects, and whoever " +
-        "runs that registrar learns your network address.",
+      "    A run registers this exchange at " +
+        "https://default-relay.example.net before it connects only when " +
+        "that relay is the one it allocates on, and whoever runs that " +
+        "registrar then learns your network address.",
       `    ${CONSENT_FACTS.invitationRelay.note}`,
     ]);
     expect(
@@ -1443,8 +1444,8 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     );
     const output = renderDisplayInvitation(log, decoded);
     expect(output).toContain(
-      "Each run registers this exchange at https://registrar.example.org " +
-        "before it connects",
+      "A run registers this exchange at https://registrar.example.org " +
+        "before it connects only when",
     );
     expect(output).not.toContain(typed);
     expect(output).not.toContain("Registrar.Example");

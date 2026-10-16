@@ -1387,7 +1387,9 @@ export interface WebRTCConnectionConfig {
    * The relay named by the invitation this connection was accepted from. A
    * run lists its TURN urls after {@link turn} and its STUN urls after
    * {@link stun}, with the TURN credential minted from the shared secret,
-   * and enrolls at its `registrar`, when it names one, before it dials.
+   * and enrolls at its `registrar`, when it names one, before it dials if the
+   * relay it allocates on is one this locator names and takes the minted
+   * credential (`runEnrollsAtInvitationRegistrar` in relayCredential.ts).
    */
   invitationRelay?: RelayLocator;
   /**

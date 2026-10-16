@@ -65,8 +65,9 @@ const TURN_URL = "turns:default-relay.example.net:443?transport=tcp";
 const REGISTRAR = "https://default-relay.example.net";
 
 const CONSOLE_LINE =
-  `Each run registers this exchange at ${REGISTRAR} before it connects, ` +
-  "and whoever runs that registrar learns this machine's network address.";
+  `A run registers this exchange at ${REGISTRAR} before it connects ` +
+  "only when that relay is the one it allocates on, and whoever runs " +
+  "that registrar then learns this machine's network address.";
 const HOSTED_LINE = `The invitation also names this relay's registrar: ${REGISTRAR}`;
 
 const app = createAppMount();

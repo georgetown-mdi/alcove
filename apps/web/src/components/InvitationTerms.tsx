@@ -124,14 +124,16 @@ const DUPLICATE_MATCHES_HEADLINE = {
 /**
  * The line naming the registrar an invitation's relay names, `registrar`
  * escaped in the summary. A console run is the CLI's, which enrolls there
- * before it connects (apps/cli/src/invitationDisplay.ts states the same); a
- * browser run enrolls only at its own build's default relay, so the hosted
- * line names the registrar and nothing more.
+ * before it connects only when that relay is the one it allocates on
+ * (apps/cli/src/invitationDisplay.ts states the same); a browser run enrolls
+ * only at its own build's default relay, so the hosted line names the
+ * registrar and nothing more.
  */
 function invitationRelayRegistrarLine(registrar: Displayable): string {
   return isConsoleBuild()
-    ? `Each run registers this exchange at ${registrar} before it connects, ` +
-        "and whoever runs that registrar learns this machine's network address."
+    ? `A run registers this exchange at ${registrar} before it connects ` +
+        "only when that relay is the one it allocates on, and whoever runs " +
+        "that registrar then learns this machine's network address."
     : `The invitation also names this relay's registrar: ${registrar}`;
 }
 

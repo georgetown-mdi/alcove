@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { parseIceServers } from "werift";
 
 import { UsageError, mintRunRelayCredential } from "@alcove/core";
 
@@ -275,33 +276,92 @@ test("an own url-only turn entry with no minted credential is a fault, not an un
   );
 });
 
-test("the minted credential's notice names the relay, its lifetime, and its expiry", () => {
+const NOTICE_CREDENTIAL_FACTS =
+  "the run's relay credential is derived from the exchange's shared " +
+  "secret, valid for 60 minutes, and expires at 2026-01-01T01:00:00.000Z. ";
+
+test("the notice states the credential's facts, then the one relay it is presented to", () => {
   expect(relayCredentialNotice({ turn: URL_ONLY_TURN }, RUN_CREDENTIAL)).toBe(
-    "relaying through turns:minted.example:443?transport=tcp, with a " +
-      "credential derived from the exchange's shared secret that is valid " +
-      "for 60 minutes and expires at 2026-01-01T01:00:00.000Z",
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, your own TURN " +
+      "server at turns:minted.example:443?transport=tcp.",
   );
-  expect(
-    relayCredentialNotice(
-      { invitationRelay: INVITATION_RELAY },
-      RUN_CREDENTIAL,
-    ),
-  ).toMatch(
-    /^relaying through the TURN server your partner's invitation named/,
-  );
-  const mixed = relayCredentialNotice(
-    { turn: [...OWN_TURN, ...URL_ONLY_TURN] },
-    RUN_CREDENTIAL,
-  );
-  expect(mixed).toContain("turns:minted.example:443?transport=tcp");
-  expect(mixed).not.toContain("own.example");
+});
+
+test("the notice with an own url-only entry first names the invitation's urls as not contacted", () => {
   expect(
     relayCredentialNotice(
       { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
       RUN_CREDENTIAL,
     ),
-  ).toMatch(
-    /^relaying through turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named, with/,
+  ).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, your own TURN " +
+      "server at turns:minted.example:443?transport=tcp. The other urls " +
+      "listed, turns:partner.example:443?transport=tcp, " +
+      "turn:partner.example:3478, are configured to take the credential, " +
+      "and the run does not contact them.",
+  );
+});
+
+test("the notice with the invitation's urls first presents the credential to the first only", () => {
+  const notice = relayCredentialNotice(
+    { invitationRelay: INVITATION_RELAY },
+    RUN_CREDENTIAL,
+  );
+  expect(notice).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, the first TURN " +
+      "server your partner's invitation named, at " +
+      "turns:partner.example:443?transport=tcp. The other urls listed, " +
+      "turn:partner.example:3478, are configured to take the credential, " +
+      "and the run does not contact them.",
+  );
+  expect(notice.match(/presents it to/g)).toHaveLength(1);
+});
+
+test("the notice with an own static entry first says the minted credential reaches no relay", () => {
+  const notice = relayCredentialNotice(
+    {
+      turn: [...OWN_TURN, ...URL_ONLY_TURN],
+      invitationRelay: INVITATION_RELAY,
+    },
+    RUN_CREDENTIAL,
+  );
+  expect(notice).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The minted credential reaches no relay in this run: the run " +
+      "allocates its relay on your own TURN server at " +
+      "turns:own.example:443?transport=tcp and presents that entry's own " +
+      "credential instead. The other urls listed, " +
+      "turns:minted.example:443?transport=tcp, " +
+      "turns:partner.example:443?transport=tcp, turn:partner.example:3478, " +
+      "are configured to take the minted credential, and the run does not " +
+      "contact them.",
+  );
+  expect(notice).not.toContain("presents it to");
+});
+
+test("the notice names an invitation url escaped, as the allocating relay and as one not contacted", () => {
+  expect(
+    relayCredentialNotice(
+      {
+        invitationRelay: {
+          turn: [
+            "turns:partner.example:443\u001b[2J",
+            "turn:other.example:3478\u001b[2J",
+          ],
+        },
+      },
+      RUN_CREDENTIAL,
+    ),
+  ).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, the first TURN " +
+      "server your partner's invitation named, at " +
+      "turns:partner.example:443\\x1b[2J. The other urls listed, " +
+      "turn:other.example:3478\\x1b[2J, are configured to take the " +
+      "credential, and the run does not contact them.",
   );
 });
 
@@ -430,6 +490,72 @@ test("the warning names the default, what it discloses, and how to override", ()
   expect(NO_ICE_SERVERS_WARNING).toContain("unreachable");
   // And it must not overstate the disclosure: connection metadata, not content.
   expect(NO_ICE_SERVERS_WARNING).toContain("no exchange content is");
+});
+
+// --- what werift takes from the list ----------------------------------------
+
+test("werift's parser keeps the first TURN url and the first STUN url of the list a run passes it", () => {
+  const configuration = buildPeerConfiguration(
+    iceServersFromConnection(
+      {
+        stun: ["stun:own-first.example:3478", "stun:own-second.example:3478"],
+        turn: [
+          {
+            url: "turn:own-first.example:3478",
+            username: "first-user",
+            credential: "first-secret",
+          },
+          {
+            url: "turn:own-second.example:3478",
+            username: "second-user",
+            credential: "second-secret",
+          },
+        ],
+        invitationRelay: {
+          turn: ["turn:partner-first.example:3478"],
+          stun: ["stun:partner-first.example:3478"],
+        },
+      },
+      RUN_CREDENTIAL,
+    ),
+  );
+  expect(configuration.iceServers).toHaveLength(4);
+
+  const options = parseIceServers(configuration.iceServers ?? []);
+
+  expect(options).toEqual({
+    stunServer: ["own-first.example", 3478],
+    turnServer: ["own-first.example", 3478],
+    turnUsername: "first-user",
+    turnPassword: "first-secret",
+  });
+});
+
+test("werift's parser takes the invitation's first TURN url when the connection names no TURN of its own", () => {
+  const configuration = buildPeerConfiguration(
+    iceServersFromConnection(
+      {
+        invitationRelay: {
+          turn: [
+            "turn:partner-first.example:3478",
+            "turn:partner-second.example:3478",
+          ],
+          stun: [
+            "stun:partner-first.example:3478",
+            "stun:partner-second.example:3478",
+          ],
+        },
+      },
+      RUN_CREDENTIAL,
+    ),
+  );
+
+  expect(parseIceServers(configuration.iceServers ?? [])).toEqual({
+    stunServer: ["partner-first.example", 3478],
+    turnServer: ["partner-first.example", 3478],
+    turnUsername: RUN_CREDENTIAL.username,
+    turnPassword: RUN_CREDENTIAL.credential,
+  });
 });
 
 // --- plaintext signaling ----------------------------------------------------

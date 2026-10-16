@@ -51,7 +51,8 @@
  *   which the command line's next run retries before it dials. It writes them
  *   whatever relay the invitation named, and writes that relay whole as
  *   `connection.invitation_relay`, its registrar included, since a
- *   command-line run lists it beside its own and enrolls at its registrar. A
+ *   command-line run lists it beside its own and enrolls at its registrar
+ *   when the relay it allocates on is one the invitation names. A
  *   registrar with no own TURN url to write, and a registration a re-invite
  *   left pending, which no run can confirm, are refused.
  *
@@ -155,6 +156,8 @@ export interface ManagedCommandLineConfig {
   /** The `alcove.yaml` half: the exchange-file document, with `role` injected
    * and any max-age policy held, and no secret. */
   config: ManagedCronExportFile;
+  /** The connection {@link config} writes, as the CLI reads it. */
+  connection: ConnectionConfig;
   /** The command to run in the folder holding that file, and the key file where
    * the exchange has one: {@link argv} quoted for a POSIX shell. */
   command: string;
@@ -442,6 +445,7 @@ export function composeManagedCronExportConfig(
       text: serializeExchangeDocument(document),
       mimeType: CRON_EXPORT_CONFIG_MIME,
     },
+    connection: document.connection,
     command: shellJoinCommand(argv),
     argv,
     bindPaths: bindPathsIn(document),

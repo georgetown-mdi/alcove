@@ -246,6 +246,28 @@ export function selectRunRelay(
 }
 
 /**
+ * Whether a webrtc run enrolls at the registrar its connection's
+ * `invitationRelay` names: only when the TURN server it allocates on, the
+ * first {@link selectRunRelay} lists, has a url the invitation names and is
+ * presented the minted credential, the one the registrar enrolls the key of.
+ * Decided by the url, not the entry's `source`, so an own url-only entry
+ * naming the invitation's url enrolls too.
+ */
+export function runEnrollsAtInvitationRegistrar(
+  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+): boolean {
+  const invitation = connection.invitationRelay;
+  if (invitation?.registrar === undefined) return false;
+  const allocating = selectRunRelay(connection).turn?.[0];
+  if (allocating === undefined) return false;
+  return (
+    (invitation.turn ?? []).includes(allocating.url) &&
+    allocating.username === undefined &&
+    allocating.credential === undefined
+  );
+}
+
+/**
  * Mint the credential a run presents to every TURN url it lists that sets no
  * static credential, the invitation's urls and its own minted entries alike:
  * signed under the relay key derived from the run's current shared secret, for
