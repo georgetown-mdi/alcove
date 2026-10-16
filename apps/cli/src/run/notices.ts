@@ -91,15 +91,30 @@ export const UNDECLARED_COLUMNS_CONFIG_REMEDY =
   "with role: ignored.";
 
 /**
+ * {@link UNDECLARED_COLUMNS_CONFIG_REMEDY} for a run whose metadata has no
+ * `role: identifier` column, which also names how to declare one.
+ */
+export const UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY =
+  "To send one, declare it in the configuration's metadata block with " +
+  "is_payload: true; to use one as your record identifier, declare it with " +
+  "role: identifier; to leave one out without this notice, declare it " +
+  "with role: ignored.";
+
+/**
  * The notice naming the input columns this run does not send because its
  * metadata does not declare them, ending with `remedy` (by default
- * {@link UNDECLARED_COLUMNS_CONFIG_REMEDY}), or `undefined` when there are
- * none. Composed raw: the names are the input file's header, escaped once at
- * each sink.
+ * {@link UNDECLARED_COLUMNS_CONFIG_REMEDY}, or
+ * {@link UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY} when the metadata has no
+ * identifier), or `undefined` when there are none. Composed raw: the names are
+ * the input file's header, escaped once at each sink.
  */
 export function undeclaredColumnsNotice(
-  prepared: Pick<PreparedExchange, "undeclaredColumns">,
-  remedy: string = UNDECLARED_COLUMNS_CONFIG_REMEDY,
+  prepared: Pick<PreparedExchange, "undeclaredColumns" | "metadata">,
+  remedy: string = prepared.metadata.some(
+    (column) => column.role === "identifier",
+  )
+    ? UNDECLARED_COLUMNS_CONFIG_REMEDY
+    : UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY,
 ): string | undefined {
   return describeUndeclaredColumns(prepared.undeclaredColumns ?? [], remedy);
 }

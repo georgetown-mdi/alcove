@@ -705,7 +705,8 @@ The fold has three limits. The console's quick-exchange confirm screen states
 the rule and lists the columns sent; only the command line's pre-run display
 lists the names a quick exchange holds back. A header recognized as an
 identifier only once folded, such as `ID ` with a trailing space, is declared
-and sent on a configuration with no `metadata` block, and a partner whose
+and sent on a configuration with no `metadata` block when it is the header's
+first `identifier`-typed column, and a partner whose
 `payload.receive` is unset takes that wider set on its first run as it takes
 any first-run set
 ([An unset `payload.receive` is filled on the first run](EXCHANGE_FILE.md#an-unset-payloadreceive-is-filled-on-the-first-run)).
@@ -744,11 +745,11 @@ block, and an invitation composed from an input file.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
-A second pass then decides which column indexes this party's own records: a
-header with exactly one `identifier`-typed column promotes that column to
-`role: identifier` whatever its name, and a header with several leaves the
-promotion to a column whose lookup key is `id` or `identifier` if one is present,
-and to no column at all otherwise.
+A second pass then decides which column indexes this party's own records: the
+first `identifier`-typed column in header order is promoted to
+`role: identifier` whatever its name. Every later `identifier`-typed column,
+whichever row typed it, infers nothing when declared-only, and `role: payload`,
+`is_payload: true` in direct mode.
 
 A column that ends the second pass with no role is undeclared, which only
 declared-only inference leaves: the inferred

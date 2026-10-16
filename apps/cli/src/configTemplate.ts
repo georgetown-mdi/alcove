@@ -424,8 +424,8 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # beside the values your partner sends, so you do not have to join the result
 # back to your input by hand. disclosed writes the columns you send to the
 # partner; all writes every column your metadata block declares, or, with no
-# metadata block, every column of your input file. Your identifier column is
-# left out either way -- the result's first column already holds it.
+# metadata block, every column of your input file. Your identifier column, if
+# you have one, is left out either way -- the result's first column holds it.
 # Purely local: nothing extra is sent, and your partner's result is unchanged.
 # Omit the field to write your partner's values alone.
 # include_own_columns: disclosed
@@ -490,10 +490,12 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 /**
  * The comment written after an inferred metadata block naming the input
  * columns it does not declare, each as a commented entry that sends the
- * column once uncommented.
+ * column once uncommented. `hasIdentifier` is whether the block declares a
+ * `role: identifier` column; without one the comment names how to declare it.
  */
 function undeclaredColumnsComment(
   undeclaredColumns: ReadonlyArray<string>,
+  hasIdentifier: boolean,
 ): string {
   const entries = undeclaredColumns.flatMap((name) =>
     YAML.stringify([{ name, type: "other", role: "payload", is_payload: true }])
@@ -504,6 +506,14 @@ function undeclaredColumnsComment(
     "Input columns not declared above, and so not sent to your partner.",
     "Uncomment an entry to send that column for matched records, or set its",
     "role to ignored to leave it out without a notice at each run.",
+    ...(hasIdentifier
+      ? []
+      : [
+          "No column above is your record identifier. To use one of these as",
+          "your record identifier, uncomment its entry and set its role to",
+          "identifier; set is_payload to false as well to keep it from your",
+          "partner.",
+        ]),
     ...entries,
   ]);
 }
@@ -558,7 +568,10 @@ export function renderConfigTemplate(
     data.undeclaredColumns.length > 0 &&
     YAML.isSeq(metadataNode)
   )
-    metadataNode.comment = undeclaredColumnsComment(data.undeclaredColumns);
+    metadataNode.comment = undeclaredColumnsComment(
+      data.undeclaredColumns,
+      data.metadata?.some((column) => column.role === "identifier") ?? false,
+    );
 
   const sections = [doc.toString().trimEnd()];
   // When no input file seeded metadata/standardization, document them (commented)

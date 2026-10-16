@@ -1242,21 +1242,21 @@ describe("generateInvitation", () => {
 
   // A linkable CSV (ssn + names + dob give satisfiable keys) that ALSO contains
   // a column the quick path discloses: the `id` alias infers as the record
-  // identifier with isPayload set, so it is transmitted. `notes` and `member_id`
-  // are not recognized beside `id`, so inference leaves them out and they are
-  // not sent.
+  // identifier with isPayload set, so it is transmitted. `notes` is not
+  // recognized and `member_id` is an identifier column after `id`, so inference
+  // leaves both out and they are not sent.
   const DISCLOSING_COLUMNS = [
     "ssn",
     "first_name",
     "last_name",
     "dob",
     "notes",
-    "member_id",
     "id",
+    "member_id",
   ];
   const DISCLOSING_CSV =
-    "ssn,first_name,last_name,dob,notes,member_id,id\n" +
-    "123456789,Alice,Smith,1990-01-02,vip,M001,7\n";
+    "ssn,first_name,last_name,dob,notes,id,member_id\n" +
+    "123456789,Alice,Smith,1990-01-02,vip,7,M001\n";
 
   test("quick path authors payload.send equal to the inferred metadata's disclosed columns", async () => {
     const inviterName = "County Health Dept";

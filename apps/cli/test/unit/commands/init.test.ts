@@ -277,6 +277,19 @@ test("renderConfigTemplate: undeclared input columns are listed as commented ent
   expect(active.metadata?.map((column) => column.name)).not.toContain("score");
   expect(template).toContain("  # - name: score\n");
   expect(template).toContain("  # - name: free text\n");
+  expect(template).toContain("No column above is your record identifier.");
+  expect(template).toContain("set its role to\n  # identifier;");
+});
+
+test("renderConfigTemplate: with an identifier, the undeclared columns are not offered as one", async () => {
+  const dir = scratchDir();
+  const file = path.join(dir, "in.csv");
+  fs.writeFileSync(file, "case_id,first_name,dob,score\n7,A,1990-01-02,5\n");
+  const data = await buildTemplateData(file, "Org");
+  expect(data.undeclaredColumns).toEqual(["score"]);
+  const template = renderConfigTemplate(data);
+  expect(template).toContain("not declared above");
+  expect(template).not.toContain("record identifier");
 });
 
 test("renderConfigTemplate: no input file lists no undeclared columns", async () => {

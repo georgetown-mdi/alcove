@@ -97,6 +97,16 @@ export function ownColumnsPreview(
   return ownResultColumnNames(metadata, choice, []);
 }
 
+/** What the control says the result file begins with whatever the choice: the
+ * record identifier when the metadata declares one, otherwise this party's own
+ * row number. */
+export function ownColumnsLeadingColumnsNotice(metadata: Metadata): string {
+  const leading = metadata.some((column) => column.role === "identifier")
+    ? "your record identifier"
+    : "your own row number";
+  return `Your result file already begins with ${leading} and your partner's row number.`;
+}
+
 /** What the control says the setting does NOT do, stated at the control rather
  * than left to the reference: the operator is choosing beside a grid whose
  * every other row governs what the partner sees. */

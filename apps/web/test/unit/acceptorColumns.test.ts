@@ -142,6 +142,19 @@ function editorFor(
   };
 }
 
+/** The seed with its `identifier` column also roled `identifier`: inference
+ * promotes one column, but an authored metadata block can declare two. */
+function seedWithSecondIdentifier(
+  columns: Array<string>,
+  isPayload = true,
+): Metadata {
+  return acceptorInitialColumnsState(columns).metadata.map((column) =>
+    column.name === "identifier"
+      ? { ...column, role: "identifier", isPayload }
+      : column,
+  );
+}
+
 describe("acceptor columns editor state", () => {
   test("seeds metadata from the file's columns and starts with empty override layers", () => {
     const state = acceptorInitialColumnsState(["first_name", "last_name"]);
@@ -488,8 +501,10 @@ describe("acceptor launch gates", () => {
 
   test("two identifier columns disable launch even when the keys are satisfiable, naming the identifier rule", () => {
     const columns = ["id", "identifier", "first_name", "last_name"];
-    const { editorState } = editorFor(columns, nameTerms);
-    // The keys are covered, but the seed has two identifiers.
+    const { editorState } = editorFor(columns, nameTerms, {
+      metadata: seedWithSecondIdentifier(columns),
+    });
+    // The keys are covered, but the metadata has two identifiers.
     const verdict = acceptorVerdict(columns, nameTerms, editorState);
     expect(verdict.kind).toBe("allClear");
     expect(acceptorHasIdentifierConflict(editorState.metadata)).toBe(true);
@@ -846,7 +861,9 @@ describe("acceptor launch gates", () => {
     // connection authored: the operator is sent to the verdict at the top of the
     // step, not to a gate further down that a fix up there may clear anyway.
     const columns = ["id", "identifier", "notes"];
-    const { editorState } = editorFor(columns, nameTerms);
+    const { editorState } = editorFor(columns, nameTerms, {
+      metadata: seedWithSecondIdentifier(columns),
+    });
     const verdict = acceptorVerdict(columns, nameTerms, editorState);
     expect(verdict.satisfiableKeyCount).toBe(0);
     expect(acceptorHasIdentifierConflict(editorState.metadata)).toBe(true);
@@ -1387,9 +1404,10 @@ describe("the invitation's declared payload set against the marks", () => {
   ])(
     "with two record identifiers, the offer sends $receive as payload and changes no other column",
     ({ receive, sent }) => {
-      // Both `id` and `identifier` infer to the identifier role, so the file has
-      // no one record identifier: the offer marks no column identifier-and-sent,
-      // demotes no identifier, and does not use the identifier wording.
+      // The metadata declares both `id` and `identifier` as unsent identifiers,
+      // so the file has no one record identifier: the offer marks no column
+      // identifier-and-sent, demotes no identifier, and does not use the
+      // identifier wording.
       const twoIdentifierColumns = [
         "id",
         "identifier",
@@ -1400,7 +1418,9 @@ describe("the invitation's declared payload set against the marks", () => {
         ...nameTerms,
         payload: { receive: receive.map((name) => ({ name })) },
       };
-      const { state } = editorFor(twoIdentifierColumns, terms);
+      const { state } = editorFor(twoIdentifierColumns, terms, {
+        metadata: seedWithSecondIdentifier(twoIdentifierColumns, false),
+      });
       expect(
         state.metadata
           .filter((column) => column.role === "identifier")

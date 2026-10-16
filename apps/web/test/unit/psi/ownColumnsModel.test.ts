@@ -17,6 +17,7 @@ import {
   ownColumnsActionable,
   ownColumnsEmptySelectionNotice,
   ownColumnsField,
+  ownColumnsLeadingColumnsNotice,
   ownColumnsPreview,
 } from "@psi/ownColumnsModel";
 import {
@@ -143,6 +144,24 @@ describe("a selection that resolves to no column", () => {
     );
     expect(OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE).not.toBe(
       OWN_COLUMNS_EMPTY_ALL_NOTICE,
+    );
+  });
+});
+
+describe("ownColumnsLeadingColumnsNotice", () => {
+  test("names the record identifier when the metadata declares one", () => {
+    expect(
+      ownColumnsLeadingColumnsNotice(inferMetadata(["client_id", "dob"], [])),
+    ).toBe(
+      "Your result file already begins with your record identifier and your partner's row number.",
+    );
+  });
+
+  test("names this party's own row number when the metadata has no identifier", () => {
+    expect(
+      ownColumnsLeadingColumnsNotice(inferMetadata(["first_name", "dob"], [])),
+    ).toBe(
+      "Your result file already begins with your own row number and your partner's row number.",
     );
   });
 });

@@ -123,6 +123,29 @@ const csv: AcquiredCsv = {
   rowCount: 1,
 };
 
+const twoIds: AcquiredCsv = {
+  ...csv,
+  columns: ["id", "identifier", "last_name", "dob"],
+  rawRows: [{ id: "1", identifier: "2", last_name: "Lee", dob: "x" }],
+};
+
+/** An editor over {@link twoIds} opened on a configuration whose metadata
+ * declares both `id` and `identifier` as identifiers: inference promotes only
+ * one. */
+function twoIdentifierEditor(): ReturnType<typeof editorFromCsv> {
+  const seeded = editorFromCsv("Dana", twoIds);
+  return editorWithImportedTerms(
+    seeded,
+    twoIds,
+    seeded.seed.terms,
+    seeded.seed.metadata.map((column) =>
+      column.name === "identifier"
+        ? { ...column, role: "identifier", isPayload: true }
+        : column,
+    ),
+  );
+}
+
 function ledgerValue(editor: ReturnType<typeof editorFromCsv>, label: string) {
   const row = inviterLedgerRows(editor).find((entry) => entry.label === label);
   if (row === undefined) throw new Error(`no ledger row labeled ${label}`);
@@ -289,12 +312,7 @@ describe("ledger tracks step-2 edits", () => {
   });
 
   test("choosing an identifier demotes the previous one and reports it", () => {
-    const twoIds: AcquiredCsv = {
-      ...csv,
-      columns: ["id", "identifier", "last_name", "dob"],
-      rawRows: [{ id: "1", identifier: "2", last_name: "Lee", dob: "x" }],
-    };
-    const seeded = editorFromCsv("Dana", twoIds);
+    const seeded = twoIdentifierEditor();
     expect(identifierProblem(seeded.draft)).toBe(true);
 
     const { editor, demotedIdentifiers } = editorWithColumnDisclosure(
@@ -403,12 +421,7 @@ describe("review and create", () => {
   });
 
   test("the two-identifier conflict is a problem targeting step 2", () => {
-    const twoIds: AcquiredCsv = {
-      ...csv,
-      columns: ["id", "identifier", "last_name", "dob"],
-      rawRows: [{ id: "1", identifier: "2", last_name: "Lee", dob: "x" }],
-    };
-    const problems = spineProblems(editorFromCsv("Dana", twoIds));
+    const problems = spineProblems(twoIdentifierEditor());
     expect(
       problems.some(
         (problem) =>

@@ -44,8 +44,15 @@ The fold only adds recognized headers, and each added header changes what a run 
   Where the configuration also has no `linkage_terms`, the terms are inferred from the metadata, so a header such as `Date of Birth` adds a field and the keys that use it.
   The terms change at the next handshake.
 - **A configuration with explicit terms but no `metadata` block** can bind a field by its type to a header the fold recognizes, in place of a later column of that type or of no column.
-- **A configuration with no `metadata` block and one `_id` column** loses it as the identifier when the fold recognizes a second identifier-typed header, such as `Record ID`.
-  The promotion needs exactly one identifier-typed column, so neither column indexes this party's own records and, declared-only, neither is declared.
+- **A configuration with no `metadata` block and one `_id` column** keeps it as the identifier when the fold recognizes a second identifier-typed header, such as `Record ID`, after it, and loses it to that header when the header comes first.
+  The promotion takes the first identifier-typed column in file order.
+
+## Two identifier-typed columns
+
+The promotion had needed exactly one identifier-typed column, so `case_id` beside `Record ID` left the run with no identifier.
+Three rules were weighed: keep that and ask for a `metadata` block, prefer the column whose raw header ends in `_id`, or take the first identifier-typed column in file order.
+The maintainer ruled for file order: no header spelling is a better identifier than another, so the rule does not rank `record_id` above `Record ID`.
+A run whose metadata still has no identifier, because no column is identifier-typed, is told how to declare one: the undeclared-columns notice and the `alcove init` comments name `role: identifier`.
 
 A changed set of terms meets a partner on a build with the lowercase-only lookup, which still infers the old terms, and the run stops with a terms mismatch before any record is compared.
 Alcove is pre-release, so the two parties upgrade together rather than through a compatibility rule; a configuration that must keep its old meaning authors a `metadata` block.

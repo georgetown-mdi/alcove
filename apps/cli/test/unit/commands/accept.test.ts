@@ -1142,10 +1142,10 @@ describe("the count-only shape, at the accept boundary", () => {
 
   test("validateAccept: warns when the input discloses columns the invitation accepts none of", async () => {
     // An explicit empty receive is the inviter declaring it takes no payload column,
-    // while inferMetadata marks the `id` and `identifier` columns is_payload: true --
-    // so the configuration this acceptance writes cannot run (prepareForExchange
-    // refuses it before any data is sent). One warning, however many columns, naming them
-    // and both remedies, while the operator can still decline.
+    // while inferMetadata marks the `id` column, the first identifier column,
+    // is_payload: true -- so the configuration this acceptance writes cannot run
+    // (prepareForExchange refuses it before any data is sent). One warning naming
+    // the sent column and both remedies, while the operator can still decline.
     // A zero-width joiner rather than an ESC: this name comes from the CSV
     // header, which the read strips every control character from, and the
     // joiner is outside that class and still needs escaping wherever it is shown.
@@ -1162,7 +1162,8 @@ describe("the count-only shape, at the accept boundary", () => {
     // One entry per line, the rendering both consent surfaces use, so a name
     // holding the list separator is not misread as two entries.
     expect(refused).toContain("\n  - id\n");
-    expect(refused).toContain("\n  - identifier");
+    // A later identifier column is not the identifier, so it is not sent.
+    expect(refused).not.toContain("\n  - identifier");
     // A column that inference does not recognize is not sent, so it is not listed.
     expect(refused).not.toContain(sanitizeForDisplay(hostile));
     expect(refused).not.toContain("\u200d");

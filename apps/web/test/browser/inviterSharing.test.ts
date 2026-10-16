@@ -17,6 +17,7 @@ import {
   editorFromCsv,
   editorWithColumnDisclosure,
   editorWithColumnType,
+  editorWithImportedTerms,
 } from "@psi/inviterEditor";
 import { inviterLedgerRows } from "@psi/ledger";
 
@@ -290,13 +291,25 @@ describe("column-name isolation: what the wrapper does not contain", () => {
 
   test("the demotion notice names every column the rule displaces at once", async () => {
     // Why the notice is a site where the residual can reach something: two
-    // alias-inferred identifiers are displaced together when a third column takes
-    // the role, so the notice sets separators between the names and its sentence
-    // after them. Driven through the editing path the step's selects call, so the
-    // shape asserted here is the shape the rule produces.
+    // identifiers an authored metadata block declares are displaced together when
+    // a third column takes the role, so the notice sets separators between the
+    // names and its sentence after them. Driven through the editing path the
+    // step's selects call, so the shape asserted here is the shape the rule
+    // produces.
     const acquired = csvOf(["id", "identifier", "first_name", "post_id"]);
+    const seeded = editorFromCsv("Dana Okafor", acquired);
+    const loaded = editorWithImportedTerms(
+      seeded,
+      acquired,
+      seeded.seed.terms,
+      seeded.seed.metadata.map((column) =>
+        column.name === "identifier"
+          ? { ...column, role: "identifier" as const, isPayload: true }
+          : column,
+      ),
+    );
     const { editor, demotedIdentifiers } = editorWithColumnDisclosure(
-      editorFromCsv("Dana Okafor", acquired),
+      loaded,
       acquired,
       "post_id",
       "identifier",
