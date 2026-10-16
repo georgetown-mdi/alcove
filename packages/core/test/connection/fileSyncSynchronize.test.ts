@@ -305,12 +305,12 @@ for (const sweepExchangeFiles of [false, true]) {
   });
 }
 
-test("synchronize() reports an over-cap peer hello as a terminal FrameSizeExceededError", async () => {
+test("synchronize() reports an over-cap peer hello as a terminal UsageError", async () => {
   // The rendezvous gate (readControlFileWithGate) must treat an over-cap hello
   // control file as terminal rather than retrying it until the deadline: a
   // hostile server could otherwise hold the gate open by serving an oversized
   // hello every cycle, re-incurring on each pass the allocation the cap exists
-  // to prevent. Covers the FrameSizeExceededError rethrow in the gate's catch.
+  // to prevent. Covers the UsageError rethrow in the gate's catch.
   const peerId = "00000000-0000-4000-8000-000000000001";
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
@@ -350,9 +350,12 @@ test("synchronize() reports an over-cap peer hello as a terminal FrameSizeExceed
     return originalGet(path, options);
   };
 
-  await expect(conn.synchronize()).rejects.toBeInstanceOf(
-    FrameSizeExceededError,
-  );
+  await expect(conn.synchronize()).rejects.toMatchObject({
+    name: "UsageError",
+    message: expect.stringContaining(
+      `control file at ${peerHelloPath} is larger than the`,
+    ),
+  });
   // Terminal: read once and propagated, not retried until the TTL.
   expect(peerHelloReads).toBe(1);
 });

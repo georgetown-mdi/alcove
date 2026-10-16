@@ -59,6 +59,10 @@ import {
 } from "./fileSyncNames";
 import { isExpectedAbortName } from "./abortMarker";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
+import {
+  getUpToNamedCount,
+  largerThanNamedCountMessage,
+} from "./namedCountRead";
 import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
 // The single remedy for a message write the transport could not settle,
@@ -70,6 +74,10 @@ const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
+const messageFileLabel = (name: string, peerId: string, path: string) =>
+  `message file ${redactPrivateKeyMaterial(name)} from ` +
+  `${redactPrivateKeyMaterial(peerId)} in ${redactPrivateKeyMaterial(path)}`;
+
 // A fully synced peer message whose size is not the byte count its name
 // states. Terminal: re-reading cannot change a file already past its size gate.
 const messageSizeMismatch = (
@@ -79,11 +87,22 @@ const messageSizeMismatch = (
   sizes: { actual: number; declared: number },
 ): UsageError =>
   new UsageError(
-    `message file ${redactPrivateKeyMaterial(name)} from ` +
-      `${redactPrivateKeyMaterial(peerId)} in ` +
-      `${redactPrivateKeyMaterial(path)} is ${sizes.actual} byte(s), not ` +
+    `${messageFileLabel(name, peerId, path)} is ${sizes.actual} byte(s), not ` +
       `the ${sizes.declared} its name states, so it is corrupt or does not ` +
       "belong to this exchange. Inspect the directory before retrying.",
+  );
+
+// A peer message whose name states 0 bytes. Every message has a header, so
+// no write of the peer's produces it.
+const zeroCountMessage = (
+  name: string,
+  peerId: string,
+  path: string,
+): UsageError =>
+  new UsageError(
+    `${messageFileLabel(name, peerId, path)} states 0 bytes in its name, ` +
+      "and no message is empty, so it is corrupt or does not belong to this " +
+      "exchange. Inspect the directory before retrying.",
   );
 
 // The highest per-session send sequence number, so a timestamped message name
@@ -947,6 +966,9 @@ export class FileSyncMessageLoop {
       if (messages.length === 1) {
         const { file: messageFile, declaredSize } = messages[0];
 
+        if (declaredSize === 0)
+          throw zeroCountMessage(messageFile.name, peerId, path);
+
         // Frame-size bound (the primary enforcement point; see
         // docs/spec/TRANSPORT_BOUNDS.md). Refused before the sync-gate and
         // before get() loads the body into memory, so a hostile server admin
@@ -1014,18 +1036,24 @@ export class FileSyncMessageLoop {
             );
 
           reachedGet = true;
-          const message = await deps.client().get(inPath, {
-            // Read raw bytes: a binary frame is delivered verbatim and a JSON
-            // control payload is bounded-parsed from its bytes, so the body is
-            // never converted to a string (a capped read always resolves to a
-            // Buffer regardless, but this states the intent).
-            encoding: null,
-            // The safety check behind the pre-get size check above, for a
-            // file that grew after listing or a server that under-reports its
-            // size: the count the name states, already refused above when
-            // over frameCap, so a larger body is never buffered past it.
-            maxBytes: declaredSize,
-          });
+          // Capped at the count the name states, already refused above when
+          // over frameCap: the safety check behind the pre-get size check,
+          // for a file that grew after listing or a server that under-reports
+          // its size. Raw bytes: a binary frame is delivered verbatim and a
+          // JSON control payload is bounded-parsed from its bytes.
+          const message = await getUpToNamedCount(
+            deps.client(),
+            inPath,
+            declaredSize,
+            null,
+            () =>
+              new UsageError(
+                largerThanNamedCountMessage(
+                  messageFileLabel(messageFile.name, peerId, path),
+                  declaredSize,
+                ),
+              ),
+          );
           reachedGet = false;
           if (message.length !== declaredSize)
             throw messageSizeMismatch(messageFile.name, peerId, path, {

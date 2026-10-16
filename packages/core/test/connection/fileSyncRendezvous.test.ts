@@ -292,6 +292,33 @@ describe("readControlFileWithGate", () => {
     expect(calls).toBe(0);
   });
 
+  test("refuses a hello whose name states 0 bytes, listed at 0, without reading it", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return Buffer.alloc(0);
+    });
+    const path = sizedPath(0);
+    await expect(
+      readControlFileWithGate(
+        client,
+        path,
+        0,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message:
+        `control file at ${path} states 0 bytes in its name, and a hello ` +
+        "is never empty",
+    });
+    expect(calls).toBe(0);
+  });
+
   test("refuses a hello listed larger than its name states without reading it", async () => {
     let calls = 0;
     const client = stubClient(async () => {
@@ -439,7 +466,14 @@ describe("readControlFileWithGate", () => {
         "presentAtEntry",
         signal(),
       ),
-    ).rejects.toBeInstanceOf(FrameSizeExceededError);
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message:
+        `control file at ${helloPath} is larger than the ${listedSize} ` +
+        "byte(s) its name states, so it is not the file your partner " +
+        "finished writing. The run stops; inspect the directory before " +
+        "retrying.",
+    });
     expect(reads).toEqual([
       { name: helloPath.slice("in/".length), maxBytes: listedSize },
     ]);

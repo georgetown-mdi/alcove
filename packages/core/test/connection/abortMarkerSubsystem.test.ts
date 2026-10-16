@@ -9,10 +9,7 @@ import type {
   FileInfo,
   FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
-import {
-  FrameSizeExceededError,
-  TransportOperationStalledError,
-} from "../../src/errors";
+import { TransportOperationStalledError, UsageError } from "../../src/errors";
 import { fromBase64Url, toBase64Url } from "../../src/utils/crypto";
 import { capReadsAtMaxBytes } from "../utils/support";
 
@@ -416,8 +413,29 @@ test("verifyPeerMarker refuses a body served past its name's byte count, reading
       DIR,
       PEER_ID,
     ),
-  ).rejects.toBeInstanceOf(FrameSizeExceededError);
+  ).rejects.toMatchObject({
+    name: "UsageError",
+    message:
+      `abort marker ${PEER_MARKER} in ${DIR} is larger than the ` +
+      `${PEER_MARKER_BYTES} byte(s) its name states, so it is not the file ` +
+      "your partner finished writing. The run stops; inspect the directory " +
+      "before retrying.",
+  });
   expect(reads).toEqual([{ name: PEER_MARKER, maxBytes: PEER_MARKER_BYTES }]);
+});
+
+test("verifyPeerMarker does not verify a marker whose name states 0 bytes, listed at 0, and does not read it", async () => {
+  const client = makeClient({ get: vi.fn(async () => Buffer.alloc(0)) });
+  const { subsystem } = armed(client);
+  expect(
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(0, `${PEER_ID}-abort-0.json`),
+      DIR,
+      PEER_ID,
+    ),
+  ).toBe(false);
+  expect(client.get).not.toHaveBeenCalled();
 });
 
 test("verifyPeerMarker on a listing without the peer's marker returns false without reading", async () => {
@@ -552,7 +570,7 @@ test("verifyPeerMarker on a failed read returns false rather than throwing", asy
 
 test.each([
   ["a stalled read", () => new TransportOperationStalledError("get (60 ms)")],
-  ["an over-cap read", () => new FrameSizeExceededError("over the cap")],
+  ["a usage refusal", () => new UsageError("refused")],
 ])(
   "verifyPeerMarker rethrows %s rather than ignoring it",
   async (_label, makeError) => {

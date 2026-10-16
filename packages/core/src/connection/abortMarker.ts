@@ -17,7 +17,10 @@
 import { v4 as uuidv4 } from "uuid";
 
 import type { getLoggerForVerbosity } from "../utils/logger";
-import { redactAndSanitizeForDisplay } from "../utils/sanitizeErrorForDisplay";
+import {
+  redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
+} from "../utils/sanitizeErrorForDisplay";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../utils/crypto";
 import { parseBoundedJson } from "../utils/boundedJson";
 import { TransportOperationStalledError, UsageError } from "../errors";
@@ -25,6 +28,10 @@ import { ABORT_TOKEN_BYTES } from "../auth";
 import { sizedControlName } from "./fileSyncNames";
 import { joinFileSyncPath } from "./fileSyncPath";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
+import {
+  getUpToNamedCount,
+  largerThanNamedCountMessage,
+} from "./namedCountRead";
 
 // The on-disk envelope: { version, token }. `version` is spelled out to match
 // the full-word control-body convention (locklessRendezvous / retainFiles).
@@ -445,10 +452,20 @@ export class AbortMarkerSubsystem {
       // self-bounds reads. The short rawClient budget is reserved for the
       // teardown write, which must fast-fail so a faulting process is not
       // held open.
-      const raw = await client.get(joinFileSyncPath(path, markerName), {
-        encoding: "utf-8",
-        maxBytes: declaredSize,
-      });
+      const raw = await getUpToNamedCount(
+        client,
+        joinFileSyncPath(path, markerName),
+        declaredSize,
+        "utf-8",
+        () =>
+          new UsageError(
+            largerThanNamedCountMessage(
+              `abort marker ${redactPrivateKeyMaterial(markerName)} in ` +
+                redactPrivateKeyMaterial(path),
+              declaredSize,
+            ),
+          ),
+      );
       if (raw.length !== declaredSize) return false;
       const parsed = parseBoundedJson(raw.toString());
       if (

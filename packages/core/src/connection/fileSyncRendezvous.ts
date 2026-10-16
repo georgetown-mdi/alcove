@@ -54,6 +54,10 @@ import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
 import {
+  getUpToNamedCount,
+  largerThanNamedCountMessage,
+} from "./namedCountRead";
+import {
   LOCK_SUFFIX,
   ackMarkerName,
   legacyHelloWriterId,
@@ -165,10 +169,10 @@ const chainForceRetainSweepStep = (err: UsageError): void => {
 };
 
 // Reads the hello control file through the I5 partial-sync gate: refuses a
-// file listed or named over HELLO_MAX_BYTES, or listed larger than the byte
-// count its name states, before any read; then retries a transient get()
-// failure or a body shorter than that count until timeToLive expires, then
-// throws a transport Error. A typed UsageError from get() -- an over-cap
+// file named at 0 bytes, listed or named over HELLO_MAX_BYTES, or listed
+// larger than the byte count its name states, before any read; then retries
+// a transient get() failure or a body shorter than that count until
+// timeToLive expires, then throws a transport Error. A typed UsageError from get() -- an over-cap
 // body or a stalled read -- is terminal and not retried, since retrying
 // cannot fix a usage fault and would let a hostile server hold the gate
 // open until the deadline; a body longer than its count, or one of exactly
@@ -196,6 +200,11 @@ export async function readControlFileWithGate(
       `control file at ${redactPrivateKeyMaterial(filePath)} has no byte ` +
         "count in its name",
     );
+  if (declaredSize === 0)
+    throw new MalformedHelloError(
+      `control file at ${redactPrivateKeyMaterial(filePath)} states 0 bytes ` +
+        "in its name, and a hello is never empty",
+    );
   if (listedSize > HELLO_MAX_BYTES || declaredSize > HELLO_MAX_BYTES)
     throw new FrameSizeExceededError(
       `a peer hello is listed at ${listedSize} byte(s) and its name states ` +
@@ -218,13 +227,22 @@ export async function readControlFileWithGate(
     try {
       // Bounded by the count the name states, already refused above when
       // over HELLO_MAX_BYTES: a larger body is never buffered past it.
-      raw = await client.get(filePath, {
-        encoding: "utf-8",
-        maxBytes: declaredSize,
-      });
+      raw = await getUpToNamedCount(
+        client,
+        filePath,
+        declaredSize,
+        "utf-8",
+        () =>
+          new MalformedHelloError(
+            largerThanNamedCountMessage(
+              `control file at ${redactPrivateKeyMaterial(filePath)}`,
+              declaredSize,
+            ),
+          ),
+      );
     } catch (err) {
-      // A typed UsageError from get() (FrameSizeExceededError,
-      // TransportOperationStalledError) is terminal: rethrow so
+      // A typed UsageError from get() (a body past the named count, a
+      // stalled read) is terminal: rethrow so
       // synchronize() exits as the typed exit-64 failure instead of being
       // retried, which would let a hostile server hold the gate open every
       // cycle until the deadline. The malformed-payload UsageError thrown

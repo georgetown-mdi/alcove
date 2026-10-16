@@ -5617,9 +5617,9 @@ test("poll refuses an over-cap message before reading it into memory", async () 
 test("poll reports an adapter frame-size cap as a terminal error", async () => {
   // A server that under-reports a file's size in its directory listing slips
   // past the pre-get() size check, so the adapter's hard read cap fires during
-  // get() instead. That FrameSizeExceededError must be terminal -- the poller
-  // must not re-read the same file every cycle (which would re-incur the very
-  // allocation the cap prevents).
+  // get() instead, at the count the name states. That refusal must be
+  // terminal -- the poller must not re-read the same file every cycle (which
+  // would re-incur the very allocation the cap prevents).
   const peerId = "peer-test";
   let getCount = 0;
   let errors: unknown[] = [];
@@ -5645,7 +5645,10 @@ test("poll reports an adapter frame-size cap as a terminal error", async () => {
   });
 
   expect(errors).toHaveLength(1);
-  expect(errors[0]).toBeInstanceOf(FrameSizeExceededError);
+  expect(errors[0]).toBeInstanceOf(UsageError);
+  expect((errors[0] as Error).message).toContain(
+    "is larger than the 5 byte(s) its name states",
+  );
   expect(getCount).toBe(1);
 });
 

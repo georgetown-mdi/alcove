@@ -1190,7 +1190,31 @@ describe("FileSyncMessageLoop exact message size gate", () => {
     expect(reads).toEqual([{ name, maxBytes: declared }]);
     expect(internals(f.loop).pollerActive).toBe(false);
     expect(f.emitted).toHaveLength(1);
-    expect(f.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect(f.emitted[0].arg).not.toBeInstanceOf(FrameSizeExceededError);
+    expect((f.emitted[0].arg as Error).message).toBe(
+      `message file ${name} from ${PEER} in ${DIR} is larger than the ` +
+        `${declared} byte(s) its name states, so it is not the file your ` +
+        "partner finished writing. The run stops; inspect the directory " +
+        "before retrying.",
+    );
+  });
+
+  test("a name stating 0 bytes, listed at 0, is terminal before any read", async () => {
+    const { f, name, gets } = plantSized(Buffer.alloc(0), 0);
+
+    await f.pollOnce();
+
+    expect(gets).toEqual([]);
+    expect(internals(f.loop).pollerActive).toBe(false);
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect((f.emitted[0].arg as Error).message).toBe(
+      `message file ${name} from ${PEER} in ${DIR} states 0 bytes in its ` +
+        "name, and no message is empty, so it is corrupt or does not belong " +
+        "to this exchange. Inspect the directory before retrying.",
+    );
   });
 });
 

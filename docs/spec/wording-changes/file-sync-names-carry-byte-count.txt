@@ -72,7 +72,7 @@
 - - -> **The byte-count invariant.**
 - - -> Every file a party puts under a final name either has a name ending in its byte count, `-<bytes>.json`, or is a zero-length control file named with a type word (`ack`, `lock`), in both publish modes.
 - - -> So an observer outside the protocol can tell a complete file from one still being written by name and size alone: a name ending in a byte count is complete only when the file's size equals it (a shorter or empty file under such a name is still being written), and a type-word name is always zero-length.
-- - -> A reader gates every read on the count its name states.
+- - -> A reader gates every read on the count its name states, and refuses a stated count of zero before any read, since every file a party names with a byte count has contents.
 - - -> A `temp-*.tmp` name is not a final name and states no byte count: without `write_without_renaming` every final name appears only at the rename, complete, and the in-flight temp is never complete.
 - - -> The operator-facing form of this rule is [EXCHANGE_REFERENCE.md "Moving files out of the folder"](../EXCHANGE_REFERENCE.md#moving-files-out-of-the-folder).
 - - -> In code this discriminant is `isMessageName(name)`: `parseMessageByteCount(name) !== undefined` and `parseSizedControlName(name) === undefined` (applied by the `poll()` scan in [fileSyncMessageLoop.ts](../../packages/core/src/connection/fileSyncMessageLoop.ts)).
