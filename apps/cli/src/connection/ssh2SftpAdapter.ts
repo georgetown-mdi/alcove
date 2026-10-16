@@ -1977,28 +1977,36 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     const socket = internals.client?._sock;
     if (socket === undefined || socket === socketBeforeDial) return;
     if (dialClose.seen()) return;
-    const transport = resolveTerminalCloseSeam(internals);
-    if ("missing" in transport) {
-      this.log.debug(
-        `closing a failed dial's connection from this side drives ssh2's ` +
-          `${transport.missing}, which is not available after connect(); the ` +
-          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
-          `relocated, or removed it`,
-      );
-      return;
-    }
     // The connection's own close is waited for first, so a dial that ends
     // cleanly still does, and anything its peer sends after the dial failed
     // reaches the handlers that expect it; the destroy follows only a close
-    // that did not come.
+    // that did not come. The bound is ref'd: the dial may have been refused
+    // over a socket already destroyed, with nothing ref'd left behind it.
     await this.awaitBoundedTeardown(
       held,
       dialClose.delivered,
       FORCED_CLOSE_TIMEOUT_MS,
       undefined,
-      false,
+      true,
     );
     if (dialClose.seen()) return;
+    const transport = resolveTerminalCloseSeam(internals);
+    if ("missing" in transport) {
+      this.log.warn(
+        `The connection beneath a failed SFTP dial did not close, and this ` +
+          `build could not close it from this side. The connection is left ` +
+          `to the operating system to close, and the next dial may fail as ` +
+          `well. This build of Alcove is not compatible with the installed ` +
+          `SFTP library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
+      );
+      this.log.debug(
+        `closing a failed dial's connection from this side drives ssh2's ` +
+          `${transport.missing}, which is missing after a failed dial; the ` +
+          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
+          `relocated, or removed it`,
+      );
+      return;
+    }
     try {
       await this.awaitBoundedTeardown(
         held,

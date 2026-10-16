@@ -1536,3 +1536,90 @@ inProcessOnly(
   },
   TEST_TIMEOUT_MS,
 );
+
+// Short enough to keep the case cheap; the handshake-timeout leg's peer never
+// answers, so any deadline is reached.
+const HANDSHAKE_TIMEOUT_READY_TIMEOUT_MS = 300;
+
+// What a dial against a peer answering as `answer` says reads at its rejection:
+// the rejection's message, the socket's flags, and whether the Client's 'close'
+// had fired. Resolves only once that 'close' has been delivered.
+async function failedDialReading(answer: (socket: Socket) => void): Promise<{
+  rejection: string;
+  socketClosed: boolean | undefined;
+  socketDestroyed: boolean | undefined;
+  closeSeen: boolean;
+}> {
+  const peer = await barePeer(answer);
+  const client = createRawSftpClient();
+  let closeSeen = false;
+  const closeDelivered = new Promise<void>((resolve) =>
+    internalsOf(client).client?.once("close", () => {
+      closeSeen = true;
+      resolve();
+    }),
+  );
+  try {
+    const rejection = await client
+      .connect({
+        host: peer.host,
+        port: peer.port,
+        username: "unused",
+        readyTimeout: HANDSHAKE_TIMEOUT_READY_TIMEOUT_MS,
+        retries: 1,
+      })
+      .then(
+        () => "connected",
+        (err: unknown) => (err as { message?: string }).message ?? "",
+      );
+    const socket = internalsOf(client).client?._sock;
+    const reading = {
+      rejection,
+      socketClosed: socket?.closed,
+      socketDestroyed: socket?.destroyed,
+      closeSeen,
+    };
+    await closeDelivered;
+    return reading;
+  } finally {
+    await peer.stop();
+  }
+}
+
+// The same reading for a dial that fails on its handshake timeout or on a reset
+// connection: each rejects over a socket already destroyed, so the socket reads
+// closed while the Client's 'close' for it is still to come. Driven against
+// bare listeners, so no backend is involved. The reset uses resetAndDestroy for
+// the reason the identification case above gives.
+test(
+  "a dial that times out on its handshake or is reset rejects over a closed " +
+    "socket, before the Client's 'close'",
+  async () => {
+    const timedOut = await failedDialReading(() => {});
+    const reset = await failedDialReading((socket) => {
+      socket.resetAndDestroy();
+    });
+    const shape = (reading: typeof timedOut, fragment: string) => ({
+      ...reading,
+      rejection: reading.rejection.includes(fragment),
+    });
+    expect({
+      timedOut: shape(timedOut, "Timed out while waiting for handshake"),
+      reset: shape(reset, "ECONNRESET"),
+    }).toEqual({
+      timedOut: {
+        rejection: true,
+        socketClosed: true,
+        socketDestroyed: true,
+        closeSeen: false,
+      },
+      reset: {
+        rejection: true,
+        socketClosed: true,
+        socketDestroyed: true,
+        closeSeen: false,
+      },
+    });
+  },
+  TEST_TIMEOUT_MS,
+);

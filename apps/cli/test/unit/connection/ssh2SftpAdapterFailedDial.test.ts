@@ -45,7 +45,7 @@ describe("the connection beneath a failed dial", () => {
   // leaves it. `closedBeforeRefusal` is a dial whose 'close' was delivered
   // before its rejection reached the adapter. `opensSocket` false is a dial
   // refused before it replaced the socket it found, as a connect() over a live
-  // session is.
+  // session is. `destroyMissing` is a dial whose socket exposes no destroy().
   function refusingClient(
     options: {
       closesOnItsOwn?: boolean;
@@ -53,6 +53,7 @@ describe("the connection beneath a failed dial", () => {
       closedBeforeRefusal?: boolean;
       opensSocket?: boolean;
       destroyThrows?: boolean;
+      destroyMissing?: boolean;
     } = {},
   ) {
     const rawClient = new EventEmitter() as EventEmitter &
@@ -81,6 +82,8 @@ describe("the connection beneath a failed dial", () => {
     const connect = vi.fn(() => {
       if (options.opensSocket !== false) {
         const socket = makeSocket();
+        if (options.destroyMissing === true)
+          Reflect.deleteProperty(socket, "destroy");
         sockets.push(socket);
         rawClient._sock = socket;
         if (
@@ -238,6 +241,50 @@ describe("the connection beneath a failed dial", () => {
       expect(log.warn).toHaveBeenCalledTimes(1);
       expect(log.warn.mock.calls[0]?.[0]).toContain(
         "Closing the connection beneath a failed SFTP dial failed",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("waits out the connection's own close when its socket exposes no destroy()", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = refusingClient({
+        closesOnItsOwn: true,
+        destroyMissing: true,
+      });
+      const { adapter, log } = loggedAdapter();
+      installClient(adapter, client);
+
+      const dial = trackedDial(adapter);
+      await vi.advanceTimersByTimeAsync(CLOSE_DELAY_MS - 1);
+      expect(dial.outcome).toBe("pending");
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(dial.outcome).toBe(refusal);
+      expect(log.warn).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("warns after the bound when the close does not come and no destroy() is exposed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = refusingClient({ destroyMissing: true });
+      const { adapter, log } = loggedAdapter();
+      installClient(adapter, client);
+
+      const dial = trackedDial(adapter);
+      await vi.advanceTimersByTimeAsync(FORCED_CLOSE_BOUND_MS - 1);
+      expect(dial.outcome).toBe("pending");
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(dial.outcome).toBe(refusal);
+      expect(log.warn).toHaveBeenCalledTimes(1);
+      expect(log.warn.mock.calls[0]?.[0]).toContain(
+        "The connection beneath a failed SFTP dial did not close",
       );
     } finally {
       vi.useRealTimers();
