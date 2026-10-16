@@ -28,8 +28,8 @@ before proceeding -- its Session lifecycle section defines this state.
 2. List every open thread: each confirmed review finding not fixed on a
    branch, each potential follow-up, each parked Decision item, each run still
    under way. None is left in prose alone as something for later.
-3. Housekeeping: retire each finished worktree and each merged local branch,
-   named or `worktree-agent-*`, as the ruleset's Worktrees and checkouts
+3. Housekeeping: retire each finished worktree and each local branch the
+   ruleset lets go, named or `worktree-agent-*`, as its Worktrees and checkouts
    section allows, and stop each watcher or background process the session
    started.
 4. Without `clean`: write the continuation brief's final state -- the open PRs
