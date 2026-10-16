@@ -143,7 +143,7 @@ This rule has the month but no gender, and truncates the first name rather than 
 Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
 
 Catches records that hold only the last four SSN digits, the only digits HUD has required an HMIS to collect since FY2024 (HUD 2025d).
-Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value, with 3 false positives among 52,212 true 30-day readmissions.
+Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value, with 3 false positives.
 This rule replaces sex with the last name, which narrows a match more (reasoning).
 Hillestad et al. (2008) found that removing the last four SSN digits from a name + DOB + ZIP key creates nearly 1,000 false positives in a 79-million-record file.
 Naessens linked one health system's discharges to each other, and cut the four digits from complete SSNs held in both sources.
@@ -163,7 +163,7 @@ Above 99.5%, where the ZIP is the client's own. A measured close relative and re
 
 Accepts the pairs rule 12 accepts that also agree on the client's ZIP, and adds matches as rule 10 does.
 It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
-In Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4% false where the state disagreed and 0.3% false where it agreed; a ZIP is a finer geography than a state (reasoning).
+In Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4% false where the state token did not agree and 0.3% false where it agreed; a ZIP is a finer geography than a state (reasoning).
 Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against 0.95 for first + last name + gender + DOB.
 Its false pairs are a subset of rule 12's, so its band cannot be lower (reasoning).
 A party must never supply HUD's project ZIP as the client's: every client of a shelter shares it.
@@ -173,9 +173,9 @@ A party must never supply HUD's project ZIP as the client's: every client of a s
 Above 99.5% within one county. A measured close relative and reasoning; low confidence. In `hmis-keys` today.
 
 A rule with no SSN evidence, catching records whose SSN is missing or wrong.
-Mirel et al. (2022) found links agreeing on name + sex + DOB and on state were 99.6% correct (79,757 true, 315 false; computed here).
+Mirel et al. (2022) found links agreeing on name + sex + DOB and on state were 99.6% correct (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
 That row includes sex and covers a state; without sex more false pairs agree, and a county's files are far smaller than a state's (reasoning).
-Across states the same links were 41.4% false, so the band applies only to an exchange within one county.
+Where the state token did not agree, or a state was missing on one side, the same links were 41.4% false (2,314 true, 1,638 false), so the band applies only to an exchange within one county.
 Bernstam et al. (2022) measured last + first name + gender + DOB at 99.9% precision in one data warehouse.
 
 ### 13. `SSN4 + LN + FN + DOB +/-1 year`
@@ -184,7 +184,8 @@ Above 99.5%. Reasoning; medium confidence. New.
 
 Catches a birth year off by one, which differed in 40.0% of confirmed duplicate pairs with a date-of-birth discrepancy (Just et al. 2016).
 HUD lets staff estimate an unknown birth year from the client's age (HUD 2025a).
-linkja emits this hash (MRAIA 2020), and Cook County's rule of the same shape found 313 matches its EHR process missed (Trick et al. 2019).
+linkja emits a hash of the date plus one year, and its matching component compares it with every record's exact-date hash, which covers a one-year difference in either direction (MRAIA 2020).
+Cook County's rule of the same shape found 313 matches its EHR process missed (Trick et al. 2019).
 No source publishes its precision; Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable.
 With the last four SSN digits and both full names, three candidate years add few chance agreements (reasoning).
 
@@ -195,7 +196,8 @@ Needs a date expansion of one day either side, which Alcove lacks.
 
 Catches a birth day off by one.
 The day is the most frequent date-of-birth discrepancy, 48.3% of pairs with one (Just et al. 2016), and Cook County's largest spike in date differences was at 1 day.
-linkja emits this hash (MRAIA 2020), and Cook County's rule of the same shape found 371 matches its EHR process missed (Trick et al. 2019).
+linkja emits a hash of the date plus one day, compared the same way in both directions (MRAIA 2020).
+Cook County's rule of the same shape found 371 matches its EHR process missed (Trick et al. 2019).
 The band rests on the same reasoning as rule 13.
 
 ### 15. `SSN4 + LN + FN + DOB with day and month exchanged`
@@ -211,7 +213,8 @@ HUD's filler of `01` for an unknown month and day is unchanged by the exchange (
 Above 99.5%. A measured close relative; medium confidence. New.
 
 Catches a changed last name when only the last four SSN digits are held.
-Last-name changes were 44% of the classified errors in UCLA's reviewed sample of links its EHR module missed (Ross et al. 2020), and 23% of a sample of matches Cook County's rules missed (Trick et al. 2019).
+A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
+It appeared in 48 of the 200 sampled matches Cook County's rules missed, 24%, and some matches had several errors (Trick et al. 2019).
 Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value; this rule replaces sex with the first name (reasoning).
 Naessens's death figures are for Minnesota residents only, and its readmissions link one health system's discharges to each other.
 
@@ -245,8 +248,9 @@ No measured relative exists.
 Needs a conflict veto -- fire only when a field is not present and different on both sides -- which Alcove lacks.
 
 Catches a date of birth that is missing, a filler, or off by more than rules 13 to 15 allow.
-HUD's 2005 unduplication guidance treats agreement on any two of first name, last name, DOB and a partial SSN as a potential match.
-It deletes the match when two of gender, name suffix, the parts of the date and the full SSN conflict, unless the full SSN and two of the names and date agree (Sokol and Gutierrez 2005).
+HUD's 2005 unduplication guidance treats agreement on any two of first name, last name, DOB and a partial SSN as a potential match, and a full-SSN match alone as one too.
+It deletes the match when two of gender, name suffix, the parts of the date and the full SSN conflict, unless the full SSN and two of the names and date agree; a null never counts as a conflict.
+A further rule deletes a match made on last name + DOB where the SSN does not match, both clients are under 18 and the first names conflict, which targets twins (Sokol and Gutierrez 2005).
 The veto stops the rule when both sides hold a valid date beyond rules 13 to 15's tolerances; without it, two same-name people sharing four digits would match (reasoning).
 Ong et al. (2020) ran last name + last four SSN + birth year after first + last name + DOB, and it added no links, in a heart-disease registry.
 
@@ -265,7 +269,9 @@ It runs after rules 12 and 15, which it contains.
 
 Catches a first and last name recorded in the wrong fields.
 The receiving party sends both orders ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termslinkage_keys)), so the rule accepts what rule 12 accepts plus reversed names (reasoning).
-linkja (MRAIA 2020) and Cook County use the same device, but Cook County's reversed-name matches also required the last four SSN digits (Trick et al. 2019), and this rule does not.
+linkja (MRAIA 2020) and Cook County use the same device.
+Trick et al. (2019) conflict on whether Cook County's reversed-name rule needed the last four SSN digits: the Methods and Figure 1 list transposed name + DOB without them, and footnote b of Table 2 says reversed-name matches required them.
+This rule does not.
 
 ### 23. `ZIP5 + SDX(LN) + FN + DOB`
 
@@ -284,8 +290,9 @@ Twins sharing a birth date and address made Naessens's two false positives on DO
 95% to 99%. Reasoning; low confidence. New.
 
 Catches one part of a compound last name dropped or the parts reversed.
-A hyphenated last name was 24% of a sample of matches Cook County's rules missed; Cook County added a two-last-names step afterward that found 1,988 more matches, outside its validation sample (Trick et al. 2019).
-linkja hashes each part of a compound surname (MRAIA 2020), and a Texas voter-file match split hyphenated names the same way (Ansolabehere and Hersh 2016).
+A hyphenated last name appeared in 50 of the 200 sampled matches Cook County's rules missed, 25%, and some matches had several errors; Cook County added a two-last-names step afterward that found 1,988 more matches, outside its validation sample (Trick et al. 2019).
+linkja's overview describes hashing each part of a compound surname, but the shipped code disables it and collapses a hyphenated surname into one word (MRAIA 2020).
+A Texas voter-file match split hyphenated names (Ansolabehere and Hersh 2016).
 Agreement on one common part, such as Garcia against Smith-Garcia with the same first name and date, is open to chance agreement (reasoning).
 
 ### 25. `FN + DOB + PHONE`
@@ -348,7 +355,8 @@ No source measures it.
 
 Catches any date-of-birth error with no SSN, for records holding an email address.
 No source measures any rule with an email address.
-It is stricter than both first name + email in the N3C configuration and the last name + email token Datavant recommends (Bell et al. 2026).
+It is stricter than both first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
+The two lists are otherwise identical, but N3C has first name + email in the slot where Bell has last name + email, so the sources conflict, and the last name + email token rests on Bell's description rather than a Datavant document.
 UCLA found 13 of 100 pairs agreeing on an email alone were the same person (Ross et al. 2020).
 Two forms of one mailbox, with dots or a plus tag, produce different values, which costs matches but not precision (reasoning).
 
@@ -393,10 +401,10 @@ A county's smaller files and the condition might bring it into 95% to 99% (reaso
 | --- | --- | --- |
 | `FN + DOB + ZIP5` | UCLA: 94 of 100 reviewed pairs were the same person, in a stratum selected by match score (Ross et al. 2020) | Measured below the band of every SSN rule. Rule 23 adds a Soundex surname to it |
 | `FN + EMAIL` | N3C configuration token (Regenstrief Institute 2021), unmeasured | UCLA's email-only pairs were the same person in 13 of 100. Rule 31 is the stricter form |
-| `LN + EMAIL` | Datavant recommended token (Bell et al. 2026), unmeasured | The same sharing concern. Rule 31 adds the first name |
+| `LN + EMAIL` | Token Bell et al. (2026) list among Datavant's recommended tokens, where N3C's list has first name + email in that slot; unmeasured | The same sharing concern. Rule 31 adds the first name |
 | `FN + PHONE` | N3C configuration token (Regenstrief Institute 2021), unmeasured | Household sharing (Ross et al. 2020; The Pew Charitable Trusts 2018). Rule 29 is the stricter form |
 | `FN3 + LN + DOB` for every name; `SDX(FN) + SDX(LN) + DOB` | Bernstam et al. 2022, the same shapes with gender measured at 98.5% and 98.6% on blocked pairs | In Mirel et al. (2022), the Soundex token alone was 81.4% false and the first-initial token alone 95.7%. Cook County's one confirmed false match came from its three-letter rule. Rule 33 keeps the three-letter form for uncommon names |
-| `PHONE + DOB`, `EMAIL + DOB` | None | No name element. Infant twins share a birth date and phone (Bernstam et al. 2022) |
+| `PHONE + DOB`, `EMAIL + DOB` | None | No name element. Bernstam et al. (2022) remark that infant twins share a birth date and phone, as a limit of their manual review |
 | `LN + FN + ZIP5` | N3C configuration token (Regenstrief Institute 2021), with gender, unmeasured | Unmeasured, and rule 28 keeps a year and month |
 | Any contact field alone | Bernstam et al. 2022, phone alone 95.6% | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)) |
 
