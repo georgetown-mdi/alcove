@@ -219,10 +219,11 @@ export const EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT: Array<StandardizationFuncti
     ),
   })).filter((group) => group.functionNames.length > 0);
 
-/** A cleaning step core refuses under the terms: the field it cleans and the
- * step's function. */
+/** A cleaning step core refuses under the terms: the field it cleans, the
+ * column that field is cleaned from, and the step's function. */
 export interface RefusedCleaningFanOut {
   output: string;
+  input: string;
   functionName: string;
 }
 
@@ -251,7 +252,11 @@ export function refusedCleaningFanOut(
       FAN_OUT_FUNCTION_NAMES.includes(candidate.function),
     );
     if (step !== undefined)
-      return { output: transformation.output, functionName: step.function };
+      return {
+        output: transformation.output,
+        input: transformation.input,
+        functionName: step.function,
+      };
   }
   throw new Error(
     "core refused a cleaning fan-out, but no cleaning step is a fan-out",

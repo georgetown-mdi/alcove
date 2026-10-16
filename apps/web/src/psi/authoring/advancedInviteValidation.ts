@@ -282,15 +282,23 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
  * core refuses an exchange whose own cleaning splits a value under a
  * count-only algorithm or a strategy that matches none
  * ({@link refusedCleaningFanOut}), which the terms alone do not show. Names
- * the step by its menu label and the field it cleans, which the Cleaning tab
- * also shows. */
+ * the step by its menu label, and the card by what the Cleaning tab shows: the
+ * field's type label and the operator's input column. The field's own name is
+ * left out: the tab never shows it, and an imported one is
+ * partner-influenceable, the same reason {@link UNSUPPLYABLE_KEY_MESSAGE} names
+ * no field. */
 function cleaningFanOutMessage(
   refused: RefusedCleaningFanOut,
+  fieldType: string | undefined,
   countOnly: boolean,
 ): string {
+  const card =
+    fieldType !== undefined && Object.hasOwn(SEMANTIC_TYPE_LABELS, fieldType)
+      ? SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]
+      : "a field";
   const step =
     `the ${functionDisplay(refused.functionName).label} step in the ` +
-    `cleaning for ${sanitizeForDisplay(refused.output)}`;
+    `${card} cleaning from the ${sanitizeForDisplay(refused.input)} column`;
   return countOnly
     ? `A count-only exchange matches one value per record, but ${step} ` +
         "splits a value into parts. Remove that step, or on the Matching on " +
@@ -645,6 +653,8 @@ export function validateAdvancedInvite(
   if (refusedFanOut !== undefined)
     errors.standardization = cleaningFanOutMessage(
       refusedFanOut,
+      terms.linkageFields.find((field) => field.name === refusedFanOut.output)
+        ?.type,
       terms.algorithm === "psi-c",
     );
 

@@ -249,7 +249,7 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
     );
   });
 
-  test("names the step, the field it cleans, and where the method is set", () => {
+  test("names the step, the card it sits on, and where the method is set", () => {
     const { draft, seed } = countOnlyDraft();
     const split: AdvancedInviteDraft = {
       ...draft,
@@ -263,7 +263,8 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
       validateAdvancedInvite(split, seed, NOW).errors.standardization,
     ).toBe(
       "A count-only exchange matches one value per record, but the Split on " +
-        "step in the cleaning for last_name splits a value into parts. Remove " +
+        "step in the Last name cleaning from the last_name column splits a " +
+        "value into parts. Remove " +
         'that step, or on the Matching on tab set Matching method to "Reveal ' +
         'the matched identifiers (standard)".',
     );
