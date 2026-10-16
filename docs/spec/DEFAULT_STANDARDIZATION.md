@@ -293,8 +293,12 @@ leaves uncovered falls back to the identity transformation, which over a full
 SSN column would hash the whole SSN as its last four. An authored
 transformation that binds `ssn4` to an `ssn` column runs the steps the operator
 wrote: steps that do not reduce the value to its last four hash more of the
-SSN. The web inviter gives an `ssn4` field it binds to an `ssn` column this
-pipeline's steps.
+SSN. Rebinding the web inviter's `ssn4` cleaning card to an `ssn` column
+replaces the card's steps with this pipeline's. A configuration loaded into the
+web inviter or the console keeps its own steps, as the command line runs them.
+A second card for an `ssn4`-typed field, named other than `ssn4`, that is
+rebound to an `ssn` column is declared with type `ssn` and keeps the steps it
+had.
 
 ### `first_name`
 
