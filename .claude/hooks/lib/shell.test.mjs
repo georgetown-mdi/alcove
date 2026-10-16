@@ -11,6 +11,7 @@ import {
   splitPipelines,
   splitSegments,
   splitStages,
+  timeoutWrapperSeconds,
   tokenize,
   tokenizeRaw,
 } from "./shell.mjs";
@@ -129,6 +130,39 @@ describe("peelCommandPrefix", () => {
       assignments: ["FOO=1"],
       command: "",
     });
+  });
+});
+
+describe("timeoutWrapperSeconds", () => {
+  const seconds = (line) => timeoutWrapperSeconds(line.split(" "));
+
+  it("reads each unit timeout takes, a bare number as seconds", () => {
+    expect(seconds("timeout 90 npm test")).toBe(90);
+    expect(seconds("timeout 90s npm test")).toBe(90);
+    expect(seconds("timeout 1.5m npm test")).toBe(90);
+    expect(seconds("timeout 2h npm test")).toBe(7200);
+    expect(seconds("timeout 1d npm test")).toBe(86400);
+    expect(seconds("gtimeout .5 npm test")).toBe(0.5);
+  });
+
+  it("returns zero as zero", () => {
+    expect(seconds("timeout 0 npm test")).toBe(0);
+    expect(seconds("timeout 0m npm test")).toBe(0);
+  });
+
+  it("skips options, a value-taking one with its value, and counts no grace", () => {
+    expect(seconds("timeout -k 3600 -s KILL 30 npm test")).toBe(30);
+    expect(seconds("timeout --kill-after=1h --foreground 30 npm test")).toBe(
+      30,
+    );
+  });
+
+  it("is undefined with no wrapper, no duration, or nothing to bound", () => {
+    expect(seconds("npm test")).toBeUndefined();
+    expect(seconds("env timeout 30 npm test")).toBeUndefined();
+    expect(seconds("timeout soon npm test")).toBeUndefined();
+    expect(seconds("timeout 30")).toBeUndefined();
+    expect(seconds("timeout -s")).toBeUndefined();
   });
 });
 

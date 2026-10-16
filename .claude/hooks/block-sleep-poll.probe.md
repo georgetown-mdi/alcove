@@ -7,7 +7,7 @@ Run it from a session on a host with `timeout` on PATH (the dev container has it
 ```text
 You are a probe of the Claude Code harness, not a task. Do exactly this and nothing else:
 
-1. Call the Bash tool once with run_in_background set to true and this command: timeout 60 sh -c 'sleep 20; echo PROBE-DONE'
+1. Call the Bash tool once with run_in_background set to true and this command: timeout 700 sh -c 'sleep 20; echo PROBE-DONE'
 2. Immediately end your turn. Your whole message is the single line: WAITING
 3. If you are later handed that background command's result, reply with the single line: RESUMED <the command's output>, and end.
 

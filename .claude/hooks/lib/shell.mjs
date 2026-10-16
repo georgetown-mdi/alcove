@@ -175,6 +175,32 @@ export function peelCommandPrefix(
   return { assignments, index };
 }
 
+/** Seconds per unit of the durations `sleep` and `timeout` take; bare is seconds. */
+export const DURATION_UNIT_SECONDS = { "": 1, s: 1, m: 60, h: 3600, d: 86400 };
+
+// `timeout` options that take the next word as their value when not joined to
+// it (`-s KILL`, `--kill-after 5`).
+const TIMEOUT_VALUE_OPTIONS = new Set(["-s", "-k", "--signal", "--kill-after"]);
+const TIMEOUT_DURATION = /^(\d+(?:\.\d*)?|\.\d+)([smhd]?)$/;
+
+/**
+ * The seconds a `timeout` or `gtimeout` wrapper allows, given a segment's tokens
+ * from that word on: its options are skipped, so a `-k` grace is not counted,
+ * and its duration is read in `timeout`'s own units. Undefined when the tokens
+ * do not open with the wrapper, no duration follows its options, or no command
+ * follows the duration. Zero is returned as zero, for the caller to judge.
+ */
+export function timeoutWrapperSeconds(tokens) {
+  if (tokens[0] !== "timeout" && tokens[0] !== "gtimeout") return undefined;
+  let i = 1;
+  while (i < tokens.length && tokens[i].startsWith("-")) {
+    i += TIMEOUT_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+  }
+  const match = TIMEOUT_DURATION.exec(tokens[i] ?? "");
+  if (match === null || i + 1 >= tokens.length) return undefined;
+  return Number.parseFloat(match[1]) * DURATION_UNIT_SECONDS[match[2]];
+}
+
 /**
  * Run git and return its trimmed stdout, or null on any failure: a non-zero
  * exit, no git on PATH, a directory that is not a repository. What a null means

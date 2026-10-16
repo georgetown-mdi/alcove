@@ -27,7 +27,12 @@
 // docs/notes/agent-hooks-and-scripts.md.
 
 import { commandOf, eventForTools } from "./lib/event.mjs";
-import { peelCommandPrefix, splitSegments, tokenize } from "./lib/shell.mjs";
+import {
+  peelCommandPrefix,
+  splitSegments,
+  timeoutWrapperSeconds,
+  tokenize,
+} from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
 export const EXPIRES_ON = "2027-03-31";
@@ -35,9 +40,6 @@ export const EXPIRES_ON = "2027-03-31";
 const FOREGROUND_CEILING_SECONDS = 600;
 
 const QUOTED_SPAN = /'[^']*'|"(?:[^"\\]|\\.)*"/g;
-const TIMEOUT_VALUE_OPTIONS = new Set(["-s", "-k", "--signal", "--kill-after"]);
-const DURATION = /^(\d+(?:\.\d*)?|\.\d+)([smhd]?)$/;
-const UNIT_SECONDS = { "": 1, s: 1, m: 60, h: 3600, d: 86400 };
 const PREFIX_FLAGS_WITH_VALUE = new Set(["-C", "--chdir", "-u", "-n"]);
 
 // The seconds a stage's `timeout` wrapper allows, or 0 when the stage does not
@@ -47,14 +49,7 @@ function wrapperSeconds(stage) {
   const { index } = peelCommandPrefix(words, {
     isFlagValue: (_, at) => PREFIX_FLAGS_WITH_VALUE.has(words[at - 1]),
   });
-  if (words[index] !== "timeout" && words[index] !== "gtimeout") return 0;
-  let i = index + 1;
-  while (i < words.length && words[i].startsWith("-")) {
-    i += TIMEOUT_VALUE_OPTIONS.has(words[i]) ? 2 : 1;
-  }
-  const match = DURATION.exec(words[i] ?? "");
-  if (match === null || i + 1 >= words.length) return 0;
-  return Number.parseFloat(match[1]) * UNIT_SECONDS[match[2]];
+  return timeoutWrapperSeconds(words.slice(index)) ?? 0;
 }
 
 // The largest wrapper in the command, read with every quoted span emptied so
@@ -73,7 +68,7 @@ function blockShortBackground() {
       "Run it in the foreground with the Bash tool's timeout raised (up to 600000 ms). " +
       "Background only a chain longer than that, as one call opening with " +
       "`timeout <N>`, N over 600 s: " +
-      "`timeout 1800 sh -c 'npm run build && npm test' > /tmp/run.log 2>&1; echo exit=$?`.\n",
+      "`timeout 1800 sh -c 'npm run build && npm test'; echo exit=$?`.\n",
   );
   process.exit(2);
 }
