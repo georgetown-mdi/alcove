@@ -33,7 +33,10 @@ A rule matches two records only when every element agrees exactly.
 - `SDX(LN)` is the Soundex code of the last name.
 - `swap(LN, FN)` matches the two names in either order.
 - `split(LN)` matches on the whole last name or on any one hyphen- or space-separated part of it.
-- `DOB +/-1 year`, `DOB +/-1 day` and `DOB with day and month exchanged` match a date that differs in that way, and also the exact date.
+- `DOB +/-1 year` matches a date with the same month and day and a year one higher or lower.
+  `DOB +/-1 day` matches a date one day earlier or later.
+  `DOB with day and month exchanged` matches the date with those two parts swapped.
+  Each also matches the exact date.
 
 ### Bands
 
@@ -58,7 +61,8 @@ Three differences apply to every measurement cited, and an entry restates them o
 - Most measured rules include sex or gender.
   Alcove's fields have none, so a rule without it accepts more false pairs than its measured relative (reasoning).
 - The bands assume an exchange within one county.
-  A county's files are far smaller than the state and national files most sources measured, and chance agreement grows with file size (Zech et al. 2016; Hillestad et al. 2008).
+  A county's files are far smaller than the state and national files most sources measured, and chance agreement grows with file size (Hillestad et al. 2008).
+  Zech et al. (2016) compared a random 13.1% subset of the national Death Master File with the whole file, so their figures show the effect of the number of people covered, not of geography; that the effect carries to a county is reasoning.
 
 ### Order
 
@@ -164,7 +168,8 @@ Above 99.5%, where the ZIP is the client's own. A measured close relative and re
 Accepts the pairs rule 12 accepts that also agree on the client's ZIP, and adds matches as rule 10 does.
 It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
 In Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4% false where the state token did not agree and 0.3% false where it agreed; a ZIP is a finer geography than a state (reasoning).
-Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against 0.95 for first + last name + gender + DOB.
+Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against SSN-based labels, with 0.95 for first + last name + gender + DOB.
+Against email-based and phone-based labels, on records with no valid SSN, the ZIP token scored 0.76 and 0.74; the authors attribute the drop to noisier labels.
 Its false pairs are a subset of rule 12's, so its band cannot be lower (reasoning).
 A party must never supply HUD's project ZIP as the client's: every client of a shelter shares it.
 
@@ -174,19 +179,23 @@ Above 99.5% within one county. A measured close relative and reasoning; low conf
 
 A rule with no SSN evidence, catching records whose SSN is missing or wrong.
 Mirel et al. (2022) found links agreeing on name + sex + DOB and on state were 99.6% correct (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
+Each row of that table counts the links on which exactly that set of tokens agreed, after each link was chosen for having the most high-precision (SSN) tokens, other tokens breaking ties, and the truth is an earlier NCHS linkage, so the figure describes a stratum rather than a rule's precision.
 That row includes sex and covers a state; without sex more false pairs agree, and a county's files are far smaller than a state's (reasoning).
 Where the state token did not agree, or a state was missing on one side, the same links were 41.4% false (2,314 true, 1,638 false), so the band applies only to an exchange within one county.
-Bernstam et al. (2022) measured last + first name + gender + DOB at 99.9% precision in one data warehouse.
+Bernstam et al. (2022) measured last + first name + gender + DOB at 787 true and 1 false (99.9%), a one-sided 95% lower bound of 99.40% (computed here).
+That is manual review of candidate pairs blocked within one data warehouse, not an exchange between two parties.
 
 ### 13. `SSN4 + LN + FN + DOB +/-1 year`
 
 Above 99.5%. Reasoning; medium confidence. New.
 
-Catches a birth year off by one, which differed in 40.0% of confirmed duplicate pairs with a date-of-birth discrepancy (Just et al. 2016).
+Catches a birth year off by one.
+The year differed in 40.0% of confirmed duplicate pairs with a date-of-birth discrepancy, by an amount Just et al. (2016) do not give.
 HUD lets staff estimate an unknown birth year from the client's age (HUD 2025a).
 linkja emits a hash of the date plus one year, and its matching component compares it with every record's exact-date hash, which covers a one-year difference in either direction (MRAIA 2020).
 Cook County's rule of the same shape found 313 matches its EHR process missed (Trick et al. 2019).
-No source publishes its precision; Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable.
+No source publishes its precision; Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable (Trick et al. 2019); that is 189 of 190 adjudicable, 99.47% (computed here).
+The sample holds only matches the EHR process missed, the matches both systems found being assumed true, so it is not the six rules' precision.
 With the last four SSN digits and both full names, three candidate years add few chance agreements (reasoning).
 
 ### 14. `SSN4 + LN + FN + DOB +/-1 day`
@@ -195,7 +204,7 @@ Above 99.5%. Reasoning; medium confidence. New.
 Needs a date expansion of one day either side, which Alcove lacks.
 
 Catches a birth day off by one.
-The day is the most frequent date-of-birth discrepancy, 48.3% of pairs with one (Just et al. 2016), and Cook County's largest spike in date differences was at 1 day.
+The day is the most frequent date-of-birth discrepancy, differing in 48.3% of pairs with one, by an amount Just et al. (2016) do not give, and Cook County's largest spike in date differences was at 1 day.
 linkja emits a hash of the date plus one day, compared the same way in both directions (MRAIA 2020).
 Cook County's rule of the same shape found 371 matches its EHR process missed (Trick et al. 2019).
 The band rests on the same reasoning as rule 13.
@@ -214,7 +223,7 @@ Above 99.5%. A measured close relative; medium confidence. New.
 
 Catches a changed last name when only the last four SSN digits are held.
 A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
-It appeared in 48 of the 200 sampled matches Cook County's rules missed, 24%, and some matches had several errors (Trick et al. 2019).
+It appeared in 48 of the 200 sampled matches Cook County's rules missed, 24% (computed here), and some matches had several errors (Trick et al. 2019).
 Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value; this rule replaces sex with the first name (reasoning).
 Naessens's death figures are for Minnesota residents only, and its readmissions link one health system's discharges to each other.
 
@@ -279,6 +288,7 @@ This rule does not.
 
 Catches a misspelled last name that keeps its Soundex code, with no SSN.
 UCLA found 94 of 100 reviewed pairs agreeing on first name + DOB + ZIP were the same person, in a stratum selected by match score (Ross et al. 2020); this rule adds a Soundex surname, so its false pairs are a subset (reasoning).
+The stratum holds the queries Care Everywhere left unlinked that had a single candidate scoring above 20 on its weights, so no measurement reaches this rule's band (reasoning).
 Beside an SSN, phonetic names added true links and no false ones (Grannis et al. 2002, with a different phonetic code; Mirel et al. 2022).
 As the only name evidence they do badly: the Soundex-names token alone was 81.4% false in Mirel.
 Twins sharing a birth date and address made Naessens's two false positives on DOB + sex + ZIP, and a full first name excludes twins with different names.
@@ -290,7 +300,7 @@ Twins sharing a birth date and address made Naessens's two false positives on DO
 95% to 99%. Reasoning; low confidence. New.
 
 Catches one part of a compound last name dropped or the parts reversed.
-A hyphenated last name appeared in 50 of the 200 sampled matches Cook County's rules missed, 25%, and some matches had several errors; Cook County added a two-last-names step afterward that found 1,988 more matches, outside its validation sample (Trick et al. 2019).
+A hyphenated last name appeared in 50 of the 200 sampled matches Cook County's rules missed, 25% (computed here), and some matches had several errors; Cook County added a two-last-names step afterward that found 1,988 more matches, outside its validation sample (Trick et al. 2019).
 linkja's overview describes hashing each part of a compound surname, but the shipped code disables it and collapses a hyphenated surname into one word (MRAIA 2020).
 A Texas voter-file match split hyphenated names (Ansolabehere and Hersh 2016).
 Agreement on one common part, such as Garcia against Smith-Garcia with the same first name and date, is open to chance agreement (reasoning).
@@ -356,7 +366,7 @@ No source measures it.
 Catches any date-of-birth error with no SSN, for records holding an email address.
 No source measures any rule with an email address.
 It is stricter than both first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
-The two lists are otherwise identical, but N3C has first name + email in the slot where Bell has last name + email, so the sources conflict, and the last name + email token rests on Bell's description rather than a Datavant document.
+The two lists are otherwise identical, but N3C has first name + email in the slot where Bell has last name + email, so the two lists differ in that slot, and the last name + email token rests on Bell's description rather than a Datavant document.
 UCLA found 13 of 100 pairs agreeing on an email alone were the same person (Ross et al. 2020).
 Two forms of one mailbox, with dots or a plus tag, produce different values, which costs matches but not precision (reasoning).
 
@@ -429,7 +439,7 @@ Sources cited only by the design rationale are listed in [linkage-rule-grounding
 - **HUD 2025d.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Standard Reporting Terminology Glossary." 2025. https://files.hudexchange.info/resources/documents/HMIS-Standard-Reporting-Terminology-Glossary.pdf
 - **Just et al. 2016.** Just BH, Marc D, Munns M, Sandefer R. "Why Patient Matching Is a Challenge: Research on Master Patient Index (MPI) Data Discrepancies in Key Identifying Fields." Perspectives in Health Information Management 13(Spring):1e, 2016. https://pmc.ncbi.nlm.nih.gov/articles/PMC4832129/
 - **Mirel et al. 2022.** Mirel LB, Resnick DM, Aram J, Cox CS. "A methodological assessment of privacy preserving record linkage using survey and administrative data." Statistical Journal of the IAOS 38(2):413-421, 2022; Figure 1 and Table 1. doi:10.3233/sji-210891
-- **MRAIA 2020.** Medical Research Analytics and Informatics Alliance. linkja-hashing, source code as shipped, with "Privacy Preserving Record Linkage: Linkja Overview" (2019). GitHub, last revised 2020. https://github.com/MRAIA-ORG/linkja-hashing
+- **MRAIA 2020.** Medical Research Analytics and Informatics Alliance. linkja-hashing and linkja-matching, source code as shipped, with "Privacy Preserving Record Linkage: Linkja Overview" (2019). GitHub, last revised 2020. https://github.com/MRAIA-ORG/linkja-hashing
 - **Naessens et al. 2015.** Naessens JM, Visscher SL, Peterson SM, Swanson KM, Johnson MG, Rahman PA, et al. "Incorporating the Last Four Digits of Social Security Numbers Substantially Improves Linking Patient Data from De-identified Hospital Claims Databases." Health Services Research 50(Suppl 1):1339-1350, 2015. doi:10.1111/1475-6773.12323
 - **Ong et al. 2020.** Ong TC, Duca LM, Kahn MG, Crume TL. "A hybrid approach to record linkage using a combination of deterministic and probabilistic methodology." Journal of the American Medical Informatics Association 27(4):505-513, 2020. doi:10.1093/jamia/ocz232
 - **Park and Finnell 2012.** Park SC, Finnell JT. "Indianapolis Emergency Medical Service and the Indiana Network for Patient Care: Evaluating the Patient Match Algorithm." AMIA Annual Symposium Proceedings 2012:1221-1228. https://pmc.ncbi.nlm.nih.gov/articles/PMC3540486/
