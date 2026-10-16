@@ -54,6 +54,7 @@ const FUZZY_KINDS: readonly GenerateFuzzyComparisons[] = [
   "transpositions",
   "edit_distances",
   "adjacent_years",
+  "adjacent_days",
   "day_month_swaps",
 ];
 
@@ -117,11 +118,15 @@ function termsWithFuzzyKey(kind: GenerateFuzzyComparisons): LinkageTerms {
 // The longest value each kind accepts, which is where its ceiling is set. A
 // repeated character would collapse candidates into each other -- a transposition
 // of two equal characters emits none at all -- so every character is distinct;
-// the date is the one canonical shape the two date kinds read, whose expansion
+// the date is the one canonical shape the date kinds read, whose expansion
 // does not grow with length; the day is below 13 so the exchanged reading is a
 // real date and `day_month_swaps` reaches its ceiling.
 function longestExpandableValue(kind: GenerateFuzzyComparisons): string {
-  if (kind === "adjacent_years" || kind === "day_month_swaps")
+  if (
+    kind === "adjacent_years" ||
+    kind === "adjacent_days" ||
+    kind === "day_month_swaps"
+  )
     return "19900112";
   return Array.from(
     { length: MAX_FUZZY_EXPANSION_INPUT_LENGTH },

@@ -514,13 +514,18 @@ const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
  * `expandFuzzyComparisons`, which defines what each member emits.
  */
 export type GenerateFuzzyComparisons =
-  "transpositions" | "edit_distances" | "adjacent_years" | "day_month_swaps";
+  | "transpositions"
+  | "edit_distances"
+  | "adjacent_years"
+  | "adjacent_days"
+  | "day_month_swaps";
 
 const GenerateFuzzyComparisonsSchema: z.ZodType<GenerateFuzzyComparisons> =
   z.enum([
     "transpositions",
     "edit_distances",
     "adjacent_years",
+    "adjacent_days",
     "day_month_swaps",
   ]);
 
@@ -711,6 +716,7 @@ export interface LinkageKeyElement {
    * - `edit_distances`: all single-character deletions, matching values
    *   within one edit distance.
    * - `adjacent_years`: +/- 1 year from the date.
+   * - `adjacent_days`: +/- 1 day from the date.
    * - `day_month_swaps`: the date with its day and month exchanged.
    */
   generateFuzzyComparisons?: GenerateFuzzyComparisons;

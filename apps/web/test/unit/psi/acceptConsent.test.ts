@@ -558,6 +558,9 @@ describe("summarizeInvitation", () => {
     expect(fuzzyLabelFor("transpositions")).toBe("two-digit transpositions");
     expect(fuzzyLabelFor("edit_distances")).toBe("single-character edits");
     expect(fuzzyLabelFor("adjacent_years")).toBe("adjacent years");
+    expect(fuzzyLabelFor("adjacent_days")).toBe(
+      "adjacent days, one day either side",
+    );
     expect(fuzzyLabelFor("day_month_swaps")).toBe("day and month exchanged");
   });
 

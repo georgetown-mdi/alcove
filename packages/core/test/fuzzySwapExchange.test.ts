@@ -300,7 +300,7 @@ for (const receiver of ["authored", "reversed"] as const) {
   });
 }
 
-// The date kinds (`adjacent_years`, `day_month_swaps`) expand a single
+// The date kinds (`adjacent_years`, `adjacent_days`, `day_month_swaps`) expand a single
 // canonical-date element rather than a swapped pair, so they are driven over
 // their own single-element key and a `date_of_birth` field instead of
 // `swappedKey`'s name pair. Raw values are MM/DD/YYYY, the default
@@ -355,6 +355,24 @@ for (const receiver of ["authored", "reversed"] as const) {
       adjacentYearsKey,
       [{ date_of_birth: "01/15/1990" }],
       [{ date_of_birth: "01/15/1991" }],
+      receiver,
+    );
+    expect(matchedPairs(authored)).toEqual([[0, 0]]);
+    expect(matchedPairs(reversed)).toEqual([[0, 0]]);
+  });
+}
+
+const adjacentDaysKey: LinkageKey = {
+  name: "DOB adjacent days",
+  elements: [{ field: "dob", generateFuzzyComparisons: "adjacent_days" }],
+};
+
+for (const receiver of ["authored", "reversed"] as const) {
+  test(`a date one day off across a leap day matches with the ${receiver} party as receiver`, async () => {
+    const { authored, reversed } = await runDobExchange(
+      adjacentDaysKey,
+      [{ date_of_birth: "02/29/2000" }],
+      [{ date_of_birth: "03/01/2000" }],
       receiver,
     );
     expect(matchedPairs(authored)).toEqual([[0, 0]]);

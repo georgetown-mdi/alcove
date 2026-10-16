@@ -1788,6 +1788,7 @@ test.each([
   "transpositions",
   "edit_distances",
   "adjacent_years",
+  "adjacent_days",
   "day_month_swaps",
 ] as const)('fuzzy-comparison method "%s" parses', (method) => {
   const result = safeParseLinkageTerms({
@@ -1808,7 +1809,12 @@ test.each([
   expect(result.success).toBe(true);
 });
 
-test.each(["editDistances", "adjacentYears", "dayMonthSwaps"] as const)(
+test.each([
+  "editDistances",
+  "adjacentYears",
+  "adjacentDays",
+  "dayMonthSwaps",
+] as const)(
   'the old camelCase fuzzy-comparison method "%s" is rejected',
   (method) => {
     const result = safeParseLinkageTerms({
