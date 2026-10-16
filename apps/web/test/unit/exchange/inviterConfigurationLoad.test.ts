@@ -1183,11 +1183,11 @@ describe("a column whose is_payload does not follow its role", () => {
     expect(merged.notApplied).toContain("metadata");
   });
 
-  test("a record identifier stated as sent is sent, not held as one", () => {
+  test("a record identifier stated as sent stays the identifier and is sent", () => {
     // Inference states this pair for an `id` column, so a configuration
     // written from it sends that column on the command line. The step holds
-    // either the identifier role or the sending one, and it takes sending, so
-    // the run discloses what the file discloses.
+    // it as the identifier sent to the partner, so the run writes the file's
+    // pair back unchanged and names nothing beside the load.
     const merged = mergedOver({
       name: "client_id",
       type: "identifier",
@@ -1196,8 +1196,8 @@ describe("a column whose is_payload does not follow its role", () => {
     });
     expect(merged.documentSends).toEqual(["client_id"]);
     expect(merged.draftSends).toEqual(merged.documentSends);
-    expect(merged.role("client_id")).toBe("payload");
-    expect(merged.notApplied).toContain("metadata");
+    expect(merged.role("client_id")).toBe("identifier");
+    expect(merged.notApplied).toBeUndefined();
   });
 
   test("a matching column stated as sent is sent from here", () => {
@@ -1211,6 +1211,128 @@ describe("a column whose is_payload does not follow its role", () => {
     expect(merged.draftSends).toEqual(merged.documentSends);
     expect(merged.notApplied).toContain("metadata");
   });
+
+  // The pairs docs/spec/EXCHANGE_FILE.md, "Writing a configuration back",
+  // names as not loaded, and the pair the console writes back for each.
+  test.each([
+    {
+      stated: {
+        name: "dob",
+        type: "date_of_birth",
+        role: "linkage",
+        isPayload: true,
+      },
+      written: { role: "payload", isPayload: true },
+    },
+    {
+      stated: {
+        name: "program_code",
+        type: "other",
+        role: "payload",
+        isPayload: false,
+      },
+      written: { role: "ignored", isPayload: false },
+    },
+    {
+      stated: {
+        name: "program_code",
+        type: "other",
+        role: "ignored",
+        isPayload: true,
+      },
+      written: { role: "ignored", isPayload: false },
+    },
+  ] satisfies Array<{
+    stated: ColumnMetadata;
+    written: Pick<ColumnMetadata, "role" | "isPayload">;
+  }>)(
+    "role $stated.role with is_payload $stated.isPayload is reported and written back as $written.role, $written.isPayload",
+    ({ stated, written }) => {
+      const metadata: Metadata = statedColumns().map((own) =>
+        own.name === stated.name ? stated : own,
+      );
+      const applied = withFileRead(
+        loadedInto(INVITER_SCREEN_INITIAL, sftpDocument({ metadata })),
+      );
+      if (applied.editor === undefined) throw new Error("expected an editor");
+      const handedBack = configurationHandBack({
+        editor: applied.editor,
+        terms: getDefaultLinkageTerms("County Health"),
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      });
+      expect(
+        noticesOf(applied).find((text) => text.includes("cannot supply")),
+      ).toContain("metadata");
+      expect(
+        handedBack.metadata?.find((column) => column.name === stated.name),
+      ).toEqual({ ...stated, ...written });
+    },
+  );
+});
+
+// A column of the identifier type the document states as sent or ignored is
+// not a second record identifier, so loading it in either order leaves the
+// document's own identifier where the document states it.
+describe("a record identifier beside another identifier-typed column", () => {
+  const cases = [true, false].flatMap((identifierSent) =>
+    (
+      [
+        { role: "payload", isPayload: true },
+        { role: "ignored", isPayload: false },
+      ] as const
+    ).flatMap((other) =>
+      [true, false].map((identifierFirst) => ({
+        identifierSent,
+        otherRole: other.role,
+        otherSent: other.isPayload,
+        identifierFirst,
+      })),
+    ),
+  );
+
+  test.each(cases)(
+    "identifier sent $identifierSent, program_code $otherRole/$otherSent, identifier first $identifierFirst",
+    ({ identifierSent, otherRole, otherSent, identifierFirst }) => {
+      const identifier: ColumnMetadata = {
+        name: "client_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: identifierSent,
+      };
+      const other: ColumnMetadata = {
+        name: "program_code",
+        type: "identifier",
+        role: otherRole,
+        isPayload: otherSent,
+      };
+      const rest = statedColumns().filter(
+        (column) =>
+          column.name !== identifier.name && column.name !== other.name,
+      );
+      const metadata: Metadata = identifierFirst
+        ? [identifier, other, ...rest]
+        : [other, identifier, ...rest];
+      const applied = withFileRead(
+        loadedInto(INVITER_SCREEN_INITIAL, sftpDocument({ metadata })),
+      );
+      if (applied.editor === undefined) throw new Error("expected an editor");
+      const handedBack = configurationHandBack({
+        editor: applied.editor,
+        terms: getDefaultLinkageTerms("County Health"),
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      });
+      expect(
+        noticesOf(applied).find((text) => text.includes("cannot supply")),
+      ).toBeUndefined();
+      for (const stated of metadata) {
+        expect(
+          handedBack.metadata?.find((column) => column.name === stated.name),
+        ).toEqual(stated);
+      }
+    },
+  );
 });
 
 // A document stating `metadata` states the column set whole, the way the command

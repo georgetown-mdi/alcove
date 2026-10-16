@@ -41,11 +41,7 @@ import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { OWN_COLUMNS_DEFAULT } from "@psi/ownColumnsModel";
 import { buildAdvancedTerms } from "@psi/authoring/advancedInviteTerms";
 
-import {
-  disclosureOf,
-  setColumnDisclosure,
-  setColumnType,
-} from "@psi/metadataEditing";
+import { disclosureOf, setColumnDisclosure } from "@psi/metadataEditing";
 import {
   editorWithConfigurationCleaning,
   editorWithImportedTerms,
@@ -408,11 +404,13 @@ function withColumnDescription(
  * The columns step holds `role` and `isPayload` as one collapsed choice, so a
  * pair core admits off that diagonal has no choice of its own: a `role: payload`
  * column with `is_payload: false` sends nothing and takes `ignored`, while a
- * `role: linkage` or `role: identifier` column with `is_payload: true` does
- * send, so it takes `payload` and loses its matching or identifier half. Each
- * such pair is reported by the merge rather than passed over as applied.
+ * `role: linkage` column with `is_payload: true` does send, so it takes
+ * `payload` and loses its matching half. Each such pair is reported by the
+ * merge rather than passed over as applied. A `role: identifier` column takes
+ * `identifier` or `identifier-sent` as its `is_payload` states.
  */
 function loadedDisclosureOf(column: ColumnMetadata): DisclosureChoice {
+  if (column.role === "identifier") return disclosureOf(column);
   if (isDisclosedToPartner(column)) return "payload";
   return column.role === "payload" ? "ignored" : disclosureOf(column);
 }
@@ -420,8 +418,11 @@ function loadedDisclosureOf(column: ColumnMetadata): DisclosureChoice {
 /**
  * The column set the import binds against: the operator's own inferred columns
  * with each role, type, and description the document states for a column of
- * that name put back, through the same editing helpers the columns step uses,
- * so the single-identifier rule holds exactly as it does for a hand edit. A
+ * that name put back. Each column's stated role is applied through the
+ * disclosure helper the columns step uses, so the single-identifier rule holds
+ * as it does for a hand edit, while its type is set as stated with no change
+ * of role, so a payload or ignored column of the identifier type never
+ * displaces the document's record identifier. A
  * column the document names that this file does not have leaves the whole
  * setting unapplied, since nothing in the editor can hold it.
  *
@@ -449,7 +450,9 @@ function metadataWithLoadedColumns(
   let metadata = inferred;
   for (const column of loaded) {
     if (!metadata.some((own) => own.name === column.name)) continue;
-    metadata = setColumnType(metadata, column.name, column.type).metadata;
+    metadata = metadata.map((own) =>
+      own.name === column.name ? { ...own, type: column.type } : own,
+    );
     metadata = setColumnDisclosure(
       metadata,
       column.name,

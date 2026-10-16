@@ -133,6 +133,14 @@ that promises, and what it does not, is bounded:
   connection-tuning card states a value for every setting it offers, so a run
   composed from a file that left one unset writes it explicitly, at the value it
   already had.
+- **Not loaded: three `role` and `is_payload` pairs.** A `metadata` column
+  stated as `role: linkage` with `is_payload: true`, `role: payload` with
+  `is_payload: false`, or `role: ignored` with `is_payload: true` has no choice
+  in the console's column step, so the console reports `metadata` as not loaded
+  and writes that column back as `role: payload` with `is_payload: true`,
+  `role: ignored` with `is_payload: false`, and `role: ignored` with
+  `is_payload: false` respectively, sending it exactly when the file's own pair
+  does. Measured in `apps/web/test/unit/exchange/inviterConfigurationLoad.test.ts`.
 
 ## Versioning and compatibility policy
 

@@ -24,7 +24,8 @@ import {
   acceptorSendingExpectedColumnsCostsKey,
   acceptorUnsatisfiedTypes,
   acceptorVerdict,
-  acceptorWidenableDeclaredColumnCount,
+  acceptorWidenedMetadata,
+  acceptorWideningOfferSentence,
 } from "@exchange/acceptorColumnsModel";
 
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
@@ -52,12 +53,15 @@ import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 import { dateInputFormatsForColumns } from "@psi/authoring/advancedInvite";
 
 import {
+  DISCLOSURE_LABELS,
+  disclosureOf,
   setColumnDisclosure,
   setColumnTypeForMatching,
 } from "@psi/metadataEditing";
 
 import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
 import type { AcceptorColumnsState } from "@exchange/acceptorColumnsModel";
+import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 
 // Two single-element keys, one per name field, so a CSV can satisfy both, one, or
@@ -1272,18 +1276,17 @@ describe("the invitation's declared payload set against the marks", () => {
     );
   });
 
-  test("a declared column the file keeps as its record identifier is offered too, at the cost of the identifier", () => {
+  test("a declared column the file keeps as its record identifier is offered too, and stays the identifier", () => {
     // The same offer over a column that is neither matched on nor sent: `record_id`
     // infers to the identifier role, so `inFile` is read from the metadata whatever
-    // use the column currently has, and what widening costs here is the one column
-    // the file keeps unsent to index its own matched rows -- not matching, which
-    // this column does not do.
+    // use the column currently has, and the offer sends it as the identifier, so
+    // the file's own result still begins with it.
     const identifierColumns = ["first_name", "last_name", "record_id"];
     const terms: LinkageTerms = {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }] },
     };
-    const { editorState } = editorFor(identifierColumns, terms);
+    const { state, editorState } = editorFor(identifierColumns, terms);
     expect(
       editorState.metadata.find((column) => column.name === "record_id")?.role,
     ).toBe("identifier");
@@ -1293,13 +1296,50 @@ describe("the invitation's declared payload set against the marks", () => {
         ?.declaredButNotSent,
     ).toEqual([{ displayName: "record_id", inFile: true }]);
 
-    const widened = setColumnDisclosure(
-      editorState.metadata,
-      "record_id",
-      "payload",
-    ).metadata;
+    const widened = acceptorWidenedMetadata(terms, editorState.metadata);
     expect(acceptorPayloadDeclarationConflict(terms, widened)).toBeUndefined();
-    expect(widened.some((column) => column.role === "identifier")).toBe(false);
+    const recordId = widened.find((column) => column.name === "record_id")!;
+    expect(disclosureOf(recordId)).toBe("identifier-sent");
+    expect(acceptorDisclosedColumns(widened)).toEqual(["record_id"]);
+    expect(acceptorWideningOfferSentence(identifierColumns, terms, state)).toBe(
+      ` Your file does have that column as its record identifier: you can set it to "${DISCLOSURE_LABELS["identifier-sent"]}" below instead - that discloses more than you have marked so far, and the column stays your record identifier.`,
+    );
+  });
+
+  test("the offer names the choice it applies to each column it would set", () => {
+    // The record identifier and a column used for nothing, offered together:
+    // the identifier stays the identifier and is sent, the other column is sent.
+    const terms: LinkageTerms = {
+      ...nameTerms,
+      payload: { receive: [{ name: "record_id" }, { name: "notes" }] },
+    };
+    const { state } = editorFor(columns, terms);
+    const widened = acceptorWidenedMetadata(terms, state.metadata);
+    expect(
+      widened
+        .filter((column) => ["record_id", "notes"].includes(column.name))
+        .map((column) => [column.name, disclosureOf(column)]),
+    ).toEqual([
+      ["notes", "payload"],
+      ["record_id", "identifier-sent"],
+    ]);
+    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
+      ` Where your file does have such a column, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" below, and any other to "${DISCLOSURE_LABELS.payload}", instead - that discloses more than you have marked so far, and each other column has a single use, so sending it replaces the use it has now.`,
+    );
+  });
+
+  test("the offer that costs a key names the identifier's own choice beside the others", () => {
+    const terms: LinkageTerms = {
+      ...nameTerms,
+      payload: { receive: [{ name: "record_id" }, { name: "first_name" }] },
+    };
+    const { state } = editorFor(columns, terms);
+    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
+      true,
+    );
+    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
+      ` Setting your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and the other columns your file does have to "${DISCLOSURE_LABELS.payload}" below will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.`,
+    );
   });
 
   test("a declaration naming the same held-but-unsent column twice widens it once", () => {
@@ -1310,15 +1350,60 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "record_id" }] },
     };
-    const { editorState } = editorFor(identifierColumns, terms);
+    const { state, editorState } = editorFor(identifierColumns, terms);
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
     ).toEqual([{ displayName: "record_id", inFile: true }]);
     expect(
-      acceptorWidenableDeclaredColumnCount(terms, editorState.metadata),
-    ).toBe(1);
+      acceptorWideningOfferSentence(identifierColumns, terms, state),
+    ).toContain("Your file does have that column");
   });
+
+  test.each([
+    { receive: ["id"], sent: ["id"] },
+    { receive: ["id", "identifier"], sent: ["id", "identifier"] },
+  ])(
+    "with two record identifiers, the offer sends $receive as payload and changes no other column",
+    ({ receive, sent }) => {
+      // Both `id` and `identifier` infer to the identifier role, so the file has
+      // no one record identifier: the offer marks no column identifier-and-sent,
+      // demotes no identifier, and does not use the identifier wording.
+      const twoIdentifierColumns = [
+        "id",
+        "identifier",
+        "first_name",
+        "last_name",
+      ];
+      const terms: LinkageTerms = {
+        ...nameTerms,
+        payload: { receive: receive.map((name) => ({ name })) },
+      };
+      const { state } = editorFor(twoIdentifierColumns, terms);
+      expect(
+        state.metadata
+          .filter((column) => column.role === "identifier")
+          .map((column) => column.name),
+      ).toEqual(["id", "identifier"]);
+
+      const widened = acceptorWidenedMetadata(terms, state.metadata);
+      for (const column of widened) {
+        const before = state.metadata.find((c) => c.name === column.name)!;
+        if (receive.includes(column.name))
+          expect(disclosureOf(column), column.name).toBe("payload");
+        else expect(column, column.name).toEqual(before);
+      }
+      expect(acceptorDisclosedColumns(widened)).toEqual(sent);
+      expect(
+        acceptorPayloadDeclarationConflict(terms, widened),
+      ).toBeUndefined();
+      expect(
+        acceptorWideningOfferSentence(twoIdentifierColumns, terms, state),
+      ).toBe(
+        ` Where your file does have such a column, you can set it to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`,
+      );
+    },
+  );
 
   test("the offer costs an agreed key when a declared column is one this file matches on", () => {
     // The case the offer is unusable in: the column the partner expects is one this
@@ -1428,6 +1513,7 @@ describe("the invitation's declared payload set against the marks", () => {
       rows: Array<CSVRow>;
       sent: Array<string>;
       offered: Array<string>;
+      choice: DisclosureChoice;
     }> = [
       {
         use: "a column the file matches on",
@@ -1436,6 +1522,7 @@ describe("the invitation's declared payload set against the marks", () => {
         rows: rows(columns),
         sent: ["notes"],
         offered: ["first_name"],
+        choice: "payload",
       },
       {
         use: "the file's record identifier",
@@ -1444,6 +1531,7 @@ describe("the invitation's declared payload set against the marks", () => {
         rows: rows(["first_name", "last_name", "record_id"]),
         sent: [],
         offered: ["record_id"],
+        choice: "identifier-sent",
       },
       {
         use: "a date-of-birth column whose format the rows fix",
@@ -1452,6 +1540,7 @@ describe("the invitation's declared payload set against the marks", () => {
         rows: [{ date_of_birth: "1980-01-02", first_name: "Ann", notes: "x" }],
         sent: ["notes"],
         offered: ["date_of_birth"],
+        choice: "payload",
       },
     ];
     for (const offer of offers) {
@@ -1471,8 +1560,11 @@ describe("the invitation's declared payload set against the marks", () => {
       ).toEqual(offer.offered);
       const taken = offer.offered.reduce(
         (metadata, name) =>
-          setColumnDisclosure(metadata, name, "payload").metadata,
+          setColumnDisclosure(metadata, name, offer.choice).metadata,
         state.metadata,
+      );
+      expect(taken, offer.use).toEqual(
+        acceptorWidenedMetadata(offer.terms, state.metadata),
       );
       const after = acceptorColumnsEditorState(
         { ...state, metadata: taken },

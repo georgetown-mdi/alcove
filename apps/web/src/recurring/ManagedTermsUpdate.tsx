@@ -32,6 +32,7 @@ import {
   APPLY_TERMS_UPDATE_TEXT,
   CHANGE_TERMS_TITLE,
   MAKE_TERMS_UPDATE_LABEL,
+  MATCHING_COLUMN_NOTE,
   READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
   SEND_TERMS_UPDATE_LABEL,
@@ -44,7 +45,7 @@ import {
   TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_MADE_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
-  fixedColumnNote,
+  sentColumnNote,
   sentColumnsFailureText,
   termsUpdateAppliedText,
   termsUpdateNotAppliedText,
@@ -173,6 +174,7 @@ function SentColumnsEditor({
             <Checkbox
               key={column.name}
               label={<ColumnName name={column.name} />}
+              description={sentColumnNote(column)}
               checked={chosen.has(column.name)}
               onChange={(event) =>
                 toggle(column.name, event.currentTarget.checked)
@@ -182,7 +184,7 @@ function SentColumnsEditor({
             <Checkbox
               key={column.name}
               label={<ColumnName name={column.name} />}
-              description={fixedColumnNote(column)}
+              description={MATCHING_COLUMN_NOTE}
               checked={isDisclosedToPartner(column)}
               disabled
               readOnly

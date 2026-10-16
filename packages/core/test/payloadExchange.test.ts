@@ -2006,6 +2006,37 @@ test("buildOutputTable: their_ prefix disambiguates same-named columns", () => {
   expect(headers).toEqual(["patient_id", "row_id", "their_patient_id"]);
 });
 
+test("buildOutputTable: both parties sending a record_id identifier keep their own id first", () => {
+  const sentIdentifier: Metadata = [
+    { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    {
+      name: "record_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+  ];
+  const ownRows = [
+    { ssn: "001", record_id: "A-100" },
+    { ssn: "002", record_id: "A-101" },
+  ];
+  const partnerRows = Array.from({ length: 8 }, (_, index) => ({
+    ssn: `9${index}`,
+    record_id: `B-90${index}`,
+  }));
+  const partnerSent = preparePayload(partnerRows, sentIdentifier, [[7], [1]]);
+  if (!partnerSent.hasData) throw new Error("expected hasData:true");
+
+  const { headers, rows } = buildOutputTable(
+    [[1], [7]],
+    ownRows,
+    sentIdentifier,
+    partnerSent,
+  );
+  expect(headers).toEqual(["record_id", "row_id", "their_record_id"]);
+  expect(rows).toEqual([["A-101", "7", "B-907"]]);
+});
+
 test("buildOutputTable: partner row-index header falls back past colliding partner columns", () => {
   // Adversarial header collision: the partner sends columns literally named
   // "row_id" and "their_row_id", both of which the partner row-index column would

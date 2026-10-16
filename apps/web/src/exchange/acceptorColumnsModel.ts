@@ -9,8 +9,10 @@ import {
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 
 import {
+  DISCLOSURE_LABELS,
   SEMANTIC_TYPE_LABELS,
   disclosedColumnNames,
+  disclosureOf,
   hasMultipleIdentifiers,
   normalizeForEditor,
   setColumnDisclosure,
@@ -769,22 +771,87 @@ function widenableDeclaredColumns(
 }
 
 /**
- * How many columns the notice's widening offer would mark
- * ({@link widenableDeclaredColumns}), which is what its wording is about: a
- * declaration naming one held column twice offers one column, not two.
+ * The choice the notice's widening offer sets a column to: the file's one
+ * record identifier takes `identifier-sent`, so it stays the identifier its own
+ * result file begins with, and any other column takes `payload`. While the
+ * marks hold more than one identifier ({@link hasMultipleIdentifiers}) no
+ * column is the record identifier, so every column takes `payload`.
  */
-export function acceptorWidenableDeclaredColumnCount(
+function widenedDisclosure(
+  metadata: Metadata,
+  name: string,
+): "identifier-sent" | "payload" {
+  if (hasMultipleIdentifiers(metadata)) return "payload";
+  return metadata.some(
+    (column) => column.name === name && column.role === "identifier",
+  )
+    ? "identifier-sent"
+    : "payload";
+}
+
+/** The marks after the notice's widening offer is taken: every
+ * {@link widenableDeclaredColumns} column set to its {@link widenedDisclosure},
+ * through the grid's own edit. At most one column takes `identifier-sent`, and
+ * only when it is the sole identifier, so no edit demotes another identifier
+ * and no column outside the declared set changes. */
+export function acceptorWidenedMetadata(
   linkageTerms: LinkageTerms,
   metadata: Metadata,
-): number {
-  return widenableDeclaredColumns(linkageTerms, metadata).length;
+): Metadata {
+  return widenableDeclaredColumns(linkageTerms, metadata).reduce(
+    (widened, name) =>
+      setColumnDisclosure(widened, name, widenedDisclosure(metadata, name))
+        .metadata,
+    metadata,
+  );
+}
+
+/**
+ * The notice's widening offer as one sentence, with a leading space, or
+ * `undefined` when the file has none of the declared columns it does not send.
+ * Counts columns, not declaration entries: a declaration naming one held
+ * column twice offers one column.
+ * Names the choice {@link acceptorWidenedMetadata} applies to each column, read
+ * from the marks it returns -- the record identifier's own sending choice for
+ * that column, "Sent to your partner" for the rest -- and, where taking it would cost an agreed linkage key
+ * ({@link acceptorSendingExpectedColumnsCostsKey}), states that instead. A
+ * column that costs a key is one used to match, never the record identifier.
+ */
+export function acceptorWideningOfferSentence(
+  columns: Array<string>,
+  linkageTerms: LinkageTerms,
+  state: AcceptorColumnsState,
+): string | undefined {
+  const widenable = widenableDeclaredColumns(linkageTerms, state.metadata);
+  if (widenable.length === 0) return undefined;
+  const sent = `"${DISCLOSURE_LABELS.payload}"`;
+  const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
+  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
+  const identifierCount = widened.filter(
+    (column) =>
+      widenable.includes(column.name) &&
+      disclosureOf(column) === "identifier-sent",
+  ).length;
+  if (acceptorSendingExpectedColumnsCostsKey(columns, linkageTerms, state)) {
+    if (widenable.length === 1)
+      return ` Setting the column your file does have to ${sent} below will not start the exchange: that column is used to match, and each column has a single use, so sending it would leave an agreed linkage key with no column to match on.`;
+    const setting =
+      identifierCount === 0
+        ? `Setting the columns your file does have to ${sent} below`
+        : `Setting your record identifier to ${identifierSent} and the other columns your file does have to ${sent} below`;
+    return ` ${setting} will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.`;
+  }
+  if (identifierCount === 0)
+    return ` Where your file does have such a column, you can set it to ${sent} below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`;
+  if (widenable.length === identifierCount)
+    return ` Your file does have that column as its record identifier: you can set it to ${identifierSent} below instead - that discloses more than you have marked so far, and the column stays your record identifier.`;
+  return ` Where your file does have such a column, you can set your record identifier to ${identifierSent} below, and any other to ${sent}, instead - that discloses more than you have marked so far, and each other column has a single use, so sending it replaces the use it has now.`;
 }
 
 /**
  * Whether taking the notice's widening offer would cost an agreed linkage key:
- * marking every declared-but-unsent column this file HAS
- * ({@link widenableDeclaredColumns}) to "Sent to your partner" leaves fewer keys
- * satisfiable than the current marks do. Each column has a single use, so a column
+ * the marks {@link acceptorWidenedMetadata} leaves satisfy fewer keys than the
+ * current marks do. Each column has a single use, so a column
  * the file matches on stops matching once it is sent, and the run is then refused
  * for a key the input can no longer satisfy -- the offer would move the operator
  * from one refusal to the next.
@@ -808,12 +875,9 @@ export function acceptorSendingExpectedColumnsCostsKey(
   linkageTerms: LinkageTerms,
   state: AcceptorColumnsState,
 ): boolean {
-  const widenable = widenableDeclaredColumns(linkageTerms, state.metadata);
-  if (widenable.length === 0) return false;
-  const widened = widenable.reduce(
-    (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,
-    state.metadata,
-  );
+  if (widenableDeclaredColumns(linkageTerms, state.metadata).length === 0)
+    return false;
+  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
   return (
     satisfiableKeysUnderMarks(columns, linkageTerms, {
       ...state,

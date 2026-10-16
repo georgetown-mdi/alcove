@@ -53,6 +53,7 @@ import type {
   TermsUpdate,
   WebRTCExchangeLocator,
 } from "@alcove/core";
+import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
 /**
@@ -1406,11 +1407,29 @@ export function managedSentColumnsEditable(
 
 /**
  * Whether a declared column's send choice is the operator's to change here: a
- * column that only carries payload, or is ignored. A column used to match or
- * as the record identifier changes with the linkage terms, not here.
+ * payload, ignored, or record identifier column. A column used to match
+ * changes with the linkage terms, not here.
  */
 export function sentColumnChoiceOffered(column: ColumnMetadata): boolean {
-  return column.role === "payload" || column.role === "ignored";
+  return (
+    column.role === "payload" ||
+    column.role === "ignored" ||
+    column.role === "identifier"
+  );
+}
+
+/**
+ * The disclosure an offered column ({@link sentColumnChoiceOffered}) takes when
+ * it is or is not chosen to send: the record identifier stays the identifier
+ * either way, and any other column is sent as payload or ignored.
+ */
+function sentColumnDisclosure(
+  column: ColumnMetadata,
+  sent: boolean,
+): DisclosureChoice {
+  if (column.role === "identifier")
+    return sent ? "identifier-sent" : "identifier";
+  return sent ? "payload" : "ignored";
 }
 
 /**
@@ -1443,13 +1462,16 @@ export function applyManagedExchangeSentColumns(
   );
   if (sent.some((name) => !offered.has(name)))
     throw new UsageError(
-      "a column chosen to send is not one of this exchange's own payload " +
-        "columns; reload the page and choose again",
+      "a column chosen to send is one used to match, or one this exchange " +
+        "does not declare; reload the page and choose again",
     );
   const chosen = new Set(sent);
   const metadata = current.metadata.map((column) =>
     sentColumnChoiceOffered(column)
-      ? applyDisclosure(column, chosen.has(column.name) ? "payload" : "ignored")
+      ? applyDisclosure(
+          column,
+          sentColumnDisclosure(column, chosen.has(column.name)),
+        )
       : column,
   );
   return parseManagedExchangeRecord({

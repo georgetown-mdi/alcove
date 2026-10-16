@@ -34,13 +34,16 @@ import {
   composeManagedExchangeFile,
   parseManagedExchangeRecord,
   runnableManagedExchangeOrRefuse,
+  sentColumnChoiceOffered,
 } from "@psi/managed/managedExchangeRecord";
 import { clearManagedExchangeTermsProposal } from "@psi/managed/managedLocalState";
 
 import {
+  IDENTIFIER_COLUMN_NOTE,
   TERMS_UPDATE_APPLIED_TEXT,
   TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_NOT_APPLIED_TEXT,
+  sentColumnNote,
   termsUpdateAppliedText,
   termsUpdateNotAppliedText,
   termsUpdateReadingText,
@@ -54,7 +57,12 @@ import {
 
 import type * as ManagedExchangeRecordModule from "@psi/managed/managedExchangeRecord";
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
-import type { ExchangeSpec, LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  ColumnMetadata,
+  ExchangeSpec,
+  LinkageTerms,
+  Metadata,
+} from "@alcove/core";
 import type {
   ManagedExchangeRecord,
   ManagedTermsChangeWrite,
@@ -157,6 +165,45 @@ describe("choosing the columns a saved exchange sends", () => {
     expect(edited.exchangeFile.connection).toEqual(
       record.exchangeFile.connection,
     );
+  });
+
+  test("stops sending the record identifier and keeps it the identifier, and sends it again", async () => {
+    const recordId: ColumnMetadata = {
+      name: "record_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    };
+    const record = inviterRecord(await agencyATerms(), [
+      ...OWN_METADATA,
+      recordId,
+    ]);
+    expect(sentColumnChoiceOffered(recordId)).toBe(true);
+    expect(sentColumnNote(recordId)).toBe(IDENTIFIER_COLUMN_NOTE);
+    expect(disclosedColumnNames(record.exchangeFile.metadata ?? [])).toEqual([
+      "notes",
+      "record_id",
+    ]);
+
+    const unsent = applyManagedExchangeSentColumns(record, ["notes"]);
+    const unsentMetadata = unsent.exchangeFile.metadata ?? [];
+    expect(
+      unsentMetadata.find((column) => column.name === "record_id"),
+    ).toEqual({ ...recordId, isPayload: false });
+    expect(disclosedColumnNames(unsentMetadata)).toEqual(["notes"]);
+    expect(unsent.exchangeFile.linkageTerms.payload?.send).toEqual([
+      { name: "notes" },
+    ]);
+
+    const resent = applyManagedExchangeSentColumns(unsent, ["record_id"]);
+    expect(
+      (resent.exchangeFile.metadata ?? []).find(
+        (column) => column.name === "record_id",
+      ),
+    ).toEqual(recordId);
+    expect(resent.exchangeFile.linkageTerms.payload?.send).toEqual([
+      { name: "record_id" },
+    ]);
   });
 
   test("refuses a column used to match, and one the exchange does not declare", async () => {
