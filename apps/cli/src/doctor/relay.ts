@@ -28,23 +28,19 @@ import type {
   DoctorReport,
   RelayTransport,
 } from "./verdict";
-import { fail, ok, warn } from "./verdict";
+import { fail, ok, skipped, warn } from "./verdict";
 
-// `alcove doctor relay`: whether this host reaches each TURN relay a webrtc
-// run lists, asked as the run's ICE gathering asks. werift allocates on the
-// first TURN url a peer is given and ignores the rest, so only the first url's
-// outcome decides the verdict. Before it asks them it enrolls at the registrar
-// the invitation's relay names, as a run does before it dials when that relay
-// is the one it allocates on; it contacts nothing else, and runs only when the
-// operator names it. Contract:
-// docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the relay of a
-// WebRTC exchange.
+// `alcove doctor relay`: whether this host reaches the TURN relay a webrtc run
+// allocates on, asked as the run's ICE gathering asks. It contacts exactly the
+// relay hosts a run of the configuration contacts: the first TURN url the run
+// lists, and the invitation's registrar only where the run enrolls there. It
+// runs only when the operator names it. Contract: docs/spec/CLI_DOCTOR.md;
+// operator page: docs/CLI.md, Checking the relay of a WebRTC exchange.
 
 /**
- * The one bound on the whole check: every relay is asked at once, and one
- * that has given no relay candidate when it expires is reported as not
- * reached. An arbitrary working value; see docs/spec/CLI_DOCTOR.md, The relay
- * check.
+ * The one bound on the relay request: a relay that has given no relay
+ * candidate when it expires is reported as not reached. An arbitrary working
+ * value; see docs/spec/CLI_DOCTOR.md, The relay check.
  */
 export const RELAY_CHECK_BOUND_MS = 30_000;
 
@@ -66,11 +62,28 @@ export const RELAY_CHECK_NO_TURN_URL =
   "turn url in connection.invitation_relay -- so there is no relay to " +
   "check. Nothing was contacted.";
 
-/** One TURN url the check asks, with what it presents there. */
+/** The TURN url the check asks, with what it presents there. */
 export interface RelayCheckTarget {
   server: RunTurnServer;
   transport: RelayTransport;
   iceServer: RTCIceServer;
+}
+
+/** The registrar `invitation_relay` names, and whether a run enrolls there. */
+export interface RelayCheckRegistrar {
+  url: string;
+  /** `runEnrollsAtInvitationRegistrar` for the configuration. */
+  contacted: boolean;
+}
+
+/** What the check contacts, and what a run lists that it does not. */
+export interface RelayCheckPlan {
+  /** The first TURN url a run lists: the one it allocates on. */
+  contacted: RelayCheckTarget;
+  /** Every later TURN url a run lists, in its order; none is contacted. */
+  notContacted: RunTurnServer[];
+  /** Absent where the configuration's `invitation_relay` names no registrar. */
+  registrar?: RelayCheckRegistrar;
 }
 
 /**
@@ -95,44 +108,58 @@ export function turnUrlTransport(url: string): RelayTransport {
   return new URLSearchParams(query).get("transport") === "tcp" ? "tcp" : "udp";
 }
 
-/** A connection the check applies to, and the TURN urls a run of it lists. */
-export interface RelayCheckSelection {
-  connection: WebRTCConnectionConfig;
-  turn: RunTurnServer[];
-}
-
 /**
- * The TURN urls a run of `connection` lists, in its order, refusing a
- * connection the check does not apply to: one that is not webrtc, one the run
- * itself refuses for `ice_provision`, and one that lists no TURN url.
+ * The connection the check applies to, refusing one it does not: one that is
+ * not webrtc, one the run itself refuses for `ice_provision`, and one that
+ * lists no TURN url.
  *
  * @throws {UsageError} for each refusal above.
  */
-export function relayCheckSelection(
+export function relayCheckConnection(
   connection: ConnectionConfig,
-): RelayCheckSelection {
+): WebRTCConnectionConfig {
   if (connection.channel !== "webrtc")
     throw new UsageError(RELAY_CHECK_WEBRTC_ONLY);
   if (connection.iceProvision !== undefined)
     throw new UsageError(ICE_PROVISION_REFUSAL);
-  const turn = selectRunRelay(connection).turn ?? [];
-  if (turn.length === 0) throw new UsageError(RELAY_CHECK_NO_TURN_URL);
-  return { connection, turn };
+  if ((selectRunRelay(connection).turn ?? []).length === 0)
+    throw new UsageError(RELAY_CHECK_NO_TURN_URL);
+  return connection;
 }
 
 /**
- * What the check asks each url with: the entry's static pair, or the
- * credential the run mints, exactly as the run lists it.
+ * What the check contacts for `connection`, as a run of it does: the first
+ * TURN url the run lists, presented the entry's static pair or else the
+ * credential the run mints, and the invitation's registrar where the run
+ * enrolls there.
+ *
+ * @throws {Error} if the connection lists no TURN url, which
+ *   {@link relayCheckConnection} refuses first.
  */
-export function relayCheckTargets(
-  turn: ReadonlyArray<RunTurnServer>,
+export function relayCheckPlan(
+  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
   runRelayCredential: RelayCredential | undefined,
-): RelayCheckTarget[] {
-  return turn.map((server) => ({
-    server,
-    transport: turnUrlTransport(server.url),
-    iceServer: turnIceServer(server, runRelayCredential),
-  }));
+): RelayCheckPlan {
+  const [first, ...rest] = selectRunRelay(connection).turn ?? [];
+  if (first === undefined)
+    throw new InternalConsistencyError(
+      "relayCheckPlan: the relay check was given no TURN url",
+    );
+  const registrar = connection.invitationRelay?.registrar;
+  return {
+    contacted: {
+      server: first,
+      transport: turnUrlTransport(first.url),
+      iceServer: turnIceServer(first, runRelayCredential),
+    },
+    notContacted: rest,
+    ...(registrar !== undefined && {
+      registrar: {
+        url: registrar,
+        contacted: runEnrollsAtInvitationRegistrar(connection),
+      },
+    }),
+  };
 }
 
 // werift retries a failed UDP allocation over TCP to the same host and port,
@@ -150,64 +177,77 @@ function sourceLabel(server: RunTurnServer): string {
     : "from connection.turn";
 }
 
+const LATER_URL_NOT_CONTACTED =
+  "a run allocates on the first TURN url it lists alone";
+
+const REGISTRAR_NAMED = "The relay registrar your partner's invitation names";
+
+function capitalized(sentence: string): string {
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/** Why a run of the configuration does not enroll at the registrar. */
+function registrarNotContactedReason(plan: RelayCheckPlan): string {
+  return plan.contacted.server.credential !== undefined
+    ? "the relay it allocates on is sent its connection.turn entry's own " +
+        "credential"
+    : "the relay it allocates on is not one the invitation names";
+}
+
 /**
- * The lines printed before any request: every host the check contacts, which
- * url a run allocates on, which hosts a run of this configuration does not
- * contact, and what the check does and does not do there. Raw: the urls and
- * the registrar are configuration text, escaped where the lines are shown.
+ * The lines printed before any request: the hosts the check contacts, then
+ * each host the configuration names that a run of it, and so the check, does
+ * not contact, with the reason. Raw: the urls and the registrar are
+ * configuration text, escaped where the lines are shown. Each host is on a
+ * line of its own and each explanation on the lines below it, every one short
+ * of the display bound that cuts a longer line.
  */
 export function relayHostStatement(
-  targets: ReadonlyArray<RelayCheckTarget>,
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  plan: RelayCheckPlan,
+  connection: Pick<WebRTCConnectionConfig, "invitationRelay">,
 ): string[] {
-  const allocating = targets[0];
-  if (allocating === undefined)
-    throw new InternalConsistencyError(
-      "relayHostStatement: the relay check was given no TURN url",
+  const { contacted, notContacted, registrar } = plan;
+  const lines = [
+    "This check contacts these hosts, as a run of this configuration does:",
+    `  ${contacted.server.url} over ${TRANSPORT_LABEL[contacted.transport]}, ` +
+      sourceLabel(contacted.server),
+    "    The relay a run allocates on. The check asks it for a relay " +
+      "address, sending the credential a run sends there.",
+  ];
+  if (registrar?.contacted === true)
+    lines.push(
+      `  ${registrar.url}`,
+      `    ${REGISTRAR_NAMED}. Before it asks the relay, the check enrolls ` +
+        "this exchange's relay key there, as a run does just before it " +
+        "connects.",
+      "    Whoever runs that registrar learns this machine's network address.",
     );
-  const registrar = connection.invitationRelay?.registrar;
-  const relays = [
-    "This check contacts these relays, asking each for a relay address:",
-    ...targets.map(
-      ({ server, transport }, index) =>
-        `  ${server.url} over ${TRANSPORT_LABEL[transport]}, ${sourceLabel(server)}` +
-        (index === 0
-          ? ""
-          : "; a run of this configuration does not contact it, and the " +
-            "check asks it so you can see whether listing it first would work"),
-    ),
-    ...(targets.length === 1
-      ? ["A run allocates on this relay."]
-      : [
-          `A run allocates on the first of them alone, ${allocating.server.url}.`,
-        ]),
-    "It sends each relay the credential a run sends.",
-  ];
-  if (registrar === undefined)
-    return [
-      ...relays,
-      connection.invitationRelay === undefined
-        ? "It contacts nothing else."
-        : "It contacts nothing else. This configuration's invitation_relay " +
-          "names no relay registrar, so it contacts none and enrolls nothing.",
-      "",
-    ];
-  return [
-    ...relays,
-    runEnrollsAtInvitationRegistrar(connection)
-      ? "Before it asks them, it enrolls this exchange's relay key at the " +
-        "relay registrar your partner's invitation names, as a run does " +
-        "just before it connects when that relay is the one it allocates on:"
-      : "A run of this configuration does not contact the relay registrar " +
-        "your partner's invitation names. This check contacts it only " +
-        "because you asked for the check, so that the invitation's relay " +
-        "can be asked: before it asks the relays, it enrolls this " +
-        "exchange's relay key there:",
-    `  ${registrar}`,
-    "Whoever runs that registrar learns this machine's network address. " +
-      "It contacts nothing else.",
+  const skippedRegistrar =
+    registrar?.contacted === false ? registrar : undefined;
+  if (notContacted.length > 0 || skippedRegistrar !== undefined)
+    lines.push(
+      "It does not contact these hosts, because a run of this configuration " +
+        "does not:",
+      ...notContacted.flatMap((server) => [
+        `  ${server.url}, ${sourceLabel(server)}`,
+        `    ${capitalized(LATER_URL_NOT_CONTACTED)}.`,
+      ]),
+      ...(skippedRegistrar === undefined
+        ? []
+        : [
+            `  ${skippedRegistrar.url}`,
+            `    ${REGISTRAR_NAMED}. A run does not enroll there, because ` +
+              `${registrarNotContactedReason(plan)}.`,
+          ]),
+    );
+  lines.push(
+    connection.invitationRelay !== undefined && registrar === undefined
+      ? "It contacts nothing else. This configuration's invitation_relay " +
+          "names no relay registrar, so it contacts none and enrolls nothing."
+      : "It contacts nothing else.",
     "",
-  ];
+  );
+  return lines;
 }
 
 /** The id of the enrollment's check line. */
@@ -215,7 +255,7 @@ export const ENROLLMENT_CHECK_ID = "enrollment";
 
 /**
  * The enrollment the check made at the invitation relay's registrar before
- * it asked the relays. Never cancelled: the check passes no signal.
+ * it asked the relay. Never cancelled: the check passes no signal.
  */
 export interface RelayCheckEnrollment {
   registrar: string;
@@ -227,7 +267,7 @@ export interface RelayCheckEnrollment {
  * ({@link enrollAtInvitationRelay}): one attempt without a token, under the
  * run's wait.
  */
-export async function enrollBeforeRelayChecks(
+export async function enrollBeforeRelayCheck(
   registrar: string,
   sharedSecret: string,
   fetch: typeof globalThis.fetch | undefined,
@@ -246,8 +286,8 @@ export async function enrollBeforeRelayChecks(
 
 const ENROLLMENT_FAILED_MEANING =
   "the registrar did not record this exchange's relay key. A run makes " +
-  "this same enrollment just before it connects when the relay your " +
-  "partner's invitation names is the one it allocates on.";
+  "this same enrollment just before it connects, because the relay it " +
+  "allocates on is one your partner's invitation names.";
 
 /** What to do about a failed enrollment. */
 export const ENROLLMENT_FAILED_ACTION =
@@ -259,7 +299,7 @@ export const ENROLLMENT_FAILED_ACTION =
 
 /**
  * The check line of the enrollment. A failed one is a `warn`: the enrollment
- * serves the invitation's relay, whose own line has the consequence.
+ * serves the relay a run allocates on, whose own line has the consequence.
  */
 export function enrollmentCheckRecord(
   enrollment: RelayCheckEnrollment,
@@ -283,6 +323,27 @@ export function enrollmentCheckRecord(
   );
 }
 
+/** The check line of a registrar a run of the configuration does not enroll at. */
+function registrarNotContactedRecord(plan: RelayCheckPlan): DoctorCheckRecord {
+  const registrar = plan.registrar?.url;
+  if (registrar === undefined)
+    throw new InternalConsistencyError(
+      "registrarNotContactedRecord: the configuration names no registrar",
+    );
+  return skipped(
+    ENROLLMENT_CHECK_ID,
+    `the relay registrar at ${registrar} that your partner's invitation ` +
+      "names: not contacted.",
+    {
+      meaning:
+        "a run of this configuration does not enroll at this registrar, " +
+        `because ${registrarNotContactedReason(plan)}, so the check does ` +
+        "not contact it.",
+      registrar,
+    },
+  );
+}
+
 const NOT_REACHED_MEANING =
   "nothing on this host reached this relay, the relay refused the " +
   "credential, or it presented a certificate this host does not trust; " +
@@ -293,24 +354,23 @@ function notReachedMeaning(
   enrollment: RelayCheckEnrollment | undefined,
 ): string {
   if (server.credential !== undefined) return NOT_REACHED_MEANING;
-  if (server.source !== "invitation")
-    return (
-      `${NOT_REACHED_MEANING} A relay that takes enrolled keys refuses the ` +
-      "credential derived from the exchange's shared secret until the " +
-      "exchange's relay key is enrolled there with alcove enroll-relay."
-    );
-  if (enrollment === undefined)
+  if (enrollment !== undefined)
+    return enrollment.outcome.kind === "enrolled"
+      ? NOT_REACHED_MEANING
+      : `${NOT_REACHED_MEANING} The likely cause is the failed enrollment ` +
+          "above: this relay refuses the credential derived from the " +
+          "exchange's shared secret until the exchange's relay key is " +
+          "enrolled at its registrar.";
+  if (server.source === "invitation")
     return (
       `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
       "from the exchange's shared secret until the exchange's relay key " +
       "is enrolled there."
     );
-  if (enrollment.outcome.kind === "enrolled") return NOT_REACHED_MEANING;
   return (
-    `${NOT_REACHED_MEANING} The likely cause is the failed enrollment ` +
-    "above: this relay refuses the credential derived from the exchange's " +
-    "shared secret until the exchange's relay key is enrolled at its " +
-    "registrar."
+    `${NOT_REACHED_MEANING} A relay that takes enrolled keys refuses the ` +
+    "credential derived from the exchange's shared secret until the " +
+    "exchange's relay key is enrolled there with alcove enroll-relay."
   );
 }
 
@@ -318,41 +378,19 @@ function boundSeconds(boundMs: number): string {
   return `${Math.round(boundMs / 1000)} s`;
 }
 
-const NOT_ALLOCATED_MEANING =
-  "a run allocates on the first TURN url it lists alone, so it does not " +
-  "allocate on this relay, and this result does not block a run as " +
-  "configured.";
-
-/** What to do about a later url that was not reached. */
-export const NOT_ALLOCATED_ACTION =
-  "If this relay should be the one a run allocates on, list it first under " +
-  "connection.turn and run this check again.";
-
-function capitalized(sentence: string): string {
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
-
 /**
- * The check record for one url, given whether a relay candidate came back and
- * the enrollment made before it was asked, if any. The url at `index` 0 is the
- * one a run allocates on, and only its miss is a `fail`; a later url's miss is
- * a `warn`.
+ * The check record of the relay a run allocates on, given whether a relay
+ * candidate came back and the enrollment made before it was asked, if any.
  */
 export function relayCheckRecord(
   target: RelayCheckTarget,
-  index: number,
   relayGathered: boolean,
   boundMs: number = RELAY_CHECK_BOUND_MS,
   enrollment?: RelayCheckEnrollment,
 ): DoctorCheckRecord {
-  const id = `turn_${index + 1}`;
+  const id = "turn_1";
   const { server, transport } = target;
-  const allocating = index === 0;
-  const heading =
-    `${server.url} over ${TRANSPORT_LABEL[transport]}, ` +
-    (allocating
-      ? "the relay a run allocates on"
-      : "listed but not allocated on by a run");
+  const heading = `${server.url} over ${TRANSPORT_LABEL[transport]}, the relay a run allocates on`;
   const located = { url: server.url, transport };
   if (relayGathered)
     return ok(
@@ -360,50 +398,72 @@ export function relayCheckRecord(
       `${heading}: reached; the relay gave a relay address.`,
       located,
     );
-  const summary = `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`;
-  const meaning = notReachedMeaning(server, enrollment);
-  if (allocating)
-    return fail(id, summary, meaning, RELAY_NOT_REACHED_REMEDY, located);
-  return warn(
+  return fail(
     id,
-    summary,
-    `${NOT_ALLOCATED_MEANING} ${capitalized(meaning)}`,
-    NOT_ALLOCATED_ACTION,
+    `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`,
+    notReachedMeaning(server, enrollment),
+    RELAY_NOT_REACHED_REMEDY,
     located,
   );
 }
 
+const LATER_URL_NOT_CONTACTED_MEANING =
+  `a run of this configuration does not contact this relay: ` +
+  `${LATER_URL_NOT_CONTACTED}, so the check does not ask it.`;
+
+/** What to do about a later url the check did not contact. */
+export const NOT_CONTACTED_ACTION =
+  "If this relay should be the one a run allocates on, list it first under " +
+  "connection.turn and run this check again.";
+
+function laterUrlRecord(
+  server: RunTurnServer,
+  index: number,
+): DoctorCheckRecord {
+  return skipped(
+    `turn_${index + 2}`,
+    `${server.url}, listed after the relay a run allocates on: not contacted.`,
+    {
+      meaning: LATER_URL_NOT_CONTACTED_MEANING,
+      action: NOT_CONTACTED_ACTION,
+      url: server.url,
+      transport: turnUrlTransport(server.url),
+    },
+  );
+}
+
 /**
- * Ask every target at once under the one bound, and report each in the run's
- * order, after the line of the enrollment made before them, if any.
+ * Ask the relay a run allocates on under the one bound, and report it after
+ * the registrar's line, if the configuration names a registrar, and before a
+ * `skipped` line for each later url. `enrollment` is the one made before the
+ * request, present exactly where the plan's registrar is contacted.
  */
-export async function runRelayChecks(
-  targets: ReadonlyArray<RelayCheckTarget>,
+export async function runRelayCheck(
+  plan: RelayCheckPlan,
   gather: RelayCandidateGathering,
   boundMs: number = RELAY_CHECK_BOUND_MS,
   enrollment?: RelayCheckEnrollment,
 ): Promise<DoctorReport> {
+  if ((plan.registrar?.contacted === true) !== (enrollment !== undefined))
+    throw new InternalConsistencyError(
+      "runRelayCheck: an enrollment is given exactly where a run enrolls",
+    );
   const bound = new AbortController();
   const timer = setTimeout(() => bound.abort(), boundMs);
   try {
-    const gathered = await Promise.all(
-      targets.map((target) => gather(target.iceServer, bound.signal)),
-    );
+    const gathered = await gather(plan.contacted.iceServer, bound.signal);
+    const registrarRecords =
+      enrollment !== undefined
+        ? [enrollmentCheckRecord(enrollment)]
+        : plan.registrar !== undefined
+          ? [registrarNotContactedRecord(plan)]
+          : [];
     return {
       mode: "relay",
       checks: [
-        ...(enrollment === undefined
-          ? []
-          : [enrollmentCheckRecord(enrollment)]),
-        ...targets.map((target, index) =>
-          relayCheckRecord(
-            target,
-            index,
-            gathered[index] === true,
-            boundMs,
-            enrollment,
-          ),
-        ),
+        ...registrarRecords,
+        relayCheckRecord(plan.contacted, gathered, boundMs, enrollment),
+        ...plan.notContacted.map(laterUrlRecord),
       ],
     };
   } finally {

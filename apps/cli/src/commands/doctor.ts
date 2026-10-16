@@ -11,11 +11,11 @@ import { runMountChecks } from "../doctor/mount";
 import { runProbe } from "../doctor/probe";
 import type { RelayCandidateGathering } from "../doctor/relay";
 import {
-  enrollBeforeRelayChecks,
-  relayCheckSelection,
-  relayCheckTargets,
+  enrollBeforeRelayCheck,
+  relayCheckConnection,
+  relayCheckPlan,
   relayHostStatement,
-  runRelayChecks,
+  runRelayCheck,
 } from "../doctor/relay";
 import { readSmbMountInput, readSmbProbeInput } from "../doctor/smbEnvironment";
 import type { DoctorMode, DoctorReport } from "../doctor/verdict";
@@ -42,8 +42,8 @@ import { loadConfig } from "./exchange";
 // is attempted: `doctor probe` checks over the network as smbclient sees it,
 // `doctor mount` through the kernel as a mounted folder. Connection inputs come
 // from the SMB_* environment, never flags, so a password never becomes an argv
-// value. `doctor relay` asks the TURN relays a webrtc configuration lists, and
-// only when the operator names it. Full behavior and the `--json` verdict
+// value. `doctor relay` asks the TURN relay a webrtc run allocates on, and only
+// when the operator names it. Full behavior and the `--json` verdict
 // contract: docs/CLI.md, "Checking a network shared folder", and
 // docs/spec/CLI_DOCTOR.md.
 
@@ -92,10 +92,11 @@ export interface RelayCheckOptions {
 
 /**
  * Run `doctor relay` against the exchange a configuration and key file
- * describe: refuse a configuration the check does not apply to, state every
- * host it contacts, enroll at the registrar the invitation's relay names as a
- * run does, then ask each TURN url the run lists, presenting what the run
- * presents.
+ * describe: refuse a configuration the check does not apply to, state the
+ * hosts it contacts and those it does not, then contact what a run of the
+ * configuration contacts -- the invitation's registrar where the run enrolls
+ * there, and the first TURN url the run lists, presented what the run
+ * presents -- and nothing else.
  *
  * @internal exported for testing
  */
@@ -106,28 +107,27 @@ export async function checkRelay(
     configFile: options.configFile,
     keyFile: options.keyFile,
   });
-  const { connection, turn } = relayCheckSelection(loaded);
-  const targets = relayCheckTargets(
-    turn,
+  const connection = relayCheckConnection(loaded);
+  const plan = relayCheckPlan(
+    connection,
     await relayCredentialForRun(
       connection,
       authentication.sharedSecret,
       options.now ?? new Date(),
     ),
   );
-  const registrar = connection.invitationRelay?.registrar;
-  for (const line of relayHostStatement(targets, connection))
+  for (const line of relayHostStatement(plan, connection))
     options.writeStatementLine(line);
   const enrollment =
-    registrar === undefined
-      ? undefined
-      : await enrollBeforeRelayChecks(
-          registrar,
+    plan.registrar?.contacted === true
+      ? await enrollBeforeRelayCheck(
+          plan.registrar.url,
           authentication.sharedSecret,
           options.fetch,
-        );
-  return runRelayChecks(
-    targets,
+        )
+      : undefined;
+  return runRelayCheck(
+    plan,
     options.gather ?? gatherRelayCandidate,
     options.boundMs,
     enrollment,
@@ -199,12 +199,12 @@ export function builder(cmd: Argv): Argv {
         )
           .usage("Usage: $0 doctor relay [options]")
           .epilog(
-            "Asks each TURN relay the configuration lists for a relay " +
-              "address, after naming every host it contacts. A run " +
-              "allocates on the first alone, so a later relay not reached " +
-              "is a warning. Where the invitation's relay names a " +
-              "registrar, first enrolls the exchange's relay key there, as " +
-              "a run does. " +
+            "Asks the TURN relay a run allocates on, the first the " +
+              "configuration lists, for a relay address, after naming the " +
+              "hosts it contacts and those it does not. Where a run " +
+              "enrolls at the registrar the invitation names, first " +
+              "enrolls the exchange's relay key there, as a run does. It " +
+              "contacts no other relay host. " +
               "See docs/CLI.md, Checking the relay of a WebRTC exchange.",
           ),
       relayHandler,

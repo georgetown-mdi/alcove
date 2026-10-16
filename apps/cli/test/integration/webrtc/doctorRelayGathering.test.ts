@@ -7,13 +7,14 @@ import { afterEach, expect, test } from "vitest";
 
 import { NO_RELAY_CANDIDATE_GATHERED } from "../../../src/connection/webrtc/iceDiagnostics";
 import { gatherRelayCandidate } from "../../../src/connection/webrtc/weriftPeer";
-import { relayCheckTargets, runRelayChecks } from "../../../src/doctor/relay";
+import { relayCheckPlan, runRelayCheck } from "../../../src/doctor/relay";
 
 /**
  * `alcove doctor relay` against real werift peers: loopback sockets on
  * ephemeral ports stand in for a TURN server, so what the check reports, how
- * long it takes, and which transports werift tries are measured rather than
- * read from its source. Nothing here reaches the network.
+ * long it takes, which transports werift tries, and which of the listed relays
+ * it contacts are measured rather than read from its source. Nothing here
+ * reaches the network.
  */
 
 /** RFC 5389 section 6: the fixed header every STUN message opens with. */
@@ -137,8 +138,11 @@ async function listenTcp(
   return { connected, connections: () => connections };
 }
 
-function ownTarget(url: string) {
-  return relayCheckTargets([{ source: "own", url, ...CREDENTIAL }], undefined);
+function ownPlan(...urls: Array<string>) {
+  return relayCheckPlan(
+    { turn: urls.map((url) => ({ url, ...CREDENTIAL })) },
+    undefined,
+  );
 }
 
 test("a relay that answers each allocate request with a 401 is reported not reached", async () => {
@@ -146,8 +150,8 @@ test("a relay that answers each allocate request with a 401 is reported not reac
   const url = `turn:127.0.0.1:${relay.port}`;
   const started = Date.now();
 
-  const report = await runRelayChecks(
-    ownTarget(url),
+  const report = await runRelayCheck(
+    ownPlan(url),
     gatherRelayCandidate,
     10_000,
   );
@@ -164,11 +168,7 @@ test("a relay that never answers is reported not reached when the bound expires,
   const url = `turn:127.0.0.1:${relay.port}`;
   const started = Date.now();
 
-  const report = await runRelayChecks(
-    ownTarget(url),
-    gatherRelayCandidate,
-    2_000,
-  );
+  const report = await runRelayCheck(ownPlan(url), gatherRelayCandidate, 2_000);
 
   const elapsed = Date.now() - started;
   expect(elapsed).toBeGreaterThanOrEqual(1_900);
@@ -221,4 +221,29 @@ test("a turn: url naming transport=tcp asks over TCP alone", async () => {
 
   expect(tcp.connections()).toBeGreaterThanOrEqual(1);
   expect(relay.allocateRequests()).toBe(0);
+}, 15_000);
+
+test("a configuration listing two relays sends requests to the first alone, and reports the second skipped", async () => {
+  const [first, second] = await Promise.all([
+    startTurnSocket(true),
+    startTurnSocket(true),
+  ]);
+  const secondTcp = await listenTcp(second.port);
+  const firstUrl = `turn:127.0.0.1:${first.port}?transport=udp`;
+  const secondUrl = `turn:127.0.0.1:${second.port}?transport=udp`;
+
+  const report = await runRelayCheck(
+    ownPlan(firstUrl, secondUrl),
+    gatherRelayCandidate,
+    10_000,
+  );
+
+  expect(first.allocateRequests()).toBeGreaterThanOrEqual(1);
+  expect(second.allocateRequests()).toBe(0);
+  expect(secondTcp.connections()).toBe(0);
+  expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+    ["turn_1", "fail"],
+    ["turn_2", "skipped"],
+  ]);
+  expect(report.checks[1]?.url).toBe(secondUrl);
 }, 15_000);

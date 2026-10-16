@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
-import { deriveRelayExchangeId, UsageError } from "@alcove/core";
+import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
+  deriveRelayExchangeId,
+  UsageError,
+} from "@alcove/core";
 
 import type { RTCIceServer } from "werift";
 
@@ -18,12 +22,12 @@ import type { ProbeDeps } from "../../../src/doctor/probe";
 import {
   ENROLLMENT_CHECK_ID,
   ENROLLMENT_FAILED_ACTION,
-  NOT_ALLOCATED_ACTION,
+  NOT_CONTACTED_ACTION,
   RELAY_CHECK_NO_TURN_URL,
   RELAY_CHECK_WEBRTC_ONLY,
   RELAY_NOT_REACHED_REMEDY,
-  relayCheckTargets,
-  runRelayChecks,
+  relayCheckPlan,
+  runRelayCheck,
   turnUrlTransport,
 } from "../../../src/doctor/relay";
 import type { RelayCandidateGathering } from "../../../src/doctor/relay";
@@ -88,8 +92,14 @@ const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
 const OWN_TURN = "turn:own-relay.example.org:3478?transport=tcp";
 const STATIC_TURN = "turn:static-relay.example.org:3478";
 const INVITATION_TURN = "turns:relay.example.org:443?transport=tcp";
+const SECOND_INVITATION_TURN = "turn:relay-2.example.org:3478";
 const REGISTRAR = "https://registrar.example.org";
 const LAPSES_AT = "2026-01-01T01:10:00Z";
+
+const LATER_URL_MEANING =
+  "a run of this configuration does not contact this relay: a run " +
+  "allocates on the first TURN url it lists alone, so the check does not " +
+  "ask it.";
 
 const linkageTerms = {
   version: "1.0.0",
@@ -139,8 +149,12 @@ function writeConfig(connection: Record<string, unknown>): void {
   );
 }
 
-/** A configuration listing an own minted entry, an own static one, and the invitation's relay. */
-function writeThreeRelayConfig(): void {
+/**
+ * Own entries first -- a minted one, then a static one -- then the
+ * invitation's relay and registrar: a run allocates on the own minted entry
+ * and does not enroll at the registrar.
+ */
+function writeOwnFirstConfig(): void {
   writeConfig(
     webrtcConnection({
       turn: [
@@ -152,6 +166,21 @@ function writeThreeRelayConfig(): void {
         },
       ],
       invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
+    }),
+  );
+}
+
+/**
+ * The invitation's two urls and its registrar alone: a run allocates on the
+ * first invitation url and enrolls at the registrar.
+ */
+function writeInvitationFirstConfig(): void {
+  writeConfig(
+    webrtcConnection({
+      invitation_relay: {
+        turn: [INVITATION_TURN, SECOND_INVITATION_TURN],
+        registrar: REGISTRAR,
+      },
     }),
   );
 }
@@ -177,6 +206,61 @@ function checkFor(report: DoctorReport, url: string) {
   if (check === undefined) throw new Error(`no check for ${url}`);
   return check;
 }
+
+const CONTACTED_RELAY_LINE =
+  "    The relay a run allocates on. The check asks it for a relay address, " +
+  "sending the credential a run sends there.";
+const LATER_URL_LINE =
+  "    A run allocates on the first TURN url it lists alone.";
+
+const OWN_FIRST_STATEMENT = [
+  "This check contacts these hosts, as a run of this configuration does:",
+  `  ${OWN_TURN} over TCP, from connection.turn`,
+  CONTACTED_RELAY_LINE,
+  "It does not contact these hosts, because a run of this configuration " +
+    "does not:",
+  `  ${STATIC_TURN}, from connection.turn`,
+  LATER_URL_LINE,
+  `  ${INVITATION_TURN}, from your partner's invitation`,
+  LATER_URL_LINE,
+  `  ${REGISTRAR}`,
+  "    The relay registrar your partner's invitation names. A run does not " +
+    "enroll there, because the relay it allocates on is not one the " +
+    "invitation names.",
+  "It contacts nothing else.",
+  "",
+];
+
+const INVITATION_FIRST_STATEMENT = [
+  "This check contacts these hosts, as a run of this configuration does:",
+  `  ${INVITATION_TURN} over TLS, from your partner's invitation`,
+  CONTACTED_RELAY_LINE,
+  `  ${REGISTRAR}`,
+  "    The relay registrar your partner's invitation names. Before it asks " +
+    "the relay, the check enrolls this exchange's relay key there, as a run " +
+    "does just before it connects.",
+  "    Whoever runs that registrar learns this machine's network address.",
+  "It does not contact these hosts, because a run of this configuration " +
+    "does not:",
+  `  ${SECOND_INVITATION_TURN}, from your partner's invitation`,
+  LATER_URL_LINE,
+  "It contacts nothing else.",
+  "",
+];
+
+const STATIC_FIRST_REGISTRAR_LINE =
+  "    The relay registrar your partner's invitation names. A run does not " +
+  "enroll there, because the relay it allocates on is sent its " +
+  "connection.turn entry's own credential.";
+
+test("every line of the host statement fits the display bound, so none is cut", () => {
+  for (const line of [
+    ...OWN_FIRST_STATEMENT,
+    ...INVITATION_FIRST_STATEMENT,
+    STATIC_FIRST_REGISTRAR_LINE,
+  ])
+    expect(line.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
+});
 
 // --- a plain doctor contacts no relay and no registrar ------------------------
 
@@ -238,19 +322,56 @@ test("doctor probe and doctor mount build no peer connection and send no request
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-// --- the host statement --------------------------------------------------------
+// --- what the check contacts ---------------------------------------------------
 
-test("doctor relay names every relay and the registrar before it contacts either, then enrolls before its first relay request", async () => {
-  writeThreeRelayConfig();
+test("an own-first configuration asks its first url alone, with the run's minted credential, and does not contact the registrar", async () => {
+  writeOwnFirstConfig();
   const events: Array<string> = [];
   const requests: Array<RTCIceServer> = [];
-  const gather = scriptedGathering(
-    { [OWN_TURN]: true, [STATIC_TURN]: true, [INVITATION_TURN]: true },
-    requests,
-  );
   const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
+  const gather = scriptedGathering({ [OWN_TURN]: true }, requests);
 
-  await checkRelay({
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => events.push(`line ${line}`),
+    fetch: (input, init) => {
+      events.push(`enroll ${String(input)}`);
+      return registrar.fetch(input, init);
+    },
+    gather: (server, signal) => {
+      events.push(`request ${server.urls as string}`);
+      return gather(server, signal);
+    },
+    now: new Date("2026-01-01T00:00:00Z"),
+  });
+
+  expect(events).toEqual([
+    ...OWN_FIRST_STATEMENT.map((line) => `line ${line}`),
+    `request ${OWN_TURN}`,
+  ]);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.urls).toBe(OWN_TURN);
+  expect(requests[0]?.username).toMatch(/^\d+:alcove$/);
+  expect(requests[0]?.credential).not.toBe("placeholder-not-a-secret");
+  expect(registrar.requests).toEqual([]);
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+    [ENROLLMENT_CHECK_ID, "skipped"],
+    ["turn_1", "ok"],
+    ["turn_2", "skipped"],
+    ["turn_3", "skipped"],
+  ]);
+});
+
+test("an invitation-first configuration enrolls at the registrar once, before its one request, to the first url", async () => {
+  writeInvitationFirstConfig();
+  const events: Array<string> = [];
+  const requests: Array<RTCIceServer> = [];
+  const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
+  const gather = scriptedGathering({ [INVITATION_TURN]: true }, requests);
+
+  const report = await checkRelay({
     configFile,
     keyFile,
     writeStatementLine: (line) => events.push(`line ${line}`),
@@ -264,82 +385,96 @@ test("doctor relay names every relay and the registrar before it contacts either
     },
   });
 
-  const enrollAt = events.findIndex((event) => event.startsWith("enroll "));
-  const statement = events.slice(0, enrollAt).join("\n");
-  expect(enrollAt).toBeGreaterThan(0);
-  expect(events.slice(0, enrollAt).every((e) => e.startsWith("line "))).toBe(
-    true,
-  );
-  for (const url of [OWN_TURN, STATIC_TURN, INVITATION_TURN])
-    expect(statement).toContain(url);
-  expect(statement).toContain(
-    `${INVITATION_TURN} over TLS, from your partner's invitation`,
-  );
-  expect(statement).toContain(`${OWN_TURN} over TCP, from connection.turn`);
-  expect(statement).toContain(
-    `${STATIC_TURN} over UDP, then TCP, from connection.turn`,
-  );
-  expect(statement).toContain(
-    `A run allocates on the first of them alone, ${OWN_TURN}.`,
-  );
-  expect(statement).not.toContain("as an exchange run does");
-  expect(statement).toContain(
-    "A run of this configuration does not contact the relay registrar your " +
-      "partner's invitation names. This check contacts it only because you " +
-      "asked for the check, so that the invitation's relay can be asked: " +
-      "before it asks the relays, it enrolls this exchange's relay key there:",
-  );
-  expect(statement).not.toContain("as a run does just before it connects");
-  expect(statement).toContain(`line   ${REGISTRAR}`);
-  const skipped =
-    "; a run of this configuration does not contact it, and the check asks " +
-    "it so you can see whether listing it first would work";
-  expect(statement).toContain(`${OWN_TURN} over TCP, from connection.turn\n`);
-  expect(statement).toContain(
-    `${STATIC_TURN} over UDP, then TCP, from connection.turn${skipped}`,
-  );
-  expect(statement).toContain(
-    `${INVITATION_TURN} over TLS, from your partner's invitation${skipped}`,
-  );
-  expect(statement).toContain(
-    "Whoever runs that registrar learns this machine's network address.",
-  );
-  expect(events.slice(enrollAt + 1)).toEqual(
-    [OWN_TURN, STATIC_TURN, INVITATION_TURN].map((url) => `request ${url}`),
-  );
+  const exchangeId = await deriveRelayExchangeId(SECRET);
+  expect(events).toEqual([
+    ...INVITATION_FIRST_STATEMENT.map((line) => `line ${line}`),
+    `enroll ${REGISTRAR}/exchanges/${exchangeId}`,
+    `request ${INVITATION_TURN}`,
+  ]);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.username).toMatch(/^\d+:alcove$/);
   expect(registrar.requests).toHaveLength(1);
   expect(registrar.requests[0]).toMatchObject({
-    url: `${REGISTRAR}/exchanges/${await deriveRelayExchangeId(SECRET)}`,
     method: "POST",
     authorization: null,
   });
   expect(fetchSpy).not.toHaveBeenCalled();
+  expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+    [ENROLLMENT_CHECK_ID, "ok"],
+    ["turn_1", "ok"],
+    ["turn_2", "skipped"],
+  ]);
 });
 
-test("a configuration a run would enroll at the registrar for states the enrollment as a run's own", async () => {
+test("a static entry first, at an invitation url, is asked with its own pair and the registrar is not contacted", async () => {
   writeConfig(
     webrtcConnection({
+      turn: [
+        {
+          url: INVITATION_TURN,
+          username: "static-user",
+          credential: "placeholder-not-a-secret",
+        },
+      ],
       invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
     }),
   );
   const lines: Array<string> = [];
+  const requests: Array<RTCIceServer> = [];
+  const registrar = fakeRegistrar([registrationAnswer()]);
 
-  await checkRelay({
+  const report = await checkRelay({
     configFile,
     keyFile,
     writeStatementLine: (line) => lines.push(line),
-    fetch: fakeRegistrar([registrationAnswer(null, LAPSES_AT)]).fetch,
-    gather: scriptedGathering({ [INVITATION_TURN]: true }, []),
+    fetch: registrar.fetch,
+    gather: scriptedGathering({ [INVITATION_TURN]: true }, requests),
   });
 
-  const statement = lines.join("\n");
-  expect(statement).toContain("A run allocates on this relay.");
-  expect(statement).toContain(
-    "Before it asks them, it enrolls this exchange's relay key at the relay " +
-      "registrar your partner's invitation names, as a run does just before " +
-      "it connects when that relay is the one it allocates on:",
+  expect(requests).toEqual([
+    {
+      urls: INVITATION_TURN,
+      username: "static-user",
+      credential: "placeholder-not-a-secret",
+    },
+  ]);
+  expect(registrar.requests).toEqual([]);
+  expect(lines).toContain(STATIC_FIRST_REGISTRAR_LINE);
+  expect(verdictOf(report).checks[0]).toEqual({
+    id: ENROLLMENT_CHECK_ID,
+    status: "skipped",
+    meaning:
+      "a run of this configuration does not enroll at this registrar, " +
+      "because the relay it allocates on is sent its connection.turn " +
+      "entry's own credential, so the check does not contact it.",
+    registrar: REGISTRAR,
+  });
+});
+
+test("a registrar a run does not enroll at is a skipped enrollment line naming why", async () => {
+  writeOwnFirstConfig();
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    gather: scriptedGathering({ [OWN_TURN]: true }, []),
+  });
+
+  expect(verdictOf(report).checks[0]).toEqual({
+    id: ENROLLMENT_CHECK_ID,
+    status: "skipped",
+    meaning:
+      "a run of this configuration does not enroll at this registrar, " +
+      "because the relay it allocates on is not one the invitation names, " +
+      "so the check does not contact it.",
+    registrar: REGISTRAR,
+  });
+  expect(verdictLines(report)[0]).toBe(
+    `SKIP: the relay registrar at ${REGISTRAR} that your partner's ` +
+      "invitation names: not contacted.",
   );
-  expect(statement).not.toContain("does not contact");
+  expect(overallOf(report)).toBe("ok");
 });
 
 test("a configuration whose invitation relay names no registrar contacts none, and says so", async () => {
@@ -354,6 +489,7 @@ test("a configuration whose invitation relay names no registrar contacts none, a
     }),
   );
   const lines: Array<string> = [];
+  const requests: Array<RTCIceServer> = [];
   const registrar = fakeRegistrar([registrationAnswer()]);
 
   const report = await checkRelay({
@@ -361,17 +497,15 @@ test("a configuration whose invitation relay names no registrar contacts none, a
     keyFile,
     writeStatementLine: (line) => lines.push(line),
     fetch: registrar.fetch,
-    gather: scriptedGathering(
-      { [OWN_TURN]: true, [INVITATION_TURN]: true },
-      [],
-    ),
+    gather: scriptedGathering({ [OWN_TURN]: true }, requests),
   });
 
   expect(registrar.requests).toEqual([]);
   expect(fetchSpy).not.toHaveBeenCalled();
-  expect(lines.join("\n")).toContain(
-    "This configuration's invitation_relay names no relay registrar, so it " +
-      "contacts none and enrolls nothing.",
+  expect(requests.map((server) => server.urls)).toEqual([OWN_TURN]);
+  expect(lines).toContain(
+    "It contacts nothing else. This configuration's invitation_relay names " +
+      "no relay registrar, so it contacts none and enrolls nothing.",
   );
   expect(lines.join("\n")).not.toContain("own-registrar.example.org");
   expect(report.checks.map((check) => check.id)).toEqual(["turn_1", "turn_2"]);
@@ -394,35 +528,8 @@ test("a configuration with no invitation_relay block says it contacts nothing el
 
   expect(lines).toContain("It contacts nothing else.");
   expect(lines.join("\n")).not.toContain("invitation_relay");
+  expect(lines.join("\n")).not.toContain("does not contact");
   expect(report.checks.map((check) => check.id)).toEqual(["turn_1"]);
-});
-
-test("doctor relay asks each url alone, in the run's order, with what the run presents there", async () => {
-  writeThreeRelayConfig();
-  const requests: Array<RTCIceServer> = [];
-
-  await checkRelay({
-    configFile,
-    keyFile,
-    writeStatementLine: () => undefined,
-    fetch: fakeRegistrar([registrationAnswer()]).fetch,
-    gather: scriptedGathering({}, requests),
-    now: new Date("2026-01-01T00:00:00Z"),
-  });
-
-  expect(requests.map((server) => server.urls)).toEqual([
-    OWN_TURN,
-    STATIC_TURN,
-    INVITATION_TURN,
-  ]);
-  const [own, fixed, invitation] = requests;
-  expect(fixed).toMatchObject({
-    username: "static-user",
-    credential: "placeholder-not-a-secret",
-  });
-  expect(own?.username).toMatch(/^\d+:alcove$/);
-  expect(invitation?.username).toBe(own?.username);
-  expect(invitation?.credential).toBe(own?.credential);
 });
 
 // --- each outcome --------------------------------------------------------------
@@ -454,18 +561,14 @@ test("a relay that gives a relay candidate is reported reached", async () => {
   expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
 });
 
-test("the relay a run allocates on that gives none fails the check, with the run's remedy", async () => {
-  writeThreeRelayConfig();
+test("the relay a run allocates on that gives none fails the check, with the run's remedy, and exits 78", async () => {
+  writeOwnFirstConfig();
 
   const report = await checkRelay({
     configFile,
     keyFile,
     writeStatementLine: () => undefined,
-    fetch: fakeRegistrar([registrationAnswer()]).fetch,
-    gather: scriptedGathering(
-      { [OWN_TURN]: false, [STATIC_TURN]: true, [INVITATION_TURN]: true },
-      [],
-    ),
+    gather: scriptedGathering({ [OWN_TURN]: false }, []),
   });
 
   expect(overallOf(report)).toBe("fix_and_retry");
@@ -482,72 +585,85 @@ test("the relay a run allocates on that gives none fails the check, with the run
       `${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
   );
   expect(own.meaning).toContain("the check cannot tell which");
-  expect(checkFor(report, STATIC_TURN)).toMatchObject({
-    id: "turn_2",
-    status: "ok",
-    summary:
-      `${STATIC_TURN} over UDP, then TCP, listed but not allocated on by a ` +
-      "run: reached; the relay gave a relay address.",
-  });
-  expect(checkFor(report, INVITATION_TURN).status).toBe("ok");
+  expect(own.meaning).toContain("alcove enroll-relay");
   const lines = verdictLines(report).join("\n");
   expect(lines).toContain(`FAIL: ${OWN_TURN} over TCP`);
   expect(lines).toContain("ACTION:  Fix the relay, or arrange a direct path;");
 });
 
-test("a later relay that gives none is a warning and leaves the verdict ok", async () => {
-  writeThreeRelayConfig();
+test("each later url is skipped, with no request, and leaves the verdict ok", async () => {
+  writeOwnFirstConfig();
+  const requests: Array<RTCIceServer> = [];
 
   const report = await checkRelay({
     configFile,
     keyFile,
     writeStatementLine: () => undefined,
-    fetch: fakeRegistrar([registrationAnswer()]).fetch,
     gather: scriptedGathering(
-      { [OWN_TURN]: true, [STATIC_TURN]: false, [INVITATION_TURN]: false },
-      [],
+      { [OWN_TURN]: true, [STATIC_TURN]: true, [INVITATION_TURN]: true },
+      requests,
     ),
   });
 
+  expect(requests.map((server) => server.urls)).toEqual([OWN_TURN]);
   expect(overallOf(report)).toBe("ok");
   expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
-  expect(checkFor(report, OWN_TURN)).toMatchObject({
-    id: "turn_1",
-    status: "ok",
-    summary:
-      `${OWN_TURN} over TCP, the relay a run allocates on: reached; the ` +
-      "relay gave a relay address.",
-  });
-  const fixed = checkFor(report, STATIC_TURN);
-  expect(fixed).toMatchObject({
-    id: "turn_2",
-    status: "warn",
-    transport: "udp",
-    action: NOT_ALLOCATED_ACTION,
-  });
-  expect(fixed.summary).toBe(
-    `${STATIC_TURN} over UDP, then TCP, listed but not allocated on by a ` +
-      `run: ${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
+  expect(verdictOf(report).checks.slice(2)).toEqual([
+    {
+      id: "turn_2",
+      status: "skipped",
+      meaning: LATER_URL_MEANING,
+      action: NOT_CONTACTED_ACTION,
+      url: STATIC_TURN,
+      transport: "udp",
+    },
+    {
+      id: "turn_3",
+      status: "skipped",
+      meaning: LATER_URL_MEANING,
+      action: NOT_CONTACTED_ACTION,
+      url: INVITATION_TURN,
+      transport: "tls",
+    },
+  ]);
+  expect(checkFor(report, STATIC_TURN).summary).toBe(
+    `${STATIC_TURN}, listed after the relay a run allocates on: not contacted.`,
   );
-  expect(fixed.meaning).toMatch(
-    /^a run allocates on the first TURN url it lists alone, so it does not allocate on this relay/,
+  expect(NOT_CONTACTED_ACTION).toBe(
+    "If this relay should be the one a run allocates on, list it first " +
+      "under connection.turn and run this check again.",
   );
-  expect(fixed.meaning).toContain("the check cannot tell which");
-  expect(fixed.meaning).not.toContain("enrolled");
-  expect(verdictOf(report).checks[2]).toEqual({
-    id: "turn_2",
-    status: "warn",
-    meaning: fixed.meaning,
-    action: NOT_ALLOCATED_ACTION,
-    url: STATIC_TURN,
-    transport: "udp",
+});
+
+test("the later urls' shared meaning and action print once, under the last of them", async () => {
+  writeOwnFirstConfig();
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    gather: scriptedGathering({ [OWN_TURN]: true }, []),
   });
-  expect(checkFor(report, INVITATION_TURN).status).toBe("warn");
-  const lines = verdictLines(report).join("\n");
-  expect(lines).toContain(`WARN: ${STATIC_TURN} over UDP, then TCP`);
-  expect(lines).toContain(
-    "ACTION:  If this relay should be the one a run allocates on, list it first",
+
+  const lines = verdictLines(report);
+  const second = lines.indexOf(
+    `SKIP: ${STATIC_TURN}, listed after the relay a run allocates on: not contacted.`,
   );
+  expect(second).toBeGreaterThan(0);
+  expect(lines[second + 1]).toBe(
+    `SKIP: ${INVITATION_TURN}, listed after the relay a run allocates on: not contacted.`,
+  );
+  expect(
+    lines.filter((line) =>
+      line.startsWith(
+        "MEANING: a run of this configuration does not contact this relay",
+      ),
+    ),
+  ).toHaveLength(1);
+  expect(
+    lines.filter((line) => line.startsWith("ACTION:  If this relay should be")),
+  ).toHaveLength(1);
+  expect(lines.at(-1)).toBe("ALL CHECKS PASSED");
 });
 
 test("a relay that has not answered when the bound expires is reported not reached", async () => {
@@ -569,35 +685,43 @@ test("a relay that has not answered when the bound expires is reported not reach
       `${OWN_TURN} over TCP, the relay a run allocates on: ` +
       `${NO_RELAY_CANDIDATE_GATHERED} within 0 s.`,
   });
-  expect(checkFor(report, OWN_TURN).meaning).toContain("alcove enroll-relay");
 });
 
-test("a gather that rejects stops the other relays' gathers", async () => {
+test("a gather that rejects ends the check with its error and aborts its signal", async () => {
   const signals: Array<AbortSignal> = [];
-  const targets = relayCheckTargets(
-    [
-      { source: "own", url: OWN_TURN, username: "u", credential: "c" },
-      { source: "own", url: STATIC_TURN, username: "u", credential: "c" },
-    ],
+  const plan = relayCheckPlan(
+    { turn: [{ url: OWN_TURN, username: "u", credential: "c" }] },
     undefined,
   );
 
-  const checked = runRelayChecks(
-    targets,
-    (server, signal) => {
+  const checked = runRelayCheck(
+    plan,
+    (_server, signal) => {
       signals.push(signal);
-      if (server.urls === OWN_TURN)
-        return Promise.reject(new Error("gather failed"));
-      return new Promise((resolve) =>
-        signal.addEventListener("abort", () => resolve(false)),
-      );
+      return Promise.reject(new Error("gather failed"));
     },
     60_000,
   );
 
   await expect(checked).rejects.toThrow("gather failed");
-  expect(signals).toHaveLength(2);
-  expect(signals.every((signal) => signal.aborted)).toBe(true);
+  expect(signals).toHaveLength(1);
+  expect(signals[0]?.aborted).toBe(true);
+});
+
+test("an enrollment given where the run would not enroll is refused as a fault", async () => {
+  const plan = relayCheckPlan(
+    { turn: [{ url: OWN_TURN, username: "u", credential: "c" }] },
+    undefined,
+  );
+  const requests: Array<RTCIceServer> = [];
+
+  await expect(
+    runRelayCheck(plan, scriptedGathering({}, requests), 60_000, {
+      registrar: REGISTRAR,
+      outcome: { kind: "enrolled", lapsesAt: null },
+    }),
+  ).rejects.toThrow("an enrollment is given exactly where a run enrolls");
+  expect(requests).toEqual([]);
 });
 
 test("an invitation relay with no registrar that gives none names the missing enrollment", async () => {
@@ -623,11 +747,7 @@ test("an invitation relay with no registrar that gives none names the missing en
 // --- the enrollment's line -------------------------------------------------------
 
 test("an enrollment the registrar confirms is an OK line with the lapse it states", async () => {
-  writeConfig(
-    webrtcConnection({
-      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
-    }),
-  );
+  writeInvitationFirstConfig();
 
   const report = await checkRelay({
     configFile,
@@ -649,6 +769,14 @@ test("an enrollment the registrar confirms is an OK line with the lapse it state
         lapses_at: LAPSES_AT,
       },
       { id: "turn_1", status: "ok", url: INVITATION_TURN, transport: "tls" },
+      {
+        id: "turn_2",
+        status: "skipped",
+        meaning: LATER_URL_MEANING,
+        action: NOT_CONTACTED_ACTION,
+        url: SECOND_INVITATION_TURN,
+        transport: "udp",
+      },
     ],
   });
   expect(verdictLines(report)[0]).toBe(
@@ -658,11 +786,7 @@ test("an enrollment the registrar confirms is an OK line with the lapse it state
 });
 
 test("an enrollment with no lapse states none, on the line and in the verdict", async () => {
-  writeConfig(
-    webrtcConnection({
-      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
-    }),
-  );
+  writeInvitationFirstConfig();
 
   const report = await checkRelay({
     configFile,
@@ -683,8 +807,8 @@ test("an enrollment with no lapse states none, on the line and in the verdict", 
   );
 });
 
-test("a refused enrollment is a WARN line that leaves the verdict ok when the relay a run allocates on is reached", async () => {
-  writeThreeRelayConfig();
+test("a refused enrollment is a WARN line that, with the first url reached and a later one skipped, leaves the verdict ok", async () => {
+  writeInvitationFirstConfig();
   const requests: Array<RTCIceServer> = [];
 
   const report = await checkRelay({
@@ -692,22 +816,17 @@ test("a refused enrollment is a WARN line that leaves the verdict ok when the re
     keyFile,
     writeStatementLine: () => undefined,
     fetch: fakeRegistrar([jsonResponse(409, { error: "no" })]).fetch,
-    gather: scriptedGathering(
-      { [OWN_TURN]: true, [STATIC_TURN]: true, [INVITATION_TURN]: false },
-      requests,
-    ),
+    gather: scriptedGathering({ [INVITATION_TURN]: true }, requests),
   });
 
-  expect(requests).toHaveLength(3);
-  expect(report.checks.map((check) => check.id)).toEqual([
-    ENROLLMENT_CHECK_ID,
-    "turn_1",
-    "turn_2",
-    "turn_3",
+  expect(requests).toHaveLength(1);
+  expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+    [ENROLLMENT_CHECK_ID, "warn"],
+    ["turn_1", "ok"],
+    ["turn_2", "skipped"],
   ]);
   const enrollment = report.checks[0];
   expect(enrollment).toMatchObject({
-    status: "warn",
     registrar: REGISTRAR,
     summary: invitationRelayNotEnrolledStatement(REGISTRAR, "HTTP 409: no"),
     action: ENROLLMENT_FAILED_ACTION,
@@ -723,24 +842,12 @@ test("a refused enrollment is a WARN line that leaves the verdict ok when the re
     `WARN: the relay registrar at ${REGISTRAR} that your partner's ` +
       "invitation names did not enroll this exchange (HTTP 409: no).",
   );
-  expect(checkFor(report, INVITATION_TURN)).toMatchObject({
-    status: "warn",
-  });
-  expect(checkFor(report, INVITATION_TURN).meaning).toContain(
-    "The likely cause is the failed enrollment above",
-  );
-  expect(checkFor(report, OWN_TURN).status).toBe("ok");
-  expect(checkFor(report, STATIC_TURN).status).toBe("ok");
   expect(overallOf(report)).toBe("ok");
   expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(0);
 });
 
-test("a refused enrollment with the invitation's relay first and not reached fails the check on that relay's line", async () => {
-  writeConfig(
-    webrtcConnection({
-      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
-    }),
-  );
+test("a refused enrollment with the first url not reached fails the check on that url's line", async () => {
+  writeInvitationFirstConfig();
 
   const report = await checkRelay({
     configFile,
@@ -753,6 +860,7 @@ test("a refused enrollment with the invitation's relay first and not reached fai
   expect(report.checks.map((check) => [check.id, check.status])).toEqual([
     [ENROLLMENT_CHECK_ID, "warn"],
     ["turn_1", "fail"],
+    ["turn_2", "skipped"],
   ]);
   const invitation = checkFor(report, INVITATION_TURN);
   expect(invitation.action).toBe(RELAY_NOT_REACHED_REMEDY);
@@ -776,12 +884,8 @@ test("a failed enrollment's action is to retry, then ask the partner about the r
   );
 });
 
-test("a registrar that cannot be reached is a WARN line, and the relay lines still run", async () => {
-  writeConfig(
-    webrtcConnection({
-      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
-    }),
-  );
+test("a registrar that cannot be reached is a WARN line, and the relay is still asked", async () => {
+  writeInvitationFirstConfig();
   const requests: Array<RTCIceServer> = [];
 
   const report = await checkRelay({
@@ -803,6 +907,8 @@ test("a registrar that cannot be reached is a WARN line, and the relay lines sti
   expect(overallOf(report)).toBe("ok");
 });
 
+// --- the host statement through the handler -------------------------------------
+
 test.each([
   ["--json at the default level", { json: true }],
   ["--json at warn", { json: true, "log-level": "warn" }],
@@ -812,7 +918,7 @@ test.each([
 ] as const)(
   "the handler writes the host statement to stderr before its first request, %s",
   async (_label, flags) => {
-    writeThreeRelayConfig();
+    writeInvitationFirstConfig();
     const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
     const { stdoutWrites, stderrWrites, restore } = captureStdio();
     const logSpy = vi
@@ -827,9 +933,10 @@ test.each([
         return registrar.fetch(input, init);
       },
     );
+    const requests: Array<RTCIceServer> = [];
     handlerGathering.stub = (server, signal) => {
       stderrBefore.push(stderrWrites.join(""));
-      return scriptedGathering({}, [])(server, signal);
+      return scriptedGathering({}, requests)(server, signal);
     };
     const previousExitCode = process.exitCode;
     try {
@@ -843,11 +950,11 @@ test.each([
       handlerGathering.stub = undefined;
     }
 
-    expect(stderrBefore).toHaveLength(4);
-    for (const statement of stderrBefore) {
-      for (const url of [OWN_TURN, STATIC_TURN, INVITATION_TURN, REGISTRAR])
-        expect(statement).toContain(url);
-    }
+    expect(registrar.requests).toHaveLength(1);
+    expect(requests.map((server) => server.urls)).toEqual([INVITATION_TURN]);
+    expect(stderrBefore).toHaveLength(2);
+    for (const written of stderrBefore)
+      expect(written).toContain(INVITATION_FIRST_STATEMENT.join("\n"));
     if ("json" in flags) {
       const stdout = stdoutWrites.join("");
       expect(stdout.trimEnd().split("\n")).toHaveLength(1);
@@ -858,9 +965,8 @@ test.each([
 );
 
 test("the handler writes the host statement to the log file before its first request, at silent and under --json", async () => {
-  writeThreeRelayConfig();
+  writeOwnFirstConfig();
   const logFile = path.join(dir, "doctor.log");
-  const registrar = fakeRegistrar([registrationAnswer(null, LAPSES_AT)]);
   const { stdoutWrites, stderrWrites, restore } = captureStdio();
   const logSpy = vi
     .spyOn(console, "log")
@@ -868,15 +974,10 @@ test("the handler writes the host statement to the log file before its first req
       stdoutWrites.push(args.map((a) => String(a)).join(" ") + "\n");
     });
   const fileBefore: Array<string> = [];
-  fetchSpy.mockImplementation(
-    (input: string | URL | Request, init?: RequestInit) => {
-      fileBefore.push(fs.readFileSync(logFile, "utf8"));
-      return registrar.fetch(input, init);
-    },
-  );
+  const requests: Array<RTCIceServer> = [];
   handlerGathering.stub = (server, signal) => {
     fileBefore.push(fs.readFileSync(logFile, "utf8"));
-    return scriptedGathering({}, [])(server, signal);
+    return scriptedGathering({}, requests)(server, signal);
   };
   const previousExitCode = process.exitCode;
   try {
@@ -896,14 +997,13 @@ test("the handler writes the host statement to the log file before its first req
     handlerGathering.stub = undefined;
   }
 
-  expect(fileBefore).toHaveLength(4);
-  for (const statement of fileBefore) {
-    for (const url of [OWN_TURN, STATIC_TURN, INVITATION_TURN, REGISTRAR])
-      expect(statement).toContain(url);
-  }
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(requests.map((server) => server.urls)).toEqual([OWN_TURN]);
+  expect(fileBefore).toHaveLength(1);
+  expect(fileBefore[0]).toContain(OWN_FIRST_STATEMENT.join("\n"));
   expect(stderrWrites.join("")).toBe("");
   expect(stdoutWrites.join("").trimEnd().split("\n")).toHaveLength(1);
-  expect(stdoutWrites.join("")).not.toContain("network address");
+  expect(stdoutWrites.join("")).not.toContain("It does not contact");
 });
 
 // --- the refusals --------------------------------------------------------------
