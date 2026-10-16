@@ -22,8 +22,10 @@ user to "let me know" -- you will not hear back. If you need something only the
 human can answer, return a NEEDS INPUT result (below); the main thread that
 spawned you owns the loop and will re-spawn you with the answers folded in.
 
-Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
-and reports, says.
+Run a long command in the foreground with a raised `timeout` (ceiling
+600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
+Background only a chain that cannot fit that ceiling, as one call wrapped
+in `timeout <N>`, N over 600 s.
 
 ## Workflow
 

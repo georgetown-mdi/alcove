@@ -45,8 +45,10 @@ produce is your final message to the caller. Never end expecting a reply.
   command's result: no variable, `$(...)`, or path read from a file. Remove a
   worktree with `git worktree remove <literal path>`. The harness asks the
   owner to approve each deletion, and one he cannot read he refuses.
-- Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
-  and reports, says.
+- Run a long command in the foreground with a raised `timeout` (ceiling
+  600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
+  Background only a chain that cannot fit that ceiling, as one call wrapped
+  in `timeout <N>`, N over 600 s.
 - Before you report, run each command line `node scripts/required-suites.mjs`
   prints for your diff: the builds, then the suites CI runs on the paths you
   touched, then the repo-wide gates once at the end. Its comment lines and the
