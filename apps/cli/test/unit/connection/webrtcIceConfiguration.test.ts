@@ -276,73 +276,92 @@ test("an own url-only turn entry with no minted credential is a fault, not an un
   );
 });
 
-test("the minted credential's notice names the relay, its lifetime, and its expiry", () => {
+const NOTICE_CREDENTIAL_FACTS =
+  "the run's relay credential is derived from the exchange's shared " +
+  "secret, valid for 60 minutes, and expires at 2026-01-01T01:00:00.000Z. ";
+
+test("the notice states the credential's facts, then the one relay it is presented to", () => {
   expect(relayCredentialNotice({ turn: URL_ONLY_TURN }, RUN_CREDENTIAL)).toBe(
-    "presenting the run's credential to " +
-      "turns:minted.example:443?transport=tcp: it is derived from the " +
-      "exchange's shared secret, valid for 60 minutes, and expires at " +
-      "2026-01-01T01:00:00.000Z. The run " +
-      "allocates its relay on your own TURN server at " +
-      "turns:minted.example:443?transport=tcp.",
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, your own TURN " +
+      "server at turns:minted.example:443?transport=tcp.",
   );
+});
+
+test("the notice with an own url-only entry first names the invitation's urls as not contacted", () => {
   expect(
     relayCredentialNotice(
-      { invitationRelay: INVITATION_RELAY },
+      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
       RUN_CREDENTIAL,
     ),
-  ).toMatch(
-    /^presenting the run's credential to the TURN server your partner's invitation named:/,
+  ).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, your own TURN " +
+      "server at turns:minted.example:443?transport=tcp. The other urls " +
+      "listed, turns:partner.example:443?transport=tcp, " +
+      "turn:partner.example:3478, are configured to take the credential, " +
+      "and the run does not contact them.",
   );
-  const mixed = relayCredentialNotice(
-    { turn: [...OWN_TURN, ...URL_ONLY_TURN] },
+});
+
+test("the notice with the invitation's urls first presents the credential to the first only", () => {
+  const notice = relayCredentialNotice(
+    { invitationRelay: INVITATION_RELAY },
     RUN_CREDENTIAL,
   );
-  expect(mixed).toMatch(
-    /^presenting the run's credential to turns:minted\.example:443\?transport=tcp: it/,
+  expect(notice).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, the first TURN " +
+      "server your partner's invitation named, at " +
+      "turns:partner.example:443?transport=tcp. The other urls listed, " +
+      "turn:partner.example:3478, are configured to take the credential, " +
+      "and the run does not contact them.",
   );
-  expect(mixed).toContain(
-    "The run allocates its relay on your own TURN server at " +
-      "turns:own.example:443?transport=tcp, with that entry's own " +
-      "credential; the urls listed take this credential, but the run " +
-      "allocates no relay on them.",
-  );
-  expect(
-    relayCredentialNotice(
-      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
-      RUN_CREDENTIAL,
-    ),
-  ).toMatch(
-    /^presenting the run's credential to turns:minted\.example:443\?transport=tcp, the TURN server your partner's invitation named: it/,
-  );
+  expect(notice.match(/presents it to/g)).toHaveLength(1);
 });
 
-test("the notice names the url the run allocates on: an own turn entry before the invitation's relay", () => {
-  expect(
-    relayCredentialNotice(
-      { turn: URL_ONLY_TURN, invitationRelay: INVITATION_RELAY },
-      RUN_CREDENTIAL,
-    ),
-  ).toMatch(
-    /\. The run allocates its relay on your own TURN server at turns:minted\.example:443\?transport=tcp only; the other urls listed take the credential, but the run allocates no relay on them\.$/,
+test("the notice with an own static entry first says the minted credential reaches no relay", () => {
+  const notice = relayCredentialNotice(
+    {
+      turn: [...OWN_TURN, ...URL_ONLY_TURN],
+      invitationRelay: INVITATION_RELAY,
+    },
+    RUN_CREDENTIAL,
   );
+  expect(notice).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The minted credential reaches no relay in this run: the run " +
+      "allocates its relay on your own TURN server at " +
+      "turns:own.example:443?transport=tcp and presents that entry's own " +
+      "credential instead. The other urls listed, " +
+      "turns:minted.example:443?transport=tcp, " +
+      "turns:partner.example:443?transport=tcp, turn:partner.example:3478, " +
+      "are configured to take the minted credential, and the run does not " +
+      "contact them.",
+  );
+  expect(notice).not.toContain("presents it to");
 });
 
-test("the notice names the url the run allocates on: the invitation's first, with no turn entry of its own", () => {
+test("the notice names an invitation url escaped, as the allocating relay and as one not contacted", () => {
   expect(
     relayCredentialNotice(
-      { invitationRelay: INVITATION_RELAY },
+      {
+        invitationRelay: {
+          turn: [
+            "turns:partner.example:443\u001b[2J",
+            "turn:other.example:3478\u001b[2J",
+          ],
+        },
+      },
       RUN_CREDENTIAL,
     ),
-  ).toMatch(
-    /\. The run allocates its relay on the first TURN server your partner's invitation named, at turns:partner\.example:443\?transport=tcp only; the other urls listed take the credential, but the run allocates no relay on them\.$/,
-  );
-  expect(
-    relayCredentialNotice(
-      { invitationRelay: { turn: ["turns:partner.example:443\u001b[2J"] } },
-      RUN_CREDENTIAL,
-    ),
-  ).toMatch(
-    /The run allocates its relay on the first TURN server your partner's invitation named, at turns:partner\.example:443\\x1b\[2J\.$/,
+  ).toBe(
+    NOTICE_CREDENTIAL_FACTS +
+      "The run presents it to, and allocates its relay on, the first TURN " +
+      "server your partner's invitation named, at " +
+      "turns:partner.example:443\\x1b[2J. The other urls listed, " +
+      "turn:other.example:3478\\x1b[2J, are configured to take the " +
+      "credential, and the run does not contact them.",
   );
 });
 

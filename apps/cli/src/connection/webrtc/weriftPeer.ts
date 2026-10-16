@@ -714,9 +714,9 @@ function waitSoFar(ms: number): string {
 }
 
 /**
- * The line a run prints when it presents a minted TURN credential: which
- * relays take it, the credential's lifetime and expiry, and the one TURN url
- * the run allocates on, werift's first. An invitation's url is the partner's
+ * The line a run prints when it holds a minted TURN credential: its lifetime
+ * and expiry, the one TURN url werift contacts, the first listed, and whether
+ * that url is presented the credential. An invitation's url is the partner's
  * text, so it is named escaped.
  */
 export function relayCredentialNotice(
@@ -724,32 +724,19 @@ export function relayCredentialNotice(
   credential: RelayCredential,
 ): string {
   const turn = selectRunRelay(connection).turn ?? [];
-  const takesMinted = turn.filter((server) => server.credential === undefined);
-  const own = takesMinted
-    .filter((server) => server.source === "own")
-    .map((server) => server.url);
-  const invitationNamesAny = takesMinted.some(
-    (server) => server.source === "invitation",
-  );
-  const relay = [
-    ...own,
-    ...(invitationNamesAny
-      ? ["the TURN server your partner's invitation named"]
-      : []),
-  ].join(", ");
   return (
-    `presenting the run's credential to ${relay}: it is derived from the ` +
-    "exchange's shared secret, valid for " +
-    `${RELAY_CREDENTIAL_MAX_TTL_SECONDS / 60} minutes, and expires at ` +
-    `${credential.expiresAt.toISOString()}. ${allocationSentence(turn, takesMinted)}`
+    "the run's relay credential is derived from the exchange's shared " +
+    `secret, valid for ${RELAY_CREDENTIAL_MAX_TTL_SECONDS / 60} minutes, and ` +
+    `expires at ${credential.expiresAt.toISOString()}. ` +
+    allocationSentence(turn)
   );
 }
 
-/** Which TURN url a run allocates on, and that the others take no allocation. */
-function allocationSentence(
-  turn: RunTurnServer[],
-  takesMinted: RunTurnServer[],
-): string {
+/**
+ * Which TURN url a run presents a credential to and allocates on, and the
+ * other urls configured to take the minted credential that are not contacted.
+ */
+function allocationSentence(turn: RunTurnServer[]): string {
   const allocating = turn[0];
   if (allocating === undefined)
     throw new InternalConsistencyError(
@@ -760,18 +747,26 @@ function allocationSentence(
       ? `your own TURN server at ${allocating.url}`
       : "the first TURN server your partner's invitation named, at " +
         redactAndSanitizeForDisplay(allocating.url);
-  if (allocating.credential !== undefined)
-    return (
-      `The run allocates its relay on ${named}, with that entry's own ` +
-      "credential; the urls listed take this credential, but the run " +
-      "allocates no relay on them."
+  const staticCredential = allocating.credential !== undefined;
+  const notContacted = turn
+    .slice(1)
+    .filter((server) => server.credential === undefined)
+    .map((server) =>
+      server.source === "own"
+        ? server.url
+        : redactAndSanitizeForDisplay(server.url),
     );
-  if (takesMinted.length > 1)
-    return (
-      `The run allocates its relay on ${named} only; the other urls listed ` +
-      "take the credential, but the run allocates no relay on them."
-    );
-  return `The run allocates its relay on ${named}${turn.length > 1 ? " only" : ""}.`;
+  const others =
+    notContacted.length === 0
+      ? ""
+      : ` The other urls listed, ${notContacted.join(", ")}, are configured ` +
+        `to take the ${staticCredential ? "minted " : ""}credential, and ` +
+        "the run does not contact them.";
+  return staticCredential
+    ? "The minted credential reaches no relay in this run: the run " +
+        `allocates its relay on ${named} and presents that entry's own ` +
+        `credential instead.${others}`
+    : `The run presents it to, and allocates its relay on, ${named}.${others}`;
 }
 
 /** The `RTCConfiguration` fields the peer connection is constructed with. */

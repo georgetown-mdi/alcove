@@ -1149,8 +1149,8 @@ test("a run whose invitation relay names a registrar enrolls there once, without
   expect(
     mockState.logLines.some((line) =>
       line.endsWith(
-        "The run allocates its relay on the first TURN server your " +
-          "partner's invitation named, at " +
+        "The run presents it to, and allocates its relay on, the first " +
+          "TURN server your partner's invitation named, at " +
           "turns:default-relay.example.net:443?transport=tcp.",
       ),
     ),
@@ -1205,18 +1205,16 @@ test("a run with a turn entry of its own contacts no invitation registrar and sa
       `invitation did not name, at ${OWN_TURN_URL}`,
   );
   expect(
-    mockState.logLines.some(
-      (line) =>
-        line.includes(INVITATION_REGISTRAR) ||
-        line.includes("default-relay.example.net"),
-    ),
+    mockState.logLines.some((line) => line.includes(INVITATION_REGISTRAR)),
   ).toBe(false);
   expect(
     mockState.logLines.some((line) =>
       line.endsWith(
-        `The run allocates its relay on your own TURN server at ${OWN_TURN_URL} ` +
-          "only; the other urls listed take the credential, but the run " +
-          "allocates no relay on them.",
+        "The run presents it to, and allocates its relay on, your own TURN " +
+          `server at ${OWN_TURN_URL}. The other urls listed, ` +
+          "turns:default-relay.example.net:443?transport=tcp, are " +
+          "configured to take the credential, and the run does not contact " +
+          "them.",
       ),
     ),
   ).toBe(true);
