@@ -1,0 +1,8 @@
+# The SFTP pins state that a failed dial can reject before its connection
+# closes, and that the adapter waits that close out before reporting.
+- - -> A failed dial of any kind can reject before its connection has closed.
+- - -> Measured against the pinned stack, a dial whose key exchange the server refuses rejects while its socket's `closed` flag still reads `false`, and a dial issued on the same `Client` before that connection's `'close'` lands fails as well, against a server that accepts it.
+- - -> So after every failed dial the adapter waits for the `Client`'s `'close'` on the connection that dial opened, destroys the socket only if that `'close'` does not come within the same bound as the closes above, and waits the destroy's `'close'` out on that bound too, all before it reports the failure.
+- - -> A socket whose `'close'` was already delivered, which its `closed` flag reads, is left alone, and so is a socket the dial did not open, such as the live session's that a refused `connect()` leaves in place.
+- - -> Both halves are checks in `apps/cli/test/integration/sftpStackPremises.test.ts`: a dial issued before that `'close'` fails, and one issued after it connects.
+- - -> `apps/cli/test/integration/sftpKexRedialPolicyFlip.test.ts` drives the adapter's cycle-start re-dial at once after a refused one and requires it to connect.

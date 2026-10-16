@@ -15,6 +15,7 @@ import {
   isPreIdentificationDialFailure,
   peerProbeTargetFromConnectOptions,
 } from "../../src/connection/sftpPeerIdentification";
+import { startKexRestrictedListener } from "./kexOfferWire";
 import { createRawSftpClient } from "../rawSftpClient";
 import {
   type InProcessSftpServer,
@@ -84,7 +85,10 @@ const delay = (ms: number): Promise<void> =>
 // socket beneath the ssh2 Client that the abandoning teardown destroys.
 interface RawClientInternals {
   sftp?: SFTPWrapper;
-  client?: { _sock?: Socket; once(event: "ready", listener: () => void): void };
+  client?: {
+    _sock?: Socket;
+    once(event: "ready" | "close", listener: () => void): void;
+  };
 }
 
 function internalsOf(client: Ssh2SftpClient): RawClientInternals {
@@ -1451,6 +1455,69 @@ inProcessOnly(
       child.kill("SIGKILL");
       await exited;
       controls.withholdSubsystemOpen = false;
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// The two halves of what the adapter does after a failed dial: a dial issued
+// before the failed one's connection has closed fails against a server that
+// accepts, and one issued once that close has been driven and delivered
+// connects. Each half dials on its own client, since the first half leaves its
+// client failing every later dial.
+inProcessOnly(
+  "a key-exchange refusal rejects before its connection closes, and only a " +
+    "dial issued after that close connects",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const restricted = await startKexRestrictedListener();
+    const refusedOptions: Ssh2SftpClient.ConnectOptions = {
+      ...dialOptions(srv),
+      host: restricted.host,
+      port: restricted.port,
+      algorithms: { kex: ["ecdh-sha2-nistp256"] },
+    };
+    const early = createRawSftpClient();
+    const late = createRawSftpClient();
+    try {
+      await expect(early.connect(refusedOptions)).rejects.toThrow(
+        "no matching key exchange algorithm",
+      );
+      const earlySocket = internalsOf(early).client?._sock;
+      const closedAtEarlyRejection = earlySocket?.closed;
+      const earlyRedial = trackDial(early.connect(dialOptions(srv)));
+      await earlyRedial.settlement;
+
+      await expect(late.connect(refusedOptions)).rejects.toThrow(
+        "no matching key exchange algorithm",
+      );
+      const lateClient = internalsOf(late).client;
+      const lateSocket = lateClient?._sock;
+      const clientClosed = new Promise<void>((resolve) =>
+        lateClient?.once("close", () => resolve()),
+      );
+      lateSocket?.destroy();
+      await clientClosed;
+      const closedOnceClientClosed = lateSocket?.closed;
+      const lateRedial = trackDial(late.connect(dialOptions(srv)));
+      await lateRedial.settlement;
+
+      expect({
+        closedAtEarlyRejection,
+        earlyRedial: earlyRedial.outcome(),
+        closedOnceClientClosed,
+        lateRedial: lateRedial.outcome(),
+      }).toEqual({
+        closedAtEarlyRejection: false,
+        earlyRedial: "rejected",
+        closedOnceClientClosed: true,
+        lateRedial: "resolved",
+      });
+    } finally {
+      await late.end().catch(() => {});
+      internalsOf(early).client?._sock?.destroy();
+      await restricted.close();
       await srv.stop();
     }
   },

@@ -79,6 +79,7 @@ import {
 } from "./sftpClientInternals";
 import type {
   ForcedCloseSeams,
+  Ssh2ClientSocket,
   Ssh2SftpClientInternals,
   Ssh2SftpError,
 } from "./sftpClientInternals";
@@ -1843,6 +1844,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       );
       throw unboundedSubsystemOpenError();
     }
+    const socketBeforeDial = internals.client?._sock;
     try {
       await Promise.race([this.client.connect(connectOptions), watch.expired]);
     } catch (error: unknown) {
@@ -1854,6 +1856,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       // this side still owes.
       if (error instanceof SubsystemOpenTimeoutError)
         await this.closeUnansweredDial(held);
+      else await this.closeFailedDial(held, socketBeforeDial);
       throw error;
     } finally {
       watch.cancel();
@@ -1916,6 +1919,64 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `subsystem request failed: ${sanitizeErrorForDisplay(error)}. The ` +
           `connection is left to the operating system to close, and the run ` +
           `ends with the dial's own failure without dialing again.`,
+      );
+    }
+  }
+
+  // A dial can reject before the connection it opened has delivered the ssh2
+  // Client's 'close', and the next dial on the shared Client then fails
+  // however the server answers (docs/spec/DEPENDENCY_PINS.md). So that
+  // connection is closed and the close waited out before the rejection is
+  // reported. A socket the dial did not open belongs to the path that opened
+  // it, and one whose 'close' was already delivered needs nothing more.
+  private async closeFailedDial(
+    held: HeldSessionTransition,
+    socketBeforeDial: Ssh2ClientSocket | undefined,
+  ): Promise<void> {
+    const internals = this.client as unknown as Ssh2SftpClientInternals;
+    const socket = internals.client?._sock;
+    if (socket === undefined || socket === socketBeforeDial) return;
+    const closeDelivered = (): boolean => socket.closed === true;
+    if (closeDelivered()) return;
+    const transport = resolveForcedCloseSeams(internals);
+    if ("missing" in transport) {
+      this.log.debug(
+        `closing a failed dial's connection from this side drives ssh2's ` +
+          `${transport.missing}, which is not available after connect(); the ` +
+          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
+          `relocated, or removed it`,
+      );
+      return;
+    }
+    // The connection's own close is waited for first, so a dial that ends
+    // cleanly still does, and anything its peer sends after the dial failed
+    // reaches the handlers that expect it; the destroy follows only a close
+    // that did not come.
+    await this.awaitClientClose(
+      held,
+      transport.once,
+      transport.removeListener,
+      FORCED_CLOSE_TIMEOUT_MS,
+      undefined,
+      false,
+    );
+    if (closeDelivered()) return;
+    try {
+      await this.awaitClientClose(
+        held,
+        transport.once,
+        transport.removeListener,
+        FORCED_CLOSE_TIMEOUT_MS,
+        transport.destroy,
+        true,
+      );
+    } catch (error: unknown) {
+      // Reported rather than raised, so the dial's own rejection is the one the
+      // retry loop and the cycle-start re-dial classify.
+      this.log.warn(
+        `Closing the connection beneath a failed SFTP dial failed: ` +
+          `${sanitizeErrorForDisplay(error)}. The connection is left to the ` +
+          `operating system to close, and the next dial may fail as well.`,
       );
     }
   }
