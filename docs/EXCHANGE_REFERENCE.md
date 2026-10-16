@@ -21,7 +21,7 @@ An exchange specification has four top-level components:
 | `metadata` | no | Descriptions of input fields and their roles |
 | `standardization` | no | Data cleaning and standardizing transformations applied before linkage |
 
-Beside them sit the optional top-level blocks documented below -- [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`csv_delimiter`](#csv_delimiter) -- and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). Alcove writes and refreshes it for you on an online accept, and you may also author it by hand in a recurring configuration. Any other top-level key is rejected at config-parse time with a user-facing error naming it, and no exchange runs until it is corrected: that enforcement record is optional, and an absent one means "nothing to enforce", so a misspelling that was quietly dropped would disable a consent check with no signal. Unrecognized keys *inside* `linkage_terms`, `connection`, `metadata`, and `standardization` are dropped instead; see [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) for what each behavior means when a file written by a newer web application is loaded by an older CLI.
+Beside them sit the optional top-level blocks documented below -- [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key), [`csv_delimiter`](#csv_delimiter) -- and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). Alcove writes and refreshes it for you on an online accept, and you may also author it by hand in a recurring configuration. Any other top-level key is rejected at config-parse time with a user-facing error naming it, and no exchange runs until it is corrected: that enforcement record is optional, and an absent one means "nothing to enforce", so a misspelling that was quietly dropped would disable a consent check with no signal. Unrecognized keys *inside* `linkage_terms`, `connection`, `metadata`, and `standardization` are dropped instead; see [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) for what each behavior means when a file written by a newer web application is loaded by an older CLI.
 
 ## File references
 
@@ -1355,6 +1355,39 @@ Your own columns are not covered by the exchange record's commitments, which bin
 
 ---
 
+## The key each match was made on
+
+Optional. Under the `cascade` [linkage strategy](#linkage_termslinkage_strategy) each linkage key runs in turn, most precise first, so a pair can be accepted on a precise key or on a later, looser one. This key adds a last column to your result file naming which.
+
+Purely local, like [`include_own_columns`](#include_own_columns): it is not a linkage term, nothing about it is sent to your partner or folded into the agreed-terms hash, and your partner's result file is unchanged. Each party counts its own cascade rounds, so the column needs nothing from your partner.
+
+### `include_matching_key`
+
+*Type:* boolean  
+*Default:* `false`  
+*Required:* no  
+*Consistency:* none (per-party; not exchanged)
+
+With `true`, the result file ends with a column headed `matched_on_key` containing, for each pair, the `name` of the linkage key it matched on, as the agreed terms spell it.
+
+```yaml
+include_matching_key: true
+```
+
+The column is written last, so the leading columns a re-supplied result is read by keep their places, and verification of a result containing it is unaffected. It is always headed `matched_on_key`: a partner payload column or one of your own columns with that name is the one renamed, and only an identifier column already named `matched_on_key` moves it to `own_matched_on_key` ([PROTOCOL.md](spec/PROTOCOL.md#output)).
+
+`true` is refused at config-parse time (exit 64), naming the key, on terms that give you no key to name:
+
+- a **count-only (`psi-c`)** exchange, which writes no result file;
+- a **`single-pass`** exchange, where the party that sends its records first is handed the resolved matches without the rounds behind them (refused for either party, since which party sends first is decided at the terms exchange);
+- terms whose [`output`](#linkage_termsoutput) gives you **no result**.
+
+On the command line, `alcove exchange --include-matching-key` turns the column on for one run and `--no-include-matching-key` turns it off; when the flag and the key are both given, the flag decides.
+
+The web application sets the key from its "Matching & sharing" step, beside the own-columns choice, and writes it into the same artifacts that choice reaches: the result the browser downloads, the exchange file the save path writes, the config the console runs, and the stored record a recurring exchange re-runs from. Where the terms being authored refuse the key, the control is shown unavailable with the reason. The console reads it from an opened configuration into the same control and writes it back on a save.
+
+---
+
 ## The field delimiter of your files
 
 Optional. The field delimiter Alcove reads your input CSV by and writes your result file with.
@@ -1736,6 +1769,7 @@ The cells:
 | **Other top-level settings** | | | |
 | `retention_disposition` | carried | authored | authored |
 | `include_own_columns` | carried | authored | authored |
+| `include_matching_key` | authored (`--include-matching-key` overrides it for one run) | authored | carried |
 | `csv_delimiter` | authored | authored | authored |
 | **[Input metadata](#input-metadata)** | | | |
 | `metadata` (`name`, `type`, `role`, `is_payload`) | authored (inferred) | authored | carried with a notice |

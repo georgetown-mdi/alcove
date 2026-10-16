@@ -394,6 +394,11 @@ export {
 } from "./config/exchangeSpec";
 export type { ExchangeSpec } from "./config/exchangeSpec";
 export {
+  MATCHING_KEY_CONFIG_REFUSALS,
+  matchingKeyUnavailableReason,
+} from "./config/matchingKeyAvailability";
+export type { MatchingKeyUnavailableReason } from "./config/matchingKeyAvailability";
+export {
   LINKAGE_CARDINALITIES,
   assertBothSidedDeduplicateImplemented,
   assertDeduplicateImplemented,

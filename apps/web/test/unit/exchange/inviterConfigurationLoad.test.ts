@@ -40,6 +40,7 @@ import {
   editorFromCsv,
   editorWithColumnDisclosure,
   editorWithImportedTerms,
+  editorWithIncludeMatchingKey,
   editorWithIncludeOwnColumns,
   editorWithOutputDirection,
 } from "@psi/inviterEditor";
@@ -113,6 +114,7 @@ function sftpDocument(
     },
     linkageTerms: getDefaultLinkageTerms("County Health"),
     includeOwnColumns: "all",
+    includeMatchingKey: true,
     csvDelimiter: "|",
     retentionDisposition: "Filed with the 2026 cohort, kept seven years.",
     signing: { mode: "certificate", partnerFingerprint: PARTNER_FINGERPRINT },
@@ -205,7 +207,10 @@ function withLoadedTermsDerived(state: InviterScreenState): InviterScreenState {
     throw new Error("expected an open configuration over a committed file");
   if (state.loadedTermsFile === csv) return state;
   const applied = editorWithLoadedTerms(
-    editorWithIncludeOwnColumns(state.editor, open.ownColumns),
+    editorWithIncludeMatchingKey(
+      editorWithIncludeOwnColumns(state.editor, open.ownColumns),
+      open.matchingKey,
+    ),
     csv,
     open,
   );
@@ -338,10 +343,11 @@ describe("every step the document covers is filled in", () => {
     expect(resolved.ok && resolved.delimiter).toBe("|");
   });
 
-  test("the terms, own-column choice and transport are held while it is open", () => {
+  test("the terms, own-column and matched-key choices and transport are held while it is open", () => {
     expect(state.loadedConfiguration).toEqual({
       linkageTerms: sftpDocument().linkageTerms,
       ownColumns: "all",
+      matchingKey: true,
       transport: "sftp",
     });
   });
@@ -401,6 +407,10 @@ describe("a setting the file omits keeps the authoring default", () => {
 
   test("the own-column choice held for the file step is the model's own", () => {
     expect(state.loadedConfiguration?.ownColumns).toBe("none");
+  });
+
+  test("the matched-key choice held for the file step is off", () => {
+    expect(state.loadedConfiguration?.matchingKey).toBe(false);
   });
 });
 

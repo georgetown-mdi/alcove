@@ -12,6 +12,7 @@ import {
   retiredSettingIssue,
   retiredSigningSettingNotice,
   getLogger,
+  matchingKeyUnavailableReason,
   OperatorConfigError,
   prepareForExchange,
   resolveExchangeInputs,
@@ -21,6 +22,7 @@ import {
 import type {
   ExchangeDataSpec,
   FileSyncOptions,
+  MatchingKeyUnavailableReason,
   PreparedExchange,
 } from "@alcove/core";
 
@@ -154,7 +156,9 @@ export function builder(cmd: Argv): Argv {
             "add a last column, matched_on_key, to the result file, naming " +
             "the linkage key each pair matched on. Local to this run: nothing " +
             "extra is sent and your partner's result is unchanged. Requires " +
-            "the cascade linkage strategy and the psi algorithm",
+            "the cascade linkage strategy and the psi algorithm. Overrides " +
+            "include_matching_key in config; --no-include-matching-key " +
+            "turns it off for this run",
         }),
       // exchange reads a config and has no URL, so the config/key files are read
       // (not written) and the server-* / peer-id overrides apply to the config.
@@ -233,9 +237,11 @@ interface ExchangeArgs extends CommonBootstrapOptions {
   // ExchangeOptions so it never reaches loadConfig; the handler decodes it
   // ahead of the config load and passes loadConfig the decoded key.
   invitation?: string;
-  // Whether the result names the linkage key each pair matched on. CLI-only
-  // and excluded from ExchangeOptions, so it never reaches loadConfig.
-  includeMatchingKey: boolean;
+  // Whether the result names the linkage key each pair matched on, or
+  // undefined when neither --include-matching-key nor its --no- form is
+  // given. Excluded from ExchangeOptions: the handler layers it over the
+  // configuration's own include_matching_key.
+  includeMatchingKey?: boolean;
 }
 
 type ExchangeOptions = Omit<
@@ -299,8 +305,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
     forceRetainSweep:
       (argv["force-retain-sweep"] as boolean | undefined) ?? false,
     invitation,
-    includeMatchingKey:
-      (argv["include-matching-key"] as boolean | undefined) ?? false,
+    includeMatchingKey: argv["include-matching-key"] as boolean | undefined,
   };
 }
 
@@ -318,25 +323,28 @@ export function assertMatchingKeyAvailable(
   linkageTerms: ExchangeDataSpec["linkageTerms"],
 ): void {
   if (!includeMatchingKey || linkageTerms === undefined) return;
-  if (linkageTerms.algorithm === "psi-c")
-    throw new UsageError(
-      "--include-matching-key is set on a count-only (psi-c) exchange, which " +
-        "writes no result file. Remove --include-matching-key.",
-    );
-  if (linkageTerms.linkageStrategy === "single-pass")
-    throw new UsageError(
-      "--include-matching-key is set on a single-pass exchange, where the " +
-        "party that sends its records first is not told which key matched. " +
-        "Remove --include-matching-key, or agree the cascade linkage " +
-        "strategy with your partner.",
-    );
-  if (!linkageTerms.output.expectsOutput)
-    throw new UsageError(
-      "--include-matching-key is set, but by your linkage terms you receive " +
-        "no result, so this exchange writes no result file for you. Remove " +
-        "--include-matching-key.",
-    );
+  const reason = matchingKeyUnavailableReason(linkageTerms);
+  if (reason !== undefined)
+    throw new UsageError(MATCHING_KEY_FLAG_REFUSALS[reason]);
 }
+
+// The configuration's include_matching_key is refused for the same reasons
+// where the config is parsed (MATCHING_KEY_CONFIG_REFUSALS in core).
+const MATCHING_KEY_FLAG_REFUSALS: Record<MatchingKeyUnavailableReason, string> =
+  {
+    "count-only":
+      "--include-matching-key is set on a count-only (psi-c) exchange, which " +
+      "writes no result file. Remove --include-matching-key.",
+    "single-pass":
+      "--include-matching-key is set on a single-pass exchange, where the " +
+      "party that sends its records first is not told which key matched. " +
+      "Remove --include-matching-key, or agree the cascade linkage " +
+      "strategy with your partner.",
+    "no-output":
+      "--include-matching-key is set, but by your linkage terms you receive " +
+      "no result, so this exchange writes no result file for you. Remove " +
+      "--include-matching-key.",
+  };
 
 // The runtime-injected authentication fields: their values come only from
 // `.alcove.key`, so an operator who sets them in the top-level `authentication`
@@ -1248,8 +1256,10 @@ export async function handler(argv: Arguments): Promise<void> {
         exchangeDataSpec.signing,
         options.configFile,
       );
+      // The configuration's include_matching_key was graded at its parse, so
+      // only a flag that turns the column on is graded here.
       assertMatchingKeyAvailable(
-        includeMatchingKey,
+        includeMatchingKey === true,
         exchangeDataSpec.linkageTerms,
       );
 
@@ -1316,7 +1326,8 @@ export async function handler(argv: Arguments): Promise<void> {
         csvDelimiter,
         allowMemoryShortfall === true,
       );
-      if (includeMatchingKey) prepared.includeMatchingKey = true;
+      if (includeMatchingKey !== undefined)
+        prepared.includeMatchingKey = includeMatchingKey;
 
       // Load the signing identity from the path the pre-flight above established
       // the config names, before any credential, terms, or data are sent: a path

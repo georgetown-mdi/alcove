@@ -72,6 +72,7 @@ import {
   editorWithFieldRemoved,
   editorWithFieldSteps,
   editorWithImportedTerms,
+  editorWithIncludeMatchingKey,
   editorWithIncludeOwnColumns,
   editorWithKeyEnabled,
   editorWithKeyMoved,
@@ -94,6 +95,7 @@ import {
   spineProblems,
 } from "@psi/inviterModel";
 import { inviterLedgerRows, ledgerOutcomeOf } from "@psi/ledger";
+import { matchingKeyWithheldReason } from "@psi/matchingKeyModel";
 import { outputForDirection } from "@psi/authoring/advancedInvite";
 import { ownColumnsActionable } from "@psi/ownColumnsModel";
 
@@ -534,9 +536,9 @@ export function InviterScreen() {
   // it runs once the file is read and again for the next file read while the
   // configuration is open -- a draft seeded from a file's headers alone would
   // disclose a column the configuration states is kept back. The own-column
-  // choice goes on first, because the import reads it off the draft it rebuilds
-  // from. The transport the file's channel selects goes on in the reducer,
-  // which holds it.
+  // and matched-key choices go on first, because the import reads them off the
+  // draft it rebuilds from. The transport the file's channel selects goes on in
+  // the reducer, which holds it.
   useEffect(() => {
     if (
       loadedConfiguration === undefined ||
@@ -546,7 +548,10 @@ export function InviterScreen() {
     )
       return;
     const applied = editorWithLoadedTerms(
-      editorWithIncludeOwnColumns(editor, loadedConfiguration.ownColumns),
+      editorWithIncludeMatchingKey(
+        editorWithIncludeOwnColumns(editor, loadedConfiguration.ownColumns),
+        loadedConfiguration.matchingKey,
+      ),
       acquired,
       loadedConfiguration,
     );
@@ -838,6 +843,9 @@ export function InviterScreen() {
                 : {}),
               ...(invitation.includeOwnColumns !== undefined
                 ? { includeOwnColumns: invitation.includeOwnColumns }
+                : {}),
+              ...(invitation.includeMatchingKey !== undefined
+                ? { includeMatchingKey: invitation.includeMatchingKey }
                 : {}),
               ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
             },
@@ -1385,6 +1393,7 @@ export function InviterScreen() {
         metadata: editor.draft.metadata,
         standardization: editor.draft.standardization,
         includeOwnColumns: editor.draft.includeOwnColumns ?? "none",
+        includeMatchingKey: editor.draft.includeMatchingKey === true,
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
         retainsFiles: declaresRetainedFiles,
@@ -1491,6 +1500,7 @@ export function InviterScreen() {
         metadata: editor.draft.metadata,
         standardization: editor.draft.standardization,
         includeOwnColumns: editor.draft.includeOwnColumns ?? "none",
+        includeMatchingKey: editor.draft.includeMatchingKey === true,
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         connectionEndpoint: endpointRequestFor(cliTransport, saveFields),
       });
@@ -1815,6 +1825,17 @@ export function InviterScreen() {
               }
               onOwnColumns={(choice) =>
                 applyEditor(editorWithIncludeOwnColumns(editor, choice))
+              }
+              matchingKey={{
+                chosen: editor.draft.includeMatchingKey === true,
+                withheld: matchingKeyWithheldReason({
+                  algorithm: editor.draft.algorithm,
+                  linkageStrategy: editor.draft.linkageStrategy,
+                  output: outputForDirection(editor.draft.outputDirection),
+                }),
+              }}
+              onMatchingKey={(chosen) =>
+                applyEditor(editorWithIncludeMatchingKey(editor, chosen))
               }
               announcement={announcement}
               onContinue={() => goTo("review")}

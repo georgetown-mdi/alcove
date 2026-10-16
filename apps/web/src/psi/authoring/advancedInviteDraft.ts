@@ -1051,9 +1051,9 @@ function standardizationForImportedTerms(
  * a field no column can satisfy stays undeclared rather than silently
  * mis-bound.
  *
- * `includeOwnColumns` is passed in like `lifetimeSeconds`: both are per-party
- * and local, held by no terms document, so an import keeps the operator's own
- * setting instead of resetting it. */
+ * `includeOwnColumns` and `includeMatchingKey` are passed in like
+ * `lifetimeSeconds`: each is per-party and local, held by no terms document, so
+ * an import keeps the operator's own setting instead of resetting it. */
 export function draftFromTerms(
   terms: LinkageTerms,
   seed: AdvancedInviteSeed,
@@ -1061,6 +1061,7 @@ export function draftFromTerms(
   rawRows: ReadonlyArray<CSVRow> = [],
   dateInputFormats?: ProfiledDateInputFormats,
   includeOwnColumns?: OwnColumnSelection,
+  includeMatchingKey?: true,
 ): AdvancedInviteDraft {
   const standardization = standardizationForImportedTerms(
     seed.metadata,
@@ -1099,6 +1100,7 @@ export function draftFromTerms(
     metadata: seed.metadata,
     standardization,
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     // Hold the imported field declaration so buildAdvancedTerms re-emits it
     // faithfully (order + declared-but-unreferenced fields + a benign empty
     // `constraints: {}`); see AdvancedInviteDraft.importedLinkageFields.

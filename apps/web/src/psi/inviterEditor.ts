@@ -262,6 +262,7 @@ export function editorWithImportedTerms(
       seedRows(csv),
       csv.dateInputFormats,
       editor.draft.includeOwnColumns,
+      editor.draft.includeMatchingKey,
     ),
     keysAuthored: true,
   };
@@ -359,6 +360,21 @@ export function editorWithIncludeOwnColumns(
     return { ...editor, draft };
   }
   return { ...editor, draft: { ...editor.draft, includeOwnColumns: choice } };
+}
+
+/** Set whether this party's result file ends with the `matched_on_key`
+ * column. Off drops the field, as {@link editorWithIncludeOwnColumns} drops
+ * `"none"`, so a draft turned back off matches one that never set it. */
+export function editorWithIncludeMatchingKey(
+  editor: InviterEditor,
+  chosen: boolean,
+): InviterEditor {
+  if (editor.sealed === true) return editor;
+  if (!chosen) {
+    const { includeMatchingKey: _dropped, ...draft } = editor.draft;
+    return { ...editor, draft };
+  }
+  return { ...editor, draft: { ...editor.draft, includeMatchingKey: true } };
 }
 
 /** Set input deduplication. Gated exactly as {@link editorWithAlgorithm}: the

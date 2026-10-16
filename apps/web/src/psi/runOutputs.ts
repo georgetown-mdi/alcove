@@ -50,8 +50,10 @@ export interface ObjectUrls {
  *
  * The results CSV holds this party's own
  * input columns beside the partner's where the prepared exchange selects them
- * (`include_own_columns`), which changes only this file: the exchange sent
- * nothing extra, and nothing here reaches the partner.
+ * (`include_own_columns`), and ends with the `matched_on_key` column where the
+ * run reported the key each pair matched on (`include_matching_key`). Both
+ * change only this file: the exchange sent nothing extra, and nothing here
+ * reaches the partner.
  *
  * `csvDelimiter` is the field-delimiter choice this party read its own input
  * under; the table is escaped against the character it resolves to and joined
@@ -109,6 +111,7 @@ export function buildRunOutputs(
                 prepared.includeOwnColumns,
                 undeclaredColumnsForOwnResult(prepared),
                 writeDelimiter,
+                result.matchedKeyOfPair,
               );
               const csv =
                 headers.join(writeDelimiter) +

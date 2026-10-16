@@ -68,6 +68,8 @@ import type { AuthoredSignalingServer } from "./signalingServer";
  * setting the CLI reads when it writes this party's result file, adding nothing
  * to what the partner is sent. The schema refuses it beside a count-only
  * algorithm, so an intent pairing the two fails here rather than at the run.
+ * `include_matching_key` is forwarded the same way, and refused here beside
+ * terms that do not admit it (`matchingKeyUnavailableReason` in core).
  *
  * `csv_delimiter` is forwarded the same way: the field delimiter the CLI reads
  * this party's own input by and writes its own result with. Core's spec schema
@@ -113,6 +115,7 @@ export function composeFiledropConfigSpec(
     expectedPartnerDeduplicate,
     retentionDisposition,
     includeOwnColumns,
+    includeMatchingKey,
     csvDelimiter,
   } = intent;
   const signing = composedSigning(intent, signingPaths);
@@ -137,6 +140,7 @@ export function composeFiledropConfigSpec(
     ...(signing !== undefined ? { signing } : {}),
     ...(retentionDisposition !== undefined ? { retentionDisposition } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
   };
   const minted = mintExchangeSpec(fileInput);
@@ -261,6 +265,7 @@ function assembledConfigSpec(
     expectedPartnerDeduplicate,
     retentionDisposition,
     includeOwnColumns,
+    includeMatchingKey,
     csvDelimiter,
   } = intent;
   const signing = composedSigning(intent, signingPaths);
@@ -277,6 +282,7 @@ function assembledConfigSpec(
     ...(signing !== undefined ? { signing } : {}),
     ...(retentionDisposition !== undefined ? { retentionDisposition } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
   };
   return ExchangeSpecSchema.parse(assembled);

@@ -232,6 +232,8 @@ function documentSettings(variant: Variant) {
     retentionDisposition: text(variant, "Filed for seven years."),
     expectedPartnerDeduplicate: flipped(variant, true),
     includeOwnColumns: pick(variant, "disclosed", "all"),
+    // True only beside the cascade variant, the strategy that admits it.
+    includeMatchingKey: pick(variant, true, false),
     csvDelimiter: pick(variant, "|", "\t"),
   };
 }

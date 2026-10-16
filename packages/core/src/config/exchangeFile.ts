@@ -92,6 +92,8 @@ export interface ExchangeFileInput {
   retentionDisposition?: string;
   /** See {@link ExchangeSpecAssembly.includeOwnColumns}. */
   includeOwnColumns?: OwnColumnSelection;
+  /** See {@link ExchangeSpecAssembly.includeMatchingKey}. */
+  includeMatchingKey?: boolean;
   /** See {@link ExchangeSpecAssembly.csvDelimiter}. */
   csvDelimiter?: string;
 }
@@ -121,6 +123,13 @@ interface ExchangeSpecAssembly {
    * {@link retentionDisposition}. The schema refuses it beside `psi-c`.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /**
+   * Whether this party's result file ends with the `matched_on_key` column.
+   * Local like {@link includeOwnColumns}. The schema refuses `true` beside
+   * terms that give this party no matched key to name
+   * (`config/matchingKeyAvailability.ts`).
+   */
+  includeMatchingKey?: boolean;
   /**
    * The delimiter this party reads its CSV and writes its result with, or
    * `detect`. Local; omitted means commas. Validated against `csvDelimiter.ts`.
@@ -155,6 +164,9 @@ export function assembleExchangeSpec(
       : {}),
     ...(input.includeOwnColumns !== undefined
       ? { includeOwnColumns: input.includeOwnColumns }
+      : {}),
+    ...(input.includeMatchingKey !== undefined
+      ? { includeMatchingKey: input.includeMatchingKey }
       : {}),
     ...(input.csvDelimiter !== undefined
       ? { csvDelimiter: input.csvDelimiter }

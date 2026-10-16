@@ -87,6 +87,7 @@ function savedSftpDocument(
       linkageTerms: terms(),
       csvDelimiter: "|",
       includeOwnColumns: "all",
+      includeMatchingKey: true,
       expectedPartnerDeduplicate: false,
       retentionDisposition: "Filed with the 2026 intake.",
     }) as Record<string, unknown>),
@@ -175,6 +176,7 @@ describe("what the load discloses", () => {
     const { document } = loadDocument(savedSftpDocument());
     expect(document?.csvDelimiter).toBe("|");
     expect(document?.includeOwnColumns).toBe("all");
+    expect(document?.includeMatchingKey).toBe(true);
     expect(document?.retentionDisposition).toBe("Filed with the 2026 intake.");
     expect(document?.linkageTerms.identity).toBe("County Health");
   });

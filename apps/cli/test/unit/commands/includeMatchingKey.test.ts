@@ -16,14 +16,17 @@ function argvWith(flags: Record<string, unknown>): Arguments {
   } as unknown as Arguments;
 }
 
-test("parseArgs leaves the matching-key column off by default", () => {
-  expect(parseArgs(argvWith({})).includeMatchingKey).toBe(false);
+test("parseArgs leaves the matching-key column to the configuration when no flag is given", () => {
+  expect(parseArgs(argvWith({})).includeMatchingKey).toBeUndefined();
 });
 
-test("parseArgs reads --include-matching-key", () => {
+test("parseArgs reads --include-matching-key and --no-include-matching-key", () => {
   expect(
     parseArgs(argvWith({ "include-matching-key": true })).includeMatchingKey,
   ).toBe(true);
+  expect(
+    parseArgs(argvWith({ "include-matching-key": false })).includeMatchingKey,
+  ).toBe(false);
 });
 
 test("the matching-key column is available on cascade psi terms", () => {

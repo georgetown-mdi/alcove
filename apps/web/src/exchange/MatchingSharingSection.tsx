@@ -17,9 +17,14 @@ import { disclosedColumnNames } from "@alcove/core";
 
 import styles from "@styles/app.module.css";
 
+import { MatchingKeyField } from "./MatchingKeyField";
 import { OwnColumnsChoiceField } from "./OwnColumnsChoiceField";
 
-import type { Metadata, SemanticType } from "@alcove/core";
+import type {
+  MatchingKeyUnavailableReason,
+  Metadata,
+  SemanticType,
+} from "@alcove/core";
 import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
@@ -49,7 +54,9 @@ const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
  * transport shows, so a choice about which columns the operator KEEPS belongs
  * beside the choice of which ones they SEND. It sits after the send summary
  * rather than inside the grid, since it is one file-level choice and not a
- * third value on the per-column disclosure axis.
+ * third value on the per-column disclosure axis. The matched-key choice
+ * ({@link MatchingKeyField}) follows it: the other choice about what the
+ * operator's own result file contains.
  */
 export function MatchingSharingSection({
   metadata,
@@ -57,6 +64,8 @@ export function MatchingSharingSection({
   onColumnDisclosure,
   ownColumns,
   onOwnColumns,
+  matchingKey,
+  onMatchingKey,
   announcement,
   onContinue,
 }: {
@@ -70,6 +79,14 @@ export function MatchingSharingSection({
    * choice to act on ({@link ownColumnsActionable}). */
   ownColumns: OwnColumnsChoice | undefined;
   onOwnColumns: (choice: OwnColumnsChoice) => void;
+  /** Whether this party's result file names the key each pair matched on, and
+   * why these terms cannot write it, if they cannot
+   * ({@link MatchingKeyField}). */
+  matchingKey: {
+    chosen: boolean;
+    withheld: MatchingKeyUnavailableReason | undefined;
+  };
+  onMatchingKey: (chosen: boolean) => void;
   /** The demotion notice from the last edit, announced politely and rendered
    * under the table; empty when the last edit displaced nothing. */
   announcement: string;
@@ -227,6 +244,11 @@ export function MatchingSharingSection({
           onChange={onOwnColumns}
         />
       )}
+      <MatchingKeyField
+        chosen={matchingKey.chosen}
+        withheld={matchingKey.withheld}
+        onChange={onMatchingKey}
+      />
       <div className={styles.workFoot}>
         <Button onClick={onContinue}>Continue to review &amp; create</Button>
       </div>

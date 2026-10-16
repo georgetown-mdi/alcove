@@ -70,6 +70,7 @@ interface StoredRecord {
   metadata?: Metadata;
   standardization?: Standardization;
   includeOwnColumns?: OwnColumnSelection;
+  includeMatchingKey?: true;
 }
 
 function storage(): Storage | undefined {
@@ -107,6 +108,9 @@ export function writePendingInvitation(
       : {}),
     ...(invitation.includeOwnColumns !== undefined
       ? { includeOwnColumns: invitation.includeOwnColumns }
+      : {}),
+    ...(invitation.includeMatchingKey !== undefined
+      ? { includeMatchingKey: invitation.includeMatchingKey }
       : {}),
   };
   try {
@@ -258,6 +262,7 @@ const STORED_MEMBERS: ReadonlySet<string> = new Set(
     metadata: true,
     standardization: true,
     includeOwnColumns: true,
+    includeMatchingKey: true,
   } satisfies Record<keyof StoredRecord, true>),
 );
 
@@ -335,7 +340,9 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     rowCount < 0
   )
     return undefined;
-  const { csvDelimiter, includeOwnColumns } = fields;
+  const { csvDelimiter, includeOwnColumns, includeMatchingKey } = fields;
+  if (includeMatchingKey !== undefined && includeMatchingKey !== true)
+    return undefined;
   if (
     csvDelimiter !== undefined &&
     (typeof csvDelimiter !== "string" || !isCsvDelimiterChoice(csvDelimiter))
@@ -371,6 +378,7 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
   };
 }
 
@@ -427,6 +435,9 @@ async function pendingInvitationOf(
         : {}),
       ...(stored.includeOwnColumns !== undefined
         ? { includeOwnColumns: stored.includeOwnColumns }
+        : {}),
+      ...(stored.includeMatchingKey !== undefined
+        ? { includeMatchingKey: stored.includeMatchingKey }
         : {}),
       ...(token.connectionEndpoint !== undefined
         ? { connectionEndpoint: token.connectionEndpoint }

@@ -47,10 +47,18 @@ const responderRows = [
   { last_name: "Brown", first_name: "Carol" },
 ];
 
-async function runBothParties(asks: {
-  initiator: boolean;
-  responder: boolean;
-}): Promise<[ExchangeResult, ExchangeResult]> {
+// How a party asks: through its config's include_matching_key, which prepare
+// passes through, or by the caller setting it on the prepared exchange, as the
+// CLI flag does.
+type AskedThrough = "config" | "caller";
+
+async function runBothParties(
+  asks: {
+    initiator: boolean;
+    responder: boolean;
+  },
+  askedThrough: AskedThrough = "caller",
+): Promise<[ExchangeResult, ExchangeResult]> {
   const [initiatorConn, responderConn] = createMessagePipe();
   const prepare = (
     identity: string,
@@ -58,12 +66,18 @@ async function runBothParties(asks: {
     includeMatchingKey: boolean,
   ) => {
     const prepared = prepareForExchange(
-      { linkageTerms: { ...TERMS, identity } },
+      {
+        linkageTerms: { ...TERMS, identity },
+        ...(includeMatchingKey && askedThrough === "config"
+          ? { includeMatchingKey: true }
+          : {}),
+      },
       identity,
       rows,
       COLUMNS,
     );
-    if (includeMatchingKey) prepared.includeMatchingKey = true;
+    if (includeMatchingKey && askedThrough === "caller")
+      prepared.includeMatchingKey = true;
     return prepared;
   };
   return Promise.all([
@@ -82,48 +96,62 @@ async function runBothParties(asks: {
   ]);
 }
 
-test("each party is told the key every one of its pairs matched on", async () => {
-  const [initiator, responder] = await runBothParties({
-    initiator: true,
-    responder: true,
-  });
+const ASKED_THROUGH: ReadonlyArray<AskedThrough> = ["caller", "config"];
 
-  expect(initiator.associationTable).toEqual([
-    [0, 1],
-    [1, 0],
-  ]);
-  expect(initiator.matchedKeyOfPair).toEqual(["full name", "first name"]);
+test.each(ASKED_THROUGH)(
+  "each party is told the key every one of its pairs matched on (asked through the %s)",
+  async (askedThrough) => {
+    const [initiator, responder] = await runBothParties(
+      {
+        initiator: true,
+        responder: true,
+      },
+      askedThrough,
+    );
 
-  expect(responder.associationTable).toEqual([
-    [0, 1],
-    [1, 0],
-  ]);
-  expect(responder.matchedKeyOfPair).toEqual(["first name", "full name"]);
-});
+    expect(initiator.associationTable).toEqual([
+      [0, 1],
+      [1, 0],
+    ]);
+    expect(initiator.matchedKeyOfPair).toEqual(["full name", "first name"]);
 
-test("the matching key is local: a party that does not ask is told nothing, and its table is unchanged", async () => {
-  const [baselineInitiator, baselineResponder] = await runBothParties({
-    initiator: false,
-    responder: false,
-  });
-  const [initiator, responder] = await runBothParties({
-    initiator: true,
-    responder: false,
-  });
+    expect(responder.associationTable).toEqual([
+      [0, 1],
+      [1, 0],
+    ]);
+    expect(responder.matchedKeyOfPair).toEqual(["first name", "full name"]);
+  },
+);
 
-  expect(initiator.matchedKeyOfPair).toEqual(["full name", "first name"]);
-  expect(responder).not.toHaveProperty("matchedKeyOfPair");
-  expect(baselineInitiator).not.toHaveProperty("matchedKeyOfPair");
+test.each(ASKED_THROUGH)(
+  "the matching key is local: a party that does not ask is told nothing, and its table is unchanged (asked through the %s)",
+  async (askedThrough) => {
+    const [baselineInitiator, baselineResponder] = await runBothParties({
+      initiator: false,
+      responder: false,
+    });
+    const [initiator, responder] = await runBothParties(
+      {
+        initiator: true,
+        responder: false,
+      },
+      askedThrough,
+    );
 
-  expect(initiator.associationTable).toEqual(
-    baselineInitiator.associationTable,
-  );
-  expect(responder.associationTable).toEqual(
-    baselineResponder.associationTable,
-  );
-  // The agreed terms the record binds do not change with a local setting.
-  expect(initiator.audit).toBeDefined();
-  expect(initiator.audit!.record.termsHash).toBe(
-    baselineInitiator.audit!.record.termsHash,
-  );
-});
+    expect(initiator.matchedKeyOfPair).toEqual(["full name", "first name"]);
+    expect(responder).not.toHaveProperty("matchedKeyOfPair");
+    expect(baselineInitiator).not.toHaveProperty("matchedKeyOfPair");
+
+    expect(initiator.associationTable).toEqual(
+      baselineInitiator.associationTable,
+    );
+    expect(responder.associationTable).toEqual(
+      baselineResponder.associationTable,
+    );
+    // The agreed terms the record binds do not change with a local setting.
+    expect(initiator.audit).toBeDefined();
+    expect(initiator.audit!.record.termsHash).toBe(
+      baselineInitiator.audit!.record.termsHash,
+    );
+  },
+);

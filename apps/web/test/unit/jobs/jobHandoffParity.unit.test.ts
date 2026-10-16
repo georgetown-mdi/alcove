@@ -168,6 +168,7 @@ function maximalExchangeIntent(): JobSftpExchangeIntent {
     signing: { mode: "certificate", partnerFingerprint: PARTNER_FINGERPRINT },
     retentionDisposition: "Filed with the 2026 intake, kept seven years.",
     includeOwnColumns: "all",
+    includeMatchingKey: true,
     csvDelimiter: "|",
     tokenMaxAgeDays: 30,
   });
@@ -267,6 +268,7 @@ const EXCHANGE_INTENT_ROUTES: Record<
   signing: { carries: "configKey", key: "signing" },
   retentionDisposition: { carries: "configKey", key: "retention_disposition" },
   includeOwnColumns: { carries: "configKey", key: "include_own_columns" },
+  includeMatchingKey: { carries: "configKey", key: "include_matching_key" },
   csvDelimiter: { carries: "configKey", key: "csv_delimiter" },
   tokenMaxAgeDays: { carries: "configKey", key: "authentication" },
 };
@@ -446,10 +448,15 @@ describe("every authorable option graduates into the hand-off", () => {
     // The exchange mode has no `--linkage-strategy` of its own: the strategy is
     // part of the linkage terms both parties agreed, and the template holds
     // them as they ran.
-    const intent = maximalExchangeIntent();
-    intent.linkageTerms = {
-      ...intent.linkageTerms,
-      linkageStrategy: "single-pass",
+    // Without the matched-key column, which single-pass terms refuse.
+    const { includeMatchingKey: _matchingKey, ...maximal } =
+      maximalExchangeIntent();
+    const intent = {
+      ...maximal,
+      linkageTerms: {
+        ...maximal.linkageTerms,
+        linkageStrategy: "single-pass" as const,
+      },
     };
     const handoff = buildJobHandoff(intent, testSftpServerEntry(), {
       credentialPasted: false,

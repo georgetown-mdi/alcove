@@ -949,6 +949,9 @@ export interface ManagedExchangeFileComposition {
    * re-run writes the same file the one-shot run did. Absent where the
    * operator chose nothing, or the terms leave it nothing to act on. */
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
+  /** Whether this party's result file ends with the `matched_on_key` column,
+   * decided at the mint and held verbatim like {@link includeOwnColumns}. */
+  includeMatchingKey?: ExchangeSpec["includeMatchingKey"];
   /** The field-delimiter choice this party's input file is read under and its
    * result file written with -- a character, or the reserved detect word --
    * chosen at the file step and held verbatim so a run with nobody present reads

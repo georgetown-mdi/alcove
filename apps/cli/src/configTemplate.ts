@@ -430,6 +430,13 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # Omit the field to write your partner's values alone.
 # include_own_columns: disclosed
 
+# include_matching_key: true adds a last column, matched_on_key, to your result
+# file, naming the linkage key each pair matched on. Requires the psi algorithm
+# and the cascade linkage strategy, and terms that give you a result. Purely
+# local: nothing extra is sent, and your partner's result is unchanged.
+# --include-matching-key or --no-include-matching-key overrides it for one run.
+# include_matching_key: true
+
 # expected_partner_deduplicate: the linkage_terms.deduplicate your partner
 # declared for its own side in the invitation you accepted. 'alcove accept'
 # fills this in; you rarely set it by hand. An exchange refuses a partner that

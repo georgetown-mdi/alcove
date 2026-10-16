@@ -229,10 +229,14 @@ export function exchangeFileInputFor(
     ...(invitation.standardization !== undefined
       ? { standardization: invitation.standardization }
       : {}),
-    // The local own-column selection the mint decided against these terms, so
-    // the saved file writes the result the operator authored in the browser.
+    // The local own-column and matched-key choices the mint decided against
+    // these terms, so the saved file writes the result the operator authored in
+    // the browser.
     ...(invitation.includeOwnColumns !== undefined
       ? { includeOwnColumns: invitation.includeOwnColumns }
+      : {}),
+    ...(invitation.includeMatchingKey !== undefined
+      ? { includeMatchingKey: invitation.includeMatchingKey }
       : {}),
   };
 }

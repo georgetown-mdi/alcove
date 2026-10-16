@@ -99,6 +99,7 @@ export interface DisclosedExchangeDocument {
   standardization?: ExchangeSpec["standardization"];
   expectedPartnerDeduplicate?: boolean;
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
+  includeMatchingKey?: boolean;
   csvDelimiter?: string;
   retentionDisposition?: string;
   signing?: DisclosedSigning;
