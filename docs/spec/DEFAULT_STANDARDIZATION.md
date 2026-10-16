@@ -601,6 +601,18 @@ header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
 in it share one.
 
+The fold has three limits. The console's quick-exchange confirm screen states
+the rule and lists the columns sent; only the command line's pre-run display
+lists the names a quick exchange holds back. A header recognized as an
+identifier only once folded, such as `ID ` with a trailing space, is declared
+and sent on a configuration with no `metadata` block, and a partner whose
+`payload.receive` is unset takes that wider set on its first run as it takes
+any first-run set
+([An unset `payload.receive` is filled on the first run](EXCHANGE_FILE.md#an-unset-payloadreceive-is-filled-on-the-first-run)).
+A header recognized after trimming is shown as written, so on the display a
+whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
+whitespace.
+
 | Semantic type | Column names that infer it | `role` | `is_payload` |
 | ------------- | -------------------------- | ------ | ------------ |
 | `ssn` | `ssn`, `social_security_number`, `social` | `linkage` | `false` |

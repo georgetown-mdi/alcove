@@ -129,10 +129,11 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "A column whose header Alcove recognizes as a linkage key, such as " +
   "first_name, date_of_birth, ssn, phone, email or zip, is never sent: it is " +
-  "matched on or kept back. Letter case, spaces at either end, and the " +
-  "separators between words (a space, _, - or .) are ignored, so First Name " +
-  "and Social Security Number are recognized. Every other column is sent, id " +
-  "columns included.";
+  "matched on or kept back. Letter case and spaces at either end of a header " +
+  "do not matter, and a space, hyphen or dot between words counts the same " +
+  "as an underscore, so First Name and Social Security Number are " +
+  "recognized. Every other column is sent, including id columns and a " +
+  "header Alcove does not recognize, such as E-mail.";
 
 /**
  * The deduplicate field a zero-setup intent holds for the operator's choice,

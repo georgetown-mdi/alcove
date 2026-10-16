@@ -132,18 +132,22 @@ describe("previewInferredTerms", () => {
     expect(preview.refusal).toBeUndefined();
   });
 
-  test("the confirm notice names the recognized-name rule with headers it recognizes", () => {
+  test("the confirm notice's examples are recognized, and its unrecognized example is sent", () => {
     const metadata = inferMetadata(
-      ["First Name", "Social Security Number"],
+      ["First Name", "Social Security Number", "E-mail"],
       [],
       {
         mode: "direct",
       },
     );
-    expect(disclosedColumnNames(metadata)).toEqual([]);
+    expect(disclosedColumnNames(metadata)).toEqual(["E-mail"]);
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
       "First Name and Social Security Number are recognized",
     );
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
+      "a header Alcove does not recognize, such as E-mail",
+    );
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
   });
 
   test("an unrecognized header past the ceiling is sent, so it closes the run gate", () => {
