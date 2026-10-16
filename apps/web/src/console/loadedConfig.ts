@@ -408,11 +408,13 @@ function withColumnDescription(
  * The columns step holds `role` and `isPayload` as one collapsed choice, so a
  * pair core admits off that diagonal has no choice of its own: a `role: payload`
  * column with `is_payload: false` sends nothing and takes `ignored`, while a
- * `role: linkage` or `role: identifier` column with `is_payload: true` does
- * send, so it takes `payload` and loses its matching or identifier half. Each
- * such pair is reported by the merge rather than passed over as applied.
+ * `role: linkage` column with `is_payload: true` does send, so it takes
+ * `payload` and loses its matching half. Each such pair is reported by the
+ * merge rather than passed over as applied. A `role: identifier` column takes
+ * `identifier` or `identifier-sent` as its `is_payload` states.
  */
 function loadedDisclosureOf(column: ColumnMetadata): DisclosureChoice {
+  if (column.role === "identifier") return disclosureOf(column);
   if (isDisclosedToPartner(column)) return "payload";
   return column.role === "payload" ? "ignored" : disclosureOf(column);
 }

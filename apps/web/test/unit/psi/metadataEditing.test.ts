@@ -14,6 +14,7 @@ import {
   disclosedColumnNames,
   disclosureChoicesForType,
   disclosureOf,
+  editorSeedMetadata,
   hasMultipleIdentifiers,
   normalizeForEditor,
   payloadSendForMetadata,
@@ -38,11 +39,12 @@ function col(over: Partial<ColumnMetadata> & { name: string }): ColumnMetadata {
 
 describe("disclosure choice <-> {role, isPayload}", () => {
   // The single security-relevant mapping: each choice sets BOTH fields, and only
-  // `payload` sends, so disclosedColumnNames (the preparePayload predicate) tracks
-  // the control exactly.
+  // `payload` and `identifier-sent` send, so disclosedColumnNames (the
+  // preparePayload predicate) tracks the control exactly.
   const cases: Array<[DisclosureChoice, ColumnMetadata["role"], boolean]> = [
     ["match", "linkage", false],
     ["identifier", "identifier", false],
+    ["identifier-sent", "identifier", true],
     ["payload", "payload", true],
     ["ignored", "ignored", false],
   ];
@@ -53,7 +55,7 @@ describe("disclosure choice <-> {role, isPayload}", () => {
       const out = applyDisclosure(col({ name: "x" }), choice);
       expect(out.role).toBe(role);
       expect(out.isPayload).toBe(isPayload);
-      expect(isDisclosedToPartner(out)).toBe(choice === "payload");
+      expect(isDisclosedToPartner(out)).toBe(isPayload);
     },
   );
 
@@ -64,19 +66,66 @@ describe("disclosure choice <-> {role, isPayload}", () => {
   });
 });
 
-describe("normalizeForEditor collapses off-diagonal inferred metadata", () => {
-  test("an inferred identifier column is no longer silently disclosed", () => {
-    // inferMetadata marks the `id` alias role:identifier yet isPayload:true --
-    // an off-diagonal state preparePayload would transmit. Normalizing collapses it
-    // to identifier + not-sent.
+describe("normalizeForEditor puts metadata on the grid's choices", () => {
+  test("an inferred sent identifier stays the identifier and stays sent", () => {
+    // inferMetadata marks the `id` alias role:identifier with isPayload:true,
+    // which preparePayload transmits; the grid shows it as identifier-sent.
     const inferred = inferMetadata(["id", "first_name", "notes"], []);
     expect(disclosedColumnNames(inferred)).toContain("id");
 
     const normalized = normalizeForEditor(inferred);
-    expect(disclosedColumnNames(normalized)).not.toContain("id");
+    expect(disclosedColumnNames(normalized)).toEqual(
+      disclosedColumnNames(inferred),
+    );
     const idCol = normalized.find((c) => c.name === "id");
     expect(idCol?.role).toBe("identifier");
-    expect(idCol?.isPayload).toBe(false);
+    expect(idCol?.isPayload).toBe(true);
+    expect(disclosureOf(idCol!)).toBe("identifier-sent");
+  });
+
+  test("a loaded role: identifier, is_payload: true column round-trips unchanged", () => {
+    const loaded: Metadata = [
+      col({
+        name: "record_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: true,
+      }),
+      col({
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      }),
+    ];
+    const normalized = normalizeForEditor(loaded);
+    expect(normalized).toEqual(loaded);
+    expect(disclosureOf(normalized[0])).toBe("identifier-sent");
+    expect(
+      setColumnDisclosure(normalized, "record_id", disclosureOf(normalized[0]))
+        .metadata,
+    ).toEqual(loaded);
+  });
+
+  test("the grid's seed holds an inferred identifier back until it is chosen as sent", () => {
+    const seeded = editorSeedMetadata(
+      inferMetadataForEveryColumn(["id", "first_name", "notes"], []),
+    );
+    const idCol = seeded.find((c) => c.name === "id")!;
+    expect(disclosureOf(idCol)).toBe("identifier");
+    expect(disclosedColumnNames(seeded)).toEqual([]);
+    expect(
+      disclosedColumnNames(
+        setColumnDisclosure(seeded, "id", "identifier-sent").metadata,
+      ),
+    ).toEqual(["id"]);
+  });
+
+  test("a matching column marked sent, which the grid cannot show, is not sent", () => {
+    const normalized = normalizeForEditor([
+      col({ name: "dob", type: "date_of_birth", role: "linkage" }),
+    ]);
+    expect(disclosedColumnNames(normalized)).toEqual([]);
   });
 
   test("an unrecognized column the editor lists stays unsent, as a linkage column does", () => {
@@ -108,10 +157,8 @@ describe("disclosedColumnNames mirrors what is sent", () => {
 
 describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
   // A representative inviter file: a linkage column (not sent), the `id` row
-  // identifier (the off-diagonal isPayload:true state the editor normalizes away
-  // but the quick path keeps and sends), and an unrecognized column inference
-  // leaves out (not sent). The quick path does NOT normalize, so the identifier
-  // leaves the machine.
+  // identifier (inferred as sent), and an unrecognized column inference leaves
+  // out (not sent).
   const columns = ["first_name", "id", "notes"];
 
   test("lists exactly the disclosed columns (the `id` identifier, not the linkage or unrecognized column)", () => {
@@ -208,6 +255,32 @@ describe("single-identifier rule", () => {
     expect(hasMultipleIdentifiers(next)).toBe(false);
   });
 
+  test("choosing identifier-sent demotes a prior sent identifier and sends only the new one", () => {
+    const md: Metadata = [
+      col({
+        name: "a",
+        type: "identifier",
+        role: "identifier",
+        isPayload: true,
+      }),
+      col({
+        name: "b",
+        type: "identifier",
+        role: "ignored",
+        isPayload: false,
+      }),
+    ];
+    const { metadata: next, demotedIdentifiers } = setColumnDisclosure(
+      md,
+      "b",
+      "identifier-sent",
+    );
+    expect(demotedIdentifiers).toEqual(["a"]);
+    expect(next.find((c) => c.name === "a")?.role).toBe("ignored");
+    expect(disclosedColumnNames(next)).toEqual(["b"]);
+    expect(hasMultipleIdentifiers(next)).toBe(false);
+  });
+
   test("demotes every prior identifier and names them all, not just the last", () => {
     // inferMetadata can seed two identifiers (an `id` and an `identifier` column),
     // so choosing identifier on a third column must demote both -- and report both,
@@ -268,13 +341,15 @@ describe("single-identifier rule", () => {
   });
 });
 
-describe("setColumnDisclosure discloses only on an explicit payload choice", () => {
+describe("setColumnDisclosure discloses only on an explicit sending choice", () => {
   // The disclosure-path counterpart to the setColumnType safety property: a
   // disclosure edit sends the edited column iff the operator explicitly chose
-  // `payload`, and never raises a bystander column's disclosure.
+  // `payload` or `identifier-sent`, and never raises a bystander column's
+  // disclosure.
   const CHOICES: Array<DisclosureChoice> = [
     "match",
     "identifier",
+    "identifier-sent",
     "payload",
     "ignored",
   ];
@@ -291,7 +366,7 @@ describe("setColumnDisclosure discloses only on an explicit payload choice", () 
         const { metadata } = setColumnDisclosure([target, bystander], "x", to);
         expect(
           isDisclosedToPartner(metadata.find((c) => c.name === "x")!),
-        ).toBe(to === "payload");
+        ).toBe(to === "payload" || to === "identifier-sent");
         expect(
           isDisclosedToPartner(metadata.find((c) => c.name === "y")!),
         ).toBe(false);
@@ -339,6 +414,7 @@ describe("setColumnType keeps disclosure intent", () => {
     const CHOICES: Array<DisclosureChoice> = [
       "match",
       "identifier",
+      "identifier-sent",
       "payload",
       "ignored",
     ];
@@ -441,9 +517,10 @@ describe("setColumnTypeForMatching forces the match role", () => {
 });
 
 describe("disclosureChoicesForType gates nonsensical pairings", () => {
-  test("identifier type offers identifier, not match", () => {
+  test("identifier type offers identifier, sent or not, and not match", () => {
     expect(disclosureChoicesForType("identifier")).toEqual([
       "identifier",
+      "identifier-sent",
       "payload",
       "ignored",
     ]);

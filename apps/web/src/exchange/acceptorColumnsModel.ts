@@ -11,8 +11,8 @@ import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoi
 import {
   SEMANTIC_TYPE_LABELS,
   disclosedColumnNames,
+  editorSeedMetadata,
   hasMultipleIdentifiers,
-  normalizeForEditor,
   setColumnDisclosure,
 } from "@psi/metadataEditing";
 
@@ -52,7 +52,7 @@ import type { ProfiledDateInputFormats } from "@psi/authoring/advancedInvite";
  * the one tested boundary, keeping the React component thin. No I/O and no state;
  * every consent/verdict semantic reuses the existing logic layer
  * ({@link decideLinkageTermsVerdict},
- * {@link normalizeForEditor}/{@link inferMetadataForEveryColumn},
+ * {@link editorSeedMetadata}/{@link inferMetadataForEveryColumn},
  * {@link defaultStandardizationForRows}, the override-layering helpers,
  * {@link isStepValid}, {@link hasMultipleIdentifiers}), never a re-derivation.
  *
@@ -108,9 +108,9 @@ export interface AcceptorColumnsState {
  * The seed metadata for a freshly-acquired file:
  * {@link inferMetadataForEveryColumn} over the file's columns, so a column
  * inference does not recognize is listed as ignored for the operator to declare,
- * normalized for the editor so the collapsed disclosure control is faithful (see
- * {@link normalizeForEditor}). "Reset to defaults" restores exactly
- * this, and the override layers start empty.
+ * seeded for the editor so the collapsed disclosure control is faithful and no
+ * identifier is sent (see {@link editorSeedMetadata}). "Reset to defaults"
+ * restores exactly this, and the override layers start empty.
  */
 export function acceptorInitialColumnsState(
   columns: Array<string>,
@@ -118,7 +118,7 @@ export function acceptorInitialColumnsState(
   return {
     // Columns the file step already committed: it read the header, holds the
     // sanitized positions, and refuses an empty name before this seeds.
-    metadata: normalizeForEditor(inferMetadataForEveryColumn(columns, [])),
+    metadata: editorSeedMetadata(inferMetadataForEveryColumn(columns, [])),
     inputOverrides: new Map(),
     stepOverrides: new Map(),
   };

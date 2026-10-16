@@ -1183,11 +1183,11 @@ describe("a column whose is_payload does not follow its role", () => {
     expect(merged.notApplied).toContain("metadata");
   });
 
-  test("a record identifier stated as sent is sent, not held as one", () => {
+  test("a record identifier stated as sent stays the identifier and is sent", () => {
     // Inference states this pair for an `id` column, so a configuration
     // written from it sends that column on the command line. The step holds
-    // either the identifier role or the sending one, and it takes sending, so
-    // the run discloses what the file discloses.
+    // it as the identifier sent to the partner, so the run writes the file's
+    // pair back unchanged and names nothing beside the load.
     const merged = mergedOver({
       name: "client_id",
       type: "identifier",
@@ -1196,8 +1196,8 @@ describe("a column whose is_payload does not follow its role", () => {
     });
     expect(merged.documentSends).toEqual(["client_id"]);
     expect(merged.draftSends).toEqual(merged.documentSends);
-    expect(merged.role("client_id")).toBe("payload");
-    expect(merged.notApplied).toContain("metadata");
+    expect(merged.role("client_id")).toBe("identifier");
+    expect(merged.notApplied).toBeUndefined();
   });
 
   test("a matching column stated as sent is sent from here", () => {
