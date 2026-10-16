@@ -847,7 +847,7 @@ To learn whether this host reaches the relay a run allocates on before the run t
 
 ### Naming the key each match was made on
 
-`--include-matching-key` adds a last column, `matched_on_key`, to the result file. It holds the `name` of the linkage key each pair matched on, as the agreed terms spell it, so a match made on the most precise key can be told from one made on a later, looser key.
+`--include-matching-key` adds a last column, `matched_on_key`, to the result file. It holds the `name` of the linkage key each pair matched on, as the agreed terms spell it, so a match made on the most precise key can be told from one made on a later, looser key. The column is always headed `matched_on_key` when the flag is set: a partner payload column or one of your own columns with that name is renamed instead, and only an identifier column already named `matched_on_key` moves the key column to `own_matched_on_key`.
 
 - **It is local to your run.** Each party counts its own cascade rounds, so nothing extra is sent, your partner's result is unchanged, and the agreed terms and the exchange record's commitments are the same with or without it. Your partner passes the flag on its own run, or not.
 - **It requires the `cascade` linkage strategy and the `psi` algorithm.** Under `single-pass` the party that sends its records first is handed the finished table and is not told which key matched, and a count-only (`psi-c`) exchange writes no result. The flag is refused on either with exit 64, before your partner is contacted. Under `single-pass` it is refused whichever role your run takes, since the role is decided at the terms exchange. It is refused the same way when your own terms set `expects_output: false`, since you receive no result file.
@@ -873,7 +873,7 @@ An exchange writes its matched records to a file in the `OUTPUT_FOLDER` it was g
 - **Your own matched record comes first.** The first column holds the identifier value of the record that matched, under the name of the column your metadata flags as the identifier.
 - **`row_id` holds your partner's 0-based row index** for that match -- the position of the matched record in the input your partner supplied, on every run and not only on an identifier-free one. Your own row index is absent: with an identifier column the first column names the record instead.
 - **The partner's payload columns follow**, each under its own name, and after them the columns of your own input [`include_own_columns`](EXCHANGE_REFERENCE.md#include_own_columns) selects, if any. Every header is distinct, so a name already taken is written as `their_<name>` or `own_<name>`, then numbered.
-- **`matched_on_key` comes last** when `alcove exchange` runs with [`--include-matching-key`](#naming-the-key-each-match-was-made-on), naming the linkage key the pair matched on.
+- **`matched_on_key` comes last** when `alcove exchange` runs with [`--include-matching-key`](#naming-the-key-each-match-was-made-on), naming the linkage key the pair matched on. It keeps that name whatever your partner's columns are called; only an identifier column of the same name moves it to `own_matched_on_key`.
 - **An input that declares no identifier column shifts both index columns.** The first column is then headed `row_id` and holds your own 0-based row index, and your partner's index moves to `their_row_id` beside it.
 - **There is one row per matched pair**, which is one row per matched record under `one-to-one` matching, and more than one where a deduplicating cardinality pairs several records on one side.
 

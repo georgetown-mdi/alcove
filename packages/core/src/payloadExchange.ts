@@ -933,10 +933,11 @@ function uniqueColumnName(
  * result is read by keep their positions.
  *
  * Every header is assigned against those already taken, so no two share a
- * name: our first column takes its name first, then the own columns keep
- * their input names, then each partner payload column takes its own name
- * unless something already holds it, then the partner row-index column, and
- * last the matching-key column.
+ * name: our first column takes its name first, then the matching-key column
+ * when requested, so a partner or own column of that name is the one renamed,
+ * then the own columns keep their input names, then each partner payload
+ * column takes its own name unless something already holds it, and last the
+ * partner row-index column.
  * A name already taken falls back to a prefixed then numbered variant --
  * `their_` for one of the partner's columns, `own_` for one of ours.
  */
@@ -1046,10 +1047,15 @@ export function buildOutputTable(
       ? []
       : ownResultColumnNames(metadata, includeOwnColumns, undeclaredColumns);
 
-  // Our first column's name is taken before any other, then our own columns,
-  // then the partner's payload columns, and the partner row-index column last:
-  // a collision is resolved in favor of the column named earlier in that order.
+  // Names are taken in this order, a collision resolved in favor of the
+  // earlier: our first column, the matching-key column when requested, our
+  // own columns, the partner's payload columns, then the partner row index.
   const taken = new Set([ourBaseName]);
+  const matchedKeyHeaders =
+    matchedKeyOfPair === undefined
+      ? []
+      : [uniqueColumnName(MATCHED_KEY_COLUMN, taken, "own_")];
+  matchedKeyHeaders.forEach((header) => taken.add(header));
   const ownHeaders = ownColumns.map((name) => {
     const header = uniqueColumnName(name, taken, "own_");
     taken.add(header);
@@ -1062,10 +1068,6 @@ export function buildOutputTable(
   });
   const partnerIndexHeader = uniqueColumnName("row_id", taken);
   taken.add(partnerIndexHeader);
-  const matchedKeyHeaders =
-    matchedKeyOfPair === undefined
-      ? []
-      : [uniqueColumnName(MATCHED_KEY_COLUMN, taken, "own_")];
 
   const headers = [
     quote(ourBaseName),
