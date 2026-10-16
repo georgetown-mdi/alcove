@@ -1465,10 +1465,13 @@ inProcessOnly(
 // before the failed one's connection has closed fails against a server that
 // accepts, and one issued once that close has been driven and delivered
 // connects. Each half dials on its own client, since the first half leaves its
-// client failing every later dial.
+// client failing every later dial. Between them sits why the delivery is read
+// from the ssh2 Client's 'close' rather than from the socket: destroy() sets
+// the socket's `closed` flag at once, before that event has fired.
 inProcessOnly(
-  "a key-exchange refusal rejects before its connection closes, and only a " +
-    "dial issued after that close connects",
+  "a key-exchange refusal rejects before its connection closes, a destroyed " +
+    "socket reads closed before the Client's 'close', and only a dial issued " +
+    "after that 'close' connects",
   async () => {
     const srv = await startInProcessSftpServer();
     const restricted = await startKexRestrictedListener();
@@ -1480,38 +1483,48 @@ inProcessOnly(
     };
     const early = createRawSftpClient();
     const late = createRawSftpClient();
+    const closeWatch = (client: Ssh2SftpClient) => {
+      let seen = false;
+      const delivered = new Promise<void>((resolve) =>
+        internalsOf(client).client?.once("close", () => {
+          seen = true;
+          resolve();
+        }),
+      );
+      return { seen: () => seen, delivered };
+    };
     try {
+      const earlyClose = closeWatch(early);
       await expect(early.connect(refusedOptions)).rejects.toThrow(
         "no matching key exchange algorithm",
       );
-      const earlySocket = internalsOf(early).client?._sock;
-      const closedAtEarlyRejection = earlySocket?.closed;
+      const closeSeenAtEarlyRejection = earlyClose.seen();
       const earlyRedial = trackDial(early.connect(dialOptions(srv)));
       await earlyRedial.settlement;
 
+      const lateClose = closeWatch(late);
       await expect(late.connect(refusedOptions)).rejects.toThrow(
         "no matching key exchange algorithm",
       );
-      const lateClient = internalsOf(late).client;
-      const lateSocket = lateClient?._sock;
-      const clientClosed = new Promise<void>((resolve) =>
-        lateClient?.once("close", () => resolve()),
-      );
+      const lateSocket = internalsOf(late).client?._sock;
       lateSocket?.destroy();
-      await clientClosed;
-      const closedOnceClientClosed = lateSocket?.closed;
+      const atDestroy = {
+        socketClosed: lateSocket?.closed,
+        closeSeen: lateClose.seen(),
+      };
+      await lateClose.delivered;
       const lateRedial = trackDial(late.connect(dialOptions(srv)));
       await lateRedial.settlement;
 
       expect({
-        closedAtEarlyRejection,
+        closeSeenAtEarlyRejection,
         earlyRedial: earlyRedial.outcome(),
-        closedOnceClientClosed,
+        atDestroy,
         lateRedial: lateRedial.outcome(),
       }).toEqual({
-        closedAtEarlyRejection: false,
+        closeSeenAtEarlyRejection: false,
         earlyRedial: "rejected",
-        closedOnceClientClosed: true,
+        atDestroy: { socketClosed: true, closeSeen: false },
         lateRedial: "resolved",
       });
     } finally {

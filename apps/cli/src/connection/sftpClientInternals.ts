@@ -41,12 +41,6 @@ export interface Ssh2ClientSocket {
    * "did not close" and warns rather than failing a dial.
    */
   destroyed?: boolean;
-  /**
-   * Node's flag for a 'close' already emitted, read after a failed dial to
-   * tell whether that dial's connection has yet to close. See
-   * closeFailedDial().
-   */
-  closed?: boolean;
 }
 
 /**

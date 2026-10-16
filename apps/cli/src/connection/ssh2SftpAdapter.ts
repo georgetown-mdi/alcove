@@ -229,6 +229,41 @@ const PEAK_SHARED_CLIENT_LISTENERS_PER_EVENT =
 export const SHARED_SSH2_CLIENT_MAX_EVENT_LISTENERS =
   PEAK_SHARED_CLIENT_LISTENERS_PER_EVENT;
 
+// The ssh2 Client's 'close' for one dial, subscribed before the dial so a close
+// delivered while it fails is recorded. Node marks a destroyed socket `closed`
+// before that event fires, so the event, not the socket, tells whether the
+// dial's close is still to come (docs/spec/DEPENDENCY_PINS.md).
+interface DialCloseWatch {
+  readonly delivered: Promise<void>;
+  seen(): boolean;
+  // Required on every path: the Client outlives the dial.
+  cancel(): void;
+}
+
+function watchDialClose(
+  client: Ssh2SftpClientInternals["client"],
+): DialCloseWatch | undefined {
+  const once = client?.once;
+  const removeListener = client?.removeListener;
+  if (typeof once !== "function" || typeof removeListener !== "function")
+    return undefined;
+  let seen = false;
+  let markDelivered!: () => void;
+  const delivered = new Promise<void>((resolve) => {
+    markDelivered = resolve;
+  });
+  const onClose = (): void => {
+    seen = true;
+    markDelivered();
+  };
+  once.call(client, "close", onClose);
+  return {
+    delivered,
+    seen: () => seen,
+    cancel: () => removeListener.call(client, "close", onClose),
+  };
+}
+
 // How a bounded teardown wait ended (see
 // SSH2SFTPClientAdapter.awaitBoundedTeardown). `settled` is the only one meaning
 // the close completed: `failed` is a close that raised having closed nothing, and
@@ -1835,7 +1870,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       internals.client,
       subsystemOpenTimeoutMs(connectOptions.readyTimeout),
     );
-    if (watch === undefined) {
+    const dialClose = watchDialClose(internals.client);
+    if (watch === undefined || dialClose === undefined) {
+      watch?.cancel();
+      dialClose?.cancel();
       this.log.debug(
         `the phase after authentication is bounded by subscribing to ssh2's ` +
           `'ready' through client.once() and client.removeListener(), which ` +
@@ -1856,10 +1894,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       // this side still owes.
       if (error instanceof SubsystemOpenTimeoutError)
         await this.closeUnansweredDial(held);
-      else await this.closeFailedDial(held, socketBeforeDial);
+      else await this.closeFailedDial(held, socketBeforeDial, dialClose);
       throw error;
     } finally {
       watch.cancel();
+      dialClose.cancel();
     }
   }
 
@@ -1928,17 +1967,17 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // however the server answers (docs/spec/DEPENDENCY_PINS.md). So that
   // connection is closed and the close waited out before the rejection is
   // reported. A socket the dial did not open belongs to the path that opened
-  // it, and one whose 'close' was already delivered needs nothing more.
+  // it, and a dial whose 'close' was already delivered needs nothing more.
   private async closeFailedDial(
     held: HeldSessionTransition,
     socketBeforeDial: Ssh2ClientSocket | undefined,
+    dialClose: DialCloseWatch,
   ): Promise<void> {
     const internals = this.client as unknown as Ssh2SftpClientInternals;
     const socket = internals.client?._sock;
     if (socket === undefined || socket === socketBeforeDial) return;
-    const closeDelivered = (): boolean => socket.closed === true;
-    if (closeDelivered()) return;
-    const transport = resolveForcedCloseSeams(internals);
+    if (dialClose.seen()) return;
+    const transport = resolveTerminalCloseSeam(internals);
     if ("missing" in transport) {
       this.log.debug(
         `closing a failed dial's connection from this side drives ssh2's ` +
@@ -1952,20 +1991,18 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // cleanly still does, and anything its peer sends after the dial failed
     // reaches the handlers that expect it; the destroy follows only a close
     // that did not come.
-    await this.awaitClientClose(
+    await this.awaitBoundedTeardown(
       held,
-      transport.once,
-      transport.removeListener,
+      dialClose.delivered,
       FORCED_CLOSE_TIMEOUT_MS,
       undefined,
       false,
     );
-    if (closeDelivered()) return;
+    if (dialClose.seen()) return;
     try {
-      await this.awaitClientClose(
+      await this.awaitBoundedTeardown(
         held,
-        transport.once,
-        transport.removeListener,
+        dialClose.delivered,
         FORCED_CLOSE_TIMEOUT_MS,
         transport.destroy,
         true,
