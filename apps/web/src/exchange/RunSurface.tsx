@@ -310,9 +310,9 @@ export function completionOutcome(
     case "counted":
       return { label: "count only" };
     case "matched":
-      // Absent on the server-job path: the console holds the result itself
-      // and counts no rows, so the headline states completion alone rather
-      // than inventing a figure.
+      // Absent on a server-job run whose `result` event had no valid
+      // `matchedRows`, so the headline states completion alone rather than
+      // inventing a figure.
       return outputs.matchedRecordCount === undefined
         ? undefined
         : { count: outputs.matchedRecordCount, label: "matched records" };

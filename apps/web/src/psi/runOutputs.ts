@@ -21,8 +21,8 @@ import type { JobExchangeRecordOffer } from "./jobClient/jobExchangeRecord";
  * matched result table, so it is meaningful for the `matched` case alone -- a
  * count-only run's intersection size is its own field on its own case, and copying
  * it here would put the same number in two places on one screen. It stays optional
- * because the server-job path holds the result on the console and never counts
- * its rows. */
+ * because the server-job path reads it off the CLI's `result` event, which may
+ * lack a valid `matchedRows`. */
 export type RunOutputs = ExchangeOutputs & {
   matchedRecordCount?: number;
 };

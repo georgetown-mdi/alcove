@@ -1167,9 +1167,11 @@ function entityClusterSummaryOf(
  * the browser driver produces it.
  *
  * `resultWritten` is checked before the count (docs/spec/CLI_EVENTS.md,
- * `result`): a written result always wins, and only its `false` arm has a
- * count. A present count means a count-only outcome (no result file for
- * either party); its absence means withheld. The cluster summary rides the
+ * `result`): a written result always wins, and only its `false` arm has an
+ * intersection count. A present count means a count-only outcome (no result
+ * file for either party); its absence means withheld. The written arm's row
+ * count is `matchedRows`, left unset when that is not a non-negative integer
+ * so the headline states completion alone. The cluster summary rides the
  * written arm alone: it is a reading of the table this party holds, and the
  * other two arms hold none. `countReportedByPartner` caveats
  * the count only on a literal `true`; anything else -- omitted, or a
@@ -1178,15 +1180,18 @@ function entityClusterSummaryOf(
  * it ends on a result name. */
 function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
   const resultStamp = stampOfResultPath(event.resultPath);
-  if (event.resultWritten !== false)
+  if (event.resultWritten !== false) {
+    const matchedRecordCount = relayCount(event.matchedRows);
     return {
       kind: "matched",
       resultsUrl: jobResultUrl(jobId),
       ...(resultStamp !== null
         ? { resultFileName: runArtifactNames(resultStamp).result }
         : {}),
+      ...(matchedRecordCount !== undefined ? { matchedRecordCount } : {}),
       entityClusters: entityClusterSummaryOf(event),
     };
+  }
   const intersectionCount = countOnlyResultCount(event);
   return intersectionCount !== undefined
     ? {

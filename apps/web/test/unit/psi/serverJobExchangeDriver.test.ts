@@ -22,6 +22,7 @@ import {
 import { FD3_LINE_CAP } from "@jobs/cliDriver";
 import { MAX_JOB_STATUS_RESPONSE_BYTES } from "@psi/jobClient/jobApiBody";
 import { buildRunOutputs } from "@psi/runOutputs";
+import { completionOutcome } from "@exchange/RunSurface";
 
 import {
   VALID_SHARED_SECRET,
@@ -265,6 +266,50 @@ describe("createServerJobExchangeDriver event mapping", () => {
     expect(outputs.kind).not.toBe("withheld");
     expect(resultsUrlOf(outputs)).toBe("/api/jobs/job-1/result");
   });
+
+  test.each([1204, 0])(
+    "a written result's matchedRows of %i reaches the completion headline",
+    async (matchedRows) => {
+      const { client } = scriptedClient([{ ...result(true), matchedRows }]);
+      const events = driverEvents(new AbortController().signal);
+
+      await createServerJobExchangeDriver(driverConfig(), client).run(events);
+
+      const outputs = events.onResult.mock.calls[0][0] as RunOutputs;
+      expect(outputs.kind).toBe("matched");
+      expect(outputs.matchedRecordCount).toBe(matchedRows);
+      expect(completionOutcome(outputs)).toEqual({
+        count: matchedRows,
+        label: "matched records",
+      });
+    },
+  );
+
+  test.each([
+    ["absent", undefined],
+    ["negative", -1],
+    ["fractional", 2.5],
+    ["a string", "12"],
+    ["unsafe", Number.MAX_SAFE_INTEGER + 1],
+  ])(
+    "a written result whose matchedRows is %s states completion alone",
+    async (_label, matchedRows) => {
+      const { client } = scriptedClient([
+        matchedRows === undefined
+          ? result(true)
+          : { ...result(true), matchedRows },
+      ]);
+      const events = driverEvents(new AbortController().signal);
+
+      await createServerJobExchangeDriver(driverConfig(), client).run(events);
+
+      const outputs = events.onResult.mock.calls[0][0] as RunOutputs;
+      expect(outputs.kind).toBe("matched");
+      expect(resultsUrlOf(outputs)).toBe("/api/jobs/job-1/result");
+      expect(outputs.matchedRecordCount).toBeUndefined();
+      expect(completionOutcome(outputs)).toBeUndefined();
+    },
+  );
 
   test("a withheld result maps to the withheld outputs variant", async () => {
     const { client } = scriptedClient([result(false)]);
