@@ -144,6 +144,12 @@ export interface SftpFaultInjection {
   /** The path of every OPEN with the write flag, in arrival order. */
   pathsOpenedForWrite: string[];
   /**
+   * Every file the server finished putting in place, with its size on disk at
+   * that moment, in arrival order: the CLOSE of a file opened for writing, and
+   * the destination of a RENAME that succeeded.
+   */
+  filesPlaced: Array<{ name: string; size: number }>;
+  /**
    * Cap each READDIR to at most this many entries (realistic batching); 0
    * leaves the width to the backend.
    *

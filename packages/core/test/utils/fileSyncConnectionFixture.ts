@@ -7,6 +7,7 @@ import {
   type FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
+import { sizedControlName } from "../../src/connection/fileSyncNames";
 import { makeMockClient, type MockClientOptions } from "./support";
 
 // The poll/ack/seq counters live on the connection's composed FileSyncMessageLoop;
@@ -113,6 +114,28 @@ export async function driveUntilError(
 export const LOCK_HELLO_BODY = Buffer.from(
   JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
 );
+
+// The hello body a party in the given mode writes, and the hello and joining
+// sentinel names built from it (`<id>-hello-<byteCount>.json`). The defaults
+// are the lock-mode body.
+export const helloBodyFor = (flags: {
+  locklessRendezvous: boolean;
+  retainFiles: boolean;
+}): Buffer => Buffer.from(JSON.stringify(flags));
+
+export const helloName = (
+  id: string,
+  body: Buffer | string = LOCK_HELLO_BODY,
+): string => sizedControlName(id, "hello", Buffer.byteLength(body));
+
+export const joiningName = (
+  id: string,
+  body: Buffer | string = LOCK_HELLO_BODY,
+): string => sizedControlName(id, "joining", Buffer.byteLength(body));
+
+// An abort marker name for an arbitrary planted body, sized to it.
+export const abortNameFor = (id: string, body: Buffer | string): string =>
+  sizedControlName(id, "abort", Buffer.byteLength(body));
 
 export function responsibleFilesOf(conn: FileSyncConnection): Set<string> {
   return (conn as unknown as { responsibleFiles: Set<string> })

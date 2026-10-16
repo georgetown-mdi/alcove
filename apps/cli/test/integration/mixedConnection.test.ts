@@ -18,6 +18,15 @@ import log from "loglevel";
 
 log.setLevel(log.levels.DEBUG);
 
+// Both parties in this file run default lock mode, so both mode flags are false.
+const LOCK_HELLO_BODY = JSON.stringify({
+  locklessRendezvous: false,
+  retainFiles: false,
+});
+
+const lockHelloName = (id: string): string =>
+  `${id}-hello-${Buffer.byteLength(LOCK_HELLO_BODY)}.json`;
+
 // This file mixes a real SFTP party with a filedrop party sharing one rendezvous
 // directory: SFTP_LOCAL_DIRECTORY is the host directory the SFTP server serves,
 // which the filedrop LocalFSClient also points at, so the two transports meet in
@@ -84,7 +93,7 @@ beforeAll(async () => {
 
 // All tests in this file share one SFTP_PATH rendezvous directory and reuse the
 // module-level connections. A test that crashes mid-protocol can leave its
-// <uuid>-joining.json sentinel behind (the peer's cross-process recovery
+// <uuid>-joining-<n>.json sentinel behind (the peer's cross-process recovery
 // signal; see fileSyncConnection synchronize()), which trips the next test's
 // session-start hygiene guard and turns one flake into three red tests. Reset
 // the directory and the shared connection state after every test so a failure
@@ -125,16 +134,14 @@ test("lock synchronization with race condition", async () => {
 
 test("joiner rendezvous recovers from a transient rename failure", async () => {
   // End-to-end guard for acceptance criterion (a): a transient SSH_FX_FAILURE on
-  // the joiner's atomic <id>-joining.json -> <id>-hello.json rename must recover
-  // transparently rather than crash the rendezvous. The mocked unit tests pin
+  // the joiner's atomic <id>-joining-<n>.json -> <id>-hello-<n>.json rename must
+  // recover transparently rather than crash the rendezvous. The mocked unit tests pin
   // the adapter's retry contract in isolation; this drives it through the real
   // adapter and a real server so an adapter<->core wiring regression (e.g. the
   // predicate stops matching the real numeric code) is caught here.
   await sftpAdapter.put(
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
-    ),
-    `${SFTP_PATH}/${localConn.id}-hello.json`,
+    Buffer.from(LOCK_HELLO_BODY),
+    `${SFTP_PATH}/${lockHelloName(localConn.id)}`,
   );
 
   // Inject one status-4 failure at the ssh2-sftp-client layer -- below the
@@ -159,7 +166,7 @@ test("joiner rendezvous recovers from a transient rename failure", async () => {
   }
 
   const currentFiles = await sftpAdapter.list(SFTP_PATH);
-  await sftpAdapter.safeDelete(`${SFTP_PATH}/${sftpConn.id}-hello.json`);
+  await sftpAdapter.safeDelete(`${SFTP_PATH}/${lockHelloName(sftpConn.id)}`);
 
   // The failure path was actually exercised (guards against a false green), and
   // the rendezvous still completed.
@@ -167,7 +174,7 @@ test("joiner rendezvous recovers from a transient rename failure", async () => {
   expect(sftpConn.peerId).toBe(localConn.id);
   expect(sftpConn.handshakeRole).toBe("initiator");
   expect(currentFiles.length).toBe(1);
-  expect(currentFiles[0].name).toBe(`${sftpConn.id}-hello.json`);
+  expect(currentFiles[0].name).toBe(lockHelloName(sftpConn.id));
 
   desynchronize(sftpConn);
 });

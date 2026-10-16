@@ -120,7 +120,7 @@ test("a result-write failure after a completed exchange writes no abort marker",
   // marker in the shared directory (the seal scoped the marker to faults terminal
   // to the exchange itself, not the local output stage that runs after it).
   const markers = (await fsp.readdir(dropDir)).filter((n) =>
-    n.endsWith("-abort.json"),
+    /-abort-\d+\.json$/.test(n),
   );
   expect(markers).toEqual([]);
 

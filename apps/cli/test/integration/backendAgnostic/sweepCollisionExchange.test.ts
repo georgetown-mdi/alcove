@@ -101,7 +101,8 @@ interface PairOptions {
  */
 async function waitForHelloWritten(dropDir: string): Promise<void> {
   await waitFor(
-    () => fs.readdirSync(dropDir).some((name) => name.endsWith("-hello.json")),
+    () =>
+      fs.readdirSync(dropDir).some((name) => /-hello-\d+\.json$/.test(name)),
     {
       timeoutMs: 10_000,
       intervalMs: 5,

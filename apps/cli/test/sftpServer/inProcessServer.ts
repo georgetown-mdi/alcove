@@ -234,6 +234,7 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     renamesReceived: 0,
     tearAtWriteClose: null,
     pathsOpenedForWrite: [],
+    filesPlaced: [],
     readdirBatchSize: 0,
     emptyNonEofReaddirBatches: 0,
   };
@@ -675,6 +676,8 @@ function attachSftpHandlers(
       const writtenPath = h.writtenPath;
       const tear = writtenPath === undefined ? null : inject.tearAtWriteClose;
       fs.close(h.fd, () => {
+        if (tear === null && writtenPath !== undefined)
+          notePlaced(inject, writtenPath);
         if (tear === null || writtenPath === undefined)
           return sftp.status(reqid, STATUS_CODE.OK);
         inject.tearAtWriteClose = null;
@@ -899,6 +902,7 @@ function attachSftpHandlers(
       }
       if (err && err.code === "ENOENT")
         return sftp.status(reqid, STATUS_CODE.NO_SUCH_FILE);
+      if (!err) notePlaced(inject, resolve(newPath));
       sftp.status(reqid, err ? STATUS_CODE.FAILURE : STATUS_CODE.OK);
     });
   });
@@ -920,6 +924,19 @@ function attachSftpHandlers(
     }
     handles.clear();
   };
+}
+
+// Synchronous so the record is taken before the reply lets the client move
+// on; a file a partner already consumed is skipped.
+function notePlaced(inject: SftpFaultInjection, hostPath: string): void {
+  try {
+    inject.filesPlaced.push({
+      name: path.basename(hostPath),
+      size: fs.statSync(hostPath).size,
+    });
+  } catch {
+    // Removed before it could be measured.
+  }
 }
 
 function attrsFromStat(st: {

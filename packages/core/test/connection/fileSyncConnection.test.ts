@@ -34,7 +34,11 @@ import {
   ConnectionError,
 } from "../../src/errors";
 import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
-import { isHelloTempName } from "../../src/connection/fileSyncNames";
+import {
+  isHelloTempName,
+  parseSizedControlName,
+} from "../../src/connection/fileSyncNames";
+import { abortMarkerName } from "../../src/connection/abortMarker";
 import { computeHostKeyFingerprint } from "../../src/utils/sshHostKey";
 import { sanitizeForDisplay } from "../../src/utils/sanitizeForDisplay";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
@@ -43,6 +47,9 @@ import { withCapturedLogs } from "../../src/testing";
 import logLibrary from "loglevel";
 import {
   driveUntilError,
+  helloBodyFor,
+  helloName,
+  joiningName,
   LOCK_HELLO_BODY,
   makeConnectedConn,
   makeRendezvousPair,
@@ -62,6 +69,19 @@ function objectMessage(payload: unknown, seq = 0): Buffer {
 }
 function binaryMessage(payload: Uint8Array, seq = 0): Buffer {
   return serializeFileSyncMessage(MESSAGE_TYPE_BINARY, seq, payload);
+}
+
+// The rendezvous ack `ackerId` writes of `helloWriterId`'s hello.
+function helloAckName(
+  ackerId: string,
+  helloWriterId: string,
+  helloBody: Buffer = LOCK_HELLO_BODY,
+): string {
+  const helloStem = helloName(helloWriterId, helloBody).slice(
+    0,
+    -".json".length,
+  );
+  return `${ackerId}-${helloStem}-ack.json`;
 }
 
 // --- connection lifecycle (unconnected) --------------------------------------
@@ -2932,14 +2952,14 @@ test("close() drain is bounded by the fixed terminal-frame budget, not the full 
 
 // --- send(): hasOutstandingMessage excludes typed protocol files ---------------
 
-test("send() completes without spinning when a <id>-hello.json file is present in the store", async () => {
+test("send() completes without spinning when a <id>-hello-<n>.json file is present in the store", async () => {
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client);
   conn.peerId = "stub-peer";
 
   // Plant the hello file as it would appear after synchronize().
-  const helloPath = `/test/${conn.id}-hello.json`;
-  files.set(helloPath, Buffer.alloc(0));
+  const helloPath = `/test/${helloName(conn.id)}`;
+  files.set(helloPath, LOCK_HELLO_BODY);
 
   // send() must complete without looping on the hello file.
   await expect(conn.send({ check: true })).resolves.toBeUndefined();
@@ -2966,7 +2986,7 @@ test("send() completes without spinning on a foreign <thisId>-<digits>.json (sit
   expect(files.has(foreignPath)).toBe(true);
 });
 
-test("send() is not blocked by a <id>-joining.json sentinel", async () => {
+test("send() is not blocked by a <id>-joining-<n>.json sentinel", async () => {
   // The joining sentinel shares the `<id>-` prefix and `.json` extension, so a
   // broad own-prefix scan could mistake it for an outstanding message. The drain
   // waits only for the exact lastSentFile (undefined here), so the sentinel is
@@ -2977,7 +2997,7 @@ test("send() is not blocked by a <id>-joining.json sentinel", async () => {
 
   // Plant a sentinel under this party's own id, as a crashed prior arrival
   // would leave it.
-  const joiningPath = `/test/${conn.id}-joining.json`;
+  const joiningPath = `/test/${joiningName(conn.id)}`;
   files.set(joiningPath, LOCK_HELLO_BODY);
 
   await expect(conn.send({ check: true })).resolves.toBeUndefined();
@@ -3115,6 +3135,15 @@ test("send() message timeout throws UsageError", async () => {
 const ID_LOW = "00000000-0000-4000-8000-000000000001";
 const ID_HIGH = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 
+const LOCKLESS_HELLO_BODY = helloBodyFor({
+  locklessRendezvous: true,
+  retainFiles: false,
+});
+const RETAIN_HELLO_BODY = helloBodyFor({
+  locklessRendezvous: true,
+  retainFiles: true,
+});
+
 // (a) Each rendezvous branch writes the hello with the advertised flags. Drive
 // the lock joiner fast-path against a matched peer so the hello it writes
 // survives (the joiner keeps its own hello) and can be inspected.
@@ -3122,13 +3151,13 @@ test("(a) hello payload has both bilateral flags", async () => {
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   conn.id = ID_HIGH;
-  const peerHelloName = `${ID_LOW}-hello.json`;
+  const peerHelloName = helloName(ID_LOW);
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
 
   await conn.synchronize();
 
   const body = JSON.parse(
-    files.get(`${conn.path}/${conn.id}-hello.json`)!.toString(),
+    files.get(`${conn.path}/${helloName(conn.id)}`)!.toString(),
   );
   expect(body).toEqual({ locklessRendezvous: false, retainFiles: false });
   expect(conn.peerId).toBe(ID_LOW);
@@ -3149,7 +3178,9 @@ test("(b) lockless/lockless pairing succeeds and advertises both flags", async (
   expect(connA.peerId).toBe(ID_HIGH);
   expect(connB.peerId).toBe(ID_LOW);
   for (const id of [ID_LOW, ID_HIGH]) {
-    const body = JSON.parse(files.get(`/test/${id}-hello.json`)!.toString());
+    const body = JSON.parse(
+      files.get(`/test/${helloName(id, LOCKLESS_HELLO_BODY)}`)!.toString(),
+    );
     expect(body).toEqual({ locklessRendezvous: true, retainFiles: false });
   }
 });
@@ -3205,7 +3236,9 @@ test("(b) retain/retain pairing succeeds and advertises the retain flag", async 
   expect(connA.peerId).toBe(ID_HIGH);
   expect(connB.peerId).toBe(ID_LOW);
   for (const id of [ID_LOW, ID_HIGH]) {
-    const body = JSON.parse(files.get(`/test/${id}-hello.json`)!.toString());
+    const body = JSON.parse(
+      files.get(`/test/${helloName(id, RETAIN_HELLO_BODY)}`)!.toString(),
+    );
     expect(body).toEqual({ locklessRendezvous: true, retainFiles: true });
   }
 });
@@ -3235,8 +3268,10 @@ test("(c) lockless vs lock mismatch fails fast on BOTH parties, concurrently", a
     // Distinct from the generic peer-timeout fallback.
     expect(reason.message).not.toMatch(/timed out|synchronization has timed/);
   }
-  expect(files.has(`/test/${ID_LOW}-hello.json`)).toBe(true);
-  expect(files.has(`/test/${ID_HIGH}-hello.json`)).toBe(true);
+  expect(files.has(`/test/${helloName(ID_LOW, LOCKLESS_HELLO_BODY)}`)).toBe(
+    true,
+  );
+  expect(files.has(`/test/${helloName(ID_HIGH)}`)).toBe(true);
 });
 
 test("(c) retain vs non-retain mismatch (both lockless) fails fast on BOTH parties", async () => {
@@ -3258,8 +3293,10 @@ test("(c) retain vs non-retain mismatch (both lockless) fails fast on BOTH parti
     expect(reason).toBeInstanceOf(BilateralModeMismatchError);
     expect(reason.message).toMatch(/retain_files mismatch/);
   }
-  expect(files.has(`/test/${ID_LOW}-hello.json`)).toBe(true);
-  expect(files.has(`/test/${ID_HIGH}-hello.json`)).toBe(true);
+  expect(files.has(`/test/${helloName(ID_LOW, RETAIN_HELLO_BODY)}`)).toBe(true);
+  expect(files.has(`/test/${helloName(ID_HIGH, LOCKLESS_HELLO_BODY)}`)).toBe(
+    true,
+  );
 });
 
 test("(c) lock joiner reading a lockless peer hello fails fast and leaves both hellos", async () => {
@@ -3272,13 +3309,8 @@ test("(c) lock joiner reading a lockless peer hello fails fast and leaves both h
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock (default)
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
 
   let err: unknown;
   await conn.synchronize().catch((e: unknown) => {
@@ -3292,7 +3324,7 @@ test("(c) lock joiner reading a lockless peer hello fails fast and leaves both h
   expect((err as Error).message).toContain(
     "the peer has lockless_rendezvous=true",
   );
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(`${conn.path}/${helloName(conn.id)}`)).toBe(true);
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
 });
 
@@ -3311,20 +3343,15 @@ test("(c) lock joiner fast-path retries a transient advertise-hello write, then 
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock (default)
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
 
   // Fail the advertise-hello put on every attempt but the last in the budget,
   // then delegate to the in-memory store so the final attempt lands. Scoped to
   // the hello write's in-flight temp (the hello is written temp-then-rename,
   // so its final name never appears under a failing write); on a mismatch this
   // branch issues no other put.
-  const helloPath = `${conn.path}/${conn.id}-hello.json`;
+  const helloPath = `${conn.path}/${helloName(conn.id)}`;
   const originalPut = client.put;
   let helloPutAttempts = 0;
   client.put = async (src, dest, options) => {
@@ -3364,15 +3391,10 @@ test("(c) lock joiner fast-path degrades to log-and-throw once the advertise-hel
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock (default)
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
 
-  const helloPath = `${conn.path}/${conn.id}-hello.json`;
+  const helloPath = `${conn.path}/${helloName(conn.id)}`;
   const originalPut = client.put;
   let helloPutAttempts = 0;
   client.put = async (src, dest, options) => {
@@ -3413,8 +3435,9 @@ test("(c) lockless party reading a lock peer hello fails fast and leaves both he
   conn.id = ID_LOW;
   conn.connected = true;
   conn.path = "/test";
-  const peerHelloName = `${ID_HIGH}-hello.json`;
+  const peerHelloName = helloName(ID_HIGH);
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
+  const ownHelloPath = `${conn.path}/${helloName(conn.id, LOCKLESS_HELLO_BODY)}`;
 
   let err: unknown;
   await conn.synchronize().catch((e: unknown) => {
@@ -3428,7 +3451,7 @@ test("(c) lockless party reading a lock peer hello fails fast and leaves both he
   expect((err as Error).message).toContain(
     "the peer has lockless_rendezvous=false",
   );
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(ownHelloPath)).toBe(true);
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
 
   // The durable-hello guarantee is critical: the outer catch must clear
@@ -3442,7 +3465,7 @@ test("(c) lockless party reading a lock peer hello fails fast and leaves both he
     .responsibleFiles;
   expect(responsible.size).toBe(0);
   await conn.cleanup();
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(ownHelloPath)).toBe(true);
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
 });
 
@@ -3457,13 +3480,8 @@ test("(c) lock two-hellos branch detects the mismatch before createExclusive (EE
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
 
   let createExclusiveCalls = 0;
   client.createExclusive = async () => {
@@ -3480,8 +3498,16 @@ test("(c) lock two-hellos branch detects the mismatch before createExclusive (EE
     listCalls++;
     if (listCalls === 1) return [];
     return [
-      { name: `${conn.id}-hello.json`, modifyTime: 0, size: 0 },
-      { name: peerHelloName, modifyTime: 0, size: 0 },
+      {
+        name: helloName(conn.id),
+        modifyTime: 0,
+        size: LOCK_HELLO_BODY.length,
+      },
+      {
+        name: peerHelloName,
+        modifyTime: 0,
+        size: LOCKLESS_HELLO_BODY.length,
+      },
     ];
   };
 
@@ -3494,7 +3520,7 @@ test("(c) lock two-hellos branch detects the mismatch before createExclusive (EE
   expect((err as Error).message).toMatch(/lockless_rendezvous mismatch/);
   expect(createExclusiveCalls).toBe(0);
   // The conn's own hello (written before the loop) is left behind, not swept.
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(`${conn.path}/${helloName(conn.id)}`)).toBe(true);
 });
 
 test("(c) lock-detection branch sweeps the lock and leaves both hellos on a mismatch", async () => {
@@ -3512,18 +3538,13 @@ test("(c) lock-detection branch sweeps the lock and leaves both hellos on a mism
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock, non-retain
-  const peerHelloName = `${ID_LOW}-hello.json`;
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
   // ID_LOW sorts first, so the producer's lock name is `${ID_LOW}-${ID_HIGH}`;
   // this matches the branch's reconstruct-and-compare (I7) so the read gate and
   // mismatch check are reached rather than a "lock does not reference" throw.
   const lockName = `${ID_LOW}-${conn.id}-lock.json`;
   const lockPath = `${conn.path}/${lockName}`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
   files.set(lockPath, Buffer.alloc(0));
 
   // First list (entry guard) empty so conn writes its own hello and enters the
@@ -3534,8 +3555,16 @@ test("(c) lock-detection branch sweeps the lock and leaves both hellos on a mism
     listCalls++;
     if (listCalls === 1) return [];
     return [
-      { name: `${conn.id}-hello.json`, modifyTime: 0, size: 0 },
-      { name: peerHelloName, modifyTime: 0, size: 0 },
+      {
+        name: helloName(conn.id),
+        modifyTime: 0,
+        size: LOCK_HELLO_BODY.length,
+      },
+      {
+        name: peerHelloName,
+        modifyTime: 0,
+        size: LOCKLESS_HELLO_BODY.length,
+      },
       { name: lockName, modifyTime: 0, size: 0 },
     ];
   };
@@ -3548,7 +3577,7 @@ test("(c) lock-detection branch sweeps the lock and leaves both hellos on a mism
   expect(err).toBeInstanceOf(BilateralModeMismatchError);
   expect((err as Error).message).toMatch(/lockless_rendezvous mismatch/);
   expect(files.has(lockPath)).toBe(false);
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(`${conn.path}/${helloName(conn.id)}`)).toBe(true);
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
 });
 
@@ -3561,13 +3590,8 @@ test("(c) a both-flags-differ mismatch names retain_files (the implying flag)", 
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock, non-retain
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: true }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, RETAIN_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, RETAIN_HELLO_BODY);
 
   let err: unknown;
   await conn.synchronize().catch((e: unknown) => {
@@ -3587,11 +3611,11 @@ test("(d) a fully-synced hello missing a flag is a terminal usage error", async 
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   conn.id = ID_HIGH;
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(JSON.stringify({ locklessRendezvous: true })),
+  const peerHelloBody = Buffer.from(
+    JSON.stringify({ locklessRendezvous: true }),
   );
+  const peerHelloName = helloName(ID_LOW, peerHelloBody);
+  files.set(`${conn.path}/${peerHelloName}`, peerHelloBody);
 
   let err: unknown;
   await conn.synchronize().catch((e: unknown) => {
@@ -3606,13 +3630,11 @@ test("(d) a fully-synced hello with an out-of-type flag is a terminal usage erro
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   conn.id = ID_HIGH;
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: "yes", retainFiles: false }),
-    ),
+  const peerHelloBody = Buffer.from(
+    JSON.stringify({ locklessRendezvous: "yes", retainFiles: false }),
   );
+  const peerHelloName = helloName(ID_LOW, peerHelloBody);
+  files.set(`${conn.path}/${peerHelloName}`, peerHelloBody);
 
   let err: unknown;
   await conn.synchronize().catch((e: unknown) => {
@@ -3634,18 +3656,13 @@ test("(e) leftover hellos after a mismatch make a rerun rejected by the entry gu
     timeToLiveMs: 30_000,
   });
   conn.id = ID_HIGH; // lock
-  const peerHelloName = `${ID_LOW}-hello.json`;
-  files.set(
-    `${conn.path}/${peerHelloName}`,
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-    ),
-  );
+  const peerHelloName = helloName(ID_LOW, LOCKLESS_HELLO_BODY);
+  files.set(`${conn.path}/${peerHelloName}`, LOCKLESS_HELLO_BODY);
 
   await expect(conn.synchronize()).rejects.toBeInstanceOf(
     BilateralModeMismatchError,
   );
-  expect(files.has(`${conn.path}/${conn.id}-hello.json`)).toBe(true);
+  expect(files.has(`${conn.path}/${helloName(conn.id)}`)).toBe(true);
   expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
 
   // A rerun against the non-clean directory (fresh party id) is rejected by the
@@ -3973,78 +3990,88 @@ const ENTRY_SELF_ID = "00000000-0000-4000-8000-000000000001";
 const ENTRY_PEER_ID = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 const ENTRY_PEER_ID_2 = "11111111-1111-4111-8111-111111111111";
 
-// One row per file kind. `present` is what sits in the directory at entry. A
-// peer hello on a proceed row is read through the HelloEnvelope gate, so the
-// test body (below) gives it a full mode-matched envelope; every other kind is
-// rejected on filename before any body read, so those bodies stay "{}". Outcome
-// does not vary by mode (the rule is mode-agnostic), so each kind has a
-// single expected outcome and is run in both modes below.
+// One row per file kind. `present` is what sits in the directory at entry,
+// given the hello body of the cell's mode. A peer hello on a proceed row is
+// read through the HelloEnvelope gate, so the test body (below) gives every
+// sized control file that mode-matched envelope; every other kind is rejected
+// on filename before any body read, so those bodies stay "{}". Outcome does not
+// vary by mode (the rule is mode-agnostic), so each kind has a single expected
+// outcome and is run in both modes below.
 const entryPreconditionKinds: Array<{
   kind: string;
-  present: string[];
+  present: (helloBody: Buffer) => string[];
   outcome: "proceed" | "reject";
 }> = [
-  { kind: "empty directory", present: [], outcome: "proceed" },
+  { kind: "empty directory", present: () => [], outcome: "proceed" },
   {
     kind: "one peer hello",
-    present: [`${ENTRY_PEER_ID}-hello.json`],
+    present: (body) => [helloName(ENTRY_PEER_ID, body)],
     outcome: "proceed",
   },
   // A self-hello is a same-id leftover from a crashed session, not the peer's.
   {
     kind: "self-hello",
-    present: [`${ENTRY_SELF_ID}-hello.json`],
+    present: (body) => [helloName(ENTRY_SELF_ID, body)],
     outcome: "reject",
   },
-  // A bare "-hello.json" has an empty id: it is NOT a usable peer hello (it would
-  // commit rendezvous to peerId="") and must be rejected as an unexpected
+  // A bare "-hello-<n>.json" has an empty id: it is NOT a usable peer hello (it
+  // would commit rendezvous to peerId="") and must be rejected as an unexpected
   // protocol file, never tolerated as a phantom peer.
   {
     kind: "empty-id hello",
-    present: ["-hello.json"],
+    present: (body) => [helloName("", body)],
     outcome: "reject",
   },
   {
     kind: "two peer hellos",
-    present: [`${ENTRY_PEER_ID}-hello.json`, `${ENTRY_PEER_ID_2}-hello.json`],
+    present: (body) => [
+      helloName(ENTRY_PEER_ID, body),
+      helloName(ENTRY_PEER_ID_2, body),
+    ],
+    outcome: "reject",
+  },
+  // A partner hello in the shape an earlier version wrote, with no byte count.
+  {
+    kind: "peer hello with no byte count",
+    present: () => [`${ENTRY_PEER_ID}-hello.json`],
     outcome: "reject",
   },
   {
     kind: "lock file",
-    present: [`${ENTRY_SELF_ID}-${ENTRY_PEER_ID}-lock.json`],
+    present: () => [`${ENTRY_SELF_ID}-${ENTRY_PEER_ID}-lock.json`],
     outcome: "reject",
   },
   // A rendezvous ack marker (a crashed lockless session): a peer acking this
   // party's hello. Its terminal segment is `ack`, so it is not a peer hello.
   {
     kind: "rendezvous ack",
-    present: [`${ENTRY_PEER_ID}-${ENTRY_SELF_ID}-hello-ack.json`],
+    present: (body) => [helloAckName(ENTRY_PEER_ID, ENTRY_SELF_ID, body)],
     outcome: "reject",
   },
   // A joining sentinel left by a lock joiner that crashed mid-arrival. Its
-  // terminal segment is the type word `joining`, so it is neither a peer hello
-  // nor a message -- but the directory must be clean at entry, so the strict-
-  // empty guard rejects it (and a fresh joiner must not adopt a stale one).
+  // type word is `joining`, so it is neither a peer hello nor a message --
+  // but the directory must be clean at entry, so the strict-empty guard
+  // rejects it (and a fresh joiner must not adopt a stale one).
   {
     kind: "joining sentinel",
-    present: [`${ENTRY_PEER_ID}-joining.json`],
+    present: (body) => [joiningName(ENTRY_PEER_ID, body)],
     outcome: "reject",
   },
   {
     kind: "non-timestamped message",
-    present: [`${ENTRY_PEER_ID}-42.json`],
+    present: () => [`${ENTRY_PEER_ID}-42.json`],
     outcome: "reject",
   },
   {
     kind: "timestamped message",
-    present: [`${ENTRY_PEER_ID}-20260101T000000-000-42.json`],
+    present: () => [`${ENTRY_PEER_ID}-20260101T000000-000-42.json`],
     outcome: "reject",
   },
   // A retain-mode message ack: the peer acking a message this party sent. The
   // embedded byte-count (2) is all digits but the terminal segment is `ack`.
   {
     kind: "message ack",
-    present: [
+    present: () => [
       `${ENTRY_PEER_ID}-${ENTRY_SELF_ID}-20260101T000000-000-2-ack.json`,
     ],
     outcome: "reject",
@@ -4056,7 +4083,7 @@ const entryPreconditionKinds: Array<{
   // violation.
   {
     kind: "temp file",
-    present: ["temp-00000000-0000-4000-8000-00000000abcd.tmp"],
+    present: () => ["temp-00000000-0000-4000-8000-00000000abcd.tmp"],
     outcome: "proceed",
   },
   // A foreign temp-*.tmp whose stem is NOT a v4 UUID is not the protocol's temp
@@ -4065,7 +4092,7 @@ const entryPreconditionKinds: Array<{
   // (then times out waiting for a peer), exactly as notes.txt does below.
   {
     kind: "foreign temp file",
-    present: ["temp-export.tmp"],
+    present: () => ["temp-export.tmp"],
     outcome: "proceed",
   },
   // A foreign (non-protocol) file is snapshotted and tolerated at entry:
@@ -4073,7 +4100,7 @@ const entryPreconditionKinds: Array<{
   // proceeds past the guard (then times out waiting for a peer in this setup).
   // A message-shaped <id>-<digits>.json is NOT foreign -- it matches the grammar
   // and stays in the "reject" rows above.
-  { kind: "foreign file", present: ["notes.txt"], outcome: "proceed" },
+  { kind: "foreign file", present: () => ["notes.txt"], outcome: "proceed" },
 ];
 
 const entryPreconditionModes: Array<{ label: string; retain: boolean }> = [
@@ -4081,30 +4108,34 @@ const entryPreconditionModes: Array<{ label: string; retain: boolean }> = [
   { label: "retain mode", retain: true },
 ];
 
-const entryPreconditionCells = entryPreconditionModes.flatMap((mode) =>
-  entryPreconditionKinds.map((k) => ({
+const entryPreconditionCells = entryPreconditionModes.flatMap((mode) => {
+  const helloBody = helloBodyFor({
+    locklessRendezvous: mode.retain,
+    retainFiles: mode.retain,
+  });
+  return entryPreconditionKinds.map((k) => ({
     name: `${k.kind} (${mode.label})`,
-    present: k.present,
+    present: k.present(helloBody),
+    helloBody,
     retain: mode.retain,
     outcome: k.outcome,
-  })),
-);
+  }));
+});
 
 test.each(entryPreconditionCells)(
   "synchronize() entry precondition: $name -> $outcome",
-  async ({ present, retain, outcome }) => {
+  async ({ present, helloBody, retain, outcome }) => {
     const { client, files } = makeMockClient();
     // A peer hello in the "proceed" row is read through the HelloEnvelope gate,
-    // so it must advertise flags matching this conn's mode; other
-    // present-file kinds are rejected on filename before any body read, so an
-    // empty body is fine for them.
-    const helloBody = Buffer.from(
-      JSON.stringify({ locklessRendezvous: retain, retainFiles: retain }),
-    );
+    // so it must advertise flags matching this conn's mode and be the size its
+    // name states; other present-file kinds are rejected on filename before any
+    // body read, so an empty body is fine for them.
     for (const name of present)
       files.set(
         `/test/${name}`,
-        name.endsWith("-hello.json") ? helloBody : Buffer.from("{}"),
+        parseSizedControlName(name) !== undefined
+          ? helloBody
+          : Buffer.from("{}"),
       );
 
     const conn = new FileSyncConnection(client, {
@@ -5127,19 +5158,27 @@ test("poll(): recognized loop files (hellos, acks, lock, our writes, temp) never
     const conn = await makeConnectedConn(client, { pollingFrequency: 5 });
     conn.id = "me";
     conn.peerId = "peer";
+    // Committed by rendezvous alongside peerId.
+    conn.helloNames = { self: helloName("me"), peer: helloName("peer") };
 
     const recognized = [
-      "me-hello.json", // our hello
-      "peer-hello.json", // peer hello
+      helloName("me"), // our hello
+      helloName("peer"), // peer hello
       "me-peer-lock.json", // lock tiebreaker (we arrived first)
       "peer-me-lock.json", // lock tiebreaker, reverse arrival order (peer first)
-      "me-peer-hello-ack.json", // our rendezvous ack of the peer hello
-      "peer-me-hello-ack.json", // peer rendezvous ack of our hello
+      helloAckName("me", "peer"), // our rendezvous ack of the peer hello
+      helloAckName("peer", "me"), // peer rendezvous ack of our hello
       "me-peer-20260101T000000-000-42-ack.json", // our message-ack
       "peer-me-20260101T000000-000-42-ack.json", // peer message-ack
       "temp-66666666-6666-4666-8666-666666666666.tmp", // in-flight write
     ];
-    for (const name of recognized) files.set(`/test/${name}`, Buffer.alloc(0));
+    for (const name of recognized)
+      files.set(
+        `/test/${name}`,
+        parseSizedControlName(name) !== undefined
+          ? LOCK_HELLO_BODY
+          : Buffer.alloc(0),
+      );
 
     // A real, fully-synced delete-mode peer message that must be delivered.
     const message = objectMessage({ ok: true });
@@ -5506,7 +5545,7 @@ test("close() during a parked rendezvous gate read completes teardown cleanly de
   // and parks. This read IS under the rendezvous outer catch, so an abort drives
   // its safeDelete sweep during teardown. The hello body is never read (get()
   // always throws), so its contents are irrelevant.
-  files.set("/test/peer-hello.json", LOCK_HELLO_BODY);
+  files.set(`/test/${helloName("peer")}`, LOCK_HELLO_BODY);
   let reachedGate!: () => void;
   const parked = new Promise<void>((r) => (reachedGate = r));
   client.get = async () => {
@@ -5578,9 +5617,9 @@ test("poll refuses an over-cap message before reading it into memory", async () 
 test("poll reports an adapter frame-size cap as a terminal error", async () => {
   // A server that under-reports a file's size in its directory listing slips
   // past the pre-get() size check, so the adapter's hard read cap fires during
-  // get() instead. That FrameSizeExceededError must be terminal -- the poller
-  // must not re-read the same file every cycle (which would re-incur the very
-  // allocation the cap prevents).
+  // get() instead, at the count the name states. That refusal must be
+  // terminal -- the poller must not re-read the same file every cycle (which
+  // would re-incur the very allocation the cap prevents).
   const peerId = "peer-test";
   let getCount = 0;
   let errors: unknown[] = [];
@@ -5606,7 +5645,10 @@ test("poll reports an adapter frame-size cap as a terminal error", async () => {
   });
 
   expect(errors).toHaveLength(1);
-  expect(errors[0]).toBeInstanceOf(FrameSizeExceededError);
+  expect(errors[0]).toBeInstanceOf(UsageError);
+  expect((errors[0] as Error).message).toContain(
+    "is larger than the 5 byte(s) its name states",
+  );
   expect(getCount).toBe(1);
 });
 
@@ -5773,7 +5815,7 @@ test("split directories: a full retain-mode exchange between two bridged parties
     n.startsWith("party-a-") &&
     n.endsWith(".json") &&
     !n.endsWith("-ack.json") &&
-    !n.endsWith("-hello.json");
+    parseSizedControlName(n) === undefined;
 
   // A's three messages live only in its outbound; B's acks live only in its
   // outbound. Nothing crossed directories in EITHER direction, and no in-flight
@@ -6089,7 +6131,9 @@ describe("connection-per-poll idle-boundary signal", () => {
       inactivityTimeoutMs: 200,
     });
     conn.peerId = "stub-peer";
-    conn.armAbort(new Uint8Array(32).fill(7), new Uint8Array(32).fill(9));
+    const selfToken = new Uint8Array(32).fill(7);
+    conn.armAbort(selfToken, new Uint8Array(32).fill(9));
+    const markerName = abortMarkerName(conn.id, selfToken);
 
     // close() parks on the abort decision; the write resolves it, and close()
     // awaits that write before it reaches anything else.
@@ -6098,10 +6142,10 @@ describe("connection-per-poll idle-boundary signal", () => {
     await closeP;
 
     const markerIdx = trace.findIndex(
-      (entry) => entry.startsWith("rename ") && entry.endsWith("-abort.json"),
+      (entry) => entry === `rename /test/${markerName}`,
     );
     expect(markerIdx).toBeGreaterThanOrEqual(0);
-    expect(files.has(`/test/${conn.id}-abort.json`)).toBe(true);
+    expect(files.has(`/test/${markerName}`)).toBe(true);
     // Nothing established a session ahead of the marker write, and teardown
     // established one after it -- so the ordering is not vacuous.
     expect(trace.slice(0, markerIdx)).not.toContain("ensure");
@@ -6234,17 +6278,18 @@ describe("connection-per-poll idle-boundary signal", () => {
     // the entry scan snapshots; the peer's ack of this party's hello arrives
     // only after that scan, so the lockless barrier completes on a later poll.
     files.set(
-      "/test/zzz-hello.json",
-      Buffer.from(
-        JSON.stringify({ locklessRendezvous: true, retainFiles: false }),
-      ),
+      `/test/${helloName("zzz", LOCKLESS_HELLO_BODY)}`,
+      LOCKLESS_HELLO_BODY,
     );
     files.set("/test/notes.txt", Buffer.from("unrelated"));
     let listCalls = 0;
     const origList = client.list.bind(client);
     client.list = async (dir: string) => {
       if (listCalls++ === 1)
-        files.set("/test/zzz-aaa-hello-ack.json", Buffer.alloc(0));
+        files.set(
+          `/test/${helloAckName("zzz", "aaa", LOCKLESS_HELLO_BODY)}`,
+          Buffer.alloc(0),
+        );
       return origList(dir);
     };
 
@@ -6269,8 +6314,8 @@ describe("connection-per-poll idle-boundary signal", () => {
     expect(before.peerId).toBe("zzz");
     expect(before.role).toBe("starter");
     expect(before.responsible).toEqual([
-      "aaa-hello.json",
-      "aaa-zzz-hello-ack.json",
+      helloName("aaa", LOCKLESS_HELLO_BODY),
+      helloAckName("aaa", "zzz", LOCKLESS_HELLO_BODY),
     ]);
     expect(before.snapshot).toEqual(["notes.txt"]);
     expect(dials).toBe(0);
@@ -6388,7 +6433,7 @@ test("a delivered peer message clears unconfirmedEntryPeerHello", async () => {
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   conn.id = ID_HIGH;
-  const peerHelloName = `${ID_LOW}-hello.json`;
+  const peerHelloName = helloName(ID_LOW);
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
   await conn.synchronize();
   expect(conn.unconfirmedEntryPeerHello).toBe(peerHelloName);

@@ -1163,10 +1163,10 @@ async function authenticateRun(params: {
 
   // Arm the authenticated cross-party abort marker now that the session
   // key is in hand (the only path that holds one): derive this party's
-  // token -- written into <myId>-abort.json on a terminal organic fault
+  // token -- written into <myId>-abort-<n>.json on a terminal organic fault
   // so a waiting peer fails fast instead of waiting out its full
   // inactivity timeout -- and the peer's, verified against an incoming
-  // <peerId>-abort.json. Placed after the signal guard so an interrupt
+  // <peerId>-abort-<n>.json. Placed after the signal guard so an interrupt
   // during setup bails before arming.
   //
   // Armed unconditionally, including retain mode: the fast-fail

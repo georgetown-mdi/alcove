@@ -54,12 +54,18 @@ import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
 import {
-  HELLO_SUFFIX,
+  getUpToNamedCount,
+  largerThanNamedCountMessage,
+} from "./namedCountRead";
+import {
   LOCK_SUFFIX,
-  JOINING_SUFFIX,
-  ABORT_SUFFIX,
   ackMarkerName,
+  legacyHelloWriterId,
+  parseSizedControlName,
   peerIdFromControlName,
+  sizedControlName,
+  type SizedControlType,
+  type AgreedHelloNames,
   helloTempName,
   isHelloTempName,
   isProtocolTempName,
@@ -163,18 +169,18 @@ const chainForceRetainSweepStep = (err: UsageError): void => {
 };
 
 // Reads the hello control file through the I5 partial-sync gate: refuses a
-// file listed over HELLO_MAX_BYTES before any read, then retries a
-// transient get() or JSON-parse failure until timeToLive expires, then
-// throws a transport Error. A typed UsageError from get() -- an over-cap
+// file named at 0 bytes, listed or named over HELLO_MAX_BYTES, or listed
+// larger than the byte count its name states, before any read; then retries
+// a transient get() failure or a body shorter than that count until
+// timeToLive expires, then throws a transport Error. A typed UsageError from get() -- an over-cap
 // body or a stalled read -- is terminal and not retried, since retrying
 // cannot fix a usage fault and would let a hostile server hold the gate
-// open until the deadline; a body that fails the envelope schema is
-// terminal for the same reason. Peer-id recovery is always filename-based;
-// this validates the body only.
+// open until the deadline; a body longer than its count, or one of exactly
+// its count that fails to parse or fails the envelope schema, is terminal
+// for the same reason. Peer-id recovery is always filename-based; this
+// validates the body only.
 //
-// The hello is the only control file with a body (schema is always
-// HelloEnvelopeSchema); the ack marker is zero-length and matched by name,
-// so it needs no gate.
+// The ack marker is zero-length and matched by name, so it needs no gate.
 /** @internal */
 export async function readControlFileWithGate(
   client: FileTransportClient,
@@ -186,13 +192,32 @@ export async function readControlFileWithGate(
   provenance: PeerHelloProvenance,
   signal: AbortSignal,
 ): Promise<HelloEnvelope> {
-  if (listedSize > HELLO_MAX_BYTES)
+  const declaredSize = parseSizedControlName(
+    filePath.slice(filePath.lastIndexOf("/") + 1),
+  )?.byteCount;
+  if (declaredSize === undefined)
+    throw new MalformedHelloError(
+      `control file at ${redactPrivateKeyMaterial(filePath)} has no byte ` +
+        "count in its name",
+    );
+  if (declaredSize === 0)
+    throw new MalformedHelloError(
+      `control file at ${redactPrivateKeyMaterial(filePath)} states 0 bytes ` +
+        "in its name, and a hello is never empty",
+    );
+  if (listedSize > HELLO_MAX_BYTES || declaredSize > HELLO_MAX_BYTES)
     throw new FrameSizeExceededError(
-      `a peer hello is listed at ${listedSize} byte(s), exceeding the ` +
-        `maximum control file size of ${HELLO_MAX_BYTES} bytes; refusing to ` +
-        `read it`,
+      `a peer hello is listed at ${listedSize} byte(s) and its name states ` +
+        `${declaredSize}, exceeding the maximum control file size of ` +
+        `${HELLO_MAX_BYTES} bytes; refusing to read it`,
       { details: [`control file: ${redactPrivateKeyMaterial(filePath)}`] },
     );
+  const sizeMismatch = (actual: number) =>
+    new MalformedHelloError(
+      `control file at ${redactPrivateKeyMaterial(filePath)} is ${actual} ` +
+        `byte(s), more than the ${declaredSize} its name states`,
+    );
+  if (listedSize > declaredSize) throw sizeMismatch(listedSize);
   // do-while guarantees at least one read attempt even when timeToLive has
   // already expired by the time the gate is entered (e.g. a slow polling loop
   // that exhausts the budget before reaching this call). Without this a fully-
@@ -200,13 +225,24 @@ export async function readControlFileWithGate(
   do {
     let raw: Buffer<ArrayBufferLike>;
     try {
-      raw = await client.get(filePath, {
-        encoding: "utf-8",
-        maxBytes: HELLO_MAX_BYTES,
-      });
+      // Bounded by the count the name states, already refused above when
+      // over HELLO_MAX_BYTES: a larger body is never buffered past it.
+      raw = await getUpToNamedCount(
+        client,
+        filePath,
+        declaredSize,
+        "utf-8",
+        () =>
+          new MalformedHelloError(
+            largerThanNamedCountMessage(
+              `control file at ${redactPrivateKeyMaterial(filePath)}`,
+              declaredSize,
+            ),
+          ),
+      );
     } catch (err) {
-      // A typed UsageError from get() (FrameSizeExceededError,
-      // TransportOperationStalledError) is terminal: rethrow so
+      // A typed UsageError from get() (a body past the named count, a
+      // stalled read) is terminal: rethrow so
       // synchronize() exits as the typed exit-64 failure instead of being
       // retried, which would let a hostile server hold the gate open every
       // cycle until the deadline. The malformed-payload UsageError thrown
@@ -216,23 +252,26 @@ export async function readControlFileWithGate(
       await cancellableDelay(pollingFrequency, signal);
       continue;
     }
+    if (raw.length > declaredSize) throw sizeMismatch(raw.length);
+    if (raw.length < declaredSize) {
+      // Partial write or sync: not all the declared bytes have arrived yet.
+      await cancellableDelay(pollingFrequency, signal);
+      continue;
+    }
     let parsed: unknown;
     try {
       parsed = parseBoundedJson(raw.toString());
     } catch (err) {
-      // A structurally pathological control file is fully formed, not a partial
-      // write -- retrying cannot make it valid -- so reject it terminally like
-      // the message-body parse, rather than re-reading it every poll cycle to
-      // the peer timeout. A genuine partial write fails the parse (never the
-      // structural bound) and still retries.
-      if (err instanceof JsonStructureBoundError)
-        throw new MalformedHelloError(
-          `control file at ${redactPrivateKeyMaterial(filePath)} has a ` +
-            `malformed payload: structure exceeds the permitted bound`,
-        );
-      // Partial write: body is not valid JSON yet; retry until fully synced.
-      await cancellableDelay(pollingFrequency, signal);
-      continue;
+      // Every declared byte has arrived, so the body is fully formed and
+      // retrying cannot make it valid: refused like a message body that fails
+      // to parse after its size gate.
+      throw new MalformedHelloError(
+        `control file at ${redactPrivateKeyMaterial(filePath)} has a ` +
+          "malformed payload: " +
+          (err instanceof JsonStructureBoundError
+            ? "structure exceeds the permitted bound"
+            : "it is not valid JSON"),
+      );
     }
     const result = schema.safeParse(parsed);
     if (!result.success) {
@@ -397,26 +436,54 @@ function peerIdPairRefusal(
   );
 }
 
-// True when `name` is a peer's hello (`<peerId>-hello.json`): it ends with
-// HELLO_SUFFIX, recovers a non-empty id (peerIdFromControlName), and that id
-// is not the querying party's own. The single definition of "a peer hello",
-// shared by the entry guard and the in-flight lock/lockless scans: a bare
-// `-hello.json` (empty id) is never a peer hello, whether present at entry
-// or injected mid-rendezvous.
+// True when `name` is a peer's hello (`<peerId>-hello-<byteCount>.json`): it
+// recovers a non-empty id (peerIdFromControlName), and that id is not the
+// querying party's own. The single definition of "a peer hello", shared by the
+// entry guard and the in-flight lock/lockless scans: a bare `-hello-<n>.json`
+// (empty id) is never a peer hello, whether present at entry or injected
+// mid-rendezvous.
 /** @internal */
 export function isPeerHelloName(name: string, selfId: string): boolean {
-  const id = peerIdFromControlName(name, HELLO_SUFFIX);
+  const id = peerIdFromControlName(name, "hello");
   return id !== undefined && id !== selfId;
 }
 
-// True when `name` is a peer's joining sentinel (`<peerId>-joining.json`): the
-// joining counterpart of isPeerHelloName. A bare `-joining.json` (empty id) is
-// rejected, so it is never treated as a real joiner arrival and never starts
-// the lock-path joiner-recovery (joinerRecoveryMs) window.
+// True when `name` is a peer's joining sentinel
+// (`<peerId>-joining-<byteCount>.json`): the joining counterpart of
+// isPeerHelloName. A bare `-joining-<n>.json` (empty id) is rejected, so it is
+// never treated as a real joiner arrival and never starts the lock-path
+// joiner-recovery (joinerRecoveryMs) window.
 /** @internal */
 export function isPeerJoiningName(name: string, selfId: string): boolean {
-  const id = peerIdFromControlName(name, JOINING_SUFFIX);
+  const id = peerIdFromControlName(name, "joining");
   return id !== undefined && id !== selfId;
+}
+
+// The writer id of a hello or joining sentinel a scan has already matched by
+// name, so it parses.
+const controlWriterId = (name: string): string =>
+  parseSizedControlName(name)!.id;
+
+// Refuses a partner hello in the name shape an earlier version wrote, with no
+// byte count: that partner cannot read this party's names either, so waiting
+// for it would end only at the peer timeout. The entry scan applies it ahead of
+// --sweep-exchange-files too, whose retain inspection cannot read that hello.
+/** @internal */
+export function legacyPeerHelloRefusal(
+  files: ReadonlyArray<FileInfo>,
+  selfId: string,
+): UsageError | undefined {
+  const legacy = files.find((file) => {
+    const id = legacyHelloWriterId(file.name);
+    return id !== undefined && id !== selfId;
+  });
+  if (legacy === undefined) return undefined;
+  return new UsageError(
+    `the partner hello ${redactPrivateKeyMaterial(legacy.name)} has no byte ` +
+      "count in its name, so it was written by an earlier Alcove version " +
+      "this one cannot exchange with. Both parties must run the same Alcove " +
+      "version; if the file is left over from an earlier run, remove it.",
+  );
 }
 
 // Bounds the pre-sweep retain-signal inspection's peer-hello read (see
@@ -695,7 +762,12 @@ export interface RendezvousDeps {
   peerId: () => string | undefined;
   handshakeRole: () => HandshakeRole | undefined;
   setRole: (role: string) => void;
-  setPeerId: (peerId: string | undefined) => void;
+  // Commits the peer id with the two hello names the message loop recognizes,
+  // or clears both with undefined.
+  setPeerId: (
+    peerId: string | undefined,
+    helloNames: AgreedHelloNames | undefined,
+  ) => void;
   setHandshakeRole: (role: HandshakeRole | undefined) => void;
   // Records the peer hello found in the directory at entry, and clears it (with
   // undefined) at the first observation attributable to a LIVE peer. The
@@ -723,6 +795,20 @@ export interface RendezvousDeps {
 export class FileSyncRendezvous {
   constructor(private readonly deps: RendezvousDeps) {}
 
+  // The body of this party's hello and joining sentinel. It depends only on
+  // the two mode flags, so both names state one byte count for the whole run.
+  private helloBody(): Buffer {
+    return serializeEnvelope(helloEnvelope(this.deps.options()));
+  }
+
+  private ownControlName(type: Exclude<SizedControlType, "abort">): string {
+    return sizedControlName(this.deps.id(), type, this.helloBody().length);
+  }
+
+  private agreedHelloNames(peerHelloName: string): AgreedHelloNames {
+    return { self: this.ownControlName("hello"), peer: peerHelloName };
+  }
+
   /**
    * Negotiates rendezvous with the peer: scans and classifies the entry
    * directory, then dispatches to the lock-joiner fast-path or the symmetric
@@ -745,7 +831,7 @@ export class FileSyncRendezvous {
     // requires lockless), so routing it through outbound is correct there too.
     const helloPath = joinFileSyncPath(
       scope.outboundPath,
-      `${deps.id()}${HELLO_SUFFIX}`,
+      this.ownControlName("hello"),
     );
 
     // The at-most-one peer hello that PREDATED this run. It is the only hello
@@ -767,8 +853,8 @@ export class FileSyncRendezvous {
 
   // Writes this party's hello temp-then-rename, matching every other
   // payload-bearing write (send()'s message write, writeAck(), the
-  // joiner's sentinel): the final `<id>-hello.json` appears only at the
-  // atomic rename, so no reader ever observes it torn. A hard kill
+  // joiner's sentinel): the final `<id>-hello-<byteCount>.json` appears only
+  // at the atomic rename, so no reader ever observes it torn. A hard kill
   // mid-write leaves an inert `temp-hello-<uuid>.tmp`, tolerated by the
   // next entry scan, rather than a half-written hello under its final name
   // that the I5a read gate would retry for its whole budget.
@@ -789,7 +875,7 @@ export class FileSyncRendezvous {
   ): Promise<void> {
     const { deps } = this;
     const finalPath = joinFileSyncPath(dir, name);
-    const body = serializeEnvelope(helloEnvelope(deps.options()));
+    const body = this.helloBody();
     if (deps.options().writeWithoutRenaming) {
       if (track && !deps.options().retainFiles) deps.responsibleFiles.add(name);
       await deps
@@ -1104,8 +1190,8 @@ export class FileSyncRendezvous {
     // pre-exist as the protocol grows; the foreign-file snapshot is a sibling
     // tolerance mechanism for grammar-failing names.
     //
-    // A peer hello is `<peerId>-hello.json` with a non-empty id that is not
-    // our own (isPeerHelloName). A bare `-hello.json` slices to an empty id
+    // A peer hello is `<peerId>-hello-<n>.json` with a non-empty id that is not
+    // our own (isPeerHelloName). A bare `-hello-<n>.json` parses to an empty id
     // and is NOT a peer hello: it still matches the grammar
     // (isProtocolGrammarName), so it falls into unexpectedProtocol, is
     // rejected at the no-flag guard, and is swept under
@@ -1167,12 +1253,12 @@ export class FileSyncRendezvous {
 
     // Recognize-and-sweep leftover authenticated abort markers, mirroring
     // the orphaned-temp sweep above. Every authenticated terminal failure
-    // leaves a `<writerId>-abort.json`, which must persist for the peer to
+    // leaves a `<writerId>-abort-<n>.json`, which must persist for the peer to
     // read; a subsequent exchange reusing the directory would otherwise
     // find it and reject "directory not clean". Both parties retry under
     // fresh ids, so the sweep matches any well-formed marker
-    // (`<id>-abort.json` with a non-empty recovered id via
-    // peerIdFromControlName), whichever id wrote it. A bare `-abort.json`
+    // (`<id>-abort-<n>.json` with a non-empty recovered id via
+    // peerIdFromControlName), whichever id wrote it. A bare `-abort-<n>.json`
     // recovers no id and stays an unexpected protocol file; a
     // grammar-failing name is foreign and is never touched here.
     //
@@ -1204,7 +1290,7 @@ export class FileSyncRendezvous {
       : files.filter(
           (file) =>
             !ignored.has(file.name) &&
-            peerIdFromControlName(file.name, ABORT_SUFFIX) !== undefined,
+            peerIdFromControlName(file.name, "abort") !== undefined,
         );
     leftoverAbortFiles.forEach((file) => ignored.add(file.name));
 
@@ -1282,6 +1368,8 @@ export class FileSyncRendezvous {
           );
     }
 
+    const legacyRefusal = legacyPeerHelloRefusal(files, deps.id());
+    if (legacyRefusal) throw legacyRefusal;
     if (deps.options().sweepExchangeFiles) {
       // Opt-in sweep: clear this exchange's protocol files (its own AND the
       // peer's) and rendezvous against a clean slate, after a retain-signal
@@ -1393,7 +1481,7 @@ export class FileSyncRendezvous {
       try {
         await this.writeHello(
           scope.outboundPath,
-          `${deps.id()}${HELLO_SUFFIX}`,
+          this.ownControlName("hello"),
           false,
         );
         return;
@@ -1436,7 +1524,7 @@ export class FileSyncRendezvous {
   }
 
   // Lock-mode joiner fast-path: a single peer hello is already present and
-  // this party is in lock mode, so it arrives via a `<id>-joining.json`
+  // this party is in lock mode, so it arrives via a `<id>-joining-<n>.json`
   // sentinel that holds its hello body, deletes the discovered peer hello,
   // and renames the sentinel into place. Commits role/peerId only after
   // both writes succeed.
@@ -1461,12 +1549,12 @@ export class FileSyncRendezvous {
     const { deps } = this;
     const otherFile = peerHello;
     const otherPath = joinFileSyncPath(scope.inboundPath, otherFile.name);
-    const peerId = otherFile.name.slice(0, -HELLO_SUFFIX.length);
+    const peerId = controlWriterId(otherFile.name);
 
     deps
       .log()
       .debug(
-        `[joiner] arriving via ${deps.id()}${JOINING_SUFFIX} sentinel, ` +
+        `[joiner] arriving via ${this.ownControlName("joining")} sentinel, ` +
           `deleting discovered ${redactAndSanitizeForDisplay(otherFile.name)}`,
       );
 
@@ -1497,7 +1585,7 @@ export class FileSyncRendezvous {
     if (refusal) {
       await this.advertiseHelloBeforeRefusal(scope);
       // Reset role/peer fields, mirroring the outer catch.
-      deps.setPeerId(undefined);
+      deps.setPeerId(undefined, undefined);
       deps.setRole("unknown role");
       deps.setHandshakeRole(undefined);
       deps.clearAbortMarker();
@@ -1510,23 +1598,23 @@ export class FileSyncRendezvous {
     // inconsistent state: if the delete lands but the put fails, the peer's
     // waitForPeer cannot tell "joiner mid-write" from "joiner crashed", so
     // it polls to the full peerTimeoutMs. Instead, write a
-    // `<id>-joining.json` sentinel holding our hello body, delete the peer
+    // `<id>-joining-<n>.json` sentinel holding our hello body, delete the peer
     // hello, then rename the sentinel to our hello. The rename is atomic,
     // so the sentinel exists across exactly the window where the peer
     // hello may already be gone but ours is not yet present, and the peer
     // recognizes it as a wait signal (see waitForPeer). We never re-create
     // the peer's hello on failure: that races the peer's next list() and
     // can trip the two-hello collision check (I1).
-    const joiningName = `${deps.id()}${JOINING_SUFFIX}`;
+    const joiningName = this.ownControlName("joining");
     const joiningPath = joinFileSyncPath(scope.inboundPath, joiningName);
-    const helloName = `${deps.id()}${HELLO_SUFFIX}`;
+    const helloName = this.ownControlName("hello");
     try {
       // The `!options.retainFiles` guards below match the file-wide
       // responsibleFiles idiom (every mutation is `!retainFiles`-guarded, I4a);
       // retain mode never reaches this lock joiner fast-path.
       //
       // The sentinel holds the hello body so the rename below yields a
-      // fully-valid `<id>-hello.json` the peer reads through its gate; the
+      // fully-valid `<id>-hello-<n>.json` the peer reads through its gate; the
       // peer itself matches the sentinel by name existence and never reads
       // it. Written temp-then-rename like the hello.
       await this.writeHello(scope.inboundPath, joiningName, true);
@@ -1585,7 +1673,7 @@ export class FileSyncRendezvous {
     // not actually exist.
     deps.setHandshakeRole("initiator");
     deps.setRole("joiner");
-    deps.setPeerId(peerId);
+    deps.setPeerId(peerId, this.agreedHelloNames(otherFile.name));
   }
 
   // The joiner's sentinel delete after a direct hello write. The hello is
@@ -1648,15 +1736,17 @@ export class FileSyncRendezvous {
 
     deps
       .log()
-      .debug(`[${deps.role()}] creating initial ${deps.id()}${HELLO_SUFFIX}`);
-    await this.writeHello(outboundPath, `${deps.id()}${HELLO_SUFFIX}`, true);
+      .debug(
+        `[${deps.role()}] creating initial ${this.ownControlName("hello")}`,
+      );
+    await this.writeHello(outboundPath, this.ownControlName("hello"), true);
     // Tracked after the durable rename (delete mode only), with no throwable
     // statement between it and the rename inside writeHello, exactly as the
     // ack write does: the final name only appears at that atomic step, so there
     // is no orphan window a pre-track would cover (I4a). A direct write is
     // pre-tracked inside writeHello instead.
     if (!deps.options().retainFiles)
-      deps.responsibleFiles.add(`${deps.id()}${HELLO_SUFFIX}`);
+      deps.responsibleFiles.add(this.ownControlName("hello"));
     let lockPath: string | undefined;
     let ackPath: string | undefined;
     let ackedPeerHelloName: string | undefined;
@@ -1684,6 +1774,8 @@ export class FileSyncRendezvous {
         // non-null assertion is safe here.
         while (Date.now() <= deps.options().timeToLive!.getTime()) {
           const currentFiles = await deps.client().list(scope.inboundPath);
+          const legacyRefusal = legacyPeerHelloRefusal(currentFiles, deps.id());
+          if (legacyRefusal) throw legacyRefusal;
 
           const fileNames = currentFiles.map((file) => file.name);
           if (!deps.options().retainFiles)
@@ -1692,7 +1784,7 @@ export class FileSyncRendezvous {
                 deps.responsibleFiles.delete(fileName);
             });
 
-          // isPeerHelloName excludes our own hello and a bare `-hello.json`
+          // isPeerHelloName excludes our own hello and a bare `-hello-<n>.json`
           // (empty id) injected after entry, which would otherwise be
           // adopted as peerId="".
           const peerHellos = currentFiles.filter((file) =>
@@ -1714,7 +1806,7 @@ export class FileSyncRendezvous {
           }
 
           const peerHello = peerHellos[0];
-          const peerId = peerHello.name.slice(0, -HELLO_SUFFIX.length);
+          const peerId = controlWriterId(peerHello.name);
 
           // The checks below ran on the hello this party acked; a different
           // one in a later listing was neither read nor acked.
@@ -1806,7 +1898,7 @@ export class FileSyncRendezvous {
           // stem and the peer id we already hold, then match by existence: the
           // marker is zero-length, so its name appearing is completion and no
           // body is read.
-          const myHelloName = `${deps.id()}${HELLO_SUFFIX}`;
+          const myHelloName = this.ownControlName("hello");
           const peerAckName = ackMarkerName(
             peerId,
             myHelloName.slice(0, -".json".length),
@@ -1862,10 +1954,10 @@ export class FileSyncRendezvous {
           // the same invariant as the joiner path (see above): if the ack
           // write fails before this point, this.peerId stays undefined and
           // the "already synchronized" guard allows a retry on this instance.
-          const arrivedFirst = `${deps.id()}${HELLO_SUFFIX}` < peerHello.name;
+          const arrivedFirst = this.ownControlName("hello") < peerHello.name;
           deps.setHandshakeRole(arrivedFirst ? "responder" : "initiator");
           deps.setRole(arrivedFirst ? "starter" : "joiner");
-          deps.setPeerId(peerId);
+          deps.setPeerId(peerId, this.agreedHelloNames(peerHello.name));
 
           deps
             .log()
@@ -1902,6 +1994,8 @@ export class FileSyncRendezvous {
       // assertion is safe here.
       while (Date.now() <= deps.options().timeToLive!.getTime()) {
         const currentFiles = await deps.client().list(scope.inboundPath);
+        const legacyRefusal = legacyPeerHelloRefusal(currentFiles, deps.id());
+        if (legacyRefusal) throw legacyRefusal;
 
         const fileNames = currentFiles.map((file) => file.name);
         if (!deps.options().retainFiles)
@@ -1910,25 +2004,25 @@ export class FileSyncRendezvous {
               deps.responsibleFiles.delete(fileName);
           });
 
-        // isPeerHelloName excludes our own hello and a bare `-hello.json`
+        // isPeerHelloName excludes our own hello and a bare `-hello-<n>.json`
         // (empty id) injected after entry, which would otherwise slice to
         // peerId="" at the role-commit sites below.
         const otherFiles = currentFiles.filter((file) =>
           isPeerHelloName(file.name, deps.id()),
         );
         const theseFiles = currentFiles.filter(
-          (file) => file.name === `${deps.id()}${HELLO_SUFFIX}`,
+          (file) => file.name === this.ownControlName("hello"),
         );
         const lockFiles = currentFiles.filter((file) =>
           file.name.endsWith(LOCK_SUFFIX),
         );
-        // A `<peerId>-joining.json` sentinel marks a joiner mid-arrival: it
+        // A `<peerId>-joining-<n>.json` sentinel marks a joiner mid-arrival: it
         // has begun the put(sentinel) -> delete(our hello) ->
         // rename(sentinel -> its hello) sequence the lock joiner uses in
         // place of a bare delete-then-put. Its presence distinguishes a
         // live-but-incomplete joiner from a crashed one, which a bare
         // otherFiles.length === 0 cannot. isPeerJoiningName excludes a
-        // self-named sentinel and a bare `-joining.json` (empty id), so a
+        // self-named sentinel and a bare `-joining-<n>.json` (empty id), so a
         // planted empty-id sentinel does not start the joiner-recovery
         // (joinerRecoveryMs) window below.
         const joiningFiles = currentFiles.filter((file) =>
@@ -2022,7 +2116,7 @@ export class FileSyncRendezvous {
         // parties wrote hellos), so the recovery timer is stale. A
         // sentinel may still be visible in two benign cases: the peer's own
         // rename is mid-propagation on a sync-mediated transport, so its
-        // `<peerId>-joining.json` and `<peerId>-hello.json` momentarily
+        // `<peerId>-joining-<n>.json` and `<peerId>-hello-<n>.json` momentarily
         // coexist (the rename is atomic at the SFTP layer, not necessarily
         // at the sync-tool layer), or the peer writes without renaming and
         // deletes its sentinel only after writing its hello. That same-id
@@ -2038,11 +2132,10 @@ export class FileSyncRendezvous {
         // such sentinels would require two distinct peer hellos, already
         // terminal under the otherFiles.length > 1 guard below.
         const peerHelloIds = new Set(
-          otherFiles.map((file) => file.name.slice(0, -HELLO_SUFFIX.length)),
+          otherFiles.map((file) => controlWriterId(file.name)),
         );
         const foreignSentinel = joiningFiles.find(
-          (file) =>
-            !peerHelloIds.has(file.name.slice(0, -JOINING_SUFFIX.length)),
+          (file) => !peerHelloIds.has(controlWriterId(file.name)),
         );
         if (foreignSentinel) {
           throw new UsageError(
@@ -2089,8 +2182,8 @@ export class FileSyncRendezvous {
           const otherFile = otherFiles[0];
           const thisFile = theseFiles[0];
 
-          const thisId = thisFile.name.slice(0, -HELLO_SUFFIX.length);
-          const otherId = otherFile.name.slice(0, -HELLO_SUFFIX.length);
+          const thisId = controlWriterId(thisFile.name);
+          const otherId = controlWriterId(otherFile.name);
 
           // Use hello filename order -- the same tiebreak the lock
           // producer uses (I7) -- to reconstruct the expected lock name,
@@ -2114,9 +2207,8 @@ export class FileSyncRendezvous {
             throw new Error("lock file does not reference this connection");
 
           // I5: read the peer hello body through the partial-sync gate
-          // before committing roles. The hello name has no byte-count
-          // segment, so a half-synced body cannot be caught by a size
-          // check.
+          // before committing roles, which waits until the body reaches the
+          // byte count its name states.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
             joinFileSyncPath(scope.inboundPath, otherFile.name),
@@ -2153,7 +2245,7 @@ export class FileSyncRendezvous {
           deps.setRole(
             deps.handshakeRole() === "initiator" ? "joiner" : "starter",
           );
-          deps.setPeerId(otherId);
+          deps.setPeerId(otherId, this.agreedHelloNames(otherFile.name));
 
           deps
             .log()
@@ -2197,9 +2289,8 @@ export class FileSyncRendezvous {
           const otherPath = joinFileSyncPath(scope.inboundPath, otherFile.name);
 
           // I5: read the joiner's hello body through the partial-sync gate
-          // before deleting it. The joiner's hello has no byte-count
-          // segment, so a half-synced body would be silently misread
-          // without this gate.
+          // before deleting it, which waits until the body reaches the byte
+          // count its name states.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
             otherPath,
@@ -2220,14 +2311,17 @@ export class FileSyncRendezvous {
           if (mismatch) throw mismatch;
           const idRefusal = peerIdPairRefusal(
             deps.id(),
-            otherFile.name.slice(0, -HELLO_SUFFIX.length),
+            controlWriterId(otherFile.name),
           );
           if (idRefusal) throw idRefusal;
 
           // arrived first, should wait for a message
           deps.setHandshakeRole("responder");
           deps.setRole("starter");
-          deps.setPeerId(otherFile.name.slice(0, -HELLO_SUFFIX.length));
+          deps.setPeerId(
+            controlWriterId(otherFile.name),
+            this.agreedHelloNames(otherFile.name),
+          );
 
           deps
             .log()
@@ -2262,7 +2356,10 @@ export class FileSyncRendezvous {
           const arrivedFirst = thisFile.name < otherFile.name;
           deps.setHandshakeRole(arrivedFirst ? "responder" : "initiator");
           deps.setRole(arrivedFirst ? "starter" : "joiner");
-          deps.setPeerId(otherFile.name.slice(0, -HELLO_SUFFIX.length));
+          deps.setPeerId(
+            controlWriterId(otherFile.name),
+            this.agreedHelloNames(otherFile.name),
+          );
 
           // I5 (closes the documented two-hellos gap): read the peer hello
           // body through the partial-sync gate, validating the bilateral
@@ -2436,7 +2533,7 @@ export class FileSyncRendezvous {
       // Both rendezvous modes have assigned this.peerId by this point.
       // Reject an empty recovered id, then prefix-at-dash id pairs, before
       // any message is sent; both parties evaluate these symmetrically. The
-      // hello scans above already exclude a bare `-hello.json`, so an empty
+      // hello scans above already exclude a bare `-hello-<n>.json`, so an empty
       // this.peerId is unreachable for a correct scan -- this is defense in
       // depth: a peerId="" slipping through would make poll() treat every
       // "-"-prefixed file as a peer message and the lockless ack barrier
@@ -2445,7 +2542,7 @@ export class FileSyncRendezvous {
       if (deps.peerId()!.length === 0)
         throw new UsageError(
           "rendezvous recovered an empty peer id; a bare " +
-            `'${HELLO_SUFFIX}' is not a usable peer hello`,
+            "'-hello-<bytes>.json' is not a usable peer hello",
         );
       const prefixRefusal = peerIdPrefixRefusal(deps.id(), deps.peerId()!);
       if (prefixRefusal) throw prefixRefusal;
@@ -2474,7 +2571,7 @@ export class FileSyncRendezvous {
       // committed this.peerId, this.role, and this.handshakeRole. Reset
       // them so the "already synchronized" guard does not block a retry
       // and the stale role does not appear in the retry's first log line.
-      deps.setPeerId(undefined);
+      deps.setPeerId(undefined, undefined);
       deps.setRole("unknown role");
       deps.setHandshakeRole(undefined);
       deps.clearAbortMarker();

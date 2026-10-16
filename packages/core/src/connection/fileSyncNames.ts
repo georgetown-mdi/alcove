@@ -9,24 +9,40 @@ import {
   version as uuidVersion,
 } from "uuid";
 
-export const HELLO_SUFFIX = "-hello.json";
-
-// The lock-mode tiebreaker, `<peer1>-<peer2>-lock.json`. Its terminal segment is
-// the type word `lock`, not digits, so the message scan excludes it.
+// The lock-mode tiebreaker, `<peer1>-<peer2>-lock.json`. Zero-length; its
+// terminal segment is the type word `lock`, not digits, so the message scan
+// excludes it.
 export const LOCK_SUFFIX = "-lock.json";
 
-// The lock-path joiner-arrival sentinel, `<id>-joining.json`, which lets the peer
-// tell a joiner mid-arrival from a crashed one (docs/spec/FILE_SYNC.md, Phase 1 --
-// rendezvous, lock path). Its type word `joining` keeps it out of the message scan.
-export const JOINING_SUFFIX = "-joining.json";
+/**
+ * The control files that have a body, each named
+ * `<id>-<type>-<byteCount>.json`: the rendezvous hello, the lock-path
+ * joiner-arrival sentinel (docs/spec/FILE_SYNC.md, Phase 1 -- rendezvous, lock
+ * path), and the authenticated cross-party abort marker.
+ */
+export type SizedControlType = "hello" | "joining" | "abort";
 
-// The authenticated cross-party abort marker, `<writerId>-abort.json`. Its type
-// word `abort` is not all digits, so it is never consumed as a message.
-export const ABORT_SUFFIX = "-abort.json";
+const SIZED_CONTROL_TYPES: ReadonlySet<string> = new Set<SizedControlType>([
+  "hello",
+  "joining",
+  "abort",
+]);
 
-// The declared byte count of a message filename: the last `-` segment before
-// `.json`, parsed right-anchored so an id containing hyphens cannot corrupt it.
-// Undefined when the name has no `-` or that segment is not a non-negative integer.
+// The name shapes an earlier version wrote for the sized control files, with
+// no byte count. Kept in the protocol grammar so a leftover one is refused or
+// swept at entry rather than tolerated as foreign.
+const LEGACY_HELLO_SUFFIX = "-hello.json";
+const LEGACY_CONTROL_SUFFIXES = [
+  LEGACY_HELLO_SUFFIX,
+  "-joining.json",
+  "-abort.json",
+] as const;
+
+// The declared byte count of a size-terminal filename: the last `-` segment
+// before `.json`, parsed right-anchored so an id containing hyphens cannot
+// corrupt it. Undefined when the name has no `-` or that segment is not a
+// non-negative integer. True of a message and of a sized control file alike;
+// isMessageName tells the two apart.
 /** @internal */
 export const parseMessageByteCount = (name: string): number | undefined => {
   const stem = name.slice(0, -".json".length);
@@ -36,6 +52,48 @@ export const parseMessageByteCount = (name: string): number | undefined => {
   if (!/^\d+$/.test(lastSegment)) return undefined;
   return Number(lastSegment);
 };
+
+/** @internal */
+export const sizedControlName = (
+  id: string,
+  type: SizedControlType,
+  byteCount: number,
+): string => `${id}-${type}-${byteCount}.json`;
+
+// The writer id, type and declared byte count of a sized control name, or
+// undefined for any other name. The id may be empty (a bare `-hello-48.json`);
+// peerIdFromControlName refuses that.
+/** @internal */
+export const parseSizedControlName = (
+  name: string,
+): { id: string; type: SizedControlType; byteCount: number } | undefined => {
+  if (!name.endsWith(".json")) return undefined;
+  const byteCount = parseMessageByteCount(name);
+  if (byteCount === undefined) return undefined;
+  const stem = name.slice(0, -".json".length);
+  const head = stem.slice(0, stem.lastIndexOf("-"));
+  const typeDash = head.lastIndexOf("-");
+  if (typeDash < 0) return undefined;
+  const type = head.slice(typeDash + 1);
+  if (!SIZED_CONTROL_TYPES.has(type)) return undefined;
+  return {
+    id: head.slice(0, typeDash),
+    type: type as SizedControlType,
+    byteCount,
+  };
+};
+
+/**
+ * True for a message name: a size-terminal `.json` name whose segment before
+ * the byte count is not a sized control type word. A message name built from
+ * a UUID id, or with a timestamp and counter, never has one there.
+ *
+ * @internal
+ */
+export const isMessageName = (name: string): boolean =>
+  name.endsWith(".json") &&
+  parseMessageByteCount(name) !== undefined &&
+  parseSizedControlName(name) === undefined;
 
 // The NNN sequence counter of a timestamped message filename
 // (`<id>-<ts>-<NNN>-<byteCount>.json`), parsed right-anchored. Only meaningful
@@ -61,17 +119,46 @@ export const parseTimestampedMessageNNN = (
 export const ackMarkerName = (writerId: string, originalName: string): string =>
   `${writerId}-${originalName}-ack.json`;
 
-// The peer id of a `<id><suffix>` hello or joining sentinel, or undefined when
-// the name lacks the suffix or the id is empty. A bare `-hello.json` is never a
-// peer identity: adopting "" would let any writer on an unauthenticated transport
-// stall rendezvous (docs/spec/FILE_SYNC.md, The five enforcement sites, site 5).
+// The writer id of a `<id>-<type>-<byteCount>.json` control file, or undefined
+// when the name is not of that type or the id is empty. A bare `-hello-48.json`
+// is never a peer identity: adopting "" would let any writer on an
+// unauthenticated transport stall rendezvous (docs/spec/FILE_SYNC.md, The five
+// enforcement sites, site 5).
 /** @internal */
 export const peerIdFromControlName = (
   name: string,
-  suffix: string,
+  type: SizedControlType,
 ): string | undefined => {
-  if (!name.endsWith(suffix)) return undefined;
-  const id = name.slice(0, -suffix.length);
+  const parsed = parseSizedControlName(name);
+  if (parsed === undefined || parsed.type !== type) return undefined;
+  return parsed.id.length > 0 ? parsed.id : undefined;
+};
+
+/**
+ * The two hello names rendezvous agreed: this party's own and the peer's it
+ * read. The poll loop recognizes these, and the joining sentinels and hello
+ * acks named after them, by exact name.
+ */
+export interface AgreedHelloNames {
+  self: string;
+  peer: string;
+}
+
+// The joining sentinel paired with a hello: same writer, same byte count, since
+// the sentinel holds the hello body. Undefined for a name that is not a hello.
+/** @internal */
+export const joiningNameForHello = (helloName: string): string | undefined => {
+  const parsed = parseSizedControlName(helloName);
+  if (parsed === undefined || parsed.type !== "hello") return undefined;
+  return sizedControlName(parsed.id, "joining", parsed.byteCount);
+};
+
+// The writer id of a hello in the shape an earlier version wrote,
+// `<id>-hello.json`, or undefined for any other name or an empty id.
+/** @internal */
+export const legacyHelloWriterId = (name: string): string | undefined => {
+  if (!name.endsWith(LEGACY_HELLO_SUFFIX)) return undefined;
+  const id = name.slice(0, -LEGACY_HELLO_SUFFIX.length);
   return id.length > 0 ? id : undefined;
 };
 
@@ -119,25 +206,14 @@ export const isProtocolTempName = (name: string): boolean => {
 };
 
 /**
- * True for any `<id>-abort.json` under any id, so the entry guard sweeps a
- * leftover marker rather than refusing it as foreign. Every name
- * {@link isExpectedAbortName} accepts also matches. A bare `-abort.json` matches
- * too but is never swept, so it fails closed as an unexpected protocol file.
+ * True for any `<id>-abort-<byteCount>.json` under any id, so the entry guard
+ * sweeps a leftover marker rather than refusing it as foreign. Every name the
+ * poll loop expects as an abort marker (`isExpectedAbortName` in
+ * abortMarker.ts) also matches. A bare `-abort-<n>.json` matches too but is
+ * never swept, so it fails closed as an unexpected protocol file.
  */
 export const isAbortMarkerName = (name: string): boolean =>
-  name.endsWith(ABORT_SUFFIX);
-
-/**
- * True only for this party's or the peer's abort marker. The poll loop tolerates
- * these two by exact name, so a planted `<other>-abort.json` still meets the
- * unexpected-files policy.
- */
-export const isExpectedAbortName = (
-  name: string,
-  selfId: string,
-  peerId: string,
-): boolean =>
-  name === `${selfId}${ABORT_SUFFIX}` || name === `${peerId}${ABORT_SUFFIX}`;
+  parseSizedControlName(name)?.type === "abort";
 
 // The single inverse of "foreign" the entry guard and the foreign-file snapshot
 // share, so no name is both. A message-shaped `<id>-<digits>.json` is a protocol
@@ -148,10 +224,8 @@ export const isProtocolGrammarName = (name: string): boolean => {
   if (isProtocolTempName(name)) return true;
   if (!name.endsWith(".json")) return false;
   if (
-    name.endsWith(HELLO_SUFFIX) ||
     name.endsWith(LOCK_SUFFIX) ||
-    name.endsWith(JOINING_SUFFIX) ||
-    isAbortMarkerName(name) ||
+    LEGACY_CONTROL_SUFFIXES.some((suffix) => name.endsWith(suffix)) ||
     // Broad by design: a foreign name ending -ack.json is refused or swept as a
     // protocol file rather than tolerated, so no ack-shaped name slips past.
     name.endsWith("-ack.json")

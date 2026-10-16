@@ -27,7 +27,7 @@ import {
   errorMessage,
 } from "../errors";
 import { cancellableDelay } from "./fileSyncConstants";
-import { ackMarkerName } from "./fileSyncNames";
+import { ackMarkerName, type AgreedHelloNames } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -150,7 +150,7 @@ export const DEFAULT_POLLING_FREQUENCY_MS = 5000;
 const DEFAULT_VERBOSITY = 1;
 
 // Wall-clock allowance for a peer's write-and-rename to land: how long the
-// lock-path peer waits for a joiner whose `<id>-joining.json` sentinel is
+// lock-path peer waits for a joiner whose `<id>-joining-<n>.json` sentinel is
 // visible, and the floor under every poll-cycle rendezvous bound
 // (rendezvousBoundMs), so lowering it can abort a live partner mid-round-trip.
 // Capped at the remaining peerTimeoutMs; not a config setting. See
@@ -317,7 +317,7 @@ export interface FileTransportClient {
 
 /**
  * File-based rendezvous and message-passing connection. Implements the
- * `-hello.json`/`-lock.json` handshake (or the lockless ack-handshake barrier) and
+ * `-hello-<n>.json`/`-lock.json` handshake (or the lockless ack-handshake barrier) and
  * `.json` polling protocol over any {@link FileTransportClient} -- an SFTP
  * server via {@link SSH2SFTPClientAdapter} or a locally-mounted folder via
  * `LocalFSClient`.
@@ -349,6 +349,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private arrivalBudgetMs: number | undefined;
 
   peerId: string | undefined;
+  // The two hello names rendezvous agreed, committed with peerId: the poll
+  // loop recognizes these and the files named after them by exact name.
+  /** @internal */
+  helloNames: AgreedHelloNames | undefined;
   handshakeRole: HandshakeRole | undefined;
   // The host key the SFTP server presented, or undefined where none was
   // observed (filedrop, the browser SFTP path, a refused connection). Read
@@ -490,8 +494,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       setRole: (role) => {
         this.role = role;
       },
-      setPeerId: (peerId) => {
+      setPeerId: (peerId, helloNames) => {
         this.peerId = peerId;
+        this.helloNames = helloNames;
       },
       setHandshakeRole: (role) => {
         this.handshakeRole = role;
@@ -517,6 +522,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       path: () => this.path,
       outbound: () => this.outbound,
       peerId: () => this.peerId,
+      helloNames: () => this.helloNames,
       connected: () => this.connected,
       abortArmed: () => this.abortArmed,
       wait: (ms) => this.wait(ms),
@@ -855,7 +861,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
   /**
    * Arms the abort marker once after the handshake, with the token this party
-   * writes into `<myId>-abort.json` and the token a `<peerId>-abort.json` must
+   * writes into `<myId>-abort-<n>.json` and the token a `<peerId>-abort-<n>.json` must
    * verify against. Call after open(); without a path the write is a no-op.
    * See docs/spec/CHANNEL_SECURITY.md#authenticated-abort-marker.
    */
@@ -1031,7 +1037,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Negotiates rendezvous with the peer: `-hello.json` and
+   * Negotiates rendezvous with the peer: `-hello-<n>.json` and
    * `<peer1>-<peer2>-lock.json` files (lock mode) or hellos and zero-length
    * `-ack.json` markers (lockless mode), assigning `peerId` and `handshakeRole`.
    * A failure rejects this call and is not emitted on `error`, which is

@@ -90,8 +90,14 @@ export const ABORT_TOKEN_ROLES = Object.freeze([
 type AbortTokenRole = (typeof ABORT_TOKEN_ROLES)[number];
 
 /**
+ * The byte length of every abort token {@link deriveAbortToken} returns, which
+ * fixes the byte count an abort marker's name states.
+ */
+export const ABORT_TOKEN_BYTES = 32;
+
+/**
  * Derive a 32-byte per-direction abort token from the session key using HKDF,
- * authenticating the cross-party abort marker (`<writerId>-abort.json`;
+ * authenticating the cross-party abort marker (`<writerId>-abort-<n>.json`;
  * docs/spec/CHANNEL_SECURITY.md, "Authenticated abort marker").
  *
  * @throws {Error} if `role` is not one of {@link ABORT_TOKEN_ROLES}.
@@ -106,7 +112,11 @@ export async function deriveAbortToken(
         `expected one of ${ABORT_TOKEN_ROLES.map((r) => JSON.stringify(r)).join(", ")}`,
     );
   }
-  return hkdfDerive(sessionKey, `alcove-abort-token-v2:${role}`, 32);
+  return hkdfDerive(
+    sessionKey,
+    `alcove-abort-token-v2:${role}`,
+    ABORT_TOKEN_BYTES,
+  );
 }
 
 /**

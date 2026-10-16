@@ -442,13 +442,13 @@ describe("session recovery", () => {
     state.live = false;
 
     await expect(
-      adapter.rename("/remote/id-joining.json", "/remote/id-hello.json"),
+      adapter.rename("/remote/id-joining-48.json", "/remote/id-hello-48.json"),
     ).resolves.toBeUndefined();
     expect(connect).toHaveBeenCalledTimes(2);
     expect(renameCalls).toBe(1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).exists).toHaveBeenCalledWith(
-      "/remote/id-hello.json",
+      "/remote/id-hello-48.json",
     );
   });
 
@@ -923,7 +923,7 @@ describe("session recovery", () => {
     state.live = false;
 
     const err = await adapter
-      .rename("/remote/id-joining.json", "/remote/id-hello.json")
+      .rename("/remote/id-joining-48.json", "/remote/id-hello-48.json")
       .catch((e: unknown) => e);
     // The original rename error (code 2) is the cause, not the exists() rejection,
     // and it is the original that reaches the operator: asserted where they read
@@ -976,7 +976,7 @@ describe("session recovery", () => {
     state.live = false;
 
     const err = await adapter
-      .rename("/remote/id-joining.json", "/remote/id-hello.json")
+      .rename("/remote/id-joining-48.json", "/remote/id-hello-48.json")
       .catch((e: unknown) => e);
     expect(((err as Error).cause as NodeJS.ErrnoException).code).toBe(2);
     expect(probe.exists).not.toHaveBeenCalled();
@@ -1005,7 +1005,7 @@ describe("session recovery", () => {
     state.live = false;
 
     const err = await adapter
-      .rename("/remote/id-joining.json", "/remote/id-hello.json")
+      .rename("/remote/id-joining-48.json", "/remote/id-hello-48.json")
       .catch((e: unknown) => e);
     // The probe was issued and timed out; the ambiguity it could not resolve
     // leaves the ORIGINAL rename error, not the stall, as the cause. One probe,
@@ -1044,7 +1044,7 @@ describe("session recovery", () => {
     state.live = false;
 
     const err = await adapter
-      .rename("/remote/id-joining.json", "/remote/id-hello.json")
+      .rename("/remote/id-joining-48.json", "/remote/id-hello-48.json")
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(((err as Error).cause as NodeJS.ErrnoException).code).toBe(2);
@@ -1142,7 +1142,7 @@ describe("session recovery", () => {
     (client as any).exists = vi
       .fn()
       .mockImplementation(async (path: string) =>
-        path.endsWith("id-joining.json"),
+        path.endsWith("id-joining-48.json"),
       );
     const adapter = new SSH2SFTPClientAdapter();
     captureAdapterLog(adapter);
@@ -1152,7 +1152,7 @@ describe("session recovery", () => {
     state.live = false;
 
     const err = await adapter
-      .rename("/remote/id-joining.json", "/remote/id-hello.json")
+      .rename("/remote/id-joining-48.json", "/remote/id-hello-48.json")
       .catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(TransportWriteIndeterminateError);
     expect((err as NodeJS.ErrnoException).code).toBe(2);
@@ -1230,8 +1230,8 @@ describe("session recovery", () => {
       state.live = false;
 
       const write = adapter.rename(
-        "/remote/id-joining.json",
-        "/remote/id-hello.json",
+        "/remote/id-joining-48.json",
+        "/remote/id-hello-48.json",
       );
       await probe.issued;
 

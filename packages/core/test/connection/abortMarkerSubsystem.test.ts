@@ -1,15 +1,17 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import { AbortMarkerSubsystem } from "../../src/connection/abortMarker";
+import {
+  AbortMarkerSubsystem,
+  abortMarkerBody,
+  abortMarkerName,
+} from "../../src/connection/abortMarker";
 import type {
   FileInfo,
   FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
-import {
-  FrameSizeExceededError,
-  TransportOperationStalledError,
-} from "../../src/errors";
+import { TransportOperationStalledError, UsageError } from "../../src/errors";
 import { fromBase64Url, toBase64Url } from "../../src/utils/crypto";
+import { capReadsAtMaxBytes } from "../utils/support";
 
 // Direct unit tests of the subsystem with injected fakes: a pass-through budget,
 // a recording logger, and a client whose every method is a vi.fn(), so each
@@ -27,7 +29,9 @@ const TOKEN_PEER = new Uint8Array(32).fill(0x22);
 const SELF_ID = "self-id";
 const PEER_ID = "peer-id";
 const DIR = "/exchange";
-const PEER_MARKER = `${PEER_ID}-abort.json`;
+const SELF_MARKER = abortMarkerName(SELF_ID, TOKEN_SELF);
+const PEER_MARKER = abortMarkerName(PEER_ID, TOKEN_PEER);
+const PEER_MARKER_BYTES = abortMarkerBody(TOKEN_PEER).length;
 
 function makeClient(
   overrides: Partial<FileTransportClient> = {},
@@ -199,12 +203,12 @@ test("writeMarker puts the envelope to a temp file, renames it into place, and l
     version: 1,
     token: toBase64Url(TOKEN_SELF),
   });
-  expect(client.rename).toHaveBeenCalledWith(
-    tempPath,
-    `${DIR}/${SELF_ID}-abort.json`,
-  );
+  // The final name states the byte count of the body written under it.
+  const finalName = `${SELF_ID}-abort-${(body as Buffer).length}.json`;
+  expect(finalName).toBe(SELF_MARKER);
+  expect(client.rename).toHaveBeenCalledWith(tempPath, `${DIR}/${finalName}`);
   expect(debug).toHaveBeenCalledWith(
-    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+    `[sender] wrote abort marker ${finalName}`,
   );
 });
 
@@ -222,7 +226,7 @@ test("writeMarker logs through the logger current at the write, not the one at c
   await subsystem.writeMarker();
   expect(constructionDebug).not.toHaveBeenCalled();
   expect(writeDebug).toHaveBeenCalledWith(
-    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+    `[sender] wrote abort marker ${SELF_MARKER}`,
   );
 });
 
@@ -235,7 +239,7 @@ test("writeMarker with an empty directory keeps the temp and final paths relativ
   expect(tempPath).toMatch(
     /^temp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/,
   );
-  expect(client.rename).toHaveBeenCalledWith(tempPath, `${SELF_ID}-abort.json`);
+  expect(client.rename).toHaveBeenCalledWith(tempPath, SELF_MARKER);
 });
 
 test("writeMarker on a transport without beginTeardown still gets the marker", async () => {
@@ -304,7 +308,7 @@ test("writeMarker on a stalled rename rejects with the budget error naming the f
   expect(budgets).toEqual([WRITE_BUDGET_MS, WRITE_BUDGET_MS]);
   expect(rejection).toBeInstanceOf(TransportOperationStalledError);
   expect(stalledError).toHaveBeenCalledWith(
-    `abort marker rename to ${DIR}/${SELF_ID}-abort.json`,
+    `abort marker rename to ${DIR}/${SELF_MARKER}`,
     WRITE_BUDGET_MS,
   );
   expect(rejection).toBe(stalledError.mock.results[0].value);
@@ -316,7 +320,7 @@ test("writeMarker with writeWithoutRenaming puts straight to the final path with
   const { subsystem, debug } = armed(client, { writeWithoutRenaming: true });
   await subsystem.writeMarker();
 
-  const finalPath = `${DIR}/${SELF_ID}-abort.json`;
+  const finalPath = `${DIR}/${SELF_MARKER}`;
   expect(client.put).toHaveBeenCalledOnce();
   expect(vi.mocked(client.put).mock.calls[0][1]).toBe(finalPath);
   expect(vi.mocked(client.put).mock.calls[0][2]).toStrictEqual({
@@ -325,7 +329,7 @@ test("writeMarker with writeWithoutRenaming puts straight to the final path with
   });
   expect(client.rename).not.toHaveBeenCalled();
   expect(debug).toHaveBeenCalledWith(
-    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+    `[sender] wrote abort marker ${SELF_MARKER}`,
   );
 });
 
@@ -343,7 +347,7 @@ test("writeMarker with writeWithoutRenaming on a stalled put rejects with the bu
   );
   expect(rejection).toBeInstanceOf(TransportOperationStalledError);
   expect(stalledError).toHaveBeenCalledWith(
-    `abort marker write to ${DIR}/${SELF_ID}-abort.json`,
+    `abort marker write to ${DIR}/${SELF_MARKER}`,
     WRITE_BUDGET_MS,
   );
   expect(rejection).toBe(stalledError.mock.results[0].value);
@@ -363,23 +367,75 @@ test("verifyPeerMarker on an unarmed subsystem returns false without reading", a
   });
   const subsystem = new AbortMarkerSubsystem(makeDeps().deps);
   expect(
-    await subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
   ).toBe(false);
   expect(client.get).not.toHaveBeenCalled();
 });
 
-test("verifyPeerMarker reads a verifying marker from the inbound directory under the small cap", async () => {
+test("verifyPeerMarker reads a verifying marker from the inbound directory capped at its name's byte count", async () => {
   const client = makeClient({
     get: vi.fn(async () => envelope(toBase64Url(TOKEN_PEER))),
   });
   const { subsystem } = armed(client);
   expect(
-    await subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
   ).toBe(true);
   expect(client.get).toHaveBeenCalledWith(`${DIR}/${PEER_MARKER}`, {
     encoding: "utf-8",
-    maxBytes: MARKER_MAX_BYTES,
+    maxBytes: PEER_MARKER_BYTES,
   });
+});
+
+test("verifyPeerMarker refuses a body served past its name's byte count, reading no more than that count", async () => {
+  // Listed at the count its name states, but the server serves more: a file
+  // that grew after listing, or a listing that under-reports its size.
+  const body = Buffer.from(
+    `${envelope(toBase64Url(TOKEN_PEER)).toString()}${" ".repeat(512)}`,
+  );
+  const client = makeClient({ get: vi.fn(async () => body) });
+  const reads = capReadsAtMaxBytes(client);
+  const { subsystem } = armed(client);
+
+  await expect(
+    subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
+  ).rejects.toMatchObject({
+    name: "UsageError",
+    message:
+      `abort marker ${PEER_MARKER} in ${DIR} is larger than the ` +
+      `${PEER_MARKER_BYTES} byte(s) its name states, so it is not the file ` +
+      "your partner finished writing. The run stops; inspect the directory " +
+      "before retrying.",
+  });
+  expect(reads).toEqual([{ name: PEER_MARKER, maxBytes: PEER_MARKER_BYTES }]);
+});
+
+test("verifyPeerMarker does not verify a marker whose name states 0 bytes, listed at 0, and does not read it", async () => {
+  const client = makeClient({ get: vi.fn(async () => Buffer.alloc(0)) });
+  const { subsystem } = armed(client);
+  expect(
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(0, `${PEER_ID}-abort-0.json`),
+      DIR,
+      PEER_ID,
+    ),
+  ).toBe(false);
+  expect(client.get).not.toHaveBeenCalled();
 });
 
 test("verifyPeerMarker on a listing without the peer's marker returns false without reading", async () => {
@@ -390,12 +446,73 @@ test("verifyPeerMarker on a listing without the peer's marker returns false with
   expect(
     await subsystem.verifyPeerMarker(
       client,
-      listing(80, "other-abort.json"),
+      listing(PEER_MARKER_BYTES, abortMarkerName("other", TOKEN_PEER)),
       DIR,
       PEER_ID,
     ),
   ).toBe(false);
   expect(client.get).not.toHaveBeenCalled();
+});
+
+test("verifyPeerMarker does not look for the peer's marker under another byte count", async () => {
+  // A marker holding the peer token, padded with JSON whitespace and named
+  // for its own length: everything but the exact name agrees.
+  const padded = Buffer.from(
+    `${envelope(toBase64Url(TOKEN_PEER)).toString()} `,
+  );
+  const client = makeClient({ get: vi.fn(async () => padded) });
+  const { subsystem } = armed(client);
+  expect(
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(padded.length, `${PEER_ID}-abort-${padded.length}.json`),
+      DIR,
+      PEER_ID,
+    ),
+  ).toBe(false);
+  expect(client.get).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["smaller", -1],
+  ["larger", 1],
+])(
+  "verifyPeerMarker does not verify a marker listed %s than its name's byte count, and does not read it",
+  async (_label, delta) => {
+    const client = makeClient({
+      get: vi.fn(async () => envelope(toBase64Url(TOKEN_PEER))),
+    });
+    const { subsystem } = armed(client);
+    expect(
+      await subsystem.verifyPeerMarker(
+        client,
+        listing(PEER_MARKER_BYTES + delta),
+        DIR,
+        PEER_ID,
+      ),
+    ).toBe(false);
+    expect(client.get).not.toHaveBeenCalled();
+  },
+);
+
+test("verifyPeerMarker does not verify a read body longer than its name's byte count", async () => {
+  // The listing agrees with the name; the body read holds the peer token and
+  // parses, but is one byte past the count the name states.
+  const client = makeClient({
+    get: vi.fn(async () =>
+      Buffer.from(`${envelope(toBase64Url(TOKEN_PEER)).toString()} `),
+    ),
+  });
+  const { subsystem } = armed(client);
+  expect(
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
+  ).toBe(false);
+  expect(client.get).toHaveBeenCalledOnce();
 });
 
 test("verifyPeerMarker logs and refuses an oversized listing", async () => {
@@ -416,6 +533,24 @@ test("verifyPeerMarker logs and refuses an oversized listing", async () => {
   );
 });
 
+// The cap is the largest size not refused as oversized: paired with the case
+// above, this pins the comparison as strictly-greater. A listing on the cap is
+// still not read, since it is not the byte count the name states.
+test("verifyPeerMarker does not treat a listing at exactly the cap as oversized", async () => {
+  const client = makeClient();
+  const { subsystem, debug } = armed(client);
+  expect(
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(MARKER_MAX_BYTES),
+      DIR,
+      PEER_ID,
+    ),
+  ).toBe(false);
+  expect(client.get).not.toHaveBeenCalled();
+  expect(debug).not.toHaveBeenCalled();
+});
+
 test("verifyPeerMarker on a failed read returns false rather than throwing", async () => {
   const client = makeClient({
     get: vi.fn(async () => {
@@ -424,13 +559,18 @@ test("verifyPeerMarker on a failed read returns false rather than throwing", asy
   });
   const { subsystem } = armed(client);
   expect(
-    await subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+    await subsystem.verifyPeerMarker(
+      client,
+      listing(PEER_MARKER_BYTES),
+      DIR,
+      PEER_ID,
+    ),
   ).toBe(false);
 });
 
 test.each([
   ["a stalled read", () => new TransportOperationStalledError("get (60 ms)")],
-  ["an over-cap read", () => new FrameSizeExceededError("over the cap")],
+  ["a usage refusal", () => new UsageError("refused")],
 ])(
   "verifyPeerMarker rethrows %s rather than ignoring it",
   async (_label, makeError) => {
@@ -442,7 +582,12 @@ test.each([
     });
     const { subsystem } = armed(client);
     await expect(
-      subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+      subsystem.verifyPeerMarker(
+        client,
+        listing(PEER_MARKER_BYTES),
+        DIR,
+        PEER_ID,
+      ),
     ).rejects.toBe(thrown);
   },
 );
@@ -452,17 +597,26 @@ test("verifyPeerMarker refuses a non-string token even when its digits decode to
   // check, the decoder coerces it and the bytes match.
   const numericToken = 123412341234;
   const peerToken = fromBase64Url(String(numericToken));
+  const stringBody = envelope(String(numericToken));
+  // The numeric form spaced out to the string form's length, so the marker's
+  // byte count admits both and only the type check tells them apart.
+  const numericBody = Buffer.from(`{"version":1,"token": ${numericToken} }`);
+  expect(numericBody.length).toBe(stringBody.length);
   const client = makeClient({
-    get: vi.fn(async () => envelope(numericToken)),
+    get: vi.fn(async () => numericBody),
   });
   const subsystem = new AbortMarkerSubsystem(makeDeps().deps);
   subsystem.arm(TOKEN_SELF, peerToken, SELF_ID, DIR, client);
+  const markerListing = listing(
+    stringBody.length,
+    abortMarkerName(PEER_ID, peerToken),
+  );
   expect(
-    await subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+    await subsystem.verifyPeerMarker(client, markerListing, DIR, PEER_ID),
   ).toBe(false);
 
-  vi.mocked(client.get).mockResolvedValue(envelope(String(numericToken)));
+  vi.mocked(client.get).mockResolvedValue(stringBody);
   expect(
-    await subsystem.verifyPeerMarker(client, listing(80), DIR, PEER_ID),
+    await subsystem.verifyPeerMarker(client, markerListing, DIR, PEER_ID),
   ).toBe(true);
 });
