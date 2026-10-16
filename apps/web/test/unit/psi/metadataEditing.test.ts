@@ -14,7 +14,6 @@ import {
   disclosedColumnNames,
   disclosureChoicesForType,
   disclosureOf,
-  editorSeedMetadata,
   hasMultipleIdentifiers,
   normalizeForEditor,
   payloadSendForMetadata,
@@ -66,24 +65,27 @@ describe("disclosure choice <-> {role, isPayload}", () => {
   });
 });
 
-describe("normalizeForEditor puts metadata on the grid's choices", () => {
-  test("an inferred sent identifier stays the identifier and stays sent", () => {
+describe("normalizeForEditor seeds the grid's choices", () => {
+  test("an inferred identifier starts as not sent, until it is chosen as sent", () => {
     // inferMetadata marks the `id` alias role:identifier with isPayload:true,
-    // which preparePayload transmits; the grid shows it as identifier-sent.
+    // which preparePayload would transmit; the grid starts it as not sent.
     const inferred = inferMetadata(["id", "first_name", "notes"], []);
     expect(disclosedColumnNames(inferred)).toContain("id");
 
     const normalized = normalizeForEditor(inferred);
-    expect(disclosedColumnNames(normalized)).toEqual(
-      disclosedColumnNames(inferred),
-    );
-    const idCol = normalized.find((c) => c.name === "id");
-    expect(idCol?.role).toBe("identifier");
-    expect(idCol?.isPayload).toBe(true);
-    expect(disclosureOf(idCol!)).toBe("identifier-sent");
+    expect(disclosedColumnNames(normalized)).not.toContain("id");
+    const idCol = normalized.find((c) => c.name === "id")!;
+    expect(idCol.role).toBe("identifier");
+    expect(idCol.isPayload).toBe(false);
+    expect(disclosureOf(idCol)).toBe("identifier");
+    expect(
+      disclosedColumnNames(
+        setColumnDisclosure(normalized, "id", "identifier-sent").metadata,
+      ),
+    ).toEqual(["id"]);
   });
 
-  test("a loaded role: identifier, is_payload: true column round-trips unchanged", () => {
+  test("a role: identifier, is_payload: true column keeps its choice through the grid", () => {
     const loaded: Metadata = [
       col({
         name: "record_id",
@@ -98,27 +100,11 @@ describe("normalizeForEditor puts metadata on the grid's choices", () => {
         isPayload: false,
       }),
     ];
-    const normalized = normalizeForEditor(loaded);
-    expect(normalized).toEqual(loaded);
-    expect(disclosureOf(normalized[0])).toBe("identifier-sent");
+    expect(disclosureOf(loaded[0])).toBe("identifier-sent");
     expect(
-      setColumnDisclosure(normalized, "record_id", disclosureOf(normalized[0]))
+      setColumnDisclosure(loaded, "record_id", disclosureOf(loaded[0]))
         .metadata,
     ).toEqual(loaded);
-  });
-
-  test("the grid's seed holds an inferred identifier back until it is chosen as sent", () => {
-    const seeded = editorSeedMetadata(
-      inferMetadataForEveryColumn(["id", "first_name", "notes"], []),
-    );
-    const idCol = seeded.find((c) => c.name === "id")!;
-    expect(disclosureOf(idCol)).toBe("identifier");
-    expect(disclosedColumnNames(seeded)).toEqual([]);
-    expect(
-      disclosedColumnNames(
-        setColumnDisclosure(seeded, "id", "identifier-sent").metadata,
-      ),
-    ).toEqual(["id"]);
   });
 
   test("a matching column marked sent, which the grid cannot show, is not sent", () => {

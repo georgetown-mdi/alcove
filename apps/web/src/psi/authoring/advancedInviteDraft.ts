@@ -14,7 +14,7 @@ import {
 } from "@alcove/core";
 
 import { encodeKeyForComparison, isOptInDraftKey } from "../linkageComparison";
-import { editorSeedMetadata } from "../metadataEditing";
+import { normalizeForEditor } from "../metadataEditing";
 
 import { buildAdvancedTerms } from "./advancedInviteTerms";
 import { directionForOutput } from "./advancedInviteTypes";
@@ -187,11 +187,12 @@ export function seedAdvancedInvite(
   rawRows: ReadonlyArray<CSVRow> = [],
   dateInputFormats?: ProfiledDateInputFormats,
 ): { draft: AdvancedInviteDraft; seed: AdvancedInviteSeed } {
-  // Seeded so the disclosure control opens on one of its choices with no
-  // identifier sent. Seeding only re-derives isPayload, so the offerable key
-  // set -- which getDefaultLinkageTerms derives from the `role: linkage` column
-  // TYPES -- is unchanged by it.
-  const metadata = editorSeedMetadata(inferMetadataForEveryColumn(columns, []));
+  // Normalized so the collapsed disclosure control opens on a faithful diagonal
+  // (an inferred identifier column is not silently disclosed). Normalization only
+  // re-derives isPayload from role, so the offerable key set -- which
+  // getDefaultLinkageTerms derives from the `role: linkage` column TYPES -- is
+  // unchanged by it.
+  const metadata = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   const terms = getDefaultLinkageTerms(identity, metadata);
   const keys = offerableDraftKeys(identity, metadata);
   return {

@@ -39,10 +39,9 @@ import {
   acceptorOverlongDisclosedColumns,
   acceptorPartnerNote,
   acceptorPayloadDeclarationConflict,
-  acceptorSendingExpectedColumnsCostsKey,
   acceptorStandardizationValid,
   acceptorUnsatisfiedTypes,
-  acceptorWidenableDeclaredColumnCount,
+  acceptorWideningOfferSentence,
 } from "./acceptorColumnsModel";
 
 import {
@@ -244,24 +243,13 @@ export function AcceptorColumnsStep({
   // file". Both sides count COLUMNS rather than declaration entries, which is what
   // the model's declared-but-unsent set holds and what the sentences below are
   // about: the columns the operator would set, or the ones they would go and find.
-  const expectedInFileCount = useMemo(
-    () =>
-      acceptorWidenableDeclaredColumnCount(linkageTerms, editorState.metadata),
-    [linkageTerms, editorState.metadata],
-  );
   const expectedMissingFromFile =
     declarationConflict?.declaredButNotSent.filter((gap) => !gap.inFile) ?? [];
-  // Whether taking that offer would cost an agreed linkage key: the widened marks
-  // leave fewer keys satisfiable than the current marks do. Read from the model,
-  // over the whole declared set rather than the names painted below, so the offer's
-  // cost is the one the operator would meet.
-  const sendingCostsLinkageKey = useMemo(
-    () =>
-      acceptorSendingExpectedColumnsCostsKey(
-        columns,
-        linkageTerms,
-        columnsState,
-      ),
+  // The offer, or what taking it would cost an agreed linkage key, read from the
+  // model over the whole declared set rather than the names painted below, so the
+  // offer's choices and cost are the ones the operator would meet.
+  const wideningOffer = useMemo(
+    () => acceptorWideningOfferSentence(columns, linkageTerms, columnsState),
     [columns, linkageTerms, columnsState],
   );
   // The cap keeps a flooded declaration from putting the metadata grid the operator
@@ -622,13 +610,7 @@ export function AcceptorColumnsStep({
                           ? "that column"
                           : "those columns"
                       }`}
-                    .
-                    {expectedInFileCount > 0 &&
-                      (!sendingCostsLinkageKey
-                        ? ' Where your file does have such a column, you can set it to "Sent to your partner" below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.'
-                        : expectedInFileCount === 1
-                          ? ' Setting the column your file does have to "Sent to your partner" below will not start the exchange: that column is used to match, and each column has a single use, so sending it would leave an agreed linkage key with no column to match on.'
-                          : ' Setting the columns your file does have to "Sent to your partner" below will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.')}
+                    .{wideningOffer}
                   </>
                 )}
               </>

@@ -128,32 +128,21 @@ export function applyDisclosure(
 }
 
 /**
- * Re-derive every column's `isPayload` from its disclosure choice. An identifier
- * column keeps its `isPayload` (`identifier` or `identifier-sent`), so a
- * `role: identifier` + `is_payload: true` column stays sent and the grid shows
- * it as sent; a `linkage` column with `isPayload: true`, which the grid cannot
- * show, collapses to not-sent. A file just read is seeded through
- * {@link editorSeedMetadata} instead.
+ * The grid's starting metadata for a file just read: every column's
+ * `isPayload` re-derived from its role, so a `linkage` column with
+ * `isPayload: true`, which the grid cannot show, is not sent, and an inferred
+ * sent identifier (`inferMetadata` marks an `id` column so) starts as
+ * `identifier`, not sent. The grid sends no record identifier until the
+ * operator chooses `identifier-sent`.
  */
 export function normalizeForEditor(metadata: Metadata): Metadata {
-  return metadata.map((column) =>
-    applyDisclosure(column, disclosureOf(column)),
-  );
-}
-
-/**
- * The grid's starting metadata for a file just read: {@link normalizeForEditor}
- * over `inferred`, with a sent identifier set to `identifier` (not sent), so
- * the grid sends no record identifier until the operator chooses
- * `identifier-sent`. A count-only invitation, or one asking for no columns,
- * then does not block the launch over a column the operator never chose.
- */
-export function editorSeedMetadata(inferred: Metadata): Metadata {
-  return normalizeForEditor(inferred).map((column) =>
-    disclosureOf(column) === "identifier-sent"
-      ? applyDisclosure(column, "identifier")
-      : column,
-  );
+  return metadata.map((column) => {
+    const choice = disclosureOf(column);
+    return applyDisclosure(
+      column,
+      choice === "identifier-sent" ? "identifier" : choice,
+    );
+  });
 }
 
 /**
@@ -291,8 +280,9 @@ export function hasMultipleIdentifiers(metadata: Metadata): boolean {
  * {@link disclosedColumnNames} -- so this cannot drift from what the quick
  * path actually transmits.
  *
- * Does not apply {@link normalizeForEditor}, since the quick path does not
- * normalize.
+ * Does not apply {@link normalizeForEditor}: the quick path does not
+ * normalize, so an inferred record identifier it sends shows as sent here,
+ * where the grid's seed starts it as not sent.
  */
 export function quickInviteDisclosedColumns(
   columns: Array<string>,

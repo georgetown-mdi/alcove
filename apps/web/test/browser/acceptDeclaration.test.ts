@@ -124,6 +124,24 @@ const WIDENING_COSTS_A_KEY_PLURAL =
   " each column has a single use, so sending them would leave an agreed" +
   " linkage key with no column to match on.";
 
+// The same two sentences where a column the offer covers is the file's record
+// identifier: that column keeps its use and is sent, so the offer names its own
+// choice for it.
+const WIDENING_OFFER_IDENTIFIER =
+  PARTNER_REMEDY +
+  " Your file does have that column as its record identifier: you can set" +
+  ' it to "Unique record identifier - sent to your partner" below instead -' +
+  " that discloses more than you have marked so far, and the column stays" +
+  " your record identifier.";
+
+const WIDENING_COSTS_A_KEY_WITH_IDENTIFIER =
+  "Setting your record identifier to " +
+  '"Unique record identifier - sent to your partner" and the other columns' +
+  ' your file does have to "Sent to your partner" below will not start the' +
+  " exchange: at least one of them is used to match, and each column has a" +
+  " single use, so sending them would leave an agreed linkage key with no" +
+  " column to match on.";
+
 function mountStep(
   linkageTerms: LinkageTerms,
   columns: Array<string>,
@@ -344,12 +362,10 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
   });
 
-  test("offers the same widening, at the same stated cost, for a column the file keeps as its record identifier", async () => {
-    // The role the offer's cost must not be written against: `record_id` is this
-    // file's record identifier, so it is neither matched on nor sent, and a cost
-    // named as matching would be false about the one column the operator keeps
-    // unsent to index their own results. The offer is the same one -- the column
-    // is in the file -- and what it costs is the use the row below shows.
+  test("offers to send a column the file keeps as its record identifier as that identifier", async () => {
+    // `record_id` is this file's record identifier, so it is neither matched on
+    // nor sent. Setting it to "Sent to your partner" would drop it as the
+    // identifier, so the offer names the identifier's own sending choice.
     const identifierColumns = ["first_name", "last_name", "record_id"];
     mountStep(
       { ...acceptorTerms, payload: { receive: [{ name: "record_id" }] } },
@@ -360,11 +376,10 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
         page.getByText("Your partner expects a column you are not sending"),
       )
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(WIDENING_OFFER);
+    expect(app.container.textContent).toContain(WIDENING_OFFER_IDENTIFIER);
+    expect(app.container.textContent).not.toContain(WIDENING_OFFER);
 
-    // The use the sentence says sending replaces, as the grid states it: the
-    // control the operator is sent to holds one choice, and here it is the
-    // identifier -- not matching, which this column does not do. The label contains
+    // The use the grid states for the column the offer names. The label contains
     // the isolate as characters (a string sink cannot hold the markup), so the
     // query is built from the same helper the grid labels with.
     const use = app.container.querySelector<HTMLInputElement>(
@@ -432,7 +447,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     // Two columns this file does have, at the two uses the offer covers: one it
     // matches on and one it keeps as its record identifier. Only the first costs a
-    // key, which is what the plural sentence states.
+    // key, which is what the plural sentence states, naming each column's choice.
     const held = ["first_name", "record_id"];
     mountStep(
       {
@@ -458,7 +473,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     // Still after the partner's remedy and the different-file one, which the
     // absent names above make available here.
     expect(notice.textContent).toContain(
-      `or choose a file that has those columns. ${WIDENING_COSTS_A_KEY_PLURAL}`,
+      `or choose a file that has those columns. ${WIDENING_COSTS_A_KEY_WITH_IDENTIFIER}`,
     );
     expect(notice.textContent.length).toBeLessThanOrEqual(NOTICE_CEILING);
   });
