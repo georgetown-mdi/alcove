@@ -12,6 +12,7 @@ import {
   OWN_COLUMNS_DEFAULT,
   OWN_COLUMNS_EMPTY_ALL_NOTICE,
   OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE,
+  OWN_COLUMNS_EMPTY_DISCLOSED_NO_IDENTIFIER_NOTICE,
   OWN_COLUMNS_LABELS,
   OWN_COLUMNS_ORDER,
   ownColumnsActionable,
@@ -124,7 +125,7 @@ describe("a selection that resolves to no column", () => {
 
   test("`all` finds nothing where the identifier is the only column", () => {
     expect(ownColumnsPreview(identifierOnly, "all")).toEqual([]);
-    expect(ownColumnsEmptySelectionNotice("all")).toBe(
+    expect(ownColumnsEmptySelectionNotice("all", identifierOnly)).toBe(
       OWN_COLUMNS_EMPTY_ALL_NOTICE,
     );
   });
@@ -139,11 +140,36 @@ describe("a selection that resolves to no column", () => {
       "dob",
     ]);
     expect(ownColumnsPreview(linkageOnly, "disclosed")).toEqual([]);
-    expect(ownColumnsEmptySelectionNotice("disclosed")).toBe(
+    expect(ownColumnsEmptySelectionNotice("disclosed", linkageOnly)).toBe(
       OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE,
     );
     expect(OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE).not.toBe(
       OWN_COLUMNS_EMPTY_ALL_NOTICE,
+    );
+  });
+
+  test("`disclosed` with an identifier names it in the notice", () => {
+    expect(ownColumnsEmptySelectionNotice("disclosed", linkageOnly)).toBe(
+      "No column is left to add: no column other than your record identifier is " +
+        "marked as sent to your partner, so this choice adds nothing. The " +
+        "identifier already begins your result file; mark another column as sent " +
+        "to keep it in your result file.",
+    );
+  });
+
+  test("`disclosed` with no identifier does not claim one begins the result", () => {
+    const noIdentifier = inferMetadata(["first_name", "last_name", "dob"], []);
+    expect(noIdentifier.some((column) => column.role === "identifier")).toBe(
+      false,
+    );
+    expect(ownColumnsPreview(noIdentifier, "disclosed")).toEqual([]);
+    expect(ownColumnsEmptySelectionNotice("disclosed", noIdentifier)).toBe(
+      "No column is left to add: no column is marked as sent to your partner, " +
+        "so this choice adds nothing. Mark a column as sent to keep it in your " +
+        "result file.",
+    );
+    expect(OWN_COLUMNS_EMPTY_DISCLOSED_NO_IDENTIFIER_NOTICE).not.toContain(
+      "identifier",
     );
   });
 });

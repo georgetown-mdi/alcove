@@ -268,9 +268,9 @@ describe("single-identifier rule", () => {
   });
 
   test("demotes every prior identifier and names them all, not just the last", () => {
-    // inferMetadata can seed two identifiers (an `id` and an `identifier` column),
-    // so choosing identifier on a third column must demote both -- and report both,
-    // or a screen-reader user hears only one displacement.
+    // An authored metadata block can declare two identifiers, so choosing
+    // identifier on a third column must demote both -- and report both, or a
+    // screen-reader user hears only one displacement.
     const md: Metadata = [
       col({
         name: "a",

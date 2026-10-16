@@ -95,7 +95,7 @@ export function OwnColumnsChoiceField({
           <div className={styles.stateInset}>
             <p className={styles.stateLabel}>No column left to add</p>
             <p className={styles.small} style={{ margin: 0 }}>
-              {ownColumnsEmptySelectionNotice(choice)}
+              {ownColumnsEmptySelectionNotice(choice, metadata)}
             </p>
           </div>
         ))}
