@@ -9,6 +9,11 @@ import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import { isPeerWaitTimeout } from "../../src/errors";
 import { LOCK_HELLO_BODY } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient } from "../utils/support";
+import { UsageError } from "../../src/errors";
+import {
+  driveUntilError,
+  makeConnectedConn,
+} from "../utils/fileSyncConnectionFixture";
 
 const SELF = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 const PEER = "00000000-0000-4000-8000-000000000001";
@@ -60,5 +65,27 @@ describe("a control file name with no byte count", () => {
         );
       }
     }
+  }
+});
+
+describe("a control file name with no byte count written mid-run", () => {
+  for (const name of EARLIER_NAMES) {
+    test(`${name} is an unexpected file under the default policy: the run ends with a UsageError and the file stays`, async () => {
+      const { client, files } = makeMockClient();
+      const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
+      conn.id = SELF;
+      conn.peerId = PEER;
+
+      files.set(`/test/${name}`, LOCK_HELLO_BODY);
+
+      const { errors, pollerActiveBeforeDriverStop } =
+        await driveUntilError(conn);
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toBeInstanceOf(UsageError);
+      expect((errors[0] as Error).message).toContain(name);
+      expect(pollerActiveBeforeDriverStop).toBe(false);
+      expect(files.has(`/test/${name}`)).toBe(true);
+    });
   }
 });
