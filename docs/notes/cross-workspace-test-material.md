@@ -87,13 +87,14 @@ declare therefore takes the testkit whether or not the build would tolerate
 inlining it.
 
 Later (2026-10-15): the reason given for the testkit above, a dependency
-`packages/core` does not declare, has lapsed. Core now declares
+`packages/core` does not declare, has lapsed. Core declares
 `peerjs-js-binarypack`, because the PeerJS framing moved into it and unpacks the
 wire with it, and core's rollup config keeps every declared dependency external,
-so a frame set in `dist/testing.*` would no longer inline a copy of the codec.
-The set stays in `packages/testkit` as a stated exception to the admission rule
-in docs/TESTING.md, Shared test material; whether it moves is a decision of its
-own, outside this note.
+so a frame set in `dist/testing.*` does not inline a copy of the codec. The set
+therefore meets the `@alcove/core/testing` condition and takes that channel
+(`packages/core/src/connection/webrtcInboundFrameFixtures.ts`), under the
+admission rule in docs/TESTING.md, Shared test material, and the testkit
+declares no packer.
 
 ## The constraints, and where they bite
 
@@ -195,6 +196,9 @@ priced -- not this note.
   `loadSigningCertificate` and the console's `readBoundIdentity` bound-identity
   parity tests. Same handling: a case wanted on both loaders reaches them by
   living in a published package.
+- `webrtcInboundFrameFixtures.ts` -- test-only. The labelled WebRTC inbound
+  frames, chunk envelopes and malformed datagrams both transports' parity suites
+  drive, built with the packer core declares.
 - The helpers `testing.ts` defines -- `sortAssociationTable`,
   `withCapturedLogs`, `installCapturedLogsInterceptor`, and the `LogEntry`
   shape -- test-only. No product code calls them.
