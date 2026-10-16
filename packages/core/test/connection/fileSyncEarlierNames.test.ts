@@ -1,12 +1,12 @@
 // The control-file names with no byte count (`<id>-hello.json`,
 // `<id>-joining.json`, `<id>-abort.json`) are not in the protocol grammar: a
 // file named that way is foreign, so it neither ends a run nor is swept, and a
-// run whose partner writes only such names ends at the peer timeout.
+// run whose folder holds only such names at entry ends at the peer timeout.
 
 import { describe, expect, test } from "vitest";
 
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
-import { UsageError } from "../../src/errors";
+import { isPeerWaitTimeout } from "../../src/errors";
 import { LOCK_HELLO_BODY } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient } from "../utils/support";
 
@@ -54,8 +54,7 @@ describe("a control file name with no byte count", () => {
               locklessRendezvous,
               files,
             );
-            expect(err).toBeInstanceOf(Error);
-            expect(err).not.toBeInstanceOf(UsageError);
+            expect(isPeerWaitTimeout(err)).toBe(true);
             expect(files.has(`/test/${name}`)).toBe(true);
           },
         );
