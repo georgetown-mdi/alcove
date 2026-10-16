@@ -44,11 +44,11 @@ import { waitFor } from "../support";
 // 60 s these cases would wait a minute longer for the same rejection.
 const STALL_DEADLINE_MS = 3_000;
 
-// A measured margin absorbing millisecond-truncation and timer-fire jitter on a
-// Date.now()-delta taken around this deadline's own setTimeout: 2000 runs of a
-// 100 ms timer, measured 2026-09-02, landed as much as 3 ms below nominal.
-// Subtracted from the deadline before a >= assertion so an elapsed delta reading
-// one tick short of the nominal interval still passes.
+// Elapsed time is read with performance.now(), the monotonic clock the
+// deadline's setTimeout runs on: under load the wall clock behind Date.now()
+// moved 27 ms against it within two minutes. The margin absorbs the timer's
+// millisecond-granular start; 1500 3 s timers under a load average of 17,
+// measured 2026-10-16, fired at most 1.03 ms short.
 const STALL_DEADLINE_MEASUREMENT_MARGIN_MS = 4;
 
 // How long a case watches a vanished session with nothing outstanding before
@@ -339,12 +339,12 @@ inProcessOnly(
           expect(sessionReadsEstablished(adapter)).toBe(true);
 
           // The next operation is what meets it, and pays the full deadline.
-          const started = Date.now();
+          const started = performance.now();
           const error = await adapter.list(remote).then(
             () => undefined,
             (err: unknown) => err,
           );
-          return { error, elapsedMs: Date.now() - started };
+          return { error, elapsedMs: performance.now() - started };
         },
         (level) => level === "WARN" || level === "ERROR",
       );
@@ -657,12 +657,12 @@ inProcessOnly(
       });
       srv.sessionControls.vanishActiveSession();
 
-      const started = Date.now();
+      const started = performance.now();
       await srv.stop();
 
       // Well inside the backend's own 2 s teardown bound: spending that bound is
       // the failure this guards against, not a merely slow teardown.
-      expect(Date.now() - started).toBeLessThan(1_500);
+      expect(performance.now() - started).toBeLessThan(1_500);
     } finally {
       await adapter.end().catch(() => {});
     }
@@ -746,12 +746,12 @@ for (const withheld of WITHHELD_REPLY_CASES)
         const [outcome, logs] = await withCapturedLogs(
           async () => {
             srv.inject.withholdOn = withheld.opcode;
-            const started = Date.now();
+            const started = performance.now();
             const error = await withheld.drive(adapter, remote).then(
               () => undefined,
               (err: unknown) => err,
             );
-            return { error, elapsedMs: Date.now() - started };
+            return { error, elapsedMs: performance.now() - started };
           },
           (level) => level === "WARN" || level === "ERROR",
         );
