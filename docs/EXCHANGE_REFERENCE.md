@@ -1154,8 +1154,6 @@ A control file is never read as a message, and a message ack's mid-name `<NNN>`/
 
 The receiver reads a file only once its on-disk size reaches the byte count its name states, so a partially synced file is never consumed prematurely. A file larger than its name states is refused: a message or hello ends the run; an abort marker listed larger than its name is not believed, and one found larger while being read ends the run as a message does.
 
-Both parties must run the same Alcove version. A version whose hello, joining and abort names have no byte count (`<id>-hello.json`) cannot exchange with this one: a run that finds such a hello under any id but its own ends naming the earlier version. That includes a hello left over in the folder by an earlier-version run of your own, since a new run has a fresh id. The refusal comes before `--sweep-exchange-files` runs, so the flag does not clear such a hello: remove it by hand, as the message says.
-
 #### Moving files out of the folder
 
 An operator who runs a tool that moves files out of the shared folder -- to archive them, or to pass them on -- can tell from a file's name and size alone whether Alcove has finished writing it. This holds whether or not [`write_without_renaming`](#setting-write_without_renaming) is set.

@@ -6,7 +6,6 @@ import {
   ackMarkerName,
   isMessageName,
   isProtocolGrammarName,
-  legacyHelloWriterId,
   parseMessageByteCount,
   parseSizedControlName,
   parseTimestampedMessageNNN,
@@ -167,23 +166,17 @@ describe("the names a party writes state the size of their body", () => {
   });
 });
 
-describe("names an earlier version wrote, with no byte count", () => {
-  test("stay protocol-grammar names, so entry refuses or sweeps them", () => {
+describe("control file names with no byte count", () => {
+  test("are not protocol-grammar names", () => {
     for (const name of [
       "alice-hello.json",
       "alice-joining.json",
       "alice-abort.json",
     ]) {
-      expect(isProtocolGrammarName(name)).toBe(true);
+      expect(isProtocolGrammarName(name)).toBe(false);
       expect(isMessageName(name)).toBe(false);
       expect(parseSizedControlName(name)).toBeUndefined();
     }
-  });
-
-  test("a legacy hello is recognized by its writer id, never a bare one", () => {
-    expect(legacyHelloWriterId("alice-hello.json")).toBe("alice");
-    expect(legacyHelloWriterId("-hello.json")).toBeUndefined();
-    expect(legacyHelloWriterId("alice-hello-48.json")).toBeUndefined();
   });
 });
 

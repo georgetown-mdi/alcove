@@ -28,16 +28,6 @@ const SIZED_CONTROL_TYPES: ReadonlySet<string> = new Set<SizedControlType>([
   "abort",
 ]);
 
-// The name shapes an earlier version wrote for the sized control files, with
-// no byte count. Kept in the protocol grammar so a leftover one is refused or
-// swept at entry rather than tolerated as foreign.
-const LEGACY_HELLO_SUFFIX = "-hello.json";
-const LEGACY_CONTROL_SUFFIXES = [
-  LEGACY_HELLO_SUFFIX,
-  "-joining.json",
-  "-abort.json",
-] as const;
-
 // The declared byte count of a size-terminal filename: the last `-` segment
 // before `.json`, parsed right-anchored so an id containing hyphens cannot
 // corrupt it. Undefined when the name has no `-` or that segment is not a
@@ -153,15 +143,6 @@ export const joiningNameForHello = (helloName: string): string | undefined => {
   return sizedControlName(parsed.id, "joining", parsed.byteCount);
 };
 
-// The writer id of a hello in the shape an earlier version wrote,
-// `<id>-hello.json`, or undefined for any other name or an empty id.
-/** @internal */
-export const legacyHelloWriterId = (name: string): string | undefined => {
-  if (!name.endsWith(LEGACY_HELLO_SUFFIX)) return undefined;
-  const id = name.slice(0, -LEGACY_HELLO_SUFFIX.length);
-  return id.length > 0 ? id : undefined;
-};
-
 const TEMP_PREFIX = "temp-";
 
 // A hello temp keeps the `temp-` prefix, so it is still a protocol temp, but the
@@ -225,7 +206,6 @@ export const isProtocolGrammarName = (name: string): boolean => {
   if (!name.endsWith(".json")) return false;
   if (
     name.endsWith(LOCK_SUFFIX) ||
-    LEGACY_CONTROL_SUFFIXES.some((suffix) => name.endsWith(suffix)) ||
     // Broad by design: a foreign name ending -ack.json is refused or swept as a
     // protocol file rather than tolerated, so no ack-shaped name slips past.
     name.endsWith("-ack.json")

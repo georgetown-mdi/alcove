@@ -4030,12 +4030,6 @@ const entryPreconditionKinds: Array<{
     ],
     outcome: "reject",
   },
-  // A partner hello in the shape an earlier version wrote, with no byte count.
-  {
-    kind: "peer hello with no byte count",
-    present: () => [`${ENTRY_PEER_ID}-hello.json`],
-    outcome: "reject",
-  },
   {
     kind: "lock file",
     present: () => [`${ENTRY_SELF_ID}-${ENTRY_PEER_ID}-lock.json`],
@@ -4101,6 +4095,12 @@ const entryPreconditionKinds: Array<{
   // A message-shaped <id>-<digits>.json is NOT foreign -- it matches the grammar
   // and stays in the "reject" rows above.
   { kind: "foreign file", present: () => ["notes.txt"], outcome: "proceed" },
+  // A hello name with no byte count is not in the grammar, so it is foreign.
+  {
+    kind: "peer hello with no byte count",
+    present: () => [`${ENTRY_PEER_ID}-hello.json`],
+    outcome: "proceed",
+  },
 ];
 
 const entryPreconditionModes: Array<{ label: string; retain: boolean }> = [

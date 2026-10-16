@@ -1728,45 +1728,6 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
   });
 });
 
-describe("FileSyncRendezvous partner hello with no byte count", () => {
-  const LEGACY_HELLO = "zzz-hello.json";
-  const legacyRefusal = {
-    name: "UsageError",
-    message: expect.stringContaining(
-      `the partner hello ${LEGACY_HELLO} has no byte count in its name, so it ` +
-        "was written by an earlier Alcove version",
-    ),
-  };
-
-  test("is refused at entry ahead of the unexpected-protocol-file refusal", async () => {
-    const files = new Map<string, Buffer>();
-    files.set(`${DIR}/${LEGACY_HELLO}`, serializeEnvelope(LOCK_FLAGS));
-    const p = makeParty("aaa", LOCK_FLAGS, files);
-
-    await expect(p.rdv.run(p.scope)).rejects.toMatchObject(legacyRefusal);
-    expect(files.has(`${DIR}/${LEGACY_HELLO}`)).toBe(true);
-  });
-
-  test.each([
-    ["lock", LOCK_FLAGS],
-    ["lockless", LOCKLESS_FLAGS],
-  ] as const)(
-    "is refused when it appears during the %s rendezvous wait",
-    async (_mode, flags) => {
-      const files = new Map<string, Buffer>();
-      files.set(`${DIR}/${LEGACY_HELLO}`, serializeEnvelope(flags));
-      const p = makeParty("aaa", flags, files, {
-        hideAtEntry: [LEGACY_HELLO],
-      });
-
-      const started = Date.now();
-      await expect(p.rdv.run(p.scope)).rejects.toMatchObject(legacyRefusal);
-      // Refused on the poll that lists it, not at the peer timeout.
-      expect(Date.now() - started).toBeLessThan(1000);
-    },
-  );
-});
-
 // --- entry-guard refusals at the rendered display boundary --------------------
 //
 // Both strict-empty refusals are what an operator acts on, and both name a
