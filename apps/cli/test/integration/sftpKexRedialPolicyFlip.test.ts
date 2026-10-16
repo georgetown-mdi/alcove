@@ -1,8 +1,6 @@
 import fsp from "node:fs/promises";
-import net from "node:net";
 import path from "node:path";
 
-import ssh2 from "ssh2";
 import { afterEach, expect, vi } from "vitest";
 import {
   FileSyncConnection,
@@ -16,6 +14,7 @@ import {
   APPENDED_MARKERS,
   createKexinitRecordingRelay,
   SSH_MSG_DISCONNECT,
+  startKexRestrictedListener,
   type RelayedDial,
 } from "./kexOfferWire";
 import type { KexPrimitive } from "../../src/connection/sftpKexCapability";
@@ -107,46 +106,6 @@ function chainedMessages(error: unknown): string[] {
   )
     messages.push(link.message);
   return messages;
-}
-
-/**
- * A listener whose key-exchange policy accepts only `curve25519-sha256` -- every
- * algorithm the forced verdict withholds, and nothing else -- counting the
- * connections that reach it. A real `ssh2.Server`: what a dial meeting this
- * policy produces is ssh2's own negotiation failure, not a message this suite
- * composed.
- */
-async function startKexRestrictedListener(): Promise<{
-  host: string;
-  port: number;
-  connections: () => number;
-  close: () => Promise<void>;
-}> {
-  const { Server, utils } = ssh2;
-  let connections = 0;
-  const server = new Server(
-    {
-      hostKeys: [utils.generateKeyPairSync("ecdsa", { bits: 256 }).private],
-      algorithms: { kex: ["curve25519-sha256"] },
-    },
-    (client) => {
-      connections += 1;
-      // The client abandons a handshake it cannot negotiate; that is the point,
-      // and it must not reach the process as an unhandled error.
-      client.on("error", () => {});
-    },
-  );
-  const port = await new Promise<number>((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      resolve((server.address() as net.AddressInfo).port);
-    });
-  });
-  return {
-    host: "127.0.0.1",
-    port,
-    connections: () => connections,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
 }
 
 /**
@@ -474,6 +433,76 @@ inProcessOnly(
       await relay.close({ destroyLiveSessions: true });
       await restricted.close();
       await fsp.rm(dir, { recursive: true, force: true });
+      await srv.stop();
+    }
+  },
+  FLIP_TEST_TIMEOUT_MS,
+);
+
+inProcessOnly(
+  "a cycle-start re-dial issued at once after a refused one connects",
+  async () => {
+    // The poll loop's next tick with no gap: ensureConnected() called again as
+    // soon as the refused one returns, so nothing but the adapter stands between
+    // the refused dial's connection and the next dial.
+    const srv = await startInProcessSftpServer();
+    const restricted = await startKexRestrictedListener();
+    const relay = createKexinitRecordingRelay(srv.handle);
+    const adapter = new SSH2SFTPClientAdapter({ ephemeralSessions: true });
+    const socketBeneath = (): { closed?: boolean } | undefined =>
+      (
+        adapter as unknown as {
+          client: { client?: { _sock?: { closed?: boolean } } };
+        }
+      ).client.client?._sock;
+
+    try {
+      await adapter.connect({
+        host: "127.0.0.1",
+        port: await relay.port,
+        ...serverAuth(srv.handle.userb),
+        maxReconnectAttempts: 0,
+        ...OPERATOR_WITHHELD_X25519,
+      });
+
+      const [outcome, logs] = await withCapturedLogs(
+        async () => {
+          await adapter.releaseForIdle();
+          relay.pointAt(restricted);
+          const refused = await adapter.ensureConnected();
+          const closedWhenRefused = socketBeneath()?.closed;
+          relay.pointAt(srv.handle);
+          const redialed = await adapter.ensureConnected();
+          const rootListed =
+            redialed &&
+            Array.isArray(await adapter.list(srv.handle.remoteRoot));
+          return { refused, closedWhenRefused, redialed, rootListed };
+        },
+        (level) => level === "WARN" || level === "ERROR",
+      );
+
+      // The refusal skipped its cycle and was reported only once the connection
+      // it opened had closed, so the next dial met no close still to come. That
+      // dial connected, and the session it opened answers.
+      expect(outcome).toEqual({
+        refused: false,
+        closedWhenRefused: true,
+        redialed: true,
+        rootListed: true,
+      });
+      expect(restricted.connections()).toBe(1);
+      const refusals = logs.filter((entry) =>
+        entry.message.includes("ephemeral SFTP re-dial failed"),
+      );
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]?.message).toContain(
+        "no matching key exchange algorithm",
+      );
+    } finally {
+      relay.pointAt(srv.handle);
+      await adapter.end().catch(() => {});
+      await relay.close({ destroyLiveSessions: true });
+      await restricted.close();
       await srv.stop();
     }
   },

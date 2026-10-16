@@ -1,5 +1,7 @@
 import net from "node:net";
 
+import ssh2 from "ssh2";
+
 // Reading what an SFTP dial OFFERED, off the wire: the first binary packet of an
 // SSH connection is unencrypted, so a listener in front of a real server can
 // decode the client's own SSH_MSG_KEXINIT without touching key material and
@@ -163,5 +165,44 @@ export function createKexinitRecordingRelay(initial: {
         }
         server.close(() => resolve());
       }),
+  };
+}
+
+/**
+ * A listener whose key-exchange policy accepts only `curve25519-sha256`,
+ * counting the connections that reach it, so a dial offering nothing built on
+ * X25519 is refused. A real `ssh2.Server`: what a dial meeting this policy
+ * produces is ssh2's own negotiation failure, not a message a suite composed.
+ */
+export async function startKexRestrictedListener(): Promise<{
+  host: string;
+  port: number;
+  connections: () => number;
+  close: () => Promise<void>;
+}> {
+  const { Server, utils } = ssh2;
+  let connections = 0;
+  const server = new Server(
+    {
+      hostKeys: [utils.generateKeyPairSync("ecdsa", { bits: 256 }).private],
+      algorithms: { kex: ["curve25519-sha256"] },
+    },
+    (client) => {
+      connections += 1;
+      // The client abandons a handshake it cannot negotiate; that is the point,
+      // and it must not reach the process as an unhandled error.
+      client.on("error", () => {});
+    },
+  );
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+  return {
+    host: "127.0.0.1",
+    port,
+    connections: () => connections,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

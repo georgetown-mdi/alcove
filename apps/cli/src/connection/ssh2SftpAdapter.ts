@@ -79,6 +79,7 @@ import {
 } from "./sftpClientInternals";
 import type {
   ForcedCloseSeams,
+  Ssh2ClientSocket,
   Ssh2SftpClientInternals,
   Ssh2SftpError,
 } from "./sftpClientInternals";
@@ -227,6 +228,41 @@ const PEAK_SHARED_CLIENT_LISTENERS_PER_EVENT =
  */
 export const SHARED_SSH2_CLIENT_MAX_EVENT_LISTENERS =
   PEAK_SHARED_CLIENT_LISTENERS_PER_EVENT;
+
+// The ssh2 Client's 'close' for one dial, subscribed before the dial so a close
+// delivered while it fails is recorded. Node marks a destroyed socket `closed`
+// before that event fires, so the event, not the socket, tells whether the
+// dial's close is still to come (docs/spec/DEPENDENCY_PINS.md).
+interface DialCloseWatch {
+  readonly delivered: Promise<void>;
+  seen(): boolean;
+  // Required on every path: the Client outlives the dial.
+  cancel(): void;
+}
+
+function watchDialClose(
+  client: Ssh2SftpClientInternals["client"],
+): DialCloseWatch | undefined {
+  const once = client?.once;
+  const removeListener = client?.removeListener;
+  if (typeof once !== "function" || typeof removeListener !== "function")
+    return undefined;
+  let seen = false;
+  let markDelivered!: () => void;
+  const delivered = new Promise<void>((resolve) => {
+    markDelivered = resolve;
+  });
+  const onClose = (): void => {
+    seen = true;
+    markDelivered();
+  };
+  once.call(client, "close", onClose);
+  return {
+    delivered,
+    seen: () => seen,
+    cancel: () => removeListener.call(client, "close", onClose),
+  };
+}
 
 // How a bounded teardown wait ended (see
 // SSH2SFTPClientAdapter.awaitBoundedTeardown). `settled` is the only one meaning
@@ -1834,7 +1870,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       internals.client,
       subsystemOpenTimeoutMs(connectOptions.readyTimeout),
     );
-    if (watch === undefined) {
+    const dialClose = watchDialClose(internals.client);
+    if (watch === undefined || dialClose === undefined) {
+      watch?.cancel();
+      dialClose?.cancel();
       this.log.debug(
         `the phase after authentication is bounded by subscribing to ssh2's ` +
           `'ready' through client.once() and client.removeListener(), which ` +
@@ -1843,6 +1882,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       );
       throw unboundedSubsystemOpenError();
     }
+    const socketBeforeDial = internals.client?._sock;
     try {
       await Promise.race([this.client.connect(connectOptions), watch.expired]);
     } catch (error: unknown) {
@@ -1854,9 +1894,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       // this side still owes.
       if (error instanceof SubsystemOpenTimeoutError)
         await this.closeUnansweredDial(held);
+      else await this.closeFailedDial(held, socketBeforeDial, dialClose);
       throw error;
     } finally {
       watch.cancel();
+      dialClose.cancel();
     }
   }
 
@@ -1916,6 +1958,70 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `subsystem request failed: ${sanitizeErrorForDisplay(error)}. The ` +
           `connection is left to the operating system to close, and the run ` +
           `ends with the dial's own failure without dialing again.`,
+      );
+    }
+  }
+
+  // A dial can reject before the connection it opened has delivered the ssh2
+  // Client's 'close', and the next dial on the shared Client then fails
+  // however the server answers (docs/spec/DEPENDENCY_PINS.md). So that
+  // connection is closed and the close waited out before the rejection is
+  // reported. A socket the dial did not open belongs to the path that opened
+  // it, and a dial whose 'close' was already delivered needs nothing more.
+  private async closeFailedDial(
+    held: HeldSessionTransition,
+    socketBeforeDial: Ssh2ClientSocket | undefined,
+    dialClose: DialCloseWatch,
+  ): Promise<void> {
+    const internals = this.client as unknown as Ssh2SftpClientInternals;
+    const socket = internals.client?._sock;
+    if (socket === undefined || socket === socketBeforeDial) return;
+    if (dialClose.seen()) return;
+    // The connection's own close is waited for first, so a dial that ends
+    // cleanly still does, and anything its peer sends after the dial failed
+    // reaches the handlers that expect it; the destroy follows only a close
+    // that did not come. The bound is ref'd: the dial may have been refused
+    // over a socket already destroyed, with nothing ref'd left behind it.
+    await this.awaitBoundedTeardown(
+      held,
+      dialClose.delivered,
+      FORCED_CLOSE_TIMEOUT_MS,
+      undefined,
+      true,
+    );
+    if (dialClose.seen()) return;
+    const transport = resolveTerminalCloseSeam(internals);
+    if ("missing" in transport) {
+      this.log.warn(
+        `The connection beneath a failed SFTP dial did not close, and this ` +
+          `build could not close it from this side. The connection is left ` +
+          `to the operating system to close, and the next dial may fail as ` +
+          `well. This build of Alcove is not compatible with the installed ` +
+          `SFTP library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
+      );
+      this.log.debug(
+        `closing a failed dial's connection from this side drives ssh2's ` +
+          `${transport.missing}, which is missing after a failed dial; the ` +
+          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
+          `relocated, or removed it`,
+      );
+      return;
+    }
+    try {
+      await this.awaitBoundedTeardown(
+        held,
+        dialClose.delivered,
+        FORCED_CLOSE_TIMEOUT_MS,
+        transport.destroy,
+        true,
+      );
+    } catch (error: unknown) {
+      // Reported rather than raised, so the dial's own rejection is the one the
+      // retry loop and the cycle-start re-dial classify.
+      this.log.warn(
+        `Closing the connection beneath a failed SFTP dial failed: ` +
+          `${sanitizeErrorForDisplay(error)}. The connection is left to the ` +
+          `operating system to close, and the next dial may fail as well.`,
       );
     }
   }

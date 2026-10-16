@@ -15,6 +15,7 @@ import {
   isPreIdentificationDialFailure,
   peerProbeTargetFromConnectOptions,
 } from "../../src/connection/sftpPeerIdentification";
+import { startKexRestrictedListener } from "./kexOfferWire";
 import { createRawSftpClient } from "../rawSftpClient";
 import {
   type InProcessSftpServer,
@@ -84,7 +85,10 @@ const delay = (ms: number): Promise<void> =>
 // socket beneath the ssh2 Client that the abandoning teardown destroys.
 interface RawClientInternals {
   sftp?: SFTPWrapper;
-  client?: { _sock?: Socket; once(event: "ready", listener: () => void): void };
+  client?: {
+    _sock?: Socket;
+    once(event: "ready" | "close", listener: () => void): void;
+  };
 }
 
 function internalsOf(client: Ssh2SftpClient): RawClientInternals {
@@ -1453,6 +1457,169 @@ inProcessOnly(
       controls.withholdSubsystemOpen = false;
       await srv.stop();
     }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// The two halves of what the adapter does after a failed dial: a dial issued
+// before the failed one's connection has closed fails against a server that
+// accepts, and one issued once that close has been driven and delivered
+// connects. Each half dials on its own client, since the first half leaves its
+// client failing every later dial. Between them sits why the delivery is read
+// from the ssh2 Client's 'close' rather than from the socket: destroy() sets
+// the socket's `closed` flag at once, before that event has fired.
+inProcessOnly(
+  "a key-exchange refusal rejects before its connection closes, a destroyed " +
+    "socket reads closed before the Client's 'close', and only a dial issued " +
+    "after that 'close' connects",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const restricted = await startKexRestrictedListener();
+    const refusedOptions: Ssh2SftpClient.ConnectOptions = {
+      ...dialOptions(srv),
+      host: restricted.host,
+      port: restricted.port,
+      algorithms: { kex: ["ecdh-sha2-nistp256"] },
+    };
+    const early = createRawSftpClient();
+    const late = createRawSftpClient();
+    const closeWatch = (client: Ssh2SftpClient) => {
+      let seen = false;
+      const delivered = new Promise<void>((resolve) =>
+        internalsOf(client).client?.once("close", () => {
+          seen = true;
+          resolve();
+        }),
+      );
+      return { seen: () => seen, delivered };
+    };
+    try {
+      const earlyClose = closeWatch(early);
+      await expect(early.connect(refusedOptions)).rejects.toThrow(
+        "no matching key exchange algorithm",
+      );
+      const closeSeenAtEarlyRejection = earlyClose.seen();
+      const earlyRedial = trackDial(early.connect(dialOptions(srv)));
+      await earlyRedial.settlement;
+
+      const lateClose = closeWatch(late);
+      await expect(late.connect(refusedOptions)).rejects.toThrow(
+        "no matching key exchange algorithm",
+      );
+      const lateSocket = internalsOf(late).client?._sock;
+      lateSocket?.destroy();
+      const atDestroy = {
+        socketClosed: lateSocket?.closed,
+        closeSeen: lateClose.seen(),
+      };
+      await lateClose.delivered;
+      const lateRedial = trackDial(late.connect(dialOptions(srv)));
+      await lateRedial.settlement;
+
+      expect({
+        closeSeenAtEarlyRejection,
+        earlyRedial: earlyRedial.outcome(),
+        atDestroy,
+        lateRedial: lateRedial.outcome(),
+      }).toEqual({
+        closeSeenAtEarlyRejection: false,
+        earlyRedial: "rejected",
+        atDestroy: { socketClosed: true, closeSeen: false },
+        lateRedial: "resolved",
+      });
+    } finally {
+      await late.end().catch(() => {});
+      internalsOf(early).client?._sock?.destroy();
+      await restricted.close();
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// Short enough to keep the case cheap; the handshake-timeout leg's peer never
+// answers, so any deadline is reached.
+const HANDSHAKE_TIMEOUT_READY_TIMEOUT_MS = 300;
+
+// What a dial against a peer answering as `answer` says reads at its rejection:
+// the rejection's message, the socket's flags, and whether the Client's 'close'
+// had fired. Resolves only once that 'close' has been delivered.
+async function failedDialReading(answer: (socket: Socket) => void): Promise<{
+  rejection: string;
+  socketClosed: boolean | undefined;
+  socketDestroyed: boolean | undefined;
+  closeSeen: boolean;
+}> {
+  const peer = await barePeer(answer);
+  const client = createRawSftpClient();
+  let closeSeen = false;
+  const closeDelivered = new Promise<void>((resolve) =>
+    internalsOf(client).client?.once("close", () => {
+      closeSeen = true;
+      resolve();
+    }),
+  );
+  try {
+    const rejection = await client
+      .connect({
+        host: peer.host,
+        port: peer.port,
+        username: "unused",
+        readyTimeout: HANDSHAKE_TIMEOUT_READY_TIMEOUT_MS,
+        retries: 1,
+      })
+      .then(
+        () => "connected",
+        (err: unknown) => (err as { message?: string }).message ?? "",
+      );
+    const socket = internalsOf(client).client?._sock;
+    const reading = {
+      rejection,
+      socketClosed: socket?.closed,
+      socketDestroyed: socket?.destroyed,
+      closeSeen,
+    };
+    await closeDelivered;
+    return reading;
+  } finally {
+    await peer.stop();
+  }
+}
+
+// The same reading for a dial that fails on its handshake timeout or on a reset
+// connection: each rejects over a socket already destroyed, so the socket reads
+// closed while the Client's 'close' for it is still to come. Driven against
+// bare listeners, so no backend is involved. The reset uses resetAndDestroy for
+// the reason the identification case above gives.
+test(
+  "a dial that times out on its handshake or is reset rejects over a closed " +
+    "socket, before the Client's 'close'",
+  async () => {
+    const timedOut = await failedDialReading(() => {});
+    const reset = await failedDialReading((socket) => {
+      socket.resetAndDestroy();
+    });
+    const shape = (reading: typeof timedOut, fragment: string) => ({
+      ...reading,
+      rejection: reading.rejection.includes(fragment),
+    });
+    expect({
+      timedOut: shape(timedOut, "Timed out while waiting for handshake"),
+      reset: shape(reset, "ECONNRESET"),
+    }).toEqual({
+      timedOut: {
+        rejection: true,
+        socketClosed: true,
+        socketDestroyed: true,
+        closeSeen: false,
+      },
+      reset: {
+        rejection: true,
+        socketClosed: true,
+        socketDestroyed: true,
+        closeSeen: false,
+      },
+    });
   },
   TEST_TIMEOUT_MS,
 );
