@@ -49,7 +49,9 @@ birth with someone else, against 1.19% in the full 85.8-million-record file, and
 Hillestad et al. (2008) found last name + DOB gave a 33% chance of a false match
 in 79 million records. The geography of the counterparty matters as much: in
 Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4%
-false where the state disagreed and 0.3% where it agreed. A county exchange is
+false where the state token did not agree and 0.3% where it agreed. A token is
+not created when any of its fields is missing, so the first row includes pairs
+with a state missing on one side. A county exchange is
 closer to the second row, which is why rule 12 is banded above 99.5% for one
 county and for nothing wider.
 
@@ -72,8 +74,11 @@ Two details of HUD's own handling bear on that:
 - HUD's hashed CSV export writes the SSN as the unhashed last four digits
   followed by a hash of the full SSN, and each name as the hash of its Soundex
   code (HUD 2025c).
-- A partial SSN is not necessarily the last four: HUD expects missing digits in
-  any of the nine positions (HUD 2025b).
+- A partial SSN is any SSN other than a complete and valid nine-digit one,
+  whatever the reason (HUD 2025a). The glossary's data-quality rule requires the
+  last four digits present and not "0000", and applies its checks on the first
+  five only where they are present, so the first five may be missing and the
+  last four may not (HUD 2025d).
 
 ## How the rules compare with published practice
 
@@ -84,9 +89,12 @@ how it is coded, and leaves matching to the vendor. Its one statement on it is
 that HMIS software "should allow for the effective matching of partial SSNs"
 (HUD 2025a). HUD's one published matching rule is its 2005 unduplication
 guidance: agreement on any two of first name, last name, DOB and a partial SSN
-makes a potential match, deleted when two fields conflict unless the full SSN
-and two of the names and date agree (Sokol and Gutierrez 2005). Rule 20 and the
-conflict veto below come from it.
+makes a potential match, as does a full-SSN match alone. A match is deleted
+when two fields conflict unless the full SSN and two of the names and date
+agree, a null never counting as a conflict. A separate rule deletes a match on
+last name + DOB where the SSN does not match, the clients are under 18 and the
+first names conflict, which targets twins (Sokol and Gutierrez 2005). Rule 20
+and the conflict veto below come from it.
 
 ### The token sets are unordered
 
@@ -102,9 +110,18 @@ What the proposed rules take from them:
 
 - **linkja's error variants.** linkja aims hashes at named entry errors: a
   swapped name order, a transposed day and month, a date off by one day or one
-  year, a three-letter first name, and each part of a compound surname. Rules
-  13 to 15, 22 and 24 are those devices; linkja's SSN is the last four digits,
-  so its date variants are rules 13 to 15 exactly.
+  year, and a three-letter first name. Rules 13 to 15 and 22 are those devices;
+  linkja's SSN is the last four digits, so its date variants are rules 13 to 15
+  exactly. Three details of the shipped code (MRAIA 2020):
+  - It computes only a date plus one day and a date plus one year, and only in
+    the hashes that carry an SSN. Its matching component compares each record's
+    exact-date hash with every record's offset hash, which covers a one-step
+    difference in either direction within a pair.
+  - Its overview describes hashing each part of a compound surname, which rule
+    24 follows, but the shipped code disables it and collapses a hyphenated
+    surname into one word.
+  - The overview's data dictionary lists the three-letter first-name hash
+    without the date of birth, but the code includes it.
 - **N3C's contact and geography tokens.** Every N3C token with a ZIP also has a
   last name, and email and cell phone each appear once, beside a first name.
   Rules 11 and 28 are N3C tokens (28 without gender), and rules 25, 26, 29 and
@@ -126,7 +143,9 @@ SSN, phonetic names added true links and no false ones: in Grannis et al.
 (2002), SSN + NYSIIS-coded names found 234 and 90 more correct links than SSN +
 exact names at the same count of wrong ones, and in Mirel et al. (2022), links
 where an SSN token and the Soundex-names token agreed without an exact-name
-token were 531 true and none false. As the only name evidence it does badly: the
+token were 531 true and none false (rows 9 and 10 of Table 1, 10 and 521; the
+521 also agreed on the SSN + exact first-name token, so counting that as an
+exact-name token leaves 10 true and none false). As the only name evidence it does badly: the
 Soundex-names token alone was 81.4% false in Mirel. SSA's BENDEX accepts a
 Soundex-equivalent surname with the SSN (SSA 2022), and Cook County left
 phonetic codes out to preserve specificity (Trick et al. 2019).
@@ -140,10 +159,11 @@ Soundex.
 
 Four published deterministic cascades run rules in a stated order:
 
-- **NCHS** runs a two-pass deterministic SSN stage before its probabilistic
-  stage: full SSN first, then the last four digits, with a record linked in the
-  first pass excluded from the second. It demands more corroboration of the
-  weaker key, not less (NCHS 2022; NCHS 2023; NCHS 2024). Its probabilistic
+- **NCHS**, in its recent methodologies, runs a two-pass deterministic SSN
+  stage before its probabilistic stage: full SSN first, then the last four
+  digits, with a record linked in the first pass excluded from the second. It
+  demands more corroboration of the weaker key, not less (NCHS 2022; NCHS 2023;
+  NCHS 2024). Its probabilistic
   passes are overlapping blocking passes combined afterwards, not a cascade.
 - **Cook County** runs complete name + DOB first and its two last-four-SSN rules
   fifth and sixth. It counts matches per rule but validates the six together,
@@ -210,8 +230,9 @@ Two placements are the maintainer's:
 - **Rule 12 runs above rules 13 to 16.** All five are banded above 99.5%;
   tie-break 2 alone would put rule 12 below rule 16.
 - **Rules 22 and 24 run below the last-four-SSN date rules.** Their bands are
-  lower, and the one measured reversed-name rule, Cook County's, required the
-  last four digits (Trick et al. 2019); rule 22 does not.
+  lower, and Cook County's reversed-name rule, the one measured, is reported
+  both with and without the last four digits (Trick et al. 2019); rule 22 has no
+  SSN element.
 
 Orders not forced by containment or a placement above are left open among rules
 of one band.
@@ -251,23 +272,24 @@ the data-quality codes that flag both are not matchable fields.
 **A missing field yields no key.** A record missing any element of a rule
 contributes nothing to that round and stays eligible for later ones. A rule's
 reach is therefore the joint fill across both parties: Bernstam et al. (2022)
-found the cell-phone token's record fill was 94.6% and its pair fill 68.01%. A
-rule's reach must be quoted as pair fill or it is overstated.
+found 94.6% of records filled the phone number field, while the cell-phone
+token's pair fill was 68.01%. A rule's reach must be quoted as pair fill or it
+is overstated.
 
 ## Rule features the evidence calls for
 
 These are requirements, not designs. None exists in Alcove.
 
-- **A date expansion of one day either side.** linkja and Cook County use one,
-  and Cook County's largest spike in date differences was at one day (Trick et
+- **A date expansion of one day either side.** linkja, through its matching
+  component, and Cook County use one, and Cook County's largest spike in date differences was at one day (Trick et
   al. 2019). Rule 14 needs it.
 - **A conflict veto.** A rule must be able to fire only where a named field is
   not present and different on both sides. HUD's 2005 guidance deletes a
   potential match with conflicting values in two of gender, name suffix, the
   parts of the date and the full SSN (Sokol and Gutierrez 2005). Without a veto,
   every rule with no SSN element accepts pairs whose valid SSNs disagree; in
-  Mirel et al. (2022), links agreeing on no SSN token and no state were 41.4%
-  false. Exact equality of hashed values cannot express this per pair, so it
+  Mirel et al. (2022), links agreeing on no SSN token and no state token were
+  41.4% false. Exact equality of hashed values cannot express this per pair, so it
   needs a protocol feature. Rule 20 needs it, on the date of birth.
 - **A name-frequency condition.** Rule 33 may fire only for uncommon names,
   which needs a frequency score for the first and last name combination with a
@@ -392,10 +414,12 @@ that rule removed, reporting the recall it added and the precision it cost. No
 guidance requires this, and one evaluation performs it. Mirel et al. (2022)
 tabulated the token combinations among returned links, so a weak token was
 charged only for links no stronger token also supported, and dropped any
-combination over 50% false by a rule fixed before the results. The four
-combinations dropped all rested on name, sex and date with no SSN token.
-Dropping them moved the result from 93.8% precision and 98.7% recall to 98.9%
-and 97.8%, removing 11,515 false links at the cost of 1,738 true ones.
+combination over 50% false. The false rate was computed against the same gold
+standard on the same data, and nothing says the threshold was set in advance.
+The four combinations dropped all rested on name, sex and date with no SSN
+token. Dropping them moved the result from 93.8% precision and 98.7% recall to
+98.9% and 97.8%, removing 11,515 false links at the cost of 1,738 true ones
+(computed from rows 8, 11, 12 and 19 of Table 1).
 
 A rule's marginal contribution is what it adds after the earlier rules have
 claimed their records, so the ablation has to run with the cascade in place. A
