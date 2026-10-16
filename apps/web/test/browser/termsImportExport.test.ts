@@ -20,7 +20,7 @@ const COLUMNS = ["ssn", "ssn4", "first_name", "last_name", "dob"];
 
 const app = createAppMount();
 
-function mountEditor() {
+function mountEditor(notCarried: ReadonlyArray<string> = []) {
   const { draft, seed } = seedAdvancedInvite("County Health Dept", COLUMNS);
   const currentTerms = buildAdvancedTerms(draft);
   app.render(
@@ -28,7 +28,7 @@ function mountEditor() {
       currentTerms,
       seed,
       rawRows: [],
-      onImport: () => undefined,
+      onImport: () => notCarried,
     }),
   );
   return currentTerms;
@@ -72,10 +72,24 @@ describe("TermsImportExport", () => {
     await expect
       .element(
         page
-          .getByText("Imported. Review the loaded terms before generating.")
+          .getByText(
+            "Imported. Review the loaded terms before creating the invitation.",
+          )
           .first(),
       )
       .toBeInTheDocument();
     expect(page.getByText("Could not import these terms").query()).toBeNull();
+  });
+
+  test("names each field whose cleaning steps did not load", async () => {
+    const currentTerms = mountEditor(["first_name"]);
+    await userEvent.fill(pasteBox(), exportLinkageTerms(currentTerms, "json"));
+    await userEvent.click(importButton());
+    await expect
+      .element(page.getByText("Some cleaning steps were not loaded"))
+      .toBeInTheDocument();
+    expect(page.getByRole("status").element().textContent).toContain(
+      "the cleaning steps for first_name were not loaded",
+    );
   });
 });

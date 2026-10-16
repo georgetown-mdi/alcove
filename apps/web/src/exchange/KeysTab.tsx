@@ -48,7 +48,12 @@ import type {
   InviterEditor,
   KeyVerdict,
 } from "@psi/inviterEditor";
-import type { Algorithm, LinkageStrategy, LinkageTerms } from "@alcove/core";
+import type {
+  Algorithm,
+  LinkageStrategy,
+  LinkageTerms,
+  Standardization,
+} from "@alcove/core";
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 
 /** The guided-list badge copy and CSS class for each per-key verdict
@@ -157,7 +162,12 @@ export function KeysTab({
   onStrategy: (strategy: LinkageStrategy) => void;
   onAlgorithm: (algorithm: Algorithm) => void;
   onDeduplicate: (deduplicate: boolean) => void;
-  onImport: (terms: LinkageTerms) => void;
+  /** Load imported terms and a pasted configuration's cleaning steps; returns
+   * the fields whose steps did not load. */
+  onImport: (
+    terms: LinkageTerms,
+    standardization: Standardization | undefined,
+  ) => ReadonlyArray<string>;
   /** The validation message for the key set, rendered inline beside the list
    * it names (the work column's Problems block shows it too). */
   keysError: string | undefined;

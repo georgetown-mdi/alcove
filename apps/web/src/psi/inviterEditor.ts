@@ -47,6 +47,7 @@ import type {
   LinkageTerms,
   Metadata,
   SemanticType,
+  Standardization,
 } from "@alcove/core";
 
 import type { DisclosureChoice } from "./metadataEditing";
@@ -306,6 +307,40 @@ export function editorWithFieldInput(
       ),
     },
   };
+}
+
+/**
+ * Load a configuration's `standardization` block onto the draft, field by
+ * field: a transformation lands, input and steps, where the draft declares its
+ * output and the draft's columns hold its input as a linkage column. Returns
+ * the outputs of the transformations that did not land, so the caller names
+ * them rather than dropping them unseen.
+ */
+export function editorWithConfigurationCleaning(
+  editor: InviterEditor,
+  standardization: Standardization,
+): { editor: InviterEditor; notCarried: Array<string> } {
+  let next = editor;
+  const notCarried: Array<string> = [];
+  for (const transformation of standardization) {
+    const declared = next.draft.standardization.some(
+      (declaration) => declaration.output === transformation.output,
+    );
+    const bindable = next.draft.metadata.some(
+      (column) =>
+        column.name === transformation.input && column.role === "linkage",
+    );
+    if (!declared || !bindable) {
+      notCarried.push(transformation.output);
+      continue;
+    }
+    next = editorWithFieldSteps(
+      editorWithFieldInput(next, transformation.output, transformation.input),
+      transformation.output,
+      transformation.steps,
+    );
+  }
+  return { editor: next, notCarried };
 }
 
 /** Remove an authored same-typed field's transformation. */

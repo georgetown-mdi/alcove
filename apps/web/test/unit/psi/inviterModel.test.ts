@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { stringify as stringifyYaml } from "yaml";
 
-import { authoredLinkageFields } from "@alcove/core";
+import { authoredLinkageFields, snakeizeKeys } from "@alcove/core";
+
+import { importLinkageTerms } from "@psi/linkageTermsIO";
 
 import { buildAdvancedTerms } from "@psi/authoring/advancedInvite";
 
@@ -17,6 +20,7 @@ import {
   editorWithAuthoredDraft,
   editorWithColumnDisclosure,
   editorWithColumnType,
+  editorWithConfigurationCleaning,
   editorWithDeduplicate,
   editorWithFieldAdded,
   editorWithFieldSteps,
@@ -1469,6 +1473,44 @@ describe("customize tabs", () => {
     const exported = mintedTerms(editor);
     const reimported = editorWithImportedTerms(editor, csv, exported);
     expect(mintedTerms(reimported)).toEqual(exported);
+  });
+
+  test("a pasted configuration's cleaning split loads with its terms", () => {
+    // A CLI alcove.yaml pasted into the import box: its last_name cleaning
+    // splits on a hyphen and lands on the draft, while a step for a column this
+    // file does not have is named rather than dropped.
+    const editor = editorFromCsv("Dana", csv);
+    const pasted = stringifyYaml({
+      linkage_terms: snakeizeKeys(mintedTerms(editor)),
+      standardization: [
+        {
+          output: "last_name",
+          input: "last_name",
+          steps: [
+            { function: "to_upper_case" },
+            { function: "split_on", params: { delimiter: "-" } },
+          ],
+        },
+        { output: "first_name", input: "given_name", steps: [] },
+      ],
+    });
+    const result = importLinkageTerms(pasted);
+    if (!result.success) throw new Error(result.error);
+    const loaded = editorWithConfigurationCleaning(
+      editorWithImportedTerms(editor, csv, result.terms),
+      result.standardization ?? [],
+    );
+    expect(loaded.notCarried).toEqual(["first_name"]);
+    expect(
+      loaded.editor.draft.standardization.find(
+        (transformation) => transformation.output === "last_name",
+      )?.steps,
+    ).toEqual([
+      { function: "to_upper_case" },
+      { function: "split_on", params: { delimiter: "-" } },
+    ]);
+    expect(spineProblems(loaded.editor)).toEqual([]);
+    expect(reviewValidation(loaded.editor).canGenerate).toBe(true);
   });
 
   test("column edits preserve authored keys", () => {

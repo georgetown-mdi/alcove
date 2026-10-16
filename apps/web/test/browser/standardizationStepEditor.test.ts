@@ -408,12 +408,10 @@ describe("StandardizationStepEditor raw-pattern authoring (per-party, ungated)",
     await expect
       .element(page.getByRole("menuitem", { name: "Filter (regex)" }))
       .toBeInTheDocument();
-    // ...minus the fan-out step: the exchange refuses a pipeline that splits one
-    // value into several match candidates, so the menu does not offer authoring
-    // one to be refused at the run.
-    expect(
-      page.getByRole("menuitem", { name: "Split on" }).elements(),
-    ).toHaveLength(0);
+    // ...the fan-out step among them.
+    await expect
+      .element(page.getByRole("menuitem", { name: "Split on" }))
+      .toBeInTheDocument();
   });
 
   test("a default pipeline's regex step is editable, with its advanced badge", async () => {

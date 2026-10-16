@@ -66,6 +66,7 @@ import {
   editorWithAuthoredDraft,
   editorWithColumnDisclosure,
   editorWithColumnType,
+  editorWithConfigurationCleaning,
   editorWithDeduplicate,
   editorWithFieldAdded,
   editorWithFieldInput,
@@ -2044,14 +2045,19 @@ export function InviterScreen() {
               onDeduplicate={(deduplicate) =>
                 applyEditor(editorWithDeduplicate(editor, deduplicate))
               }
-              onImport={(terms) =>
+              onImport={(terms, standardization) => {
+                const loaded = editorWithConfigurationCleaning(
+                  editorWithImportedTerms(editor, acquired, terms),
+                  standardization ?? [],
+                );
                 dispatch({
                   type: "editor-replaced",
-                  editor: editorWithImportedTerms(editor, acquired, terms),
+                  editor: loaded.editor,
                   announcement:
                     "Imported. Review the loaded terms before creating.",
-                })
-              }
+                });
+                return loaded.notCarried;
+              }}
               keysError={reviewValidation(editor).errors.keys}
               announce={(message) =>
                 dispatch({ type: "editor-announced", announcement: message })

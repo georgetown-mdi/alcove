@@ -10,7 +10,6 @@
  */
 
 import {
-  FAN_OUT_FUNCTION_NAMES,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
   coalesceSubstitutesConstant,
   sanitizeForDisplay,
@@ -203,31 +202,6 @@ export const expertFunctionNames: ReadonlySet<string> = new Set(
     (group) => group.functionNames,
   ),
 );
-
-/**
- * The advanced groups as the add-step menu offers them: the raw-pattern family
- * minus every function core classes as fan-out (`FAN_OUT_FUNCTION_NAMES`). A
- * fan-out has consequences of its own (matching per candidate, the removal that
- * follows a match, the candidate grouping the single-pass receiver is handed)
- * that this editor gives the operator no control to weigh, so it offers no step
- * that declares one, and its Generate gate refuses one an imported document
- * holds (`advancedInviteValidation.ts`) -- wider than core's own refusal, by
- * design and not by drift.
- *
- * Derived from core's list rather than a second web-side one, so the menu
- * follows whatever core classes as a fan-out with no edit here. An imported
- * document's fan-out step still RENDERS -- {@link STANDARDIZATION_EXPERT_FUNCTION_GROUPS}
- * keeps the full family for the descriptor-backed read-only row and its parity
- * test -- so the operator can see and remove it rather than meet an unlabeled
- * step.
- */
-export const OFFERED_EXPERT_FUNCTION_GROUPS: Array<StandardizationFunctionGroup> =
-  STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map((group) => ({
-    ...group,
-    functionNames: group.functionNames.filter(
-      (name) => !FAN_OUT_FUNCTION_NAMES.includes(name),
-    ),
-  })).filter((group) => group.functionNames.length > 0);
 
 /**
  * The plain-language label the add-step menu and the step rows show for

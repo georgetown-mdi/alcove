@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { FAN_OUT_FUNCTION_NAMES } from "@alcove/core";
+
 import { buildAdvancedTerms } from "@psi/authoring/advancedInviteTerms";
 import { seedAdvancedInvite } from "@psi/authoring/advancedInviteDraft";
 import { setColumnDisclosure } from "@psi/metadataEditing";
@@ -190,5 +192,66 @@ describe("the count-only candidate-set gate at the Generate boundary", () => {
     const result = validateAdvancedInvite(asPsi, seed, NOW);
     expect(result.errors).toEqual({});
     expect(result.canGenerate).toBe(true);
+  });
+});
+
+describe("the count-only fan-out gate at the Generate boundary", () => {
+  // Core refuses a count-only exchange that splits a value, in its own cleaning
+  // as well as in a linkage key, so both stay refused at Generate.
+  const [fanOutFunction] = FAN_OUT_FUNCTION_NAMES;
+  const fanOutStep = { function: fanOutFunction, params: { delimiter: "-" } };
+
+  function withCleaningFanOut(draft: AdvancedInviteDraft): AdvancedInviteDraft {
+    return {
+      ...draft,
+      standardization: draft.standardization.map((transformation) => ({
+        ...transformation,
+        steps: [...(transformation.steps ?? []), fanOutStep],
+      })),
+    };
+  }
+
+  function withKeyFanOut(draft: AdvancedInviteDraft): AdvancedInviteDraft {
+    return {
+      ...draft,
+      keys: draft.keys.map((entry) => ({
+        ...entry,
+        key: {
+          ...entry.key,
+          elements: entry.key.elements.map((element, position) =>
+            position === 0 ? { ...element, transform: [fanOutStep] } : element,
+          ),
+        },
+      })),
+    };
+  }
+
+  test("blocks Generate on a count-only draft whose cleaning splits a value", () => {
+    const { draft, seed } = countOnlyDraft();
+    const result = validateAdvancedInvite(withCleaningFanOut(draft), seed, NOW);
+    expect(result.canGenerate).toBe(false);
+    expect(result.errors.standardization).toMatch(
+      /count-only exchange matches one value per record/,
+    );
+    expect(result.errors.standardization).toMatch(
+      /Reveal the matched identifiers/,
+    );
+  });
+
+  test("blocks Generate on a count-only draft whose key splits a value", () => {
+    const { draft, seed } = countOnlyDraft();
+    const result = validateAdvancedInvite(withKeyFanOut(draft), seed, NOW);
+    expect(result.canGenerate).toBe(false);
+    expect(result.errors.keys).toMatch(/splits a value into parts/);
+  });
+
+  test("under psi both drafts generate", () => {
+    const { draft, seed } = countOnlyDraft();
+    for (const edit of [withCleaningFanOut, withKeyFanOut]) {
+      const asPsi: AdvancedInviteDraft = { ...edit(draft), algorithm: "psi" };
+      const result = validateAdvancedInvite(asPsi, seed, NOW);
+      expect(result.errors).toEqual({});
+      expect(result.canGenerate).toBe(true);
+    }
   });
 });

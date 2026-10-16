@@ -47,8 +47,7 @@ import {
   setColumnType,
 } from "@psi/metadataEditing";
 import {
-  editorWithFieldInput,
-  editorWithFieldSteps,
+  editorWithConfigurationCleaning,
   editorWithImportedTerms,
 } from "@psi/inviterEditor";
 
@@ -527,37 +526,21 @@ export function editorWithLoadedTerms(
     columns.metadata,
   );
   const { payload } = loaded.linkageTerms;
-  let next: InviterEditor = {
-    ...imported,
-    draft: {
-      ...imported.draft,
-      heldTermsSettings: payload === undefined ? {} : { payload },
+  const cleaning = editorWithConfigurationCleaning(
+    {
+      ...imported,
+      draft: {
+        ...imported.draft,
+        heldTermsSettings: payload === undefined ? {} : { payload },
+      },
     },
-  };
-  let cleaningWhole = true;
-  for (const transformation of loaded.standardization ?? []) {
-    const declared = next.draft.standardization.some(
-      (declaration) => declaration.output === transformation.output,
-    );
-    const bindable = columns.metadata.some(
-      (column) =>
-        column.name === transformation.input && column.role === "linkage",
-    );
-    if (!declared || !bindable) {
-      cleaningWhole = false;
-      continue;
-    }
-    next = editorWithFieldSteps(
-      editorWithFieldInput(next, transformation.output, transformation.input),
-      transformation.output,
-      transformation.steps,
-    );
-  }
+    loaded.standardization ?? [],
+  );
   return {
-    editor: next,
+    editor: cleaning.editor,
     notApplied: [
       ...(columns.whole ? [] : ["metadata"]),
-      ...(cleaningWhole ? [] : ["standardization"]),
+      ...(cleaning.notCarried.length === 0 ? [] : ["standardization"]),
     ],
     notCovered: columns.covered ? [] : ["metadata"],
   };

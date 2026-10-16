@@ -11,6 +11,8 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconDownload, IconUpload } from "@tabler/icons-react";
 
+import { sanitizeForDisplay } from "@alcove/core";
+
 import { exportLinkageTerms, importLinkageTerms } from "@psi/linkageTermsIO";
 import { importedConstraintDivergenceMessage } from "@psi/authoring/advancedInvite";
 
@@ -20,9 +22,24 @@ import type {
   AdvancedInviteSeed,
   ProfiledDateInputFormats,
 } from "@psi/authoring/advancedInvite";
-import type { CSVRow, LinkageTerms } from "@alcove/core";
+import type { CSVRow, LinkageTerms, Standardization } from "@alcove/core";
 
-const IMPORT_SUCCESS = "Imported. Review the loaded terms before generating.";
+const IMPORT_SUCCESS =
+  "Imported. Review the loaded terms before creating the invitation.";
+
+/** The import confirmation, naming each field whose cleaning steps in the
+ * pasted configuration were not loaded. The names come from the pasted
+ * document, so each is sanitized for display. */
+function importConfirmation(notCarried: ReadonlyArray<string>): string {
+  if (notCarried.length === 0) return IMPORT_SUCCESS;
+  const names = notCarried.map((name) => sanitizeForDisplay(name)).join(", ");
+  return (
+    `Imported, but the cleaning steps for ${names} were not loaded: these ` +
+    "terms declare no such field, or your file has no linkage column with " +
+    "the input name the configuration gives. Add those steps on the " +
+    "Cleaning tab, and review the loaded terms before creating the invitation."
+  );
+}
 
 /**
  * Import or export linkage terms as JSON/YAML, for authoring outside the GUI
@@ -33,7 +50,9 @@ const IMPORT_SUCCESS = "Imported. Review the loaded terms before generating.";
  * represent and would silently normalize
  * ({@link importedConstraintDivergenceMessage}), so they cannot reach the
  * draft past the GUI's own controls. A rejected import shows a readable,
- * value-free error and leaves the draft untouched.
+ * value-free error and leaves the draft untouched. A pasted configuration's
+ * cleaning steps load with its terms, and each field whose steps did not load
+ * is named.
  */
 export function TermsImportExport({
   currentTerms,
@@ -54,15 +73,22 @@ export function TermsImportExport({
   /** The profiled per-column date-of-birth input formats, threaded so the
    * reconstruction never re-derives them from the rows (the console has none). */
   dateInputFormats?: ProfiledDateInputFormats;
-  /** Called with validated terms to load into the editor. */
-  onImport: (terms: LinkageTerms) => void;
+  /** Called with validated terms, and a pasted configuration's cleaning steps,
+   * to load into the editor. Returns the outputs of the cleaning steps that
+   * were not loaded. */
+  onImport: (
+    terms: LinkageTerms,
+    standardization: Standardization | undefined,
+  ) => ReadonlyArray<string>;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
-  const [imported, setImported] = useState(false);
+  // The fields whose cleaning steps the last import did not load; undefined
+  // until an import succeeds.
+  const [imported, setImported] = useState<ReadonlyArray<string>>();
 
   const handleImport = () => {
-    setImported(false);
+    setImported(undefined);
     const result = importLinkageTerms(text);
     if (!result.success) {
       setError(result.error);
@@ -82,8 +108,7 @@ export function TermsImportExport({
       return;
     }
     setError(undefined);
-    onImport(result.terms);
-    setImported(true);
+    setImported(onImport(result.terms, result.standardization));
     // Clear the consumed document so a later Reset + Import cannot silently
     // re-import this now-stale paste (the Import button disables on empty text).
     setText("");
@@ -92,7 +117,8 @@ export function TermsImportExport({
   // A single message for the persistent live region below. Conditionally-mounted
   // alerts are missed by screen readers that only watch regions already in the DOM,
   // so the announcement lives in an always-present region whose content changes.
-  const liveMessage = error ?? (imported ? IMPORT_SUCCESS : "");
+  const liveMessage =
+    error ?? (imported !== undefined ? importConfirmation(imported) : "");
 
   return (
     <Stack gap="sm">
@@ -142,7 +168,7 @@ export function TermsImportExport({
         value={text}
         onChange={(e) => {
           setText(e.currentTarget.value);
-          setImported(false);
+          setImported(undefined);
           setError(undefined);
         }}
         autosize
@@ -163,7 +189,19 @@ export function TermsImportExport({
           {error}
         </Alert>
       )}
-      {imported && (
+      {imported !== undefined && imported.length > 0 && (
+        // A note, not a second live region: the persistent region below
+        // announces the same text.
+        <Alert
+          role="note"
+          color="yellow"
+          icon={<IconAlertCircle aria-hidden />}
+          title="Some cleaning steps were not loaded"
+        >
+          {importConfirmation(imported)}
+        </Alert>
+      )}
+      {imported !== undefined && imported.length === 0 && (
         // Route through the tuned accessible green (theme.ts STATUS_TEXT.success)
         // rather than a bare c="green": that resolves to green-9, which is only
         // 4.37:1 on the white page, under the WCAG 2.1 AA 1.4.3 text floor.

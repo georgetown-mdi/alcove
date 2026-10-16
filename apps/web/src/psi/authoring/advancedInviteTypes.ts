@@ -19,9 +19,8 @@ import type {
  * draft operations, terms mapping and validation depend on it rather than on each
  * other.
  *
- * The editor authors no fan-out transform step at any strategy, and an imported
- * document holding one is refused at the mint. It authors no payload block, and
- * column metadata goes to the inviter's own `prepareForExchange`, never the token.
+ * The editor authors no payload block, and column metadata goes to the
+ * inviter's own `prepareForExchange`, never the token.
  */
 
 /** The per-element fuzzy-comparison expansion (core does not export the bare union). */

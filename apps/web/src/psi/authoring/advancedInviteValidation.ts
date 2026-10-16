@@ -107,21 +107,6 @@ function declaresFanOut(
   );
 }
 
-/** Shown when a cleaning step or a linkage-key transform splits one value into
- * several match candidates. This editor authors no fan-out -- its add-step menu
- * offers none (`OFFERED_EXPERT_FUNCTION_GROUPS`), so one can only arrive on an
- * imported document -- and is blocked at the moment of choice rather than left to
- * mint an invitation whose consequences the editor cannot show the operator. Wider
- * than core's own refusal, which admits a fan-out under single-pass, so the
- * message points at the surface that does author one. Names the capability, not
- * the offending step: the step's function name can be partner-influenced, the
- * same reason {@link UNSUPPLYABLE_KEY_MESSAGE} names no field. */
-const FAN_OUT_MESSAGE_BODY =
-  "splits one value into several values to match on, which this editor does " +
-  "not author. Remove that step before generating; an exchange that matches " +
-  "on several values per record is authored from the command line, and runs " +
-  "under single-pass linkage only.";
-
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
  * the `substring` and `pad_left` numeric params the element editor writes into the
@@ -251,7 +236,7 @@ const UNENCODABLE_TERMS_MESSAGE =
 
 /** The control each count-only shape rule reports against. Every rule but the
  * payload one is a property of the matching arrangement the key list holds, which
- * is also where the fan-out and satisfiability messages land. */
+ * is also where the satisfiability messages land. */
 const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
   linkageKeys: "keys",
   linkageStrategy: "keys",
@@ -300,6 +285,14 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
   "A count-only exchange matches one value per record, but a linkage key here " +
   "matches on several. Open that key and remove its fuzzy comparison, its " +
   "either-order swap, or the step that splits a value into parts; or " +
+  REVEAL_IDENTIFIERS_INSTEAD;
+
+/** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
+ * core refuses a count-only exchange whose own cleaning splits a value
+ * (`assertFanOutImplemented`), which the terms alone do not show. */
+const COUNT_ONLY_CLEANING_FAN_OUT_MESSAGE =
+  "A count-only exchange matches one value per record, but a cleaning step " +
+  "here splits a value into parts. Remove that step, or " +
   REVEAL_IDENTIFIERS_INSTEAD;
 
 /** Shown when the draft asks for a deduplicating match under a linkage strategy
@@ -388,9 +381,9 @@ function shortfallRemedy(verdict: LinkageTermsVerdict): string {
  * only the gates the schema does not express: the invitation-lifetime bounds, a
  * not-yet-passed legal-agreement expiry, at least one column-satisfiable linkage
  * key, a canonical-encode dry run (the byte form both parties hash), and the
- * three pairings the schema admits but the run refuses (a declared fan-out step,
- * a deduplicating term under a linkage strategy that matches one value per
- * record, and a candidate set under the count-only algorithm).
+ * pairings the schema admits but the run refuses (a deduplicating term under a
+ * linkage strategy that matches one value per record, and a candidate set or a
+ * splitting cleaning step under the count-only algorithm).
  *
  * Schema errors are mapped back to the offending control by their issue path,
  * since the referential-integrity refines report at the array path, echoing no
@@ -641,33 +634,21 @@ export function validateAdvancedInvite(
       "Finish, fix, or remove the highlighted cleaning steps before generating.";
   }
 
-  // The fan-out gate, read from the same list core's own refusal
-  // (`assertFanOutImplemented`) reads, and wider than it: core admits a fan-out
-  // under single-pass, while this editor authors none at any strategy. Both
-  // surfaces a fan-out can reach are checked: an authored cleaning step, and a
-  // linkage-key element transform, which an imported document holds (the step
-  // editor offers the family on neither). Written last and unconditionally -- a
-  // fan-out step blocks generation whatever else the control reports, and
-  // removing it is the only fix.
+  // The count-only cleaning fan-out gate. Both linkage strategies match a
+  // fan-out, so only the count-only algorithm refuses one; the key-transform
+  // half is the candidate-set gate below.
   if (
+    terms.algorithm === "psi-c" &&
     draft.standardization.some((transformation) =>
       declaresFanOut(transformation.steps),
     )
   )
-    errors.standardization = `A cleaning step ${FAN_OUT_MESSAGE_BODY}`;
-  if (
-    terms.linkageKeys.some((key) =>
-      key.elements.some((element) => declaresFanOut(element.transform)),
-    )
-  )
-    errors.keys = `A linkage key's transform ${FAN_OUT_MESSAGE_BODY}`;
+    errors.standardization = COUNT_ONLY_CLEANING_FAN_OUT_MESSAGE;
 
   // The unrecognized-step gate, the key-element counterpart of the descriptor
   // gate above: a step whose function has no descriptor is one core's compile
   // refuses at the mint, so the alert the element editor marks that step with
-  // stands beside a Generate that is shut rather than one that mints. Written
-  // under the fan-out message, whose remedy is the same removal on a step this
-  // one does recognize.
+  // stands beside a Generate that is shut rather than one that mints.
   if (
     errors.keys === undefined &&
     terms.linkageKeys.some((key) =>
@@ -681,8 +662,8 @@ export function validateAdvancedInvite(
     errors.keys = UNRECOGNIZED_KEY_TRANSFORM_MESSAGE;
 
   // The deduplicating-pair gate, run as core's own refusal rather than a second
-  // web-side copy of the pair it names -- the same reading-from-core the fan-out
-  // gate above does, so a pair added there is refused here with no second edit.
+  // web-side copy of the pair it names, so a pair added there is refused here
+  // with no second edit.
   // Core refuses it symmetrically from the agreed terms, so an exchange configured
   // on it aborts both parties at the run boundary; refusing it at Generate puts the
   // answer where the operator still holds both controls. Written over whatever
@@ -698,21 +679,19 @@ export function validateAdvancedInvite(
 
   // The count-only candidate-set gate: a count-only document whose keys expand a
   // record into several match candidates is refused before the exchange runs
-  // (`assertFanOutImplemented`), and nothing above catches the two declarations
-  // that expand a key without a fan-out step -- a fuzzy comparison and a swap.
-  // The verdict is core's own predicate over all three declarations
+  // (`assertFanOutImplemented`). The verdict is core's own predicate over all
+  // three declarations -- a fan-out step, a fuzzy comparison and a swap
   // (`termsDeclareCandidateSet`), not a second web-side list of them, so this
   // gate refuses exactly the documents the run refuses. Written ahead of the
   // shape gate below, whose rules the terms schema refuses first.
   if (terms.algorithm === "psi-c" && termsDeclareCandidateSet(terms))
     errors.keys = COUNT_ONLY_CANDIDATE_SET_MESSAGE;
 
-  // The count-only shape gate, at the same altitude as the fan-out one above and
-  // read from core's own rules rather than a second web-side list, so this editor
-  // refuses exactly the documents core refuses at parse and at accept. Written
-  // last for the same reason: a count-only document outside the shape blocks
-  // generation whatever else a control reports, and bringing it into the shape
-  // (or choosing the identifier-revealing algorithm) is the only fix.
+  // The count-only shape gate, read from core's own rules rather than a second
+  // web-side list, so this editor refuses exactly the documents core refuses at
+  // parse and at accept. Written last: a count-only document outside the shape
+  // blocks generation whatever else a control reports, and bringing it into the
+  // shape (or choosing the identifier-revealing algorithm) is the only fix.
   const countOnlyViolation = countOnlyShapeViolation(terms);
   if (countOnlyViolation !== undefined)
     errors[COUNT_ONLY_FIELDS[countOnlyViolation]] =

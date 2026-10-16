@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  assertFanOutImplemented,
   disclosedColumnNames,
   getDefaultLinkageTerms,
   inferMetadataForEveryColumn,
@@ -44,7 +45,11 @@ import {
   editorWithIncludeOwnColumns,
   editorWithOutputDirection,
 } from "@psi/inviterEditor";
-import { inviterCreateStatus, reviewValidation } from "@psi/inviterModel";
+import {
+  inviterCreateStatus,
+  reviewValidation,
+  spineProblems,
+} from "@psi/inviterModel";
 import { EMPTY_SFTP_FORM } from "@console/sftpConnectionForm";
 import { configurationHandBack } from "@console/configurationHandBack";
 
@@ -1784,4 +1789,83 @@ describe("an opened configuration that leaves payload.receive unset", () => {
     });
     expect(status.ready).toBe(true);
   });
+});
+
+// A configuration whose cleaning splits last names on a hyphen, as the CLI runs
+// it: the console opens it with the step in place, and nothing holds Create,
+// Save or the hand-back, all three of which read the spine's problem list.
+describe("a configuration whose cleaning splits a value", () => {
+  const splitSteps = [
+    { function: "split_on", params: { delimiter: "-", includeOriginal: true } },
+  ];
+
+  function openedAndRead(
+    linkageStrategy: LinkageTerms["linkageStrategy"],
+  ): InviterScreenState {
+    return withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          linkageTerms: {
+            ...getDefaultLinkageTerms("County Health"),
+            linkageStrategy,
+          },
+          standardization: [
+            { output: "last_name", input: "last_name", steps: splitSteps },
+          ],
+        }),
+      ),
+    );
+  }
+
+  test.each(["cascade", "single-pass"] as const)(
+    "opens, saves and runs under %s",
+    (linkageStrategy) => {
+      const state = openedAndRead(linkageStrategy);
+      const editor = state.editor;
+      if (editor === undefined) throw new Error("expected an editor");
+      expect(
+        editor.draft.standardization.find(
+          (transformation) => transformation.output === "last_name",
+        )?.steps,
+      ).toEqual(splitSteps);
+      expect(noticesOf(state)).toEqual([]);
+
+      expect(spineProblems(editor)).toEqual([]);
+      const validation = reviewValidation(editor);
+      expect(validation.canGenerate).toBe(true);
+      const terms = validation.terms;
+      if (terms === undefined) throw new Error("expected reviewed terms");
+
+      const saved = configurationHandBack({
+        editor,
+        terms,
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      });
+      expect(
+        saved.standardization?.find(
+          (transformation) => transformation.output === "last_name",
+        )?.steps,
+      ).toEqual(splitSteps);
+
+      const intent = intentFor(
+        inviterServerJobConfig({
+          minted: {
+            linkageTerms: terms,
+            sharedSecret: "a".repeat(43),
+            standardization: saved.standardization,
+          },
+          inputSource: { kind: "workFile", name: "cohort.csv" },
+          transport: { channel: "sftp" },
+        }),
+      );
+      if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
+      const spec = composeSftpConfigSpec(intent, testSftpServerEntry());
+      expect(spec.standardization).toEqual(saved.standardization);
+      expect(() =>
+        assertFanOutImplemented(spec.linkageTerms, spec.standardization),
+      ).not.toThrow();
+    },
+  );
 });

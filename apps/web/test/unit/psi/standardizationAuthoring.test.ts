@@ -15,7 +15,6 @@ import { UnknownStandardizationFunctionError } from "@alcove/core/testing";
 import {
   INERT_COALESCE_ADVICE,
   NULL_IF_BOTH_VALUES_REFUSAL,
-  OFFERED_EXPERT_FUNCTION_GROUPS,
   STANDARDIZATION_EXPERT_FUNCTION_GROUPS,
   STANDARDIZATION_FUNCTION_GROUPS,
   applyInputOverrides,
@@ -144,34 +143,17 @@ describe("expert (regex-tier) function grouping parity with the descriptor table
   });
 });
 
-describe("the fan-out family is withheld from the add menu", () => {
-  const offered = OFFERED_EXPERT_FUNCTION_GROUPS.flatMap(
-    (g) => g.functionNames,
-  );
-
-  test("offers no function core classes as fan-out", () => {
-    // Core refuses an exchange declaring one, so authoring it would only be
-    // discovered at the run. The family is read from core's own list, not a second
-    // web-side one, so this follows core rather than restating it.
+describe("the add menu offers the fan-out family", () => {
+  test("offers every function core classes as fan-out", () => {
+    // Read from core's own list, so a producer added there must reach the menu.
     expect(FAN_OUT_FUNCTION_NAMES.length).toBeGreaterThan(0);
     for (const name of FAN_OUT_FUNCTION_NAMES)
-      expect(offered).not.toContain(name);
+      expect(
+        authorableFunctionNames.has(name) || expertFunctionNames.has(name),
+      ).toBe(true);
   });
 
-  test("withholds nothing else from the expert menu", () => {
-    // The withholding is exactly the fan-out family: every other raw-pattern
-    // function is still offered, so the gate cannot quietly widen.
-    expect(offered.sort()).toEqual(
-      [...expertFunctionNames]
-        .filter((name) => !FAN_OUT_FUNCTION_NAMES.includes(name))
-        .sort(),
-    );
-  });
-
-  test("keeps the withheld function descriptor-backed for a read-only row", () => {
-    // An imported document can still have a fan-out step; it renders from its
-    // descriptor (label, blurb, typed params) rather than as a raw name, so the
-    // operator can see and remove what blocks generation.
+  test("labels each fan-out function from its descriptor", () => {
     for (const name of FAN_OUT_FUNCTION_NAMES) {
       expect(descriptorFor(name)).toBeDefined();
       expect(functionDisplay(name).label).not.toBe(name);
