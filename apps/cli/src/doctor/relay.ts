@@ -34,8 +34,8 @@ import { fail, ok, warn } from "./verdict";
 // first TURN url a peer is given and ignores the rest, so only the first url's
 // outcome decides the verdict. Before it asks them it enrolls at the registrar
 // the invitation's relay names, as a run does before it dials when that relay
-// is the one it allocates on; it contacts
-// nothing else, and runs only when the operator names it. Contract:
+// is the one it allocates on; it contacts nothing else, and runs only when the
+// operator names it. Contract:
 // docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the relay of a
 // WebRTC exchange.
 

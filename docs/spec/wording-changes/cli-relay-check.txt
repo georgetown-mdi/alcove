@@ -35,6 +35,7 @@
 - - -> **The bound.**
 - - -> Every url is asked at once under one timer of 30 seconds, an arbitrary working value, started once the enrollment has ended.
 - - -> A url whose gathering has not completed when it expires is reported as not reached, and its peer connection is closed, ending the gather.
+- - -> A gather that throws rather than ending, on any url, ends the check with an error and no verdict; the other urls' answers are not reported.
 - - -> **The outcomes.**
 - - -> A url is reached when a relay candidate is among this side's candidates (the same reading of the ICE statistics a run's failure diagnosis makes).
 - - -> The first url's check is `ok` when it is reached, and `fail` otherwise, with `no relay candidate gathered` in the summary and the remedy a run's relay failure has in [CLI.md](../CLI.md#when-a-webrtc-exchange-does-not-connect) as the `action`.
