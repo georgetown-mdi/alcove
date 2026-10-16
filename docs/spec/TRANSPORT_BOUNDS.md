@@ -170,7 +170,7 @@ Both bounds are derived, not round numbers, and both comfortably exceed what a l
 The **8,192-entry** cap is set from a memory envelope: the worst-case at-cap allocation is the retained entries, each a name of up to the 255-byte limit plus per-entry object overhead, so the listing allocation is bounded to roughly 5 MiB.
 Measured 2026-10-08 in the development container (Linux arm64) as heap retained after listing, a list of 8,192 files with 255-byte names retained about 645 to 650 bytes of heap per entry through the SFTP adapter against the in-process harness server, and about 360 through the local-filesystem adapter, so 5.1 MiB at most.
 That is about two orders of magnitude below the 512 MiB single-frame budget the frame-size bound already governs, so directory enumeration cannot become the dominant memory vector.
-It still exceeds the order-of-ten files a legitimate exchange produces (the two `-hello.json` files, at most one `-lock.json` or the `-ack.json` markers, transient `-joining.json` sentinels and `temp-*.tmp` writes, and the bounded set of PSI message frames) by roughly three orders of magnitude.
+It still exceeds the order-of-ten files a legitimate exchange produces (the two `-hello-<bytes>.json` files, at most one `-lock.json` or the `-ack.json` markers, transient `-joining-<bytes>.json` sentinels and `temp-*.tmp` writes, and the bounded set of PSI message frames) by roughly three orders of magnitude.
 That leaves generous headroom for a retain-mode directory that accumulates message and ack files across many sequential exchanges before the operator rotates it (retention is an out-of-band operator responsibility).
 
 The **255-byte** filename cap is the POSIX `NAME_MAX`, the per-path-component limit every mainstream filesystem enforces (ext4, XFS, APFS, NTFS).
@@ -209,7 +209,7 @@ Every exchange file is a regular file, and `openNoFollow` holds its opens to tha
 Each open also passes `O_NONBLOCK`, which is absent on Windows and has no effect on a regular file.
 After the open, `openNoFollow` `fstat`s the handle, and when the handle is not a regular file it closes the handle and refuses with a `UsageError`.
 The read path therefore applies the listing's `isFile()` filter a second time on the handle it actually reads.
-The lock joiner's `<id>-joining.json` sentinel is written temp-then-rename, the same as the hello (see [FILE_SYNC.md](FILE_SYNC.md)).
+The lock joiner's `<id>-joining-<bytes>.json` sentinel is written temp-then-rename, the same as the hello (see [FILE_SYNC.md](FILE_SYNC.md)).
 
 The control is scoped to the local-filesystem adapter.
 The SFTP adapter resolves every path on the server, where the server admin is already the in-scope adversary with full control of the files it serves (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)), so a server-side symlink grants no capability the threat model does not already cede.

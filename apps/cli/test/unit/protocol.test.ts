@@ -2556,6 +2556,14 @@ test("runProtocol writes no key when SIGINT cancels before the handshake complet
 
 // --- Entry-present hello attribution -----------------------------------------
 
+const LOCK_HELLO_BODY = JSON.stringify({
+  locklessRendezvous: false,
+  retainFiles: false,
+});
+
+const leftoverHelloName = (id: string): string =>
+  `${id}-hello-${Buffer.byteLength(LOCK_HELLO_BODY)}.json`;
+
 // Runs a lone party into a folder already holding a leftover peer hello under a
 // foreign id -- exactly what a hard kill during a prior rendezvous leaves when
 // the party id is a fresh uuid per run. In the default lock mode the run takes
@@ -2565,8 +2573,8 @@ async function runIntoLeftoverPeerHello(
   leftoverId: string = LEFTOVER_HELLO_ID,
 ): Promise<unknown> {
   fs.writeFileSync(
-    path.join(dropDir, `${leftoverId}-hello.json`),
-    JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
+    path.join(dropDir, leftoverHelloName(leftoverId)),
+    LOCK_HELLO_BODY,
   );
   const [result] = await Promise.allSettled([
     runProtocol({
@@ -2604,7 +2612,7 @@ test("a run against an unconfirmed entry-present hello blames the leftover, not 
   // recovery step -- asserted through the rendering path, where each cause-chain
   // link is truncated, not on the raw message.
   expect(rendered).toContain("No partner was confirmed");
-  expect(rendered).toContain(`${LEFTOVER_HELLO_ID}-hello.json`);
+  expect(rendered).toContain(leftoverHelloName(LEFTOVER_HELLO_ID));
   // The re-run leads and the removal is conditioned on surviving it: from here
   // a leftover and a partner that arrived first and then stalled are the same
   // shape, and a partner that is merely slow completes the re-run.
@@ -2629,9 +2637,9 @@ test("a run whose partner completed the rendezvous keeps the peer-side guidance"
 }, 20_000);
 
 test("entryHelloResidueGuidance leads with the diagnosis and recovery, filename last", () => {
-  const line = entryHelloResidueGuidance(`${LEFTOVER_HELLO_ID}-hello.json`);
+  const line = entryHelloResidueGuidance(leftoverHelloName(LEFTOVER_HELLO_ID));
   expect(line.indexOf("Re-run")).toBeLessThan(line.indexOf(LEFTOVER_HELLO_ID));
-  const long = entryHelloResidueGuidance(`${"x".repeat(400)}-hello.json`);
+  const long = entryHelloResidueGuidance(leftoverHelloName("x".repeat(400)));
   const rendered = sanitizeErrorForDisplay(new Error(long));
   expect(rendered).toContain("No partner was confirmed");
   expect(rendered).toContain("remove only if it persists");
@@ -2651,7 +2659,7 @@ test("the residue guidance renders in full for a configured peer_id longer than 
   const rendered = sanitizeErrorForDisplay(err);
   expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
   expect(rendered).toContain(
-    "acme-health-2026-partner-exchange-north-region-01-hello.json",
+    "acme-health-2026-partner-exchange-north-region-01-hello-48.json",
   );
   expect(rendered).toContain("remove only if it persists");
 }, 20_000);
@@ -2684,7 +2692,7 @@ test.each(RESIDUE_NAMES)(
     const err = await runIntoLeftoverPeerHello(leftoverId);
 
     const rendered = sanitizeErrorForDisplay(err);
-    const once = sanitizeForDisplay(`${leftoverId}-hello.json`);
+    const once = sanitizeForDisplay(leftoverHelloName(leftoverId));
     expect(rendered).toContain(once);
     expect(rendered).not.toContain(sanitizeForDisplay(once));
     // The whole guidance survives the per-link cap, so the escaped name is the
@@ -3679,7 +3687,7 @@ test(
     // Echo suppressed: the PeerAbort side wrote nothing, so only the generic-fault
     // side's marker remains. (If the gate dropped `!errIsPeerAbort`, this would be 2.)
     expect(
-      fs.readdirSync(dropDir).filter((f) => f.endsWith("-abort.json")),
+      fs.readdirSync(dropDir).filter((f) => /-abort-\d+\.json$/.test(f)),
     ).toHaveLength(1);
   },
 );
@@ -3713,7 +3721,7 @@ test(
     expect(mockState.runExchangeEntries).toBe(2);
 
     expect(
-      fs.readdirSync(dropDir).filter((f) => f.endsWith("-abort.json")),
+      fs.readdirSync(dropDir).filter((f) => /-abort-\d+\.json$/.test(f)),
     ).toHaveLength(2);
   },
 );
@@ -5911,7 +5919,7 @@ test("SIGINT mid-synchronize exits with 130 and cleans up the hello file (starte
     if (code === 130 && helloFilesAtExit === undefined)
       helloFilesAtExit = fs
         .readdirSync(dropDir)
-        .filter((f) => f.endsWith("-hello.json"));
+        .filter((f) => /-hello-\d+\.json$/.test(f));
     return undefined as never;
   });
 
@@ -5935,7 +5943,7 @@ test("SIGINT mid-synchronize exits with 130 and cleans up the hello file (starte
       () => {
         const entries = fs
           .readdirSync(dropDir)
-          .filter((f) => f.endsWith("-hello.json"));
+          .filter((f) => /-hello-\d+\.json$/.test(f));
         expect(entries.length).toBeGreaterThanOrEqual(1);
       },
       { timeout: 10_000 },

@@ -19,6 +19,7 @@ import {
 } from "../../src/connection/fileSyncFraming";
 import {
   ackMarkerName,
+  isMessageName,
   isProtocolGrammarName,
   parseMessageByteCount,
   parseTimestampedMessageNNN,
@@ -158,22 +159,24 @@ describe("isRecognizedLoopFile", () => {
   });
 
   test("both expected abort markers are recognized, a foreign one is not", () => {
-    expect(recognized("alice-abort.json")).toBe(true);
-    expect(recognized("bob-abort.json")).toBe(true);
-    expect(recognized("eve-abort.json")).toBe(false);
+    expect(recognized("alice-abort-80.json")).toBe(true);
+    expect(recognized("bob-abort-80.json")).toBe(true);
+    expect(recognized("eve-abort-80.json")).toBe(false);
   });
 
-  test("hellos match by exact name only", () => {
-    expect(recognized("alice-hello.json")).toBe(true);
-    expect(recognized("bob-hello.json")).toBe(true);
-    expect(recognized("alice-x-hello.json")).toBe(false);
+  // Any own-prefixed name with a numeric terminal is admitted as an own
+  // message, so the exact-writer-id match is pinned on the peer's prefix.
+  test("hellos match by exact writer id only", () => {
+    expect(recognized("alice-hello-48.json")).toBe(true);
+    expect(recognized("bob-hello-47.json")).toBe(true);
+    expect(recognized("bob-x-hello-48.json")).toBe(false);
   });
 
-  test("both joining sentinels match by exact name only", () => {
-    expect(recognized("bob-joining.json")).toBe(true);
-    expect(recognized("alice-joining.json")).toBe(true);
-    expect(recognized("bob-x-joining.json")).toBe(false);
-    expect(recognized("carol-joining.json")).toBe(false);
+  test("both joining sentinels match by exact writer id only", () => {
+    expect(recognized("bob-joining-48.json")).toBe(true);
+    expect(recognized("alice-joining-48.json")).toBe(true);
+    expect(recognized("bob-x-joining-48.json")).toBe(false);
+    expect(recognized("carol-joining-48.json")).toBe(false);
   });
 
   test("the lock matches by exact name in either arrival order", () => {
@@ -193,8 +196,8 @@ describe("isRecognizedLoopFile", () => {
   });
 
   test("an ack is recognized only when its inner target is a legal name", () => {
-    expect(recognized("bob-alice-hello-ack.json")).toBe(true);
-    expect(recognized("alice-bob-hello-ack.json")).toBe(true);
+    expect(recognized("bob-alice-hello-48-ack.json")).toBe(true);
+    expect(recognized("alice-bob-hello-48-ack.json")).toBe(true);
     expect(recognized("bob-alice-50-ack.json")).toBe(true);
     expect(recognized("alice-x-y-ack.json")).toBe(false);
   });
@@ -1068,6 +1071,89 @@ describe("FileSyncMessageLoop inboundFrameCap", () => {
   });
 });
 
+describe("FileSyncMessageLoop exact message size gate", () => {
+  // A peer message whose name states `declared` bytes, holding `body`, and
+  // listed at `listedSize` (the body's own length unless given).
+  function plantSized(
+    body: Buffer,
+    declared: number,
+    listedSize?: number,
+  ): { f: LoopFixture; name: string; gets: string[] } {
+    const files = new Map<string, Buffer>();
+    const name = `${PEER}-${declared}.json`;
+    files.set(`${DIR}/${name}`, body);
+    const gets: string[] = [];
+    const f = makeLoop(
+      {},
+      {
+        onGet: (path) => gets.push(path),
+        listScript:
+          listedSize === undefined
+            ? undefined
+            : (entries) =>
+                entries.map((entry) =>
+                  entry.name === name ? { ...entry, size: listedSize } : entry,
+                ),
+      },
+      files,
+    );
+    return { f, name, gets };
+  }
+
+  const expectTerminalMismatch = (
+    f: LoopFixture,
+    actual: number,
+    declared: number,
+  ) => {
+    expect(internals(f.loop).pollerActive).toBe(false);
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect((f.emitted[0].arg as Error).message).toContain(
+      `is ${actual} byte(s), not the ${declared} its name states`,
+    );
+  };
+
+  test("a listed size larger than the name's byte count is terminal, before any read", async () => {
+    const body = objectMessage({ m: 1 });
+    const { f, gets } = plantSized(body, body.length - 1);
+
+    await f.pollOnce();
+
+    expectTerminalMismatch(f, body.length, body.length - 1);
+    expect(gets).toEqual([]);
+  });
+
+  test("a listed size smaller than the name's byte count still waits for the rest", async () => {
+    const body = objectMessage({ m: 1 });
+    const { f, gets } = plantSized(body, body.length + 1);
+
+    await f.pollOnce();
+    f.loop.stop();
+
+    expect(f.emitted).toEqual([]);
+    expect(gets).toEqual([]);
+  });
+
+  test.each([
+    ["shorter", -1],
+    ["longer", 1],
+  ])(
+    "a read body %s than the byte count its listing matched is terminal",
+    async (_, delta) => {
+      const body = objectMessage({ m: 1 });
+      const declared = body.length - delta;
+      // Listed at the declared size, so only the read shows the difference.
+      const { f, gets } = plantSized(body, declared, declared);
+
+      await f.pollOnce();
+
+      expect(gets).toHaveLength(1);
+      expectTerminalMismatch(f, body.length, declared);
+    },
+  );
+});
+
 describe("FileSyncMessageLoop resetSessionState", () => {
   test("clears the seven per-session fields and leaves poller/enoent counters", () => {
     const f = makeLoop();
@@ -1415,10 +1501,7 @@ test("retain mode: ack marker is written before the data event fires", async () 
 const lastSentStem = (files: Map<string, Buffer>, dir: string, id: string) => {
   const sent = [...files.keys()].find(
     (p) =>
-      p.startsWith(`${dir}/${id}-`) &&
-      p.endsWith(".json") &&
-      !p.endsWith("-ack.json") &&
-      !p.endsWith("-hello.json"),
+      p.startsWith(`${dir}/${id}-`) && isMessageName(p.slice(`${dir}/`.length)),
   );
   if (sent === undefined) throw new Error("no sent message found");
   return sent.slice(`${dir}/`.length, -".json".length);

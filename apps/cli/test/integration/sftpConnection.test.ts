@@ -30,6 +30,15 @@ import { waitFor } from "../support";
 
 log.setLevel(log.levels.DEBUG);
 
+// Both parties in this file run default lock mode, so both mode flags are false.
+const LOCK_HELLO_BODY = JSON.stringify({
+  locklessRendezvous: false,
+  retainFiles: false,
+});
+
+const lockControlName = (id: string, type: "hello" | "joining"): string =>
+  `${id}-${type}-${Buffer.byteLength(LOCK_HELLO_BODY)}.json`;
+
 // The test SFTP server serves a fresh per-run directory; this file rendezvouses
 // under it. SFTP_LOCAL_DIRECTORY and SFTP_PATH are the host and remote paths the
 // raw-op tests use (list/get/put and the crashed-adapter assertions, none of
@@ -169,25 +178,26 @@ test("lock synchronization with race condition", async () => {
 test("basic synchronization", async () => {
   await serverSFTP.put(
     // The planted peer hello must advertise the bilateral mode flags; an empty
-    // {} body fails the HelloEnvelope schema. Both parties run default lock
-    // mode, so both flags are false.
-    Buffer.from(
-      JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
-    ),
-    `${pairPath}/${clientConn.id}-hello.json`,
+    // {} body fails the HelloEnvelope schema.
+    Buffer.from(LOCK_HELLO_BODY),
+    `${pairPath}/${lockControlName(clientConn.id, "hello")}`,
   );
 
   await serverConn.synchronize();
 
   const currentFiles = await serverSFTP.list(pairPath);
 
-  await serverSFTP.safeDelete(`${pairPath}/${serverConn.id}-hello.json`);
+  await serverSFTP.safeDelete(
+    `${pairPath}/${lockControlName(serverConn.id, "hello")}`,
+  );
 
   expect(serverConn.peerId).toBe(clientConn.id);
   expect(serverConn.handshakeRole).toBe("initiator");
 
   expect(currentFiles.length).toBe(1);
-  expect(currentFiles[0].name === `${serverConn.id}-hello.json`).toBe(true);
+  expect(currentFiles[0].name === lockControlName(serverConn.id, "hello")).toBe(
+    true,
+  );
 
   desynchronize(serverConn);
 });
@@ -372,8 +382,8 @@ test("lock starter aborts on a stuck mid-arrival joiner over real SFTP", async (
   });
 
   const fakeJoinerId = "00000000-0000-4000-8000-0000000000aa";
-  const sentinelName = `${fakeJoinerId}-joining.json`;
-  const helloName = `${abortConn.id}-hello.json`;
+  const sentinelName = lockControlName(fakeJoinerId, "joining");
+  const helloName = lockControlName(abortConn.id, "hello");
 
   // Start the starter without awaiting: it writes its hello and begins polling.
   const syncPromise = abortConn.synchronize();
@@ -392,9 +402,7 @@ test("lock starter aborts on a stuck mid-arrival joiner over real SFTP", async (
     );
     await serverSFTP.safeDelete(`${remote}/${helloName}`);
     await serverSFTP.put(
-      Buffer.from(
-        JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
-      ),
+      Buffer.from(LOCK_HELLO_BODY),
       `${remote}/${sentinelName}`,
     );
 

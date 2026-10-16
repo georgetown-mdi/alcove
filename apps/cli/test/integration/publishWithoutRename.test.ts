@@ -100,7 +100,7 @@ async function runPair(
     if (options.bFirst)
       await expect
         .poll(() =>
-          fs.readdirSync(folder).some((n) => n.endsWith("-hello.json")),
+          fs.readdirSync(folder).some((n) => /-hello-\d+\.json$/.test(n)),
         )
         .toBe(true);
     const runA = settle(
@@ -210,7 +210,7 @@ inProcessOnly(
     const opened = srv.inject.pathsOpenedForWrite.map((p) =>
       path.posix.basename(p),
     );
-    expect(opened.some((n) => n.endsWith("-joining.json"))).toBe(true);
+    expect(opened.some((n) => /-joining-\d+\.json$/.test(n))).toBe(true);
     expect(opened.some((n) => n.startsWith("temp-hello-"))).toBe(true);
     expect(run.a).toEqual({ ok: true });
     expect(run.b).toEqual({ ok: true });

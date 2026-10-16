@@ -48,6 +48,22 @@ const BOUNDARY_TEST_TIMEOUT_MS = 120_000;
 const isProtocolTemp = (name: string): boolean =>
   name.startsWith("temp-") && name.endsWith(".tmp");
 
+const LOCK_HELLO_BODY = JSON.stringify({
+  locklessRendezvous: false,
+  retainFiles: false,
+});
+
+const lockHelloName = (id: string): string =>
+  `${id}-hello-${Buffer.byteLength(LOCK_HELLO_BODY)}.json`;
+
+const abortMarkerNameFor = (id: string, token: Uint8Array): string => {
+  const body = JSON.stringify({
+    version: 1,
+    token: Buffer.from(token).toString("base64url"),
+  });
+  return `${id}-abort-${Buffer.byteLength(body)}.json`;
+};
+
 // Count the deletes the adapter issues per remote path, so a case can assert
 // that a cleanup delete the partner's server will never let succeed costs a
 // bounded number of round trips rather than one per re-establishment for the
@@ -688,18 +704,17 @@ inProcessOnly(
       // asserted here: this snapshot is taken while the waiter is still the sole
       // party, so neither can exist yet and their absence would prove nothing.
       // The assertion that includes them is the post-rendezvous one below.
-      expect(outcome.acrossTheCuts).toContain(`${waiter.id}-hello.json`);
+      expect(outcome.acrossTheCuts).toContain(lockHelloName(waiter.id));
       expect(
-        outcome.acrossTheCuts.filter((name) => name.endsWith("-hello.json")),
-      ).toEqual([`${waiter.id}-hello.json`]);
+        outcome.acrossTheCuts.filter((name) => /-hello-\d+\.json$/.test(name)),
+      ).toEqual([lockHelloName(waiter.id)]);
       // And the joiner's arrival consumed its sentinel rather than losing it: the
       // rendezvous leaves neither hello, no lock, and no sentinel behind.
       expect(
         outcome.afterRendezvous.filter(
           (name) =>
-            name.endsWith("-hello.json") ||
-            name.endsWith("-lock.json") ||
-            name.endsWith("-joining.json"),
+            /-(hello|joining)-\d+\.json$/.test(name) ||
+            name.endsWith("-lock.json"),
         ),
       ).toEqual([]);
 
@@ -1273,7 +1288,7 @@ inProcessOnly(
           const closing = failing.close();
           await failing.writeAbortMarker();
           const afterWrite = (await fsp.readdir(dir)).filter((name) =>
-            name.endsWith("-abort.json"),
+            /-abort-\d+\.json$/.test(name),
           );
           await waitFor(() => waitingErrors.length > 0);
           waiting.stop();
@@ -1285,10 +1300,14 @@ inProcessOnly(
 
       // The marker was written over a released session, under this party's own id
       // and no other.
-      expect(outcome.afterWrite).toEqual([`${failing.id}-abort.json`]);
+      expect(outcome.afterWrite).toEqual([
+        abortMarkerNameFor(failing.id, failingToken),
+      ]);
       // And it is not swept by the teardown that wrote it: it has to persist for
       // the peer to read.
-      expect(outcome.afterClose).toContain(`${failing.id}-abort.json`);
+      expect(outcome.afterClose).toContain(
+        abortMarkerNameFor(failing.id, failingToken),
+      );
       // The waiting peer fast-failed on the marker rather than riding out its
       // peer-inactivity budget, which would show up as a transport error instead.
       expect(waitingErrors).toHaveLength(1);

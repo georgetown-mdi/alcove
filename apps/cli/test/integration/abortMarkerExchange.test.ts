@@ -25,7 +25,7 @@ import {
 // exchange is asymmetric (protocolSetup.ts: the initiator sends first, the
 // responder receives first), so with both parties patched identically, the
 // already-armed initiator throws on message 1's send and its catch writes
-// <initiator>-abort.json; the responder, blocked in its own first receive,
+// <initiator>-abort-<n>.json; the responder, blocked in its own first receive,
 // reads that marker and fast-fails with PeerAbortError instead of riding out
 // the peer-inactivity timeout. Which party wins the rendezvous does not
 // matter: the assertions are party-agnostic.
@@ -127,7 +127,7 @@ interface AbortScenarioOutcome {
   settled: PromiseSettledResult<unknown>[];
   /** The rejection reasons among those settlements, in the same order. */
   reasons: unknown[];
-  /** Count of `<id>-abort.json` files left in the shared directory. */
+  /** Count of `<id>-abort-<n>.json` files left in the shared directory. */
   markerCount: number;
   /** WARN/ERROR lines the run emits -- captured so the faulting party's
    *  intended recovery advisory is asserted rather than leaked to the suite
@@ -207,7 +207,7 @@ async function runAbortScenario(
   );
 
   const markerCount = (await fsp.readdir(markerDir)).filter((n) =>
-    n.endsWith("-abort.json"),
+    /-abort-\d+\.json$/.test(n),
   ).length;
 
   return {

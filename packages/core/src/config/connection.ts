@@ -1440,7 +1440,7 @@ export interface SFTPConnectionConfig {
  * Connection configuration for an exchange over a locally-mounted folder.
  * Both parties must have read/write access to the same directory (e.g. a
  * network share mounted by IT that is backed by an SFTP server). The
- * `-hello.json`/`-lock.json`/message-`.json` protocol is identical to the SFTP
+ * `-hello-<n>.json`/`-lock.json`/message-`.json` protocol is identical to the SFTP
  * channel; no SSH connection is made. Use `file://` URLs with the CLI.
  *
  * Shared-secret authentication applies in the same way as the `sftp` channel:

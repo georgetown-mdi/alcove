@@ -91,7 +91,7 @@ type AbortTokenRole = (typeof ABORT_TOKEN_ROLES)[number];
 
 /**
  * Derive a 32-byte per-direction abort token from the session key using HKDF,
- * authenticating the cross-party abort marker (`<writerId>-abort.json`;
+ * authenticating the cross-party abort marker (`<writerId>-abort-<n>.json`;
  * docs/spec/CHANNEL_SECURITY.md, "Authenticated abort marker").
  *
  * @throws {Error} if `role` is not one of {@link ABORT_TOKEN_ROLES}.

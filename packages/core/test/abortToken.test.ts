@@ -122,7 +122,10 @@ test("isExpectedAbortName is a subset of isAbortMarkerName", () => {
       // grammar-level recognizer, so the entry guard (isProtocolGrammarName, via
       // isAbortMarkerName) and the poll loop (isRecognizedLoopFile, via
       // isExpectedAbortName) cannot silently diverge.
-      for (const name of [`${selfId}-abort.json`, `${peerId}-abort.json`]) {
+      for (const name of [
+        `${selfId}-abort-67.json`,
+        `${peerId}-abort-67.json`,
+      ]) {
         expect(isExpectedAbortName(name, selfId, peerId)).toBe(true);
         expect(isAbortMarkerName(name)).toBe(true);
       }
@@ -131,14 +134,15 @@ test("isExpectedAbortName is a subset of isAbortMarkerName", () => {
 });
 
 test("isExpectedAbortName rejects a foreign abort marker that isAbortMarkerName still accepts", () => {
-  // A planted `<other>-abort.json` is grammar-recognized (so the entry guard
-  // treats it as a protocol file, not a foreign one) but is NOT exact-name, so
-  // the poll loop does not exempt it from the unexpected-files policy.
-  expect(isAbortMarkerName("attacker-abort.json")).toBe(true);
-  expect(isExpectedAbortName("attacker-abort.json", "self", "peer")).toBe(
+  // A planted `<other>-abort-<n>.json` is grammar-recognized (so the entry
+  // guard treats it as a protocol file, not a foreign one) but is NOT
+  // exact-name, so the poll loop does not exempt it from the unexpected-files
+  // policy.
+  expect(isAbortMarkerName("attacker-abort-67.json")).toBe(true);
+  expect(isExpectedAbortName("attacker-abort-67.json", "self", "peer")).toBe(
     false,
   );
-  // A bare suffix recovers no id and is neither expected nor (for the entry
-  // guard's purposes) attributable to a party.
-  expect(isExpectedAbortName("-abort.json", "self", "peer")).toBe(false);
+  // A bare `-abort-<n>.json` recovers no id and is neither expected nor (for
+  // the entry guard's purposes) attributable to a party.
+  expect(isExpectedAbortName("-abort-67.json", "self", "peer")).toBe(false);
 });

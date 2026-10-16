@@ -20,13 +20,13 @@ import {
   serializeEnvelope,
 } from "../../src/connection/controlEnvelope";
 import {
-  HELLO_SUFFIX,
-  JOINING_SUFFIX,
   LOCK_SUFFIX,
   ackMarkerName,
   helloTempName,
   isHelloTempName,
   isProtocolTempName,
+  parseSizedControlName,
+  sizedControlName,
 } from "../../src/connection/fileSyncNames";
 import type {
   FileInfo,
@@ -182,30 +182,40 @@ describe("HelloEnvelopeSchema", () => {
 
 describe("isPeerHelloName / isPeerJoiningName", () => {
   test("accepts a genuine peer hello and joining sentinel", () => {
-    expect(isPeerHelloName("peer-1-hello.json", "self-0")).toBe(true);
-    expect(isPeerJoiningName("peer-1-joining.json", "self-0")).toBe(true);
+    expect(isPeerHelloName("peer-1-hello-48.json", "self-0")).toBe(true);
+    expect(isPeerJoiningName("peer-1-joining-48.json", "self-0")).toBe(true);
   });
 
   test("excludes this party's own id", () => {
-    expect(isPeerHelloName("self-0-hello.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("self-0-joining.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("self-0-hello-48.json", "self-0")).toBe(false);
+    expect(isPeerJoiningName("self-0-joining-48.json", "self-0")).toBe(false);
   });
 
   test("rejects a bare empty-id control name", () => {
-    expect(isPeerHelloName("-hello.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("-joining.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("-hello-48.json", "self-0")).toBe(false);
+    expect(isPeerJoiningName("-joining-48.json", "self-0")).toBe(false);
   });
 
-  test("rejects a name that does not match the suffix", () => {
-    expect(isPeerHelloName("peer-1-joining.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("peer-1-hello.json", "self-0")).toBe(false);
+  test("rejects a name that does not match the type", () => {
+    expect(isPeerHelloName("peer-1-joining-48.json", "self-0")).toBe(false);
+    expect(isPeerJoiningName("peer-1-hello-48.json", "self-0")).toBe(false);
+  });
+
+  test("rejects a name with no byte count", () => {
+    expect(isPeerHelloName("peer-1-hello.json", "self-0")).toBe(false);
+    expect(isPeerJoiningName("peer-1-joining.json", "self-0")).toBe(false);
   });
 });
 
 describe("readControlFileWithGate", () => {
   const future = () => new Date(Date.now() + 60_000);
-  const listedSize = 64;
   const signal = () => new AbortController().signal;
+  // A hello path whose name states `byteCount`, the size the gate reads against.
+  const sizedPath = (byteCount: number) =>
+    `in/${sizedControlName("peer", "hello", byteCount)}`;
+  const lockBody = helloBuffer(false, false);
+  const helloPath = sizedPath(lockBody.length);
+  const listedSize = lockBody.length;
 
   test("refuses a hello listed over HELLO_MAX_BYTES without reading it", async () => {
     let calls = 0;
@@ -215,7 +225,7 @@ describe("readControlFileWithGate", () => {
     });
     const thrown = await readControlFileWithGate(
       client,
-      "in/peer-hello.json",
+      helloPath,
       HELLO_MAX_BYTES + 1,
       future(),
       1,
@@ -228,18 +238,174 @@ describe("readControlFileWithGate", () => {
     );
     expect(thrown).toBeInstanceOf(FrameSizeExceededError);
     expect(calls).toBe(0);
-    expect(sanitizeErrorForDisplay(thrown)).toContain("in/peer-hello.json");
+    expect(sanitizeErrorForDisplay(thrown)).toContain(helloPath);
+  });
+
+  test("refuses a hello whose name states more than HELLO_MAX_BYTES without reading it", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return helloBuffer(false, false);
+    });
+    const path = sizedPath(HELLO_MAX_BYTES + 1);
+    const thrown = await readControlFileWithGate(
+      client,
+      path,
+      listedSize,
+      future(),
+      1,
+      HelloEnvelopeSchema,
+      "presentAtEntry",
+      signal(),
+    ).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(thrown).toBeInstanceOf(FrameSizeExceededError);
+    expect(calls).toBe(0);
+    expect(sanitizeErrorForDisplay(thrown)).toContain(path);
+  });
+
+  test("refuses a control file whose name has no byte count without reading it", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return helloBuffer(false, false);
+    });
+    await expect(
+      readControlFileWithGate(
+        client,
+        "in/peer-hello.json",
+        listedSize,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message: expect.stringContaining("has no byte count in its name"),
+    });
+    expect(calls).toBe(0);
+  });
+
+  test("refuses a hello listed larger than its name states without reading it", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return helloBuffer(false, false);
+    });
+    await expect(
+      readControlFileWithGate(
+        client,
+        helloPath,
+        listedSize + 1,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message: expect.stringContaining(
+        `is ${listedSize + 1} byte(s), more than the ${listedSize} its name states`,
+      ),
+    });
+    expect(calls).toBe(0);
+  });
+
+  test("refuses a read body larger than its name states without retrying", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return Buffer.from(`${lockBody.toString()} `) as Buffer<ArrayBufferLike>;
+    });
+    await expect(
+      readControlFileWithGate(
+        client,
+        helloPath,
+        listedSize,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message: expect.stringContaining(
+        `more than the ${listedSize} its name states`,
+      ),
+    });
+    expect(calls).toBe(1);
+  });
+
+  test("retries a body shorter than its name states, then resolves the full hello", async () => {
+    let calls = 0;
+    const client = stubClient(async () => {
+      calls += 1;
+      return (
+        calls === 1 ? lockBody.subarray(0, lockBody.length - 1) : lockBody
+      ) as Buffer<ArrayBufferLike>;
+    });
+    const envelope = await readControlFileWithGate(
+      client,
+      helloPath,
+      listedSize,
+      future(),
+      1,
+      HelloEnvelopeSchema,
+      "presentAtEntry",
+      signal(),
+    );
+    expect(envelope).toEqual({ locklessRendezvous: false, retainFiles: false });
+    expect(calls).toBe(2);
+  });
+
+  test("refuses a body of exactly its stated size that is not valid JSON without retrying", async () => {
+    let calls = 0;
+    // As long as the name states, so every byte has arrived: unlike a short
+    // body, re-reading it cannot make it parse.
+    const client = stubClient(async () => {
+      calls += 1;
+      return Buffer.from("{".repeat(listedSize)) as Buffer<ArrayBufferLike>;
+    });
+    await expect(
+      readControlFileWithGate(
+        client,
+        helloPath,
+        listedSize,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ),
+    ).rejects.toMatchObject({
+      name: "UsageError",
+      message: expect.stringContaining(
+        "malformed payload: it is not valid JSON",
+      ),
+    });
+    expect(calls).toBe(1);
   });
 
   test("reads a hello listed at HELLO_MAX_BYTES with the read capped at that size", async () => {
     const maxBytesSeen: Array<number | undefined> = [];
+    // A valid hello padded with JSON whitespace to exactly the cap, so the
+    // listed size, the name's byte count and the body all agree at it.
+    const body = Buffer.from(
+      lockBody.toString().padEnd(HELLO_MAX_BYTES, " "),
+    ) as Buffer<ArrayBufferLike>;
     const client = stubClient(async (_path, options) => {
       maxBytesSeen.push(options?.maxBytes);
-      return helloBuffer(false, false);
+      return body;
     });
     await readControlFileWithGate(
       client,
-      "in/peer-hello.json",
+      sizedPath(HELLO_MAX_BYTES),
       HELLO_MAX_BYTES,
       future(),
       1,
@@ -260,7 +426,7 @@ describe("readControlFileWithGate", () => {
     await expect(
       readControlFileWithGate(
         client,
-        "in/peer-hello.json",
+        helloPath,
         listedSize,
         future(),
         1,
@@ -281,8 +447,8 @@ describe("readControlFileWithGate", () => {
     });
     const envelope = await readControlFileWithGate(
       client,
-      "in/peer-hello.json",
-      listedSize,
+      sizedPath(helloBuffer(false, true).length),
+      helloBuffer(false, true).length,
       future(),
       1,
       HelloEnvelopeSchema,
@@ -293,10 +459,12 @@ describe("readControlFileWithGate", () => {
     expect(calls).toBe(2);
   });
 
-  test("maps a JsonStructureBoundError to a terminal malformed-payload UsageError", async () => {
+  // A body past the JSON structural bound is longer than any byte count the
+  // gate admits (HELLO_MAX_BYTES), so it is refused at the size check before
+  // the parse, and terminally.
+  test("refuses a body past the JSON structural bound terminally, before the parse", async () => {
     let calls = 0;
-    // 4097 opening brackets exceed MAX_JSON_NESTING_DEPTH (4096), so the
-    // structural pre-scan rejects the body before JSON.parse runs.
+    // 4097 opening brackets exceed MAX_JSON_NESTING_DEPTH (4096).
     const client = stubClient(async () => {
       calls += 1;
       return Buffer.from("[".repeat(4097)) as Buffer<ArrayBufferLike>;
@@ -304,7 +472,7 @@ describe("readControlFileWithGate", () => {
     await expect(
       readControlFileWithGate(
         client,
-        "in/peer-hello.json",
+        helloPath,
         listedSize,
         future(),
         1,
@@ -315,19 +483,24 @@ describe("readControlFileWithGate", () => {
     ).rejects.toMatchObject({
       name: "UsageError",
       message: expect.stringContaining(
-        "malformed payload: structure exceeds the permitted bound",
+        `is 4097 byte(s), more than the ${listedSize} its name states`,
       ),
     });
     expect(calls).toBe(1);
   });
 
-  // The control file's path holds a partner-chosen filename, and both
-  // malformed-payload refusals put the diagnosis BEHIND it in the same link.
+  // The control file's path holds a partner-chosen filename, and every
+  // refusal of a read body puts the diagnosis BEHIND it in the same link.
   test.each([
     [
-      "the structural bound",
+      "size",
       () => Buffer.from("[".repeat(4097)) as Buffer<ArrayBufferLike>,
-      "structure exceeds the permitted bound",
+      "more than the 2 its name states",
+    ],
+    [
+      "JSON parse",
+      () => Buffer.from("{{") as Buffer<ArrayBufferLike>,
+      "malformed payload: it is not valid JSON",
     ],
     [
       "schema validation",
@@ -340,8 +513,8 @@ describe("readControlFileWithGate", () => {
       const client = stubClient(async () => body());
       const err = await readControlFileWithGate(
         client,
-        "in/-----BEGIN RSA PRIVATE KEY-----.json",
-        listedSize,
+        `in/${sizedControlName("-----BEGIN RSA PRIVATE KEY-----", "hello", 2)}`,
+        2,
         future(),
         1,
         HelloEnvelopeSchema,
@@ -366,7 +539,7 @@ describe("readControlFileWithGate", () => {
     try {
       await readControlFileWithGate(
         client,
-        "in/peer-hello.json",
+        helloPath,
         listedSize,
         new Date(Date.now() - 1),
         1,
@@ -389,7 +562,7 @@ describe("readControlFileWithGate", () => {
     // unconditional "remove it" would point the operator at that partner's file.
     expect((thrown as Error).message).toContain("Re-run");
     expect((thrown as Error).message).toContain("remove only if it persists");
-    expect((thrown as Error).message).toContain("in/peer-hello.json");
+    expect((thrown as Error).message).toContain(helloPath);
   });
 
   test("attributes no residue to a hello that appeared during the run", async () => {
@@ -398,7 +571,7 @@ describe("readControlFileWithGate", () => {
     });
     const thrown = await readControlFileWithGate(
       client,
-      "in/peer-hello.json",
+      helloPath,
       listedSize,
       new Date(Date.now() - 1),
       1,
@@ -416,7 +589,7 @@ describe("readControlFileWithGate", () => {
     expect((thrown as Error).message).not.toContain("left over");
     expect((thrown as Error).message).toContain("appeared during this run");
     expect((thrown as Error).message).toContain("Re-run");
-    expect((thrown as Error).message).toContain("in/peer-hello.json");
+    expect((thrown as Error).message).toContain(helloPath);
   });
 
   test.each([
@@ -429,7 +602,7 @@ describe("readControlFileWithGate", () => {
       // it is rendered, so the operative sentence, the recovery step, AND a
       // realistically long path must all fit inside one link.
       const filePath =
-        "/srv/exchange/partner-drop/2f1c9a04-3b7e-4f6a-9d21-88ca0e6b5477-hello.json";
+        "/srv/exchange/partner-drop/2f1c9a04-3b7e-4f6a-9d21-88ca0e6b5477-hello-48.json";
       const client = stubClient(async () => {
         throw new Error("still syncing");
       });
@@ -468,9 +641,12 @@ describe("readControlFileWithGate", () => {
       const client = stubClient(async () => {
         throw new Error("still syncing");
       });
+      // The shortest name the gate reads: an empty id, so only the type word
+      // and byte count it needs remain, and they are subtracted below.
+      const minimalName = sizedControlName("", "hello", listedSize);
       const thrown = await readControlFileWithGate(
         client,
-        "",
+        minimalName,
         listedSize,
         new Date(Date.now() - 1),
         1,
@@ -481,7 +657,8 @@ describe("readControlFileWithGate", () => {
         () => undefined,
         (err: unknown) => err,
       );
-      const fixedTextLength = (thrown as Error).message.length;
+      const fixedTextLength =
+        (thrown as Error).message.length - minimalName.length;
       expect(
         DEFAULT_MAX_DISPLAY_LENGTH - fixedTextLength,
       ).toBeGreaterThanOrEqual(MIN_PATH_BUDGET);
@@ -625,26 +802,54 @@ function makeParty(
   };
 }
 
-const helloName = (id: string) => `${id}${HELLO_SUFFIX}`;
-const helloStem = (id: string) => `${id}-hello`;
+interface HelloFlags {
+  locklessRendezvous: boolean;
+  retainFiles: boolean;
+}
+
+const LOCK_FLAGS: HelloFlags = {
+  locklessRendezvous: false,
+  retainFiles: false,
+};
+const LOCKLESS_FLAGS: HelloFlags = {
+  locklessRendezvous: true,
+  retainFiles: false,
+};
+const RETAIN_FLAGS: HelloFlags = {
+  locklessRendezvous: true,
+  retainFiles: true,
+};
+
+// The hello and joining sentinel a party in `flags` writes are named for the
+// byte count of the body those flags serialize to.
+const helloBytes = (flags: HelloFlags) =>
+  serializeEnvelope(helloEnvelope(flags)).length;
+const helloName = (id: string, flags: HelloFlags = LOCK_FLAGS) =>
+  sizedControlName(id, "hello", helloBytes(flags));
+const helloStem = (id: string, flags: HelloFlags = LOCK_FLAGS) =>
+  helloName(id, flags).slice(0, -".json".length);
+const joiningName = (id: string, flags: HelloFlags = LOCK_FLAGS) =>
+  sizedControlName(id, "joining", helloBytes(flags));
 
 function placePeerHello(
   files: Map<string, Buffer>,
   peerId: string,
-  flags: { locklessRendezvous: boolean; retainFiles: boolean },
+  flags: HelloFlags,
 ): void {
-  files.set(`${DIR}/${helloName(peerId)}`, serializeEnvelope(flags));
+  files.set(`${DIR}/${helloName(peerId, flags)}`, serializeEnvelope(flags));
 }
 
 // Places the peer's zero-length ack of THIS party's hello, so the lockless
-// barrier completes on the next poll.
+// barrier completes on the next poll. `selfFlags` are this party's, which
+// size the hello the ack names.
 function placePeerAckOf(
   files: Map<string, Buffer>,
   peerId: string,
   selfId: string,
+  selfFlags: HelloFlags,
 ): void {
   files.set(
-    `${DIR}/${ackMarkerName(peerId, helloStem(selfId))}`,
+    `${DIR}/${ackMarkerName(peerId, helloStem(selfId, selfFlags))}`,
     Buffer.alloc(0),
   );
 }
@@ -654,11 +859,11 @@ describe("FileSyncRendezvous commit values", () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     // The peer's ack is written only after this party's strict-empty entry
     // scan; the peer hello is the single tolerated entry file.
     const p = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
 
     await p.rdv.run(p.scope);
@@ -672,9 +877,9 @@ describe("FileSyncRendezvous commit values", () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "aaa", flags);
-    placePeerAckOf(files, "aaa", "zzz");
+    placePeerAckOf(files, "aaa", "zzz", flags);
     const p = makeParty("zzz", flags, files, {
-      hideAtEntry: [ackMarkerName("aaa", helloStem("zzz"))],
+      hideAtEntry: [ackMarkerName("aaa", helloStem("zzz", flags))],
     });
 
     await p.rdv.run(p.scope);
@@ -697,7 +902,7 @@ describe("FileSyncRendezvous commit values", () => {
 
     await p.rdv.run(p.scope);
 
-    // aaa-hello.json < zzz-hello.json => arrivedFirst => starter/responder.
+    // aaa-hello-48.json < zzz-hello-48.json => arrivedFirst => starter/responder.
     expect(p.state.role).toBe("starter");
     expect(p.state.handshakeRole).toBe("responder");
     expect(p.state.peerId).toBe("zzz");
@@ -779,7 +984,7 @@ describe("FileSyncRendezvous commit values", () => {
     expect(p.state.peerId).toBe("zzz");
     // The sentinel was renamed into this party's hello.
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
-    expect(files.has(`${DIR}/aaa${JOINING_SUFFIX}`)).toBe(false);
+    expect(files.has(`${DIR}/${joiningName("aaa")}`)).toBe(false);
   });
 });
 
@@ -809,7 +1014,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expect(p.state.clearCount).toBe(1);
     expect(p.state.resetCount).toBe(1);
     // Skip-sweep: this party's own hello stays on disk for the peer to read.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`)).toBe(true);
     // No ack was written before the mismatch threw.
     expect([...files.keys()].some((k) => k.includes("-ack.json"))).toBe(false);
   });
@@ -828,7 +1033,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
       "aaa",
       { locklessRendezvous: false, retainFiles: false },
       files,
-      { hideAtEntry: [helloName("zzz")] },
+      { hideAtEntry: [helloName("zzz", LOCKLESS_FLAGS)] },
     );
 
     await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(
@@ -856,7 +1061,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     // The partner's hello is never deleted and no sentinel is written; this
     // party's hello is advertised so the partner refuses on reading it.
     expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
-    expect(files.has(`${DIR}/aaa${JOINING_SUFFIX}`)).toBe(false);
+    expect(files.has(`${DIR}/${joiningName("aaa")}`)).toBe(false);
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
@@ -872,7 +1077,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expectResetToPreSync(p.state);
     expect([...files.keys()].some((k) => k.includes("-ack.json"))).toBe(false);
     // Skip-sweep: this party's hello stays for the partner to read.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa", flags)}`)).toBe(true);
   });
 
   test("a lockless peer hello other than the acked one is refused before any identity commits", async () => {
@@ -886,10 +1091,14 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
         call < 2
           ? entries
           : [
-              ...entries.filter((e) => e.name !== helloName("zzz")),
-              { name: helloName("aaa-2"), size: 1, modifyTime: 0 },
+              ...entries.filter((e) => e.name !== helloName("zzz", flags)),
               {
-                name: ackMarkerName("aaa-2", helloStem("aaa")),
+                name: helloName("aaa-2", flags),
+                size: helloBytes(flags),
+                modifyTime: 0,
+              },
+              {
+                name: ackMarkerName("aaa-2", helloStem("aaa", flags)),
                 size: 0,
                 modifyTime: 0,
               },
@@ -908,17 +1117,17 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
     placePeerHello(files, "aaa-2", flags);
-    const otherAck = ackMarkerName("aaa-2", helloStem("aaa"));
+    const otherAck = ackMarkerName("aaa-2", helloStem("aaa", flags));
     files.set(`${DIR}/${otherAck}`, Buffer.alloc(0));
-    const lateNames = [helloName("aaa-2"), otherAck];
-    const ownAck = ackMarkerName("aaa", helloStem("zzz"));
+    const lateNames = [helloName("aaa-2", flags), otherAck];
+    const ownAck = ackMarkerName("aaa", helloStem("zzz", flags));
     const ops: string[] = [];
     const p = makeParty("aaa", flags, files, {
       ops,
       listScript: (entries, call) =>
         call < 2
           ? entries.filter((e) => !lateNames.includes(e.name))
-          : entries.filter((e) => e.name !== helloName("zzz")),
+          : entries.filter((e) => e.name !== helloName("zzz", flags)),
     });
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
@@ -926,12 +1135,12 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     });
     expect(ops).toEqual(
       expect.arrayContaining([
-        `rename:${helloName("aaa")}`,
+        `rename:${helloName("aaa", flags)}`,
         `rename:${ownAck}`,
       ]),
     );
     expect([...files.keys()].sort()).toEqual(
-      [helloName("zzz"), helloName("aaa-2"), otherAck]
+      [helloName("zzz", flags), helloName("aaa-2", flags), otherAck]
         .map((name) => `${DIR}/${name}`)
         .sort(),
     );
@@ -943,9 +1152,9 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     const p = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
     const committedIds: (string | undefined)[] = [];
     const rdv = new FileSyncRendezvous({
@@ -963,7 +1172,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expectResetToPreSync(p.state);
     expect(p.state.resetCount).toBe(1);
     // Skip-sweep: this party's hello stays for the partner to read.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa", flags)}`)).toBe(true);
   });
 
   test("TTL timeout resets identity and is not blocked on a second run", async () => {
@@ -1075,7 +1284,12 @@ describe("FileSyncRendezvous mismatch skip-sweep", () => {
       "aaa",
       { locklessRendezvous: false, retainFiles: false },
       files,
-      { hideAtEntry: [helloName("zzz"), `aaa-zzz${LOCK_SUFFIX}`] },
+      {
+        hideAtEntry: [
+          helloName("zzz", LOCKLESS_FLAGS),
+          `aaa-zzz${LOCK_SUFFIX}`,
+        ],
+      },
     );
 
     await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(
@@ -1083,7 +1297,7 @@ describe("FileSyncRendezvous mismatch skip-sweep", () => {
     );
     expect(files.has(`${DIR}/aaa-zzz${LOCK_SUFFIX}`)).toBe(false);
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`)).toBe(true);
   });
 });
 
@@ -1106,7 +1320,7 @@ describe("FileSyncRendezvous terminal-failure rollback in retain mode", () => {
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       message: expect.stringContaining("Your partner did not arrive"),
     });
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("aaa", retainFlags)}`)).toBe(false);
     // The whole attempt is rolled back, so the next entrant finds a clean
     // directory rather than a hello no party is behind.
     expect([...files.keys()]).toEqual([]);
@@ -1122,13 +1336,15 @@ describe("FileSyncRendezvous terminal-failure rollback in retain mode", () => {
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       message: expect.stringContaining("Your partner did not arrive"),
     });
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
-    expect(files.has(`${DIR}/${ackMarkerName("aaa", helloStem("zzz"))}`)).toBe(
-      false,
-    );
+    expect(files.has(`${DIR}/${helloName("aaa", retainFlags)}`)).toBe(false);
+    expect(
+      files.has(
+        `${DIR}/${ackMarkerName("aaa", helloStem("zzz", retainFlags))}`,
+      ),
+    ).toBe(false);
     // Only this party's own artifacts are rolled back; the peer's hello is the
     // peer's to remove.
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", retainFlags)}`)).toBe(true);
   });
 
   test("a bilateral mismatch keeps this party's own hello", async () => {
@@ -1146,8 +1362,8 @@ describe("FileSyncRendezvous terminal-failure rollback in retain mode", () => {
     // The carve-out holds in retain mode too: the advertised hello is the
     // directory's terminal state, which is how the peer reaches the same
     // verdict.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa", retainFlags)}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`)).toBe(true);
     // The mismatch is detected before the ack write, so there is none to keep.
     expect([...files.keys()].some((k) => k.includes("-ack.json"))).toBe(false);
   });
@@ -1158,9 +1374,9 @@ describe("FileSyncRendezvous joiner-recovery window", () => {
     // The joining sentinel appears only after the entry scan (call >= 1) and
     // never resolves to a hello, so the lock path parks in the recovery window.
     const sentinel: FileInfo = {
-      name: `zzz${JOINING_SUFFIX}`,
+      name: joiningName("zzz"),
       modifyTime: 0,
-      size: 0,
+      size: helloBytes(LOCK_FLAGS),
     };
     const listScript: ListScript = (entries, call) =>
       call === 0 ? entries : [...entries, sentinel];
@@ -1207,7 +1423,11 @@ describe("FileSyncRendezvous joiner-recovery window", () => {
         ? entries
         : [
             ...entries,
-            { name: `peer${call}${JOINING_SUFFIX}`, modifyTime: 0, size: 0 },
+            {
+              name: joiningName(`peer${call}`),
+              modifyTime: 0,
+              size: helloBytes(LOCK_FLAGS),
+            },
           ];
     const p = makeParty(
       "aaa",
@@ -1254,15 +1474,15 @@ describe("FileSyncRendezvous shared-Set reference identity", () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     const p = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
 
     await p.rdv.run(p.scope);
 
     // The coordinator mutated the exact Set instance passed in (not a copy).
-    expect(p.state.responsibleFiles.has(helloName("aaa"))).toBe(true);
+    expect(p.state.responsibleFiles.has(helloName("aaa", flags))).toBe(true);
     expect(
       [...p.state.responsibleFiles].some((n) => n.endsWith("-ack.json")),
     ).toBe(true);
@@ -1271,7 +1491,7 @@ describe("FileSyncRendezvous shared-Set reference identity", () => {
     // exactly as the connection's cleanup() does.
     for (const name of p.state.responsibleFiles)
       await p.client.safeDelete(`${DIR}/${name}`);
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("aaa", flags)}`)).toBe(false);
   });
 });
 
@@ -1349,7 +1569,7 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
       name: "UsageError",
       message: expect.stringContaining("may hold a retain-mode transcript"),
     });
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", RETAIN_FLAGS)}`)).toBe(true);
   });
 
   test("--force-retain-sweep proceeds and wipes the retain transcript", async () => {
@@ -1375,7 +1595,7 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       message: expect.stringContaining("Your partner did not arrive"),
     });
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("zzz", RETAIN_FLAGS)}`)).toBe(false);
   });
 
   test("a delete rejection during sweep shows as a transport error, not a UsageError", async () => {
@@ -1406,6 +1626,45 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
     // advice's assumption -- that it is now empty -- does not hold.
     expect(isPeerWaitTimeout(err)).toBe(false);
   });
+});
+
+describe("FileSyncRendezvous partner hello with no byte count", () => {
+  const LEGACY_HELLO = "zzz-hello.json";
+  const legacyRefusal = {
+    name: "UsageError",
+    message: expect.stringContaining(
+      `the partner hello ${LEGACY_HELLO} has no byte count in its name, so it ` +
+        "was written by an earlier Alcove version",
+    ),
+  };
+
+  test("is refused at entry ahead of the unexpected-protocol-file refusal", async () => {
+    const files = new Map<string, Buffer>();
+    files.set(`${DIR}/${LEGACY_HELLO}`, serializeEnvelope(LOCK_FLAGS));
+    const p = makeParty("aaa", LOCK_FLAGS, files);
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject(legacyRefusal);
+    expect(files.has(`${DIR}/${LEGACY_HELLO}`)).toBe(true);
+  });
+
+  test.each([
+    ["lock", LOCK_FLAGS],
+    ["lockless", LOCKLESS_FLAGS],
+  ] as const)(
+    "is refused when it appears during the %s rendezvous wait",
+    async (_mode, flags) => {
+      const files = new Map<string, Buffer>();
+      files.set(`${DIR}/${LEGACY_HELLO}`, serializeEnvelope(flags));
+      const p = makeParty("aaa", flags, files, {
+        hideAtEntry: [LEGACY_HELLO],
+      });
+
+      const started = Date.now();
+      await expect(p.rdv.run(p.scope)).rejects.toMatchObject(legacyRefusal);
+      // Refused on the poll that lists it, not at the peer timeout.
+      expect(Date.now() - started).toBeLessThan(1000);
+    },
+  );
 });
 
 // --- entry-guard refusals at the rendered display boundary --------------------
@@ -2036,8 +2295,9 @@ function installSessionBoundaries(
 }
 
 // Fails when the fresh session would find a protocol file that is not yet
-// complete: a hello or joining sentinel must hold a parseable envelope, an ack
-// marker and a lock must be zero-length. A `temp-*.tmp` is the in-flight half of
+// complete: a hello or joining sentinel must hold a parseable envelope of the
+// byte count its name states, an ack marker and a lock must be zero-length. A
+// `temp-*.tmp` is the in-flight half of
 // a temp-then-rename write and is expected -- the property it exists to give
 // is that the FINAL name never appears before the file is committed. Non-`.json`
 // names are foreign files and hold no protocol shape to check; a `.json` name
@@ -2047,7 +2307,9 @@ function expectNoHalfWrittenFile(
 ): void {
   for (const { name, body } of contents) {
     if (name.endsWith(".tmp") || !name.endsWith(".json")) continue;
-    if (name.endsWith(HELLO_SUFFIX) || name.endsWith(JOINING_SUFFIX)) {
+    const sized = parseSizedControlName(name);
+    if (sized?.type === "hello" || sized?.type === "joining") {
+      expect(body).toHaveLength(sized.byteCount);
       expect(() =>
         HelloEnvelopeSchema.parse(JSON.parse(body.toString())),
       ).not.toThrow();
@@ -2127,9 +2389,9 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
         const files = new Map<string, Buffer>();
         const flags = { locklessRendezvous: true, retainFiles: false };
         placePeerHello(files, "zzz", flags);
-        placePeerAckOf(files, "zzz", "aaa");
+        placePeerAckOf(files, "zzz", "aaa", flags);
         const party = makeParty("aaa", { ...flags, ...sweepBudget() }, files, {
-          hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+          hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
         });
         const boundaries: SessionBoundary[] = [];
         const ops = installSessionBoundaries(
@@ -2145,7 +2407,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
       // The ack's temp-then-rename gap: the sweep must reach a boundary sitting
       // inside it, or it proves nothing about the write it exists to protect.
       let sawAckWriteGap = false;
-      const ownAck = ackMarkerName("aaa", helloStem("zzz"));
+      const ownAck = ackMarkerName("aaa", helloStem("zzz", LOCKLESS_FLAGS));
       await sweepBoundaries(start, (run) => {
         expect(run.party.state.role).toBe("starter");
         expect(run.party.state.handshakeRole).toBe("responder");
@@ -2162,7 +2424,9 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
         }
 
         const names = namesIn(run.party.files);
-        expect(names.filter((n) => n === helloName("aaa"))).toHaveLength(1);
+        expect(
+          names.filter((n) => n === helloName("aaa", LOCKLESS_FLAGS)),
+        ).toHaveLength(1);
         expect(names.filter((n) => n === ownAck)).toHaveLength(1);
         expect(names.filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
       });
@@ -2205,13 +2469,13 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
         !atBoundary.has(helloName("zzz")) &&
         !atBoundary.has(helloName("aaa"))
       ) {
-        expect(atBoundary.has(`aaa${JOINING_SUFFIX}`)).toBe(true);
+        expect(atBoundary.has(joiningName("aaa"))).toBe(true);
         sawRecoveryWindow = true;
       }
 
       const names = namesIn(run.party.files);
       expect(names.filter((n) => n === helloName("aaa"))).toHaveLength(1);
-      expect(names).not.toContain(`aaa${JOINING_SUFFIX}`);
+      expect(names).not.toContain(joiningName("aaa"));
       expect(names).not.toContain(helloName("zzz"));
       expect(names.filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
     });
@@ -2273,8 +2537,8 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
-    const peerAck = ackMarkerName("zzz", helloStem("aaa"));
+    placePeerAckOf(files, "zzz", "aaa", flags);
+    const peerAck = ackMarkerName("zzz", helloStem("aaa", flags));
     // The peer's ack is withheld from the first three listings, so the barrier
     // polls several times -- each poll behind its own session boundary -- after
     // this party has already written its own ack.
@@ -2297,7 +2561,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     // The one-time ack is a local of the single rendezvousViaHelloExchange
     // invocation, so no number of session boundaries makes the barrier re-write
     // it on a later poll.
-    const ownAck = ackMarkerName("aaa", helloStem("zzz"));
+    const ownAck = ackMarkerName("aaa", helloStem("zzz", flags));
     expect(ackRenames).toEqual([`${DIR}/${ownAck}`]);
     expect(files.get(`${DIR}/${ownAck}`)).toHaveLength(0);
     expect(namesIn(files).filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
@@ -2315,7 +2579,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     // Control: this party's own hello present AT entry is exactly what the
     // guard rejects.
     const atEntry = new Map<string, Buffer>();
-    atEntry.set(`${DIR}/${helloName("aaa")}`, serializeEnvelope(flags));
+    atEntry.set(`${DIR}/${helloName("aaa", flags)}`, serializeEnvelope(flags));
     const rejected = makeParty("aaa", flags, atEntry);
     await expect(rejected.rdv.run(rejected.scope)).rejects.toMatchObject({
       name: "UsageError",
@@ -2324,9 +2588,9 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
 
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     const party = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
     const boundaries: SessionBoundary[] = [];
     const ops = installSessionBoundaries(
@@ -2353,9 +2617,9 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     // The entry scan ran against a directory holding only the peer hello; every
     // later listing holds the self-hello the control run above rejects, and
     // none of them re-applies the guard to it.
-    expect(listings[0]).not.toContain(helloName("aaa"));
+    expect(listings[0]).not.toContain(helloName("aaa", flags));
     for (const listing of listings.slice(1))
-      expect(listing).toContain(helloName("aaa"));
+      expect(listing).toContain(helloName("aaa", flags));
   });
 
   test("the entry sweep does not re-run: this party's own hello and ack are never deleted", async () => {
@@ -2368,7 +2632,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
       locklessRendezvous: true,
       retainFiles: false,
     });
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", LOCKLESS_FLAGS);
     // Both peer files arrive after the entry scan, so the sweep sees only the
     // leftover lock and rendezvous proceeds against the swept directory.
     const party = makeParty(
@@ -2381,7 +2645,10 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
       },
       files,
       {
-        hideAtEntry: [helloName("zzz"), ackMarkerName("zzz", helloStem("aaa"))],
+        hideAtEntry: [
+          helloName("zzz", LOCKLESS_FLAGS),
+          ackMarkerName("zzz", helloStem("aaa", LOCKLESS_FLAGS)),
+        ],
       },
     );
     const boundaries: SessionBoundary[] = [];
@@ -2405,15 +2672,17 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     expect(party.state.peerId).toBe("zzz");
     expect(removed).toContain(`${DIR}/x-y${LOCK_SUFFIX}`);
     expect(files.has(`${DIR}/x-y${LOCK_SUFFIX}`)).toBe(false);
-    const ownAck = ackMarkerName("aaa", helloStem("zzz"));
-    expect(removed).not.toContain(`${DIR}/${helloName("aaa")}`);
+    const ownAck = ackMarkerName("aaa", helloStem("zzz", LOCKLESS_FLAGS));
+    expect(removed).not.toContain(`${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`);
     expect(removed).not.toContain(`${DIR}/${ownAck}`);
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`)).toBe(true);
     expect(files.has(`${DIR}/${ownAck}`)).toBe(true);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
-    expect(files.has(`${DIR}/${ackMarkerName("zzz", helloStem("aaa"))}`)).toBe(
-      true,
-    );
+    expect(files.has(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`)).toBe(true);
+    expect(
+      files.has(
+        `${DIR}/${ackMarkerName("zzz", helloStem("aaa", LOCKLESS_FLAGS))}`,
+      ),
+    ).toBe(true);
     expect(removed).not.toContain(`${DIR}/leftover.txt`);
     expect(files.has(`${DIR}/leftover.txt`)).toBe(true);
     expect(boundaries).toHaveLength(ops());
@@ -2426,9 +2695,9 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     const flags = { locklessRendezvous: true, retainFiles: false };
     files.set(`${DIR}/at-entry.txt`, Buffer.from("x"));
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     const party = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
     const boundaries: SessionBoundary[] = [];
     installSessionBoundaries(party.client, files, () => true, boundaries);
@@ -2500,11 +2769,14 @@ describe("FileSyncRendezvous hello write discipline", () => {
     expect(renames).toHaveLength(1);
     expect(renames[0].args).toEqual([
       `${DIR}/${putName}`,
-      `${DIR}/${helloName("aaa")}`,
+      `${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`,
     ]);
     // The final name is reached only by that atomic rename.
     expect(
-      puts.some((entry) => entry.args[0] === `${DIR}/${helloName("aaa")}`),
+      puts.some(
+        (entry) =>
+          entry.args[0] === `${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`,
+      ),
     ).toBe(false);
   });
 
@@ -2607,7 +2879,7 @@ describe("FileSyncRendezvous entry temp disposition", () => {
     // The peer hello IS swept (the flag's assertion covers a durable protocol
     // file); the in-flight temp is not, because a concurrent write is exactly
     // what the flag's assertion cannot rule out for a file this short-lived.
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`)).toBe(false);
     expect(files.has(`${DIR}/${peerHelloTemp}`)).toBe(true);
   });
 });
@@ -2628,7 +2900,8 @@ function withPartialSyncedHello(
   const inner = client.get.bind(client);
   let seen = 0;
   client.get = async (path, options) => {
-    if (path.endsWith(HELLO_SUFFIX) && seen++ < failures)
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    if (parseSizedControlName(name)?.type === "hello" && seen++ < failures)
       throw new Error("not readable yet");
     return inner(path, options);
   };
@@ -2687,7 +2960,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
 
   test("a torn leftover hello fails inside the read bound, not at the peer timeout (lockless)", async () => {
     const files = new Map<string, Buffer>();
-    files.set(`${DIR}/${helloName("zzz")}`, Buffer.alloc(0));
+    files.set(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`, Buffer.alloc(0));
     const p = makeParty(
       "aaa",
       { locklessRendezvous: true, ...longBudget() },
@@ -2703,9 +2976,9 @@ describe("FileSyncRendezvous bounded hello read", () => {
 
     expect((err as Error).message).toContain("left over");
     expect(elapsed).toBeLessThan(2000);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", LOCKLESS_FLAGS)}`)).toBe(true);
     // This party's own artifacts are still rolled back by the terminal path.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("aaa", LOCKLESS_FLAGS)}`)).toBe(false);
   });
 
   // The same unresolvable hello, arriving after the entry scan instead of
@@ -2718,13 +2991,17 @@ describe("FileSyncRendezvous bounded hello read", () => {
   ] as const)(
     "a hello that appears after entry is not attributed to residue (%s)",
     async (_name, locklessRendezvous) => {
+      const peerHello = helloName("zzz", {
+        locklessRendezvous,
+        retainFiles: false,
+      });
       const files = new Map<string, Buffer>();
-      files.set(`${DIR}/${helloName("zzz")}`, Buffer.alloc(0));
+      files.set(`${DIR}/${peerHello}`, Buffer.alloc(0));
       const p = makeParty(
         "aaa",
         { locklessRendezvous, ...longBudget() },
         files,
-        { hideAtEntry: [helloName("zzz")] },
+        { hideAtEntry: [peerHello] },
       );
 
       const started = Date.now();
@@ -2735,10 +3012,10 @@ describe("FileSyncRendezvous bounded hello read", () => {
 
       expect((err as Error).message).not.toContain("left over");
       expect((err as Error).message).toContain("appeared during this run");
-      expect((err as Error).message).toContain(helloName("zzz"));
+      expect((err as Error).message).toContain(peerHello);
       // Still bounded by the read window, not the peer budget.
       expect(Date.now() - started).toBeLessThan(2000);
-      expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+      expect(files.has(`${DIR}/${peerHello}`)).toBe(true);
     },
   );
 
@@ -2850,7 +3127,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
 
     expect(err).toBeInstanceOf(UsageError);
     expect((err as Error).message).toContain("never answered");
-    expect((err as Error).message).toContain(helloName(LEFTOVER_ID));
+    expect((err as Error).message).toContain(helloName(LEFTOVER_ID, flags));
     expect(elapsed).toBeLessThan(2000);
     // Not a peer-wait timeout: this party did not wait its full budget, so a
     // consumer must not offer the advice that failure holds.
@@ -2865,7 +3142,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     expect(rendered).toContain(
       "remove only if it persists and no other exchange uses",
     );
-    expect(rendered).toContain(helloName(LEFTOVER_ID));
+    expect(rendered).toContain(helloName(LEFTOVER_ID, flags));
   });
 
   test("never deletes the leftover, and still rolls back this party's own files", async () => {
@@ -2876,12 +3153,12 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(UsageError);
 
     // A hello this party cannot prove is its own is not its to remove.
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", flags)}`)).toBe(true);
     // The terminal rollback is untouched: own hello and own ack are gone.
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
-    expect(files.has(`${DIR}/${ackMarkerName("aaa", helloStem("zzz"))}`)).toBe(
-      false,
-    );
+    expect(files.has(`${DIR}/${helloName("aaa", flags)}`)).toBe(false);
+    expect(
+      files.has(`${DIR}/${ackMarkerName("aaa", helloStem("zzz", flags))}`),
+    ).toBe(false);
   });
 
   test("is armed in retain mode too", async () => {
@@ -2894,7 +3171,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(UsageError);
 
     expect(Date.now() - started).toBeLessThan(2000);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", retain)}`)).toBe(true);
   });
 
   test("is not armed for a peer hello that appears after entry", async () => {
@@ -2903,7 +3180,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
     const p = makeParty("aaa", { ...flags, ...budget() }, files, {
-      hideAtEntry: [helloName("zzz")],
+      hideAtEntry: [helloName("zzz", flags)],
     });
 
     const started = Date.now();
@@ -2921,9 +3198,9 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
   test("a live peer that acks inside the window completes normally", async () => {
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     const p = makeParty("aaa", { ...flags, ...budget() }, files, {
-      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa", flags))],
     });
 
     await p.rdv.run(p.scope);
@@ -2937,7 +3214,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
   test("a configured peer_id keeps its immediate entry-guard refusal", async () => {
     const files = new Map<string, Buffer>();
     files.set(
-      `${DIR}/${helloName("site-a")}`,
+      `${DIR}/${helloName("site-a", flags)}`,
       serializeEnvelope({ locklessRendezvous: true, retainFiles: false }),
     );
     const p = makeParty("site-a", { ...flags, ...budget() }, files);
@@ -2951,7 +3228,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     expect(err).toBeInstanceOf(UsageError);
     expect((err as Error).message).toContain("unexpected protocol file");
     expect(Date.now() - started).toBeLessThan(1000);
-    expect(files.has(`${DIR}/${helloName("site-a")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("site-a", flags)}`)).toBe(true);
   });
 
   test("records the entry-present hello for attribution and leaves it set on failure", async () => {
@@ -2962,7 +3239,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(UsageError);
 
     // Nothing attributable to a live peer was ever observed, so the fact stands.
-    expect(p.state.entryPeerHello).toBe(helloName("zzz"));
+    expect(p.state.entryPeerHello).toBe(helloName("zzz", flags));
   });
 
   // The floor rendezvousBoundMs puts under the window, and the boundary between
@@ -3021,7 +3298,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
       const rename = p.client.rename;
       p.client.rename = async (from: string, to: string): Promise<void> => {
         await rename(from, to);
-        if (to === `${DIR}/${helloName("aaa")}`) skewPending = true;
+        if (to === `${DIR}/${helloName("aaa", flags)}`) skewPending = true;
       };
       Object.defineProperty(p.options, "timeToLive", {
         get: () => {
@@ -3048,7 +3325,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     // inside it, and the floor extended nothing past it either.
     expect(ended).toBeGreaterThanOrEqual(timeToLive.getTime());
     expect(ended).toBeLessThan(timeToLive.getTime() + BUDGET_MS);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", flags)}`)).toBe(true);
   });
 
   // The other half of that boundary: what a budget too small to arm the window
@@ -3106,7 +3383,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     // capped at the budget would have failed on instead.
     expect(ended).toBeGreaterThan(timeToLive.getTime());
     expect(ended - timeToLive.getTime()).toBeLessThanOrEqual(LIST_MS);
-    expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("zzz", flags)}`)).toBe(true);
   });
 
   // The pair a lockless run killed just after it acked leaves behind: the peer's
@@ -3120,7 +3397,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     const KILLED_ID = "aeb0f2c1-6d5f-4a17-9c02-7e51b8d4a390";
     const files = new Map<string, Buffer>();
     placePeerHello(files, LEFTOVER_ID, flags);
-    const ack = ackMarkerName(KILLED_ID, helloStem(LEFTOVER_ID));
+    const ack = ackMarkerName(KILLED_ID, helloStem(LEFTOVER_ID, flags));
     files.set(`${DIR}/${ack}`, Buffer.alloc(0));
     const p = makeParty("aaa", { ...flags, ...budget() }, files);
 
@@ -3147,18 +3424,21 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     expect(rendered).toContain(ack);
     // Neither file is this party's to remove, and the operator was just told to
     // clear them by hand.
-    expect(files.has(`${DIR}/${helloName(LEFTOVER_ID)}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName(LEFTOVER_ID, flags)}`)).toBe(true);
     expect(files.has(`${DIR}/${ack}`)).toBe(true);
   });
 
   test("records nothing when no peer hello predated the run", async () => {
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
-    placePeerAckOf(files, "zzz", "aaa");
+    placePeerAckOf(files, "zzz", "aaa", flags);
     // Both the peer hello and its ack are written only after this party's
     // entry scan, so the run enters against an empty directory.
     const p = makeParty("aaa", { ...flags, ...budget() }, files, {
-      hideAtEntry: [helloName("zzz"), ackMarkerName("zzz", helloStem("aaa"))],
+      hideAtEntry: [
+        helloName("zzz", flags),
+        ackMarkerName("zzz", helloStem("aaa", flags)),
+      ],
     });
 
     await p.rdv.run(p.scope);

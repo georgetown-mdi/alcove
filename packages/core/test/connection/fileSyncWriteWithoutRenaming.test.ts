@@ -20,13 +20,27 @@ import {
 import { exchangePayloads } from "../../src/payloadExchange";
 import { withCapturedLogs } from "../../src/testing";
 import { makeMockClient } from "../utils/support";
-import { responsibleFilesOf } from "../utils/fileSyncConnectionFixture";
+import { abortMarkerName } from "../../src/connection/abortMarker";
+import {
+  LOCK_HELLO_BODY,
+  helloBodyFor,
+  helloName,
+  joiningName,
+  responsibleFilesOf,
+} from "../utils/fileSyncConnectionFixture";
 
 const ID_A = "00000000-0000-4000-8000-000000000001";
 const ID_B = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 const DIR = "/test";
 
 const baseName = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
+
+// The ack `ackerId` writes of `helloWriterId`'s lockless hello.
+const locklessHelloAckName = (ackerId: string, helloWriterId: string): string =>
+  `${ackerId}-${helloName(
+    helloWriterId,
+    helloBodyFor({ locklessRendezvous: true, retainFiles: false }),
+  ).slice(0, -".json".length)}-ack.json`;
 
 // One party's view of the shared in-memory directory, recording every write,
 // rename and delete it issues by file name. `failPutTo` makes a put write its
@@ -155,15 +169,15 @@ describe("both parties write without renaming", () => {
     const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
 
     const syncA = connA.synchronize();
-    await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
+    await expect.poll(() => files.has(`${DIR}/${helloName(ID_A)}`)).toBe(true);
     await Promise.all([syncA, connB.synchronize()]);
 
-    expect(a.ops[0]).toBe(`put:${ID_A}-hello.json`);
+    expect(a.ops[0]).toBe(`put:${helloName(ID_A)}`);
     expect(b.ops.slice(0, 4)).toEqual([
-      `put:${ID_B}-joining.json`,
-      `delete:${ID_A}-hello.json`,
-      `put:${ID_B}-hello.json`,
-      `delete:${ID_B}-joining.json`,
+      `put:${joiningName(ID_B)}`,
+      `delete:${helloName(ID_A)}`,
+      `put:${helloName(ID_B)}`,
+      `delete:${joiningName(ID_B)}`,
     ]);
 
     await exchangeAndClose(connA, connB);
@@ -180,8 +194,8 @@ describe("both parties write without renaming", () => {
     const connB = party(ID_B, b.client, opts);
 
     await Promise.all([connA.synchronize(), connB.synchronize()]);
-    expect(a.ops).toContain(`put:${ID_A}-${ID_B}-hello-ack.json`);
-    expect(b.ops).toContain(`put:${ID_B}-${ID_A}-hello-ack.json`);
+    expect(a.ops).toContain(`put:${locklessHelloAckName(ID_A, ID_B)}`);
+    expect(b.ops).toContain(`put:${locklessHelloAckName(ID_B, ID_A)}`);
 
     await exchangeAndClose(connA, connB);
     expectNoRenameOrTemp([...a.ops, ...b.ops]);
@@ -214,10 +228,12 @@ describe("both parties write without renaming", () => {
     const a = recordingClient(files);
     const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
     conn.peerId = ID_B;
-    conn.armAbort(new Uint8Array(32).fill(1), new Uint8Array(32).fill(2));
+    const selfToken = new Uint8Array(32).fill(1);
+    conn.armAbort(selfToken, new Uint8Array(32).fill(2));
     await conn.writeAbortMarker();
-    expect(a.ops).toEqual([`put:${ID_A}-abort.json`]);
-    expect(files.has(`${DIR}/${ID_A}-abort.json`)).toBe(true);
+    const markerName = abortMarkerName(ID_A, selfToken);
+    expect(a.ops).toEqual([`put:${markerName}`]);
+    expect(files.has(`${DIR}/${markerName}`)).toBe(true);
   });
 });
 
@@ -231,7 +247,7 @@ describe("a lock joiner writing without renaming, against a peer without the mod
     const a = recordingClient(files);
     const b = recordingClient(files, {
       holdDelete: (name) =>
-        name === `${ID_B}-joining.json` ? sentinelDeleteHeld : undefined,
+        name === joiningName(ID_B) ? sentinelDeleteHeld : undefined,
     });
     const connA = party(ID_A, a.client, {});
     const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
@@ -239,14 +255,14 @@ describe("a lock joiner writing without renaming, against a peer without the mod
     connA.on("error", (err) => errorsA.push(err));
 
     const syncA = connA.synchronize();
-    await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
+    await expect.poll(() => files.has(`${DIR}/${helloName(ID_A)}`)).toBe(true);
     const syncB = connB.synchronize();
 
     // A sees B's hello beside B's sentinel, completes, and polls its loop
     // with the sentinel still present.
     await syncA;
     expect(connA.peerId).toBe(ID_B);
-    expect(files.has(`${DIR}/${ID_B}-joining.json`)).toBe(true);
+    expect(files.has(`${DIR}/${joiningName(ID_B)}`)).toBe(true);
     connA.start();
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(errorsA).toEqual([]);
@@ -254,7 +270,7 @@ describe("a lock joiner writing without renaming, against a peer without the mod
     releaseSentinelDelete();
     await syncB;
     expect(connB.peerId).toBe(ID_A);
-    expect(files.has(`${DIR}/${ID_B}-joining.json`)).toBe(false);
+    expect(files.has(`${DIR}/${joiningName(ID_B)}`)).toBe(false);
 
     const aGot = nextData(connA);
     const bGot = nextData(connB);
@@ -274,7 +290,7 @@ describe("a lock joiner writing without renaming, against a peer without the mod
 
 test("a lock joiner whose sentinel delete fails after its hello is written completes, warns, and removes the sentinel at close", async () => {
   const files = new Map<string, Buffer>();
-  const sentinel = `${ID_B}-joining.json`;
+  const sentinel = joiningName(ID_B);
   const a = recordingClient(files);
   const b = recordingClient(files, { failDeleteOnce: sentinel });
   const errorsB: unknown[] = [];
@@ -285,7 +301,7 @@ test("a lock joiner whose sentinel delete fails after its hello is written compl
     const connB = party(ID_B, b.client, { writeWithoutRenaming: true });
     connB.on("error", (err) => errorsB.push(err));
     const syncA = connA.synchronize();
-    await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
+    await expect.poll(() => files.has(`${DIR}/${helloName(ID_A)}`)).toBe(true);
     await Promise.all([syncA, connB.synchronize()]);
 
     expect(connB.peerId).toBe(ID_A);
@@ -316,27 +332,22 @@ test("a lock joiner whose sentinel delete fails after its hello is written compl
 describe("a direct write that throws leaves its final name tracked for cleanup()", () => {
   test("the hello", async () => {
     const files = new Map<string, Buffer>();
-    const helloName = `${ID_A}-hello.json`;
+    const hello = helloName(ID_A);
     const a = recordingClient(files, {
-      failPutTo: (name) => name === helloName,
+      failPutTo: (name) => name === hello,
     });
     const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
 
     await expect(conn.synchronize()).rejects.toThrow(/connection lost/);
-    expect(responsibleFilesOf(conn).has(helloName)).toBe(true);
+    expect(responsibleFilesOf(conn).has(hello)).toBe(true);
     await conn.cleanup();
-    expect(files.has(`${DIR}/${helloName}`)).toBe(false);
+    expect(files.has(`${DIR}/${hello}`)).toBe(false);
   });
 
   test("the joining sentinel, before the peer hello is deleted", async () => {
     const files = new Map<string, Buffer>();
-    files.set(
-      `${DIR}/${ID_A}-hello.json`,
-      Buffer.from(
-        JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
-      ),
-    );
-    const sentinel = `${ID_B}-joining.json`;
+    files.set(`${DIR}/${helloName(ID_A)}`, LOCK_HELLO_BODY);
+    const sentinel = joiningName(ID_B);
     const b = recordingClient(files, { failPutTo: (n) => n === sentinel });
     const conn = party(ID_B, b.client, { writeWithoutRenaming: true });
 
@@ -344,32 +355,27 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
     expect(responsibleFilesOf(conn).has(sentinel)).toBe(true);
     await conn.cleanup();
     expect(files.has(`${DIR}/${sentinel}`)).toBe(false);
-    expect(files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName(ID_A)}`)).toBe(true);
   });
 
   test("the joiner's hello, leaving the sentinel for the peer's recovery", async () => {
     const files = new Map<string, Buffer>();
-    files.set(
-      `${DIR}/${ID_A}-hello.json`,
-      Buffer.from(
-        JSON.stringify({ locklessRendezvous: false, retainFiles: false }),
-      ),
-    );
-    const helloName = `${ID_B}-hello.json`;
-    const b = recordingClient(files, { failPutTo: (n) => n === helloName });
+    files.set(`${DIR}/${helloName(ID_A)}`, LOCK_HELLO_BODY);
+    const hello = helloName(ID_B);
+    const b = recordingClient(files, { failPutTo: (n) => n === hello });
     const conn = party(ID_B, b.client, { writeWithoutRenaming: true });
 
     await expect(conn.synchronize()).rejects.toThrow(/connection lost/);
-    expect(responsibleFilesOf(conn).has(helloName)).toBe(true);
-    expect(responsibleFilesOf(conn).has(`${ID_B}-joining.json`)).toBe(false);
+    expect(responsibleFilesOf(conn).has(hello)).toBe(true);
+    expect(responsibleFilesOf(conn).has(joiningName(ID_B))).toBe(false);
     await conn.cleanup();
-    expect(files.has(`${DIR}/${helloName}`)).toBe(false);
-    expect(files.has(`${DIR}/${ID_B}-joining.json`)).toBe(true);
+    expect(files.has(`${DIR}/${hello}`)).toBe(false);
+    expect(files.has(`${DIR}/${joiningName(ID_B)}`)).toBe(true);
   });
 
   test("the lockless hello ack, swept by the rendezvous rollback", async () => {
     const files = new Map<string, Buffer>();
-    const ackName = `${ID_A}-${ID_B}-hello-ack.json`;
+    const ackName = locklessHelloAckName(ID_A, ID_B);
     const a = recordingClient(files, { failPutTo: (n) => n === ackName });
     const b = recordingClient(files);
     const opts = { writeWithoutRenaming: true, locklessRendezvous: true };
@@ -392,7 +398,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
   test("a message, which is reported as an unsettled write and spends its seq", async () => {
     const files = new Map<string, Buffer>();
     const a = recordingClient(files, {
-      failPutTo: (n) => n.startsWith(`${ID_A}-`) && n !== `${ID_A}-hello.json`,
+      failPutTo: (n) => n.startsWith(`${ID_A}-`) && n !== helloName(ID_A),
     });
     const conn = party(ID_A, a.client, { writeWithoutRenaming: true });
     conn.peerId = ID_B;
@@ -444,7 +450,7 @@ describe("a payload send whose put throws, through the message bridge", () => {
   test("with the mode on, a direct write of the message opens the record obligation", async () => {
     const { raised, reported } = await payloadSendReport(
       true,
-      (n) => n.startsWith(`${ID_A}-`) && n !== `${ID_A}-hello.json`,
+      (n) => n.startsWith(`${ID_A}-`) && n !== helloName(ID_A),
     );
     expect(
       causeChainSome(
@@ -490,7 +496,7 @@ describe("with the mode off, a refused rename names the option", () => {
       (e: unknown) => e as Error,
     );
     expect(err?.message).toContain(
-      `${ID_A}-hello.json was written under a temporary name but could not ` +
+      `${helloName(ID_A)} was written under a temporary name but could not ` +
         "be renamed into place",
     );
     expect(err?.message).toContain("The server may not allow renames.");

@@ -162,13 +162,15 @@ async function awaitDeletes(
     await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
+const PLANTED_BODY = "{}";
+
 async function plant(dir: string, names: readonly string[]): Promise<void> {
   const perTurn = 512;
   for (let index = 0; index < names.length; index += perTurn)
     await Promise.all(
       names
         .slice(index, index + perTurn)
-        .map((name) => fsp.writeFile(path.join(dir, name), "{}")),
+        .map((name) => fsp.writeFile(path.join(dir, name), PLANTED_BODY)),
     );
 }
 
@@ -294,7 +296,7 @@ inProcessOnly(
     const inbound = `${srv.handle.remoteRoot}/${path.basename(inboundDir)}`;
     const outbound = `${srv.handle.remoteRoot}/${path.basename(outboundDir)}`;
     const inboundNames = [
-      `${randomUUID()}-hello.json`,
+      `${randomUUID()}-hello-${Buffer.byteLength(PLANTED_BODY)}.json`,
       ...protocolLeftoverNames("i", MAX_DIRECTORY_ENTRIES - 1),
     ];
     const outboundNames = protocolLeftoverNames("o", MAX_DIRECTORY_ENTRIES);

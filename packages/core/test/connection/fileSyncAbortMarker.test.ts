@@ -20,6 +20,11 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import { exchangeTerms, PROTOCOL_VERSION } from "../../src/protocolSetup";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { toBase64Url } from "../../src/utils/crypto";
+import {
+  abortMarkerBody,
+  abortMarkerName,
+} from "../../src/connection/abortMarker";
+import { abortNameFor } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient } from "../utils/support";
 
 // Short marker-write / decision-grace budget mirrored from the production
@@ -94,37 +99,29 @@ async function makeArmedConn(
 }
 
 const PEER_ID = "peer-test";
-const peerMarkerName = `${PEER_ID}-abort.json`;
+const peerMarkerName = abortMarkerName(PEER_ID, TOKEN_PEER);
 const peerMarkerPath = `${TEST_DIR}/${peerMarkerName}`;
+const PEER_MARKER_BYTES = abortMarkerBody(TOKEN_PEER).length;
 
-function plantPeerMarker(
-  files: Map<string, Buffer>,
-  token: Uint8Array,
-  name = peerMarkerName,
-): void {
-  files.set(
-    `${TEST_DIR}/${name}`,
-    Buffer.from(
-      JSON.stringify({
-        version: 1,
-        token: toBase64Url(token as Uint8Array<ArrayBuffer>),
-      }),
-    ),
+// Plants a peer marker holding `token`, named for its own byte count.
+function plantPeerMarker(files: Map<string, Buffer>, token: Uint8Array): void {
+  const body = Buffer.from(
+    JSON.stringify({
+      version: 1,
+      token: toBase64Url(token as Uint8Array<ArrayBuffer>),
+    }),
   );
+  files.set(`${TEST_DIR}/${abortNameFor(PEER_ID, body)}`, body);
 }
 
-// Plants a peer marker that would verify, padded with insignificant JSON
-// whitespace to occupy exactly `size` bytes in the listing, so a test can sit on
-// the pre-get() cap rather than well above it.
-function plantPaddedPeerMarker(files: Map<string, Buffer>, size: number): void {
+// A peer marker that would verify, padded with insignificant JSON whitespace
+// to occupy exactly `size` bytes in the listing.
+function paddedPeerMarker(size: number): Buffer {
   const body = JSON.stringify({ version: 1, token: toBase64Url(TOKEN_PEER) });
   const padding = size - body.length;
   if (padding < 0)
     throw new Error(`a verifying marker cannot fit in ${size} bytes`);
-  files.set(
-    peerMarkerPath,
-    Buffer.from(`${body.slice(0, -1)}${" ".repeat(padding)}}`),
-  );
+  return Buffer.from(`${body.slice(0, -1)}${" ".repeat(padding)}}`);
 }
 
 function nextError(conn: FileSyncConnection, ms = 1000): Promise<unknown> {
@@ -163,7 +160,8 @@ function driveFault(conn: FileSyncConnection, err: ConnectionError) {
   return mc;
 }
 
-const markerName = (conn: FileSyncConnection) => `${conn.id}-abort.json`;
+const markerName = (conn: FileSyncConnection) =>
+  abortMarkerName(conn.id, TOKEN_SELF);
 const markerPath = (conn: FileSyncConnection) =>
   `${TEST_DIR}/${markerName(conn)}`;
 
@@ -193,13 +191,15 @@ for (const retainFiles of [false, true]) {
       await mc.close();
       await conn.close();
 
-      // The marker landed, with this party's self token in the envelope.
+      // The marker landed, with this party's self token in the envelope, under
+      // a name that states its byte count.
       const body = files.get(markerPath(conn));
       expect(body).toBeDefined();
       expect(JSON.parse(body!.toString())).toEqual({
         version: 1,
         token: toBase64Url(TOKEN_SELF),
       });
+      expect(markerName(conn)).toBe(`${conn.id}-abort-${body!.length}.json`);
 
       // Assert WHICH resolution ran: the abort rename is in the op log (the
       // "write" decision fired), and it completed strictly before end() -- so a
@@ -428,33 +428,50 @@ test("an oversized planted marker is refused at the pre-get() size check and nev
   expect(ops.some((o) => o === `get:${peerMarkerName}`)).toBe(false);
 });
 
-test("a marker listed at exactly the size cap is read and verified", async () => {
+// Under the genuine name, the only size read is the one the name states, so a
+// verifying body padded past it is never read, up to and past the size cap.
+test.each([
+  ["one byte past its name's byte count", PEER_MARKER_BYTES + 1],
+  ["at exactly the size cap", MARKER_MAX_BYTES],
+  ["one byte over the size cap", MARKER_MAX_BYTES + 1],
+])(
+  "a verifying marker listed %s is not read or verified",
+  async (_label, size) => {
+    const { client, files, ops } = makeAbortTestClient();
+    const conn = await makeArmedConn(client, { peerId: PEER_ID });
+    files.set(peerMarkerPath, paddedPeerMarker(size));
+
+    const errors = await pollAndCollectErrors(conn);
+    expect(errors).toHaveLength(0);
+    expect(ops).not.toContain(`get:${peerMarkerName}`);
+  },
+);
+
+test("a verifying marker named for a byte count other than the genuine one is not read, and is no error", async () => {
   const { client, files, ops } = makeAbortTestClient();
-  const conn = await makeArmedConn(client, { peerId: PEER_ID });
-  // The cap is the largest ACCEPTED size, so a marker sitting on it must still
-  // be read: paired with the one-byte-over case below, this pins the comparison
-  // as strictly-greater rather than greater-or-equal.
-  plantPaddedPeerMarker(files, MARKER_MAX_BYTES);
+  const conn = await makeArmedConn(client, {
+    peerId: PEER_ID,
+    unexpectedFiles: "error",
+  });
+  const padded = paddedPeerMarker(PEER_MARKER_BYTES + 1);
+  const name = abortNameFor(PEER_ID, padded);
+  files.set(`${TEST_DIR}/${name}`, padded);
 
-  const errors = await pollAndCollectErrors(conn);
-  expect(ops).toContain(`get:${peerMarkerName}`);
-  expect(errors[0]).toBeInstanceOf(PeerAbortError);
-});
-
-test("a marker listed one byte over the size cap is refused before any get()", async () => {
-  const { client, files, ops } = makeAbortTestClient();
-  const conn = await makeArmedConn(client, { peerId: PEER_ID });
-  plantPaddedPeerMarker(files, MARKER_MAX_BYTES + 1);
-
+  // The peer's id makes it an expected abort name, so the strict policy does
+  // not fire on it; only the exact name is read.
   const errors = await pollAndCollectErrors(conn);
   expect(errors).toHaveLength(0);
-  expect(ops).not.toContain(`get:${peerMarkerName}`);
+  expect(ops).not.toContain(`get:${name}`);
 });
 
 test("a malformed (non-JSON / wrong-version) marker is ignored", async () => {
   const { client, files } = makeAbortTestClient();
   const conn = await makeArmedConn(client, { peerId: PEER_ID });
-  files.set(peerMarkerPath, Buffer.from("}{ not json"));
+  // As long as the genuine name states, so it is read and fails the parse.
+  files.set(
+    peerMarkerPath,
+    Buffer.from("}{ not json".padEnd(PEER_MARKER_BYTES, " ")),
+  );
   expect(await pollAndCollectErrors(conn)).toHaveLength(0);
 
   files.set(
@@ -467,7 +484,7 @@ test("a malformed (non-JSON / wrong-version) marker is ignored", async () => {
 // --- reflection: a captured marker renamed to the other name does not validate
 
 test("a self-role token presented as the peer marker does not validate (reflection)", async () => {
-  // A `<self>-abort.json` captured and renamed to `<peerId>-abort.json`
+  // A `<self>-abort-<n>.json` captured and renamed to `<peerId>-abort-<n>.json`
   // holds the self-role token; the reader expects the peer-role token, so
   // it rejects.
   const { client, files } = makeAbortTestClient();
@@ -502,7 +519,7 @@ test("an unarmed reader recognizes (does not error on) a peer abort name but doe
   expect(errors).toHaveLength(0);
 });
 
-test("a foreign <other>-abort.json is not exempted and still hits the unexpected-files policy", async () => {
+test("a foreign <other>-abort-<n>.json is not exempted and still hits the unexpected-files policy", async () => {
   const { client, files } = makeAbortTestClient();
   const conn = await makeArmedConn(client, {
     peerId: PEER_ID,
@@ -510,10 +527,10 @@ test("a foreign <other>-abort.json is not exempted and still hits the unexpected
   });
   // An id that is neither self nor peer: exact-name recognition does not exempt
   // it, so the strict policy fires.
-  files.set(
-    `${TEST_DIR}/attacker-abort.json`,
-    Buffer.from(JSON.stringify({ version: 1, token: toBase64Url(TOKEN_PEER) })),
+  const body = Buffer.from(
+    JSON.stringify({ version: 1, token: toBase64Url(TOKEN_PEER) }),
   );
+  files.set(`${TEST_DIR}/${abortNameFor("attacker", body)}`, body);
   const errors = await pollAndCollectErrors(conn);
   expect(errors.length).toBeGreaterThan(0);
   expect(errors.every((e) => !(e instanceof PeerAbortError))).toBe(true);

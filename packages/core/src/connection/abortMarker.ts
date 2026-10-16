@@ -1,7 +1,7 @@
 // The authenticated cross-party abort-marker subsystem for the file-sync
 // transports: the real, stateful control that lets a party which failed
 // terminally with its directory still writable leave a best-effort
-// `<id>-abort.json` so a waiting peer fast-fails with a definitive
+// `<id>-abort-<n>.json` so a waiting peer fast-fails with a definitive
 // PeerAbortError instead of waiting out the full peer-inactivity budget.
 // Holds live per-exchange state (the two role-derived tokens, the captured
 // write inputs, and the write-vs-seal decision one-shot the teardown
@@ -21,9 +21,28 @@ import { redactAndSanitizeForDisplay } from "../utils/sanitizeErrorForDisplay";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../utils/crypto";
 import { parseBoundedJson } from "../utils/boundedJson";
 import { TransportOperationStalledError, UsageError } from "../errors";
-import { ABORT_SUFFIX } from "./fileSyncNames";
+import { sizedControlName } from "./fileSyncNames";
 import { joinFileSyncPath } from "./fileSyncPath";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
+
+// The on-disk envelope: { version, token }. `version` is spelled out to match
+// the full-word control-body convention (locklessRendezvous / retainFiles).
+// ~80 bytes serialized. A Buffer (see AbortWriteInputs.body) so put() writes
+// the bytes rather than treating the string as a source path.
+/** @internal */
+export const abortMarkerBody = (token: Uint8Array<ArrayBuffer>): Buffer =>
+  Buffer.from(
+    JSON.stringify({ version: 1, token: toBase64Url(token) }),
+    "utf-8",
+  );
+
+// The marker name `<writerId>-abort-<byteCount>.json` for the body
+// abortMarkerBody builds from `token`.
+/** @internal */
+export const abortMarkerName = (
+  writerId: string,
+  token: Uint8Array<ArrayBuffer>,
+): string => sizedControlName(writerId, "abort", abortMarkerBody(token).length);
 
 // Hard cap on the abort marker read. The envelope is ~80 bytes; 1 KiB is
 // generous slack. Not MAX_FRAME_SIZE_BYTES (~512 MB): the recognizer is
@@ -156,8 +175,8 @@ export class AbortMarkerSubsystem {
   /**
    * Arms the authenticated cross-party abort marker, called by the
    * orchestrator once post-handshake with the two derived per-direction
-   * tokens (self = the token written into `<myId>-abort.json` on a fault;
-   * peer = the token a `<peerId>-abort.json` is verified against). Captures
+   * tokens (self = the token written into `<myId>-abort-<n>.json` on a fault;
+   * peer = the token a `<peerId>-abort-<n>.json` is verified against). Captures
    * everything the marker write needs now -- the directory path and a
    * precomputed envelope body -- so the write never reads `this.path`
    * (which close() nulls during teardown), and initializes the
@@ -186,8 +205,9 @@ export class AbortMarkerSubsystem {
     this.abortDecision = new Promise<"write" | "seal">((resolve) => {
       this.resolveAbortDecision = resolve;
     });
-    // The abort marker is a self-write (`<myId>-abort.json`), so it is captured
-    // for the OUTBOUND directory; the peer reads its own `<peerId>-abort.json`
+    const body = abortMarkerBody(selfToken);
+    // The abort marker is a self-write (`<myId>-abort-<n>.json`), so it is captured
+    // for the OUTBOUND directory; the peer reads its own `<peerId>-abort-<n>.json`
     // from its inbound, which is this party's outbound. In shared mode this is
     // just `path`.
     this.abortWriteInputs =
@@ -195,19 +215,8 @@ export class AbortMarkerSubsystem {
         ? undefined
         : {
             path: writeDir,
-            finalName: `${id}${ABORT_SUFFIX}`,
-            // The on-disk envelope: { version, token }. `version` is spelled out
-            // to match the full-word control-body convention (locklessRendezvous
-            // / retainFiles). ~80 bytes serialized. Buffer-wrapped (see
-            // AbortWriteInputs.body) so put() writes the bytes rather than
-            // treating the string as a source path.
-            body: Buffer.from(
-              JSON.stringify({
-                version: 1,
-                token: toBase64Url(selfToken),
-              }),
-              "utf-8",
-            ),
+            finalName: abortMarkerName(id, selfToken),
+            body,
             client: rawClient,
             writeWithoutRenaming,
           };
@@ -363,7 +372,7 @@ export class AbortMarkerSubsystem {
     this.abortDecisionResolved = false;
   }
 
-  // Reads and verifies a present `<peerId>-abort.json` against the
+  // Reads and verifies a present `<peerId>-abort-<n>.json` against the
   // locally-derived peer abort token. Returns true only on an authenticated
   // match (the caller then fast-fails with a PeerAbortError); every other
   // outcome -- absent, listed as oversized, unreadable, malformed, wrong
@@ -383,7 +392,11 @@ export class AbortMarkerSubsystem {
   ): Promise<boolean> {
     const peerToken = this.peerAbortToken;
     if (peerToken === undefined) return false;
-    const markerName = `${peerId}${ABORT_SUFFIX}`;
+    // The genuine marker's body has the envelope's fixed shape around a token
+    // of the peer token's length, so its name, byte count included, is known
+    // exactly and one listed file is the only candidate.
+    const declaredSize = abortMarkerBody(peerToken).length;
+    const markerName = abortMarkerName(peerId, peerToken);
     const listed = allFiles.find((file) => file.name === markerName);
     if (listed === undefined) return false;
     // Pre-get() listed-size refusal: never get() a file the listing already
@@ -399,6 +412,8 @@ export class AbortMarkerSubsystem {
         );
       return false;
     }
+    // Not the byte count its name states: still arriving, or not the marker.
+    if (listed.size !== declaredSize) return false;
     try {
       // Bounded get() with the small cap (not MAX_FRAME_SIZE_BYTES, which
       // the message path uses) as the hard safety check against a server
@@ -413,6 +428,7 @@ export class AbortMarkerSubsystem {
         encoding: "utf-8",
         maxBytes: ABORT_MARKER_MAX_BYTES,
       });
+      if (raw.length !== declaredSize) return false;
       const parsed = parseBoundedJson(raw.toString());
       if (
         typeof parsed !== "object" ||

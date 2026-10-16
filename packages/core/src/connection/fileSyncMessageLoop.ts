@@ -48,9 +48,9 @@ import {
 } from "./fileSyncFraming";
 import type { DeserializedMessage } from "./fileSyncFraming";
 import {
-  HELLO_SUFFIX,
-  JOINING_SUFFIX,
   LOCK_SUFFIX,
+  isControlNameFor,
+  isMessageName,
   parseMessageByteCount,
   parseTimestampedMessageNNN,
   ackMarkerName,
@@ -68,6 +68,22 @@ import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
+
+// A fully synced peer message whose size is not the byte count its name
+// states. Terminal: re-reading cannot change a file already past its size gate.
+const messageSizeMismatch = (
+  name: string,
+  peerId: string,
+  path: string,
+  sizes: { actual: number; declared: number },
+): UsageError =>
+  new UsageError(
+    `message file ${redactPrivateKeyMaterial(name)} from ` +
+      `${redactPrivateKeyMaterial(peerId)} in ` +
+      `${redactPrivateKeyMaterial(path)} is ${sizes.actual} byte(s), not ` +
+      `the ${sizes.declared} its name states, so it is corrupt or does not ` +
+      "belong to this exchange. Inspect the directory before retrying.",
+  );
 
 // The highest per-session send sequence number, so a timestamped message name
 // holds at most a six-digit counter: send() refuses a message past it, and
@@ -135,7 +151,7 @@ export function resolveUnexpectedFilesPolicy(options: {
 // and, for the unbounded-name cases, anything matching the terminal grammar
 // token -- a message byte count (own writes only; a peer message is taken by
 // the scan above) or `ack` (either writer's rendezvous or message ack).
-// Both parties' `<id>-joining.json` are recognized by exact name: a lock
+// Both parties' `<id>-joining-<n>.json` are recognized by exact name: a lock
 // joiner writing without renaming deletes its sentinel only after its hello
 // is written, so the peer's sentinel can still be listed once this party's
 // loop has started, and this party's own outlives a delete that failed until
@@ -177,21 +193,21 @@ export function isRecognizedLoopFile(
   // recognized by exact name, unconditionally -- so a not-yet-armed reader
   // still recognizes an abort-named file (it cannot trip the unexpected-files
   // policy on one) even though it does not verify it. A foreign
-  // `<other>-abort.json` is not exact-name and falls through to the policy.
+  // `<other>-abort-<n>.json` is not exact-name and falls through to the policy.
   if (isExpectedAbortName(name, selfId, peerId)) return true;
   if (!name.endsWith(".json")) return false;
   const ownPrefixed = name.startsWith(`${selfId}-`);
   if (!ownPrefixed && !name.startsWith(`${peerId}-`)) return false;
-  // Hellos and the lock tiebreaker each have exactly one legal name, so
-  // matched by exact name rather than terminal token: a stray
-  // `<id>-x-hello.json` or `<id>-x-lock.json` is not admitted. The lock pair
-  // may arrive in either order, but both reconstructions name the same file.
-  // Recognized in either rendezvous mode on purpose (the recognized set is
-  // mode-agnostic by spec): admitting a stray lock avoids a false-positive
-  // abort on cross-mode or legacy residue.
+  // Hellos are matched by exact writer id and the lock tiebreaker by exact
+  // name rather than by terminal token: a stray `<id>-x-hello-<n>.json` from
+  // the peer or `<id>-x-lock.json` is not admitted. The lock pair may arrive
+  // in either order, but both reconstructions name the same file. Recognized
+  // in either rendezvous mode on purpose (the recognized set is mode-agnostic
+  // by spec): admitting a stray lock avoids a false-positive abort on
+  // cross-mode or legacy residue.
   if (
-    name === `${selfId}${HELLO_SUFFIX}` ||
-    name === `${peerId}${HELLO_SUFFIX}`
+    isControlNameFor(name, "hello", selfId) ||
+    isControlNameFor(name, "hello", peerId)
   )
     return true;
   if (
@@ -200,8 +216,8 @@ export function isRecognizedLoopFile(
   )
     return true;
   if (
-    name === `${peerId}${JOINING_SUFFIX}` ||
-    name === `${selfId}${JOINING_SUFFIX}`
+    isControlNameFor(name, "joining", peerId) ||
+    isControlNameFor(name, "joining", selfId)
   )
     return true;
   const stem = name.slice(0, -".json".length);
@@ -227,11 +243,12 @@ export function isRecognizedLoopFile(
     if (!inner.startsWith(`${writer}-`)) continue;
     const original = inner.slice(`${writer}-`.length);
     const isHello =
-      original === `${selfId}-hello` || original === `${peerId}-hello`;
+      isControlNameFor(`${original}.json`, "hello", selfId) ||
+      isControlNameFor(`${original}.json`, "hello", peerId);
     const isMessage =
       (original.startsWith(`${selfId}-`) ||
         original.startsWith(`${peerId}-`)) &&
-      parseMessageByteCount(`${original}.json`) !== undefined;
+      isMessageName(`${original}.json`);
     if (isHello || isMessage) return true;
   }
   return false;
@@ -762,9 +779,12 @@ export class FileSyncMessageLoop {
       // Detect via a pattern scan rather than an exact-name exists(): the
       // message filename encodes a per-message byte count (and optionally a
       // timestamp and counter), so the receiver cannot predict the exact
-      // name. `<peerId>-*.json` with a numeric terminal segment matches only
-      // the peer's message files; its control files (`-hello.json`,
-      // `-ack.json`, `-lock.json`) have non-numeric terminals.
+      // name. `<peerId>-*.json` with a numeric terminal segment matches the
+      // peer's message files and its sized control files
+      // (`-hello-<n>.json`, `-joining-<n>.json`, `-abort-<n>.json`), which
+      // isMessageName tells apart by the type word before the byte count; its
+      // other control files (`-ack.json`, `-lock.json`) have non-numeric
+      // terminals.
       //
       // Enforcement site 3 (see docs/spec/FILE_SYNC.md). The scan classifies
       // every file in the listing, not only peer-prefixed ones: a file that
@@ -783,16 +803,19 @@ export class FileSyncMessageLoop {
       for (const file of allFiles) {
         const name = file.name;
 
-        // Peer message scan. A peer-prefixed `.json` whose terminal segment is
-        // a byte count is a message (the grammar discriminant). Ack markers
-        // (terminal `ack`) share the prefix but are control files, so they are
-        // excluded here and fall through to the recognized-for-the-loop check.
+        // Peer message scan. A peer-prefixed message name (the grammar
+        // discriminant, isMessageName) is a message. Ack markers (terminal
+        // `ack`) and the sized control files share the prefix but are control
+        // files, so they are excluded here and fall through to the
+        // recognized-for-the-loop check.
         if (
           name.startsWith(`${peerId}-`) &&
           name.endsWith(".json") &&
           !name.endsWith("-ack.json")
         ) {
-          const declaredSize = parseMessageByteCount(name);
+          const declaredSize = isMessageName(name)
+            ? parseMessageByteCount(name)
+            : undefined;
           if (declaredSize !== undefined) {
             if (deps.options().retainFiles) {
               const nnn = parseTimestampedMessageNNN(name);
@@ -837,7 +860,7 @@ export class FileSyncMessageLoop {
             messages.push({ file, declaredSize });
             continue;
           }
-          // Peer-prefixed `.json`, non-ack, non-numeric terminal (e.g. the peer
+          // Peer-prefixed `.json`, non-ack, not a message (e.g. the peer
           // hello, or a stray `<peerId>-backup.json`): fall through to the
           // recognized/unexpected classification below.
         }
@@ -862,7 +885,7 @@ export class FileSyncMessageLoop {
       if (unexpected.length > 0) this.handleUnexpectedFiles(unexpected, path);
 
       // Authenticated cross-party abort detection, after the scan and the
-      // unexpected-files policy. A present-and-verified <peerId>-abort.json
+      // unexpected-files policy. A present-and-verified <peerId>-abort-<n>.json
       // is a definitive peer-abort signal, so fast-fail with a
       // PeerAbortError rather than riding to the peer-silence timeout.
       // Clearing pollerActive and returning before any further emit keeps
@@ -937,7 +960,7 @@ export class FileSyncMessageLoop {
         const frameCap = this.inboundFrameCap ?? MAX_FRAME_SIZE_BYTES;
         if (declaredSize > frameCap || messageFile.size > frameCap) {
           // The name and the peer id are the writing peer's bytes (neither
-          // bounded here; the id is adopted from a `<peerId>-hello.json`
+          // bounded here; the id is adopted from a `<peerId>-hello-<n>.json`
           // name), and the path is the configured rendezvous directory's: so
           // every chooser takes a labelled link of its own, one value per
           // link, rather than sharing one where the first value could spend
@@ -970,6 +993,13 @@ export class FileSyncMessageLoop {
                 `${messageFile.size}/` +
                 `${declaredSize} bytes; waiting for full sync`,
             );
+        } else if (messageFile.size > declaredSize) {
+          // Larger than its name states: no write of the peer's produces
+          // this, and waiting cannot shrink it.
+          throw messageSizeMismatch(messageFile.name, peerId, path, {
+            actual: messageFile.size,
+            declared: declaredSize,
+          });
         } else {
           const inPath = joinFileSyncPath(path, messageFile.name);
           deps
@@ -992,6 +1022,11 @@ export class FileSyncMessageLoop {
             maxBytes: frameCap,
           });
           reachedGet = false;
+          if (message.length !== declaredSize)
+            throw messageSizeMismatch(messageFile.name, peerId, path, {
+              actual: message.length,
+              declared: declaredSize,
+            });
 
           // The file has already passed the byte-count gate above, so it is
           // fully synced: an envelope or JSON-parse failure here is genuine

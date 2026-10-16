@@ -412,20 +412,20 @@ describe("the undetermined write", () => {
   test("leads with the sentence to act on and trails the destination", () => {
     const err = indeterminateWriteError(
       new Error("_rename: No such file or directory"),
-      "/remote/id-hello.json",
+      "/remote/id-hello-48.json",
     );
     expect(err).toBeInstanceOf(TransportWriteIndeterminateError);
     expect(err.message).toBe(
       "the file may or may not have reached the partner: the operation was " +
         "cut off before the server answered and could not be confirmed " +
         "afterwards. " +
-        "Destination: /remote/id-hello.json",
+        "Destination: /remote/id-hello-48.json",
     );
   });
 
   test("holds the re-issue's own error only as the cause", () => {
     const cause = new Error("_rename: No such file or directory");
-    const err = indeterminateWriteError(cause, "/remote/id-hello.json");
+    const err = indeterminateWriteError(cause, "/remote/id-hello-48.json");
     expect(err.cause).toBe(cause);
     expect(err.message).not.toContain("_rename");
   });

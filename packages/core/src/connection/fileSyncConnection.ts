@@ -150,7 +150,7 @@ export const DEFAULT_POLLING_FREQUENCY_MS = 5000;
 const DEFAULT_VERBOSITY = 1;
 
 // Wall-clock allowance for a peer's write-and-rename to land: how long the
-// lock-path peer waits for a joiner whose `<id>-joining.json` sentinel is
+// lock-path peer waits for a joiner whose `<id>-joining-<n>.json` sentinel is
 // visible, and the floor under every poll-cycle rendezvous bound
 // (rendezvousBoundMs), so lowering it can abort a live partner mid-round-trip.
 // Capped at the remaining peerTimeoutMs; not a config setting. See
@@ -317,7 +317,7 @@ export interface FileTransportClient {
 
 /**
  * File-based rendezvous and message-passing connection. Implements the
- * `-hello.json`/`-lock.json` handshake (or the lockless ack-handshake barrier) and
+ * `-hello-<n>.json`/`-lock.json` handshake (or the lockless ack-handshake barrier) and
  * `.json` polling protocol over any {@link FileTransportClient} -- an SFTP
  * server via {@link SSH2SFTPClientAdapter} or a locally-mounted folder via
  * `LocalFSClient`.
@@ -855,7 +855,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
   /**
    * Arms the abort marker once after the handshake, with the token this party
-   * writes into `<myId>-abort.json` and the token a `<peerId>-abort.json` must
+   * writes into `<myId>-abort-<n>.json` and the token a `<peerId>-abort-<n>.json` must
    * verify against. Call after open(); without a path the write is a no-op.
    * See docs/spec/CHANNEL_SECURITY.md#authenticated-abort-marker.
    */
@@ -1031,7 +1031,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Negotiates rendezvous with the peer: `-hello.json` and
+   * Negotiates rendezvous with the peer: `-hello-<n>.json` and
    * `<peer1>-<peer2>-lock.json` files (lock mode) or hellos and zero-length
    * `-ack.json` markers (lockless mode), assigning `peerId` and `handshakeRole`.
    * A failure rejects this call and is not emitted on `error`, which is

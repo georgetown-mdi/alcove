@@ -300,7 +300,7 @@ inProcessOnly(
         path.join(srv.handle.backingDir, shared),
       );
       expect(residue).toHaveLength(1);
-      expect(residue[0]).toMatch(/-abort\.json$/);
+      expect(residue[0]).toMatch(/-abort-\d+\.json$/);
       const retry = await runAttempt({
         srv,
         remoteDir: `${srv.handle.remoteRoot}/${shared}`,
@@ -429,9 +429,9 @@ inProcessOnly(
         path.join(srv.handle.backingDir, shared),
       );
       expect(residue).toContain(tornName);
-      expect(residue.filter((name) => !name.endsWith("-abort.json"))).toEqual([
-        tornName,
-      ]);
+      expect(residue.filter((name) => !/-abort-\d+\.json$/.test(name))).toEqual(
+        [tornName],
+      );
 
       // The plain retry the generic advisory would have prescribed: refused at
       // entry by both parties, terminally and with the leftover message named.

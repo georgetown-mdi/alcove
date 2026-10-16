@@ -88,8 +88,8 @@ describe("what the record admits", () => {
       // The shared lock path, and the peer-written names an entry sweep reads
       // out of a directory listing.
       "/remote/peerA-peerB-lock.json",
-      "/remote/peerB-abort.json",
-      "/remote/peerB-hello.json",
+      "/remote/peerB-abort-67.json",
+      "/remote/peerB-hello-48.json",
       "/remote/peerB-1700000000-001-42.json",
       // A foreign temp whose stem is not a v4 UUID.
       "/remote/temp-export.tmp",
@@ -97,7 +97,7 @@ describe("what the record admits", () => {
       `/remote/temp-${randomUUID().toUpperCase()}.tmp`,
       // The temp shape as a DIRECTORY component rather than the file being
       // deleted: the basename is what decides.
-      `/remote/temp-${randomUUID()}.tmp/peerB-abort.json`,
+      `/remote/temp-${randomUUID()}.tmp/peerB-abort-67.json`,
     ];
     for (const path of refused) record.record(path);
     expect(recordedPaths(record)).toEqual([]);
