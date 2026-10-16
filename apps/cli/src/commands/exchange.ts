@@ -307,9 +307,9 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
 /**
  * Refuse `--include-matching-key` on terms that give this party no round to
  * name: a `single-pass` sender is handed the resolved table and counts no
- * rounds, and a count-only (`psi-c`) run writes no result. Refused for
- * `single-pass` whichever role the run resolves, since the role is decided
- * at the terms exchange, after this check.
+ * rounds, and a count-only (`psi-c`) run or one whose own terms expect no
+ * output writes no result. Refused for `single-pass` whichever role the run
+ * resolves, since the role is decided at the terms exchange, after this check.
  *
  * @internal exported for testing
  */
@@ -329,6 +329,12 @@ export function assertMatchingKeyAvailable(
         "party that sends its records first is not told which key matched. " +
         "Remove --include-matching-key, or agree the cascade linkage " +
         "strategy with your partner.",
+    );
+  if (!linkageTerms.output.expectsOutput)
+    throw new UsageError(
+      "--include-matching-key is set, but by your linkage terms you receive " +
+        "no result, so this exchange writes no result file for you. Remove " +
+        "--include-matching-key.",
     );
 }
 

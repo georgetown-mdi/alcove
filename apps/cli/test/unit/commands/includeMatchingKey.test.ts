@@ -62,3 +62,25 @@ test("terms the run does not ask the matching key of are not refused", () => {
   };
   expect(() => assertMatchingKeyAvailable(false, terms)).not.toThrow();
 });
+
+test("the matching-key column is refused on terms that give this party no result", () => {
+  const defaults = getDefaultLinkageTerms("test");
+  const terms = {
+    ...defaults,
+    output: { ...defaults.output, expectsOutput: false },
+  };
+  expect(terms.linkageStrategy).toBe("cascade");
+  expect(() => assertMatchingKeyAvailable(true, terms)).toThrow(UsageError);
+  expect(() => assertMatchingKeyAvailable(true, terms)).toThrow(
+    "this exchange writes no result file for you",
+  );
+});
+
+test("the matching-key column is available on terms that give this party a result", () => {
+  const defaults = getDefaultLinkageTerms("test");
+  const terms = {
+    ...defaults,
+    output: { ...defaults.output, expectsOutput: true },
+  };
+  expect(() => assertMatchingKeyAvailable(true, terms)).not.toThrow();
+});
