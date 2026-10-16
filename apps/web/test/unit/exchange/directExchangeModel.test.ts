@@ -21,6 +21,7 @@ import {
   DIRECT_DEDUPLICATE_DEFAULT,
   DIRECT_LINKAGE_STRATEGY_DEFAULT,
   DIRECT_NO_FILE,
+  DIRECT_RECOGNIZED_COLUMNS_NOTICE,
   DIRECT_STEP_ORDER,
   directBothSidedDeduplicateNotice,
   directDeduplicateIntentFields,
@@ -118,6 +119,35 @@ describe("previewInferredTerms", () => {
       "date_of_birth",
     ])
       expect(sentColumns(preview)).not.toContain(linkageColumn);
+  });
+
+  test("a linkage key under a folded header is kept back, and an unlisted name is sent", () => {
+    const preview = previewInferredTerms(
+      ["First Name", "Last Name", "Date of Birth", " ssn", "Given Name", "id"],
+      DEFAULT_PREVIEW_IDENTITY,
+      DIRECT_LINKAGE_STRATEGY_DEFAULT,
+      DIRECT_DEDUPLICATE_DEFAULT,
+    );
+    expect(sentColumns(preview)).toEqual(["Given Name", "id"]);
+    expect(preview.refusal).toBeUndefined();
+  });
+
+  test("the confirm notice's examples are recognized, and its unrecognized example is sent", () => {
+    const metadata = inferMetadata(
+      ["First Name", "Social Security Number", "E-mail"],
+      [],
+      {
+        mode: "direct",
+      },
+    );
+    expect(disclosedColumnNames(metadata)).toEqual(["E-mail"]);
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
+      "First Name and Social Security Number are recognized",
+    );
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
+      "a header Alcove does not recognize, such as E-mail",
+    );
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
   });
 
   test("an unrecognized header past the ceiling is sent, so it closes the run gate", () => {

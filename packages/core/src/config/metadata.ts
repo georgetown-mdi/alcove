@@ -293,7 +293,8 @@ export function safeParseMetadataTheReaderWrote(raw: unknown) {
 }
 
 // --- Metadata Inference ------------------------------------------------------
-interface TypeMeta {
+/** @internal */
+export interface TypeMeta {
   type: SemanticType;
   aliases: Array<string>;
   role: ColumnRole;
@@ -302,11 +303,22 @@ interface TypeMeta {
 
 type TypeMetaMapped = Omit<TypeMeta, "aliases">;
 
-// Each multi-word type lists both its snake_case spelling and its
-// no-separator spelling (e.g. `first_name` and `firstname`) so a
-// single-token column export still infers. The no-separator form must be
-// explicit: the map builder keys on `type.toLowerCase()`, which equals the
-// snake_case type itself, so it does not also yield the no-separator key.
+/**
+ * The key a column name is looked up by in {@link ALIAS_TYPE_META_MAP}: the
+ * name trimmed, lowercased, and with each run of whitespace, `_`, `-` and `.`
+ * collapsed to one `_`, so `First Name`, ` first_name` and `FIRST-NAME` share
+ * the key `first_name`. A lookup key only: a column keeps its raw header as
+ * its name.
+ */
+export function columnNameLookupKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_.-]+/g, "_");
+}
+
+// The lookup key joins words with `_`, so a no-separator spelling such as
+// `firstname` is a key of its own and is listed as an alias.
 const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   {
     type: "ssn",
@@ -317,19 +329,19 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   { type: "ssn4", aliases: [], role: "linkage", isPayload: false },
   {
     type: "first_name",
-    aliases: ["first_name", "firstname", "fname"],
+    aliases: ["firstname", "fname"],
     role: "linkage",
     isPayload: false,
   },
   {
     type: "last_name",
-    aliases: ["last_name", "lastname", "lname"],
+    aliases: ["lastname", "lname"],
     role: "linkage",
     isPayload: false,
   },
   {
     type: "date_of_birth",
-    aliases: ["date_of_birth", "dateofbirth", "dob"],
+    aliases: ["dateofbirth", "dob"],
     role: "linkage",
     isPayload: false,
   },
@@ -340,36 +352,54 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   { type: "identifier", aliases: ["id"], role: "identifier", isPayload: true },
   {
     type: "phone_number",
-    aliases: ["phone_number", "phonenumber", "phone"],
+    aliases: ["phonenumber", "phone"],
     role: "linkage",
     isPayload: false,
   },
   {
     type: "email_address",
-    aliases: ["email_address", "emailaddress", "email"],
+    aliases: ["emailaddress", "email"],
     role: "linkage",
     isPayload: false,
   },
   {
     type: "zip_code",
-    aliases: ["zip_code", "zipcode", "zip", "zip5", "zip_5"],
+    aliases: ["zipcode", "zip", "zip5", "zip_5"],
     role: "linkage",
     isPayload: false,
   },
 ];
 
-export const ALIAS_TYPE_META_MAP = DEFAULT_COLUMN_TYPES_AND_ALIASES.reduce(
-  (acc, { type, aliases, role, isPayload }) => {
-    const entries = [type.toLowerCase(), ...aliases].map((alias) => [
-      alias,
-      { type, role, isPayload },
-    ]);
-    return {
-      ...acc,
-      ...Object.fromEntries(entries),
-    };
-  },
-  {} as Record<string, TypeMetaMapped>,
+/**
+ * The lookup table of `types`, keyed by the {@link columnNameLookupKey} of each
+ * type name and alias. Throws when two of them share a key, even within one
+ * type, so no spelling is listed twice or silently decided by list order.
+ *
+ * @internal
+ */
+export function buildAliasTypeMetaMap(
+  types: ReadonlyArray<TypeMeta>,
+): Record<string, TypeMetaMapped> {
+  const map: Record<string, TypeMetaMapped> = {};
+  for (const { type, aliases, role, isPayload } of types)
+    for (const spelling of [type, ...aliases]) {
+      const key = columnNameLookupKey(spelling);
+      if (Object.hasOwn(map, key))
+        throw new Error(
+          `column name "${spelling}" (type ${type}) has the lookup key ` +
+            `"${key}", which type ${map[key].type} already uses`,
+        );
+      map[key] = { type, role, isPayload };
+    }
+  return map;
+}
+
+/**
+ * Each recognized column name's semantic type, role and payload default, keyed
+ * by {@link columnNameLookupKey}.
+ */
+export const ALIAS_TYPE_META_MAP = buildAliasTypeMetaMap(
+  DEFAULT_COLUMN_TYPES_AND_ALIASES,
 );
 
 /**
@@ -443,15 +473,16 @@ export interface InferMetadataOptions {
 }
 
 /**
- * Assigns default roles to the columns inference recognizes by name: an
- * alias in {@link ALIAS_TYPE_META_MAP}, or a name ending in `_id` that
- * becomes this party's identifier. Under the default `declaredOnly` mode
+ * Assigns default roles to the columns inference recognizes by name: a name
+ * whose {@link columnNameLookupKey} is a key of {@link ALIAS_TYPE_META_MAP},
+ * or ends in `_id`, which may become this party's identifier. Each column
+ * keeps its raw header as its name. Under the default `declaredOnly` mode
  * every other column is left out, so it is not declared and never sent
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
  * as payload and sent ({@link MetadataInferenceMode}).
  *
  * A single identifier-typed column gets `role: identifier`, used to index
- * observations. With more than one, only a column literally named `id` or
+ * observations. With more than one, only a column whose lookup key is `id` or
  * `identifier` gets that role; an `_id` column is left out under
  * `declaredOnly` and declared `role: payload` under `direct`.
  *
@@ -502,7 +533,7 @@ export function inferMetadataForEveryColumn(
   const direct = (options.mode ?? "declaredOnly") === "direct";
 
   const result: Metadata = columnNames.map((name) => {
-    const lookupName = name.toLowerCase();
+    const lookupName = columnNameLookupKey(name);
     // An own-property test: `in` also matches inherited names such as
     // `constructor` and `__proto__`, which have no entry.
     if (!Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName)) {

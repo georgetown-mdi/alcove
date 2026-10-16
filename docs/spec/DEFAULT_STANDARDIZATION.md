@@ -585,10 +585,33 @@ standardizes to the same value as the five-digit form.
 ## Type inference from column names
 
 When an exchange specification has no `metadata` block, each input column's
-semantic type, role, and payload default are inferred from its name. The lookup
-is on the whole column name lowercased -- an exact match against the table
-below, never a substring or prefix test -- so `zip` infers but `zip_area` does
-not.
+semantic type, role, and payload default are inferred from its name. The
+lookup is on the column name's lookup key, which folds the whole name in three
+steps:
+
+1. Trim whitespace from both ends.
+2. Lowercase it.
+3. Collapse each run of whitespace, `.`, `_` and `-` to one `_`.
+
+The key is an exact match against the table below, never a substring or prefix
+test, so `First Name`, ` ssn` and `Date-of-Birth` infer but `zip_area` and
+`ssn_last4` do not. Only whitespace is trimmed, so `_ssn` and `ssn_` do not
+infer either. The key is used only for the lookup: the column keeps its raw
+header as its name in its metadata, its transform `input`, the run's display
+and the result. Every name in the table is its own lookup key, and no two names
+in it share one.
+
+The fold has three limits. The console's quick-exchange confirm screen states
+the rule and lists the columns sent; only the command line's pre-run display
+lists the names a quick exchange holds back. A header recognized as an
+identifier only once folded, such as `ID ` with a trailing space, is declared
+and sent on a configuration with no `metadata` block, and a partner whose
+`payload.receive` is unset takes that wider set on its first run as it takes
+any first-run set
+([An unset `payload.receive` is filled on the first run](EXCHANGE_FILE.md#an-unset-payloadreceive-is-filled-on-the-first-run)).
+A header recognized after trimming is shown as written, so on the display a
+whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
+whitespace.
 
 | Semantic type | Column names that infer it | `role` | `is_payload` |
 | ------------- | -------------------------- | ------ | ------------ |
@@ -602,9 +625,9 @@ not.
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
 
-Each multi-word type lists its snake_case spelling and its no-separator
-spelling, so a single-token column export (`firstname`, `dateofbirth`) infers
-as well as a separated one.
+Each multi-word type also lists its no-separator spelling, since the lookup key
+keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)
+infers as well as a separated one.
 
 Two rules sit outside the table, and each depends on the inference mode.
 Direct mode is a run on an input file with no invitation and no
@@ -612,7 +635,8 @@ configuration: the CLI's zero-setup run and the console's quick exchange.
 Every other inference is declared-only: a configuration with no `metadata`
 block, and an invitation composed from an input file.
 
-- A name absent from the table but ending in `_id` infers `type: identifier`.
+- A name whose lookup key is absent from the table but ends in `_id`, such as
+  `case_id` or `Medicaid ID`, infers `type: identifier`.
   Declared-only, it infers `is_payload: false` and has a role only if the
   second pass below makes it the identifier. In direct mode it infers
   `role: payload` and `is_payload: true`, and the second pass may still make it
@@ -623,7 +647,7 @@ block, and an invitation composed from an input file.
 A second pass then decides which column indexes this party's own records: a
 header with exactly one `identifier`-typed column promotes that column to
 `role: identifier` whatever its name, and a header with several leaves the
-promotion to a column literally named `id` or `identifier` if one is present,
+promotion to a column whose lookup key is `id` or `identifier` if one is present,
 and to no column at all otherwise.
 
 A column that ends the second pass with no role is undeclared, which only
@@ -633,9 +657,9 @@ matches on it only when a standardization transform names it as its `input`. Wha
 Declared-only, the table's `identifier` row is the one inferred entry with
 `is_payload: true`; in direct mode every column the table does not list is sent
 as well, and every linkage-key row still infers `is_payload: false`.
-A column is a linkage key only when its lowercased name is a name in the table,
-so in direct mode a linkage column under any other name, such as `First Name`
-or `Date of Birth`, infers `role: payload` and is sent. The
+A column is a linkage key only when its lookup key is a name in the table,
+so in direct mode a linkage column under any other name, such as `Given Name`
+or `Birthdate`, infers `role: payload` and is sent. The
 run names its undeclared columns before it connects; the operator-facing
 detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
 

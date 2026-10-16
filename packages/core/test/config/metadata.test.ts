@@ -113,10 +113,8 @@ test.each([
   ["zip_5", "zip_code"],
   ["zipcode", "zip_code"],
   ["id", "identifier"],
-  // No-separator spellings: a single-token column export still infers. Pinned
-  // because the map builder keys on `type.toLowerCase()`, which equals the
-  // snake_case type and so no longer yields the no-separator key as a side
-  // effect -- these must stay explicit aliases.
+  // No-separator spellings: a single-token column export still infers. The
+  // lookup key joins words with `_`, so these must stay explicit aliases.
   ["firstname", "first_name"],
   ["lastname", "last_name"],
   ["dateofbirth", "date_of_birth"],

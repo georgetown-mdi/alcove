@@ -778,6 +778,23 @@ test("a held-back line lists only columns the input holds, in input order", () =
   expect(lines.join("\n")).not.toContain("ghost_phone");
 });
 
+test("headers recognized after folding are matched on or held back under their raw names", () => {
+  const lines = renderedForHeader([
+    "id",
+    "First Name",
+    "last.name",
+    " ssn",
+    "Given Name",
+  ]);
+  const shown = lines.join("\n");
+  expect(lines).toContain(
+    "  matched on (enforced): first name, last name (last.name)",
+  );
+  expect(lines).toContain("  held back (enforced):  ssn");
+  expect(shown).toContain("\n    - id\n    - Given Name");
+  expect(shown).not.toContain("- First Name");
+});
+
 test("a file whose recognized columns all feed a key states no held-back line", () => {
   const lines = renderedForHeader(["id", "first_name", "last_name", "notes"]);
   expect(lines.join("\n")).not.toContain("held back");

@@ -37,6 +37,7 @@ stands, from a direction still open to a decision taken and built.
 | [fan-out-matching-resolution.md](fan-out-matching-resolution.md) | Built under `single-pass`; the cascade realization stays open work. |
 | [fips-provider-surface.md](fips-provider-surface.md) | Measurement, plus two decisions taken on it; whether to pursue a FIPS claim at all remains open. |
 | [fips-variant-image.md](fips-variant-image.md) | Decided, built, and published. |
+| [folded-column-name-lookup.md](folded-column-name-lookup.md) | Decided on the maintainer's ruling and built; the options weighed and what the fold changes for a configuration with no `metadata` block. |
 | [hash-keyed-value-lookup.md](hash-keyed-value-lookup.md) | Decided and built; the three lookup keys measured at 2^24 and why the hash was taken. |
 | [hosted-environment-opentofu.md](hosted-environment-opentofu.md) | Decided and applied; the resources it held no longer exist. |
 | [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md) | Decided and implemented. |
