@@ -65,6 +65,7 @@ import {
 } from "@psi/managed/managedInputHandle";
 
 import { dateTimeLabel } from "@psi/formatting";
+import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
 import type {
   ManagedExchangeRecord,
@@ -72,6 +73,7 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
+import type { MatchingKeyUnavailableReason } from "@alcove/core";
 
 export {
   INPUT_FAILURE_TITLE,
@@ -452,6 +454,38 @@ export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailureAlert = {
     "new terms.",
   recovery: "retry",
 };
+
+function termsChangeTakenOnKeyOffFailure(
+  reason: MatchingKeyUnavailableReason,
+): ManagedRunFailureAlert {
+  return {
+    ...TERMS_CHANGE_TAKEN_ON_FAILURE,
+    message:
+      `${TERMS_CHANGE_TAKEN_ON_FAILURE.message} ` +
+      matchingKeyTurnedOffNotice(reason, "did"),
+  };
+}
+
+const TERMS_CHANGE_TAKEN_ON_KEY_OFF_FAILURES: Record<
+  MatchingKeyUnavailableReason,
+  ManagedRunFailureAlert
+> = {
+  "count-only": termsChangeTakenOnKeyOffFailure("count-only"),
+  "single-pass": termsChangeTakenOnKeyOffFailure("single-pass"),
+  "no-output": termsChangeTakenOnKeyOffFailure("no-output"),
+};
+
+/**
+ * {@link TERMS_CHANGE_TAKEN_ON_FAILURE}, naming the matched-key column the
+ * saved terms turned off, if they did.
+ */
+export function termsChangeTakenOnFailure(
+  matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined,
+): ManagedRunFailureAlert {
+  return matchingKeyTurnedOff === undefined
+    ? TERMS_CHANGE_TAKEN_ON_FAILURE
+    : TERMS_CHANGE_TAKEN_ON_KEY_OFF_FAILURES[matchingKeyTurnedOff];
+}
 
 /** The note a completed run shows when the store refused its success stamp:
  * the results stand, but the exchange's stored status still names the run

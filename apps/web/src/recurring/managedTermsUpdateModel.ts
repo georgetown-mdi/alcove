@@ -2,9 +2,11 @@ import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedTermsUpdateNotAppliedError } from "@psi/managed/managedTermsUpdate";
+import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
 import type {
   ManagedTermsUpdateApplyRefusal,
+  ManagedTermsUpdateReading,
   ManagedTermsUpdateRefusal,
 } from "@psi/managed/managedTermsUpdate";
 import type { ColumnMetadata } from "@alcove/core";
@@ -107,6 +109,34 @@ export const TERMS_UPDATE_NO_CHANGE_TEXT =
 
 export const TERMS_UPDATE_APPLIED_TEXT =
   "Applied. Your next run uses your partner's new terms.";
+
+/**
+ * What a checked update says before Accept: whether it changes the terms,
+ * and the matched-key column accepting it turns off, if it does.
+ */
+export function termsUpdateReadingText(
+  reading: ManagedTermsUpdateReading,
+  changesTerms: boolean,
+): string {
+  const lead = changesTerms
+    ? TERMS_UPDATE_CHANGE_TEXT
+    : TERMS_UPDATE_NO_CHANGE_TEXT;
+  return reading.matchingKeyTurnedOff === undefined
+    ? lead
+    : `${lead} ${matchingKeyTurnedOffNotice(reading.matchingKeyTurnedOff, "will")}`;
+}
+
+/**
+ * What the apply control says once an update is applied, naming the
+ * matched-key column it turned off, if it did.
+ */
+export function termsUpdateAppliedText(
+  reading: ManagedTermsUpdateReading,
+): string {
+  return reading.matchingKeyTurnedOff === undefined
+    ? TERMS_UPDATE_APPLIED_TEXT
+    : `${TERMS_UPDATE_APPLIED_TEXT} ${matchingKeyTurnedOffNotice(reading.matchingKeyTurnedOff, "did")}`;
+}
 
 const NOTHING_CHANGED = "Nothing was changed.";
 

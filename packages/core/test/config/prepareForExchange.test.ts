@@ -1504,3 +1504,21 @@ test("prepareForExchange: includeOwnColumns rides the config through to the prep
     ).includeOwnColumns,
   ).toBeUndefined();
 });
+
+test("prepareForExchange: includeMatchingKey rides the config through to the prepared exchange", () => {
+  const prepared = prepareForExchange(
+    { linkageTerms: terms, metadata, includeMatchingKey: true },
+    "Tester",
+    rawRows,
+    columns,
+  );
+  expect(prepared.includeMatchingKey).toBe(true);
+  expect(
+    prepareForExchange(
+      { linkageTerms: terms, metadata },
+      "Tester",
+      rawRows,
+      columns,
+    ).includeMatchingKey,
+  ).toBeUndefined();
+});

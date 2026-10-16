@@ -196,6 +196,7 @@ function probeIntentFields(): JobExchangeIntentBase {
     ],
     expectedPartnerDeduplicate: false,
     includeOwnColumns: "all",
+    includeMatchingKey: true,
     csvDelimiter: "|",
     retentionDisposition: "composition probe",
     tokenMaxAgeDays: 1,
@@ -844,6 +845,9 @@ export function disclosedDocument(
       : {}),
     ...(document.includeOwnColumns !== undefined
       ? { includeOwnColumns: document.includeOwnColumns }
+      : {}),
+    ...(document.includeMatchingKey !== undefined
+      ? { includeMatchingKey: document.includeMatchingKey }
       : {}),
     ...(document.csvDelimiter !== undefined
       ? { csvDelimiter: document.csvDelimiter }

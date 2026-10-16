@@ -425,6 +425,11 @@ export interface InviterDataEdits {
    * up.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /**
+   * Whether this party's result file ends with the `matched_on_key` column,
+   * narrowed at the mint like {@link includeOwnColumns}. Absent is off.
+   */
+  includeMatchingKey?: true;
 }
 
 /**
@@ -459,6 +464,9 @@ export function inviterExchangeDataSpec(
     }),
     ...(edits?.includeOwnColumns !== undefined && {
       includeOwnColumns: edits.includeOwnColumns,
+    }),
+    ...(edits?.includeMatchingKey !== undefined && {
+      includeMatchingKey: edits.includeMatchingKey,
     }),
   };
 }

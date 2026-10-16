@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { editorFromCsv, editorWithIncludeOwnColumns } from "@psi/inviterEditor";
+import {
+  editorFromCsv,
+  editorWithIncludeMatchingKey,
+  editorWithIncludeOwnColumns,
+} from "@psi/inviterEditor";
 import { configurationHandBack } from "@console/configurationHandBack";
 import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
 import { reviewValidation } from "@psi/inviterModel";
@@ -82,6 +86,32 @@ describe("the hand-back the review step sends", () => {
         receipts: RECEIPTS_DEFAULT,
       }).includeOwnColumns,
     ).toBeUndefined();
+  });
+
+  test("narrows the matched-key choice to the terms, as a mint does", () => {
+    const editor = editorWithIncludeMatchingKey(
+      editorFromCsv("County Health", acquired()),
+      true,
+    );
+    const terms = reviewed(editor);
+    const handBack = configurationHandBack({
+      editor,
+      terms,
+      csvDelimiter: undefined,
+      receipts: RECEIPTS_DEFAULT,
+    });
+    expect(handBack.includeMatchingKey).toBe(true);
+    expect(jobConfigurationHandBackSchema.safeParse(handBack).success).toBe(
+      true,
+    );
+    expect(
+      configurationHandBack({
+        editor,
+        terms: { ...terms, linkageStrategy: "single-pass" },
+        csvDelimiter: undefined,
+        receipts: RECEIPTS_DEFAULT,
+      }),
+    ).not.toHaveProperty("includeMatchingKey");
   });
 
   test("states the receipt card's mode, a disabled one included, with its pin and note", () => {

@@ -39,17 +39,16 @@ import {
   SENT_COLUMNS_LABEL,
   SENT_COLUMNS_SAVED_TEXT,
   SENT_COLUMNS_TEXT,
-  TERMS_UPDATE_APPLIED_TEXT,
-  TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_COPY_HINT,
   TERMS_UPDATE_COPY_LABEL,
   TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_MADE_TEXT,
-  TERMS_UPDATE_NO_CHANGE_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
   fixedColumnNote,
   sentColumnsFailureText,
+  termsUpdateAppliedText,
   termsUpdateNotAppliedText,
+  termsUpdateReadingText,
 } from "./managedTermsUpdateModel";
 
 import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate";
@@ -319,7 +318,7 @@ function ApplyTermsUpdate({
       await applyManagedTermsUpdate(record.id, update);
       setReading(undefined);
       setPasted("");
-      setReported({ pasted: "", message: TERMS_UPDATE_APPLIED_TEXT });
+      setReported({ pasted: "", message: termsUpdateAppliedText(update) });
       onApplied();
     } catch (error) {
       whenDiagnostic(() => console.error(error));
@@ -360,9 +359,10 @@ function ApplyTermsUpdate({
       ) : (
         <div>
           <p className={styles.small}>
-            {termsDeltaSections(shown.delta).length === 0
-              ? TERMS_UPDATE_NO_CHANGE_TEXT
-              : TERMS_UPDATE_CHANGE_TEXT}
+            {termsUpdateReadingText(
+              shown,
+              termsDeltaSections(shown.delta).length !== 0,
+            )}
           </p>
           <TermsChangeDelta delta={shown.delta} escaped={false} />
           <Group mt="sm">

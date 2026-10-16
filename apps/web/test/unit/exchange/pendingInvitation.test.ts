@@ -89,6 +89,19 @@ describe("the invitation kept for a resume", () => {
     expect(pending?.fileName).toBe(context.fileName);
   });
 
+  test("keeps the matched-key choice the mint decided", async () => {
+    const minted = await generateInvitation({
+      inviterName: "County Health Dept",
+      file: Readable.from(CSV),
+      location,
+      includeMatchingKey: true,
+    });
+    expect(minted.includeMatchingKey).toBe(true);
+    writePendingInvitation(minted, context);
+    const pending = await readPendingInvitation(new Date());
+    expect(pending?.invitation.includeMatchingKey).toBe(true);
+  });
+
   async function pendingFor(minted: Awaited<ReturnType<typeof mint>>) {
     writePendingInvitation(minted, context);
     const pending = await readPendingInvitation(new Date());
@@ -249,6 +262,10 @@ describe("the invitation kept for a resume", () => {
     [
       "holds a delimiter the app does not offer",
       (entry) => (entry.csvDelimiter = ";;"),
+    ],
+    [
+      "holds a matched-key choice the app does not write",
+      (entry) => (entry.includeMatchingKey = false),
     ],
   ])("an entry that %s is not offered and is removed", async (_, damage) => {
     const entry = await writtenEntry();

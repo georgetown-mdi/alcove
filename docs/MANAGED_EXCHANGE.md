@@ -1227,9 +1227,12 @@ What the import accepts is what this app can hold:
 What is editable is what a browser-run exchange edits in place: the label; the
 maximum age for the exchange's secret, which the exported configuration holds as
 `authentication.token_max_age_days` for the command-line run to apply; and the
-three settings of the file that are this party's alone -- which of its own columns
-its result file holds (`include_own_columns`), how its input file separates fields
-(`csv_delimiter`), and its retention note (`retention_disposition`).
+four settings of the file that are this party's alone -- which of its own columns
+its result file holds (`include_own_columns`), whether that file names the
+linkage key each match was made on (`include_matching_key`, shown unavailable,
+with the reason, on terms that leave no key to name), how its input file
+separates fields (`csv_delimiter`), and its retention note
+(`retention_disposition`).
 The agreed terms are not among them: a configuration imported alone keeps its
 terms as the file states them, and an exchange imported with its key file
 changes them only under Change terms (see [Changing the terms of a saved
@@ -1527,8 +1530,9 @@ lives](#where-the-schedule-is-agreed-and-where-it-lives)). Agreeing
 or changing a cadence is not in that class (a schedule is neither a term nor a
 credential), and neither are this party's own local acts: pausing, deleting,
 migrating the exchange to another device, dropping the next extract in the
-exchange's folder under the agreed name, or changing which of its own columns its result file holds, how its
-input file separates fields, or its retention note -- none of the three changes
+exchange's folder under the agreed name, or changing which of its own columns its result file holds, whether
+that file names the key each match was made on, how its
+input file separates fields, or its retention note -- none of the four changes
 what is sent.
 
 What the standing input file discloses is the one part of that agreement a
@@ -1607,8 +1611,11 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   change in the sections a run shows (see
   [When your partner's terms change](#when-your-partners-terms-change)).
   **Accept** saves your partner's terms to the stored exchange, and the next
-  run uses them; **Decline** leaves the exchange as it is. A refused update
-  changes nothing.
+  run uses them; **Decline** leaves the exchange as it is. Where your result
+  file names the linkage key each match was made on and the new terms leave
+  you no key to name -- count-only, single-pass, or no result for you -- the
+  check says so, and **Accept** turns that setting off with the terms. A
+  refused update changes nothing.
 
 Making and applying an update are not offered once the exchange's secret has
 expired, where its terms name no identity for you, or while a run of the
@@ -1647,6 +1654,11 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   goes back to the agreed terms, and the next run you start from this page
   asks about the change again. Apply and Decline are not offered while a run
   of the exchange is in progress.
+
+Where your result file names the linkage key each match was made on and the
+new terms leave you no key to name -- count-only, single-pass, or no result for
+you -- the question and the kept change say so, and **Accept** or **Apply**
+turns that setting off with the terms.
 
 Your partner's run ends with a partner refusal whenever you decline or a
 scheduled run stops; it is not asked anything. How the kept change and the

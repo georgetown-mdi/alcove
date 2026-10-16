@@ -564,6 +564,7 @@ export function handBackConfigDocument(
     metadata,
     standardization,
     includeOwnColumns,
+    includeMatchingKey,
     csvDelimiter,
     retentionDisposition,
   } = handBack;
@@ -583,6 +584,7 @@ export function handBackConfigDocument(
     ...(signing !== undefined ? { signing } : {}),
     ...(retentionDisposition !== undefined ? { retentionDisposition } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
   };
   return handoffConfigDocument(composed, mountedDocument);

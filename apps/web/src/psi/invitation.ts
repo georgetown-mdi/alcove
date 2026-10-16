@@ -25,6 +25,7 @@ import { defaultRelaySetting } from "@utils/clientConfig";
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
+import { matchingKeyField } from "./matchingKeyModel";
 import { ownColumnsField } from "./ownColumnsModel";
 import { relayForRun } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
@@ -143,6 +144,12 @@ export interface GeneratedInvitation {
    * reads it from here. Never in the token.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /**
+   * Whether the inviter's result file ends with the `matched_on_key` column,
+   * narrowed at the mint to terms that admit it, like
+   * {@link includeOwnColumns}. Never in the token.
+   */
+  includeMatchingKey?: true;
   /** Where the token sends the partner: the endpoint inside {@link encoded}. */
   connectionEndpoint?: ConnectionEndpoint;
 }
@@ -360,6 +367,9 @@ export async function generateInvitation(params: {
   /** Which of the inviter's own columns its result file includes, narrowed
    * against the emitted terms and returned. Omitted on the quick path. */
   includeOwnColumns?: OwnColumnsChoice;
+  /** Whether the inviter's result file names the key each pair matched on,
+   * narrowed against the emitted terms and returned. Omitted is off. */
+  includeMatchingKey?: boolean;
   /** Reads the build's default relay; {@link defaultRelaySetting} when
    * omitted. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
@@ -534,6 +544,7 @@ export async function generateInvitation(params: {
     standardization,
     // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
+    ...matchingKeyField(params.includeMatchingKey, linkageTerms),
     connectionEndpoint: resolvedEndpoint,
   };
 }

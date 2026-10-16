@@ -1,3 +1,4 @@
+import { matchingKeyField } from "@psi/matchingKeyModel";
 import { ownColumnsField } from "@psi/ownColumnsModel";
 import { standardizationForTerms } from "@psi/authoring/advancedInviteTerms";
 
@@ -11,9 +12,9 @@ import type { ReceiptsDraft } from "@psi/receiptsModel";
  * configuration states them (`PUT /api/jobs/config`): the same values an
  * invitation minted from these steps would put in a run's configuration, read
  * off the same draft -- the reviewed terms, the column metadata, the cleaning
- * reconciled to those terms, the own-column choice narrowed to them, the
- * delimiter, and the receipt card's mode, pin, identity location, and
- * retention note.
+ * reconciled to those terms, the own-column and matched-key choices narrowed
+ * to them, the delimiter, and the receipt card's mode, pin, identity location,
+ * and retention note.
  *
  * The receipt mode is sent as the card holds it, `session-derived` included,
  * so a file stating a mode the card offers disabled keeps its block. Pure, so
@@ -31,7 +32,8 @@ export function configurationHandBack({
   csvDelimiter: string | undefined;
   receipts: ReceiptsDraft;
 }): JobConfigurationHandBack {
-  const { metadata, standardization, includeOwnColumns } = editor.draft;
+  const { metadata, standardization, includeOwnColumns, includeMatchingKey } =
+    editor.draft;
   const pin = receipts.partnerFingerprint.trim();
   const note = receipts.retentionDisposition.trim();
   return {
@@ -39,6 +41,7 @@ export function configurationHandBack({
     metadata,
     standardization: standardizationForTerms(standardization, terms),
     ...ownColumnsField(includeOwnColumns ?? "none", terms),
+    ...matchingKeyField(includeMatchingKey, terms),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     signing: {
       mode: receipts.mode,

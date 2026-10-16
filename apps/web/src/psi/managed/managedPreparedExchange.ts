@@ -34,6 +34,9 @@ export function prepareManagedRerunExchange(
       ...(exchangeFile.includeOwnColumns !== undefined
         ? { includeOwnColumns: exchangeFile.includeOwnColumns }
         : {}),
+      ...(exchangeFile.includeMatchingKey !== undefined
+        ? { includeMatchingKey: exchangeFile.includeMatchingKey }
+        : {}),
       ...(exchangeFile.retentionDisposition !== undefined
         ? { retentionDisposition: exchangeFile.retentionDisposition }
         : {}),

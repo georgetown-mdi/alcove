@@ -418,6 +418,11 @@ export interface JobExchangeIntentBase {
   /** Which of this party's own columns its result file includes (core's
    * `include_own_columns`). Local: nothing of it reaches the partner. */
   includeOwnColumns?: OwnColumnSelection;
+  /** Whether this party's result file ends with the `matched_on_key` column
+   * (core's `include_matching_key`). Local: nothing of it reaches the partner.
+   * The composed config's parse refuses `true` beside terms that do not admit
+   * it. */
+  includeMatchingKey?: boolean;
   /** The delimiter this party's own input is read and result written with
    * (core's `csv_delimiter`), graded by {@link jobCsvDelimiterSchema}. Absent
    * means commas. */
@@ -735,6 +740,7 @@ const jobExchangeIntentCommonFields = {
   standardization: boundedStandardizationSchema.optional(),
   expectedPartnerDeduplicate: z.boolean().optional(),
   includeOwnColumns: OwnColumnSelectionSchema.optional(),
+  includeMatchingKey: z.boolean().optional(),
   csvDelimiter: jobCsvDelimiterSchema.optional(),
   side: z.enum(["inviter", "acceptor"]).optional(),
   mountedConfigurationOpened: z.boolean().optional(),
@@ -1003,6 +1009,7 @@ export interface JobConfigurationHandBack {
   metadata?: Metadata;
   standardization?: Standardization;
   includeOwnColumns?: OwnColumnSelection;
+  includeMatchingKey?: boolean;
   csvDelimiter?: string;
   signing: JobHandBackSigning;
   retentionDisposition?: string;
@@ -1043,6 +1050,7 @@ export const jobConfigurationHandBackSchema: z.ZodType<JobConfigurationHandBack>
       metadata: jobExchangeIntentCommonFields.metadata,
       standardization: jobExchangeIntentCommonFields.standardization,
       includeOwnColumns: jobExchangeIntentCommonFields.includeOwnColumns,
+      includeMatchingKey: jobExchangeIntentCommonFields.includeMatchingKey,
       csvDelimiter: jobExchangeIntentCommonFields.csvDelimiter,
       signing: jobHandBackSigningSchema,
       retentionDisposition: jobExchangeIntentCommonFields.retentionDisposition,

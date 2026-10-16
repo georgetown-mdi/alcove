@@ -32,14 +32,21 @@ import {
   delimiterRecheckNote,
   localDocumentFieldEdits,
   localDocumentFieldValuesFrom,
+  matchingKeyWithheld,
   ownColumnsOffered,
 } from "@recurring/localDocumentFieldsModel";
+import { MATCHING_KEY_STORED_WITHHELD_COPY } from "@psi/matchingKeyModel";
 
-import type { CSVRow, ExchangeSpec } from "@alcove/core";
+import type {
+  CSVRow,
+  ExchangeSpec,
+  LinkageTerms,
+  MatchingKeyUnavailableReason,
+} from "@alcove/core";
 import type { LocalDocumentFieldValues } from "@recurring/localDocumentFieldsModel";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
-// The stored exchange's editor for its document's three per-party settings:
+// The stored exchange's editor for its document's four per-party settings:
 // what each control starts on for an imported document, what a save writes,
 // and that each edit reaches both the configuration the export hands back and
 // the document the next run is prepared from.
@@ -123,6 +130,7 @@ describe("an imported value pre-fills each control", () => {
         snakeizeKeys({
           ...storedDocument({
             includeOwnColumns: "disclosed",
+            includeMatchingKey: true,
             csvDelimiter: ";",
             retentionDisposition: note,
           }),
@@ -136,6 +144,7 @@ describe("an imported value pre-fills each control", () => {
 
     expect(localDocumentFieldValuesFrom(imported.exchangeFile)).toEqual({
       ownColumns: "disclosed",
+      matchingKey: true,
       delimiter: { option: ";", other: "" },
       retentionNote: note,
     });
@@ -144,6 +153,7 @@ describe("an imported value pre-fills each control", () => {
   test("a document stating none starts each control on what it reads as", () => {
     expect(localDocumentFieldValuesFrom(storedDocument())).toEqual({
       ownColumns: "none",
+      matchingKey: false,
       delimiter: { option: ",", other: "" },
       retentionNote: "",
     });
@@ -171,6 +181,7 @@ describe("a save writes only what the operator changed", () => {
   test("an untouched editor writes nothing to the document", () => {
     const document = storedDocument({
       includeOwnColumns: "all",
+      includeMatchingKey: true,
       csvDelimiter: "|",
       retentionDisposition: note,
     });
@@ -180,7 +191,7 @@ describe("a save writes only what the operator changed", () => {
     ).toEqual({});
   });
 
-  test("a document with none of the three is left without them", () => {
+  test("a document with none of the four is left without them", () => {
     const record = runnableRecord();
 
     expect(save(record, {}).exchangeFile).toEqual(record.exchangeFile);
@@ -201,6 +212,47 @@ describe("a save writes only what the operator changed", () => {
         ownColumns: "all",
       }),
     ).toEqual({});
+  });
+
+  test.each<{
+    reason: MatchingKeyUnavailableReason;
+    terms: Partial<LinkageTerms>;
+  }>([
+    {
+      reason: "count-only",
+      terms: {
+        algorithm: "psi-c",
+        linkageKeys: linkageTerms.linkageKeys.slice(0, 1),
+        output: { expectsOutput: false, shareWithPartner: false },
+      },
+    },
+    { reason: "single-pass", terms: { linkageStrategy: "single-pass" } },
+    {
+      reason: "no-output",
+      terms: { output: { expectsOutput: false, shareWithPartner: true } },
+    },
+  ])(
+    "the matched-key control is disabled with its reason, and left alone, on $reason terms",
+    ({ reason, terms }) => {
+      const document = storedDocument({
+        linkageTerms: { ...linkageTerms, ...terms },
+      });
+
+      expect(matchingKeyWithheld(document)).toBe(reason);
+      expect(MATCHING_KEY_STORED_WITHHELD_COPY[reason]).toMatch(
+        /^Not available/,
+      );
+      expect(
+        localDocumentFieldEdits(document, {
+          ...localDocumentFieldValuesFrom(document),
+          matchingKey: true,
+        }),
+      ).toEqual({});
+    },
+  );
+
+  test("the matched-key control is offered on terms that give a key to name", () => {
+    expect(matchingKeyWithheld(storedDocument())).toBeUndefined();
   });
 
   test("a refused separator writes nothing", () => {
@@ -237,6 +289,37 @@ describe("each edit reaches the export and the next run", () => {
     expect(
       prepareManagedRerunExchange(edited.exchangeFile, rows, columns)
         .includeOwnColumns,
+    ).toBeUndefined();
+  });
+
+  test("the matched-key choice, kept on reload", () => {
+    const edited = readBack(save(runnableRecord(), { matchingKey: true }));
+
+    expect(edited.exchangeFile.includeMatchingKey).toBe(true);
+    expect(localDocumentFieldValuesFrom(edited.exchangeFile).matchingKey).toBe(
+      true,
+    );
+    expect(exported(edited).includeMatchingKey).toBe(true);
+    expect(
+      prepareManagedRerunExchange(edited.exchangeFile, rows, columns)
+        .includeMatchingKey,
+    ).toBe(true);
+  });
+
+  test("clearing the matched-key choice drops it from both", () => {
+    const edited = readBack(
+      save(runnableRecord({ includeMatchingKey: true }), {
+        matchingKey: false,
+      }),
+    );
+
+    expect(localDocumentFieldValuesFrom(edited.exchangeFile).matchingKey).toBe(
+      false,
+    );
+    expect(exported(edited)).not.toHaveProperty("includeMatchingKey");
+    expect(
+      prepareManagedRerunExchange(edited.exchangeFile, rows, columns)
+        .includeMatchingKey,
     ).toBeUndefined();
   });
 
@@ -288,7 +371,7 @@ describe("each edit reaches the export and the next run", () => {
     ).toBeUndefined();
   });
 
-  test("an imported configuration exports back with all three edits and nothing else changed", () => {
+  test("an imported configuration exports back with all four edits and nothing else changed", () => {
     const source = stringifyYaml(
       snakeizeKeys({
         ...storedDocument({ csvDelimiter: "|" }),
@@ -299,6 +382,7 @@ describe("each edit reaches the export and the next run", () => {
 
     const edited = save(imported, {
       ownColumns: "disclosed",
+      matchingKey: true,
       delimiter: { option: ";", other: "" },
       retentionNote: note,
     });
@@ -313,6 +397,7 @@ describe("each edit reaches the export and the next run", () => {
     ).toEqual({
       ...parseExchangeSpec(parseSensitiveYaml(source, "import")),
       includeOwnColumns: "disclosed",
+      includeMatchingKey: true,
       csvDelimiter: ";",
       retentionDisposition: note,
     });

@@ -20,6 +20,7 @@ import { ZodError } from "zod";
 
 import {
   applyManagedExchangeTermsChange,
+  matchingKeyTurnedOffBy,
   runnableManagedExchange,
 } from "./managedExchangeRecord";
 import {
@@ -36,6 +37,7 @@ import { managedExchangeLapsed } from "./managedExpiry";
 
 import type {
   LinkageTerms,
+  MatchingKeyUnavailableReason,
   TermsDelta,
   TermsUpdate,
   TermsUpdateCheck,
@@ -176,13 +178,20 @@ export interface ManagedTermsUpdateReading {
   partnerTerms: LinkageTerms;
   /** How they differ from the stored exchange's, as a run compares them. */
   delta: TermsDelta;
+  /** Why applying the update turns off this party's matched-key column
+   * ({@link matchingKeyTurnedOffBy}), absent where it does not. */
+  matchingKeyTurnedOff?: MatchingKeyUnavailableReason;
 }
 
 async function checkedTermsUpdate(
   record: RunnableManagedExchangeRecord,
   encoded: string,
   runInFlight: boolean,
-): Promise<{ update: TermsUpdate; delta: TermsDelta }> {
+): Promise<{
+  update: TermsUpdate;
+  delta: TermsDelta;
+  matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
+}> {
   const refusal = managedTermsUpdateRefusal(record, Date.now(), runInFlight);
   if (refusal !== null) throw new ManagedTermsUpdateNotAppliedError(refusal);
   let update: TermsUpdate;
@@ -230,7 +239,14 @@ async function checkedTermsUpdate(
       partnerDeduplicate: exchangeFile.expectedPartnerDeduplicate,
     },
   );
-  return { update, delta };
+  return {
+    update,
+    delta,
+    matchingKeyTurnedOff: matchingKeyTurnedOffBy(
+      exchangeFile,
+      applied.exchangeFile,
+    ),
+  };
 }
 
 /**
@@ -247,12 +263,17 @@ export async function readManagedTermsUpdate(
   pasted: string,
 ): Promise<ManagedTermsUpdateReading> {
   const encoded = stripInvitationWhitespace(pasted);
-  const { update, delta } = await checkedTermsUpdate(
+  const { update, delta, matchingKeyTurnedOff } = await checkedTermsUpdate(
     record,
     encoded,
     await managedExchangeRunLockHeld(record.id),
   );
-  return { encoded, partnerTerms: update.linkageTerms, delta };
+  return {
+    encoded,
+    partnerTerms: update.linkageTerms,
+    delta,
+    ...(matchingKeyTurnedOff !== undefined ? { matchingKeyTurnedOff } : {}),
+  };
 }
 
 /**
@@ -260,7 +281,7 @@ export async function readManagedTermsUpdate(
  * (the `update` scope of `applyManagedExchangeTermsChange`), then drop any
  * terms change a scheduled run kept, which this answers. The stored record is
  * read and checked again under the lock, and applied only where the change is
- * still the one shown.
+ * still the one shown, the matched-key column it turns off included.
  *
  * @throws {ManagedExchangeLockUnavailableError} while a run holds the lock.
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
@@ -277,7 +298,10 @@ export async function applyManagedTermsUpdate(
       if (stored === undefined || !runnableManagedExchange(stored))
         throw new ManagedTermsUpdateNotAppliedError("changed");
       const current = await checkedTermsUpdate(stored, shown.encoded, false);
-      if (JSON.stringify(current.delta) !== JSON.stringify(shown.delta))
+      if (
+        JSON.stringify(current.delta) !== JSON.stringify(shown.delta) ||
+        current.matchingKeyTurnedOff !== shown.matchingKeyTurnedOff
+      )
         throw new ManagedTermsUpdateNotAppliedError("changed");
       const applied = await persistManagedExchangeTermsChange(id, {
         scope: "update",

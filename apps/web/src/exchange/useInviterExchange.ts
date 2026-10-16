@@ -966,6 +966,7 @@ export function inviterServerJobConfig({
     | "metadata"
     | "standardization"
     | "includeOwnColumns"
+    | "includeMatchingKey"
   >;
   inputSource: JobInputSource;
   transport: ServerJobExchangeTransport;
@@ -1010,6 +1011,9 @@ export function inviterServerJobConfig({
       : {}),
     ...(minted.includeOwnColumns !== undefined
       ? { includeOwnColumns: minted.includeOwnColumns }
+      : {}),
+    ...(minted.includeMatchingKey !== undefined
+      ? { includeMatchingKey: minted.includeMatchingKey }
       : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     ...(options !== undefined ? { options } : {}),
@@ -1259,6 +1263,7 @@ export function useInviterExchange({
           metadata: minted.metadata,
           standardization: minted.standardization,
           includeOwnColumns: minted.includeOwnColumns,
+          includeMatchingKey: minted.includeMatchingKey,
         }),
         inviterName,
         minted.rawRows,

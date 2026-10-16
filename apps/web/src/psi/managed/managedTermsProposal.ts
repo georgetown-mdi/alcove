@@ -14,8 +14,11 @@ import {
 import { persistManagedExchangeTermsChange } from "./managedExchangeStore";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
+import type {
+  ManagedExchangeRecord,
+  ManagedTermsChangeWrite,
+} from "./managedExchangeRecord";
 import type { TermsChange, TermsDelta } from "@alcove/core";
-import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 import type { ManagedTermsProposal } from "./managedLocalStateShape";
 
 /**
@@ -165,6 +168,23 @@ export const TERMS_CHANGE_NOT_KEPT_REASON =
   "the change could not be kept for your next visit";
 
 /**
+ * The write an accepted `change` makes to the stored exchange: the `run`
+ * scope where the run continues under the change, the `apply` scope where it
+ * cannot.
+ */
+export function managedTermsChangeWrite(
+  change: Pick<TermsChange, "adoptedTerms" | "continuable" | "partnerTerms">,
+): ManagedTermsChangeWrite {
+  return change.continuable
+    ? {
+        scope: "run",
+        adoptedTerms: change.adoptedTerms,
+        partnerTerms: change.partnerTerms,
+      }
+    : { scope: "apply", partnerTerms: change.partnerTerms };
+}
+
+/**
  * The `onTermsChange` a managed run hands core. Attended, it asks
  * `decideTermsChange`: a yes records the partner's terms into the stored
  * exchange before the run continues under them -- as the command line's
@@ -210,13 +230,7 @@ export function managedTermsChangeHandler(
       );
     await persistManagedExchangeTermsChange(
       id,
-      change.continuable
-        ? {
-            scope: "run",
-            adoptedTerms: change.adoptedTerms,
-            partnerTerms: change.partnerTerms,
-          }
-        : { scope: "apply", partnerTerms: change.partnerTerms },
+      managedTermsChangeWrite(change),
     );
     onTakenOn();
     // A change an earlier scheduled run kept is answered by this one.

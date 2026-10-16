@@ -144,6 +144,10 @@ export interface ServerJobExchangeDriverConfig {
    * partner. Absent where the operator chose nothing, or the terms leave it
    * nothing to act on. */
   includeOwnColumns?: OwnColumnSelection;
+  /** Whether the console's composed config ends this party's result file with
+   * the `matched_on_key` column -- the local `include_matching_key` key,
+   * decided at the mint like {@link includeOwnColumns}. Absent is off. */
+  includeMatchingKey?: true;
   /** The field delimiter this party's own input is read by and its own result
    * file written with -- core's local `csv_delimiter`. Local: the partner reads
    * their own file by their own choice, and nothing about this one crosses.
@@ -1310,6 +1314,7 @@ export function intentFor(
     standardization,
     expectedPartnerDeduplicate,
     includeOwnColumns,
+    includeMatchingKey,
     csvDelimiter,
     options,
     mountedConfigurationOpened,
@@ -1330,6 +1335,7 @@ export function intentFor(
       ? { expectedPartnerDeduplicate }
       : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
+    ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     ...(options !== undefined ? { options } : {}),
     ...(mountedConfigurationOpened !== undefined

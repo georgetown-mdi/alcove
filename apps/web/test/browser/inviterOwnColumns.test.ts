@@ -60,6 +60,8 @@ async function mount(
       onColumnDisclosure: () => undefined,
       ownColumns,
       onOwnColumns: (choice: OwnColumnsChoice) => chosen.push(choice),
+      matchingKey: { chosen: false, withheld: undefined },
+      onMatchingKey: () => undefined,
       announcement: "",
       onContinue: () => undefined,
     }),

@@ -13,11 +13,11 @@ import { saveKeyFile } from "../../../src/keyFile";
 import { DEFAULT_RECORD_BASENAME } from "../../../src/recordFile";
 import { captureProcessExit } from "../../exitCapture";
 
-// `alcove exchange --include-matching-key` driven through the real yargs
-// builder and handler on both parties over filedrop: the flag reaches the run,
-// the run's result names the key each pair matched on, and the partner's
-// result is unchanged. Filedrop only, since nothing here depends on the
-// channel.
+// `alcove exchange --include-matching-key`, and the configuration's
+// `include_matching_key`, driven through the real yargs builder and handler on
+// both parties over filedrop: either one reaches the run, the run's result
+// names the key each pair matched on, and the partner's result is unchanged.
+// Filedrop only, since nothing here depends on the channel.
 
 const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const PEER_TIMEOUT_SECONDS = 30;
@@ -74,7 +74,10 @@ async function runBoth(argvA: string[], argvB: string[]): Promise<void> {
     throw new AggregateError(reasons, "both parties failed");
 }
 
-function provision(linkageStrategy: "cascade" | "single-pass" = "cascade") {
+function provision(
+  linkageStrategy: "cascade" | "single-pass" = "cascade",
+  configAIncludesMatchingKey?: boolean,
+) {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
   const inputA = path.join(work, "a-input.csv");
   const inputB = path.join(work, "b-input.csv");
@@ -93,7 +96,12 @@ function provision(linkageStrategy: "cascade" | "single-pass" = "cascade") {
   };
   const configA = path.join(work, "a.yaml");
   const configB = path.join(work, "b.yaml");
-  saveConfig(configA, spec);
+  saveConfig(
+    configA,
+    configAIncludesMatchingKey === undefined
+      ? spec
+      : { ...spec, includeMatchingKey: configAIncludesMatchingKey },
+  );
   saveConfig(configB, spec);
   const keyA = path.join(work, "a.key");
   const keyB = path.join(work, "b.key");
@@ -148,36 +156,49 @@ function resultLines(dir: string): Array<Array<string>> {
     .map((line) => line.split(","));
 }
 
-test("the party that passes --include-matching-key is told the key each pair matched on", async () => {
-  const { inputA, inputB, configA, configB, keyA, keyB, keyNames } =
-    provision();
-  const outA = path.join(work, "out-a");
-  const outB = path.join(work, "out-b");
+test.each([
+  { askedThrough: "--include-matching-key", configKey: undefined },
+  { askedThrough: "include_matching_key: true", configKey: true },
+])(
+  "the party that asks through $askedThrough is told the key each pair matched on",
+  async ({ configKey }) => {
+    const { inputA, inputB, configA, configB, keyA, keyB, keyNames } =
+      provision("cascade", configKey);
+    const outA = path.join(work, "out-a");
+    const outB = path.join(work, "out-b");
 
-  await runBoth(
-    partyArgs(inputA, outA, configA, keyA, "party-a", [
-      "--no-record",
-      "--include-matching-key",
-    ]),
-    partyArgs(inputB, outB, configB, keyB, "party-b"),
-  );
+    await runBoth(
+      partyArgs(
+        inputA,
+        outA,
+        configA,
+        keyA,
+        "party-a",
+        configKey === true
+          ? ["--no-record"]
+          : ["--no-record", "--include-matching-key"],
+      ),
+      partyArgs(inputB, outB, configB, keyB, "party-b"),
+    );
 
-  const [headerA, ...rowsA] = resultLines(outA);
-  expect(headerA[headerA.length - 1]).toBe(MATCHED_KEY_COLUMN);
-  expect(rowsA.map((row) => row[row.length - 1])).toEqual([
-    keyNames[0],
-    keyNames[1],
-  ]);
-  // The key is the first default key for the exact match, and a later one,
-  // leaving the date out, for the pair that differs on it.
-  expect(keyNames[0]).toBe("SSN + LN + DOB");
-  expect(keyNames[1]).toBe("SSN + LN + FN1");
+    const [headerA, ...rowsA] = resultLines(outA);
+    expect(headerA[headerA.length - 1]).toBe(MATCHED_KEY_COLUMN);
+    expect(rowsA.map((row) => row[row.length - 1])).toEqual([
+      keyNames[0],
+      keyNames[1],
+    ]);
+    // The key is the first default key for the exact match, and a later one,
+    // leaving the date out, for the pair that differs on it.
+    expect(keyNames[0]).toBe("SSN + LN + DOB");
+    expect(keyNames[1]).toBe("SSN + LN + FN1");
 
-  const [headerB, ...rowsB] = resultLines(outB);
-  expect(headerB).not.toContain(MATCHED_KEY_COLUMN);
-  expect(rowsB).toHaveLength(2);
-  expect(headerB).toEqual(headerA.slice(0, headerB.length));
-}, 90_000);
+    const [headerB, ...rowsB] = resultLines(outB);
+    expect(headerB).not.toContain(MATCHED_KEY_COLUMN);
+    expect(rowsB).toHaveLength(2);
+    expect(headerB).toEqual(headerA.slice(0, headerB.length));
+  },
+  90_000,
+);
 
 test("--include-matching-key is refused on single-pass terms before the partner is contacted", async () => {
   const { inputA, configA, keyA } = provision("single-pass");
@@ -191,6 +212,55 @@ test("--include-matching-key is refused on single-pass terms before the partner 
       ]),
     ),
   ).rejects.toThrow("exit:64");
+  const drop = fs.readdirSync(work).find((name) => name.startsWith("drop-"));
+  expect(fs.readdirSync(path.join(work, drop!))).toEqual([]);
+}, 30_000);
+
+test("--no-include-matching-key turns off the configuration's include_matching_key for the run", async () => {
+  const { inputA, inputB, configA, configB, keyA, keyB } = provision(
+    "cascade",
+    true,
+  );
+  const outA = path.join(work, "out-a");
+  const outB = path.join(work, "out-b");
+
+  await runBoth(
+    partyArgs(inputA, outA, configA, keyA, "party-a", [
+      "--no-record",
+      "--no-include-matching-key",
+    ]),
+    partyArgs(inputB, outB, configB, keyB, "party-b"),
+  );
+
+  const [headerA, ...rowsA] = resultLines(outA);
+  expect(headerA).not.toContain(MATCHED_KEY_COLUMN);
+  expect(rowsA).toHaveLength(2);
+}, 90_000);
+
+test("include_matching_key on single-pass terms is refused at the config load before the partner is contacted", async () => {
+  const { inputA, configA, keyA } = provision("single-pass", true);
+  const outA = path.join(work, "out-a");
+  const stderr: string[] = [];
+  const stderrSpy = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      stderr.push(String(chunk));
+      return true;
+    });
+  try {
+    await expect(
+      runCli(
+        partyArgs(inputA, outA, configA, keyA, "party-a").map((arg) =>
+          arg === "silent" ? "error" : arg,
+        ),
+      ),
+    ).rejects.toThrow("exit:64");
+  } finally {
+    stderrSpy.mockRestore();
+  }
+  expect(stderr.join("")).toContain(
+    "include_matching_key is set on a single-pass exchange",
+  );
   const drop = fs.readdirSync(work).find((name) => name.startsWith("drop-"));
   expect(fs.readdirSync(path.join(work, drop!))).toEqual([]);
 }, 30_000);

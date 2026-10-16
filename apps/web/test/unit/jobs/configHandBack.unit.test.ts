@@ -127,6 +127,9 @@ function unchangedHandBack(document: ExchangeSpec): JobConfigurationHandBack {
     ...(document.includeOwnColumns !== undefined
       ? { includeOwnColumns: document.includeOwnColumns }
       : {}),
+    ...(document.includeMatchingKey !== undefined
+      ? { includeMatchingKey: document.includeMatchingKey }
+      : {}),
     ...(document.csvDelimiter !== undefined
       ? { csvDelimiter: document.csvDelimiter }
       : {}),
@@ -181,6 +184,15 @@ describe("a webrtc configuration handed back with edits", () => {
       signing: { mode: "certificate" },
     };
   }
+
+  test("turning the matched-key column on writes include_matching_key", () => {
+    const dir = mountHolding(webrtcDocument());
+    handBackMountedConfiguration(dir, {
+      ...unchangedHandBack(readBack(dir)),
+      includeMatchingKey: true,
+    });
+    expect(readBack(dir).includeMatchingKey).toBe(true);
+  });
 
   test("holds the edits", () => {
     const dir = mountHolding(webrtcDocument());

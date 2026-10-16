@@ -8,6 +8,7 @@ import { describeResolvedMatching } from "@alcove/core";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
+import { matchingKeyTurnedOffByWrite } from "@psi/managed/managedExchangeRecord";
 
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 
@@ -545,6 +546,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
             {load.localState?.termsProposal !== undefined && (
               <TermsProposalPanel
                 proposal={load.localState.termsProposal}
+                matchingKeyTurnedOff={matchingKeyTurnedOffByWrite(load.record, {
+                  scope: "apply",
+                  partnerTerms: load.localState.termsProposal.partnerTerms,
+                })}
                 busy={termsProposal.kind === "busy"}
                 disabled={running || runInFlight}
                 failure={
@@ -559,6 +564,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             {termsChangeQuestion !== undefined && (
               <TermsChangeQuestion
                 change={termsChangeQuestion.change}
+                matchingKeyTurnedOff={termsChangeQuestion.matchingKeyTurnedOff}
                 onAnswer={termsChangeQuestion.answer}
               />
             )}

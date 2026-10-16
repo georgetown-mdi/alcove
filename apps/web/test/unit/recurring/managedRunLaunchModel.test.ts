@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   TERMS_CHANGE_DECLINED_FAILURE,
   TERMS_CHANGE_FAILURE,
+  TERMS_CHANGE_TAKEN_ON_FAILURE,
   classifyManagedRunFailure,
   managedReinviteRecoveryCopy,
   managedRunCausePlacement,
@@ -17,8 +18,10 @@ import {
   managedRunReinvites,
   managedRunRetryable,
   managedRunTierFailure,
+  termsChangeTakenOnFailure,
   withShownCause,
 } from "@recurring/managedRunLaunchModel";
+import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
 import {
   PARTIAL_ROTATION_FAILURE_TITLE,
@@ -1888,5 +1891,30 @@ describe("managedRunFailureFromRecord: a partner terms change the run did not ta
     );
     expect(TERMS_CHANGE_DECLINED_FAILURE.message).not.toMatch(/apply/i);
     expect(TERMS_CHANGE_DECLINED_FAILURE.recovery).toBe("retry");
+  });
+});
+
+describe("termsChangeTakenOnFailure: an accepted change the run could not continue under", () => {
+  test("is the shared alert where the saved terms leave the matched-key column on", () => {
+    expect(termsChangeTakenOnFailure(undefined)).toBe(
+      TERMS_CHANGE_TAKEN_ON_FAILURE,
+    );
+  });
+
+  test("says the matched-key column was turned off, and why, where the saved terms turned it off", () => {
+    const failure = termsChangeTakenOnFailure("single-pass");
+    expect(failure).toEqual({
+      ...TERMS_CHANGE_TAKEN_ON_FAILURE,
+      message:
+        `${TERMS_CHANGE_TAKEN_ON_FAILURE.message} The setting to name the ` +
+        "linkage key each match was made on was turned off, because the new " +
+        "terms use the single-pass linkage strategy, where the party that " +
+        "sends its records first is not told which key matched.",
+    });
+    expect(failure.message).toBe(
+      `${TERMS_CHANGE_TAKEN_ON_FAILURE.message} ` +
+        matchingKeyTurnedOffNotice("single-pass", "did"),
+    );
+    expect(termsChangeTakenOnFailure("single-pass")).toBe(failure);
   });
 });

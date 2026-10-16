@@ -194,8 +194,10 @@ export interface PreparedExchange {
    * passed to {@link buildOutputTable} as {@link ExchangeResult.matchedKeyOfPair}.
    * Local to this party like `includeOwnColumns`: each party counts its own
    * cascade rounds, so nothing is exchanged for it and no commitment binds it.
-   * Set by the caller, not {@link prepareForExchange}, and only on a `cascade`
-   * `psi` run: the PSI phase refuses it on any other.
+   * Passed through by {@link prepareForExchange} from the local config's
+   * `include_matching_key`, which a caller may override (the CLI's
+   * `--include-matching-key`). Only a `cascade` `psi` run takes it: the PSI
+   * phase refuses it on any other.
    */
   includeMatchingKey?: boolean;
   dataset: StandardizedDataset;
@@ -835,6 +837,7 @@ export function prepareForExchange(
     // A local output-composition setting, passed through untouched from the
     // local config to the result formatter; absent when the config omits it.
     includeOwnColumns: exchangeDataSpec.includeOwnColumns,
+    includeMatchingKey: exchangeDataSpec.includeMatchingKey,
     // The invitation commitment expectedPartnerDeduplicate (the partner's
     // declared cardinality side) is NOT threaded here, unlike
     // retentionDisposition above. The caller sets it on the returned

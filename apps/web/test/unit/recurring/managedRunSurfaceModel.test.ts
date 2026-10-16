@@ -347,6 +347,7 @@ describe("what the driver reports along the way", () => {
   test("a terms change is asked until its answer, and a run start leaves it to its answer", () => {
     const question = {
       change: {} as TermsChange,
+      matchingKeyTurnedOff: undefined,
       answer: () => undefined,
     };
     const asked = fold([
@@ -908,7 +909,11 @@ const ROUTING: {
   "terms-change-asked": {
     action: {
       type: "terms-change-asked",
-      question: { change: {} as TermsChange, answer: () => undefined },
+      question: {
+        change: {} as TermsChange,
+        matchingKeyTurnedOff: undefined,
+        answer: () => undefined,
+      },
     },
     owns: ["run"],
   },

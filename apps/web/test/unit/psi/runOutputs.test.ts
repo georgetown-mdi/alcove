@@ -221,6 +221,20 @@ describe("buildRunOutputs", () => {
     );
   });
 
+  test("a run that reported each pair's key writes matched_on_key last", async () => {
+    const { urls, blobs } = recordingUrls();
+    buildRunOutputs(
+      { ...receivedResult(false), matchedKeyOfPair: ["SSN + LN + DOB"] },
+      preparedKeeping("all"),
+      urls,
+    );
+
+    expect(await blobs[0].text()).toBe(
+      "client_id,row_id,program,case_worker,program_code,matched_on_key\n" +
+        "17,5,B,Ng,A,SSN + LN + DOB\n",
+    );
+  });
+
   test("the result is written with the delimiter the input was read by", async () => {
     const { urls, blobs } = recordingUrls();
     buildRunOutputs(receivedResult(false), prepared, urls, "|");

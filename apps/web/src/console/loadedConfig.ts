@@ -127,6 +127,8 @@ export interface LoadedAuthoringState {
   exchangeFiles: ExchangeFilesDraft;
   csvDelimiter: CsvDelimiterChoice;
   ownColumns: OwnColumnsChoice;
+  /** The document's `include_matching_key`, false where it states none. */
+  matchingKey: boolean;
   receipts: LoadedReceiptsChoices;
   records: LoadedEnforcementRecords;
   linkageTerms: LinkageTerms;
@@ -258,6 +260,7 @@ export function authoringStateFromDocument(
     exchangeFiles: exchangeFilesFromOptions(document.options),
     csvDelimiter: csvDelimiterFromDocument(document.csvDelimiter),
     ownColumns: document.includeOwnColumns ?? OWN_COLUMNS_DEFAULT,
+    matchingKey: document.includeMatchingKey === true,
     receipts: {
       mode: document.signing?.mode ?? "none",
       partnerFingerprint: document.signing?.partnerFingerprint ?? "",

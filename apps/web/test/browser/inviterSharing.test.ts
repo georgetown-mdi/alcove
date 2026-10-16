@@ -84,6 +84,8 @@ function mountMetadata(metadata: Metadata, announcement: string) {
       onColumnDisclosure: noop,
       ownColumns: "none" as const,
       onOwnColumns: noop,
+      matchingKey: { chosen: false, withheld: undefined },
+      onMatchingKey: noop,
       announcement,
       onContinue: noop,
     }),

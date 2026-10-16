@@ -412,6 +412,7 @@ function composableDocumentFields(): ReadonlySet<string> {
     standardization: [],
     expectedPartnerDeduplicate: false,
     includeOwnColumns: "all",
+    includeMatchingKey: true,
     csvDelimiter: "|",
     retentionDisposition: "composition probe",
   };

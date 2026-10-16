@@ -26,6 +26,10 @@ import { AuthenticationSchema, ConnectionConfigSchema } from "./connection.js";
 import { StandardizationSchema } from "./standardizationSchema.js";
 import { MetadataSchema, OwnColumnSelectionSchema } from "./metadata.js";
 import {
+  MATCHING_KEY_CONFIG_REFUSALS,
+  matchingKeyUnavailableReason,
+} from "./matchingKeyAvailability.js";
+import {
   SigningConfigSchema,
   withoutRetiredSigningSetting,
 } from "./signing.js";
@@ -48,10 +52,12 @@ import {
  * webrtc member excepted, which are strict for the same reason as the top
  * level -- see EXCHANGE_FILE.md ("Versioning and compatibility policy").
  *
- * The refine below is the one cross-field rule: `includeOwnColumns` names
- * columns of a result file a count-only exchange never writes, so the two
- * together are refused where the config is read rather than at the run that
- * would have nothing to apply them to.
+ * The refinements below are the cross-field rules: `includeOwnColumns` names
+ * columns of a result file a count-only exchange never writes, and
+ * `includeMatchingKey` names a key round that only a party writing a
+ * `cascade` result counts, so each is refused beside terms it cannot act on
+ * where the config is read rather than at the run that would have nothing to
+ * apply it to.
  */
 export const ExchangeSpecSchema = z
   .strictObject({
@@ -104,6 +110,12 @@ export const ExchangeSpecSchema = z
     // sees, or receives. Absent writes the result the partner's values
     // alone compose.
     includeOwnColumns: OwnColumnSelectionSchema.optional(),
+    // Optional local output-composition setting: whether THIS party's result
+    // file ends with a `matched_on_key` column naming the linkage key each
+    // pair matched on. Local like includeOwnColumns: each party counts its
+    // own cascade rounds, so nothing is sent for it and the agreed-terms hash
+    // does not change. Absent or false writes no such column.
+    includeMatchingKey: z.boolean().optional(),
     // Optional local file-format setting: the field delimiter this party's CSV
     // input is read by and its result file is written with. Per-party and
     // local like the fields above -- never exchanged, cross-validated, or
@@ -135,7 +147,17 @@ export const ExchangeSpecSchema = z
         "for your own columns to be written into. Remove include_own_columns, " +
         'or set the algorithm to "psi".',
     },
-  );
+  )
+  .superRefine((spec, ctx) => {
+    if (spec.includeMatchingKey !== true) return;
+    const reason = matchingKeyUnavailableReason(spec.linkageTerms);
+    if (reason === undefined) return;
+    ctx.addIssue({
+      code: "custom",
+      path: ["includeMatchingKey"],
+      message: MATCHING_KEY_CONFIG_REFUSALS[reason],
+    });
+  });
 
 export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
 

@@ -543,6 +543,64 @@ test("includeOwnColumns: a count-only exchange refuses the key at parse", () => 
   expect(issue?.path).toEqual(["includeOwnColumns"]);
 });
 
+// --- include_matching_key ----------------------------------------------------
+
+test("includeMatchingKey: a boolean parses from the disk spelling, and the key stays optional", () => {
+  for (const value of [true, false]) {
+    const parsed = parseExchangeSpec({
+      ...minimalSpec,
+      include_matching_key: value,
+    });
+    expect(parsed.includeMatchingKey).toBe(value);
+  }
+  expect(parseExchangeSpec(minimalSpec).includeMatchingKey).toBeUndefined();
+  for (const value of ["true", "yes", 1, null])
+    expect(
+      safeParseExchangeSpec({ ...minimalSpec, include_matching_key: value })
+        .success,
+    ).toBe(false);
+});
+
+test.each([
+  {
+    reason: "count-only",
+    terms: { algorithm: "psi-c" },
+    phrase: "count-only",
+  },
+  {
+    reason: "single-pass",
+    terms: { linkageStrategy: "single-pass" },
+    phrase: "single-pass",
+  },
+  {
+    reason: "no output",
+    terms: { output: { expectsOutput: false, shareWithPartner: true } },
+    phrase: "you receive no result",
+  },
+])(
+  "includeMatchingKey: terms giving this party no matched key ($reason) refuse true at parse, and accept false",
+  ({ terms, phrase }) => {
+    const spec = {
+      ...minimalSpec,
+      linkageTerms: { ...minimalLinkageTerms, ...terms },
+    };
+    // The terms themselves are valid, so a failure below is the key's.
+    expect(safeParseExchangeSpec(spec).success).toBe(true);
+    expect(
+      safeParseExchangeSpec({ ...spec, include_matching_key: false }).success,
+    ).toBe(true);
+    const result = safeParseExchangeSpec({
+      ...spec,
+      include_matching_key: true,
+    });
+    expect(result.success).toBe(false);
+    const issue = result.error?.issues[0];
+    expect(issue?.message).toContain("include_matching_key");
+    expect(issue?.message).toContain(phrase);
+    expect(issue?.path).toEqual(["includeMatchingKey"]);
+  },
+);
+
 // --- Keys the parse does not read --------------------------------------------
 
 // Every consumer of this schema writes its parse result back out, so a key the
@@ -767,6 +825,7 @@ test("every key of a document that parses survives into the parse result", () =>
     retention_disposition: "Filed with the program office for seven years.",
     expected_partner_deduplicate: true,
     include_own_columns: "all",
+    include_matching_key: true,
     csv_delimiter: "|",
   };
   const parsed = parseExchangeSpec(whole) as Record<string, unknown>;

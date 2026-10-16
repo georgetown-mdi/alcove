@@ -128,6 +128,12 @@ export interface AdvancedInviteDraft {
    * consent.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /**
+   * Whether this party's result file ends with the `matched_on_key` column
+   * (local `include_matching_key`). Local only, like
+   * {@link includeOwnColumns}; absent is off.
+   */
+  includeMatchingKey?: true;
   keys: Array<DraftKey>;
   /**
    * An imported terms document's `linkageFields`, held verbatim for round-trip

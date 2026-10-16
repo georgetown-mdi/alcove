@@ -12,6 +12,7 @@ import {
   changedCsvDelimiter,
   localDocumentFieldEdits,
   localDocumentFieldValuesFrom,
+  matchingKeyWithheld,
   ownColumnsOffered,
 } from "./localDocumentFieldsModel";
 import { useDelimiterRecheck } from "./useDelimiterRecheck";
@@ -21,8 +22,8 @@ import type {
   LocalDocumentFieldEdits,
   LocalDocumentFieldValues,
 } from "./localDocumentFieldsModel";
+import type { ExchangeSpec, MatchingKeyUnavailableReason } from "@alcove/core";
 import type { CsvDelimiterChoice } from "@components/csvDelimiterChoice";
-import type { ExchangeSpec } from "@alcove/core";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
 /** The record fields this draft edits: what a surface seeds it from. */
@@ -51,6 +52,12 @@ export interface LocalFieldsDraft {
    * to act on; the control is shown only where they do. */
   ownColumnsOffered: boolean;
   editOwnColumns: (choice: OwnColumnsChoice) => void;
+  /** Whether this party's result file ends with the `matched_on_key` column. */
+  matchingKey: boolean;
+  /** Why the document's terms leave no key to name, where they do; the
+   * control is then shown disabled with this reason. */
+  matchingKeyWithheld: MatchingKeyUnavailableReason | undefined;
+  editMatchingKey: (chosen: boolean) => void;
   /** How this party's input file separates fields. */
   delimiter: CsvDelimiterChoice;
   editDelimiter: (choice: CsvDelimiterChoice) => void;
@@ -92,7 +99,7 @@ export interface LocalFieldsDraft {
 
 /**
  * The local fields every managed exchange has -- the label this browser shows
- * it under, the max-age policy bounding its secret, and the three settings of
+ * it under, the max-age policy bounding its secret, and the four settings of
  * its document that are this party's alone ({@link
  * ./localDocumentFieldsModel.ts}) -- as one editing draft: the state, the
  * validation both surfaces gate their save on, and the save's own reported
@@ -173,6 +180,9 @@ export function useLocalFieldsDraft(
     ownColumns: documentFields.ownColumns,
     ownColumnsOffered: ownColumnsOffered(record.exchangeFile),
     editOwnColumns: (ownColumns) => editDocumentFields({ ownColumns }),
+    matchingKey: documentFields.matchingKey,
+    matchingKeyWithheld: matchingKeyWithheld(record.exchangeFile),
+    editMatchingKey: (matchingKey) => editDocumentFields({ matchingKey }),
     delimiter: documentFields.delimiter,
     editDelimiter: (delimiter) => editDocumentFields({ delimiter }),
     delimiterRecheck,

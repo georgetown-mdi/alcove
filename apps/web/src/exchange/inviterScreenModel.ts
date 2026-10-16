@@ -255,6 +255,8 @@ export interface InviterScreenState {
 export interface LoadedConfigurationTerms {
   linkageTerms: LinkageTerms;
   ownColumns: OwnColumnsChoice;
+  /** The document's `include_matching_key`, false where it states none. */
+  matchingKey: boolean;
   transport?: Transport;
   metadata?: Metadata;
   standardization?: Standardization;
@@ -809,6 +811,7 @@ function applyAction(
         loadedConfiguration: {
           linkageTerms: loaded.linkageTerms,
           ownColumns: loaded.ownColumns,
+          matchingKey: loaded.matchingKey,
           ...(offeredTransport !== undefined
             ? { transport: offeredTransport }
             : {}),

@@ -26,6 +26,8 @@ import { resetDisclosureAccounting } from "@psi/disclosureAccountingStore";
 import { routeConfirmationReply } from "@psi/managed/managedFailureConfirmation";
 
 import {
+  matchingKeyTurnedOffBy,
+  matchingKeyTurnedOffByWrite,
   runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
@@ -55,11 +57,12 @@ import {
   ManagedTermsChangeTakenOnError,
   applyManagedTermsProposal,
   declineManagedTermsProposal,
+  managedTermsChangeWrite,
 } from "@psi/managed/managedTermsProposal";
 
 import {
-  TERMS_CHANGE_TAKEN_ON_FAILURE,
   classifyManagedRunFailure,
+  termsChangeTakenOnFailure,
 } from "./managedRunLaunchModel";
 import { termsProposalFailureText } from "./managedTermsChangeModel";
 import { useManagedRunInFlight } from "./useManagedRunInFlight";
@@ -396,7 +399,14 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
               controller.signal.addEventListener("abort", onAbort);
               dispatchSurface({
                 type: "terms-change-asked",
-                question: { change, answer },
+                question: {
+                  change,
+                  matchingKeyTurnedOff: matchingKeyTurnedOffByWrite(
+                    launched,
+                    managedTermsChangeWrite(change),
+                  ),
+                  answer,
+                },
               });
             }),
         });
@@ -494,7 +504,17 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
           dispatchSurface({ type: "record-read-requested" });
           dispatchSurface({
             type: "run-failed",
-            failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber },
+            failure: {
+              alert: termsChangeTakenOnFailure(
+                reloaded === undefined
+                  ? undefined
+                  : matchingKeyTurnedOffBy(
+                      launched.exchangeFile,
+                      reloaded.exchangeFile,
+                    ),
+              ),
+              runNumber,
+            },
           });
           return;
         }

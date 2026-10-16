@@ -1,13 +1,14 @@
 /**
- * The pure model behind the stored exchange's editor for the three settings of
+ * The pure model behind the stored exchange's editor for the four settings of
  * its document that are this party's alone -- which of its own columns its
- * result file holds (`includeOwnColumns`), how its input file separates fields
- * (`csvDelimiter`), and the retention note filed with its exchange record
- * (`retentionDisposition`): what each control starts on for a stored document,
- * what a save writes, and what re-reading the input file under a changed
- * delimiter found. No React and no I/O.
+ * result file holds (`includeOwnColumns`), whether that file names the key
+ * each match was made on (`includeMatchingKey`), how its input file separates
+ * fields (`csvDelimiter`), and the retention note filed with its exchange
+ * record (`retentionDisposition`): what each control starts on for a stored
+ * document, what a save writes, and what re-reading the input file under a
+ * changed delimiter found. No React and no I/O.
  *
- * None of the three is a term: nothing about them is sent to the partner or
+ * None of the four is a term: nothing about them is sent to the partner or
  * folded into the agreed-terms hash, so each edits in place on a stored record
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Local settings of the document").
  */
@@ -21,26 +22,32 @@ import {
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
 import { assessManagedInputColumns } from "@psi/managed/managedInputGuard";
+import { matchingKeyWithheldReason } from "@psi/matchingKeyModel";
 import { ownColumnsActionable } from "@psi/ownColumnsModel";
 import { retentionNoteValue } from "@exchange/manageOfferModel";
 
+import type { ExchangeSpec, MatchingKeyUnavailableReason } from "@alcove/core";
 import type { CsvDelimiterChoice } from "@components/csvDelimiterChoice";
-import type { ExchangeSpec } from "@alcove/core";
 import type { ManagedExchangeLocalEdits } from "@psi/managed/managedExchangeRecord";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
-/** The three controls' values as the operator has them. */
+/** The four controls' values as the operator has them. */
 export interface LocalDocumentFieldValues {
   ownColumns: OwnColumnsChoice;
+  /** Whether the result file ends with the `matched_on_key` column. */
+  matchingKey: boolean;
   delimiter: CsvDelimiterChoice;
   /** The retention note as typed. */
   retentionNote: string;
 }
 
-/** The edits a save of the three controls writes. */
+/** The edits a save of the four controls writes. */
 export type LocalDocumentFieldEdits = Pick<
   ManagedExchangeLocalEdits,
-  "includeOwnColumns" | "csvDelimiter" | "retentionDisposition"
+  | "includeOwnColumns"
+  | "includeMatchingKey"
+  | "csvDelimiter"
+  | "retentionDisposition"
 >;
 
 /**
@@ -66,9 +73,22 @@ export function localDocumentFieldValuesFrom(
 ): LocalDocumentFieldValues {
   return {
     ownColumns: exchangeFile.includeOwnColumns ?? "none",
+    matchingKey: exchangeFile.includeMatchingKey === true,
     delimiter: csvDelimiterChoiceFrom(exchangeFile.csvDelimiter),
     retentionNote: exchangeFile.retentionDisposition ?? "",
   };
+}
+
+/**
+ * Why the matched-key control is shown disabled for a document, or `undefined`
+ * where it can be changed: its terms leave this party no key to name
+ * ({@link matchingKeyWithheldReason}). Where it is withheld, a save leaves the
+ * stored value as it is.
+ */
+export function matchingKeyWithheld(
+  exchangeFile: ExchangeSpec,
+): MatchingKeyUnavailableReason | undefined {
+  return matchingKeyWithheldReason(exchangeFile.linkageTerms);
 }
 
 /**
@@ -106,11 +126,12 @@ export function changedCsvDelimiter(
 }
 
 /**
- * What a save writes for the three controls: an edit for each value that
+ * What a save writes for the four controls: an edit for each value that
  * differs from the stored document, and nothing for one that does not, so a
  * save that changed only the label leaves the document as it was imported. A
- * `null` drops the field: "Nothing of mine" for the own-columns choice, and an
- * empty retention note. A refused delimiter writes nothing; the editor blocks
+ * `null` drops the field: "Nothing of mine" for the own-columns choice, an
+ * unchecked matched-key box, and an empty retention note. A refused delimiter
+ * writes nothing; the editor blocks
  * the save on it.
  */
 export function localDocumentFieldEdits(
@@ -124,6 +145,11 @@ export function localDocumentFieldEdits(
   )
     edits.includeOwnColumns =
       values.ownColumns === "none" ? null : values.ownColumns;
+  if (
+    matchingKeyWithheld(exchangeFile) === undefined &&
+    values.matchingKey !== (exchangeFile.includeMatchingKey === true)
+  )
+    edits.includeMatchingKey = values.matchingKey ? true : null;
   const delimiter = changedCsvDelimiter(exchangeFile, values.delimiter);
   if (delimiter !== undefined) edits.csvDelimiter = delimiter;
   if (values.retentionNote !== (exchangeFile.retentionDisposition ?? ""))

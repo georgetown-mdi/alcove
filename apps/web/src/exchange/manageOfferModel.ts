@@ -102,6 +102,8 @@ export interface ManagedExchangeDocumentParts {
   expectedPartnerDeduplicate?: boolean;
   /** This party's own-columns output choice from the mint, kept verbatim. */
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
+  /** This party's matched-key output choice from the mint, kept verbatim. */
+  includeMatchingKey?: ExchangeSpec["includeMatchingKey"];
   /** The field delimiter this party's file was read by at the file step, kept
    * verbatim; absent where the operator left it to detection. */
   csvDelimiter?: ExchangeSpec["csvDelimiter"];
@@ -134,6 +136,9 @@ export function composeManagedDocument(
       : {}),
     ...(parts.includeOwnColumns !== undefined
       ? { includeOwnColumns: parts.includeOwnColumns }
+      : {}),
+    ...(parts.includeMatchingKey !== undefined
+      ? { includeMatchingKey: parts.includeMatchingKey }
       : {}),
     ...(parts.csvDelimiter !== undefined
       ? { csvDelimiter: parts.csvDelimiter }
