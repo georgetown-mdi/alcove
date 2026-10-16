@@ -603,6 +603,7 @@ export type {
   SigningIdentity,
 } from "./records/signingIdentity";
 export {
+  derivedFieldSteps,
   FAN_OUT_FUNCTION_NAMES,
   fieldSourceColumnTypes,
   fieldTypesSuppliedByDefault,

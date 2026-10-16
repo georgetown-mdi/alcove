@@ -2097,6 +2097,21 @@ export function fieldSourceColumnTypes(
 }
 
 /**
+ * The default steps that derive a field of `fieldType` from a column of
+ * `columnType` ({@link resolveFieldColumns}, rule 3), as a fresh copy, or
+ * `undefined` when the field is not derived from a column of that type.
+ */
+export function derivedFieldSteps(
+  fieldType: SemanticType,
+  columnType: SemanticType,
+): Array<StandardizationStep> | undefined {
+  const derived = DERIVED_FIELD_SOURCE_TYPE.get(fieldType);
+  if (derived === undefined || derived.sourceType !== columnType)
+    return undefined;
+  return structuredClone([...derived.steps]);
+}
+
+/**
  * The semantic types a field may take from `metadata` with no authored
  * standardization: each type {@link resolveFieldColumns} binds to a column
  * there, by a `role: linkage` column of the type or by derivation from one

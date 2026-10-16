@@ -6,7 +6,11 @@
  * on.
  */
 
-import { authoredLinkageFields, getDefaultLinkageTerms } from "@alcove/core";
+import {
+  authoredLinkageFields,
+  derivedFieldSteps,
+  getDefaultLinkageTerms,
+} from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
@@ -291,22 +295,43 @@ export function editorWithFieldSteps(
   };
 }
 
-/** Rebind a cleaned field to a different input column. */
+/** Rebind a cleaned field to a different input column. A field bound to a
+ * column it is derived from (`ssn4` from an `ssn` column) takes the default
+ * steps that derive it, since steps written for its own type could emit the
+ * whole source value. */
 export function editorWithFieldInput(
   editor: InviterEditor,
   output: string,
   input: string,
 ): InviterEditor {
   if (editor.sealed === true) return editor;
+  const rebound = editor.draft.standardization.map((transformation) =>
+    transformation.output === output
+      ? { ...transformation, input }
+      : transformation,
+  );
+  const fieldType = authoredLinkageFields(editor.draft.metadata, rebound).find(
+    (field) => field.name === output,
+  )?.type;
+  const columnType = editor.draft.metadata.find(
+    (column) => column.name === input,
+  )?.type;
+  const steps =
+    fieldType === undefined || columnType === undefined
+      ? undefined
+      : derivedFieldSteps(fieldType, columnType);
   return {
     ...editor,
     draft: {
       ...editor.draft,
-      standardization: editor.draft.standardization.map((transformation) =>
-        transformation.output === output
-          ? { ...transformation, input }
-          : transformation,
-      ),
+      standardization:
+        steps === undefined
+          ? rebound
+          : rebound.map((transformation) =>
+              transformation.output === output
+                ? { ...transformation, steps }
+                : transformation,
+            ),
     },
   };
 }

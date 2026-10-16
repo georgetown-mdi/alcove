@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { authoredLinkageFields, snakeizeKeys } from "@alcove/core";
+import {
+  authoredLinkageFields,
+  derivedFieldSteps,
+  runPipeline,
+  snakeizeKeys,
+} from "@alcove/core";
 
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 
@@ -25,6 +30,7 @@ import {
   editorWithColumnType,
   editorWithDeduplicate,
   editorWithFieldAdded,
+  editorWithFieldInput,
   editorWithFieldSteps,
   editorWithIdentity,
   editorWithImportedTerms,
@@ -1436,6 +1442,35 @@ describe("customize tabs", () => {
     // No free column of the type: the draft is untouched.
     const noop = editorWithFieldAdded(seeded, "zip_code");
     expect(noop.draft).toBe(seeded.draft);
+  });
+
+  test("an ssn4 field rebound to an ssn column takes the default ssn4 steps", () => {
+    const ssnCsv: AcquiredCsv = {
+      ...csv,
+      rawRows: [{ ...csv.rawRows[0], ssn: "078-05-1120" }],
+      columns: [...csv.columns, "ssn"],
+    };
+    const seeded = editorFromCsv("Dana", ssnCsv);
+    const ssnColumn = seeded.draft.metadata.find((c) => c.name === "ssn");
+    expect(ssnColumn?.type).toBe("ssn");
+    expect(ssnColumn?.role).toBe("linkage");
+    const cleared = editorWithFieldSteps(seeded, "ssn4", []);
+
+    const rebound = editorWithFieldInput(cleared, "ssn4", "ssn");
+    const ssn4 = rebound.draft.standardization.find((t) => t.output === "ssn4");
+    expect(ssn4?.input).toBe("ssn");
+    expect(ssn4?.steps).toEqual(derivedFieldSteps("ssn4", "ssn"));
+    expect(runPipeline("078-05-1120", ssn4?.steps ?? [])).toBe("1120");
+
+    // Back on its own type, the field keeps the steps it has.
+    const restored = editorWithFieldInput(
+      editorWithFieldSteps(rebound, "ssn4", []),
+      "ssn4",
+      "ssn4",
+    );
+    expect(
+      restored.draft.standardization.find((t) => t.output === "ssn4")?.steps,
+    ).toEqual([]);
   });
 
   test("importing terms with an unsupplyable field degrades gracefully", () => {

@@ -8,13 +8,13 @@ import type { StandardizationStep } from "../config/standardizationSchema.js";
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
-  { function: "remove_non_ascii" },
-  // A masked value (***-**-8924, XXX-XX-8924) is not a full SSN; its last
-  // four still reach ssn4 through that field's own pipeline.
-  { function: "filter_regex", params: { pattern: "^[^*Xx#]*$" } },
-  { function: "remove_dashes" },
+  // Only ASCII digits, spaces and hyphens, checked before any character is
+  // removed: deleting a mask (***-**-8924), a non-ASCII digit or a decimal
+  // point would leave other digits that pad to a different SSN. A masked
+  // value's last four still reach ssn4 through that field's own pipeline.
+  { function: "filter_regex", params: { pattern: "^[0-9 -]*$" } },
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
-  // Drop a value that cleaned to empty (a blank or all-non-digit cell) here,
+  // Drop a value that cleaned to empty (a blank or all-hyphen cell) here,
   // before pad_left can mask it: an empty string would otherwise pad to
   // "000000000" and be dropped only as a side effect of a later step. The
   // linkage layer does not drop "" together with the no-key sentinel, so the
@@ -37,14 +37,15 @@ export const SSN_STEPS: StandardizationStep[] = [
 /** The default `ssn4` pipeline, which also derives `ssn4` from an `ssn` column. */
 export const SSN4_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
-  { function: "remove_non_ascii" },
-  { function: "remove_dashes" },
-  { function: "replace_regex", params: { pattern: " ", replacement: "" } },
-  // A value whose last four characters are not all digits is masked there
-  // (078-05-XXXX); taking the last four digits wherever they sit would key
-  // it on the group number. A 1-3 digit value is a last four that lost its
-  // leading zeros.
-  { function: "filter_regex", params: { pattern: "^\\d{1,3}$|\\d{4}$" } },
+  // Keep a value of only ASCII digits, spaces and hyphens, or one ending in
+  // four ASCII digits (spaces and hyphens aside), whose mask lies before its
+  // last four (***-**-8924). Any other value is masked in its last four, by
+  // ASCII or non-ASCII characters (078-05-XXXX): removing the mask would key
+  // it on other digits of the SSN.
+  {
+    function: "filter_regex",
+    params: { pattern: "^[0-9 -]*$|(?:[0-9][ -]*){4}$" },
+  },
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
   // Drop a value that cleaned to empty before pad_left masks it as "0000"; see
   // SSN_STEPS for why this explicit blank-drop is needed.

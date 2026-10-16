@@ -339,8 +339,18 @@ describe("default SSN pipeline", () => {
     expect(run("987 65 4321")).toBe("987654321");
   });
 
-  test("strips other non-digit characters", () => {
-    expect(run("987.65.4321")).toBe("987654321");
+  // Each would otherwise lose characters and pad to a different SSN.
+  test.each([
+    ["fullwidth digits", "1234567\uff18\uff19"],
+    ["Arabic-Indic digits", "123-45-67\u0668\u0669"],
+    ["a group masked with ?", "123-??-8924"],
+    ["a group masked with _", "123-__-8924"],
+    ["a group masked with bullets", "123-\u2022\u2022-8924"],
+    ["a float-formatted number", "78051120.0"],
+    ["dots", "987.65.4321"],
+    ["parentheses", "(987) 65-4321"],
+  ])("drops a value holding %s (%j)", (_label, input) => {
+    expect(run(input)).toBeNull();
   });
 
   test("trims surrounding whitespace", () => {
@@ -450,8 +460,22 @@ describe("default ssn4 derived from a full SSN column", () => {
     });
   });
 
-  test("a value masked in its last four is dropped from both fields", () => {
-    expect(cleaned(ssnOnly, "078-05-XXXX")).toEqual({ ssn: null, ssn4: null });
+  test.each([
+    "078-05-XXXX",
+    "078-05-\u2022\u2022\u2022\u2022",
+    "078-05-\uff38\uff38\uff38\uff38",
+  ])(
+    "a value masked in its last four (%j) is dropped from both fields",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: null });
+    },
+  );
+
+  test("a group-masked value is dropped from ssn and keeps its ssn4", () => {
+    expect(cleaned(ssnOnly, "123-??-8924")).toEqual({
+      ssn: null,
+      ssn4: "8924",
+    });
   });
 
   test("a leading-zero SSN stored as a number keeps both fields", () => {
@@ -525,12 +549,29 @@ describe("default SSN4 pipeline", () => {
     expect(run(input)).toBe(expected);
   });
 
-  test.each(["078-05-XXXX", "XXXX", "078-05-112X", "07805****", "78*"])(
-    "drops %j, masked in its last four",
-    (input) => {
-      expect(run(input)).toBeNull();
-    },
-  );
+  test.each([
+    "078-05-XXXX",
+    "XXXX",
+    "078-05-112X",
+    "07805****",
+    "78*",
+    "078-05-\u2022\u2022\u2022\u2022",
+    "078-05-\uff38\uff38\uff38\uff38",
+    "1234567\uff18\uff19",
+    "123-45-67\u0668\u0669",
+    "78051120.0",
+    "1120.0",
+  ])("drops %j, not four ASCII digits at its end", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each([
+    ["123-??-8924", "8924"],
+    ["123-\u2022\u2022-8924", "8924"],
+    ["\u2022\u2022\u2022-\u2022\u2022-8924", "8924"],
+  ])("keeps %j, masked only before its last four, as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
 });
 
 // --- Name pipelines ----------------------------------------------------------

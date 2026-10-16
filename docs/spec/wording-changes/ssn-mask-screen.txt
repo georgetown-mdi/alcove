@@ -1,23 +1,24 @@
-- Every non-digit is removed (dashes, spaces, dots, parentheses), a cell that cleans to empty is dropped, a short value is zero-padded to nine for an SSN stored without its leading zero, and anything that is not nine digits after padding -- ten digits, say -- is dropped. -> Every non-digit is removed (dashes, spaces, dots, parentheses), and a cell that cleans to empty is dropped.
+- Every non-digit is removed (dashes, spaces, dots, parentheses), a cell that cleans to empty is dropped, a short value is zero-padded to nine for an SSN stored without its leading zero, and anything that is not nine digits after padding -- ten digits, say -- is dropped. -> Spaces and hyphens are removed, and a cell that cleans to empty is dropped.
 - The empty-value drop precedes `pad_left` by design: without it a blank cell would pad to `"000000000"` and be dropped only as a side effect of that value appearing in the placeholder list, so an operator who tuned the list for their own data would silently reintroduce the blank-cell match. -> The empty-value drop precedes `pad_left` by design: a blank cell padded to `"000000000"` would be dropped only as a side effect of a later step, the area-number rule or the placeholder list, so an operator who edited either for their own data would silently reintroduce the blank-cell match.
 - The pipeline applies no Social Security Administration structural rule: an area, group, or serial that the SSA never issues passes through. -> Area `000` is the one SSA structural rule the pipeline applies, because a value with that area is a fragment or a mask rather than an SSN: any other area, and any group or serial, that the SSA never issues passes through.
-- - -> One field is derived when the input has no column of its type: an `ssn4` field with no `role: linkage` column of type `ssn4` binds to the first `role: linkage` column of type `ssn` (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
+- - -> One field is derived when the input has no `role: linkage` column of its type: an `ssn4` field with no `role: linkage` column of type `ssn4` binds to the first `role: linkage` column of type `ssn` (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
+- - function: remove_non_ascii -> -
+- - function: remove_non_ascii -> -
+- - function: remove_dashes -> -
+- - function: remove_dashes -> -
 - - -> - function: filter_regex
 - - -> - function: filter_regex
 - - -> - function: filter_regex
-- - -> - function: replace_regex
 - - -> params:
 - - -> params:
 - - -> params:
-- - -> params:
-- - -> pattern: "^[^*Xx#]*$"
+- - -> pattern: "^[0-9 -]*$"
 - - -> pattern: "^0{0,2}[1-9]"
-- - -> pattern: " "
-- - -> replacement: ""
-- - -> pattern: "^\\d{1,3}$|\\d{4}$"
-- - -> **Mask screen.**
-- - -> A value holding a mask character -- `*`, `X`, `x` or `#`, as in `***-**-8924` or `XXX-XX-8924` -- is dropped before any character is removed from it.
-- - -> A masked value is not a full SSN: stripped to its digits and padded, it would become an `ssn` key that matches on the last four digits alone.
+- - -> pattern: "^[0-9 -]*$|(?:[0-9][ -]*){4}$"
+- - -> **Character screen.**
+- - -> After surrounding whitespace is trimmed, a value holding any character other than an ASCII digit, a space or a hyphen is dropped, before any character is removed from it.
+- - -> This drops a masked value (`***-**-8924`, `123-??-8924`), a value holding a non-ASCII digit, and a number written with a decimal point (`78051120.0`).
+- - -> Stripped to its remaining digits and padded, each would become an `ssn` key on digits other than the SSN's.
 - - -> **Digits only.**
 - - -> **Padding.**
 - - -> A short value is zero-padded to nine, for an SSN stored as a number that lost its leading zeros.
@@ -27,7 +28,7 @@
 - - -> **Placeholders.**
 - - -> The area-number rule rests on one Social Security Administration rule: no SSN is issued with the area number `000`.
 - - -> A value with that area is therefore not a full SSN but one of two things, and keeping either would make an `ssn` key matching on fewer digits than the field states:
-- - -> A fragment of six digits or fewer, such as a last four or a value masked with a character the screen does not list, which padding would turn into area `000`.
+- - -> A fragment of six digits or fewer, such as a last four, which padding would turn into area `000`.
 - - -> A nine-digit SSN stored as a number loses at most two leading zeros, so it keeps at least seven digits and is not dropped.
 - - -> A value masked with zeros, such as `000-00-8924`.
 - - -> Its last four still reach `ssn4` (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
@@ -35,17 +36,31 @@
 - - -> `"123456"` | `null`
 - - -> `"***-**-8924"` | `null`
 - - -> `"XXX-XX-8924"` | `null`
+- - -> `"123-??-8924"` | `null`
+- - -> `"1234567\uff18\uff19"` | `null`
+- - -> `"78051120.0"` | `null`
 - - -> `"000-00-8924"` | `null`
-- - -> A value whose last four characters, after spaces and hyphens are removed, are not all digits is dropped: it is masked there, as in `078-05-XXXX`, and taking the last four digits wherever they sit would key it on other digits of the SSN.
-- - -> A value of one to three digits is the exception, kept as a last four that lost its leading zeros.
+- - -> After surrounding whitespace is trimmed, and before any character is removed, a value is kept only in one of two forms:
+- - -> It holds nothing but ASCII digits, spaces and hyphens.
+- - -> A value of one to three digits is kept as a last four that lost its leading zeros.
+- - -> It ends in four ASCII digits, spaces and hyphens aside.
+- - -> Its mask lies before its last four, as in `***-**-8924` or `123-??-8924`, and its last four are kept.
+- - -> Any other value is dropped.
+- - -> It is masked in its last four, by ASCII or non-ASCII characters as in `078-05-XXXX`, or ends in a non-ASCII digit or a decimal point, and removing those characters would key it on other digits of the SSN.
 - - -> `"***-**-8924"` | `"8924"`
 - - -> `"XXX-XX-8924"` | `"8924"`
+- - -> `"123-??-8924"` | `"8924"`
 - - -> `"078-05-XXXX"` | `null`
+- - -> `"078-05-\u2022\u2022\u2022\u2022"` | `null`
 - - -> `"XXXX"` | `null`
+- - -> `"1120.0"` | `null`
 - - -> Last four derived from a full SSN
 - - -> When the input has no `role: linkage` column of type `ssn4`, the defaults bind the `ssn4` field to the first `role: linkage` column of type `ssn` and run this pipeline over it, beside the `ssn` pipeline over the same column.
 - - -> A file holding full SSNs and no last-four column therefore supplies `ssn4`, and its values equal those a partner holding only the last four derives, since both run this one pipeline.
-- - -> The pipeline reads the cell as written, not the `ssn` result, so the `ssn` mask screen does not reach it: `***-**-8924` is `null` as `ssn` and `"8924"` as `ssn4`.
+- - -> The pipeline reads the cell as written, not the `ssn` result, so the `ssn` character screen does not reach it: `***-**-8924` is `null` as `ssn` and `"8924"` as `ssn4`.
 - - -> Nor does the `ssn` area-number rule: `000-00-8924` is likewise `null` as `ssn` and `"8924"` as `ssn4`.
-- - -> A file with its own `ssn4` column keeps using it, and nothing is derived.
+- - -> A file with its own `role: linkage` column of type `ssn4` keeps using it, and nothing is derived.
+- - -> An `ssn4` column with any other role does not stop the derivation, so a file that keeps its `ssn4` column out of matching still supplies `ssn4` keys derived from a matched `ssn` column.
 - - -> An authored standardization gets no derived binding either: a linkage field it leaves uncovered falls back to the identity transformation, which over a full SSN column would hash the whole SSN as its last four.
+- - -> An authored transformation that binds `ssn4` to an `ssn` column runs the steps the operator wrote: steps that do not reduce the value to its last four hash more of the SSN.
+- - -> The web inviter gives an `ssn4` field it binds to an `ssn` column this pipeline's steps.
