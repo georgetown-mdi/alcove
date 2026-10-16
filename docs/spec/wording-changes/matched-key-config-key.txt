@@ -17,3 +17,4 @@
 - - -> **The matched-key setting.**
 - - -> Either write drops a stored `includeMatchingKey` where the terms it stores leave this party no key to name, as [a terms update](#a-terms-update) does.
 - - -> The question an attended run asks and the kept proposal's panel then state that taking the change on turns the setting off, and why; the alert after an accepted change the run cannot continue under states that it was turned off.
+- - -> Both statements are worked out from the record as read when the run started or the panel loaded, so a setting turned on after that point, during the run or in another tab, and then dropped by an accepted change is turned off without a statement; the saved exchange's settings show it off.
