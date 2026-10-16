@@ -1545,7 +1545,7 @@ describe("filedrop rendezvous facilitation", () => {
     intent: JobFiledropExchangeIntent,
   ): Promise<string | undefined> {
     const rvz = scratchDir("rvz");
-    fs.writeFileSync(path.join(rvz, "console-hello.json"), "");
+    fs.writeFileSync(path.join(rvz, "console-hello-48.json"), "");
     const manager = makeManager({
       events: [RESULT_EVENT],
       exitCode: 0,
@@ -1659,7 +1659,7 @@ describe("a split-provisioned filedrop console", () => {
       jobRendezvousDir: inbound,
       jobRendezvousOutboundDir: outbound,
     });
-    fs.writeFileSync(path.join(inbound, "console-hello.json"), "");
+    fs.writeFileSync(path.join(inbound, "console-hello-48.json"), "");
     const id = await manager.createJob(
       validIntent({ options: RETAIN_OPTIONS }),
     );

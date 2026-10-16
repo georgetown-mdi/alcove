@@ -50,7 +50,7 @@ const FORGED_FRAME =
  * the blank line that ends a frame -- around a complete forged event. Legal on
  * every POSIX filesystem: only `/` and NUL are excluded from a filename.
  */
-const FORGING_ENTRY_NAME = `q1\n${FORGED_FRAME}\r\n\ncohort-hello.json`;
+const FORGING_ENTRY_NAME = `q1\n${FORGED_FRAME}\r\n\ncohort-hello-48.json`;
 
 /** A running console job whose rendezvous mount already holds `entries`, so the
  * preflight raises its manager-composed warnings before the child is spawned. */
@@ -193,7 +193,7 @@ describe("a newline-bearing manager warning cannot forge an event frame", () => 
     expect(renderedListing).toBeDefined();
     expect(renderedListing).toContain("q1\\x0a");
     expect(renderedListing).toContain("\\x0d");
-    expect(renderedListing).toContain("cohort-hello.json");
+    expect(renderedListing).toContain("cohort-hello-48.json");
     expect(renderedListing).not.toContain("\n");
     expect(renderedListing).not.toContain("\r");
   });

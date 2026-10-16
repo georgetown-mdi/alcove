@@ -994,7 +994,7 @@ describe("each leg's preflight names the mount it is about", () => {
   test("a split console's notices distinguish the two folders", () => {
     const dataRoot = tempDir("data");
     const inbound = tempDir("inbound");
-    fs.writeFileSync(path.join(inbound, "console-hello.json"), "");
+    fs.writeFileSync(path.join(inbound, "console-hello-48.json"), "");
     const workdir = path.join(dataRoot, "current-job");
     const inboundWarnings = rendezvousStartupWarnings(
       inbound,
@@ -1444,8 +1444,8 @@ function renderedContentWarnings(
 
 /** The transcript a completed retain-mode run leaves in the mount. */
 const retainedTranscript = [
-  "console-hello.json",
-  "partner-hello.json",
+  "console-hello-48.json",
+  "partner-hello-48.json",
   "console-partner-hello-ack.json",
   "console-20260812T101500123Z-001-4096.json",
   "partner-console-20260812T101500123Z-001-4096-ack.json",
@@ -1480,7 +1480,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
   test("the lead reaches the operator with its whole recovery", () => {
     // The sink caps what it renders, and the clause the cap would eat first is
     // the one that keeps the recovery from looking like "empty this folder".
-    const [lead] = renderedContentWarnings(["console-hello.json"]);
+    const [lead] = renderedContentWarnings(["console-hello-48.json"]);
     expect(lead).toContain("an exchange refuses to start on");
     expect(lead).toContain('Turn on "Clear leftover exchange files"');
     expect(lead).toContain(
@@ -1600,10 +1600,10 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     const [lead, listing] = renderedContentWarnings([
       "patients.csv",
       "alcove.yaml",
-      "console-hello.json",
+      "console-hello-48.json",
     ]);
     expect(lead).toContain("holds an earlier exchange's files");
-    expect(listing).toContain("console-hello.json");
+    expect(listing).toContain("console-hello-48.json");
     expect(listing).not.toContain("patients.csv");
     expect(listing).not.toContain("alcove.yaml");
   });
@@ -1626,15 +1626,15 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
   });
 
   test("one exchange file among foreign names is the only name listed", () => {
-    const exchangeName = `drop${String.fromCharCode(7)}ping-hello.json`;
+    const exchangeName = `drop${String.fromCharCode(7)}ping-hello-48.json`;
     const [lead, listing] = renderedContentWarnings([
       ...foreignNames,
       exchangeName,
     ]);
     expect(lead).toContain("holds an earlier exchange's files");
-    expect(listing).toContain("drop\\x07ping-hello.json");
+    expect(listing).toContain("drop\\x07ping-hello-48.json");
     expect(listing).not.toContain("\\\\x07");
-    expect(listing).toMatch(/ holds drop\\x07ping-hello\.json$/);
+    expect(listing).toMatch(/ holds drop\\x07ping-hello-48\.json$/);
     for (const foreign of [...foreignNames, "\\x01"])
       expect(listing).not.toContain(foreign);
     for (const rendered of [lead, listing]) {
@@ -1678,7 +1678,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
   test("leftovers beside the job's own workdir are reported without naming it", () => {
     const shared = tempDir("shared");
     const workdir = subDir(shared, "0f6e2c1a-current");
-    fs.writeFileSync(path.join(shared, "console-hello.json"), "");
+    fs.writeFileSync(path.join(shared, "console-hello-48.json"), "");
     const warnings = rendezvousStartupWarnings(
       shared,
       "shared",
@@ -1688,17 +1688,19 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
       SWEEP_OFF,
     ).filter(isContentWarning);
     expect(warnings).toHaveLength(2);
-    expect(warnings[1]).toContain("console-hello.json");
+    expect(warnings[1]).toContain("console-hello-48.json");
     expect(warnings[1]).not.toContain("0f6e2c1a-current");
   });
 
   test("names are listed in a stable order whatever readdir returns", () => {
     const [, listing] = renderedContentWarnings([
-      "c-hello.json",
-      "a-hello.json",
-      "b-hello.json",
+      "c-hello-48.json",
+      "a-hello-48.json",
+      "b-hello-48.json",
     ]);
-    expect(listing).toContain("a-hello.json, b-hello.json, c-hello.json");
+    expect(listing).toContain(
+      "a-hello-48.json, b-hello-48.json, c-hello-48.json",
+    );
   });
 
   test("a long transcript is counted past the naming cap", () => {
@@ -1718,11 +1720,11 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     // The partner syncs its own files into this directory, so an entry name is
     // partner-controlled text on its way to a display sink. Escaping it here as
     // well would reach the operator doubled: the transform is not idempotent.
-    const bellName = `drop${String.fromCharCode(7)}ping-hello.json`;
+    const bellName = `drop${String.fromCharCode(7)}ping-hello-48.json`;
     const [, composed] = contentWarnings([bellName]);
     expect(composed).toContain(bellName);
     const rendered = sanitizeForDisplay(composed);
-    expect(rendered).toContain("drop\\x07ping-hello.json");
+    expect(rendered).toContain("drop\\x07ping-hello-48.json");
     expect(rendered).not.toContain("\\\\x07");
   });
 
@@ -1730,18 +1732,18 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     // Escaping expands: a filename filled to the 255-byte limit with a character
     // that needs an escape renders several times its own length, so what bounds
     // the listing is the name's RENDERED cost, measured before it is admitted.
-    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello.json`;
-    const [, listing] = renderedContentWarnings(["a-hello.json", wide]);
+    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello-48.json`;
+    const [, listing] = renderedContentWarnings(["a-hello-48.json", wide]);
     expect(listing.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
     expect(listing).not.toContain(DISPLAY_TRUNCATION_MARKER);
     // A name the cap chopped looks like a whole name the operator could go and
     // delete, so the count absorbs it and the shorter name is still named.
-    expect(listing).toContain("a-hello.json");
+    expect(listing).toContain("a-hello-48.json");
     expect(listing).toContain("and 1 more");
   });
 
   test("a mount whose names all escape wide is counted rather than named", () => {
-    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello.json`;
+    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello-48.json`;
     const [, listing] = renderedContentWarnings([wide]);
     expect(listing).toContain("1 entry");
     expect(listing).not.toContain("\\xe9");
@@ -1749,22 +1751,26 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
   });
 
   test("no warning truncates at the sink, whatever the mount holds", () => {
-    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello.json`;
-    const bell = `drop${String.fromCharCode(7)}ping-hello.json`;
+    const wide = `${String.fromCharCode(0xe9).repeat(120)}-hello-48.json`;
+    const bell = `drop${String.fromCharCode(7)}ping-hello-48.json`;
     const shapes: Array<Array<string>> = [
-      ["console-hello.json"],
+      ["console-hello-48.json"],
       retainedTranscript,
       Array.from(
         { length: 4 * MAX_NAMED_RENDEZVOUS_ENTRIES },
         (_unused, index) => `m-${String(index).padStart(3, "0")}.json`,
       ),
-      [`${"x".repeat(244)}-hello.json`],
-      ["a-hello.json", `${"x".repeat(244)}-hello.json`, "b-hello.json"],
-      [wide, "c-hello.json", bell],
+      [`${"x".repeat(241)}-hello-48.json`],
+      [
+        "a-hello-48.json",
+        `${"x".repeat(241)}-hello-48.json`,
+        "b-hello-48.json",
+      ],
+      [wide, "c-hello-48.json", bell],
       Array.from(
         { length: 12 },
         (_unused, index) =>
-          `${index}-${String.fromCharCode(0xe9).repeat(115)}-hello.json`,
+          `${index}-${String.fromCharCode(0xe9).repeat(115)}-hello-48.json`,
       ),
     ];
     for (const shape of shapes)
@@ -1778,7 +1784,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     "an unlistable mount says so rather than looking empty",
     () => {
       const rendezvous = tempDir("rendezvous");
-      fs.writeFileSync(path.join(rendezvous, "console-hello.json"), "");
+      fs.writeFileSync(path.join(rendezvous, "console-hello-48.json"), "");
       fs.chmodSync(rendezvous, 0o300);
       try {
         const dataRoot = tempDir("data");
@@ -1991,7 +1997,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     label: "the lead of a mount holding exchange files",
     arrange: (mount, leg) => {
       fs.mkdirSync(mount, { recursive: true });
-      fs.writeFileSync(path.join(mount, "console-hello.json"), "");
+      fs.writeFileSync(path.join(mount, "console-hello-48.json"), "");
       return { args: isolatedArgs(mount, leg) };
     },
     match: /holds an earlier exchange's files/,
@@ -2005,7 +2011,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     label: "the lead of a mount holding exchange files on a sweeping launch",
     arrange: (mount, leg) => {
       fs.mkdirSync(mount, { recursive: true });
-      fs.writeFileSync(path.join(mount, "console-hello.json"), "");
+      fs.writeFileSync(path.join(mount, "console-hello-48.json"), "");
       return { args: isolatedArgs(mount, leg, SWEEP_ON) };
     },
     match: /holds an earlier exchange's files/,
@@ -2016,11 +2022,11 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     label: "the listing of what a mount holds",
     arrange: (mount, leg) => {
       fs.mkdirSync(mount, { recursive: true });
-      fs.writeFileSync(path.join(mount, "console-hello.json"), "");
+      fs.writeFileSync(path.join(mount, "console-hello-48.json"), "");
       return { args: isolatedArgs(mount, leg) };
     },
     match: /shared folder holds (?!an earlier)/,
-    tail: () => "console-hello.json",
+    tail: () => "console-hello-48.json",
     namesMount: false,
   },
   {

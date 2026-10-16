@@ -152,9 +152,9 @@ describe("listJobInputs", () => {
       "alcove.yaml",
       "alcove.yaml.previous",
       "alcove-certificate.json",
-      "0b6c8f4e-5a1d-4c3e-9f2a-1d2e3f4a5b6c-hello.json",
+      "0b6c8f4e-5a1d-4c3e-9f2a-1d2e3f4a5b6c-hello-48.json",
       "partner-1-512.json",
-      "partner-abort.json",
+      "partner-abort-48.json",
     ])
       fs.writeFileSync(path.join(dir, name), "{}");
     expect(listJobInputs(dir).files.map((file) => file.name)).toEqual([

@@ -60,7 +60,6 @@ import {
 import {
   LOCK_SUFFIX,
   ackMarkerName,
-  legacyHelloWriterId,
   parseSizedControlName,
   peerIdFromControlName,
   sizedControlName,
@@ -463,28 +462,6 @@ export function isPeerJoiningName(name: string, selfId: string): boolean {
 // name, so it parses.
 const controlWriterId = (name: string): string =>
   parseSizedControlName(name)!.id;
-
-// Refuses a partner hello in the name shape an earlier version wrote, with no
-// byte count: that partner cannot read this party's names either, so waiting
-// for it would end only at the peer timeout. The entry scan applies it ahead of
-// --sweep-exchange-files too, whose retain inspection cannot read that hello.
-/** @internal */
-export function legacyPeerHelloRefusal(
-  files: ReadonlyArray<FileInfo>,
-  selfId: string,
-): UsageError | undefined {
-  const legacy = files.find((file) => {
-    const id = legacyHelloWriterId(file.name);
-    return id !== undefined && id !== selfId;
-  });
-  if (legacy === undefined) return undefined;
-  return new UsageError(
-    `the partner hello ${redactPrivateKeyMaterial(legacy.name)} has no byte ` +
-      "count in its name, so it was written by an earlier Alcove version " +
-      "this one cannot exchange with. Both parties must run the same Alcove " +
-      "version; if the file is left over from an earlier run, remove it.",
-  );
-}
 
 // Bounds the pre-sweep retain-signal inspection's peer-hello read (see
 // sweepProtocolFiles), through the I5a gate: a near-future deadline, never
@@ -1368,8 +1345,6 @@ export class FileSyncRendezvous {
           );
     }
 
-    const legacyRefusal = legacyPeerHelloRefusal(files, deps.id());
-    if (legacyRefusal) throw legacyRefusal;
     if (deps.options().sweepExchangeFiles) {
       // Opt-in sweep: clear this exchange's protocol files (its own AND the
       // peer's) and rendezvous against a clean slate, after a retain-signal
@@ -1774,9 +1749,6 @@ export class FileSyncRendezvous {
         // non-null assertion is safe here.
         while (Date.now() <= deps.options().timeToLive!.getTime()) {
           const currentFiles = await deps.client().list(scope.inboundPath);
-          const legacyRefusal = legacyPeerHelloRefusal(currentFiles, deps.id());
-          if (legacyRefusal) throw legacyRefusal;
-
           const fileNames = currentFiles.map((file) => file.name);
           if (!deps.options().retainFiles)
             deps.responsibleFiles.forEach((fileName) => {
@@ -1994,9 +1966,6 @@ export class FileSyncRendezvous {
       // assertion is safe here.
       while (Date.now() <= deps.options().timeToLive!.getTime()) {
         const currentFiles = await deps.client().list(scope.inboundPath);
-        const legacyRefusal = legacyPeerHelloRefusal(currentFiles, deps.id());
-        if (legacyRefusal) throw legacyRefusal;
-
         const fileNames = currentFiles.map((file) => file.name);
         if (!deps.options().retainFiles)
           deps.responsibleFiles.forEach((fileName) => {
