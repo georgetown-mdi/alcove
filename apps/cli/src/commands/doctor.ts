@@ -116,7 +116,7 @@ export async function checkRelay(
     ),
   );
   const registrar = connection.invitationRelay?.registrar;
-  for (const line of relayHostStatement(targets, registrar))
+  for (const line of relayHostStatement(targets, connection))
     options.writeStatementLine(line);
   const enrollment =
     registrar === undefined

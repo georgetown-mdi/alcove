@@ -1,5 +1,6 @@
 import {
   InternalConsistencyError,
+  runEnrollsAtInvitationRegistrar,
   selectRunRelay,
   UsageError,
 } from "@alcove/core";
@@ -151,32 +152,34 @@ function sourceLabel(server: RunTurnServer): string {
 
 /**
  * The lines printed before any request: every host the check contacts, which
- * url a run allocates on, and what the check does and does not do there.
- * `registrar` is the one the configuration's `invitation_relay` names, if
- * any. Raw: the urls are configuration text, escaped where the lines are
- * shown.
+ * url a run allocates on, which hosts a run of this configuration does not
+ * contact, and what the check does and does not do there. Raw: the urls and
+ * the registrar are configuration text, escaped where the lines are shown.
  */
 export function relayHostStatement(
   targets: ReadonlyArray<RelayCheckTarget>,
-  registrar: string | undefined,
+  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
 ): string[] {
   const allocating = targets[0];
   if (allocating === undefined)
     throw new InternalConsistencyError(
       "relayHostStatement: the relay check was given no TURN url",
     );
+  const registrar = connection.invitationRelay?.registrar;
   const relays = [
     "This check contacts these relays, asking each for a relay address:",
     ...targets.map(
-      ({ server, transport }) =>
-        `  ${server.url} over ${TRANSPORT_LABEL[transport]}, ${sourceLabel(server)}`,
+      ({ server, transport }, index) =>
+        `  ${server.url} over ${TRANSPORT_LABEL[transport]}, ${sourceLabel(server)}` +
+        (index === 0
+          ? ""
+          : "; a run of this configuration does not contact it, and the " +
+            "check asks it so you can see whether listing it first would work"),
     ),
     ...(targets.length === 1
       ? ["A run allocates on this relay."]
       : [
-          `A run allocates on the first of them alone, ${allocating.server.url}. ` +
-            "The check asks the others so you can tell whether one would " +
-            "work if listed first.",
+          `A run allocates on the first of them alone, ${allocating.server.url}.`,
         ]),
     "It sends each relay the credential a run sends.",
   ];
@@ -189,9 +192,15 @@ export function relayHostStatement(
     ];
   return [
     ...relays,
-    "Before it asks them, it enrolls this exchange's relay key at the relay " +
-      "registrar your partner's invitation names, as a run does just before " +
-      "it connects when that relay is the one it allocates on:",
+    runEnrollsAtInvitationRegistrar(connection)
+      ? "Before it asks them, it enrolls this exchange's relay key at the " +
+        "relay registrar your partner's invitation names, as a run does " +
+        "just before it connects when that relay is the one it allocates on:"
+      : "A run of this configuration does not contact the relay registrar " +
+        "your partner's invitation names. This check contacts it only " +
+        "because you asked for the check, so that the invitation's relay " +
+        "can be asked: before it asks the relays, it enrolls this " +
+        "exchange's relay key there:",
     `  ${registrar}`,
     "Whoever runs that registrar learns this machine's network address. " +
       "It contacts nothing else.",

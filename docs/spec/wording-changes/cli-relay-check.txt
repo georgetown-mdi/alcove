@@ -20,6 +20,7 @@
 - - -> **The host statement.**
 - - -> Before its first request, the check prints every TURN url it will ask, with the transport each names and whether it came from `connection.turn` or the invitation.
 - - -> It names the first url as the one a run allocates on.
+- - -> It states, on the line of each url after the first and on the registrar's where `runEnrollsAtInvitationRegistrar` is false for the configuration, that a run of this configuration does not contact that host and that the check asks it only so the operator can see whether listing it first would work, or so the invitation's relay can be asked.
 - - -> Where `invitation_relay` names a `registrar`, it also prints that registrar, and states that it enrolls this exchange's relay key there as a run does when that relay is the one it allocates on, and that whoever runs the registrar learns this machine's network address; where it names none, the statement says the check contacts no registrar and enrolls nothing.
 - - -> It prints them to the destination the human check lines use -- stderr, or the `--log-file` -- with or without `--json`, at every `--log-level`, `silent` included.
 - - -> It contacts those urls and that registrar alone: not `connection.relay_registrar`, no coordination server, and no STUN server.

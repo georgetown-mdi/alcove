@@ -284,11 +284,23 @@ test("doctor relay names every relay and the registrar before it contacts either
   );
   expect(statement).not.toContain("as an exchange run does");
   expect(statement).toContain(
-    "it enrolls this exchange's relay key at the relay registrar your " +
-      "partner's invitation names, as a run does just before it connects " +
-      "when that relay is the one it allocates on:",
+    "A run of this configuration does not contact the relay registrar your " +
+      "partner's invitation names. This check contacts it only because you " +
+      "asked for the check, so that the invitation's relay can be asked: " +
+      "before it asks the relays, it enrolls this exchange's relay key there:",
   );
+  expect(statement).not.toContain("as a run does just before it connects");
   expect(statement).toContain(`line   ${REGISTRAR}`);
+  const skipped =
+    "; a run of this configuration does not contact it, and the check asks " +
+    "it so you can see whether listing it first would work";
+  expect(statement).toContain(`${OWN_TURN} over TCP, from connection.turn\n`);
+  expect(statement).toContain(
+    `${STATIC_TURN} over UDP, then TCP, from connection.turn${skipped}`,
+  );
+  expect(statement).toContain(
+    `${INVITATION_TURN} over TLS, from your partner's invitation${skipped}`,
+  );
   expect(statement).toContain(
     "Whoever runs that registrar learns this machine's network address.",
   );
@@ -302,6 +314,32 @@ test("doctor relay names every relay and the registrar before it contacts either
     authorization: null,
   });
   expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test("a configuration a run would enroll at the registrar for states the enrollment as a run's own", async () => {
+  writeConfig(
+    webrtcConnection({
+      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
+    }),
+  );
+  const lines: Array<string> = [];
+
+  await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    fetch: fakeRegistrar([registrationAnswer(null, LAPSES_AT)]).fetch,
+    gather: scriptedGathering({ [INVITATION_TURN]: true }, []),
+  });
+
+  const statement = lines.join("\n");
+  expect(statement).toContain("A run allocates on this relay.");
+  expect(statement).toContain(
+    "Before it asks them, it enrolls this exchange's relay key at the relay " +
+      "registrar your partner's invitation names, as a run does just before " +
+      "it connects when that relay is the one it allocates on:",
+  );
+  expect(statement).not.toContain("does not contact");
 });
 
 test("a configuration whose invitation relay names no registrar contacts none, and says so", async () => {
