@@ -56,7 +56,7 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 The built-in rules are two named artifacts, versioned separately:
 
 - **`baseline-pii`, version `1.1.0`** -- the linkage **fields**: eight PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, and `zip_code`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. It replaces `hmis-keys` version `1.0.0`, over `baseline-pii` version `1.0.0`; a document or record citing that set still resolves, and is checked against its fourteen keys.
+- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. The earlier built-in rules it replaces are retired: a document or record citing them names a set this build does not ship.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -402,7 +402,7 @@ Two spellings of the same pipeline are the same pipeline: an omitted `transform`
 *Required:* no  
 *Consistency:* mandatory when both parties declare one
 
-The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships, beside its earlier version.
+The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships.
 
 ```yaml
 linkage_terms:
@@ -1508,7 +1508,7 @@ What inference assigns, when it runs, depends on the kind of exchange:
 |--------|--------|------------------------------------|--------------------------------------|
 | A recognized linkage name (`ssn`, `dob`, `first_name`, `phone`, `email`, `zip`, and their aliases) | the matching semantic type | `linkage`, `false` | `linkage`, `false` |
 | `id` or `identifier` | `identifier` | `identifier` (sent, `true`) when it is the header's first `identifier`-typed column; otherwise undeclared and not sent | `identifier` when it is the header's first `identifier`-typed column, otherwise `payload`; `true` |
-| A name ending in `_id`, such as `case_id` or `Medicaid ID` | `identifier` | `identifier` (not sent, `false`) when it is the header's first `identifier`-typed column; otherwise undeclared and not sent | `identifier` when it is the header's first `identifier`-typed column, otherwise `payload`; `true` |
+| A name ending in `_id`, such as `case_id` or `Member ID` | `identifier` | `identifier` (not sent, `false`) when it is the header's first `identifier`-typed column; otherwise undeclared and not sent | `identifier` when it is the header's first `identifier`-typed column, otherwise `payload`; `true` |
 | A name the table does not list | `other` | undeclared: no entry, not sent | `payload`, `true` |
 
 The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names). Those names are the only ones recognized. Before a header is compared, letter case and whitespace at either end are ignored, and each run of whitespace, `_`, `-` and `.` inside it counts as one `_`; the result is then matched whole and exactly. So `ZIP`, `First Name`, ` ssn` and `Date-of-Birth` are recognized, while `Given Name`, `Birthdate`, `E-mail`, `zip_area` and `ssn_last4` are not. The column keeps its header as written: that is the name the run displays, binds and writes in the result.

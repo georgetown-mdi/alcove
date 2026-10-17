@@ -1,4 +1,4 @@
-"Person_ID","FirstName","LastName","SSN","DOB","Medicaid.Renewal.Date","Zip"
+"Person_ID","FirstName","LastName","SSN","DOB","Renewal.Date","Zip"
 159859483,"James","Heard","559-81-1301","7/16/1975","2026/08/27","94024"
 165562801,"Albert","Iorio","322-84-2281","8/17/1975","2026/09/06","94040"
 175019049,"Charles","Jackson","646-44-9061","9/18/1975","2026/08/06","94022"

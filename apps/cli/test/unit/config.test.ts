@@ -2295,14 +2295,14 @@ describe("diffLinkageTerms", () => {
     const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
     existing.linkageRuleSet = {
       fieldSet: { name: "baseline-pii", version: "1.0.0" },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
+      keySet: { name: "example-keys", version: "1.0.0" },
     };
     incoming.linkageRuleSet = {
       fieldSet: {
         name: "-----BEGIN OPENSSH PRIVATE KEY-----",
         version: "1.0.0",
       },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
+      keySet: { name: "example-keys", version: "1.0.0" },
     };
     // A second conflict, so the message has a diff line AFTER the citation's.
     incoming.legalAgreement = {
@@ -2485,11 +2485,11 @@ describe("diffLinkageTerms", () => {
         name: "-----BEGIN OPENSSH PRIVATE KEY-----",
         version: "1.0.0",
       },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
+      keySet: { name: "example-keys", version: "1.0.0" },
     };
     incoming.linkageRuleSet = {
       fieldSet: { name: "-----BEGIN RSA PRIVATE KEY-----", version: "1.0.0" },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
+      keySet: { name: "example-keys", version: "1.0.0" },
     };
     const { conflicts } = diffLinkageTerms(existing, incoming);
     expect(conflicts).toHaveLength(1);
@@ -2507,7 +2507,7 @@ describe("diffLinkageTerms", () => {
     const sides = conflictValues(rendered, "linkage_rule_set");
     expect(sides[0]).toBe(sides[1]);
     expect(sides[0]).toContain("[redacted private key]");
-    expect(sides[0]).toContain('"hmis-keys" 1.0.0 over ');
+    expect(sides[0]).toContain('"example-keys" 1.0.0 over ');
     expect(rendered).toContain(
       "two sides that read alike differ only inside what this display withheld",
     );
@@ -5120,13 +5120,6 @@ const RULE_SET_WITHOUT_RULES_REFUSAL =
 test.each<[string, LinkageRuleSetReference]>([
   ["the shipped set", DEFAULT_LINKAGE_RULE_SET.reference],
   [
-    "the earlier version",
-    {
-      fieldSet: { name: "baseline-pii", version: "1.0.0" },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
-    },
-  ],
-  [
     "a set this build does not ship",
     {
       fieldSet: { name: "no-such-fields", version: "9.9.9" },
@@ -5648,11 +5641,11 @@ test("no token of the reconcile refusal's or the drift warning's copy is bare-sh
   const withheldIncoming = cloneTerms(getDefaultLinkageTerms("Org"));
   withheldExisting.linkageRuleSet = {
     fieldSet: { name: "-----BEGIN OPENSSH PRIVATE KEY-----", version: "1.0.0" },
-    keySet: { name: "hmis-keys", version: "1.0.0" },
+    keySet: { name: "example-keys", version: "1.0.0" },
   };
   withheldIncoming.linkageRuleSet = {
     fieldSet: { name: "-----BEGIN RSA PRIVATE KEY-----", version: "1.0.0" },
-    keySet: { name: "hmis-keys", version: "1.0.0" },
+    keySet: { name: "example-keys", version: "1.0.0" },
   };
 
   const worstCase = maximallyConflictingTerms();

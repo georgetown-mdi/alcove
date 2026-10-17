@@ -305,12 +305,12 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
         ...base.linkageTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "hmis-keys", version: "2.3.0" },
+          keySet: { name: "precision-ranked-rules", version: "2.3.0" },
         },
       },
     });
     expect(cited).toContain("linkage rule set (your partner's word):");
-    expect(cited).toContain('"hmis-keys" 2.3.0');
+    expect(cited).toContain('"precision-ranked-rules" 2.3.0');
     expect(cited).toContain('"baseline-pii" 1.0.0');
 
     // The name is partner-controlled free text and the version beside it is not, so
@@ -322,11 +322,11 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
         ...base.linkageTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "hmis-keys 9.9.9", version: "2.3.0" },
+          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.3.0" },
         },
       },
     });
-    expect(spacedName).toContain('"hmis-keys 9.9.9" 2.3.0');
+    expect(spacedName).toContain('"precision-ranked-rules 9.9.9" 2.3.0');
 
     const uncited = renderDisplayInvitation(log, {
       ...base,
@@ -357,22 +357,22 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     // differs in nothing but how the name is rendered.
     const marker = LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker;
     const imitated = {
-      keys: `    keys (${marker}): "hmis-keys" 9.9.9`,
+      keys: `    keys (${marker}): "precision-ranked-rules" 9.9.9`,
       fields: `    fields (${marker}): "baseline-pii" 9.9.9`,
     };
     const imitatedLines = cite({
       fieldSet: { name: "baseline-pii", version: "9.9.9" },
-      keySet: { name: "hmis-keys", version: "9.9.9" },
+      keySet: { name: "precision-ranked-rules", version: "9.9.9" },
     }).split("\n");
     expect(imitatedLines).toContain(imitated.keys);
     expect(imitatedLines).toContain(imitated.fields);
 
     const rendered = cite({
       fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-      keySet: { name: 'hmis-keys" 9.9.9', version: "1.0.0" },
+      keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
     });
     expect(rendered.split("\n")).toContain(
-      `    keys (${marker}): "hmis-keys"" 9.9.9" 1.0.0`,
+      `    keys (${marker}): "precision-ranked-rules"" 9.9.9" 1.0.0`,
     );
     expect(rendered.split("\n")).toContain(
       `    fields (${marker}): "baseline-pii"" 9.9.9" 1.0.0`,
@@ -386,9 +386,11 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     expect(
       cite({
         fieldSet: { name: "baseline-pii", version: "1.0.0" },
-        keySet: { name: "hmis-keys", version: '1.0.0" 9.9.9' },
+        keySet: { name: "precision-ranked-rules", version: '1.0.0" 9.9.9' },
       }).split("\n"),
-    ).toContain(`    keys (${marker}): "hmis-keys" "1.0.0"" 9.9.9"`);
+    ).toContain(
+      `    keys (${marker}): "precision-ranked-rules" "1.0.0"" 9.9.9"`,
+    );
   });
 
   test("displayInvitation: each citation half holds this build's own verdict on it", () => {

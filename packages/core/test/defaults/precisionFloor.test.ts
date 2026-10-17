@@ -5,7 +5,6 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
-  EARLIER_LINKAGE_RULE_SET,
   checkLinkageRuleSetCitation,
   findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
@@ -198,35 +197,28 @@ describe("the citation", () => {
   });
 });
 
-describe("the catalog's earlier version", () => {
-  const hmisCitation = {
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "hmis-keys", version: "1.0.0" },
-  };
-
-  test("is in the registry, after the catalog", () => {
+describe("the registry", () => {
+  test("holds the catalog alone", () => {
     expect(BUILT_IN_LINKAGE_RULE_SETS).toStrictEqual([
       DEFAULT_LINKAGE_RULE_SET,
-      EARLIER_LINKAGE_RULE_SET,
     ]);
-    expect(EARLIER_LINKAGE_RULE_SET.reference).toStrictEqual(hmisCitation);
   });
 
-  test("resolves an old citation and verifies the rules beside it", () => {
-    expect(findBuiltInLinkageRuleSet(hmisCitation)).toBe(
-      EARLIER_LINKAGE_RULE_SET,
-    );
-    const resolved = resolveLinkageRuleSetCitation(hmisCitation);
-    expect(resolved.linkageKeys).toHaveLength(14);
-    const oldTerms = linkageTermsFromRuleSet(
-      EARLIER_LINKAGE_RULE_SET,
-      "Party A",
-    );
-    expect(oldTerms.linkageRuleSet).toStrictEqual(hmisCitation);
-    expect(checkLinkageRuleSetCitation(hmisCitation, oldTerms)).toStrictEqual({
-      fieldSet: "consistent",
-      keySet: "consistent",
-    });
+  test("resolves no other version of the catalog's field set", () => {
+    const otherFieldVersion = {
+      fieldSet: { name: catalog.reference.fieldSet.name, version: "1.0.0" },
+      keySet: catalog.reference.keySet,
+    };
+    expect(findBuiltInLinkageRuleSet(otherFieldVersion)).toBeUndefined();
+    expect(
+      resolveLinkageRuleSetCitation(otherFieldVersion).linkageFields,
+    ).toBeUndefined();
+    expect(
+      checkLinkageRuleSetCitation(
+        otherFieldVersion,
+        getDefaultLinkageTerms("Party A"),
+      ),
+    ).toStrictEqual({ fieldSet: "unchecked", keySet: "consistent" });
   });
 });
 

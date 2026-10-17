@@ -128,7 +128,7 @@ Every rule below is a key of the built-in key set, except a rule whose entry nam
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
 - The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 
-Eleven of the fourteen rules of `hmis-keys` 1.0.0 are in the 99% band; rules 26, 31 and 32 are in the 95% band.
+Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
 ## The 99% band
 

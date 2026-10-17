@@ -18,9 +18,10 @@ records what the two sets are, why they are named apart, what the key set's
 validation rests on, the criticisms on record against it, and why both names
 are neutral. See [docs/notes/README.md](README.md).
 
-The key set it describes is `hmis-keys` 1.0.0 over `baseline-pii` 1.0.0, which
-stays in the registry so a citation of it resolves. The built-in key set is
-the catalog of [linkage-rule-catalog.md](linkage-rule-catalog.md), published as
+The key set it describes is the first built-in key set, 1.0.0 over
+`baseline-pii` 1.0.0. Both are retired: a citation of either names a set this
+build does not ship. The built-in key set is the catalog of
+[linkage-rule-catalog.md](linkage-rule-catalog.md), published as
 `precision-ranked-rules` 2.0.0 over `baseline-pii` 1.1.0, which adds
 `phone_number`, `email_address` and `zip_code`._
 
@@ -37,7 +38,7 @@ has. It is a substrate: it fixes what can be matched on and how each
 element is cleaned and bounded, and says nothing about what constitutes a
 match.
 
-`hmis-keys` names the **linkage keys**: the fourteen combinations built from
+The key set names the **linkage keys**: the fourteen combinations built from
 those fields, applied in the order the set lists them. It is the specific
 artifact -- which combinations count as a match, and in what cascade order.
 That order is not a precision order: two keys with no SSN run above
@@ -52,7 +53,7 @@ Everything else in a default terms document is a per-party choice made at the
 time of the exchange and is outside both names: the party `identity`, the
 `date`, the `algorithm`, the linkage strategy, the output preferences, and
 `deduplicate`. Two parties can run these rules and still disagree about who
-receives output; they cannot run `hmis-keys` and disagree about what a key is.
+receives output; they cannot run one key set and disagree about what a key is.
 
 Terms derived from an input file leave out any key that input cannot supply, so
 an exchange matches on a **subset** of the key set, never on an addition to it.
@@ -226,31 +227,27 @@ on.
 
 ## Why both names are neutral
 
-`baseline-pii` names the fields by what they are; `hmis-keys` names the keys by
-the class of system they serve. Neither names who validated anything. That is by
-design, for three reasons.
+`baseline-pii` names the fields by what they are, and `precision-ranked-rules`
+names the keys by how they are organized: ranked by precision, so a party can
+select them by floor. Neither names who validated anything, and neither names a
+class of system or a use case. That is by design, for three reasons.
 
 1. **The repository is public and the attribution is not the product's to
    publish.** Naming a validating partner in source code publishes an
    association that partner did not agree to publish, permanently and in a place
    nobody can retract it from. Attribution belongs in user-facing communications
    and in an agreement, where it can be made with the partner's consent and
-   withdrawn. A system class is not an attribution: `hmis` states the kind of
-   system the keys were settled for, which is a property of the keys, not the
-   identity of anyone who ran one.
+   withdrawn.
 2. **Each name claims exactly the scope its artifact has.** The fields match on
    SSN, names, and date of birth, which is not specific to any jurisdiction or
    program: `baseline` says what they are -- the built-in substrate everything
-   else starts from -- with no use case attached. The keys are the narrower
-   thing, so their name states the use case rather than implying an
-   applicability they have not been shown to have. A single name over both would
-   have to be wrong in one direction: general enough for the fields and
-   overclaiming for the keys, or accurate for the keys and misleadingly narrow
-   for the fields.
+   else starts from -- with no use case attached. The keys are named for their
+   structure, not for a kind of system or program, so the name implies no
+   applicability they have not been shown to have.
 3. **A name should not make a claim the repository cannot substantiate.**
    Calling either set "validated" or "certified" in its own identifier would put
    a claim into every citation of it that this repository holds no evidence for
-   (see the limits above). These names say what the rules are for; the
+   (see the limits above). These names say what the rules are, and the
    provenance is here, where it can be qualified.
 
 The cost of a neutral name is that the trust anchor -- the engagement that

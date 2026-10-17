@@ -119,7 +119,7 @@ export interface DisclosureRecordOverrides {
  * separately named and separately versioned as the terms document holds them. */
 const LOCAL_RULE_SET: NonNullable<LinkageTerms["linkageRuleSet"]> = {
   fieldSet: { name: "baseline-pii", version: "1.0.0" },
-  keySet: { name: "hmis-keys", version: "2.1.0" },
+  keySet: { name: "precision-ranked-rules", version: "2.1.0" },
 };
 
 /** The partner's terms: the local ones relabelled, or -- for an explicit `null`

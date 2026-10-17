@@ -30,7 +30,7 @@ The fold makes a lookup key only; the column keeps its raw header as its name.
   The `field (column)` form of the pre-run display already names each column read as a key.
 
 Matching after the fold stays exact, never fuzzy or by substring, so `ssn_last4` is not read as `ssn`.
-A name ending in `_id` after the fold, such as `Medicaid ID`, is an identifier column like `medicaid_id`, which a quick exchange sends by design.
+A name ending in `_id` after the fold, such as `Member ID`, is an identifier column like `member_id`, which a quick exchange sends by design.
 
 ## Consequences for existing configurations
 

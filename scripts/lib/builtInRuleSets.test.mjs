@@ -36,7 +36,7 @@ const ruleSetBlock = ({
   fieldSetName = '"baseline-pii"',
   fieldSetVersion = '"1.0.0"',
   fields = '[{ name: "ssn", type: "ssn" }]',
-  keySetName = '"hmis-keys"',
+  keySetName = '"example-keys"',
   keySetVersion = '"1.0.0"',
   keys = '[{ name: "SSN", elements: [{ field: "ssn" }] }]',
   bands,
@@ -109,7 +109,7 @@ describe("the registry it follows", () => {
     });
     expect(ruleSet.keySet).toEqual({
       role: "keySet",
-      name: "hmis-keys",
+      name: "example-keys",
       version: "1.0.0",
       content: [{ name: "SSN", elements: [{ field: "ssn" }] }],
       declarations: {
@@ -349,13 +349,11 @@ function build() {
   it("reads the committed source", () => {
     const { ruleSets, unreadable } = readRuleSetsFrom(repoRoot);
     expect(unreadable).toEqual([]);
-    expect(ruleSets.length).toBeGreaterThan(0);
+    expect(ruleSets.length).toBe(1);
     expect(ruleSets[0].fieldSet.name).toBe("baseline-pii");
     expect(ruleSets[0].keySet.name).toBe("precision-ranked-rules");
     expect(ruleSets[0].keySet.content.length).toBeGreaterThan(0);
     expect(ruleSets[0].keySet.bands.length).toBeGreaterThan(0);
-    expect(ruleSets[1].keySet.name).toBe("hmis-keys");
-    expect(ruleSets[1].keySet.bands).toBeUndefined();
   });
 
   it("digests a key set's bands with its keys, where it declares them", () => {
@@ -400,7 +398,7 @@ describe("the named sets the registry declares", () => {
     const sets = setsOf(readRuleSets(source()));
     expect(sets.map((set) => `${set.name} ${set.version}`)).toEqual([
       "baseline-pii 1.0.0",
-      "hmis-keys 1.0.0",
+      "example-keys 1.0.0",
     ]);
     expect(sets[0].digest).toBe(contentDigest([{ name: "ssn", type: "ssn" }]));
     expect(sets[0].entry).toBe("DEFAULT_RULE_SET");
@@ -419,7 +417,7 @@ describe("the named sets the registry declares", () => {
     const sets = setsOf(readRuleSets(shared));
     expect(sets.map((set) => set.name)).toEqual([
       "baseline-pii",
-      "hmis-keys",
+      "example-keys",
       "baseline-pii",
       "county-keys",
     ]);

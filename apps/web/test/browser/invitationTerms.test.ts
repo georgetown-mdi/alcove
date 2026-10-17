@@ -286,14 +286,14 @@ describe("InvitationTerms: per-key matching disclosures", () => {
   // Terms citing a rule set, rendered under each perspective below so the three
   // cases differ at the perspective alone. The two halves reach DIFFERENT
   // verdicts against this build, which is what the citation's independent halves
-  // are for: `baseline-pii 1.0.0` is a set this build ships, and the fields above
+  // are for: `baseline-pii 1.1.0` is a set this build ships, and the fields above
   // are not it (no constraints on `ssn`, a field named `dob`), while
-  // `hmis-keys 2.3.0` is a version it does not ship at all.
+  // `precision-ranked-rules 2.3.0` is a version it does not ship at all.
   const citingTerms: LinkageTerms = {
     ...terms,
     linkageRuleSet: {
-      fieldSet: { name: "baseline-pii", version: "1.0.0" },
-      keySet: { name: "hmis-keys", version: "2.3.0" },
+      fieldSet: { name: "baseline-pii", version: "1.1.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
     },
   };
 
@@ -305,8 +305,10 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     await renderTerms(citingTerms, { perspective: "review" });
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     expect(app.container.textContent).toContain("Linkage rule set");
-    expect(app.container.textContent).toContain('"hmis-keys" 2.3.0');
-    expect(app.container.textContent).toContain('"baseline-pii" 1.0.0');
+    expect(app.container.textContent).toContain(
+      '"precision-ranked-rules" 2.3.0',
+    );
+    expect(app.container.textContent).toContain('"baseline-pii" 1.1.0');
     expect(app.container.textContent).toContain(
       `Keys (${LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker}):`,
     );
@@ -325,7 +327,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
       text.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note),
     ).toBeLessThan(text.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note));
     const panel = (await readyPanel("Matching strategies")).textContent;
-    expect(panel).not.toContain("hmis-keys");
+    expect(panel).not.toContain("precision-ranked-rules");
     expect(panel).not.toContain(
       LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
     );
@@ -363,14 +365,16 @@ describe("InvitationTerms: per-key matching disclosures", () => {
       {
         ...citingTerms,
         linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "hmis-keys 9.9.9", version: "2.3.0" },
+          fieldSet: { name: "baseline-pii", version: "1.1.0" },
+          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.3.0" },
         },
       },
       { perspective: "review" },
     );
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).toContain('"hmis-keys 9.9.9" 2.3.0');
+    expect(app.container.textContent).toContain(
+      '"precision-ranked-rules 9.9.9" 2.3.0',
+    );
   });
 
   test("a cited set name cannot render another citation's value", async () => {
@@ -385,7 +389,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     // version, the second by name -- so all four halves render under one marker
     // and the two renderings differ in nothing but how the name is rendered.
     const imitated = {
-      keys: '"hmis-keys" 9.9.9',
+      keys: '"precision-ranked-rules" 9.9.9',
       fields: '"baseline-pii" 9.9.9',
     };
     await renderTerms(
@@ -393,7 +397,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
         ...citingTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "9.9.9" },
-          keySet: { name: "hmis-keys", version: "9.9.9" },
+          keySet: { name: "precision-ranked-rules", version: "9.9.9" },
         },
       },
       { perspective: "review" },
@@ -408,13 +412,13 @@ describe("InvitationTerms: per-key matching disclosures", () => {
         ...citingTerms,
         linkageRuleSet: {
           fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-          keySet: { name: 'hmis-keys" 9.9.9', version: "1.0.0" },
+          keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
         },
       },
       { perspective: "review" },
     );
     for (const value of [
-      '"hmis-keys"" 9.9.9" 1.0.0',
+      '"precision-ranked-rules"" 9.9.9" 1.0.0',
       '"baseline-pii"" 9.9.9" 1.0.0',
     ])
       await expect
@@ -433,14 +437,18 @@ describe("InvitationTerms: per-key matching disclosures", () => {
       {
         ...citingTerms,
         linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "hmis-keys", version: '1.0.0" 9.9.9' },
+          fieldSet: { name: "baseline-pii", version: "1.1.0" },
+          keySet: { name: "precision-ranked-rules", version: '1.0.0" 9.9.9' },
         },
       },
       { perspective: "review" },
     );
     await expect
-      .element(page.getByText('"hmis-keys" "1.0.0"" 9.9.9"', { exact: true }))
+      .element(
+        page.getByText('"precision-ranked-rules" "1.0.0"" 9.9.9"', {
+          exact: true,
+        }),
+      )
       .toBeInTheDocument();
   });
 
@@ -457,8 +465,10 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     await renderTerms(citingTerms, { perspective: "proposing" });
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     expect(app.container.textContent).toContain("Linkage rule set");
-    expect(app.container.textContent).toContain('"hmis-keys" 2.3.0');
-    expect(app.container.textContent).toContain('"baseline-pii" 1.0.0');
+    expect(app.container.textContent).toContain(
+      '"precision-ranked-rules" 2.3.0',
+    );
+    expect(app.container.textContent).toContain('"baseline-pii" 1.1.0');
     expect(app.container.textContent).toContain(
       linkageRuleSetVerdictNote("contradicted", "citing-party"),
     );

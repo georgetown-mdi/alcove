@@ -95,35 +95,6 @@ const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
   { name: "zip_code", type: "zip_code" },
 ];
 
-/** The fields of {@link DEFAULT_LINKAGE_FIELD_SET_NAME} 1.0.0, kept so a citation
- * of that version still resolves ({@link EARLIER_LINKAGE_RULE_SET}). */
-const BASELINE_PII_1_0_0_FIELDS: ReadonlyArray<LinkageField> = [
-  {
-    name: "ssn",
-    type: "ssn",
-    constraints: {
-      exclude: ["111111111", "123456789"],
-      validOnly: true,
-    },
-  },
-  {
-    name: "ssn4",
-    type: "ssn4",
-    constraints: { validOnly: true },
-  },
-  {
-    name: "first_name",
-    type: "first_name",
-    constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
-  },
-  {
-    name: "last_name",
-    type: "last_name",
-    constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
-  },
-  { name: "date_of_birth", type: "date_of_birth" },
-];
-
 /**
  * Neutral, stable identifier of the built-in linkage KEY set: the catalog of
  * rules in `docs/notes/linkage-rule-catalog.md`, as the key combinations
@@ -131,8 +102,7 @@ const BASELINE_PII_1_0_0_FIELDS: ReadonlyArray<LinkageField> = [
  * built from the fields of {@link DEFAULT_LINKAGE_FIELD_SET_NAME}, so a
  * citation of this set is a citation of that one too; what this name adds is
  * which combinations of that substrate count as a match, and in what cascade
- * order. Its version 1.0.0 was published under the name `hmis-keys`
- * ({@link EARLIER_LINKAGE_RULE_SET}).
+ * order.
  */
 export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
 
@@ -403,172 +373,6 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   },
 ];
 
-/** The name of the key set {@link DEFAULT_LINKAGE_KEY_SET_NAME} 1.0.0 was
- * published under. */
-const EARLIER_KEY_SET_NAME = "hmis-keys";
-
-/** The version of {@link EARLIER_KEY_SET_NAME} and of its field set. */
-const EARLIER_SET_VERSION = "1.0.0";
-
-/**
- * The keys of {@link EARLIER_KEY_SET_NAME} 1.0.0, kept so a citation of that
- * version still resolves and verifies ({@link EARLIER_LINKAGE_RULE_SET}).
- */
-const CATALOG_1_0_0_KEYS: ReadonlyArray<LinkageKey> = [
-  {
-    name: "SSN + LN + DOB",
-    elements: [
-      { field: "ssn" },
-      { field: "last_name" },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "SSN + LN + FN1",
-    elements: [
-      { field: "ssn" },
-      { field: "last_name" },
-      {
-        field: "first_name",
-        transform: [{ function: "substring", params: { start: 1, length: 1 } }],
-      },
-    ],
-  },
-  {
-    name: "SSN + LN3 + FN1",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "last_name",
-        transform: [{ function: "substring", params: { start: 1, length: 3 } }],
-      },
-      {
-        field: "first_name",
-        transform: [{ function: "substring", params: { start: 1, length: 1 } }],
-      },
-    ],
-  },
-  {
-    name: "SSN + LN4 + DOB",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "last_name",
-        transform: [{ function: "substring", params: { start: 1, length: 4 } }],
-      },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "SSN + LN4 + YOB + MOB",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "last_name",
-        transform: [{ function: "substring", params: { start: 1, length: 4 } }],
-      },
-      {
-        field: "date_of_birth",
-        transform: [{ function: "substring", params: { start: 1, length: 6 } }],
-      },
-    ],
-  },
-  {
-    name: "SSN + LN3 + DOB",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "last_name",
-        transform: [{ function: "substring", params: { start: 1, length: 3 } }],
-      },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "SSN + FN3 + DOB",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "first_name",
-        transform: [{ function: "substring", params: { start: 1, length: 3 } }],
-      },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "SSN4 + LN + DOB",
-    elements: [
-      { field: "ssn4" },
-      { field: "last_name" },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "SSN4 + LN4 + YOB + MOB",
-    elements: [
-      { field: "ssn4" },
-      {
-        field: "last_name",
-        transform: [{ function: "substring", params: { start: 1, length: 4 } }],
-      },
-      {
-        field: "date_of_birth",
-        transform: [{ function: "substring", params: { start: 1, length: 6 } }],
-      },
-    ],
-  },
-  {
-    name: "LN + FN + DOB",
-    elements: [
-      { field: "last_name" },
-      { field: "first_name" },
-      { field: "date_of_birth" },
-    ],
-  },
-  {
-    name: "swap(LN, FN) + DOB",
-    elements: [
-      { field: "last_name" },
-      { field: "first_name" },
-      { field: "date_of_birth" },
-    ],
-    swap: ["last_name", "first_name"],
-  },
-  {
-    name: "SSN + DOB + FN",
-    elements: [
-      { field: "ssn" },
-      { field: "date_of_birth" },
-      { field: "first_name" },
-    ],
-  },
-  {
-    name: "SSN + FN + YOB + MOB",
-    elements: [
-      { field: "ssn" },
-      { field: "first_name" },
-      {
-        field: "date_of_birth",
-        transform: [{ function: "substring", params: { start: 1, length: 6 } }],
-      },
-    ],
-  },
-  {
-    name: "SSN + FN3 + YOB + MOB",
-    elements: [
-      { field: "ssn" },
-      {
-        field: "first_name",
-        transform: [{ function: "substring", params: { start: 1, length: 3 } }],
-      },
-      {
-        field: "date_of_birth",
-        transform: [{ function: "substring", params: { start: 1, length: 6 } }],
-      },
-    ],
-  },
-];
-
 /**
  * A named, versioned collection of linkage fields and keys terms can be drawn
  * from: the field set and the key set that
@@ -645,26 +449,6 @@ export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
   ruleBands: frozenThroughContents(DEFAULT_LINKAGE_RULE_BANDS),
 });
 
-/**
- * The catalog's version 1.0.0, published as `hmis-keys` over `baseline-pii`
- * 1.0.0: in the registry so a document or record citing it still resolves and
- * verifies, never selected by a path that authors nothing. It has no bands.
- */
-export const EARLIER_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
-  reference: Object.freeze({
-    fieldSet: Object.freeze({
-      name: DEFAULT_LINKAGE_FIELD_SET_NAME,
-      version: EARLIER_SET_VERSION,
-    }),
-    keySet: Object.freeze({
-      name: EARLIER_KEY_SET_NAME,
-      version: EARLIER_SET_VERSION,
-    }),
-  }),
-  linkageFields: frozenThroughContents(BASELINE_PII_1_0_0_FIELDS),
-  linkageKeys: frozenThroughContents(CATALOG_1_0_0_KEYS),
-});
-
 /** A precision floor: the lowest band whose rules are selected. */
 export type PrecisionFloor = PrecisionBand;
 
@@ -721,7 +505,7 @@ export function linkageKeysAtPrecisionFloor(
  * so a replaced entry would decide later derivations and verdicts alike.
  */
 export const BUILT_IN_LINKAGE_RULE_SETS: ReadonlyArray<BuiltInLinkageRuleSet> =
-  Object.freeze([DEFAULT_LINKAGE_RULE_SET, EARLIER_LINKAGE_RULE_SET]);
+  Object.freeze([DEFAULT_LINKAGE_RULE_SET]);
 
 /**
  * Whether `rules` were drawn from `ruleSet`: every key byte-identical to a

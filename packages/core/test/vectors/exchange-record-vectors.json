@@ -1179,11 +1179,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           }
         },
@@ -1217,11 +1217,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           }
         },
@@ -1254,7 +1254,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "WALn9YJLKMxq-VOBNymCS4oVOlvZMz4yrfrkBQ6b7gQ",
+        "termsHash": "p4QeAflp3xkPgl3Donpn8ForD2AdHrXsGa-LAsxglw0",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1268,11 +1268,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           },
           "linkageRuleSetVerdict": {
@@ -1361,11 +1361,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           }
         },
@@ -1421,11 +1421,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           }
         },
@@ -1455,7 +1455,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "FduOzG5VWR1K-1mDMgptLSWog6H8eBMSHlYrRCc3SSE",
+        "termsHash": "6WHo9Nj6xCrPrLtI2qApycLMQ4xLPFIV3_MUcXvgeJ4",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1477,11 +1477,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.0.0"
+              "version": "1.1.0"
             },
             "keySet": {
-              "name": "hmis-keys",
-              "version": "1.0.0"
+              "name": "precision-ranked-rules",
+              "version": "2.0.0"
             }
           },
           "linkageRuleSetVerdict": {

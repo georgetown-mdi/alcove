@@ -162,7 +162,7 @@ describe("a disclosure's facts", () => {
     const facts = disclosureFacts(record);
 
     expect(factValues(facts, "Rule set cited")).toEqual([
-      'Keys: "hmis-keys" 2.1.0',
+      'Keys: "precision-ranked-rules" 2.1.0',
       'Fields: "baseline-pii" 1.0.0',
     ]);
     expect(factNamed(facts, "Rule set cited").note).toBe(RULE_SET_CAVEAT);
@@ -210,7 +210,7 @@ describe("a disclosure's facts", () => {
     const record = await disclosureRecord({
       linkageRuleSet: {
         fieldSet: { name: "baseline‮pii", version: "1.0.0" },
-        keySet: { name: "hmis-keys", version: "2.1.0[31m" },
+        keySet: { name: "precision-ranked-rules", version: "2.1.0[31m" },
       },
     });
     expect(record.governance.linkageRuleSet?.fieldSet.name).toBe(
@@ -218,7 +218,7 @@ describe("a disclosure's facts", () => {
     );
 
     expect(factValues(disclosureFacts(record), "Rule set cited")).toEqual([
-      'Keys: "hmis-keys" "2.1.0\\x1b[31m"',
+      'Keys: "precision-ranked-rules" "2.1.0\\x1b[31m"',
       'Fields: "baseline\\u202epii" 1.0.0',
     ]);
   });
@@ -235,20 +235,20 @@ describe("a disclosure's facts", () => {
     // two set names the standing fixture cites, at a version neither half is
     // recorded at -- so absence of both is what the assertion measures.
     const imitated = {
-      keys: 'Keys: "hmis-keys" 9.9.9',
+      keys: 'Keys: "precision-ranked-rules" 9.9.9',
       fields: 'Fields: "baseline-pii" 9.9.9',
     };
     const record = await disclosureRecord({
       linkageRuleSet: {
         fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-        keySet: { name: 'hmis-keys" 9.9.9', version: "1.0.0" },
+        keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
       },
     });
 
     const values = factValues(disclosureFacts(record), "Rule set cited");
 
     expect(values).toEqual([
-      'Keys: "hmis-keys"" 9.9.9" 1.0.0',
+      'Keys: "precision-ranked-rules"" 9.9.9" 1.0.0',
       'Fields: "baseline-pii"" 9.9.9" 1.0.0',
     ]);
     for (const citation of [imitated.keys, imitated.fields])
@@ -270,14 +270,14 @@ describe("a disclosure's facts", () => {
     const record = await disclosureRecord({
       linkageRuleSet: {
         fieldSet: { name: "base‮line\u{1f600}", version: "1.0.0" },
-        keySet: { name: 'hmis\u0000"keys', version: "2.1\u001b.0" },
+        keySet: { name: 'example\u0000"keys', version: "2.1\u001b.0" },
       },
     });
 
     const values = factValues(disclosureFacts(record), "Rule set cited");
 
     expect(values).toEqual([
-      'Keys: "hmis\\x00""keys" "2.1\\x1b.0"',
+      'Keys: "example\\x00""keys" "2.1\\x1b.0"',
       'Fields: "base\\u202eline\\u{1f600}" 1.0.0',
     ]);
     for (const value of values) {
@@ -683,7 +683,7 @@ describe("the exported accounting", () => {
     expect(
       splitCsvRow(row)[splitCsvRow(header).indexOf("Rule set cited")],
     ).toBe(
-      `Keys: "hmis-keys" 2.1.0\nFields: "baseline-pii" 1.0.0\n${RULE_SET_CAVEAT}`,
+      `Keys: "precision-ranked-rules" 2.1.0\nFields: "baseline-pii" 1.0.0\n${RULE_SET_CAVEAT}`,
     );
     expect(row).toContain('"MOU-2025-0042"');
     expect(splitCsvRow(row)).toHaveLength(splitCsvRow(header).length);

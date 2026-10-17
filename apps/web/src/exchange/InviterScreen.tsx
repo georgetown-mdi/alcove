@@ -352,7 +352,7 @@ function isSection(value: string): value is Section {
 
 // The inviter name the sample seeds, so step 1 lands complete without the
 // visitor typing one. Plainly a placeholder, consistent with the synthetic data.
-const SAMPLE_INVITER_NAME = "Sample County Health Dept";
+const SAMPLE_INVITER_NAME = "Sample County Agency";
 
 /**
  * The inviter's working surface: one console whose top bar walks the three-step

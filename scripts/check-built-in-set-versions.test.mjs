@@ -96,7 +96,7 @@ const declaredSets = ({
   },
   {
     role: "keySet",
-    name: "hmis-keys",
+    name: "example-keys",
     version: keySetVersion,
     digest: contentDigest(keys),
     declarations: DECLARATIONS.keySet,
@@ -181,7 +181,7 @@ function fixtureTree({
         fieldSetName: "baseline-pii",
         fieldSetVersion,
         fields,
-        keySetName: "hmis-keys",
+        keySetName: "example-keys",
         keySetVersion,
         keys,
       })}${second === undefined ? "" : ruleSetSource(second)}
@@ -252,7 +252,7 @@ describe("the ledger block a failure prints", () => {
       "1.0.0": "sha256:old",
       "1.1.0": sets[0].digest,
     });
-    expect(block.pins["hmis-keys"]).toBeUndefined();
+    expect(block.pins["example-keys"]).toBeUndefined();
   });
 
   it("records an unpinned version of a name under that same version", () => {
@@ -301,7 +301,7 @@ describe("the rule over a recorded pin", () => {
     const violations = pinViolations({ sets: moved, pins: ledgerFor(sets) });
     expect(violations).toHaveLength(1);
     expect(violations[0].kind).toBe("moved");
-    expect(violations[0].set).toBe("hmis-keys");
+    expect(violations[0].set).toBe("example-keys");
     expect(violations[0].message).toContain(DECLARATIONS.keySet.content);
     expect(violations[0].message).toContain(DECLARATIONS.keySet.version);
     expect(violations[0].message).toContain(NOTE_SECTION);
@@ -363,13 +363,13 @@ describe("the rule over a recorded pin", () => {
     const violations = pinViolations({ sets: bumped, pins: ledgerFor(sets) });
     expect(violations).toHaveLength(1);
     expect(violations[0].kind).toBe("record");
-    expect(violations[0].message).toContain("hmis-keys 1.1.0");
+    expect(violations[0].message).toContain("example-keys 1.1.0");
   });
 
   it("fails a pin recorded ahead of the declared version", () => {
     const sets = declaredSets();
     const pins = ledgerFor(sets);
-    pins["hmis-keys"]["2.0.0"] = "sha256:unshipped";
+    pins["example-keys"]["2.0.0"] = "sha256:unshipped";
     const violations = pinViolations({ sets, pins });
     expect(violations).toHaveLength(1);
     expect(violations[0].kind).toBe("ledger");
@@ -386,7 +386,7 @@ describe("the rule over a recorded pin", () => {
   it("fails a ledger key that is not a version, naming the key", () => {
     const sets = declaredSets();
     const pins = ledgerFor(sets);
-    pins["hmis-keys"]["latest"] = "sha256:unlookupable";
+    pins["example-keys"]["latest"] = "sha256:unlookupable";
     const violations = pinViolations({ sets, pins });
     expect(violations.map(({ kind }) => kind)).toEqual(["ledger"]);
     expect(violations[0].message).toContain('under "latest"');
@@ -394,10 +394,13 @@ describe("the rule over a recorded pin", () => {
 
   it("fails an entry under a set name the source does not declare", () => {
     const sets = declaredSets();
-    const pins = { ...ledgerFor(sets), "hmis-keys-legacy": { "1.0.0": "x" } };
+    const pins = {
+      ...ledgerFor(sets),
+      "example-keys-legacy": { "1.0.0": "x" },
+    };
     const violations = pinViolations({ sets, pins });
     expect(violations.map(({ kind }) => kind)).toEqual(["ledger"]);
-    expect(violations[0].message).toContain('"hmis-keys-legacy"');
+    expect(violations[0].message).toContain('"example-keys-legacy"');
   });
 
   it("asks for a pin for a set the ledger does not hold at all", () => {
@@ -405,7 +408,7 @@ describe("the rule over a recorded pin", () => {
     const violations = pinViolations({ sets, pins: {} });
     expect(violations.map(({ kind, set }) => [kind, set])).toEqual([
       ["record", "baseline-pii"],
-      ["record", "hmis-keys"],
+      ["record", "example-keys"],
     ]);
   });
 });
@@ -429,7 +432,7 @@ describe("the check driven end to end", () => {
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
     expect(stderr).toContain("Built-in rule set version check failed");
-    expect(stderr).toContain("has moved under hmis-keys 1.0.0");
+    expect(stderr).toContain("has moved under example-keys 1.0.0");
     expect(stderr).toContain(`The ledger ${PINS_FILE} would carry`);
     expect(stderr).toContain('"1.1.0"');
   });
@@ -459,11 +462,11 @@ describe("the check driven end to end", () => {
   it("passes the same edit once it bumps and records the new pin", () => {
     const keys = [KEYS[0], { ...KEYS[1], name: "LN only" }];
     const pins = ledgerFor(declaredSets());
-    pins["hmis-keys"]["1.1.0"] = contentDigest(keys);
+    pins["example-keys"]["1.1.0"] = contentDigest(keys);
     const root = fixtureTree({ keys, keySetVersion: "1.1.0", pins });
     const { status, stdout } = runCheck(root);
     expect(status).toBe(0);
-    expect(stdout).toContain("hmis-keys 1.1.0");
+    expect(stdout).toContain("example-keys 1.1.0");
   });
 
   it("fails a bump that records no pin for the version it introduces", () => {
@@ -474,7 +477,7 @@ describe("the check driven end to end", () => {
     });
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
-    expect(stderr).toContain("records no pin for hmis-keys 1.1.0");
+    expect(stderr).toContain("records no pin for example-keys 1.1.0");
   });
 
   it("fails a ledger it cannot read rather than passing as agreement", () => {
@@ -634,7 +637,7 @@ describe("the check driven end to end", () => {
   it("states the pin each set holds on a passing run", () => {
     expect(pinReport(declaredSets())).toEqual([
       `  baseline-pii 1.0.0 -- ${contentDigest(FIELDS)}`,
-      `  hmis-keys 1.0.0 -- ${contentDigest(KEYS)}`,
+      `  example-keys 1.0.0 -- ${contentDigest(KEYS)}`,
     ]);
   });
 });
@@ -657,7 +660,6 @@ describe("the check's registration", () => {
     const pins = JSON.parse(readRoot(PINS_FILE)).pins;
     expect(Object.keys(pins).sort()).toEqual([
       "baseline-pii",
-      "hmis-keys",
       "precision-ranked-rules",
     ]);
     for (const entry of Object.values(pins)) {

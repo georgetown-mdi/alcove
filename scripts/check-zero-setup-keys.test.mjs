@@ -72,7 +72,7 @@ const sets = ({ fields = FIELDS, keys = KEYS, second } = {}) => [
   {
     declaration: "DEFAULT_LINKAGE_RULE_SET",
     fieldSet: { name: "baseline-pii", version: "1.0.0", content: fields },
-    keySet: { name: "hmis-keys", version: "1.0.0", content: keys },
+    keySet: { name: "example-keys", version: "1.0.0", content: keys },
   },
   ...(second === undefined ? [] : [second]),
 ];
@@ -109,7 +109,7 @@ function fixtureTree({ fields = FIELDS, keys = KEYS, second, source } = {}) {
       prefix: "DEFAULT_LINKAGE",
       fieldSetName: "baseline-pii",
       fields,
-      keySetName: "hmis-keys",
+      keySetName: "example-keys",
       keys,
     },
     ...(second === undefined ? [] : [second]),
@@ -225,7 +225,7 @@ describe("the property it holds", () => {
       "  baseline-pii  ssn -- type ssn",
       "  baseline-pii  last_name -- type last_name",
       "  baseline-pii  date_of_birth -- type date_of_birth",
-      "  hmis-keys  1 key, every element inside baseline-pii",
+      "  example-keys  1 key, every element inside baseline-pii",
     ]);
   });
 });
@@ -275,7 +275,7 @@ describe("the check driven end to end", () => {
 export const DEFAULT_LINKAGE_RULE_SET = Object.freeze({
   reference: Object.freeze({
     fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "hmis-keys", version: "1.0.0" },
+    keySet: { name: "example-keys", version: "1.0.0" },
   }),
   linkageFields: [{ name: "ssn", type: "ssn" }],
   linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
