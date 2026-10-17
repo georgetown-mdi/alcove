@@ -40,7 +40,9 @@ describe("gradeAuthoredKeys", () => {
       draft.keys.map((entry) => entry.key),
     );
     expect(fitness).toHaveLength(draft.keys.length);
-    expect(fitness.every((grade) => grade === "satisfiable")).toBe(true);
+    expect(fitness.every((grade) => grade.fitness === "satisfiable")).toBe(
+      true,
+    );
   });
 
   test("grades only the keys needing an absent column unsatisfiable", () => {
@@ -63,8 +65,30 @@ describe("gradeAuthoredKeys", () => {
     expect(needsSsn.some((needs) => needs)).toBe(true);
     expect(needsSsn.some((needs) => !needs)).toBe(true);
     expect(fitness).toEqual(
-      needsSsn.map((needs) => (needs ? "unsatisfiable" : "satisfiable")),
+      needsSsn.map((needs) =>
+        needs
+          ? { fitness: "unsatisfiable", missingField: "ssn" }
+          : { fitness: "satisfiable" },
+      ),
     );
+  });
+
+  test("names an element field no declared field supplies", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const fitness = gradeAuthoredKeys(
+      draft.metadata,
+      draft.standardization,
+      seed.columns,
+      [
+        {
+          name: "FN + PHONE",
+          elements: [{ field: "first_name" }, { field: "phone_number" }],
+        },
+      ],
+    );
+    expect(fitness).toEqual([
+      { fitness: "unsatisfiable", missingField: "phone_number" },
+    ]);
   });
 });
 

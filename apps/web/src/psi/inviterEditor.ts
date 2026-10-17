@@ -38,6 +38,7 @@ import { LIFETIME_CHOICES } from "./formatting";
 import type {
   AdvancedInviteDraft,
   AdvancedInviteSeed,
+  AuthoredKeyGrade,
   CleaningNotLoaded,
   DraftLegalAgreement,
   OutputDirection,
@@ -48,7 +49,6 @@ import type {
   CSVRow,
   LinkageField,
   LinkageKey,
-  LinkageKeyFitness,
   LinkageStrategy,
   LinkageTerms,
   Metadata,
@@ -194,8 +194,8 @@ export function editorWithAuthoredDraft(
   return { ...editor, draft, keysAuthored: true };
 }
 
-/** Enable or disable the key at `index` in the guided list, keeping an opt-in
- * type's cleaning attached to its key (see {@link draftWithKeyEnabled}). */
+/** Enable or disable the key at `index` in the guided list, keeping a phone,
+ * email or ZIP cleaning attached to its key (see {@link draftWithKeyEnabled}). */
 export function editorWithKeyEnabled(
   editor: InviterEditor,
   index: number,
@@ -246,7 +246,7 @@ export function editorWithLegalAgreement(
  * inviter's own columns, lifetime, and own-columns choice -- all three are
  * per-party and local, so no terms document states them and an import leaves
  * them where the operator set them. An unsupplyable imported key arrives
- * disabled with its badge, never dropped ({@link draftFromTerms}). Imported
+ * disabled, never dropped ({@link draftFromTerms}). Imported
  * keys are author-controlled.
  *
  * `metadata` is the column set the import binds against and the draft opens
@@ -454,7 +454,7 @@ export function editorWithDeduplicate(
 /** Restore the recommended cleaning for the current metadata and the keys the
  * draft has turned on -- the cleaning error boundary's recovery, scoped to the
  * cleaning alone. Reading the enabled keys is what keeps the reset from minting a
- * pipeline for an opt-in type whose key is off, which the terms this draft emits
+ * phone, email or ZIP pipeline whose keys are off, which the terms this draft emits
  * would declare no field for. */
 export function editorWithRecommendedCleaning(
   editor: InviterEditor,
@@ -485,28 +485,29 @@ export function declaredFieldsFor(
 }
 
 /**
- * A per-key verdict for the guided list's and expert editor's badges: core's own
- * {@link LinkageKeyFitness}, so a badge reads what the Generate gate, the mint, and
+ * A per-key verdict for the expert editor's badges: core's own
+ * `LinkageKeyFitness`, so a badge reads what the Generate gate, the mint, and
  * the run boundary all grade the key at. Its three outcomes -- `satisfiable`,
  * `unsatisfiable` (an element references a field the columns cannot produce), and
  * `dead` (the columns produce every element field, but an element's declared
- * cleaning can never yield a value) -- are documented on core's type.
+ * cleaning can never yield a value) -- are documented on core's type. An
+ * `unsatisfiable` verdict names the first field the columns cannot produce.
  */
-export type KeyVerdict = LinkageKeyFitness;
+export type KeyVerdict = AuthoredKeyGrade;
 
-/** The per-key verdict function behind the Keys tab badges ({@link KeyVerdict}).
- * Grades every draft key at once, in declaration order, so the badge index is the
- * draft index. */
+/** The per-key verdict function behind the expert editor's badges
+ * ({@link KeyVerdict}). Grades every draft key at once, in declaration order, so
+ * the badge index is the draft index. */
 export function keySatisfiabilityFor(
   editor: InviterEditor,
 ): (index: number) => KeyVerdict {
-  const fitness = gradeAuthoredKeys(
+  const grades = gradeAuthoredKeys(
     editor.draft.metadata,
     editor.draft.standardization,
     editor.seed.columns,
     editor.draft.keys.map((entry) => entry.key),
   );
-  return (index) => fitness[index];
+  return (index) => grades[index];
 }
 
 /** Discard every edit and re-derive the recommended draft from the file,

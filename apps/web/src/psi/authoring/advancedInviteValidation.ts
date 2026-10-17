@@ -92,8 +92,8 @@ function todayIso(now: Date): string {
  * element's `field` reference can be partner-controlled, so echoing it would
  * expose partner text in the UI -- the same reason {@link messageForField} and
  * core's referential-integrity refine locate the offender by issue path rather
- * than value. The operator identifies the key from its red "not satisfiable"
- * badge in the key list instead. */
+ * than value. The operator identifies the key from its "no column for" badge
+ * in the expert key editor instead. */
 const UNSUPPLYABLE_KEY_MESSAGE =
   "A linkage key needs a field your columns cannot supply. Add a column of that " +
   "type, or turn that key off.";
@@ -375,8 +375,7 @@ function firstParamNameRefusal(
  *
  * The dead case points at the badge rather than the key, the same reason
  * {@link UNSUPPLYABLE_KEY_MESSAGE} names no field: an imported document's key
- * names are partner-influenceable, and the key list has the badge beside this
- * message.
+ * names are partner-influenceable, and the expert key editor shows the badge.
  */
 function shortfallRemedy(verdict: LinkageTermsVerdict): string {
   if (verdict.unsatisfiableKeys.length > 0)
@@ -384,7 +383,10 @@ function shortfallRemedy(verdict: LinkageTermsVerdict): string {
       "Turn off the keys your columns cannot produce, or map a column to " +
       "every field they need."
     );
-  return 'Review the cleaning on the keys badged "won\'t match", or turn them off.';
+  return (
+    "Turn on Expert authoring and review the cleaning on the keys marked " +
+    '"cleaning drops every value", or turn them off.'
+  );
 }
 
 /**
@@ -632,11 +634,12 @@ export function validateAdvancedInvite(
   // The exception is a param the pipeline drops value-INDEPENDENTLY -- a key that
   // matches nothing for BOTH parties, refused in core instead: `pipelineAlwaysDrops`
   // grades such an element dead, so the linkage grading above, the mint, and the
-  // run boundary all refuse the same terms, and the key list has a "won't
-  // match" badge covering both the authored draft and an imported document. Its
-  // measured instance is a `substring` window that reads nothing at any value
-  // length (an absent or zero bound); a present non-integer bound is rejected
-  // earlier, at schema parse. Verified in advancedInviteValidation.test.ts,
+  // run boundary all refuse the same terms, and the expert key editor has a
+  // "cleaning drops every value" badge covering both the authored draft and an
+  // imported document. Its measured instance is a `substring` window that reads
+  // nothing at any value length (an absent or zero bound); a present non-integer
+  // bound is rejected earlier, at schema parse. Verified in
+  // advancedInviteValidation.test.ts,
   // stepListEditor.test.ts, invitation.test.ts, and prepareForExchange.test.ts.
   if (
     !draft.standardization.every((transformation) =>

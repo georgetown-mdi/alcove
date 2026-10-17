@@ -39,8 +39,7 @@ type ImportedRuleSetCitation =
   | { kind: "uncited" };
 
 /** One linkage key in the editor and whether it is enabled. Array position is
- * match order; a disabled key is dropped from the built terms. Built-in and opt-in
- * keys are not marked apart: ask `isOptInDraftKey`. */
+ * match order; a disabled key is dropped from the built terms. */
 export interface DraftKey {
   key: LinkageKey;
   enabled: boolean;

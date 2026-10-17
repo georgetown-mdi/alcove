@@ -375,7 +375,6 @@ export {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
-  OPT_IN_LINKAGE_FIELD_TYPES,
   authoredLinkageFields,
   encodeForComparison,
   findBuiltInLinkageRuleSet,
@@ -384,6 +383,7 @@ export {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorSelectionStatement,
   resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {

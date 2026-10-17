@@ -7,6 +7,7 @@ import type { LinkageTerms, Metadata } from "@alcove/core";
 import { buildErrorEvent } from "../../src/eventStream";
 import {
   markQuickExchangeContactColumns,
+  quickExchangeContactColumnsLine,
   markTermsRefusalRun,
 } from "../../src/termsRefusalRemedy";
 import {
@@ -226,6 +227,26 @@ describe("the next step beneath a terms refusal", () => {
       "single-pass",
     ))
       expect(marked(side).endsWith(`\n${QUICK}`)).toBe(true);
+  });
+
+  test("names only the column a contact key is bound to, not a second one", () => {
+    const metadata: Metadata = [
+      ...inferMetadata(["first_name", "last_name", "dob", "phone"], []),
+      {
+        name: "mobile",
+        type: "phone_number",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    const quickTerms = getDefaultLinkageTerms(undefined, metadata);
+    const line = quickExchangeContactColumnsLine(
+      metadata,
+      quickTerms,
+      quickTerms.linkageKeys.map((key) => key.name),
+    );
+    expect(line).toContain(`column "phone" (phone number) is matched on`);
+    expect(line).not.toContain("mobile");
   });
 
   test("a quick exchange over no contact column adds no line", async () => {

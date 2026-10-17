@@ -818,7 +818,7 @@ describe("validateAdvancedInvite", () => {
       "the cleaning declared for the one linkage key drops every record",
     );
     expect(result.errors.keys).toContain(
-      'Review the cleaning on the keys badged "won\'t match"',
+      'review the cleaning on the keys marked "cleaning drops every value"',
     );
     // The column-mapping remedy would misdirect here: the columns produce every
     // field this key references.

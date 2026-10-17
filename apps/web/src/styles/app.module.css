@@ -643,33 +643,6 @@
   border-bottom: 1px solid var(--app-rule-soft);
 }
 
-.keyBadge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border-radius: 999px;
-  padding: 1px 8px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
-.keyBadgeSatisfiable {
-  color: var(--app-ok);
-  border: 1px solid var(--app-ok);
-}
-
-.keyBadgeUnsatisfiable {
-  color: var(--app-danger);
-  border: 1px solid var(--app-danger);
-}
-
-.keyBadgeDead {
-  color: var(--app-warn);
-  border: 1px solid var(--app-warn);
-}
-
 .movers {
   display: inline-flex;
   gap: 6px;

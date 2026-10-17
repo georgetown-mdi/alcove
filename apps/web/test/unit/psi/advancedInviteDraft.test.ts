@@ -66,17 +66,17 @@ describe("setDraftMetadataKeepingKeys", () => {
     expect(kept.keys.length).toBe(draft.keys.length);
     expect(reconciled.keys.length).toBeLessThan(draft.keys.length);
     // Both run the same standardization reconciliation over the keys they end
-    // with. The key-reconciling path also withdraws the cleaning an opt-in offer
-    // minted for a key it just dropped; no column here is of an opt-in type, so
+    // with. The key-reconciling path also withdraws the phone, email or ZIP
+    // cleaning of a key it just dropped; no column here is of such a type, so
     // there is none to withdraw and the two standardizations agree.
     expect(kept.standardization).toStrictEqual(reconciled.standardization);
   });
 });
 
 describe("draftWithFieldAdded", () => {
-  // Two columns of one opt-in type, so the type's FIRST field and its second are
-  // both reachable, and a guided draft has cleaning for neither (with no date of
-  // birth, no built-in key over these columns reads a ZIP).
+  // Two columns of one phone, email or ZIP type, so the type's FIRST field and
+  // its second are both reachable, and a guided draft has cleaning for neither
+  // (with no date of birth, no built-in key over these columns reads a ZIP).
   const ZIP_COLUMNS = ["ssn", "first_name", "last_name", "zip", "zipcode"];
   const ZIP_ROWS: Array<CSVRow> = [
     {

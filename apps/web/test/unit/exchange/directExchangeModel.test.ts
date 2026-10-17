@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   MAX_NAME_LENGTH,
   decideLinkageTermsVerdict,
   getDefaultLinkageTerms,
   inferMetadata,
+  precisionFloorSelectionStatement,
 } from "@alcove/core";
 
 import { disclosedColumnNames } from "@psi/metadataEditing";
@@ -22,6 +24,7 @@ import {
   DIRECT_LINKAGE_STRATEGY_DEFAULT,
   DIRECT_NO_FILE,
   DIRECT_RECOGNIZED_COLUMNS_NOTICE,
+  DIRECT_RULE_SELECTION_NOTICE,
   DIRECT_STEP_ORDER,
   directBothSidedDeduplicateNotice,
   directDeduplicateIntentFields,
@@ -148,6 +151,14 @@ describe("previewInferredTerms", () => {
       "a header Alcove does not recognize, such as E-mail",
     );
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
+  });
+
+  test("names the rule selection in core's words, as the CLI display does", () => {
+    expect(DIRECT_RULE_SELECTION_NOTICE).toBe(
+      `Rules selected: ${precisionFloorSelectionStatement(
+        DEFAULT_PRECISION_FLOOR_SELECTION,
+      )}.`,
+    );
   });
 
   test("an unrecognized header past the ceiling is sent, so it closes the run gate", () => {

@@ -56,6 +56,7 @@ export {
 } from "./advancedInviteDraft";
 
 export type {
+  AuthoredKeyGrade,
   ImportedCitationDropCause,
   InviterDataEdits,
 } from "./advancedInviteTerms";

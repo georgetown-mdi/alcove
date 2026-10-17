@@ -48,6 +48,7 @@ import {
   DIRECT_DEDUPLICATE_SIDE_NOTICE,
   DIRECT_LINKAGE_STRATEGY_AGREEMENT_NOTICE,
   DIRECT_RECOGNIZED_COLUMNS_NOTICE,
+  DIRECT_RULE_SELECTION_NOTICE,
   directBothSidedDeduplicateNotice,
   previewInferredTerms,
 } from "./directExchangeModel";
@@ -338,6 +339,9 @@ export function DirectConfirmSection({
       </section>
 
       <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {DIRECT_RULE_SELECTION_NOTICE}
+        </Text>
         <Text size="sm" c="dimmed">
           {DIRECT_RECOGNIZED_COLUMNS_NOTICE}
         </Text>

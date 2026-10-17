@@ -11,6 +11,7 @@ import {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorSelectionStatement,
   resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
@@ -226,5 +227,28 @@ describe("the guided opt-in offers", () => {
   test("are retired from core", () => {
     expect(Object.keys(core)).not.toContain("optInLinkageKeys");
     expect(Object.keys(core)).not.toContain("isOptInLinkageKey");
+    expect(Object.keys(core)).not.toContain("OPT_IN_LINKAGE_FIELD_TYPES");
+  });
+});
+
+describe("precisionFloorSelectionStatement", () => {
+  test("names the floor and the coverage answer", () => {
+    expect(
+      precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
+    ).toBe(
+      "the built-in rules at 95% precision and above that your file " +
+        "supplies, for two files that both draw their members from one " +
+        "state or one metropolitan area",
+    );
+    expect(
+      precisionFloorSelectionStatement({
+        floor: 99,
+        oneStateOrMetroArea: false,
+      }),
+    ).toBe(
+      "the built-in rules at 99% precision and above that your file " +
+        "supplies, leaving out the rules that need both files to draw " +
+        "their members from one state or one metropolitan area",
+    );
   });
 });

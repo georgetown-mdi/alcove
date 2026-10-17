@@ -48,31 +48,43 @@ import type {
 } from "@psi/authoring/advancedInvite";
 import type { KeyVerdict } from "@psi/inviterEditor";
 
-/** The expert-editor badge copy and Mantine color for each per-key verdict
- * ({@link KeyVerdict}), reading consistently with the guided list. A dead key is
- * amber rather than red ("won't match") because its columns do resolve and the
- * remedy is the transform, not the file -- it closes Generate all the same. */
-const KEY_VERDICT_BADGES: Record<
-  KeyVerdict,
-  { label: string; color: string; ariaLabel: string }
-> = {
-  satisfiable: {
-    label: "satisfiable",
-    color: "green",
-    ariaLabel: "Your columns can satisfy this key",
-  },
-  unsatisfiable: {
-    label: "not satisfiable",
-    color: "red",
-    ariaLabel: "Your columns cannot satisfy this key",
-  },
-  dead: {
-    label: "won't match",
-    color: "yellow",
-    ariaLabel:
-      "This key's cleaning can never produce a value; review the transform",
-  },
-};
+/** The expert-editor badge copy and Mantine color for a per-key verdict
+ * ({@link KeyVerdict}). A dead key is amber rather than red because its columns
+ * do resolve and the remedy is the transform, not the file -- it closes Generate
+ * all the same. The missing field is escaped for display: an imported key's
+ * field reference is the document author's text. */
+function keyVerdictBadge(verdict: KeyVerdict): {
+  label: string;
+  color: string;
+  ariaLabel: string;
+} {
+  switch (verdict.fitness) {
+    case "satisfiable":
+      return {
+        label: "your file supplies it",
+        color: "green",
+        ariaLabel: "Your file supplies every field this key uses",
+      };
+    case "unsatisfiable": {
+      const field =
+        verdict.missingField === undefined
+          ? "a field"
+          : sanitizeForDisplay(verdict.missingField);
+      return {
+        label: `no column for ${field}`,
+        color: "red",
+        ariaLabel: `Your file has no column for ${field}`,
+      };
+    }
+    case "dead":
+      return {
+        label: "cleaning drops every value",
+        color: "yellow",
+        ariaLabel:
+          "This key's cleaning drops every value; review the transform",
+      };
+  }
+}
 
 /** Plain-language label for every fuzzy-comparison expansion an element can
  * declare. Keyed by the core union rather than listed as an array, so an
@@ -289,7 +301,7 @@ export function ExpertKeyEditor({
           // placeholder when it is blank so the toggle is never an empty target.
           const keyDisplayName =
             keyLabel.trim() === "" ? "Unnamed key" : keyLabel;
-          const badge = KEY_VERDICT_BADGES[keyVerdict(keyIndex)];
+          const badge = keyVerdictBadge(keyVerdict(keyIndex));
           const keyId = idFor(keyIds.current, key);
           const keyOpen = expandedKeys.has(keyId);
           const keyBodyId = `key-body-${keyId}`;

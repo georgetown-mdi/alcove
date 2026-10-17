@@ -184,7 +184,7 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "What will be matched and how. Both parties' terms must agree, or the",
         "exchange aborts. linkage_fields are the standardized PII elements;",
-        "linkage_keys are the ordered keys built from them (most to least precise).",
+        "linkage_keys are the ordered keys built from them, tried in turn.",
       ],
     },
     {
@@ -234,7 +234,10 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     },
     {
       path: ["linkage_terms", "linkage_keys"],
-      lines: ["Ordered keys, applied most to least precise."],
+      lines: [
+        "Ordered keys, tried in turn. The keys written list the built-in rules",
+        "at 99% precision first, then the rules at 95%.",
+      ],
     },
     {
       path: ["linkage_terms", "linkage_rule_set"],

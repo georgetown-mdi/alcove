@@ -1512,7 +1512,7 @@ describe("customize tabs", () => {
     const verdict = keySatisfiabilityFor(imported);
     expect(
       imported.draft.keys.some(
-        (_entry, index) => verdict(index) === "unsatisfiable",
+        (_entry, index) => verdict(index).fitness === "unsatisfiable",
       ),
     ).toBe(true);
     expect(reviewValidation(imported).canGenerate).toBe(true);
@@ -1980,7 +1980,7 @@ describe("per-key dead-key verdict on the authoring surface", () => {
     // Key 0 (SSN4 + LN + DOB) holds a date_of_birth element the columns supply.
     const dead = withDeadDobKey(editor, 0);
     const verdict = keySatisfiabilityFor(dead);
-    expect(verdict(0)).toBe("dead");
+    expect(verdict(0).fitness).toBe("dead");
   });
 
   test("a routine key is satisfiable, never flagged dead", () => {
@@ -1988,7 +1988,7 @@ describe("per-key dead-key verdict on the authoring surface", () => {
     const verdict = keySatisfiabilityFor(editor);
     // Every recommended key passes cleanly on the default setup: no new warning.
     for (const [index] of editor.draft.keys.entries())
-      expect(verdict(index)).toBe("satisfiable");
+      expect(verdict(index).fitness).toBe("satisfiable");
   });
 
   test("the dead verdict is scoped to the self-defeating key alone", () => {
@@ -1997,7 +1997,7 @@ describe("per-key dead-key verdict on the authoring surface", () => {
     const verdict = keySatisfiabilityFor(dead);
     // Only the authored key is dead; its siblings keep their satisfiable badge.
     for (const [index] of dead.draft.keys.entries())
-      expect(verdict(index)).toBe(index === 0 ? "dead" : "satisfiable");
+      expect(verdict(index).fitness).toBe(index === 0 ? "dead" : "satisfiable");
   });
 
   test("a dead key blocks the mint gate, in core's own words", () => {

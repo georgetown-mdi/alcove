@@ -14,12 +14,14 @@ import {
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   disclosedColumnNames,
   heldBackColumnNames,
   matchedFieldColumns,
   matchedFieldsWithColumns,
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
+  precisionFloorSelectionStatement,
   redactAndSanitizeForDisplay,
   redactUrlCredentials,
   ruleSetCitation,
@@ -214,6 +216,10 @@ function displayContradictedRuleSetCitation(
  * it decides which column each linkage field reads, so which declared columns
  * the run holds back ({@link heldBackColumnNames}). `inputColumns` is the
  * header the run read, in input order, which the held back line lists from.
+ *
+ * `ruleSelection`, where given, states which built-in rules the run selected
+ * for its keys, on a line above them: a quick exchange's, whose keys no file
+ * lists.
  */
 export function renderExchangeDisclosure(
   emit: ConsentSurfaceSink,
@@ -221,6 +227,7 @@ export function renderExchangeDisclosure(
   metadata: Metadata,
   inputColumns: ReadonlyArray<string>,
   standardization: Standardization | undefined,
+  ruleSelection?: string,
 ): void {
   const summary = summarizeInvitation({ linkageTerms });
   emit(DISCLOSURE_HEADING);
@@ -364,6 +371,7 @@ export function renderExchangeDisclosure(
       `  ${marked("held back", "heldBackColumnsSelfAuthored")}: ` +
         heldBack.map((name) => redactAndSanitizeForDisplay(name)).join(", "),
     );
+  if (ruleSelection !== undefined) emit(`  rules selected: ${ruleSelection}`);
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   // One line per key: its name and the fields it combines, both already escaped
   // by the summary. The full element and transform detail stays in the
@@ -638,6 +646,7 @@ export function displayZeroSetupDisclosure(params: {
         prepared.metadata,
         prepared.metadata.map((column) => column.name),
         undefined,
+        precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
       ),
     linkageTerms: prepared.linkageTerms,
     connection,

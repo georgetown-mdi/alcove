@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   UsageError,
   assertBothSidedDeduplicateImplemented,
   assessLinkageSatisfiability,
@@ -6,6 +7,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
   overlongDisclosedColumnPositions,
+  precisionFloorSelectionStatement,
 } from "@alcove/core";
 
 import { payloadSendForMetadata } from "@psi/metadataEditing";
@@ -134,6 +136,12 @@ export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "as an underscore, so First Name and Social Security Number are " +
   "recognized. Every other column is sent, including id columns and a " +
   "header Alcove does not recognize, such as E-mail.";
+
+/** The rules a quick exchange runs, worded as the CLI's display before the run
+ * words them. */
+export const DIRECT_RULE_SELECTION_NOTICE = `Rules selected: ${precisionFloorSelectionStatement(
+  DEFAULT_PRECISION_FLOOR_SELECTION,
+)}.`;
 
 /**
  * The deduplicate field a zero-setup intent holds for the operator's choice,

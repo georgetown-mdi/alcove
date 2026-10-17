@@ -491,11 +491,19 @@ function authoringProbeTerms(
   };
 }
 
+/** One authored key's grade: core's {@link LinkageKeyFitness}, and for an
+ * `unsatisfiable` key the first of its element fields the columns cannot
+ * produce. */
+export interface AuthoredKeyGrade {
+  fitness: LinkageKeyFitness;
+  missingField?: string;
+}
+
 /**
  * How each of a draft's authored keys fares against the operator's columns, in
- * declaration order -- the per-key badge verdict, taken from core's own
+ * declaration order -- the expert editor's per-key badge, taken from core's own
  * classification ({@link decideLinkageTermsVerdict}) rather than re-derived, so a
- * badge cannot come to read `satisfiable` for a key the Generate gate, the mint,
+ * badge cannot come to say the file supplies a key the Generate gate, the mint,
  * and the run boundary all refuse.
  */
 export function gradeAuthoredKeys(
@@ -503,11 +511,26 @@ export function gradeAuthoredKeys(
   standardization: Standardization,
   columns: ReadonlyArray<string>,
   linkageKeys: ReadonlyArray<LinkageKey>,
-): Array<LinkageKeyFitness> {
-  return decideLinkageTermsVerdict(
+): Array<AuthoredKeyGrade> {
+  const terms = authoringProbeTerms(metadata, standardization, linkageKeys);
+  const verdict = decideLinkageTermsVerdict(
     [...columns],
-    authoringProbeTerms(metadata, standardization, linkageKeys),
+    terms,
     standardization,
     metadata,
-  ).keys.map((graded) => graded.fitness);
+  );
+  const declared = new Set(terms.linkageFields.map((field) => field.name));
+  const unproduced = new Set(
+    verdict.unsatisfiedFieldColumns.map(({ field }) => field.name),
+  );
+  return verdict.keys.map(({ key, fitness }) => {
+    if (fitness !== "unsatisfiable") return { fitness };
+    const missing = key.elements.find(
+      (element) =>
+        !declared.has(element.field) || unproduced.has(element.field),
+    );
+    return missing === undefined
+      ? { fitness }
+      : { fitness, missingField: missing.field };
+  });
 }

@@ -40,7 +40,7 @@ function render() {
     createElement(ExpertKeyEditor, {
       draft,
       declaredFields,
-      keyVerdict: (): KeyVerdict => "satisfiable",
+      keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
       onChange: () => undefined,
       announce: () => undefined,
     }),
@@ -90,5 +90,52 @@ describe("ExpertKeyEditor: per-key disclosures stay resolvable under reduced mot
       // reference never dangles.
       expect(document.getElementById(id)).not.toBeNull();
     }
+  });
+});
+
+describe("ExpertKeyEditor: the per-key badges", () => {
+  test("name what the file supplies, the missing column, and a dropping cleaning", async () => {
+    const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+    const verdicts: Array<KeyVerdict> = [
+      { fitness: "unsatisfiable", missingField: "phone_number" },
+      { fitness: "dead" },
+    ];
+    app.render(
+      createElement(ExpertKeyEditor, {
+        draft,
+        declaredFields: authoredLinkageFields(
+          draft.metadata,
+          draft.standardization,
+        ),
+        keyVerdict: (index: number): KeyVerdict =>
+          verdicts[index] ?? { fitness: "satisfiable" },
+        onChange: () => undefined,
+        announce: () => undefined,
+      }),
+    );
+
+    await expect
+      .element(
+        page.getByRole("img", {
+          name: "Your file has no column for phone_number",
+        }),
+      )
+      .toMatchTextContent("no column for phone_number");
+    await expect
+      .element(
+        page.getByRole("img", {
+          name: "This key's cleaning drops every value; review the transform",
+        }),
+      )
+      .toMatchTextContent("cleaning drops every value");
+    await expect
+      .element(
+        page
+          .getByRole("img", {
+            name: "Your file supplies every field this key uses",
+          })
+          .first(),
+      )
+      .toMatchTextContent("your file supplies it");
   });
 });

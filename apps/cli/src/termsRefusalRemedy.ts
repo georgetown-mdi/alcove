@@ -10,8 +10,8 @@ import {
   annotate,
   annotationKey,
   annotationOf,
+  matchedFieldColumns,
   redactAndSanitizeForDisplay,
-  referencedLinkageFieldNames,
   termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
@@ -113,7 +113,9 @@ const isContactType = (type: string): type is ContactType =>
 /**
  * The line naming this party's own phone, email and ZIP columns that the keys
  * named `differingKeys` of its quick-exchange terms match on, each header
- * escaped for display, or `undefined` where those keys match on none.
+ * escaped for display, or `undefined` where those keys match on none. Only
+ * the column each such field is bound to is named: a second column of the
+ * same type is held back, not matched on.
  *
  * @internal exported for testing
  */
@@ -123,25 +125,33 @@ export function quickExchangeContactColumnsLine(
   differingKeys: ReadonlyArray<string>,
 ): string | undefined {
   const named = new Set(differingKeys);
-  const referenced = referencedLinkageFieldNames(
-    terms.linkageKeys.filter((key) => named.has(key.name)),
+  const differing: LinkageTerms = {
+    ...terms,
+    linkageKeys: terms.linkageKeys.filter((key) => named.has(key.name)),
+  };
+  const contactTypeOf = new Map(
+    terms.linkageFields.flatMap((field) =>
+      isContactType(field.type) ? [[field.name, field.type] as const] : [],
+    ),
   );
-  const types = new Set(
-    terms.linkageFields
-      .filter((field) => referenced.has(field.name))
-      .map((field) => field.type)
-      .filter(isContactType),
-  );
-  const columns = metadata.flatMap((column) =>
-    column.role === "linkage" &&
-    isContactType(column.type) &&
-    types.has(column.type)
-      ? [
+  const boundTypeByColumn = new Map<string, ContactType>();
+  for (const [field, column] of matchedFieldColumns(
+    metadata,
+    differing,
+    undefined,
+  )) {
+    const type = contactTypeOf.get(field);
+    if (type !== undefined) boundTypeByColumn.set(column, type);
+  }
+  const columns = metadata.flatMap((column) => {
+    const type = boundTypeByColumn.get(column.name);
+    return type === undefined
+      ? []
+      : [
           `"${redactAndSanitizeForDisplay(column.name)}" ` +
-            `(${CONTACT_TYPE_LABELS[column.type]})`,
-        ]
-      : [],
-  );
+            `(${CONTACT_TYPE_LABELS[type]})`,
+        ];
+  });
   if (columns.length === 0) return undefined;
   const one = columns.length === 1;
   const list = one

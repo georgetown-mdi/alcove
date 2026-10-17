@@ -41,57 +41,43 @@ import styles from "@styles/app.module.css";
 
 import { CITATION_DROP_TITLE, CitationDropNotice } from "./CitationDropNotice";
 
-import type {
-  AcquiredCsv,
-  InviterEditor,
-  KeyVerdict,
-} from "@psi/inviterEditor";
+import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {
   AdvancedInviteDraft,
   CleaningNotLoaded,
 } from "@psi/authoring/advancedInvite";
 import type {
   Algorithm,
+  LinkageField,
   LinkageStrategy,
   LinkageTerms,
   Standardization,
 } from "@alcove/core";
 
-/** The guided-list badge copy and CSS class for each per-key verdict
- * ({@link KeyVerdict}). A dead key displays amber ("won't match") rather than red:
- * its columns resolve, so the remedy is the transform rather than the file. It
- * closes Generate as an unsatisfiable key does -- an exchange runs every key its
- * terms declare, and this one can never match. */
-const KEY_VERDICT_BADGES: Record<
-  KeyVerdict,
-  {
-    label: string;
-    className: "keyBadgeSatisfiable" | "keyBadgeUnsatisfiable" | "keyBadgeDead";
-    ariaLabel?: string;
-  }
-> = {
-  satisfiable: { label: "satisfiable", className: "keyBadgeSatisfiable" },
-  unsatisfiable: {
-    label: "not satisfiable",
-    className: "keyBadgeUnsatisfiable",
-  },
-  dead: {
-    label: "won't match",
-    className: "keyBadgeDead",
-    ariaLabel:
-      "This key's cleaning can never produce a value; review the transform",
-  },
-};
+/** The field types a value of which many people can share: the guided list
+ * states the shared-value caveat beside keys over these. */
+const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<LinkageField["type"]> = new Set([
+  "phone_number",
+  "email_address",
+  "zip_code",
+]);
+
+/** The caveat beside guided keys over a phone, email or ZIP field. */
+const SHARED_VALUE_CAVEAT =
+  "A phone number or email address many people share, such as a shelter's " +
+  "phone or a site's email, matches people who are not the same person. A " +
+  "ZIP code column must hold each person's own ZIP code, never the ZIP code " +
+  "of a site that serves them.";
 
 /**
- * The Matching keys tab: the guided ordered key list (enable + reorder, with
- * satisfiability badges), the expert switch that opens element-by-element
- * authoring and terms import/export, and the matching settings -- the linkage
- * strategy, matching method, and deduplication controls, each live while the
- * exchange applies what it writes.
+ * The Matching keys tab: the guided ordered key list (enable + reorder), the
+ * expert switch that opens element-by-element authoring and terms
+ * import/export, and the matching settings -- the linkage strategy, matching
+ * method, and deduplication controls, each live while the exchange applies what
+ * it writes.
  *
  * The list holds the built-in keys for these columns, each with a checkbox and
- * the reorder pair.
+ * the reorder pair, and no badge; the expert editor grades each key it shows.
  *
  * Also renders {@link importedCitationDropNotice} live from the draft, so a
  * rule-set citation the rebuild drops is flagged as soon as the import lands
@@ -150,6 +136,17 @@ export function KeysTab({
     [editor.draft, currentTerms],
   );
   const keyCount = editor.draft.keys.length;
+  const showsSharedValueKey = useMemo(() => {
+    const typeOf = new Map(
+      declaredFields.map((field) => [field.name, field.type]),
+    );
+    return editor.draft.keys.some((entry) =>
+      entry.key.elements.some((element) => {
+        const type = typeOf.get(element.field);
+        return type !== undefined && SHARED_VALUE_CAVEAT_TYPES.has(type);
+      }),
+    );
+  }, [editor.draft.keys, declaredFields]);
   return (
     <>
       <button type="button" className={styles.backlink} onClick={onBack}>
@@ -158,13 +155,13 @@ export function KeysTab({
       <p className={styles.eyebrow}>Customize</p>
       <h1 tabIndex={-1}>Matching keys</h1>
       <p id="key-order-help">
-        Records are matched on these keys, tried in order. Earlier keys match
-        first, so order the most precise keys first.
+        Records are matched on these keys, tried in order, and earlier keys
+        match first. The built-in keys come with the rules at 99% precision
+        first, then the rules at 95%.
       </p>
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
-          const badge = KEY_VERDICT_BADGES[keyVerdict(index)];
           return (
             <li key={entry.key.name}>
               <Checkbox
@@ -176,14 +173,6 @@ export function KeysTab({
                   <>
                     Key {index + 1} -{" "}
                     <span className={styles.mono}>{displayName}</span>
-                    <span
-                      className={`${styles.keyBadge} ${styles[badge.className]}`}
-                      {...(badge.ariaLabel
-                        ? { role: "img", "aria-label": badge.ariaLabel }
-                        : {})}
-                    >
-                      {badge.label}
-                    </span>
                   </>
                 }
               />
@@ -209,6 +198,11 @@ export function KeysTab({
           );
         })}
       </ol>
+      {showsSharedValueKey && (
+        <Alert variant="light" color="gray" role="note" my="sm">
+          {SHARED_VALUE_CAVEAT}
+        </Alert>
+      )}
       {keysError !== undefined && (
         <p
           role="alert"

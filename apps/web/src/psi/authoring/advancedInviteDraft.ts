@@ -1,6 +1,5 @@
 import {
   INVITATION_LIFETIME_SECONDS,
-  OPT_IN_LINKAGE_FIELD_TYPES,
   authoredLinkageFields,
   columnValues,
   fieldSourceColumnTypes,
@@ -71,14 +70,20 @@ export function defaultStandardizationForRows(
   });
 }
 
-/** {@link OPT_IN_LINKAGE_FIELD_TYPES} as a membership test, built once: the
- * question is asked per field of per metadata edit, and the list is fixed. */
-const OPT_IN_TYPES: ReadonlySet<string> = new Set(OPT_IN_LINKAGE_FIELD_TYPES);
+/**
+ * The types whose recommended cleaning the draft holds exactly while an
+ * enabled key references the field: phone, email and ZIP. The catalog matches
+ * on each only beside a name and a date, so a file can hold one of these
+ * columns while the terms derived from it declare no field for it.
+ */
+const KEY_GATED_CLEANING_TYPES: ReadonlySet<string> = new Set<
+  LinkageField["type"]
+>(["phone_number", "email_address", "zip_code"]);
 
 /**
  * The inviter's recommended cleaning: {@link defaultStandardizationForRows}
  * widened past the fields `terms` declare to the
- * {@link OPT_IN_LINKAGE_FIELD_TYPES} fields that `enabledKeys` reference.
+ * {@link KEY_GATED_CLEANING_TYPES} fields that `enabledKeys` reference.
  *
  * Without the widening, a key over one of those fields matches its
  * column RAW while the accepting party cleans the same field from the terms
@@ -106,7 +111,7 @@ export function inviterDefaultStandardization(
       ...terms.linkageFields,
       ...authoredLinkageFields(metadata).filter(
         (field) =>
-          OPT_IN_TYPES.has(field.type) &&
+          KEY_GATED_CLEANING_TYPES.has(field.type) &&
           !declared.has(field.name) &&
           referenced.has(field.name),
       ),
@@ -282,15 +287,15 @@ export function setDraftMetadataKeepingKeys(
  * current draft ({@link reconcileKeys}) -- offerable keys keep their enabled
  * flag and position, newly-offerable keys arrive at the offer's flag and
  * place, and keys no longer offerable drop. Reconciles the standardization
- * against the RECONCILED key set (not the draft's previous one), so an
- * opt-in type's cleaning follows the keys the edit leaves enabled. The
+ * against the RECONCILED key set (not the draft's previous one), so a
+ * key-gated type's cleaning follows the keys the edit leaves enabled. The
  * authored key set instead drives {@link setDraftMetadataKeepingKeys}, which
  * skips this template reconciliation.
  *
  * The reconciled cleaning then passes through
- * {@link optInCleaningForKeys}, the same withdrawal
- * {@link draftWithKeyEnabled} runs when an offer is turned off by hand: an
- * edit to a backbone column can drop an enabled offer, and its cleaning
+ * {@link keyGatedCleaningForKeys}, the same withdrawal
+ * {@link draftWithKeyEnabled} runs when a key is turned off by hand: an
+ * edit to a backbone column can drop an enabled key, and its cleaning
  * would otherwise outlive the key that minted it as an orphan card in the
  * data-prep workbench.
  */
@@ -309,7 +314,7 @@ export function setDraftMetadata(
     ...draft,
     metadata,
     keys,
-    standardization: optInCleaningForKeys(
+    standardization: keyGatedCleaningForKeys(
       reconcileStandardization(
         draft.standardization,
         draft.metadata,
@@ -327,18 +332,18 @@ export function setDraftMetadata(
 }
 
 /**
- * Turn the key at `index` on or off and bring the cleaning an opt-in type
- * holds with it: a guided key over a phone, email or ZIP field has that
- * field's recommended pipeline exactly while an enabled key references it.
- * Turning the key on creates its cleaning (the data-prep workbench's card
- * appears with the key); turning it off withdraws it.
+ * Turn the key at `index` on or off and bring the cleaning a key-gated type
+ * holds with it: a phone, email or ZIP field has its recommended pipeline
+ * exactly while an enabled key references it. Turning on a key over such a
+ * field creates its cleaning (the data-prep workbench's card appears with the
+ * key); turning off the last key over it withdraws it.
  *
- * Only the offer's own cleaning moves -- a transformation an imported
- * document's field name owns is never withdrawn this way -- and a built-in
+ * Only that type-named cleaning moves -- a transformation an imported
+ * document's field name owns is never withdrawn this way -- and any other
  * type's cleaning is retained across a disable so re-enabling restores what
  * the operator authored.
  *
- * Custom steps on an offered type's transformation are discarded when its
+ * Custom steps on a key-gated type's transformation are discarded when its
  * key goes off and the recommended pipeline is re-derived when it comes back
  * on, because the accepting party derives that same pipeline from the terms
  * and a step only one side runs matches nothing.
@@ -354,7 +359,7 @@ export function draftWithKeyEnabled(
   return {
     ...draft,
     keys,
-    standardization: optInCleaningForKeys(
+    standardization: keyGatedCleaningForKeys(
       draft.standardization,
       draft.metadata,
       draft.identity,
@@ -363,13 +368,13 @@ export function draftWithKeyEnabled(
   };
 }
 
-/** Whether `transformation` is the cleaning an enabled opt-in-type key
- * mints: bound to a `role: linkage` column of an {@link OPT_IN_LINKAGE_FIELD_TYPES}
- * type and named for that type, which is the field name the offered key
- * references. Read from the input column rather than the output name alone, so a
- * field an imported document named for a type it is not (declarations name and
- * type fields independently) is not mistaken for the offer's. */
-function isOfferedTypeCleaning(
+/** Whether `transformation` is the cleaning an enabled key over a
+ * {@link KEY_GATED_CLEANING_TYPES} field mints: bound to a `role: linkage`
+ * column of such a type and named for that type, which is the field name the
+ * built-in keys reference. Read from the input column rather than the output
+ * name alone, so a field an imported document named for a type it is not
+ * (declarations name and type fields independently) is not mistaken for it. */
+function isKeyGatedTypeCleaning(
   transformation: Standardization[number],
   columnByName: ReadonlyMap<string, Metadata[number]>,
 ): boolean {
@@ -377,16 +382,16 @@ function isOfferedTypeCleaning(
   return (
     column !== undefined &&
     column.role === "linkage" &&
-    OPT_IN_TYPES.has(column.type) &&
+    KEY_GATED_CLEANING_TYPES.has(column.type) &&
     transformation.output === column.type
   );
 }
 
-/** The standardization an opt-in offer's enabled flag implies: `standardization`
- * with the offered cleaning no enabled key references dropped, then the
- * recommended pipeline seeded for whatever the enabled keys do reference
- * ({@link seededOptInCleaning}). */
-function optInCleaningForKeys(
+/** The standardization the enabled keys imply for the key-gated types:
+ * `standardization` with such cleaning no enabled key references dropped, then
+ * the recommended pipeline seeded for whatever the enabled keys do reference
+ * ({@link seededKeyGatedCleaning}). */
+function keyGatedCleaningForKeys(
   standardization: Standardization,
   metadata: Metadata,
   identity: string,
@@ -396,28 +401,28 @@ function optInCleaningForKeys(
   const referenced = referencedLinkageFieldNames(enabledKeys);
   const kept = standardization.filter(
     (transformation) =>
-      !isOfferedTypeCleaning(transformation, columnByName) ||
+      !isKeyGatedTypeCleaning(transformation, columnByName) ||
       referenced.has(transformation.output),
   );
-  return seededOptInCleaning(kept, metadata, identity, enabledKeys);
+  return seededKeyGatedCleaning(kept, metadata, identity, enabledKeys);
 }
 
 /**
  * `standardization` with the recommended pipeline added for each
- * {@link OPT_IN_LINKAGE_FIELD_TYPES} field an enabled key references and no
+ * {@link KEY_GATED_CLEANING_TYPES} field an enabled key references and no
  * transformation yet produces, derived exactly as the seed derives it
  * ({@link inviterDefaultStandardization}), so the key cleans its column the
  * way the accepting party -- deriving from the same terms -- cleans its own.
  *
  * Purely additive: never drops or rewrites a transformation the draft
  * already holds. Two of the three doors into such a key pass through here
- * -- the guided offer's checkbox ({@link draftWithKeyEnabled}) and the
- * expert key editor ({@link draftWithSeededOptInCleaning}); an imported
+ * -- the guided list's checkbox ({@link draftWithKeyEnabled}) and the
+ * expert key editor ({@link draftWithSeededKeyGatedCleaning}); an imported
  * document reaches the same steps through its own reconstruction
  * ({@link standardizationForImportedTerms}), binding the document's field
  * names instead.
  */
-function seededOptInCleaning(
+function seededKeyGatedCleaning(
   standardization: Standardization,
   metadata: Metadata,
   identity: string,
@@ -433,7 +438,7 @@ function seededOptInCleaning(
     enabledKeys,
   ).filter(
     (transformation) =>
-      isOfferedTypeCleaning(transformation, columnByName) &&
+      isKeyGatedTypeCleaning(transformation, columnByName) &&
       !produced.has(transformation.output),
   );
   return additions.length === 0
@@ -492,7 +497,7 @@ function reconcileStandardization(
   // same way the seed is (inviterDefaultStandardization over the metadata's default
   // terms), so a newly-typed column gains exactly the recommended per-type pipeline
   // -- including the row-inferred date format for a column just retyped to
-  // date_of_birth. A column retyped to a type only an opt-in key uses gains one
+  // date_of_birth. A column retyped to a key-gated type gains one
   // only once such a key is enabled: the widening reads the enabled keys, so a
   // routine retype on an authored or imported draft cannot grow its cleaning by a
   // pipeline whose output that draft's terms declare nothing for.
@@ -601,7 +606,7 @@ export function declarableFieldNames(
 
 /** What the recommended per-type cleaning gives a field of `type`: its steps
  * and its shared-value limit. {@link defaultStandardizationForRows} over terms
- * declaring that one field, covering an {@link OPT_IN_LINKAGE_FIELD_TYPES} type
+ * declaring that one field, covering a {@link KEY_GATED_CLEANING_TYPES} type
  * as well as a default one. `undefined` when these columns supply no
  * `role: linkage` column of the type. The date-of-birth format is the
  * `MM/DD/YYYY` default (no rows are threaded here). */
@@ -708,25 +713,25 @@ export function keyIsSupplyable(
 
 /**
  * `draft` with the recommended pipeline seeded for every
- * {@link OPT_IN_LINKAGE_FIELD_TYPES} field its enabled keys reference and
- * nothing cleans yet ({@link seededOptInCleaning}), returned by reference
+ * {@link KEY_GATED_CLEANING_TYPES} field its enabled keys reference and
+ * nothing cleans yet ({@link seededKeyGatedCleaning}), returned by reference
  * when there is nothing to add.
  *
- * A key over an opt-in type's synthesized field is schema-valid and passes
+ * A key over a key-gated type's synthesized field is schema-valid and passes
  * the mint (which asserts cleaning names declared fields, not that a
  * declared field is cleaned), so without this the party would match its
  * column RAW while the accepting party matches the cleaned value.
  *
  * Seeding rather than warning keeps the expert door at the guided door's and
  * the import's behavior. Only the seeding is shared: an expert edit never
- * WITHDRAWS a pipeline the way an offer's checkbox does -- a pipeline the
+ * WITHDRAWS a pipeline the way the guided list's checkbox does -- a pipeline the
  * enabled keys stop referencing is reconciled away only at the mint
  * (`standardizationForTerms`).
  */
-function draftWithSeededOptInCleaning(
+function draftWithSeededKeyGatedCleaning(
   draft: AdvancedInviteDraft,
 ): AdvancedInviteDraft {
-  const standardization = seededOptInCleaning(
+  const standardization = seededKeyGatedCleaning(
     draft.standardization,
     draft.metadata,
     draft.identity,
@@ -738,8 +743,8 @@ function draftWithSeededOptInCleaning(
 }
 
 /** Replace the linkage key at `keyIndex` by applying `fn` to it, seeding the
- * cleaning an opt-in type the edit newly references needs
- * ({@link draftWithSeededOptInCleaning}). The basis for every expert key edit
+ * cleaning a key-gated type the edit newly references needs
+ * ({@link draftWithSeededKeyGatedCleaning}). The basis for every expert key edit
  * (rename, swap, and -- via {@link updateElementAt} -- the element edits), so both
  * the immutable update and that reconciliation live in one place. */
 export function updateKeyAt(
@@ -747,7 +752,7 @@ export function updateKeyAt(
   keyIndex: number,
   fn: (key: LinkageKey) => LinkageKey,
 ): AdvancedInviteDraft {
-  return draftWithSeededOptInCleaning({
+  return draftWithSeededKeyGatedCleaning({
     ...draft,
     keys: draft.keys.map((entry, i) =>
       i === keyIndex ? { ...entry, key: fn(entry.key) } : entry,
@@ -791,8 +796,8 @@ export function updateElementAt(
 /** Append a new, enabled linkage key with a unique name and a single element
  * referencing `fieldName` (chosen by the caller from the declared fields, so the
  * key is referentially valid and non-empty by construction). The key arrives
- * enabled, so a `fieldName` of an opt-in type is cleaned from the moment it is
- * keyed ({@link draftWithSeededOptInCleaning}). */
+ * enabled, so a `fieldName` of a key-gated type is cleaned from the moment it is
+ * keyed ({@link draftWithSeededKeyGatedCleaning}). */
 export function addKey(
   draft: AdvancedInviteDraft,
   fieldName: string,
@@ -802,7 +807,7 @@ export function addKey(
     new Set(draft.keys.map((entry) => entry.key.name)),
   );
   const key: LinkageKey = { name, elements: [{ field: fieldName }] };
-  return draftWithSeededOptInCleaning({
+  return draftWithSeededKeyGatedCleaning({
     ...draft,
     keys: [...draft.keys, { key, enabled: true }],
   });
@@ -912,14 +917,14 @@ function uniqueKeyName(base: string, taken: ReadonlySet<string>): string {
  *
  * Starts from the full per-type default ({@link defaultStandardizationForRows}
  * over the seed's default terms), then adds a binding for each imported field
- * the default does not already declare (an extra same-type field, or an
- * {@link OPT_IN_LINKAGE_FIELD_TYPES} field), reusing that type's recommended
+ * the default does not already declare (an extra same-type field, or a
+ * {@link KEY_GATED_CLEANING_TYPES} field), reusing that type's recommended
  * cleaning (its steps and shared-value limit). Each such field binds only to a free `role: linkage` column
  * -- never `identifier`- or `payload`-roled -- so a crafted document cannot
  * auto-bind a column the operator did not mark for matching.
  *
  * The base is the unwidened default rather than
- * {@link inviterDefaultStandardization}: the widening would claim an opt-in
+ * {@link inviterDefaultStandardization}: the widening would claim a key-gated
  * type's first column ahead of the loop below, leaving an imported field the
  * document named otherwise (`cell_phone` for a `phone_number` column) with
  * nothing free to bind. The reconstructed binding is local and never enters
@@ -952,8 +957,8 @@ function standardizationForImportedTerms(
   );
   // The recommended cleaning each imported field's type gets, keyed by field
   // name. Derived from the default standardization over the IMPORTED terms (not the
-  // seed's), so it covers every imported field's type -- including an
-  // `OPT_IN_LINKAGE_FIELD_TYPES` type the inviter has columns for but no built-in
+  // seed's), so it covers every imported field's type -- including a
+  // `KEY_GATED_CLEANING_TYPES` type the inviter has columns for but no seeded
   // key uses, which the seed's default terms (and so `base`) do not hold -- and
   // bakes in the row-inferred date format. The input columns it picks collide on the
   // first per type; only the cleaning is read here, and the distinct columns are
@@ -1055,8 +1060,8 @@ export function draftFromTerms(
   // supply: it would otherwise block the WHOLE import behind a
   // referential-integrity failure even when other keys are satisfiable.
   // Disabling lets the satisfiable subset generate while the key stays
-  // visible, its "not satisfiable" badge readable, to re-enable once a
-  // matching column exists. Disable-and-show, not silent drop.
+  // visible, its "no column for" badge readable in the expert key editor, to
+  // re-enable once a matching column exists. Disable-and-show, not silent drop.
   const declarable = declarableFieldNames(seed.metadata, standardization);
   const draft: AdvancedInviteDraft = {
     // An imported document that names nobody seeds an empty name field for the
