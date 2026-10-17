@@ -846,10 +846,8 @@ Read the release out of the new rootfs to learn what to write in (3):
 `docker cp` of `/etc/os-release` to read the other architecture's rootfs without
 emulating or executing it.
 
-**The Node runtime moves in the same bump.** Move `ARG NODE_VERSION` in
-`Dockerfile.fips` to the Node 26 release the default image's pinned base runs
-(read it first-hand from the `docker-library/repo-info` history of
-`repos/node/remote/26-alpine.md`, at the commit that holds the digest), together
+**The Node runtime moves in the same diff.** Move `ARG NODE_VERSION` in
+`Dockerfile.fips` to the current Node 26 release, together
 with both per-architecture tarball hashes and the matching literals in
 `scripts/dockerfile-freeze.test.mjs` and
 [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins).

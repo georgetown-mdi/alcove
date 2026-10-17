@@ -368,7 +368,10 @@ Ed25519, and that Node's key generation for them throws
 (package `3.2.2-1.amzn2023`). In that build Node's linked OpenSSL is 3.5.7
 (`process.versions.openssl`) and the image's own `openssl` library and command
 are 3.5.8, two components that are both right for what each names. The
-`x86_64` build was not measured.
+`x86_64` build was not measured. That build ran Node v26.7.0; the
+v26.10.0 the image now pins links OpenSSL 3.5.8 (nodejs.org release index), so
+the 3.5.7 and the two-component split above describe the earlier build, and
+the reading has not been re-taken on the current one.
 
 ## What certificate 5438 attests
 
