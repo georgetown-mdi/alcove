@@ -707,7 +707,7 @@ export function prepareForExchange(
         log.info(
           `inferred date of birth format: ${inference.format}` +
             (inference.unparsed > 0
-              ? ` (${inference.unparsed} of ${inference.scanned} sampled values do not parse, or are placeholder or pre-1900 dates, and are dropped)`
+              ? ` (${inference.unparsed} of ${inference.scanned} sampled values do not parse and are dropped)`
               : ""),
         );
       else if (inference.scanned > 0)

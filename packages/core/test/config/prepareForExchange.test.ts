@@ -248,7 +248,7 @@ describe("prepareForExchange: date-of-birth format inference", () => {
       dobRows(["01/15/1990", "1/2/199", "02/20/1985", "12/31/1970"]),
     );
     expect(info).toContain(
-      "inferred date of birth format: MM/DD/YYYY (1 of 4 sampled values do not parse, or are placeholder or pre-1900 dates, and are dropped)",
+      "inferred date of birth format: MM/DD/YYYY (1 of 4 sampled values do not parse and are dropped)",
     );
   });
 

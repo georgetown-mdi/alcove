@@ -1,7 +1,7 @@
 import { expect, test, describe, vi } from "vitest";
 
 import {
-  dateOfBirthSteps,
+  dateOfBirthParseSteps,
   getDefaultStandardization,
 } from "../src/defaults/builtInStandardization";
 import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
@@ -1438,11 +1438,13 @@ describe("inferDateFormat — edge cases", () => {
 
   test("a 7-digit value is read as YYYYMMDD, as the pipeline reads it", () => {
     expect(inferDateFormat(["1990115", "2000631"])).toBe("YYYYMMDD");
-    expect(runPipeline("1990115", dateOfBirthSteps("YYYYMMDD"))).not.toBeNull();
+    expect(
+      runPipeline("1990115", dateOfBirthParseSteps("YYYYMMDD")),
+    ).not.toBeNull();
   });
 });
 
-describe("inferDateFormat — agreement with the date_of_birth pipeline", () => {
+describe("inferDateFormat — agreement with the date_of_birth parsing steps", () => {
   const probes = [
     "01/15/1990",
     "1/2/1990",
@@ -1464,11 +1466,34 @@ describe("inferDateFormat — agreement with the date_of_birth pipeline", () => 
     "%j infers the first candidate whose pipeline keeps it",
     (value) => {
       const kept = CANDIDATE_DATE_FORMATS.find(
-        (format) => runPipeline(value, dateOfBirthSteps(format)) !== null,
+        (format) => runPipeline(value, dateOfBirthParseSteps(format)) !== null,
       );
       expect(inferDateFormat([value])).toBe(kept);
     },
   );
+
+  test("a pre-1900 date still shows its layout, so the screens do not change the inferred format", () => {
+    const column = ["03/04/1990", "05/06/1985", "13/05/1850", "13/06/1850"];
+    const format = inferDateFormat(column);
+    expect(format).toBe("DD/MM/YYYY");
+    const [t] = getDefaultStandardization(
+      [
+        {
+          name: "DOB",
+          type: "date_of_birth",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [{ name: "date_of_birth", type: "date_of_birth" }],
+      },
+      { dateInputFormat: format },
+    );
+    expect(runPipeline("03/04/1990", t.steps!)).toBe("19900403");
+    expect(runPipeline("13/05/1850", t.steps!)).toBeNull();
+  });
 
   test("a 3-digit year parses under no candidate", () => {
     expect(inferDateFormat(["1/2/199"])).toBeUndefined();

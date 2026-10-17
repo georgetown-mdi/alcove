@@ -658,10 +658,12 @@ the date of birth is parsed with its own layout.
 
 Inference scans the column's non-empty values, up to the scan cap, and tests
 each against every candidate in the table below. A candidate parses a value
-when the `date_of_birth` pipeline above, with that candidate as its
-`input_format`, keeps the value -- the same rule the run applies, so a format
-is never inferred from values the run would drop. A date before 1900 or on the
-default placeholder list therefore counts for no candidate.
+when the parsing steps of the `date_of_birth` pipeline above, with that
+candidate as their `input_format`, produce a date from the value. The screens
+that follow those steps do not take part, so a date before 1900 or on the
+default placeholder list still counts for the candidate that reads it, and the
+format inferred for a column is the same with or without the screens. The run
+then drops such a date.
 
 - The result is the candidate that parses the most scanned values. On a tie
   the earlier candidate in the table's order wins: a column whose days are all

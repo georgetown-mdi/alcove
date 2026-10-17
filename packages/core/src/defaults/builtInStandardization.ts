@@ -78,11 +78,14 @@ const LAST_NAME_STEPS: StandardizationStep[] = [
 export const DEFAULT_DATE_INPUT_FORMAT = "MM/DD/YYYY";
 
 /**
- * The default `date_of_birth` pipeline for one input format. Date-format
- * inference ({@link inferDateFormat}) tests each candidate with this same
- * pipeline, so a format is inferred only from values the run would keep.
+ * The parsing steps of the default `date_of_birth` pipeline for one input
+ * format. Date-format inference ({@link inferDateFormat}) tests each candidate
+ * with these steps alone, so the format inferred for a column does not depend
+ * on the screens that follow.
  */
-export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
+export function dateOfBirthParseSteps(
+  inputFormat: string,
+): StandardizationStep[] {
   return [
     { function: "trim_whitespace" },
     { function: "remove_non_ascii" },
@@ -90,11 +93,19 @@ export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
       function: "parse_date",
       params: { inputFormat, outputFormat: "YYYYMMDD" },
     },
-    // Drop a year before 1900. A future date is kept: cleaning reads no
-    // clock, so two parties could not agree on which day is today.
-    { function: "filter_regex", params: { pattern: "^(?:19|[2-9])" } },
-    { function: "null_if", params: { values: ["19000101", "19010101"] } },
   ];
+}
+
+// Drop a year before 1900. A future date is kept: cleaning reads no clock, so
+// two parties could not agree on which day is today.
+const DATE_OF_BIRTH_SCREEN_STEPS: StandardizationStep[] = [
+  { function: "filter_regex", params: { pattern: "^(?:19|[2-9])" } },
+  { function: "null_if", params: { values: ["19000101", "19010101"] } },
+];
+
+/** The default `date_of_birth` pipeline for one input format: parse, then screen. */
+export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
+  return [...dateOfBirthParseSteps(inputFormat), ...DATE_OF_BIRTH_SCREEN_STEPS];
 }
 
 // US 10-digit phone (digits only). A leading US country code (+1 or 1) on an
