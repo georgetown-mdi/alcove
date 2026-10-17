@@ -336,6 +336,8 @@ export {
   generateSharedSecret,
   hasMintedTurnEntry,
   relayLocatorSchema,
+  relayOnlyRelaysLeftOutMessage,
+  relaysLeftOutForDisplay,
   safeParseConnectionConfig,
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,

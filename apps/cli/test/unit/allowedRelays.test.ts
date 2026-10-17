@@ -25,6 +25,13 @@ test("a run's line names the relays it keeps and the ones it leaves out, an invi
   );
 });
 
+test("what the setting governs names the key its own relay_registrar still receives", () => {
+  expect(ALLOWED_RELAYS_SCOPE).toContain(
+    "your own connection.relay_registrar, where set, still receives each " +
+      "rotated relay key",
+  );
+});
+
 test("a run's line says so when the setting keeps no relay, or leaves out none", () => {
   expect(
     allowedRelaysRunNotice(

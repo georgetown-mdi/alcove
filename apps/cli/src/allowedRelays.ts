@@ -16,7 +16,9 @@ export const LEFT_OUT_BY_ALLOWED_RELAYS =
 /** What the setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =
   "connection.allowed_relays decides which relays your side connects " +
-  "through, enrolls at and names in the invitations it creates. Your " +
+  "through, enrolls at and names in the invitations it creates; your own " +
+  "connection.relay_registrar, where set, still receives each rotated " +
+  "relay key. Your " +
   "partner's side can still connect through a relay it leaves out; to keep " +
   "your network address off such a relay, also set ice_transport_policy: " +
   "relay.";

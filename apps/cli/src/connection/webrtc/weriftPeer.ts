@@ -16,6 +16,7 @@ import {
   mintRunRelayCredential,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   redactAndSanitizeForDisplay,
+  relaysLeftOutForDisplay,
   sanitizeErrorForDisplay,
   selectRunRelay,
 } from "@alcove/core";
@@ -223,6 +224,26 @@ export const NO_ICE_SERVERS_WARNING =
   "on the connection to use your own server instead, or set a single " +
   "unreachable `stun` entry to gather host candidates only, which costs about " +
   "five seconds of gathering and works only where both parties share a network.";
+
+/**
+ * The refusal of a run whose every TURN url `allowed_relays` leaves out and
+ * that lists no STUN url. Given no STUN server it can parse, werift gathers
+ * against {@link WERIFT_BUILT_IN_STUN_URI}, an empty server list included,
+ * and nothing in its configuration stops that while host candidates are
+ * still gathered (allowedRelaysRefusal.test.ts). Raw, escaped where shown.
+ */
+export function relaysLeftOutNoStunMessage(
+  leftOut: ReadonlyArray<string>,
+): string {
+  return (
+    "connection.allowed_relays leaves out every TURN url this connection " +
+    `lists (${relaysLeftOutForDisplay(leftOut)}), and no STUN url is ` +
+    "listed, so the run would use the built-in default " +
+    `(${WERIFT_BUILT_IN_STUN_URI}) to discover this host's public address. ` +
+    "Set connection.stun, add the host of a relay to " +
+    "connection.allowed_relays, or remove the setting."
+  );
+}
 
 /** The warning line emitted when the signaling socket is plaintext (see below). */
 export const PLAINTEXT_SIGNALING_WARNING =

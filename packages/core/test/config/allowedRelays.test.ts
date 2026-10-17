@@ -2,9 +2,13 @@ import { describe, expect, test } from "vitest";
 
 import {
   parseConnectionConfig,
+  relayOnlyRelaysLeftOutMessage,
+  relaysLeftOutForDisplay,
   turnUrlIsAllowed,
   turnUrlRelay,
 } from "../../src/config/connection";
+import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
+import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import {
   allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
@@ -157,5 +161,74 @@ describe("the relays a run lists under allowed_relays", () => {
     });
     expect(selection.turn).toEqual([]);
     expect(selection.turnLeftOut).toHaveLength(2);
+  });
+});
+
+describe("a relay-only connection under allowed_relays", () => {
+  test("is refused at load when the setting leaves out its own every TURN url", () => {
+    const parse = () =>
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: SERVER,
+        turn: [{ url: "turn:relay.example.org" }],
+        ice_transport_policy: "relay",
+        allowed_relays: ["other.example.org"],
+      });
+    expect(parse).toThrow(
+      relayOnlyRelaysLeftOutMessage(["turn:relay.example.org"]),
+    );
+    expect(parse).toThrow(
+      /connection\.allowed_relays leaves out every TURN url/,
+    );
+  });
+
+  test("is refused at load when the setting leaves out the relay an acceptance wrote", () => {
+    expect(() =>
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: SERVER,
+        invitation_relay: { turn: ["turn:new-partner-relay.example.net"] },
+        ice_transport_policy: "relay",
+        allowed_relays: ["old-partner-relay.example.net"],
+      }),
+    ).toThrow(
+      relayOnlyRelaysLeftOutMessage(["turn:new-partner-relay.example.net"]),
+    );
+  });
+
+  test("loads when the setting keeps one TURN url, or the policy is not relay-only", () => {
+    const base = {
+      channel: "webrtc",
+      server: SERVER,
+      turn: [{ url: "turn:relay.example.org" }],
+      invitation_relay: { turn: ["turn:partner.example.net"] },
+      allowed_relays: ["partner.example.net"],
+    };
+    expect(
+      parseConnectionConfig({ ...base, ice_transport_policy: "relay" }),
+    ).toMatchObject({ iceTransportPolicy: "relay" });
+    expect(
+      parseConnectionConfig({
+        ...base,
+        ice_transport_policy: "all",
+        allowed_relays: ["other.example.org"],
+      }),
+    ).toMatchObject({ allowedRelays: ["other.example.org"] });
+  });
+
+  test("the refusal names the setting and the remedy, the url list fitted ahead of it", () => {
+    const urls = Array.from(
+      { length: 20 },
+      (_unused, i) => `turns:relay-${i}.example.org:443?transport=tcp`,
+    );
+    const message = relayOnlyRelaysLeftOutMessage(urls);
+    expect(message).toContain(relaysLeftOutForDisplay(urls));
+    expect(relaysLeftOutForDisplay(urls)).toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(message).toMatch(
+      /Add the host of a relay to connection\.allowed_relays, or remove the setting\.$/,
+    );
+    expect(sanitizeErrorForDisplay(new Error(message))).toMatch(
+      /or remove the setting\.$/,
+    );
   });
 });

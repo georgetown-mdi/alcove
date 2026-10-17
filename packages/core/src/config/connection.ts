@@ -8,6 +8,11 @@ import { boundedArray } from "../utils/boundedArray.js";
 import { MAX_TIMER_MS } from "../utils/promise.js";
 import { SftpPortSchema } from "./sftpUrl.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
+import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
+import {
+  clipToRenderedCost,
+  DEFAULT_MAX_DISPLAY_LENGTH,
+} from "../utils/sanitizeForDisplay.js";
 
 // --- HTTP service authentication ---------------------------------------------
 
@@ -1306,6 +1311,37 @@ export function turnUrlIsAllowed(
   });
 }
 
+/**
+ * The TURN urls `allowedRelays` leaves out, as a refusal lists them: raw,
+ * redacted and fitted to the per-value display budget, so the remedy a
+ * refusal states after the list still shows.
+ */
+export function relaysLeftOutForDisplay(
+  leftOut: ReadonlyArray<string>,
+): string {
+  return clipToRenderedCost(
+    redactPrivateKeyMaterial(leftOut.join(", ")),
+    DEFAULT_MAX_DISPLAY_LENGTH,
+  );
+}
+
+/**
+ * The refusal of a relay-only webrtc connection whose every TURN url
+ * `allowedRelays` leaves out. The CLI's WebRTC library applies the policy
+ * only when it is given a TURN server (webrtcIceTransportPolicy.test.ts), so
+ * such a run would offer this host's own address. Raw, escaped where shown.
+ */
+export function relayOnlyRelaysLeftOutMessage(
+  leftOut: ReadonlyArray<string>,
+): string {
+  return (
+    "ice_transport_policy `relay` requires a TURN url, and " +
+    "connection.allowed_relays leaves out every TURN url this connection " +
+    `lists (${relaysLeftOutForDisplay(leftOut)}). Add the host of a relay ` +
+    "to connection.allowed_relays, or remove the setting."
+  );
+}
+
 const AllowedRelaySchema = z
   .string()
   .trim()
@@ -1758,6 +1794,32 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
         "requires at least one turn entry",
     },
   )
+  // The same guarantee once `allowedRelays` filters the TURN urls: a run
+  // checks the list it is about to use too (webRtcDialFrom in the CLI).
+  .superRefine((conn, ctx) => {
+    if (
+      conn.channel !== "webrtc" ||
+      conn.iceTransportPolicy !== "relay" ||
+      conn.allowedRelays === undefined ||
+      conn.iceProvision !== undefined
+    )
+      return;
+    const listed = [
+      ...new Set([
+        ...(conn.turn ?? []).map((entry) => entry.url),
+        ...(conn.invitationRelay?.turn ?? []),
+      ]),
+    ];
+    const allowedRelays = conn.allowedRelays;
+    if (
+      listed.length > 0 &&
+      !listed.some((url) => turnUrlIsAllowed(url, allowedRelays))
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: relayOnlyRelaysLeftOutMessage(listed),
+      });
+  })
   // The registrar holds the key this party's own minted turn entries sign
   // with, so one named with no such entry registers a key no run presents.
   .refine(

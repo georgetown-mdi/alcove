@@ -14,3 +14,8 @@
 - - -> A CLI party's `allowed_relays` keeps its own allocations and enrollments on the relays it names, but the partner may still offer candidates relayed through another, so the party's address stays off a relay it did not name only under `ice_transport_policy: relay` as well.
 - - -> One whose `allowed_relays` leaves out every TURN url the invitation names states that as the reason instead.
 - A CLI run whose connection has its own `turn` entry allocates only on the first such entry, which is on the invitation's relay only when that entry names one of the invitation's urls; the exchange may still pass through the invitation's relay by way of the partner's relayed candidates. -> A CLI run whose connection has its own `turn` entry that its `allowed_relays` keeps allocates only on the first such entry, which is on the invitation's relay only when that entry names one of the invitation's urls; the exchange may still pass through the invitation's relay by way of the partner's relayed candidates.
+# A run whose every TURN url allowed_relays leaves out is refused under a
+# relay-only policy or with no STUN url, and the first url kept is the one a
+# run allocates on.
+- - -> A CLI run whose every TURN url the setting leaves out is refused before it contacts any host under `ice_transport_policy: relay`, and where it lists no STUN url (`webRtcDialFrom` in `apps/cli/src/run/prepare.ts`).
+- - -> With the first TURN url left out by `allowed_relays`, a CLI run allocates on the first url the setting keeps, a host it does not contact with the setting unset.
