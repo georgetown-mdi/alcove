@@ -31,8 +31,9 @@ const MAX_ERROR_TEXT_LENGTH = 200;
 /** The STUN code a relay answers a credential it does not accept with. */
 const UNAUTHORIZED = 401;
 
-/** The code Chromium reports for a server it could not reach. */
-const NO_ANSWER = 701;
+/** The range of STUN error codes (RFC 8489), each a reply from the relay. */
+const STUN_ERROR_CODE_MIN = 300;
+const STUN_ERROR_CODE_MAX = 699;
 
 /** The transport a TURN url names. */
 export type RelayTransport = "udp" | "tcp" | "tls";
@@ -57,13 +58,23 @@ export interface RelayTestTarget {
 export type RelayTestOutcome =
   /** A 401 came back, or the relay gave a relay address. */
   | { kind: "answered"; relayAddress: boolean }
-  /** The relay answered with an error other than 401. */
+  /** The relay answered with a STUN error other than 401. */
   | { kind: "refused"; errorCode: number; errorText: string }
-  /** Chromium reported no answer, or none came within the bound. */
-  | { kind: "no-answer"; reason: "reported"; errorText: string }
-  | { kind: "no-answer"; reason: "bound" | "gathering-ended" }
+  /** The browser reported an error that is no reply from the relay. */
+  | {
+      kind: "no-answer";
+      reason: "reported";
+      errorCode: number | undefined;
+      errorText: string;
+    }
+  /** Nothing came within the bound the run used, `boundMs`. */
+  | { kind: "no-answer"; reason: "bound"; boundMs: number }
+  /** Gathering ended with nothing reported for the transport. */
+  | { kind: "no-answer"; reason: "gathering-ended" }
   /** The browser refused the url, so the relay was not asked. */
-  | { kind: "not-asked" };
+  | { kind: "not-asked" }
+  /** The browser failed while setting up the test of this url. */
+  | { kind: "not-run" };
 
 /** The result for one url over one transport. */
 export interface RelayTestResult {
@@ -129,31 +140,110 @@ function isRelayTransport(value: unknown): value is RelayTransport {
   return value === "udp" || value === "tcp" || value === "tls";
 }
 
+/**
+ * Whether this browser has the peer connection the test builds. Checked
+ * before the test is offered, so a browser without it is told so rather than
+ * shown a result per url.
+ */
+export function relayTestSupported(): boolean {
+  return (
+    "RTCPeerConnection" in globalThis &&
+    typeof globalThis.RTCPeerConnection === "function"
+  );
+}
+
 /** What one peer connection saw for one transport. */
 interface TransportObservation {
   relayAddress: boolean;
-  errors: Array<{ errorCode: number; errorText: string }>;
+  errors: Array<{ errorCode: number | undefined; errorText: string }>;
+}
+
+/** How the wait on one url ended when no result stopped it. */
+type WaitEnd =
+  { reason: "bound"; boundMs: number } | { reason: "gathering-ended" };
+
+function isStunErrorCode(code: number | undefined): code is number {
+  return (
+    code !== undefined &&
+    code >= STUN_ERROR_CODE_MIN &&
+    code <= STUN_ERROR_CODE_MAX
+  );
 }
 
 function outcomeOf(
   observation: TransportObservation | undefined,
-  ended: "bound" | "gathering-ended",
+  ended: WaitEnd,
 ): RelayTestOutcome {
   if (observation?.relayAddress)
     return { kind: "answered", relayAddress: true };
   const errors = observation?.errors ?? [];
   if (errors.some((error) => error.errorCode === UNAUTHORIZED))
     return { kind: "answered", relayAddress: false };
-  const refusal = errors.find((error) => error.errorCode !== NO_ANSWER);
-  if (refusal !== undefined) return { kind: "refused", ...refusal };
+  for (const { errorCode, errorText } of errors)
+    if (isStunErrorCode(errorCode))
+      return { kind: "refused", errorCode, errorText };
   const unreached = errors.at(0);
   if (unreached !== undefined)
-    return {
-      kind: "no-answer",
-      reason: "reported",
-      errorText: unreached.errorText,
-    };
-  return { kind: "no-answer", reason: ended };
+    return { kind: "no-answer", reason: "reported", ...unreached };
+  return { kind: "no-answer", ...ended };
+}
+
+/**
+ * Whether a throw from building the peer connection is the browser refusing
+ * the url: WebRTC names an unparsable url a SyntaxError and an unknown scheme
+ * a NotSupportedError.
+ */
+function isUrlRejection(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "SyntaxError" || error.name === "NotSupportedError")
+  );
+}
+
+/**
+ * Record on `observe` what `pc` reports for each transport, calling `stop`
+ * once `target`'s own transport has its result.
+ */
+function listenForResults(
+  pc: RTCPeerConnection,
+  target: RelayTestTarget,
+  observe: (transport: RelayTransport) => TransportObservation,
+  { gatheringEnded, stop }: { gatheringEnded: () => void; stop: () => void },
+): void {
+  pc.addEventListener("icecandidate", (event) => {
+    const { candidate } = event;
+    if (candidate === null) gatheringEnded();
+    else if (candidate.type === "relay") {
+      // Standard, and in Chromium, but not yet in TypeScript's DOM types.
+      const { relayProtocol } = candidate as RTCIceCandidate & {
+        relayProtocol?: unknown;
+      };
+      const transport = isRelayTransport(relayProtocol)
+        ? relayProtocol
+        : target.transport;
+      observe(transport).relayAddress = true;
+      if (transport === target.transport) stop();
+    }
+  });
+  pc.addEventListener("icegatheringstatechange", () => {
+    if (pc.iceGatheringState === "complete") gatheringEnded();
+  });
+  pc.addEventListener("icecandidateerror", (event) => {
+    const { url, errorCode, errorText } = event;
+    const transport =
+      typeof url === "string" && /^turns?:/i.test(url)
+        ? turnUrlTransport(url)
+        : target.transport;
+    const code =
+      typeof errorCode === "number" && errorCode > 0 ? errorCode : undefined;
+    const observation = observe(transport);
+    if (!observation.errors.some((error) => error.errorCode === code))
+      observation.errors.push({
+        errorCode: code,
+        errorText: typeof errorText === "string" ? errorText : "",
+      });
+    if (code === UNAUTHORIZED && transport === target.transport) stop();
+  });
 }
 
 /** Ask the relay at `target` for a relay address, and report per transport. */
@@ -172,6 +262,14 @@ async function testOneRelay(
     }
     return observation;
   };
+  const single = (outcome: RelayTestOutcome): Array<RelayTestResult> => [
+    {
+      url: target.url,
+      source: target.source,
+      transport: target.transport,
+      outcome,
+    },
+  ];
   let pc: RTCPeerConnection;
   try {
     pc = createPeerConnection({
@@ -184,75 +282,50 @@ async function testOneRelay(
       ],
       iceTransportPolicy: "relay",
     });
-  } catch {
-    return [
-      {
-        url: target.url,
-        source: target.source,
-        transport: target.transport,
-        outcome: { kind: "not-asked" },
-      },
-    ];
+  } catch (error) {
+    return single({ kind: isUrlRejection(error) ? "not-asked" : "not-run" });
   }
-  let ended: "bound" | "gathering-ended" = "bound";
+  let ended: WaitEnd = { reason: "bound", boundMs };
+  let failed: boolean;
   try {
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, boundMs);
-      const stop = () => {
+    failed = await new Promise<boolean>((resolve) => {
+      const finish = (setUpFailed: boolean) => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", stop);
-        resolve();
+        resolve(setUpFailed);
+      };
+      const timer = setTimeout(() => {
+        finish(false);
+      }, boundMs);
+      const stop = () => {
+        finish(false);
       };
       const gatheringEnded = () => {
-        ended = "gathering-ended";
+        ended = { reason: "gathering-ended" };
         stop();
+      };
+      const fail = () => {
+        finish(true);
       };
       if (signal?.aborted === true) {
         stop();
         return;
       }
-      signal?.addEventListener("abort", stop);
-      pc.addEventListener("icecandidate", (event) => {
-        const { candidate } = event;
-        if (candidate === null) gatheringEnded();
-        else if (candidate.type === "relay") {
-          // Standard, and in Chromium, but not yet in TypeScript's DOM types.
-          const { relayProtocol } = candidate as RTCIceCandidate & {
-            relayProtocol?: unknown;
-          };
-          const transport = isRelayTransport(relayProtocol)
-            ? relayProtocol
-            : target.transport;
-          observe(transport).relayAddress = true;
-          if (transport === target.transport) stop();
-        }
-      });
-      pc.addEventListener("icegatheringstatechange", () => {
-        if (pc.iceGatheringState === "complete") gatheringEnded();
-      });
-      pc.addEventListener("icecandidateerror", (event) => {
-        const { url, errorCode, errorText } = event;
-        const transport =
-          typeof url === "string" && /^turns?:/i.test(url)
-            ? turnUrlTransport(url)
-            : target.transport;
-        const code = typeof errorCode === "number" ? errorCode : 0;
-        const observation = observe(transport);
-        if (!observation.errors.some((error) => error.errorCode === code))
-          observation.errors.push({
-            errorCode: code,
-            errorText: typeof errorText === "string" ? errorText : "",
-          });
-        if (code === UNAUTHORIZED && transport === target.transport) stop();
-      });
-      pc.createDataChannel("relay-test");
-      pc.createOffer()
-        .then((offer) => pc.setLocalDescription(offer))
-        .catch(gatheringEnded);
+      try {
+        signal?.addEventListener("abort", stop);
+        listenForResults(pc, target, observe, { gatheringEnded, stop });
+        pc.createDataChannel("relay-test");
+        pc.createOffer()
+          .then((offer) => pc.setLocalDescription(offer))
+          .catch(fail);
+      } catch {
+        fail();
+      }
     });
   } finally {
     pc.close();
   }
+  if (failed) return single({ kind: "not-run" });
   const transports = [
     target.transport,
     ...[...observations.keys()].filter(
@@ -299,6 +372,19 @@ export function relayTestTransportLabel(transport: RelayTransport): string {
   return TRANSPORT_LABEL[transport];
 }
 
+function seconds(ms: number): string {
+  const count = ms / 1000;
+  return `${String(count)} ${count === 1 ? "second" : "seconds"}`;
+}
+
+/** What the page announces while the test of `count` relays runs. */
+export function relayTestRunningText(count: number, boundMs: number): string {
+  return (
+    `Testing ${String(count)} ${count === 1 ? "relay" : "relays"}. ` +
+    `This can take up to ${seconds(boundMs)}.`
+  );
+}
+
 const UNREACHED_REMEDY =
   "Check that the relay address is correct and that this network allows " +
   "connections to it, then run the test again.";
@@ -307,11 +393,13 @@ const REFUSED_REMEDY =
   "Check the relay's settings for this error, or ask whoever runs it, then " +
   "run the test again.";
 
-function described(code: number, errorText: string): string {
-  const text = sanitizeForDisplay(errorText.trim(), {
+/** The browser's error, its code where it gave one, quoted for display. */
+function described(code: number | undefined, errorText: string): string {
+  const text = sanitizeForDisplay(errorText.trim().replace(/\.+$/, ""), {
     maxLength: MAX_ERROR_TEXT_LENGTH,
   });
-  return text === "" ? `error ${code}` : `error ${code}: ${text}`;
+  const error = code === undefined ? "an error" : `error ${String(code)}`;
+  return text === "" ? error : `${error}: ${text}`;
 }
 
 /**
@@ -330,15 +418,21 @@ export function relayTestResultText(result: RelayTestResult): string {
             `credential, so this browser reaches it over ${over}.`;
     case "refused":
       return (
-        `Refused over ${over}: the relay answered with ` +
+        `Refused over ${over}: the relay answered, so this browser reaches ` +
+        `it over ${over}, but it refused the request with ` +
         `${described(outcome.errorCode, outcome.errorText)}. ${REFUSED_REMEDY}`
       );
     case "no-answer":
-      return `No answer over ${over}: ${noAnswerReason(outcome)}. ${UNREACHED_REMEDY}`;
+      return `No answer over ${over}: ${noAnswerReason(outcome)} ${UNREACHED_REMEDY}`;
     case "not-asked":
       return (
         "Not tested: this browser did not accept the address, so the relay " +
         "was not asked. Check that the relay address is correct."
+      );
+    case "not-run":
+      return (
+        "Not tested: the test could not run for this relay in this browser. " +
+        "Reload the page and run the test again."
       );
   }
 }
@@ -348,10 +442,14 @@ function noAnswerReason(
 ): string {
   switch (outcome.reason) {
     case "reported":
-      return `the browser reported ${described(NO_ANSWER, outcome.errorText)}`;
+      return `the browser reported ${described(outcome.errorCode, outcome.errorText)}.`;
     case "bound":
-      return `the relay did not answer within ${String(RELAY_TEST_BOUND_MS / 1000)} seconds`;
+      return `the relay did not answer within ${seconds(outcome.boundMs)}.`;
     case "gathering-ended":
-      return "the browser stopped asking without an answer from the relay";
+      return (
+        "the browser reported no answer from the relay. A relay that " +
+        "refused the test's credential can also show this, when the browser " +
+        "does not report the refusal."
+      );
   }
 }

@@ -26,8 +26,25 @@ test(
       kind: "no-answer",
       reason: "reported",
     });
-    expect(relayTestResultText(result)).toMatch(
-      /^No answer over TLS: the browser reported error 701/,
+    expect(relayTestResultText(result)).toBe(
+      "No answer over TLS: the browser reported error 701: Failed to establish connection. " +
+        "Check that the relay address is correct and that this network " +
+        "allows connections to it, then run the test again.",
     );
+  },
+);
+
+test.each([
+  ["an unparsable url", "turn:relay example.org:3478"],
+  ["a scheme that is not a TURN url", "http://relay.example.org"],
+])(
+  "Chromium refuses %s as an address, reported as not tested",
+  async (_name, url) => {
+    const results = await runRelayTest([
+      { url, source: "own", transport: "udp" },
+    ]);
+    expect(results.map((result) => result.outcome)).toEqual([
+      { kind: "not-asked" },
+    ]);
   },
 );

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   RELAY_TEST_BOUND_MS,
   relayTestResultText,
+  relayTestRunningText,
+  relayTestSupported,
   relayTestTargets,
   runRelayTest,
   turnUrlTransport,
@@ -219,11 +221,59 @@ describe("runRelayTest", () => {
       errorText: "Forbidden IP",
     });
     expect(relayTestResultText(result)).toBe(
-      "Refused over UDP: the relay answered with error 403: Forbidden IP. " +
+      "Refused over UDP: the relay answered, so this browser reaches it over " +
+        "UDP, but it refused the request with error 403: Forbidden IP. " +
         "Check the relay's settings for this error, or ask whoever runs it, " +
         "then run the test again.",
     );
     expect(pc.close).toHaveBeenCalledOnce();
+  });
+
+  test("an error with no code is no reply from the relay, so it is no answer", async () => {
+    const { created, createPeerConnection } = factory();
+    const running = runRelayTest([target(SITE_URL)], { createPeerConnection });
+    const pc = created[0];
+    await pc.offered.promise;
+    pc.dispatchEvent(
+      Object.assign(new Event("icecandidateerror"), {
+        url: SITE_URL,
+        errorText: "Something failed.",
+      }),
+    );
+    pc.finishGathering();
+
+    const result = only(await running);
+    expect(result.outcome).toEqual({
+      kind: "no-answer",
+      reason: "reported",
+      errorCode: undefined,
+      errorText: "Something failed.",
+    });
+    expect(relayTestResultText(result)).toBe(
+      "No answer over UDP: the browser reported an error: Something failed. " +
+        "Check that the relay address is correct and that this network " +
+        "allows connections to it, then run the test again.",
+    );
+  });
+
+  test("gathering that ends with nothing reported says the browser reported no answer", async () => {
+    const { created, createPeerConnection } = factory();
+    const running = runRelayTest([target(SITE_URL)], { createPeerConnection });
+    await created[0].offered.promise;
+    created[0].finishGathering();
+
+    const result = only(await running);
+    expect(result.outcome).toEqual({
+      kind: "no-answer",
+      reason: "gathering-ended",
+    });
+    expect(relayTestResultText(result)).toBe(
+      "No answer over UDP: the browser reported no answer from the relay. " +
+        "A relay that refused the test's credential can also show this, " +
+        "when the browser does not report the refusal. Check that the relay " +
+        "address is correct and that this network allows connections to it, " +
+        "then run the test again.",
+    );
   });
 
   test("a relay that gives no answer within the bound is reported as no answer", async () => {
@@ -240,7 +290,11 @@ describe("runRelayTest", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     const result = only(await running);
-    expect(result.outcome).toEqual({ kind: "no-answer", reason: "bound" });
+    expect(result.outcome).toEqual({
+      kind: "no-answer",
+      reason: "bound",
+      boundMs: RELAY_TEST_BOUND_MS,
+    });
     expect(created[0].close).toHaveBeenCalledOnce();
     expect(relayTestResultText(result)).toBe(
       "No answer over TLS: the relay did not answer within 30 seconds. " +
@@ -249,12 +303,26 @@ describe("runRelayTest", () => {
     );
   });
 
+  test("the no-answer text states the bound the run used", async () => {
+    vi.useFakeTimers();
+    const { createPeerConnection } = factory();
+    const running = runRelayTest([target(OWN_URL)], {
+      createPeerConnection,
+      boundMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(relayTestResultText(only(await running))).toMatch(
+      /^No answer over TLS: the relay did not answer within 5 seconds\. /,
+    );
+  });
+
   test("a relay the browser reports unreachable is no answer, naming the browser's error", async () => {
     const { created, createPeerConnection } = factory();
     const running = runRelayTest([target(OWN_URL)], { createPeerConnection });
     const pc = created[0];
     await pc.offered.promise;
-    pc.fail(OWN_URL, 701, "Failed to establish connection");
+    pc.fail(OWN_URL, 701, "Failed to establish connection.");
     pc.finishGathering();
 
     const result = only(await running);
@@ -315,17 +383,99 @@ describe("runRelayTest", () => {
     expect(text).toContain("error 403: Forbidden\\x1b[31m\\u202e.");
   });
 
-  test("a url the browser refuses is reported as not tested", async () => {
+  test.each([
+    ["a SyntaxError", new SyntaxError("bad url")],
+    ["a DOMException SyntaxError", new DOMException("bad url", "SyntaxError")],
+    [
+      "a DOMException NotSupportedError",
+      new DOMException("bad scheme", "NotSupportedError"),
+    ],
+  ])(
+    "a url the browser refuses with %s is reported as not tested",
+    async (_name, error) => {
+      const results = await runRelayTest([target(OWN_URL)], {
+        createPeerConnection: () => {
+          throw error;
+        },
+      });
+      const result = only(results);
+      expect(result.outcome).toEqual({ kind: "not-asked" });
+      expect(relayTestResultText(result)).toBe(
+        "Not tested: this browser did not accept the address, so the relay " +
+          "was not asked. Check that the relay address is correct.",
+      );
+    },
+  );
+
+  test("any other failure building the peer connection is not a bad address", async () => {
     const results = await runRelayTest([target(OWN_URL)], {
       createPeerConnection: () => {
-        throw new SyntaxError("bad url");
+        throw new ReferenceError("RTCPeerConnection is not defined");
       },
     });
     const result = only(results);
-    expect(result.outcome).toEqual({ kind: "not-asked" });
+    expect(result.outcome).toEqual({ kind: "not-run" });
     expect(relayTestResultText(result)).toBe(
-      "Not tested: this browser did not accept the address, so the relay " +
-        "was not asked. Check that the relay address is correct.",
+      "Not tested: the test could not run for this relay in this browser. " +
+        "Reload the page and run the test again.",
+    );
+  });
+
+  test("a throw while setting up one url is that url's result, not the run's", async () => {
+    const { created, createPeerConnection } = factory();
+    const running = runRelayTest([target(OWN_URL), target(SITE_URL)], {
+      createPeerConnection: (configuration) => {
+        const pc = createPeerConnection(configuration);
+        if (created.length === 1)
+          (pc as unknown as FakePeerConnection).createDataChannel = vi.fn(
+            () => {
+              throw new Error("no data channel");
+            },
+          );
+        return pc;
+      },
+    });
+    await created[1].offered.promise;
+    created[1].fail(SITE_URL, 401, "Unauthorized");
+
+    const results = await running;
+    expect(results.map((result) => [result.url, result.outcome])).toEqual([
+      [OWN_URL, { kind: "not-run" }],
+      [SITE_URL, { kind: "answered", relayAddress: false }],
+    ]);
+    expect(created[0].close).toHaveBeenCalledOnce();
+  });
+
+  test("an offer the browser fails to make is not reported as no answer", async () => {
+    const { created, createPeerConnection } = factory();
+    const running = runRelayTest([target(SITE_URL)], {
+      createPeerConnection: (configuration) => {
+        const pc = createPeerConnection(
+          configuration,
+        ) as unknown as FakePeerConnection;
+        pc.createOffer = () => Promise.reject(new Error("no offer"));
+        return pc as unknown as RTCPeerConnection;
+      },
+    });
+
+    expect(only(await running).outcome).toEqual({ kind: "not-run" });
+    expect(created[0].close).toHaveBeenCalledOnce();
+  });
+
+  test("relayTestSupported is false where the browser has no peer connection", () => {
+    vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
+    expect(relayTestSupported()).toBe(true);
+    vi.stubGlobal("RTCPeerConnection", undefined);
+    expect(relayTestSupported()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  test("the running announcement names the count and the bound", () => {
+    expect(relayTestRunningText(2, RELAY_TEST_BOUND_MS)).toBe(
+      "Testing 2 relays. This can take up to 30 seconds.",
+    );
+    expect(relayTestRunningText(1, 1_000)).toBe(
+      "Testing 1 relay. This can take up to 1 second.",
     );
   });
 
