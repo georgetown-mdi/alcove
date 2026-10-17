@@ -1,0 +1,101 @@
+- The one instance is the `date_of_birth` input format, which each party infers from its own file's layout (see [Date-format inference](#date-format-inference)). -> One instance is the `date_of_birth` input format, which each party infers from its own file's layout (see [Date-format inference](#date-format-inference)).
+- - -> A placeholder list is the other per-party parameter; it decides only which values are dropped, never the form of a value kept (see [Per-party placeholder lists](#per-party-placeholder-lists)).
+- - -> Per-party placeholder lists
+- - -> The `first_name`, `last_name` and `date_of_birth` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped.
+- - -> The defaults give both name fields one list, and each name field has its own copy of it as that field's own step parameter.
+- - -> An operator may edit any of the three lists in their own standardization, to add a filler their system writes or to keep a value the list drops.
+- - -> Both parties still derive the same pipelines from the defaults.
+- - -> An edit is one party's own, and it is never sent.
+- - -> It changes no value the pipeline keeps, so it cannot make two different values equal: a value one party's list drops and the other's keeps is absent from the first party's keys and matches nothing there.
+- - -> - function: filter_regex
+- - -> - function: filter_regex
+- - -> - function: filter_regex
+- - -> - function: filter_regex
+- - -> - function: filter_regex
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> - function: null_if
+- - -> - function: null_if
+- - -> - function: null_if
+- - -> pattern: "^(?:[0-578]|6[0-57-9]|66[0-57-9])"
+- - -> pattern: "^\\d{3}(?:[1-9]\\d|\\d[1-9])"
+- - -> pattern: "[1-9]\\d{0,3}$"
+- values: ["000000000", "111111111", "123456789"] -> values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999", "123456789"]
+- - -> **Numbers never issued.**
+- - -> A value is dropped when its area number (the first three digits) is `666` or `900` to `999`, its group number (the next two) is `00`, or its serial number (the last four) is `0000`.
+- Three placeholder values are then dropped. -> A value of one digit repeated nine times is dropped, and so is `123456789`.
+- Area `000` is the one SSA structural rule the pipeline applies, because a value with that area is a fragment or a mask rather than an SSN: any other area, and any group or serial, that the SSA never issues passes through. -> The other area, group and serial rules are the rest of the SSA structural rules: the SSA issues no number in area `666` or `900` to `999`, with group `00`, or with serial `0000`.
+- - -> A value breaking one is not an issued SSN but a test, made-up or mistyped value, which two parties can hold for two different people.
+- The `valid_only` constraint the default `ssn` field declares is a data-quality signal reported against the cleaned dataset (see [Constraints](../EXCHANGE_REFERENCE.md#constraints)), not a step here. -> The `valid_only` constraint the default `ssn` field declares states the same rules as a data-quality signal reported against the cleaned dataset (see [Constraints](../EXCHANGE_REFERENCE.md#constraints)).
+- - -> `"666-12-3456"` | `null`
+- - -> `"900-12-3456"` | `null`
+- - -> `"123-00-4567"` | `null`
+- - -> `"123-45-0000"` | `null`
+- - -> `"222-22-2222"` | `null`
+- values: ["0000"] -> values: ["0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"]
+- A cleaned-empty cell is dropped before padding, a short value is zero-padded to four, and the all-zero serial is dropped. -> A cleaned-empty cell is dropped before padding, a short value is zero-padded to four, and a value of one digit repeated four times is dropped: the all-zero serial, which the SSA never issues, and the nine placeholders beside it.
+- - -> `"7777"` | `null`
+- - -> `"123-45-7777"` | `null`
+- - -> The `ssn` rules for numbers never issued do not reach it either: `900-12-3456` is `null` as `ssn` and `"3456"` as `ssn4`.
+- - -> pattern: "^.{2,}$"
+- - -> values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
+- - -> values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
+- The closing `filter_regex` drops a value containing no letter at all, which is what removes a cell that cleaned to empty or to punctuation alone. -> The `filter_regex` on `[A-Z]` drops a value containing no letter at all, which is what removes a cell that cleaned to empty or to punctuation alone.
+- The trailing `null_if` drops a value that is only a title (`"Mr."`, `"DR"`, `"Miss"`): `remove_affixes` never empties a field, so a cell holding a title alone reaches this step intact. -> The `null_if` after it drops a value that is only a title (`"Mr."`, `"DR"`, `"Miss"`): `remove_affixes` never empties a field, so a cell holding a title alone reaches this step intact.
+- - -> The closing `null_if` is the placeholder list: it drops a value that is exactly one of its `values`, words that stand in for a name nobody recorded.
+- - -> It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are each dropped, while a name holding one of the words beside another (`"Jane Doe"`, `"Baby Boy"`) or inside a longer one (`"Doering"`) is kept.
+- - -> Each name field has its own copy of the placeholder list, and an operator may edit either one for their own data (see [Per-party placeholder lists](#per-party-placeholder-lists)).
+- - -> A value is written in the cleaned form, upper-case ASCII letters and spaces, since that is the form the list is compared with.
+- - -> `"Jo"` | `"JO"`
+- - -> `"Jane Doe"` | `"JANE DOE"`
+- - -> `"Doering"` | `"DOERING"`
+- - -> `"Unknown"` | `null`
+- - -> `"baby"` | `null`
+- - -> `"Doe"` | `null`
+- - -> `"Refused"` | `null`
+- - -> `"Q"` | `null`
+- - -> pattern: "^(?:19|[2-9])"
+- - -> values: ["19000101", "19010101"]
+- Result: eight digits, `YYYYMMDD`. -> Result: eight digits, `YYYYMMDD`, for a date in 1900 or later.
+- - -> Two screens follow the parse, on the `YYYYMMDD` value:
+- - -> **Before 1900.**
+- - -> **Placeholders.**
+- - -> The `filter_regex` drops a date whose year is before 1900, taken as a typing error or a filler rather than a birth date.
+- - -> The closing `null_if` is the placeholder list.
+- - -> Its default values, `19000101` and `19010101` (1900-01-01 and 1901-01-01), are dates a system writes when a birth date is unknown.
+- - -> A value is written in the `YYYYMMDD` output form, since that is the form the list is compared with.
+- - -> An operator may edit the list for their own data (see [Per-party placeholder lists](#per-party-placeholder-lists)).
+- - -> A date after the day of the run is kept.
+- - -> Deciding which dates lie in the future would need the date of the run, and cleaning reads no clock: the two-digit-year pivot under `parse_date` is a constant for the same reason, so that both parties derive the same value from the same cell whenever each runs.
+- `input_format` is the one default parameter that varies per party. -> `input_format` is the one default parameter that varies per party without an operator's edit.
+- - -> `"01/02/1900"` | `"19000102"`
+- - -> `"12/31/1899"` | `null`
+- - -> `"01/01/1900"` | `null`
+- - -> `"1/1/1901"` | `null`
+- The empty-value drop precedes `pad_left` by design: a blank cell padded to `"000000000"` would be dropped only as a side effect of a later step, the area-number rule or the placeholder list, so an operator who edited either for their own data would silently reintroduce the blank-cell match. -> -
+- The `last_name` and `first_name` sequences are identical, step for step and parameter for parameter; the notes under [`first_name`](#first_name) apply unchanged. -> -
+- They are listed separately because they are two independent defaults: a change to one is not automatically a change to the other. -> -
+- A candidate parses a value when the `date_of_birth` pipeline above, with that candidate as its `input_format`, keeps the value -- the same rule the run applies, so a format is never inferred from values the run would drop. -> -
+- - -> The other screens are fixed parts of their default pipelines, not per-party parameters: the single-letter `last_name` screen, the date-of-birth screen for a year before 1900, and the `ssn` and `ssn4` structural and placeholder screens.
+- - -> An operator who authors their own pipeline can change any step in it, these screens included, as for any field.
+- - -> The empty-value drop precedes `pad_left` by design: a blank cell padded to `"000000000"` would be dropped only as a side effect of a later step, the area-number rule or the placeholder list, so a pipeline an operator authors without either step would silently reintroduce the blank-cell match.
+- - -> The placeholder list names every repeated-digit value, including the three (`000000000`, `666666666`, `999999999`) a structural rule already drops, so a pipeline an operator authors with the list but without a structural rule still drops a value of one repeated digit.
+- - -> These screens are fixed parts of the default pipeline, not per-party parameters (see [Per-party placeholder lists](#per-party-placeholder-lists)); an operator who authors their own pipeline can change any step in it, as for any field.
+- - -> A real SSN whose serial is one repeated digit, such as `123-45-7777`, therefore loses its `ssn4` value while its `ssn` value is kept.
+- - -> A one-letter first name is kept, unlike a one-letter last name (see [`last_name`](#last_name)).
+- - -> The built-in keys `SSN + LN + FN1` and `SSN + LN3 + FN1` match on the first initial beside a full SSN, so a record holding only an initial matches through them.
+- - -> The limit is that a one-letter first name also takes part in the keys on the whole first name and a date of birth, such as `LN + FN + DOB`, where an initial written in place of a name agrees with any record holding the same initial, surname and date.
+- - -> `"J."` | `"J"`
+- - -> The `last_name` sequence is the `first_name` sequence with one step added, the `filter_regex` on `^.{2,}$` before the placeholder list; the notes under [`first_name`](#first_name) on the steps they share apply unchanged.
+- - -> That step drops a value of one character.
+- - -> Every such value left at this point is a letter, so it drops an initial written in place of a surname (`"Q"`, `"Q."`).
+- - -> The two are listed separately because they are two independent defaults: a change to one is not automatically a change to the other.
+- - -> A candidate parses a value when the parsing steps of the `date_of_birth` pipeline above, with that candidate as their `input_format`, produce a date from the value.
+- - -> The screens that follow those steps do not take part, so a date before 1900 or on the default placeholder list still counts for the candidate that reads it, and the format inferred for a column is the same with or without the screens.
+- - -> The run then drops such a date.

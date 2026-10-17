@@ -9,7 +9,13 @@ import type { StandardizationStep } from "../config/standardizationSchema.js";
 // as the body of a regex character class. A period is not among them.
 const DASHES = "\\-\\x{2010}-\\x{2014}\\x{2212}";
 
-// Explicitly allow invalid SSNs for now, area number 000 excepted.
+// Each value of one digit repeated `length` times, for the placeholder lists.
+// All ten are listed even where a structural screen already drops one, so a
+// pipeline authored with the list but without that screen still drops it.
+function repeatedDigits(length: number): string[] {
+  return Array.from({ length: 10 }, (_, digit) => String(digit).repeat(length));
+}
+
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
@@ -33,9 +39,19 @@ export const SSN_STEPS: StandardizationStep[] = [
   // digits are 000 after padding is a fragment (a last four, say) or a
   // zero-masked value such as 000-00-8924, not a full SSN.
   { function: "filter_regex", params: { pattern: "^0{0,2}[1-9]" } },
+  // The SSA never issues area 666 or 900 to 999, group 00 or serial 0000.
+  {
+    function: "filter_regex",
+    params: { pattern: "^(?:[0-578]|6[0-57-9]|66[0-57-9])" },
+  },
+  {
+    function: "filter_regex",
+    params: { pattern: "^\\d{3}(?:[1-9]\\d|\\d[1-9])" },
+  },
+  { function: "filter_regex", params: { pattern: "[1-9]\\d{0,3}$" } },
   {
     function: "null_if",
-    params: { values: ["000000000", "111111111", "123456789"] },
+    params: { values: [...repeatedDigits(9), "123456789"] },
   },
 ];
 
@@ -61,5 +77,5 @@ export const SSN4_STEPS: StandardizationStep[] = [
   { function: "pad_left", params: { length: 4 } },
   { function: "extract_regex", params: { pattern: "(\\d{4})$" } },
   { function: "filter_regex", params: { pattern: "^\\d{4}$" } },
-  { function: "null_if", params: { values: ["0000"] } },
+  { function: "null_if", params: { values: repeatedDigits(4) } },
 ];

@@ -1,4 +1,4 @@
-import { dateOfBirthSteps } from "../defaults/builtInStandardization.js";
+import { dateOfBirthParseSteps } from "../defaults/builtInStandardization.js";
 import { readRowColumn } from "../file.js";
 import type { CSVRow } from "../file.js";
 import { compileSteps, runCompiledPipeline } from "../standardization.js";
@@ -38,11 +38,12 @@ type CandidateParser = readonly [
 
 let candidateParsers: ReadonlyArray<CandidateParser> | undefined;
 
-// Each candidate is tested with the default date_of_birth pipeline the run
-// applies, so inference and the run agree on what a format accepts.
+// Each candidate is tested with the parsing steps of the default
+// date_of_birth pipeline, not its screens: a placeholder or pre-1900 date still
+// shows which layout the column is written in.
 function getCandidateParsers(): ReadonlyArray<CandidateParser> {
   candidateParsers ??= CANDIDATE_DATE_FORMATS.map((format) => {
-    const steps = compileSteps(dateOfBirthSteps(format));
+    const steps = compileSteps(dateOfBirthParseSteps(format));
     return [
       format,
       (value: string) => runCompiledPipeline(value, steps) !== null,
@@ -117,8 +118,8 @@ export function createDateFormatInferrer(): DateFormatInferrer {
  * values the result does not parse.
  *
  * Each of the first {@link INFER_DATE_SCAN_CAP} non-empty values is tested
- * against every {@link CANDIDATE_DATE_FORMATS} entry with the default
- * `date_of_birth` pipeline, the rule the run applies. The result is the
+ * against every {@link CANDIDATE_DATE_FORMATS} entry with the parsing steps of
+ * the default `date_of_birth` pipeline, before its screens. The result is the
  * candidate that parses the most values, the earliest in the table on a tie
  * (a column whose days are all 12 or under parses equally as `MM/DD/YYYY` and
  * `DD/MM/YYYY`). A value no candidate parses is noise and supports none. The

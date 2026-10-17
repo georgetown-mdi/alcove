@@ -10,9 +10,10 @@ import { SSN4_STEPS, SSN_STEPS } from "./ssnSteps.js";
 
 // --- Step arrays -------------------------------------------------------------
 
-// Shared pipeline for first and last names. Produces uppercase letters and
-// spaces only, with affixes (Dr., Jr., etc.) removed, matching the
-// `allowedCharacters: "A-Z "` constraint on the default linkage fields.
+// Shared pipeline for first and last names, before their screens. Produces
+// uppercase letters and spaces only, with affixes (Dr., Jr., etc.) removed,
+// matching the `allowedCharacters: "A-Z "` constraint on the default linkage
+// fields.
 const NAME_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   // The three steps before remove_non_ascii turn non-ASCII characters into
@@ -37,15 +38,54 @@ const NAME_STEPS: StandardizationStep[] = [
   { function: "null_if", params: { values: [...cleanedTitles] } },
 ];
 
+const NAME_PLACEHOLDER_STEP: StandardizationStep = {
+  function: "null_if",
+  params: {
+    values: [
+      "UNKNOWN",
+      "UNK",
+      "DOE",
+      "BABY",
+      "BOY",
+      "GIRL",
+      "TWIN",
+      "MALE",
+      "FEMALE",
+      "TRAUMA",
+      "REFUSED",
+      "ANONYMOUS",
+      "NONE",
+      "TEST",
+    ],
+  },
+};
+
+// A one-letter first name is kept: the built-in keys beside a full SSN match
+// on the first initial alone.
+const FIRST_NAME_STEPS: StandardizationStep[] = [
+  ...NAME_STEPS,
+  NAME_PLACEHOLDER_STEP,
+];
+
+const LAST_NAME_STEPS: StandardizationStep[] = [
+  ...NAME_STEPS,
+  // Every one-character value is a letter here, so this drops an initial.
+  { function: "filter_regex", params: { pattern: "^.{2,}$" } },
+  NAME_PLACEHOLDER_STEP,
+];
+
 /** The `date_of_birth` input format used when none is supplied or inferred. */
 export const DEFAULT_DATE_INPUT_FORMAT = "MM/DD/YYYY";
 
 /**
- * The default `date_of_birth` pipeline for one input format. Date-format
- * inference ({@link inferDateFormat}) tests each candidate with this same
- * pipeline, so a format is inferred only from values the run would keep.
+ * The parsing steps of the default `date_of_birth` pipeline for one input
+ * format. Date-format inference ({@link inferDateFormat}) tests each candidate
+ * with these steps alone, so the format inferred for a column does not depend
+ * on the screens that follow.
  */
-export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
+export function dateOfBirthParseSteps(
+  inputFormat: string,
+): StandardizationStep[] {
   return [
     { function: "trim_whitespace" },
     { function: "remove_non_ascii" },
@@ -54,6 +94,18 @@ export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
       params: { inputFormat, outputFormat: "YYYYMMDD" },
     },
   ];
+}
+
+// Drop a year before 1900. A future date is kept: cleaning reads no clock, so
+// two parties could not agree on which day is today.
+const DATE_OF_BIRTH_SCREEN_STEPS: StandardizationStep[] = [
+  { function: "filter_regex", params: { pattern: "^(?:19|[2-9])" } },
+  { function: "null_if", params: { values: ["19000101", "19010101"] } },
+];
+
+/** The default `date_of_birth` pipeline for one input format: parse, then screen. */
+export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
+  return [...dateOfBirthParseSteps(inputFormat), ...DATE_OF_BIRTH_SCREEN_STEPS];
 }
 
 // US 10-digit phone (digits only). A leading US country code (+1 or 1) on an
@@ -116,9 +168,9 @@ function stepsForType(
     case "ssn4":
       return SSN4_STEPS;
     case "first_name":
-      return NAME_STEPS;
+      return FIRST_NAME_STEPS;
     case "last_name":
-      return NAME_STEPS;
+      return LAST_NAME_STEPS;
     case "date_of_birth":
       return dateOfBirthSteps(
         opts.dateInputFormat ?? DEFAULT_DATE_INPUT_FORMAT,

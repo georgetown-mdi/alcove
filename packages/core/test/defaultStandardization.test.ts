@@ -1,9 +1,10 @@
 import { expect, test, describe, vi } from "vitest";
 
 import {
-  dateOfBirthSteps,
+  dateOfBirthParseSteps,
   getDefaultStandardization,
 } from "../src/defaults/builtInStandardization";
+import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
 import {
   createDateFormatInferrer,
   inferDateFormat,
@@ -23,6 +24,7 @@ import {
 } from "../src/config/transformRegexDialect";
 import type { ColumnMetadata } from "../src/config/metadata";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
+import type { StandardizationStep } from "../src/config/standardizationSchema";
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -62,6 +64,25 @@ const fullMetadata: ColumnMetadata[] = [
   { name: "EMAIL", type: "email_address", role: "linkage", isPayload: false },
   { name: "ZIP", type: "zip_code", role: "linkage", isPayload: false },
 ];
+
+// A copy of `steps` whose `null_if` list containing `marker` is replaced by
+// `values`, as an operator edits a placeholder list.
+function withPlaceholders(
+  steps: StandardizationStep[],
+  marker: string,
+  values: string[],
+): StandardizationStep[] {
+  const edited = structuredClone(steps);
+  const step = edited.find(
+    (candidate) =>
+      candidate.function === "null_if" &&
+      Array.isArray(candidate.params?.values) &&
+      candidate.params.values.includes(marker),
+  );
+  if (step === undefined) throw new Error(`no null_if lists ${marker}`);
+  step.params = { values };
+  return edited;
+}
 
 // --- getDefaultStandardization -----------------------------------------------
 
@@ -161,6 +182,7 @@ describe("getDefaultStandardization — structure", () => {
     const first = getDefaultStandardization(fullMetadata, minimalTerms);
     const steps = (output: string) =>
       first.find((t) => t.output === output)?.steps ?? [];
+    const firstNameBefore = structuredClone(steps("first_name"));
     const lastNameBefore = structuredClone(steps("last_name"));
     steps("first_name").push({ function: "to_lower_case" });
     steps("first_name")[0].function = "remove_dashes";
@@ -168,8 +190,56 @@ describe("getDefaultStandardization — structure", () => {
 
     const second = getDefaultStandardization(fullMetadata, minimalTerms);
     expect(second.find((t) => t.output === "first_name")?.steps).toEqual(
-      lastNameBefore,
+      firstNameBefore,
     );
+  });
+
+  test("two parties derive identical pipelines, screens included, from the same defaults", () => {
+    // The second party names its columns differently, lists them in another
+    // order, holds an extra column, and derives ssn4 from its SSN column.
+    const partnerMetadata: ColumnMetadata[] = [
+      { name: "Zip5", type: "zip_code", role: "linkage", isPayload: false },
+      { name: "notes", type: "other", role: "payload", isPayload: true },
+      {
+        name: "eMail",
+        type: "email_address",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "tel", type: "phone_number", role: "linkage", isPayload: false },
+      {
+        name: "birth",
+        type: "date_of_birth",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "surname", type: "last_name", role: "linkage", isPayload: false },
+      { name: "given", type: "first_name", role: "linkage", isPayload: false },
+      { name: "social", type: "ssn", role: "linkage", isPayload: false },
+    ];
+    const stepsByField = (metadata: ColumnMetadata[]) =>
+      new Map(
+        getDefaultStandardization(metadata, minimalTerms).map((t) => [
+          t.output,
+          t.steps,
+        ]),
+      );
+    const ours = stepsByField(fullMetadata);
+    const theirs = stepsByField(partnerMetadata);
+    expect(ours.size).toBe(minimalTerms.linkageFields.length);
+    expect(theirs).toEqual(ours);
+    const placeholderLists = [...ours.values()].flatMap((steps) =>
+      (steps ?? []).filter(
+        (step) =>
+          step.function === "null_if" &&
+          Array.isArray(step.params?.values) &&
+          ["UNKNOWN", "19000101", "222222222", "2222"].some((value) =>
+            (step.params!.values as string[]).includes(value),
+          ),
+      ),
+    );
+    // first_name, last_name, date_of_birth, ssn and ssn4 each hold one.
+    expect(placeholderLists).toHaveLength(5);
   });
 
   test("each transformation has a non-empty steps array", () => {
@@ -342,11 +412,11 @@ describe("default SSN pipeline", () => {
   }
 
   test("strips dashes from dashed format", () => {
-    expect(run("987-65-4321")).toBe("987654321");
+    expect(run("287-65-4321")).toBe("287654321");
   });
 
   test("strips spaces from space-separated format", () => {
-    expect(run("987 65 4321")).toBe("987654321");
+    expect(run("287 65 4321")).toBe("287654321");
   });
 
   // Each would otherwise lose characters and pad to a different SSN.
@@ -357,8 +427,8 @@ describe("default SSN pipeline", () => {
     ["a group masked with _", "123-__-8924"],
     ["a group masked with bullets", "123-\u2022\u2022-8924"],
     ["a float-formatted number", "78051120.0"],
-    ["dots", "987.65.4321"],
-    ["parentheses", "(987) 65-4321"],
+    ["dots", "287.65.4321"],
+    ["parentheses", "(287) 65-4321"],
   ])("drops a value holding %s (%j)", (_label, input) => {
     expect(run(input)).toBeNull();
   });
@@ -366,21 +436,21 @@ describe("default SSN pipeline", () => {
   test.each(UNICODE_DASHES)(
     "a Unicode dash %j separates the digits as a hyphen does",
     (dash) => {
-      expect(run(`987${dash}65${dash}4321`)).toBe(run("987-65-4321"));
-      expect(run(`987${dash}65${dash}4321`)).toBe("987654321");
+      expect(run(`287${dash}65${dash}4321`)).toBe(run("287-65-4321"));
+      expect(run(`287${dash}65${dash}4321`)).toBe("287654321");
     },
   );
 
   test("drops a value holding a Unicode dash and a fullwidth digit", () => {
-    expect(run("987\u201065\u2010432\uff11")).toBeNull();
+    expect(run("287\u201065\u2010432\uff11")).toBeNull();
   });
 
   test("trims surrounding whitespace", () => {
-    expect(run("  987654321  ")).toBe("987654321");
+    expect(run("  287654321  ")).toBe("287654321");
   });
 
   test("passes through a bare 9-digit string unchanged", () => {
-    expect(run("987654321")).toBe("987654321");
+    expect(run("287654321")).toBe("287654321");
   });
 
   test("zero-pads an 8-digit SSN missing a leading zero", () => {
@@ -428,10 +498,57 @@ describe("default SSN pipeline", () => {
 
   test.each([
     ["001-23-4567", "001234567"],
-    ["010-00-0001", "010000001"],
-    ["100-00-0001", "100000001"],
+    ["010-01-0001", "010010001"],
+    ["100-10-1000", "100101000"],
   ])("keeps %j, whose area number is not 000", (input, expected) => {
     expect(run(input)).toBe(expected);
+  });
+
+  test.each([
+    "666-12-3456",
+    "900-12-3456",
+    "987-65-4321",
+    "999-12-3456",
+    "123-00-4567",
+    "123-45-0000",
+  ])("drops %j, whose area, group or serial the SSA never issues", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each([
+    ["665-12-3456", "665123456"],
+    ["667-12-3456", "667123456"],
+    ["656-12-3456", "656123456"],
+    ["899-12-3456", "899123456"],
+    ["123-01-4567", "123014567"],
+    ["123-10-4567", "123104567"],
+    ["123-45-0001", "123450001"],
+    ["123-45-1000", "123451000"],
+  ])(
+    "keeps %j, whose area, group and serial are each issued",
+    (input, expected) => {
+      expect(run(input)).toBe(expected);
+    },
+  );
+
+  test.each([
+    "000000000",
+    "111111111",
+    "222-22-2222",
+    "333333333",
+    "444444444",
+    "555555555",
+    "666666666",
+    "777-77-7777",
+    "888888888",
+    "999999999",
+    "123456789",
+  ])("drops the placeholder %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test("keeps a value of one digit but for one place", () => {
+    expect(run("222-22-2223")).toBe("222222223");
   });
 });
 
@@ -479,6 +596,13 @@ describe("default ssn4 derived from a full SSN column", () => {
     expect(cleaned(ssnOnly, "000-00-8924")).toEqual({
       ssn: null,
       ssn4: "8924",
+    });
+  });
+
+  test("a never-issued value is dropped from ssn and kept as ssn4", () => {
+    expect(cleaned(ssnOnly, "900-12-3456")).toEqual({
+      ssn: null,
+      ssn4: "3456",
     });
   });
 
@@ -624,6 +748,21 @@ describe("default SSN4 pipeline", () => {
   ])("keeps %j, masked only before its last four, as %j", (input, expected) => {
     expect(run(input)).toBe(expected);
   });
+
+  test.each(["0000", "1111", "2222", "5555", "9999", "123-45-7777", "0"])(
+    "drops %j, one digit repeated",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each([
+    ["1112", "1112"],
+    ["0001", "0001"],
+    ["70", "0070"],
+  ])("keeps %j, not one digit repeated, as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
 });
 
 // --- Name pipelines ----------------------------------------------------------
@@ -756,8 +895,92 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(runFirst("Dr.")).toBeNull();
   });
 
-  test("first_name and last_name use the same pipeline", () => {
+  test("first_name and last_name clean a name of two or more letters alike", () => {
     expect(runFirst("O'Brien-Smith")).toBe(runLast("O'Brien-Smith"));
+  });
+
+  test.each([
+    "Unknown",
+    "UNK",
+    "Doe",
+    "baby",
+    "Boy",
+    "Girl",
+    "Twin",
+    "Male",
+    "Female",
+    "Trauma",
+    "Refused",
+    "Anonymous",
+    "None",
+    "Test",
+    " unknown. ",
+  ])("drops the placeholder %j in both name fields", (input) => {
+    expect(runFirst(input)).toBeNull();
+    expect(runLast(input)).toBeNull();
+  });
+
+  test.each([
+    ["J", "J"],
+    ["j.", "J"],
+    [" Q ", "Q"],
+    ["Dr. J", "J"],
+  ])(
+    "keeps %j as the one-letter first name %j and drops it as a last name",
+    (input, initial) => {
+      expect(runFirst(input)).toBe(initial);
+      expect(runLast(input)).toBeNull();
+    },
+  );
+
+  test("a one-letter first name reaches the built-in first-initial keys", () => {
+    const keys = getDefaultLinkageTerms("test").linkageKeys.filter((key) =>
+      ["SSN + LN + FN1", "SSN + LN3 + FN1"].includes(key.name),
+    );
+    expect(keys).toHaveLength(2);
+    for (const key of keys) {
+      const initial = key.elements.find((e) => e.field === "first_name")!;
+      const firstName = runFirst("J.");
+      expect(firstName).toBe("J");
+      expect(runPipeline(firstName as string, initial.transform!)).toBe("J");
+    }
+  });
+
+  test.each([
+    ["Jo", "JO"],
+    ["J R", "J R"],
+    ["Jane Doe", "JANE DOE"],
+    ["Doering", "DOERING"],
+    ["Baby Boy", "BABY BOY"],
+  ])("keeps %j as %j", (input, expected) => {
+    expect(runFirst(input)).toBe(expected);
+    expect(runLast(input)).toBe(expected);
+  });
+
+  test("an edited placeholder list is the one applied, to its own field only", () => {
+    const transformations = getDefaultStandardization(
+      [
+        { name: "FN", type: "first_name", role: "linkage", isPayload: false },
+        { name: "LN", type: "last_name", role: "linkage", isPayload: false },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [
+          { name: "first_name", type: "first_name" },
+          { name: "last_name", type: "last_name" },
+        ],
+      },
+    );
+    const steps = new Map(transformations.map((t) => [t.output, t.steps!]));
+    const lastName = withPlaceholders(steps.get("last_name")!, "UNKNOWN", [
+      "UNKNOWN",
+      "NOBODY",
+    ]);
+    expect(runPipeline("Doe", lastName)).toBe("DOE");
+    expect(runPipeline("Nobody", lastName)).toBeNull();
+    expect(runPipeline("Unknown", lastName)).toBeNull();
+    expect(runPipeline("Doe", steps.get("first_name")!)).toBeNull();
+    expect(runPipeline("Nobody", steps.get("first_name")!)).toBe("NOBODY");
   });
 
   describe("Unicode whitespace folds to one space between words", () => {
@@ -886,6 +1109,50 @@ describe("default date_of_birth pipeline", () => {
   test("returns null for ISO 8601 format (YYYY-MM-DD)", () => {
     // Default pipeline assumes MM/DD/YYYY; other formats need explicit config.
     expect(run("1990-01-15")).toBeNull();
+  });
+
+  test.each([
+    ["01/01/1902", "19020101"],
+    ["12/31/1900", "19001231"],
+    ["01/02/1900", "19000102"],
+    ["01/01/2099", "20990101"],
+  ])("keeps %j as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test.each(["12/31/1899", "01/01/1850", "06/15/0990"])(
+    "drops %j, a year before 1900",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test.each(["01/01/1900", "1/1/1901"])("drops the placeholder %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test("an edited placeholder list is the one applied", () => {
+    const [t] = getDefaultStandardization(
+      [
+        {
+          name: "DOB",
+          type: "date_of_birth",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [{ name: "date_of_birth", type: "date_of_birth" }],
+      },
+    );
+    const steps = withPlaceholders(t.steps!, "19000101", [
+      "19010101",
+      "19990909",
+    ]);
+    expect(runPipeline("01/01/1900", steps)).toBe("19000101");
+    expect(runPipeline("09/09/1999", steps)).toBeNull();
+    expect(runPipeline("01/01/1901", steps)).toBeNull();
   });
 });
 
@@ -1171,11 +1438,13 @@ describe("inferDateFormat — edge cases", () => {
 
   test("a 7-digit value is read as YYYYMMDD, as the pipeline reads it", () => {
     expect(inferDateFormat(["1990115", "2000631"])).toBe("YYYYMMDD");
-    expect(runPipeline("1990115", dateOfBirthSteps("YYYYMMDD"))).not.toBeNull();
+    expect(
+      runPipeline("1990115", dateOfBirthParseSteps("YYYYMMDD")),
+    ).not.toBeNull();
   });
 });
 
-describe("inferDateFormat — agreement with the date_of_birth pipeline", () => {
+describe("inferDateFormat — agreement with the date_of_birth parsing steps", () => {
   const probes = [
     "01/15/1990",
     "1/2/1990",
@@ -1197,11 +1466,34 @@ describe("inferDateFormat — agreement with the date_of_birth pipeline", () => 
     "%j infers the first candidate whose pipeline keeps it",
     (value) => {
       const kept = CANDIDATE_DATE_FORMATS.find(
-        (format) => runPipeline(value, dateOfBirthSteps(format)) !== null,
+        (format) => runPipeline(value, dateOfBirthParseSteps(format)) !== null,
       );
       expect(inferDateFormat([value])).toBe(kept);
     },
   );
+
+  test("a pre-1900 date still shows its layout, so the screens do not change the inferred format", () => {
+    const column = ["03/04/1990", "05/06/1985", "13/05/1850", "13/06/1850"];
+    const format = inferDateFormat(column);
+    expect(format).toBe("DD/MM/YYYY");
+    const [t] = getDefaultStandardization(
+      [
+        {
+          name: "DOB",
+          type: "date_of_birth",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [{ name: "date_of_birth", type: "date_of_birth" }],
+      },
+      { dateInputFormat: format },
+    );
+    expect(runPipeline("03/04/1990", t.steps!)).toBe("19900403");
+    expect(runPipeline("13/05/1850", t.steps!)).toBeNull();
+  });
 
   test("a 3-digit year parses under no candidate", () => {
     expect(inferDateFormat(["1/2/199"])).toBeUndefined();
