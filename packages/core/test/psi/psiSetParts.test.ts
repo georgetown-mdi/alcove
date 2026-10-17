@@ -44,6 +44,7 @@ import {
   sendPsiSet,
 } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { readPartFrame } from "../utils/matchedListPartFrames";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PsiElementBounds } from "../../src/connection/frameSize";
@@ -452,8 +453,14 @@ test.each([
     expect(parted.joiner).toEqual(whole.joiner);
     expect((parted.starter as Array<unknown>).length).toBe(150);
     // Three sets of about 10 KiB in parts of about 2 KiB, every frame within
-    // the bound once the envelope is added.
-    expect(binaryFrames(whole.sent)).toHaveLength(3);
+    // the bound once the envelope is added. The round's three index lists, of
+    // 150 short entries each, are one part each.
+    expect(
+      binaryFrames(whole.sent).filter((frame) => !readPartFrame(frame)),
+    ).toHaveLength(3);
+    expect(
+      binaryFrames(whole.sent).filter((frame) => readPartFrame(frame)),
+    ).toHaveLength(3);
     expect(binaryFrames(parted.sent).length).toBeGreaterThan(15);
     for (const frame of binaryFrames(parted.sent)) {
       const envelope = AEAD_ENVELOPE_OVERHEAD_BYTES;
@@ -474,6 +481,27 @@ test.each([
     expect(counted).toMatchObject({ starter: undefined, joiner: 150 });
   },
 );
+
+test("a round whose match table exceeds a WebRTC message sends it in parts and matches as a one-part table does", async () => {
+  const starterSet = values(300, "v");
+  const joinerSet = [...values(150, "v"), ...values(150, "w")];
+  const whole = await round(starterSet, joinerSet, {});
+  const parted = await round(starterSet, joinerSet, { webRtc: 512 });
+
+  expect(parted.starter).toEqual(whole.starter);
+  expect(parted.joiner).toEqual(whole.joiner);
+  // The table's two index lists and the original-index list, 150 entries of
+  // up to three digits each, every one of them in several parts.
+  const lists = binaryFrames(parted.sent).flatMap((frame) => {
+    const read = readPartFrame(frame);
+    return read === undefined || read.header.index > 0 ? [] : [read.header];
+  });
+  expect(lists).toHaveLength(3);
+  for (const header of lists) {
+    expect(header.entries).toBe(150);
+    expect(header.count).toBeGreaterThan(1);
+  }
+});
 
 /** A joiner bounded by `elementBounds`, parked on a setup fed by `feed`. */
 async function joinerFed(

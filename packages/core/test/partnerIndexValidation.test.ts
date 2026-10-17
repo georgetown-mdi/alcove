@@ -403,7 +403,7 @@ test("single-pass sender bounds the table by the many side's row count", async (
 
 test("cascade starter refuses a round table indexing past the set it encrypted", async () => {
   const err = await cascadeWithDeviation(
-    onIndexTable((table) => [table[0], table[1].map(() => 99)]),
+    onIndexTable((table) => [table[0], table[1].map(() => 9)]),
   );
   expectProtocolRefusal(
     err,
@@ -413,7 +413,7 @@ test("cascade starter refuses a round table indexing past the set it encrypted",
 
 test("cascade starter refuses a round table naming a partner element beyond its bound", async () => {
   const err = await cascadeWithDeviation(
-    onIndexTable((table) => [table[0].map(() => 99), table[1]]),
+    onIndexTable((table) => [table[0].map(() => 9), table[1]]),
   );
   expectProtocolRefusal(
     err,
@@ -433,13 +433,15 @@ test("cascade starter refuses a round table whose halves disagree in length", as
 
 test("cascade starter refuses a round table with a fractional index", async () => {
   // The wire schema admits any finite number; an index that is not a whole number
-  // addresses nothing.
+  // addresses nothing. Below a one-digit bound no fraction fits the bytes a
+  // part of whole numbers takes, so the part is refused before its body is
+  // parsed.
   const err = await cascadeWithDeviation(
     onIndexTable((table) => [table[0], table[1].map(() => 1.5)]),
   );
   expectProtocolRefusal(
     err,
-    /round's association table, local half has an entry that is not a whole number/,
+    /round association table, local half part 0 is over the 22 bytes this party admits/,
   );
 });
 
@@ -472,17 +474,25 @@ test("cascade starter refuses a round table longer than the set it encrypted", a
   );
   expectProtocolRefusal(
     err,
-    /round's association table, local half has 4 entries, more than the 3/,
+    /round association table, partner half declares 4 entries, over the 3 this party admits/,
   );
 });
 
 test("cascade joiner refuses an original-index list of the wrong length", async () => {
   const err = await cascadeWithJoinerDeviation((list) => [...list, 0]);
-  expectProtocolRefusal(err, /original-index list has 3 entries, expected 2/);
+  expectProtocolRefusal(
+    err,
+    /round original-index list declares 3 entries, over the 2 this party admits/,
+  );
+});
+
+test("cascade joiner refuses an original-index list shorter than the table it answers", async () => {
+  const err = await cascadeWithJoinerDeviation((list) => list.slice(1));
+  expectProtocolRefusal(err, /original-index list has 1 entry, expected 2/);
 });
 
 test("cascade joiner refuses an original-index list naming an element beyond its bound", async () => {
-  const err = await cascadeWithJoinerDeviation((list) => list.map(() => 99));
+  const err = await cascadeWithJoinerDeviation((list) => list.map(() => 9));
   expectProtocolRefusal(
     err,
     /original-index list has an index outside \[0, 3\)/,
@@ -490,10 +500,12 @@ test("cascade joiner refuses an original-index list naming an element beyond its
 });
 
 test("cascade joiner refuses an original-index list with a fractional entry", async () => {
+  // Refused on the part's bytes before its body is parsed, as on the
+  // association table.
   const err = await cascadeWithJoinerDeviation((list) => list.map(() => 1.5));
   expectProtocolRefusal(
     err,
-    /original-index list has an entry that is not a whole number/,
+    /round original-index list part 0 is over the 22 bytes this party admits/,
   );
 });
 

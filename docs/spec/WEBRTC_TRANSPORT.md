@@ -423,27 +423,24 @@ answers false for every key -- it writes a map header it fills with nothing.
 
 ### Lists of matched records
 
-The lists naming matched records that a cascade sends after its last round --
-each party's mapped-element list, the list it returns with the partner's rows,
-and its payload rows -- go in parts on WebRTC as on file-sync, each part's
-frame sized to the partner's data-channel bound
+The lists naming matched records that a cascade sends -- each round's
+association table and original-index list, each with the sending party's
+grouping after it, and after the last round each party's mapped-element list,
+the list it returns with the partner's rows, and its payload rows -- go in
+parts on WebRTC as on file-sync, each part its own frame inside the
+application-layer AEAD envelope (see
+[Application-layer encryption](#application-layer-encryption)) and sized to the
+partner's data-channel bound
 ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
-No list is bounded by one frame. A part of either mapped-element list is
-refused past the byte bound PROTOCOL.md derives from the agreed terms, before
-its body is parsed; the data channel has reassembled the part by then, up to
-`MAX_WEBRTC_FRAME_BYTES`, since no receive on this transport reads a frame
-under a tighter bound.
-
-A cascade round's association table and original-index list are one frame
-each, sent as UTF-8 JSON inside the application-layer AEAD envelope (see
-[Application-layer encryption](#application-layer-encryption)). Their index
-lists do not fit one frame at the per-set maximum: two index lists of the
-positions 0 to 2^24 - 1 measured 279,767,673 bytes as JSON, which
-`webrtcFrameReceiveCharge` charges as 280,711,728 bytes inside the envelope
-against the 268,435,456 bytes of `MAX_WEBRTC_FRAME_BYTES`, so the frame passes
-the bound at about 16.1 million matched records. What can also pass the bound is the
-deduplicating side's owner-list grouping beside them
-([PROTOCOL.md, The lists the parts do not cover](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+No list is bounded by one frame. One part's body holds at most 267,532,635
+bytes, what one part of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the
+application envelope
+([PROTOCOL.md, The part size](PROTOCOL.md#a-psi-set-is-sent-in-parts)), and at
+most `MAX_JSON_ARRAY_ELEMENTS` entries. A part of either mapped-element list or
+of a round's index list is refused past the byte bound PROTOCOL.md derives from
+the agreed terms and this party's own round, before its body is parsed; the
+data channel has reassembled the part by then, up to `MAX_WEBRTC_FRAME_BYTES`,
+since no receive on this transport reads a frame under a tighter bound.
 
 ### Outbound pacing
 

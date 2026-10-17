@@ -32,7 +32,12 @@ import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { recordingConnection } from "../utils/recordingConnection";
-import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
+import {
+  partFrame,
+  readPartFrame,
+  receiveHandPlayedRoundTable,
+  sendHandPlayedOriginalIndexList,
+} from "../utils/matchedListPartFrames";
 import { mirrorCardinality } from "../utils/candidateSetBounds";
 import {
   makeParticipant,
@@ -451,12 +456,9 @@ async function runNonConformingStarter(
   // The joiner computes the round's table and sends it as [its own positions,
   // ours in the library's sorted order]; the starter's half of the round is to put
   // ours back in input order and return them.
-  const [joinerPositions, sortedRows] = (await conn.receive()) as [
-    Array<number>,
-    Array<number>,
-  ];
+  const [joinerPositions, sortedRows] = await receiveHandPlayedRoundTable(conn);
   const ownRows = sortedRows.map((slot) => permutation[slot]);
-  await conn.send(ownRows);
+  await sendHandPlayedOriginalIndexList(conn, ownRows);
   await conn.receive();
 
   // A party contributing its dataset verbatim has one round position per record,
@@ -1105,12 +1107,9 @@ async function runNonConformingStarterRound(
     Number.MAX_SAFE_INTEGER,
   );
   await sendPsiSet(conn, await participant.processClientRequest(request));
-  const [joinerPositions, sortedRows] = (await conn.receive()) as [
-    Array<number>,
-    Array<number>,
-  ];
+  const [joinerPositions, sortedRows] = await receiveHandPlayedRoundTable(conn);
   const ownRows = sortedRows.map((slot) => permutation[slot]);
-  await conn.send(ownRows);
+  await sendHandPlayedOriginalIndexList(conn, ownRows);
   await conn.receive();
   return inOwnRowOrder(joinerPositions, ownRows);
 }
@@ -1240,18 +1239,21 @@ async function recordedGatedRound(): Promise<{
   return sent;
 }
 
-test("a deduplicating round sends the sender's original-index list bare", async () => {
+const bodyOf = (frame: unknown): unknown => readPartFrame(frame)?.body;
+
+test("a deduplicating round omits the sender's grouping beside its original-index list", async () => {
   const sent = await recordedGatedRound();
-  // The starter's third frame is the round's original-index list: the list
-  // alone, with no grouping beside it.
-  expect(sent.starter[2]).toStrictEqual([0]);
+  // After its setup and response, the starter sends the round's
+  // original-index list and then its grouping list, omitted.
+  expect(bodyOf(sent.starter[2])).toStrictEqual([0]);
+  expect(bodyOf(sent.starter[3])).toBeNull();
 });
 
-test("a deduplicating round sends the receiver's association table at two elements", async () => {
+test("a deduplicating round omits the receiver's grouping beside its association table", async () => {
   const sent = await recordedGatedRound();
-  // The joiner's second frame is the round's association table, which the
-  // grouping would have joined as a third element.
-  expect(sent.joiner[1]).toStrictEqual([[0], [0]]);
+  // After its request, the joiner sends the round's association table as its
+  // two index lists and then its grouping list, omitted.
+  expect(sent.joiner.slice(1, 4).map(bodyOf)).toStrictEqual([[0], [0], null]);
 });
 
 test("a deduplicating round refuses run lengths that do not partition the association table", async () => {

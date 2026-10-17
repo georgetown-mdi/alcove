@@ -23,6 +23,7 @@ import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
 import { recordingConnection } from "../utils/recordingConnection";
+import { readPartFrame } from "../utils/matchedListPartFrames";
 import {
   candidateSetBounds,
   declaredKeyWidths,
@@ -330,38 +331,43 @@ async function recordedStarterFrames(
   return sent;
 }
 
+// The grouping list the starter sent after its original-index list: the body
+// of the matched-list part that follows the first one holding numbers alone.
+function sentGrouping(sent: Array<unknown>): unknown {
+  const bodies = sent.flatMap((frame) => {
+    const read = readPartFrame(frame);
+    return read === undefined ? [] : [read.body];
+  });
+  const list = bodies.findIndex(
+    (body) =>
+      Array.isArray(body) &&
+      body.length > 0 &&
+      body.every((entry) => typeof entry === "number"),
+  );
+  expect(list).toBeGreaterThanOrEqual(0);
+  return bodies[list + 1];
+}
+
 test("a widened round adds no frame", async () => {
-  // The grouping rides frames the round already sends, so a round a candidate
-  // set widened moves exactly as many frames as one it did not, for the same
-  // key count.
+  // A round that states groupings sends its grouping list whether or not it
+  // omits the grouping, so a round a candidate set widened moves exactly as
+  // many frames as one it did not, for the same key count.
   const widened = await recordedStarterFrames(DOUBLE_MATCH_S, DOUBLE_MATCH_R);
   const plain = await recordedStarterFrames([["a", "b"]], [["a", "b"]]);
   expect(widened.length).toBe(plain.length);
 });
 
-test("a round no producer widened puts the single-valued cascade's frames on the wire", async () => {
-  // Same key count, same matches, no candidate set: the grouping is omitted on
-  // both frames, leaving each the shape the fan-out-free cascade sends. The
-  // property is identity entry for entry once each frame's own order is
-  // canonicalized, the library returning an intersection in no fixed order.
+test("a round no producer widened omits its grouping", async () => {
+  // Same key count, same matches, no candidate set: the grouping is omitted,
+  // its list one part holding null.
   const plain = await recordedStarterFrames([["a", "b"]], [["a", "b"]]);
-  const groupingFrames = plain.filter(
-    (frame) => Array.isArray(frame) && Array.isArray(frame[1]),
-  );
-  expect(groupingFrames).toStrictEqual([]);
-  // Frame 5 is the bare original-index list a single-valued round sends.
-  expect(
-    plain.some((frame) => Array.isArray(frame) && frame.every(Number.isFinite)),
-  ).toBe(true);
+  expect(sentGrouping(plain)).toBeNull();
 });
 
 test("a widened round states run lengths beside its original-index list", async () => {
   const sent = await recordedStarterFrames(DOUBLE_MATCH_S, DOUBLE_MATCH_R);
-  const grouped = sent.find(
-    (frame) => Array.isArray(frame) && Array.isArray(frame[1]),
-  ) as [Array<number>, Array<number>];
   // S0 owns two of the round's three matched positions and S1 the third.
-  expect(grouped[1]).toStrictEqual([2, 1]);
+  expect(sentGrouping(sent)).toStrictEqual([2, 1]);
 });
 
 test("a deduplicating party states an owner list per matched position", async () => {
@@ -373,10 +379,7 @@ test("a deduplicating party states an owner list per matched position", async ()
     [["shared", "own"]],
     "many-to-one",
   );
-  const grouped = sent.find(
-    (frame) => Array.isArray(frame) && Array.isArray(frame[1]),
-  ) as [Array<number>, Array<Array<number>>];
-  expect(grouped[1]).toStrictEqual([[0, 1], [0]]);
+  expect(sentGrouping(sent)).toStrictEqual([[0, 1], [0]]);
 });
 
 test("a deduplicating party no producer widened still omits its grouping", async () => {
@@ -387,10 +390,7 @@ test("a deduplicating party no producer widened still omits its grouping", async
     [["shared"]],
     "many-to-one",
   );
-  const grouped = sent.filter(
-    (frame) => Array.isArray(frame) && Array.isArray(frame[1]),
-  );
-  expect(grouped).toStrictEqual([]);
+  expect(sentGrouping(sent)).toBeNull();
 });
 
 // --- the shapes the widened mapped-element entry exists for -------------------

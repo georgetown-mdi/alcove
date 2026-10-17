@@ -118,14 +118,14 @@ A declared length over the combined bound stays a `ProtocolRefusalError`; one wi
 
 ### Matched-record lists in parts: the aggregate bound
 
-A cascade sends each list naming matched records -- a mapped-element list, the returned list, and the payload rows -- in parts, each its own frame ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts), where the header, the part size, and the refusals are specified).
+A cascade sends each list naming matched records -- a round's association table, original-index list and groupings, a mapped-element list, the returned list, and the payload rows -- in parts, each its own frame ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts), where the header, the part size, and the refusals are specified).
 The bounds that hold over partner content across the whole list:
 
 - **Each part is held to the per-frame bound.**
   A part is an ordinary frame at the transport read gate -- `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes) on file-sync, [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) (268,435,456 bytes) on the WebRTC data channel.
 - **An index list's part is held to its entries' bytes.**
-  A part of either mapped-element list is refused, before its body is parsed, past the bytes the entries it can still hold take at their longest, a bound PROTOCOL.md derives from the agreed terms and the record counts ([The bytes a receiver admits](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
-  The transport has read the part whole by then, so this bounds what is parsed, not what the transport reads; a payload part has no such bound.
+  A part of either mapped-element list or of a round's index list is refused, before its body is parsed, past the bytes the entries it can still hold take at their longest, a bound PROTOCOL.md derives from the agreed terms, the record counts and the round's own sets ([The bytes a receiver admits](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+  The transport has read the part whole by then, so this bounds what is parsed, not what the transport reads; a payload part and a grouping part have no such bound.
 - **The receiver holds one unparsed part at a time.**
   Each part's header is checked and its body parsed as the part arrives, before the next part is read (`receiveMatchedListParts`, `packages/core/src/psi/matchedListParts.ts`).
   The unparsed bytes a list holds at any moment are therefore at most one per-frame bound, whatever its part count, and a part refused on its header or its body ends the receive at that part.
