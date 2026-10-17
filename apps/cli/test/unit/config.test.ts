@@ -10,9 +10,6 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
-  inferMetadata,
-  linkageKeysAtPrecisionFloor,
-  linkageTermsFromRuleSet,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
@@ -39,11 +36,8 @@ import {
   configPlaceholderFields,
   assertPartnerFingerprintRecordable,
   assertRetainSweepGuard,
-  configWithNamedRuleSetRules,
   describeConfigSchemaError,
   diffLinkageTerms,
-  linkageTermsNarrowedToInput,
-  linkageTermsWithNamedRuleSetRules,
   formatReconcileDiffs,
   linkageTermsStandingOf,
   reconcileConflictError,
@@ -57,6 +51,7 @@ import {
   persistPartnerFingerprint,
   persistStatedPayloadSend,
   readConfigLinkageSource,
+  refuseRuleSetCitationWithoutRules,
   saveConfig,
   warnOnLinkageRuleSetCitationDrift,
 } from "../../src/config";
@@ -5059,13 +5054,13 @@ describe("assertRetainSweepGuard", () => {
   });
 });
 
-// --- rules taken from a named rule set ---------------------------------------
+// --- a rule-set citation with no rules written -------------------------------
 
 /**
- * A second built-in rule set, for the reads that must be shown resolving the
- * set a document names rather than the default one. Only one set ships, so the
- * registry every function here takes is how a non-default set is reached; this
- * one is passed in by the tests below and by nothing else.
+ * A second built-in rule set, for the drift checks that must be shown judging
+ * the set a document cites rather than the default one. Only one set ships, so
+ * the registry every function here takes is how a non-default set is reached;
+ * this one is passed in by the tests below and by nothing else.
  */
 const OTHER_RULE_SET: BuiltInLinkageRuleSet = {
   reference: {
@@ -5084,10 +5079,9 @@ const OTHER_RULE_SET: BuiltInLinkageRuleSet = {
 
 const OTHER_RULE_SETS: ReadonlyArray<BuiltInLinkageRuleSet> = [OTHER_RULE_SET];
 
-/** Linkage terms as a configuration file writes them when it names its rule
- *  set instead of writing the rules out: snake_case, and holding every field
- *  the set does not cover. */
-function namedRuleSetTerms(
+/** Linkage terms as a configuration file writes them, snake_case, citing
+ *  `reference` and writing neither rule list. */
+function citationOnlyTerms(
   reference: LinkageRuleSetReference,
 ): Record<string, unknown> {
   return {
@@ -5104,368 +5098,119 @@ function namedRuleSetTerms(
   };
 }
 
-/** A configuration file written with `terms` as its linkage terms and
- *  `alsoAtTopLevel` beside that block, at the document's own top level. */
-function writeNamedRuleSetConfig(
-  terms: Record<string, unknown>,
-  alsoAtTopLevel: Record<string, unknown> = {},
-): string {
+/** A configuration file written with `terms` as its linkage terms. */
+function writeTermsConfig(terms: Record<string, unknown>): string {
   const configPath = path.join(dir, "alcove.yaml");
   fs.writeFileSync(
     configPath,
     YAML.stringify({
       connection: { channel: "filedrop", path: "/mnt/share" },
       linkage_terms: terms,
-      ...alsoAtTopLevel,
     }),
   );
   return configPath;
 }
 
-/** The terms of a configuration file written with `terms` as its linkage
- *  terms, read back through the config reader. */
-function loadNamedRuleSetConfig(terms: Record<string, unknown>): LinkageTerms {
-  const source = loadConfigLinkageSource(writeNamedRuleSetConfig(terms));
-  expect(source).toBeDefined();
-  return source!.linkageTerms;
-}
+const RULE_SET_WITHOUT_RULES_REFUSAL =
+  "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+  "linkage_fields or linkage_keys. Run 'alcove init' to write a " +
+  "configuration that lists them, or write linkage_fields and linkage_keys " +
+  "out under linkage_terms.";
 
-test("a config naming the built-in set runs on that set's rules", () => {
-  const terms = loadNamedRuleSetConfig(
-    namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-  );
-  expect(terms.linkageKeys).toEqual(DEFAULT_LINKAGE_RULE_SET.linkageKeys);
-  expect(terms.linkageFields).toEqual(DEFAULT_LINKAGE_RULE_SET.linkageFields);
-  // The citation the file wrote stands as written: it is what named the set.
-  expect(terms.linkageRuleSet).toEqual(DEFAULT_LINKAGE_RULE_SET.reference);
-  // The fields the set does not cover are the file's own.
-  expect(terms.identity).toBe("Agency A");
-  expect(terms.date).toBe("2026-01-01");
-});
-
-test("a config selects the named catalog's rules by floor and coverage", () => {
-  const selected = (selection: Record<string, unknown>) =>
-    loadNamedRuleSetConfig({
-      ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-      ...selection,
-    });
-  const strict = selected({
-    precision_floor: 99,
-    one_state_or_metro_area: false,
-  });
-  expect(strict.linkageKeys).toEqual(
-    linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, {
-      floor: 99,
-      oneStateOrMetroArea: false,
-    }),
-  );
-  expect(strict.linkageKeys.map((key) => key.name)).not.toContain("SSN + FN");
-  // Only the fields the selected keys read, and the citation as written.
-  expect(strict.linkageFields.map((field) => field.name)).not.toContain(
-    "email_address",
-  );
-  expect(strict.linkageRuleSet).toEqual(DEFAULT_LINKAGE_RULE_SET.reference);
-
-  const otherAreas = selected({ one_state_or_metro_area: false });
-  expect(otherAreas.linkageKeys.map((key) => key.name)).toContain("SSN + FN");
-  expect(otherAreas.linkageKeys.map((key) => key.name)).not.toContain(
-    "LN + FN + DOB",
-  );
-});
-
-test("a config's floor selection is refused where it cannot select", () => {
-  const refusal = (terms: Record<string, unknown>): string => {
-    try {
-      loadNamedRuleSetConfig(terms);
-    } catch (err) {
-      expect(err).toBeInstanceOf(UsageError);
-      return (err as Error).message;
-    }
-    throw new Error("expected a refusal");
-  };
-  const catalog = namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference);
-  expect(refusal({ ...catalog, precision_floor: 90 })).toContain(
-    "precision_floor as 90, which is not a floor. Write 99 or 95 as a " +
-      "number without quotes (precision_floor: 95)",
-  );
-  expect(refusal({ ...catalog, precision_floor: "99" })).toContain(
-    'precision_floor as "99", which is not a floor',
-  );
-  expect(refusal({ ...catalog, precision_floor: null })).toContain(
-    "precision_floor as null, which is not a floor",
-  );
-  expect(
-    refusal({
-      ...catalog,
-      linkage_rule_set: undefined,
-      precision_floor: 99,
-    }),
-  ).toContain(
-    'Add a linkage_rule_set block naming "precision-ranked-rules" 2.0.0 ' +
-      'over "baseline-pii" 1.1.0',
-  );
-  expect(refusal({ ...catalog, one_state_or_metro_area: "yes" })).toContain(
-    "one_state_or_metro_area as a value other than true or false",
-  );
-  expect(
-    refusal({
-      ...catalog,
-      precision_floor: 99,
-      linkage_fields: DEFAULT_LINKAGE_RULE_SET.linkageFields,
-      linkage_keys: DEFAULT_LINKAGE_RULE_SET.linkageKeys,
-    }),
-  ).toContain("delete both lists to run it");
-  expect(
-    refusal({
-      ...namedRuleSetTerms({
-        fieldSet: { name: "baseline-pii", version: "1.0.0" },
-        keySet: { name: "hmis-keys", version: "1.0.0" },
-      }),
-      precision_floor: 99,
-    }),
-  ).toContain("has no precision bands to select by");
-});
-
-test("a config's floor selection keeps only the keys its input supplies", () => {
-  const columns = ["ssn", "first_name", "last_name", "dob"];
-  const metadata = inferMetadata(columns, []);
-  const suppliedAt = (floor: 99 | 95) =>
-    linkageTermsFromRuleSet(DEFAULT_LINKAGE_RULE_SET, undefined, metadata, {
-      floor,
-      oneStateOrMetroArea: true,
-    });
-  for (const floor of [99, 95] as const) {
-    const source = loadConfigLinkageSource(
-      writeNamedRuleSetConfig(
-        {
-          ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-          precision_floor: floor,
-        },
-        { metadata: snakeizeKeys(metadata) },
-      ),
-    )!;
-    expect(source.linkageTerms.linkageKeys).toEqual(
-      suppliedAt(floor).linkageKeys,
-    );
-    expect(source.linkageTerms.linkageKeys.length).toBeGreaterThan(0);
-    const fields = source.linkageTerms.linkageFields.map((field) => field.name);
-    expect(fields).not.toContain("zip_code");
-    expect(fields).not.toContain("phone_number");
-    expect(source.linkageTerms.linkageRuleSet).toEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
-    expect(source.linkageKeysFollowInputHeader).toBeUndefined();
-  }
-
-  // With no metadata block the read keeps the whole selection for the command
-  // that reads the input, which narrows it by the header to the same keys.
-  const unread = loadConfigLinkageSource(
-    writeNamedRuleSetConfig(
-      namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    ),
-  )!;
-  expect(unread.linkageKeysFollowInputHeader).toBe(true);
-  expect(
-    linkageTermsNarrowedToInput(
-      unread.linkageTerms,
-      columns,
-      undefined,
-      undefined,
-    ).linkageKeys,
-  ).toEqual(suppliedAt(95).linkageKeys);
-});
-
-test("a config naming the catalog's earlier version runs on its rules", () => {
-  const terms = loadNamedRuleSetConfig(
-    namedRuleSetTerms({
+test.each<[string, LinkageRuleSetReference]>([
+  ["the shipped set", DEFAULT_LINKAGE_RULE_SET.reference],
+  [
+    "the earlier version",
+    {
       fieldSet: { name: "baseline-pii", version: "1.0.0" },
       keySet: { name: "hmis-keys", version: "1.0.0" },
-    }),
-  );
-  expect(terms.linkageKeys).toHaveLength(14);
-  expect(terms.linkageRuleSet?.keySet).toEqual({
-    name: "hmis-keys",
-    version: "1.0.0",
-  });
-});
-
-test("a config naming a non-default set runs on that set's rules", () => {
-  const spec = parseExchangeSpec({
-    connection: { channel: "filedrop", path: "/mnt/share" },
-    linkage_terms: linkageTermsWithNamedRuleSetRules(
-      namedRuleSetTerms(OTHER_RULE_SET.reference),
-      "alcove.yaml",
-      OTHER_RULE_SETS,
-    ),
-  });
-  expect(spec.linkageTerms.linkageKeys).toEqual(OTHER_RULE_SET.linkageKeys);
-  expect(spec.linkageTerms.linkageFields).toEqual(OTHER_RULE_SET.linkageFields);
-  expect(spec.linkageTerms.linkageRuleSet).toEqual(OTHER_RULE_SET.reference);
-});
-
-test("a config naming a set this build does not ship fails at load", () => {
-  const cited: LinkageRuleSetReference = {
-    fieldSet: { name: "no-such-fields", version: "9.9.9" },
-    keySet: { name: "no-such-keys", version: "9.9.9" },
-  };
-  const attempt = () => loadNamedRuleSetConfig(namedRuleSetTerms(cited));
-  expect(attempt).toThrow(UsageError);
-  let message = "";
-  try {
-    attempt();
-  } catch (err) {
-    message = (err as Error).message;
-  }
-  // What was cited, and what this build ships instead.
-  expect(message).toContain('"no-such-keys" 9.9.9 over "no-such-fields" 9.9.9');
-  expect(message).toContain(
-    `It ships "${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}" ` +
-      `${DEFAULT_LINKAGE_RULE_SET.reference.keySet.version} over ` +
-      `"${DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name}" ` +
-      `${DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.version};`,
-  );
-  expect(message).toContain("write the linkage_fields and linkage_keys out");
-});
-
-test("an unknown set is decided against the registry passed, not the default", () => {
-  // The default set is unknown to a build shipping only the other one, and the
-  // refusal reports that build's own sets.
-  expect(() =>
-    linkageTermsWithNamedRuleSetRules(
-      namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-      "alcove.yaml",
-      OTHER_RULE_SETS,
-    ),
-  ).toThrow('It ships "other-keys" 4.2.0 over "other-fields" 3.1.0.');
-});
-
-test("a citation is read in the camelCase spelling too", () => {
-  const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
-  const filled = linkageTermsWithNamedRuleSetRules(
-    {
-      version: "1.0.0",
-      linkageRuleSet: { fieldSet: { ...fieldSet }, keySet: { ...keySet } },
     },
-    "alcove.yaml",
-  ) as { linkageKeys: unknown };
-  expect(filled.linkageKeys).toEqual(DEFAULT_LINKAGE_RULE_SET.linkageKeys);
-});
-
-test("rules written out beside a citation are the rules, untouched", () => {
-  const written = {
-    ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    linkage_fields: [{ name: "ssn", type: "ssn" }],
-    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-  };
-  expect(linkageTermsWithNamedRuleSetRules(written, "alcove.yaml")).toBe(
-    written,
-  );
-});
-
-test("a citation of an unshipped set beside written rules is left alone", () => {
-  // Terms imported from a partner keep the citation their author wrote,
-  // including one naming a set Alcove does not ship. Nothing is resolved for
-  // them, so nothing is refused either.
-  const written = {
-    ...namedRuleSetTerms({
+  ],
+  [
+    "a set this build does not ship",
+    {
       fieldSet: { name: "no-such-fields", version: "9.9.9" },
       keySet: { name: "no-such-keys", version: "9.9.9" },
-    }),
-    linkage_fields: [{ name: "ssn", type: "ssn" }],
-    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-  };
-  expect(linkageTermsWithNamedRuleSetRules(written, "alcove.yaml")).toBe(
-    written,
-  );
-});
-
-test("a named set beside one of the two rule lists is refused", () => {
-  const halfWritten = {
-    ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-  };
-  expect(() =>
-    linkageTermsWithNamedRuleSetRules(halfWritten, "alcove.yaml"),
-  ).toThrow("writes linkage_keys but no linkage_fields");
-});
-
-// A rule list un-indented out of linkage_terms lands at the document's top
-// level, leaving the block it came from with no rules of its own. Both
-// spellings the reader accepts elsewhere are recognized there.
-const MISPLACED_RULE_LISTS: Array<[string, Record<string, unknown>]> = [
-  ["snake_case", { linkage_keys: [{ name: "SSN", elements: [] }] }],
-  ["camelCase", { linkageKeys: [{ name: "SSN", elements: [] }] }],
-];
-
-test.each(MISPLACED_RULE_LISTS)(
-  "a rule list at the top level of the file refuses the named set: %s",
-  (_label, misplaced) => {
-    const configPath = writeNamedRuleSetConfig(
-      namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-      misplaced,
-    );
-    const written = Object.keys(misplaced)[0]!;
+    },
+  ],
+])(
+  "a config citing %s and writing no rules is refused at load",
+  (_label, reference) => {
+    const configPath = writeTermsConfig(citationOnlyTerms(reference));
     expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
-    // Where the list was found, and where it belongs.
     expect(() => loadConfigLinkageSource(configPath)).toThrow(
-      `writes ${written} at the top level of the file`,
-    );
-    expect(() => loadConfigLinkageSource(configPath)).toThrow(
-      "Indent it under linkage_terms",
+      RULE_SET_WITHOUT_RULES_REFUSAL,
     );
   },
 );
 
-test("both rule lists misplaced are named together in the refusal", () => {
-  const raw = {
-    linkage_terms: namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    linkage_fields: [{ name: "ssn", type: "ssn" }],
-    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-  };
-  expect(() => configWithNamedRuleSetRules(raw, "alcove.yaml")).toThrow(
-    "writes linkage_fields and linkage_keys at the top level of the file",
-  );
+test("the refusal reads the camelCase spelling too", () => {
+  const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
+  expect(() =>
+    refuseRuleSetCitationWithoutRules(
+      { linkageTerms: { linkageRuleSet: { fieldSet, keySet } } },
+      "alcove.yaml",
+    ),
+  ).toThrow(RULE_SET_WITHOUT_RULES_REFUSAL);
 });
 
-test("a citation written in some other shape is left for the schema", () => {
-  const configPath = path.join(dir, "alcove.yaml");
-  fs.writeFileSync(
-    configPath,
-    YAML.stringify({
-      linkage_terms: {
-        ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-        linkage_rule_set: { field_set: "baseline-pii" },
-      },
-    }),
+test("rules written out beside a citation load as written", () => {
+  const terms = getDefaultLinkageTerms("Agency A");
+  const source = loadConfigLinkageSource(
+    writeTermsConfig(snakeizeKeys(terms) as Record<string, unknown>),
   );
+  expect(source!.linkageTerms.linkageKeys).toEqual(terms.linkageKeys);
+  expect(source!.linkageTerms.linkageFields).toEqual(terms.linkageFields);
+  expect(source!.linkageTerms.linkageRuleSet).toEqual(terms.linkageRuleSet);
+});
+
+test("one rule list beside a citation is left for the schema", () => {
+  const configPath = writeTermsConfig({
+    ...citationOnlyTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+  });
   expect(() => loadConfigLinkageSource(configPath)).toThrow(
     "has invalid linkage_terms",
   );
 });
 
-describe("configWithNamedRuleSetRules", () => {
-  test("fills the terms and leaves the rest", () => {
-    const raw = {
-      connection: { channel: "filedrop", path: "/mnt/share" },
-      linkage_terms: namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    };
-    const filled = configWithNamedRuleSetRules(raw, "alcove.yaml") as {
-      connection: unknown;
-      linkage_terms: { linkageKeys: unknown };
-    };
-    expect(filled.connection).toBe(raw.connection);
-    expect(filled.linkage_terms.linkageKeys).toEqual(
-      DEFAULT_LINKAGE_RULE_SET.linkageKeys,
-    );
-    // The caller's own value is left as it read it.
-    expect(raw.linkage_terms).not.toHaveProperty("linkageKeys");
-  });
+test("a partner's terms citing a set with no rules are left for the schema", () => {
+  const configPath = writeTermsConfig(
+    citationOnlyTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+  );
+  expect(() => readConfigLinkageSource(configPath, "partner")).toThrow(
+    "has invalid linkage_terms",
+  );
+  expect(() => readConfigLinkageSource(configPath, "partner")).not.toThrow(
+    RULE_SET_WITHOUT_RULES_REFUSAL,
+  );
 });
 
-test("a config with no linkage terms passes through untouched", () => {
-  const raw = { connection: { channel: "filedrop", path: "/mnt/share" } };
-  expect(configWithNamedRuleSetRules(raw, "alcove.yaml")).toBe(raw);
+test("a config with no linkage terms is not refused", () => {
+  expect(() =>
+    refuseRuleSetCitationWithoutRules(
+      { connection: { channel: "filedrop", path: "/mnt/share" } },
+      "alcove.yaml",
+    ),
+  ).not.toThrow();
 });
+
+test.each<[string, unknown]>([
+  ["precision_floor", 95],
+  ["one_state_or_metro_area", true],
+])(
+  "a config writing linkage_terms.%s is refused as an unknown key",
+  (key, value) => {
+    const configPath = writeTermsConfig({
+      ...(snakeizeKeys(getDefaultLinkageTerms("Agency A")) as object),
+      [key]: value,
+    });
+    expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
+    expect(() => loadConfigLinkageSource(configPath)).toThrow(
+      `Unrecognized key: "${key}"`,
+    );
+  },
+);
 
 // --- warnOnLinkageRuleSetCitationDrift ---------------------------------------
 

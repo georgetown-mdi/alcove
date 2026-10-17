@@ -15,7 +15,6 @@ import {
   configFileRefusal,
   normalizeKeyPathSpelling,
 } from "./persist";
-import { configWithNamedRuleSetRules } from "./ruleSetCitation";
 
 /**
  * The fields {@link persistTermsUpdate} writes. `expectedPartnerDeduplicate`
@@ -132,10 +131,7 @@ function termsUpdateDocument(
 function termsUpdateLoadError(configPath: string, serialized: string): unknown {
   try {
     parseExchangeSpec(
-      configWithNamedRuleSetRules(
-        parseSensitiveYaml(serialized, configFileLabel(configPath)),
-        configPath,
-      ),
+      parseSensitiveYaml(serialized, configFileLabel(configPath)),
     );
     return undefined;
   } catch (err) {

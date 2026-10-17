@@ -22,7 +22,6 @@ import {
   getLogger,
   prepareForExchange,
   sanitizeErrorForDisplay,
-  snakeizeKeys,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
 import { computeTermsHash } from "@alcove/core/testing";
@@ -34,7 +33,7 @@ import type {
 } from "@alcove/core";
 import {
   announceRetainMode,
-  configWithNamedRuleSetRules,
+  refuseRuleSetCitationWithoutRules,
   readConfigLinkageSource,
 } from "../../../src/config";
 import {
@@ -192,7 +191,7 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
 });
 
-// The named-rule-set expansion is the first call in loadConfig outside a catch
+// The rule-set citation refusal is the first call in loadConfig outside a catch
 // that rewraps it, so it is spy-WRAPPED to plant an error the configuration
 // boundary has to classify on its own. The retain-mode notice is spy-WRAPPED
 // to plant an error at a step no catch of its own surrounds.
@@ -201,7 +200,9 @@ vi.mock("../../../src/config", async (importActual) => {
   return {
     ...actual,
     announceRetainMode: vi.fn(actual.announceRetainMode),
-    configWithNamedRuleSetRules: vi.fn(actual.configWithNamedRuleSetRules),
+    refuseRuleSetCitationWithoutRules: vi.fn(
+      actual.refuseRuleSetCitationWithoutRules,
+    ),
   };
 });
 
@@ -429,37 +430,6 @@ test.each([
   },
 );
 
-test("loadConfig marks keys a named set fills in, with no metadata block, to follow the header", () => {
-  const named = {
-    ...minimalFiledropConfig,
-    linkageTerms: {
-      version: "1.0.0",
-      date: "2025-01-01",
-      algorithm: "psi",
-      output: { expectsOutput: true, shareWithPartner: false },
-      deduplicate: false,
-      linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
-    },
-  };
-  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-  fs.writeFileSync(configFile, YAML.stringify(snakeizeKeys(named)));
-  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(true);
-  fs.writeFileSync(
-    configFile,
-    YAML.stringify(
-      snakeizeKeys({
-        ...named,
-        metadata: [
-          { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
-        ],
-      }),
-    ),
-  );
-  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(false);
-  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
-  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(false);
-});
-
 test("loadConfig runs a placeholder username that --server-username replaces", () => {
   fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig));
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
@@ -587,7 +557,7 @@ test("loadConfig stays silent on a config containing no citation", () => {
   expect(citationWarnings()).toEqual([]);
 });
 
-// --- rules taken from a named rule set ---------------------------------------
+// --- a rule-set citation with no rules written -------------------------------
 
 /** A filedrop config whose linkage terms name `cited` and write no rules of
  *  their own, plus the key file the load needs. */
@@ -613,23 +583,8 @@ function writeConfigNamingRuleSet(cited: LinkageRuleSetReference): void {
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
 }
 
-test("loadConfig runs a config that names the built-in set on that set's rules", () => {
+test("loadConfig refuses a config that names a rule set and writes no rules", () => {
   writeConfigNamingRuleSet(DEFAULT_LINKAGE_RULE_SET.reference);
-  const result = loadConfig(baseOptions());
-  expect(result.linkageTerms?.linkageKeys).toEqual(
-    DEFAULT_LINKAGE_RULE_SET.linkageKeys,
-  );
-  expect(result.linkageTerms?.linkageRuleSet).toEqual(
-    DEFAULT_LINKAGE_RULE_SET.reference,
-  );
-  expect(citationWarnings()).toEqual([]);
-});
-
-test("loadConfig refuses a config naming a set this build does not ship", () => {
-  writeConfigNamingRuleSet({
-    fieldSet: { name: "no-such-fields", version: "9.9.9" },
-    keySet: { name: "no-such-keys", version: "9.9.9" },
-  });
   let caught: unknown;
   try {
     loadConfig(baseOptions());
@@ -638,10 +593,9 @@ test("loadConfig refuses a config naming a set this build does not ship", () => 
   }
   expect(caught).toBeInstanceOf(UsageError);
   expect((caught as Error).message).toContain(configFile);
-  expect((caught as Error).message).toContain('"no-such-keys" 9.9.9');
   expect((caught as Error).message).toContain(
-    `"${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}" ` +
-      DEFAULT_LINKAGE_RULE_SET.reference.keySet.version,
+    "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+      "linkage_fields or linkage_keys. Run 'alcove init'",
   );
   // Its own refusal, not a spec that failed to validate.
   expect((caught as Error).message).not.toContain("not a valid exchange spec");
@@ -1567,7 +1521,7 @@ test.each([
   {
     planted: "a plain Error",
     code: 64,
-    plant: () => new Error("the configuration could not be expanded"),
+    plant: () => new Error("the configuration could not be read"),
   },
   {
     planted: "an InternalConsistencyError",
@@ -1582,7 +1536,7 @@ test.each([
     // to fix.
     fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
     saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-    vi.mocked(configWithNamedRuleSetRules).mockImplementationOnce(() => {
+    vi.mocked(refuseRuleSetCitationWithoutRules).mockImplementationOnce(() => {
       throw plant();
     });
     const exitSpy = captureProcessExit();
@@ -3975,55 +3929,6 @@ test("prepareDataset: refuses when only some of the committed keys are satisfiab
   );
   expect(rendered).toContain("linkage key the CSV cannot produce: SSN");
   expect(mockState.warnings).toHaveLength(0);
-});
-
-test("prepareDataset: keys taken from a named set follow the input's header", async () => {
-  // The named set's keys over this header are the ones the file supplies; the
-  // flag off, the same terms are held whole and refused.
-  const input = writeInput(
-    "ssn,last_name,dob\n123456789,Lovelace,1815-12-10\n",
-  );
-  const terms: LinkageTerms = {
-    ...ssnAndNameDobTerms,
-    linkageKeys: [
-      ...ssnAndNameDobTerms.linkageKeys,
-      {
-        name: "SSN + FN",
-        elements: [{ field: "ssn" }, { field: "first_name" }],
-      },
-    ],
-    linkageFields: [
-      ...ssnAndNameDobTerms.linkageFields,
-      { name: "first_name", type: "first_name" },
-    ],
-  };
-  await expect(
-    prepareDataset(
-      { linkageTerms: terms },
-      "Test Party",
-      input,
-      undefined,
-      TEST_CONNECTION,
-    ),
-  ).rejects.toBeInstanceOf(UsageError);
-  vi.mocked(prepareForExchange).mockClear();
-  await prepareDataset(
-    { linkageTerms: terms },
-    "Test Party",
-    input,
-    undefined,
-    TEST_CONNECTION,
-    undefined,
-    false,
-    true,
-  );
-  const prepared = vi.mocked(prepareForExchange).mock.calls[0][0];
-  expect(prepared.linkageTerms?.linkageKeys).toEqual(
-    ssnAndNameDobTerms.linkageKeys,
-  );
-  expect(
-    prepared.linkageTerms?.linkageFields.map((field) => field.name),
-  ).toEqual(["ssn", "last_name", "dob"]);
 });
 
 test("prepareDataset: an explicit standardization remap satisfies a field the column type alone would not", async () => {

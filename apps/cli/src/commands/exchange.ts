@@ -32,13 +32,11 @@ import {
   assertNoConfigPlaceholder,
   assertPartnerFingerprintRecordable,
   assertRetainSweepGuard,
-  configWithNamedRuleSetRules,
   csvDelimiterForRun,
   describeConfigSchemaError,
-  linkageTermsAtInputHeader,
   linkageTermsStandingOf,
-  namedRuleSetKeysFollowInputHeader,
   persistFilledPayloadReceive,
+  refuseRuleSetCitationWithoutRules,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { outcomeLineWriter } from "../exchangeOutcome";
@@ -525,8 +523,6 @@ function refuseRetiredSettingBeforeInvitation(configFile: string): void {
 type LoadedExchangeConfig = {
   connection: ProtocolConnectionConfig;
   authentication: AuthPersist;
-  /** {@link namedRuleSetKeysFollowInputHeader} over the file read. */
-  linkageKeysFollowInputHeader: boolean;
 } & ExchangeDataSpec;
 
 /**
@@ -579,18 +575,13 @@ function readExchangeConfig(
       log,
     );
 
-  // Rules the linkage terms name a rule set for instead of writing out are
-  // taken from that set here, on the raw config: the schema below requires
-  // both lists. An unknown name is a UsageError of its own, naming the set the
-  // file cited, and is not relabeled as an invalid spec.
-  const namedRuleSetConfig = configWithNamedRuleSetRules(
-    rawConfig,
-    options.configFile,
-  );
+  // Ahead of the schema, which would report only the missing lists, and
+  // outside the catch below, so it is not relabeled as an invalid spec.
+  refuseRuleSetCitationWithoutRules(rawConfig, options.configFile);
 
   let parsedSpec: ReturnType<typeof parseExchangeSpec>;
   try {
-    parsedSpec = parseExchangeSpec(namedRuleSetConfig);
+    parsedSpec = parseExchangeSpec(rawConfig);
   } catch (err) {
     // Well-formed YAML that fails schema validation is still invalid caller
     // configuration (exit 64), not a transport failure.
@@ -804,7 +795,6 @@ function readExchangeConfig(
   return {
     connection,
     authentication: authPersist,
-    linkageKeysFollowInputHeader: namedRuleSetKeysFollowInputHeader(rawConfig),
     ...exchangeDataSpec,
   };
 }
@@ -920,20 +910,16 @@ export function tokenExpiringAdvisory(
  * `logFile` is the operator's `--log-file`, so the log keeps a copy of the
  * disclosure display printed on the prompt stream.
  *
- * `linkageKeysFollowInputHeader` narrows the linkage keys to those the input's
- * header supplies ({@link namedRuleSetKeysFollowInputHeader}).
- *
  * @internal exported for testing
  */
 export async function prepareDataset(
-  loadedDataSpec: ExchangeDataSpec,
+  exchangeDataSpec: ExchangeDataSpec,
   identity: string | undefined,
   input: string,
   logFile: string | undefined,
   connection: ProtocolConnectionConfig,
   csvDelimiter?: string,
   allowMemoryShortfall = false,
-  linkageKeysFollowInputHeader = false,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
 
@@ -941,18 +927,6 @@ export async function prepareDataset(
     input,
     { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
-
-  const exchangeDataSpec: ExchangeDataSpec =
-    linkageKeysFollowInputHeader && loadedDataSpec.linkageTerms !== undefined
-      ? {
-          ...loadedDataSpec,
-          linkageTerms: linkageTermsAtInputHeader(
-            loadedDataSpec.linkageTerms,
-            { ...loadedDataSpec, linkageKeysFollowInputHeader },
-            columns,
-          ),
-        }
-      : loadedDataSpec;
 
   // Resolve the metadata this run transmits, carrying the positions this read
   // removed direction characters from: a header the removal emptied is refused
@@ -1213,7 +1187,6 @@ export async function handler(argv: Arguments): Promise<void> {
       const {
         connection,
         authentication: loadedAuthentication,
-        linkageKeysFollowInputHeader,
         ...exchangeDataSpec
       } = loadConfig(options, invitedKeyFile);
 
@@ -1347,7 +1320,6 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         csvDelimiter,
         allowMemoryShortfall === true,
-        linkageKeysFollowInputHeader,
       );
       if (includeMatchingKey !== undefined)
         prepared.includeMatchingKey = includeMatchingKey;

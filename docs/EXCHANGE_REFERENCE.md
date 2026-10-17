@@ -71,7 +71,7 @@ Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_ter
 
 #### Choosing rules by precision floor
 
-A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. A quick exchange, `alcove init`, and the web app's invite paths select the 95% floor with that answered yes; a configuration file selects with `precision_floor` and `one_state_or_metro_area` ([Naming a set instead of writing the rules out](#naming-a-set-instead-of-writing-the-rules-out)). Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
+A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. No configuration key sets the floor or that answer; they decide which keys are written into the terms. A quick exchange, `alcove init`, and the web app's invite paths write the keys for the 95% floor with that answered yes. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to answer no. Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
@@ -226,7 +226,7 @@ expected_partner_deduplicate: true
 ### `linkage_terms.linkage_fields`
 
 *Type:* array  
-*Required:* yes, unless the block names the rule set to take them from ([Naming a set instead of writing the rules out](#naming-a-set-instead-of-writing-the-rules-out))  
+*Required:* yes, written out even where the block names a rule set  
 *Consistency:* mandatory
 
 The linkage fields define the standardized form of each PII element that participates in linkage. Each field has a name, a semantic type, and optional constraints. The name is a unique identifier used by linkage key elements and data standardizing transformations.
@@ -311,7 +311,7 @@ The table above is the complete set of constraints. A constraint not listed for 
 ### `linkage_terms.linkage_keys`
 
 *Type:* array  
-*Required:* yes, unless the block names the rule set to take them from ([Naming a set instead of writing the rules out](#naming-a-set-instead-of-writing-the-rules-out))  
+*Required:* yes, written out even where the block names a rule set  
 *Consistency:* mandatory
 
 An ordered list of linkage keys applied in sequence from most to least precise. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
@@ -420,43 +420,11 @@ Every path that fills in your fields and keys for you writes this citation: a qu
 What it does and does not determine:
 
 - **It is not what the exchange runs on.** The `linkage_fields` and `linkage_keys` are, and they are cross-checked between the parties field by field and key by key. A run matches on a subset of the cited set, never on an addition to it, so a citation is an upper bound on what was tried.
+- **It does not stand in for the rules.** A configuration file whose `linkage_terms` names a rule set and writes no `linkage_fields` or `linkage_keys` is refused when it loads. Run `alcove init`, which writes them, or write the lists out.
 - **It is not vouched for, but it is checked where it can be.** Your partner's citation is text your partner wrote, and nothing resolves a partner's set name to content. What Alcove can do is compare a name it recognizes against the rules the same document declares, one half at a time: a half naming a set this build ships is checked and reported as matching or **not** matching, and a half naming anything else is reported as unchecked. The accepting party's terms review shows that verdict beside each half, and a citation the build has disproved is a warning there rather than a refusal -- the exchange still runs on the declared keys and fields, which are what both parties are held to, and which the same screen shows. Each party's own exchange record holds the same verdict beside the citation it kept ([Exchange record format](spec/EXCHANGE_RECORD.md#the-rule-set-citation)).
 - **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. A terms document you import keeps the citation its own author wrote, including one naming a set Alcove does not ship; the web Advanced invite path drops that citation as soon as the rules stop being drawn from the set it names, exactly as it drops the built-in citation when you edit your way out of the rules it seeded from. It tells you when it will not include an imported citation and why -- your edits moved the rules out of the cited set, the terms declare no key to claim provenance for, or the document cited the set Alcove ships over rules that are not it -- and leaves you free to create the invitation without it.
 - **A configuration file keeps the citation you edit past.** Editing `linkage_fields` or `linkage_keys` in `alcove.yaml` leaves the citation the file was written with in place, so the CLI checks it wherever it reads those terms and warns when the file's own rules no longer support it -- see [a rule-set citation that no longer fits](CLI.md#a-rule-set-citation-that-no-longer-fits).
 - **Two parties that both cite a set must cite the same one**; a mismatch cancels the exchange before any data moves. A party that cites none is not held to the other's, which is what lets hand-authored rules meet an identical named set. An `alcove accept` that reuses a configuration already at the path applies the same rule when it compares that file against the invitation, so a citation the two disagree on is reported with the other terms differences and stops the acceptance, rather than passing there and cancelling the run later.
-
-#### Naming a set instead of writing the rules out
-
-In a configuration file the CLI reads, a `linkage_terms` block that names a rule set and writes no `linkage_fields` and no `linkage_keys` of its own runs on the named set's rules: Alcove fills both lists in from the set as it ships it, before anything else reads the file. The rest of the block is yours as it always was -- a rule set covers the fields and the keys, and nothing else.
-
-```yaml
-linkage_terms:
-  version: "1.0.0"
-  identity: "County Health Agency"
-  date: "2026-01-01"
-  algorithm: psi
-  output:
-    expects_output: true
-    share_with_partner: true
-  deduplicate: false
-  linkage_rule_set:
-    field_set:
-      name: "baseline-pii"
-      version: "1.1.0"
-    key_set:
-      name: "precision-ranked-rules"
-      version: "2.0.0"
-```
-
-The exchange this runs is the one the written-out rules run: the filled-in fields and keys travel to your partner, are compared against theirs field by field and key by key, and are recorded in both parties' exchange records under the citation the file wrote. Naming a set is a shorthand for writing its rules into your own file, not a name resolved anywhere else -- your partner's citation is still text your partner wrote, and nothing resolves it.
-
-- **Both lists or neither.** A block that names a set and writes one of the two lists is refused, naming the one it left out. A key set is built from its own fields, so the pair comes from a set or is written out together.
-- **Neither list at the top level.** The short form takes effect when `linkage_terms` names a set and writes neither `linkage_fields` nor `linkage_keys` of its own. A list found at the top level of the file -- a sibling of `linkage_terms` -- is refused rather than filled over, naming where it was found and where it belongs. A list under a mis-spelled key, or nested inside another block such as `linkage_terms.output` or `connection`, is not seen: Alcove cannot tell it from any other key it does not read, and the block it was meant for holds no rules at all. After editing either list by hand, check both lists' indentation before running.
-- **The set is taken at a precision floor, narrowed to your input.** The keys filled in are those the floor selects that your input supplies: the columns your `metadata` block declares, or, in a file with none, the columns of the input file's header, which `alcove exchange` and `alcove invite` read. Where your input supplies none of them, every selected key is filled in and the exchange refuses before it starts, naming the keys and the fields behind them. Beside the citation, `precision_floor: 99` selects only the 99% rules (the default is `95`), and `one_state_or_metro_area: false` leaves out the name-and-date rules (the default is `true`; see [Choosing rules by precision floor](#choosing-rules-by-precision-floor)). Either one is refused beside written-out lists, without a citation, or naming a set with no bands, such as `hmis-keys`. `alcove init INPUT_FILE` writes the same narrowed lists out, with the two selection keys as commented lines: the lists are a subset of the set and cite it just the same.
-- **With no `metadata` block, every command reads the keys from the input file it is given.** `alcove verify-receipt` narrows them by the input named after the record, and `alcove accept`, comparing a configuration it keeps, by its INPUT_FILE. Given no input file, `alcove verify-receipt` warns that the agreed-terms hash cannot match, and `alcove invite` and `alcove accept` refuse. `alcove update` and `alcove apply` take no input file, so they refuse such a file. Give it a `metadata` block, as `alcove init INPUT_FILE` writes one, or write the lists out.
-- **Written rules are the rules.** A block that writes both lists runs on exactly what it writes, cited set or not -- which is what `alcove init` writes, and what the citation-drift warning is about.
-- **A name this build does not ship stops the load.** A block naming a set Alcove does not ship and writing no rules of its own fails to load, naming what it cited and what this build ships; no exchange runs. Beside written-out rules the same name is left alone, so a terms document you imported keeps its author's citation.
-- **The set Alcove ships is the one to name.** [The built-in rules](#the-built-in-rules) are that set, and the template `alcove init` writes cites it. Its earlier version, `hmis-keys` `1.0.0` over `baseline-pii` `1.0.0`, can still be named. Its fourteen keys are narrowed to your input the same way, so a file that supplies only some of their fields runs only the keys over those fields.
 
 ### `linkage_terms.legal_agreement`
 

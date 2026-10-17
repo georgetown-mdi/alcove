@@ -8,7 +8,6 @@ import type {
   Standardization,
 } from "@alcove/core";
 import {
-  BUILT_IN_LINKAGE_RULE_SETS,
   CSV_DELIMITER_DETECT,
   csvDelimiterRefusal,
   isCsvDelimiterChoice,
@@ -38,8 +37,7 @@ import {
 } from "./persist";
 import {
   type LinkageTermsStanding,
-  linkageTermsWithNamedRuleSetRules,
-  namedRuleSetKeysFollowInputHeader,
+  refuseRuleSetCitationWithoutRules,
 } from "./ruleSetCitation";
 
 // --- Config reader -----------------------------------------------------------
@@ -89,12 +87,6 @@ export interface ConfigLinkageSource {
    * top-level key rather than through the spec schema.
    */
   linkageTermsStanding: LinkageTermsStanding;
-  /**
-   * Whether the linkage keys follow the input file's header
-   * ({@link namedRuleSetKeysFollowInputHeader}): `true` only where the read
-   * took them from a named set.
-   */
-  linkageKeysFollowInputHeader?: boolean;
 }
 
 /**
@@ -225,18 +217,13 @@ export function describeConfigSchemaError(err: unknown): string {
 }
 
 /**
- * Whether a read takes a `linkage_terms` block's rules from the rule set the
- * block names ({@link linkageTermsWithNamedRuleSetRules}), for a block that
- * names one and writes no rules of its own.
- *
- * Only a document THIS party wrote is read `"from-the-named-set"`. A
- * partner-authored terms document is read `"as-written"`, the default: the
- * citation in it is text that party wrote about its own rules, so filling
- * this build's content in under it would hash rules the partner never sent,
- * and a name this build does not ship would stop a verification the
- * partner's file is not at fault for.
+ * Who wrote the document a read takes linkage terms from. A document this
+ * party wrote, `"own"`, is refused where its terms name a rule set and write
+ * no rules ({@link refuseRuleSetCitationWithoutRules}), with the remedy its
+ * author can take. A partner-authored terms document, `"partner"`, the
+ * default, is left to the schema, which names the missing lists.
  */
-export type NamedRuleSetRules = "from-the-named-set" | "as-written";
+export type TermsDocumentAuthor = "own" | "partner";
 
 /**
  * Read the linkage-terms source from a config file, reporting a missing file
@@ -261,13 +248,11 @@ export type NamedRuleSetRules = "from-the-named-set" | "as-written";
  * fix. Top-level keys are read as either the written snake_case form or
  * their camelCase spelling.
  *
- * @param rules whether a rule-set citation is resolved into this build's own
- * rules; see {@link NamedRuleSetRules}, whose default leaves the document as
- * its author wrote it.
+ * @param author who wrote the document; see {@link TermsDocumentAuthor}.
  */
 export function readConfigLinkageSource(
   configPath: string,
-  rules: NamedRuleSetRules = "as-written",
+  author: TermsDocumentAuthor = "partner",
 ): ConfigLinkageSourceResult {
   // Read, then parse through the sensitive-file chokepoint. A read failure
   // holds only a path and errno (ENOENT means no config, not an error here); a
@@ -304,24 +289,13 @@ export function readConfigLinkageSource(
   const rawTerms = obj["linkage_terms"] ?? obj["linkageTerms"];
   if (rawTerms === undefined) return { status: "no-linkage-terms" };
 
-  // Rules the block names a set for instead of writing out are taken from that
-  // set before validation: the schema requires both lists, and a mint from this
-  // config declares what it resolved to, citation and all.
-  const terms =
-    rules === "from-the-named-set"
-      ? linkageTermsWithNamedRuleSetRules(
-          rawTerms,
-          configPath,
-          BUILT_IN_LINKAGE_RULE_SETS,
-          obj,
-        )
-      : rawTerms;
+  if (author === "own") refuseRuleSetCitationWithoutRules(obj, configPath);
 
   // Read through the entry point whose refusals address the party who WROTE
   // the document: this block is the operator's own, and the file is open to
   // them, so a mistyped text param names the remedy rather than the type
   // alone (@alcove/core, transformParamTypes.ts).
-  const result = safeParseLinkageTermsTheReaderWrote(terms);
+  const result = safeParseLinkageTermsTheReaderWrote(rawTerms);
   if (!result.success)
     throw configFileRefusal(
       configPath,
@@ -375,10 +349,6 @@ export function readConfigLinkageSource(
       csvDelimiter: readCsvDelimiterDeclaration(obj, configPath),
       retainsFiles: readRetainFilesDeclaration(obj),
       linkageTermsStanding: readLinkageTermsStanding(obj),
-      ...(rules === "from-the-named-set" &&
-        namedRuleSetKeysFollowInputHeader(obj) && {
-          linkageKeysFollowInputHeader: true,
-        }),
     },
   };
 }
@@ -613,14 +583,13 @@ export function persistProvisionedServerAddress(
  * source and is a {@link UsageError} rather than a silent fall-through to
  * input inference.
  *
- * The file here is this party's own configuration, so a rule set it names
- * instead of writing the rules out is resolved (see
- * {@link NamedRuleSetRules}).
+ * The file here is this party's own configuration (see
+ * {@link TermsDocumentAuthor}).
  */
 export function loadConfigLinkageSource(
   configPath: string,
 ): ConfigLinkageSource | undefined {
-  const result = readConfigLinkageSource(configPath, "from-the-named-set");
+  const result = readConfigLinkageSource(configPath, "own");
   if (result.status === "no-config-file") return undefined;
   if (result.status === "no-linkage-terms")
     throw configFileRefusal(
