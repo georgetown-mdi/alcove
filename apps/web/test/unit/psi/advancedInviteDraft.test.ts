@@ -5,6 +5,7 @@ import { deriveAcceptedLinkageTerms, prepareForExchange } from "@alcove/core";
 import {
   addKey,
   buildAdvancedTerms,
+  draftFromTerms,
   inviterExchangeDataSpec,
 } from "../../../src/psi/authoring/advancedInvite.js";
 import {
@@ -81,7 +82,7 @@ describe("draftWithFieldAdded", () => {
     {
       first_name: "Ada",
       last_name: "Lovelace",
-      dob: "12/10/1815",
+      dob: "12/10/1985",
       zip: "20001-1234",
       zipcode: "20002-5678",
     },
@@ -175,5 +176,128 @@ describe("draftWithFieldAdded", () => {
       "zip_code",
     );
     expect(draftWithFieldAdded(bound, "zip_code")).toBe(bound);
+  });
+});
+
+describe("a same-typed field carries the type's shared-value limit", () => {
+  const COLUMNS = [
+    "first_name",
+    "last_name",
+    "dob",
+    "ssn",
+    "social_security_number",
+    "phone",
+    "phone_number",
+    "email",
+  ];
+  const ROWS: Array<CSVRow> = [
+    {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      dob: "12/10/1985",
+      ssn: "372-45-6789",
+      social_security_number: "456-78-9012",
+      phone: "202-555-0101",
+      phone_number: "202-555-0102",
+      email: "ada@example.org",
+    },
+    {
+      first_name: "Grace",
+      last_name: "Hopper",
+      dob: "12/09/1986",
+      ssn: "567-89-0123",
+      social_security_number: "456-78-9012",
+      phone: "202-555-0103",
+      phone_number: "202-555-0104",
+      email: "grace@example.org",
+    },
+  ];
+
+  test("an added second ssn field takes the sibling's limit and the run drops a value two people share", () => {
+    const { draft } = seedAdvancedInvite("Org", COLUMNS, ROWS);
+    const added = draftWithFieldAdded(draft, "ssn");
+    const second = added.standardization.at(-1);
+    expect(second?.output).toBe("ssn_2");
+    expect(second?.maxPeoplePerValue).toBe(1);
+
+    const keyed = addKey(added, "ssn_2");
+    const prepared = prepareForExchange(
+      {
+        linkageTerms: buildAdvancedTerms(keyed),
+        metadata: keyed.metadata,
+        standardization: keyed.standardization,
+      },
+      "Org",
+      ROWS,
+      COLUMNS,
+    );
+    expect(prepared.dataset.getField("ssn")?.get(0)).toEqual(["372456789"]);
+    expect(prepared.dataset.getField("ssn_2")?.get(0)).toEqual([]);
+    expect(prepared.dataset.getField("ssn_2")?.get(1)).toEqual([]);
+  });
+
+  test("a second field copies a sibling whose limit the operator removed", () => {
+    const { draft } = seedAdvancedInvite("Org", COLUMNS, ROWS);
+    const unscreened = {
+      ...draft,
+      standardization: draft.standardization.map(
+        ({ maxPeoplePerValue: _removed, ...transformation }) => transformation,
+      ),
+    };
+    const added = draftWithFieldAdded(unscreened, "ssn").standardization.at(-1);
+    expect(added?.output).toBe("ssn_2");
+    expect(added).not.toHaveProperty("maxPeoplePerValue");
+  });
+
+  test("a field with no sibling takes the recommended limit", () => {
+    const { draft } = seedAdvancedInvite("Org", COLUMNS, ROWS);
+    const withoutEmail = {
+      ...draft,
+      standardization: draft.standardization.filter(
+        (transformation) => transformation.output !== "email_address",
+      ),
+    };
+    const added = draftWithFieldAdded(withoutEmail, "email_address");
+    const email = added.standardization.at(-1);
+    expect(email?.output).toBe("email_address");
+    expect(email?.maxPeoplePerValue).toBe(5);
+  });
+
+  test("an imported extra phone field carries the default limit into the run", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", COLUMNS, ROWS);
+    const twoPhones = draftWithFieldAdded(
+      draftWithFieldAdded(draft, "phone_number"),
+      "phone_number",
+    );
+    const exported = buildAdvancedTerms(
+      addKey(addKey(twoPhones, "phone_number"), "phone_number_2"),
+    );
+    const imported = draftFromTerms(exported, seed, 3600, ROWS);
+    const extra = imported.standardization.find(
+      (transformation) => transformation.output === "phone_number_2",
+    );
+    expect(extra?.input).toBe("phone_number");
+    expect(extra?.maxPeoplePerValue).toBe(5);
+
+    const household: Array<CSVRow> = Array.from({ length: 6 }, (_, n) => ({
+      ...ROWS[0],
+      first_name: `Person${n}`,
+      phone: `202-555-01${String(n).padStart(2, "0")}`,
+      phone_number: "202-555-0199",
+    }));
+    const prepared = prepareForExchange(
+      {
+        linkageTerms: buildAdvancedTerms(imported),
+        metadata: imported.metadata,
+        standardization: imported.standardization,
+      },
+      "Org",
+      household,
+      COLUMNS,
+    );
+    expect(prepared.dataset.getField("phone_number_2")?.get(0)).toEqual([]);
+    expect(prepared.dataset.getField("phone_number")?.get(0)).toEqual([
+      "2025550100",
+    ]);
   });
 });

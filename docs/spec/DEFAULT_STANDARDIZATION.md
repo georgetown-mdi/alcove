@@ -856,7 +856,8 @@ No other default transformation states one.
 
 A person is a record's cleaned `first_name`, `last_name` and `date_of_birth`
 values. They are read from the first linkage field of each of those types the
-terms declare, so a type the terms do not declare takes no part in the count.
+terms declare that binds a column, so a type with no such field takes no part
+in the count.
 
 - Records holding the same three values are one person, so a person's own
   duplicate records count once.
@@ -877,9 +878,9 @@ values and corrects no spelling.
 
 Under one-to-one matching the cascade accepts a pair only on a key value one
 record on each side holds (see [PSI](PROTOCOL.md#psi)), so a key value two of
-a party's records share already matches neither of them. When one of two records sharing an SSN lacks the name or date a key
-needs, only the other builds that key and its value is unique, so the SSN
-screen is what drops it.
+a party's records share already matches neither of them. When one of two
+records sharing an SSN lacks the name or date a key needs, only the other
+builds that key and its value is unique, so the SSN screen is what drops it.
 
 ### Why five people for a phone or email
 
@@ -903,11 +904,13 @@ a date of birth separates.
 
 ### Per-party limits
 
-Each party may change a limit or remove it in its own standardization. A limit
-decides only which values are dropped, never the form of a value kept, so it
-cannot make two different values equal. Each party applies the screens to its
-own file only: the partner's records take no part in the count, and nothing
-about the screens is sent beyond the values that remain.
+Each party may change a limit or remove it in its own standardization. The
+cost of the count grows with the square of the limit, so a very large limit
+slows the first read of that field. A limit decides only which values are
+dropped, never the form of a value kept, so it cannot make two different
+values equal. Each party applies the screens to its own file only: the
+partner's records take no part in the count, and nothing about the screens is
+sent beyond the values that remain.
 
 An authored standardization replaces the defaults entirely, so a transformation
 it writes without `max_people_per_value` has no screen. A coverage count taken

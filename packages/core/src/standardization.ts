@@ -2348,7 +2348,8 @@ export function heldBackColumnNames(
 }
 
 // The field types whose values tell one person in a file from another, for the
-// shared-value screens: the first linkage field of each type the terms declare.
+// shared-value screens: the first linkage field of each type the terms declare
+// that binds a column.
 const PERSON_FIELD_TYPES: ReadonlyArray<SemanticType> = [
   "first_name",
   "last_name",

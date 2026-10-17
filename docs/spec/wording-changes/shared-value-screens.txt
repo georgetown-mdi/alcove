@@ -24,7 +24,7 @@
 - - -> No other default transformation states one.
 - - -> Counting distinct people
 - - -> A person is a record's cleaned `first_name`, `last_name` and `date_of_birth` values.
-- - -> They are read from the first linkage field of each of those types the terms declare, so a type the terms do not declare takes no part in the count.
+- - -> They are read from the first linkage field of each of those types the terms declare that binds a column, so a type with no such field takes no part in the count.
 - - -> Records holding the same three values are one person, so a person's own duplicate records count once.
 - - -> A record missing one or more of the values, because its cell was empty or its pipeline dropped the value, is the same person as a record that holds the same value of the field, agrees with it on every value it has, and has a value it lacks.
 - - -> A record no other record completes this way is a person of its own.
@@ -42,6 +42,7 @@
 - - -> The cost that remains is a household of six or more, which loses its phone and email values, and a household where two members share a first name, which only a date of birth separates.
 - - -> Per-party limits
 - - -> Each party may change a limit or remove it in its own standardization.
+- - -> The cost of the count grows with the square of the limit, so a very large limit slows the first read of that field.
 - - -> A limit decides only which values are dropped, never the form of a value kept, so it cannot make two different values equal.
 - - -> Each party applies the screens to its own file only: the partner's records take no part in the count, and nothing about the screens is sent beyond the values that remain.
 - - -> An authored standardization replaces the defaults entirely, so a transformation it writes without `max_people_per_value` has no screen.
