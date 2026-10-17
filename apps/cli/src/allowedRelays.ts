@@ -28,8 +28,9 @@ export const ALLOWED_RELAYS_SCOPE =
  * configuration it keeps or writes sets no `allowed_relays`.
  */
 export const ALLOWED_RELAYS_UNSET =
-  "A run may connect through this relay. To leave it out, set " +
-  "connection.allowed_relays.";
+  "A run may connect through this relay. To leave out a TURN server " +
+  "listed here, set connection.allowed_relays. That setting covers " +
+  "relay servers only: the STUN servers listed here are still contacted.";
 
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
