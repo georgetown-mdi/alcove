@@ -147,6 +147,15 @@ const ZIP_CODE_STEPS: StandardizationStep[] = [
   { function: "pad_left", params: { length: 5 } },
 ];
 
+// The most distinct people one value may belong to in a party's own file. A
+// household shares a phone or an email, so five keeps most of them, while an
+// organization's number on dozens of clients is dropped.
+const MAX_PEOPLE_PER_VALUE: Readonly<Partial<Record<string, number>>> = {
+  ssn: 1,
+  phone_number: 5,
+  email_address: 5,
+};
+
 // --- Default standardization -------------------------------------------------
 
 interface DefaultStandardizationOptions {
@@ -187,6 +196,18 @@ function stepsForType(
 }
 
 /**
+ * A copy of the default pipeline for a column of `semanticType`, or `undefined`
+ * for a type with none.
+ */
+export function defaultStepsForType(
+  semanticType: string,
+  options: DefaultStandardizationOptions = {},
+): StandardizationStep[] | undefined {
+  const steps = stepsForType(semanticType, options);
+  return steps === undefined ? undefined : structuredClone(steps);
+}
+
+/**
  * Generates a default {@link Standardization} for the linkage fields in
  * `terms`, sourcing input column names from `metadata`.
  *
@@ -196,6 +217,9 @@ function stepsForType(
  * `other`) are skipped, as are linkage fields with no `role: linkage`
  * column of their type, except an `ssn4` field, which is derived from the
  * first `role: linkage` `ssn` column when the input has no `ssn4` one.
+ *
+ * An `ssn`, `phone_number` or `email_address` field's transformation also
+ * states `maxPeoplePerValue`, the shared-value screen over the whole file.
  *
  * The returned value can be passed directly to
  * {@link buildStandardizedDataset} and is appropriate when the user has
@@ -227,11 +251,13 @@ export function getDefaultStandardization(
     const steps =
       resolved?.transform?.steps ?? stepsForType(field.type, options);
     if (steps === undefined) continue;
+    const maxPeoplePerValue = MAX_PEOPLE_PER_VALUE[field.type];
     // The step arrays are module constants shared across fields and calls.
     result.push({
       output: field.name,
       input: column,
       steps: structuredClone(steps),
+      ...(maxPeoplePerValue === undefined ? {} : { maxPeoplePerValue }),
     });
   }
 

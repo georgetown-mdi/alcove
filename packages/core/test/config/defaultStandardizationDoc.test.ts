@@ -213,13 +213,22 @@ const linkageFieldTypes = SEMANTIC_TYPES.filter(
   (type) => safeParseLinkageTerms(termsFor([type])).success,
 );
 
+const defaultTransformations = getDefaultStandardization(
+  metadataFor(linkageFieldTypes),
+  termsFor(linkageFieldTypes),
+);
+
 const defaultSteps = new Map<string, StandardizationStep[]>(
-  getDefaultStandardization(
-    metadataFor(linkageFieldTypes),
-    termsFor(linkageFieldTypes),
-  ).map((transformation) => [
+  defaultTransformations.map((transformation) => [
     transformation.output,
     transformation.steps ?? [],
+  ]),
+);
+
+const defaultMaxPeoplePerValue = new Map<string, number | undefined>(
+  defaultTransformations.map((transformation) => [
+    transformation.output,
+    transformation.maxPeoplePerValue,
   ]),
 );
 
@@ -244,6 +253,18 @@ describe("DEFAULT_STANDARDIZATION.md pipelines", () => {
     };
     expect(documented.steps).toEqual(snakeizeKeys(defaultSteps.get(type)));
   });
+
+  test.each([...typeSections.keys()])(
+    "%s shared-value screen matches the registry",
+    (type) => {
+      const documented = parseYaml(typeSections.get(type)!.stepsYaml) as {
+        max_people_per_value?: unknown;
+      };
+      expect(documented.max_people_per_value).toEqual(
+        defaultMaxPeoplePerValue.get(type),
+      );
+    },
+  );
 
   test.each([...typeSections.keys()])("%s worked examples hold", (type) => {
     const steps = defaultSteps.get(type)!;

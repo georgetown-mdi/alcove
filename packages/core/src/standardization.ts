@@ -54,6 +54,11 @@ import type { SemanticType } from "./types.js";
 import { SSN4_STEPS } from "./defaults/ssnSteps.js";
 import { readRowColumn } from "./file.js";
 import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
+import {
+  droppedSharedValues,
+  type DroppedSharedValues,
+  type PersonComponent,
+} from "./sharedValueScreen.js";
 import type { CSVRow } from "./file.js";
 import { isCalendarDateValid } from "./utils/calendarDate.js";
 import {
@@ -1852,6 +1857,11 @@ function noRealizedValues(): RealizedFieldValues {
   return { values: [], fanOutFromUnlistedFunction: false };
 }
 
+interface SharedValueScreen {
+  readonly maxPeople: number;
+  readonly personFields: ReadonlyArray<StandardizedField>;
+}
+
 /**
  * A lazily-evaluated, cached mapping from a raw dataset row index to the set
  * of standardized string values for one linkage field.
@@ -1881,6 +1891,8 @@ export class StandardizedField {
   // An array rather than a Map: a V8 Map holds at most 2^24 entries, and an
   // input may hold more rows than that.
   private readonly cache: Array<RealizedFieldValues | undefined> = [];
+  private sharedValueScreen: SharedValueScreen | undefined;
+  private sharedValuesDropped: DroppedSharedValues | undefined;
 
   constructor(
     name: string,
@@ -1917,9 +1929,54 @@ export class StandardizedField {
    *
    * The result is computed on first access and cached for subsequent calls.
    * An empty array signals that the record has no valid value for this field.
+   * A value the field's shared-value screen drops ({@link screenSharedValues})
+   * is left out; {@link evaluateRow} reads one row and applies no such screen.
    */
   get(index: number): string[] {
-    return this.realize(index).values;
+    const values = this.realize(index).values;
+    const screen = this.sharedValueScreen;
+    if (screen === undefined || values.length === 0) return values;
+    const dropped = this.screenedValues(screen);
+    if (dropped.none) return values;
+    return values.some((value) => dropped.has(value))
+      ? values.filter((value) => !dropped.has(value))
+      : values;
+  }
+
+  /**
+   * Drop from every row a value of this field that more than `maxPeople`
+   * distinct people in the row set hold, a person being the row's values of
+   * `personFields` (docs/spec/DEFAULT_STANDARDIZATION.md, Shared-value
+   * screens). Counted over the whole row set on the first {@link get}.
+   */
+  screenSharedValues(
+    maxPeople: number,
+    personFields: ReadonlyArray<StandardizedField>,
+  ): void {
+    this.sharedValueScreen = { maxPeople, personFields };
+    this.sharedValuesDropped = undefined;
+  }
+
+  private screenedValues({
+    maxPeople,
+    personFields,
+  }: SharedValueScreen): DroppedSharedValues {
+    if (this.sharedValuesDropped !== undefined) return this.sharedValuesDropped;
+    this.sharedValuesDropped = droppedSharedValues(
+      maxPeople,
+      this.rawRows.length,
+      (index) => this.realize(index).values,
+      (index) => personFields.map((field) => field.personComponent(index)),
+    );
+    return this.sharedValuesDropped;
+  }
+
+  // This field's values for one row as one component of a person, before any
+  // shared-value screen, or undefined when the row has none.
+  private personComponent(index: number): PersonComponent {
+    const values = this.realize(index).values;
+    if (values.length <= 1) return values[0];
+    return [...values].sort();
   }
 
   /**
@@ -2291,6 +2348,19 @@ export function heldBackColumnNames(
 }
 
 /**
+ * One of a party's own columns whose cleaned values tell one person in its file
+ * from another, for the shared-value screens, as `personColumns` selects them.
+ */
+export interface PersonColumn {
+  /** The column's semantic type. */
+  readonly type: SemanticType;
+  /** The input column. */
+  readonly column: string;
+  /** The steps that clean it. */
+  readonly steps: StandardizationStep[];
+}
+
+/**
  * Build a {@link StandardizedDataset} for the linkage fields in `terms`, binding
  * each field to an input column via {@link resolveFieldColumns}: an explicit
  * standardization transformation when one names the field (its steps run on the
@@ -2299,30 +2369,59 @@ export function heldBackColumnNames(
  *
  * Linkage fields that resolve to no column are absent from the dataset; records
  * referencing those fields are excluded from the corresponding linkage keys.
+ * A transformation stating `maxPeoplePerValue` screens its field's values over
+ * the whole of `rawRows` ({@link StandardizedField.screenSharedValues}),
+ * counting people from `personColumns`, which such a screen requires.
  */
 export function buildStandardizedDataset(
   standardization: Standardization | undefined,
   rawRows: ReadonlyArray<CSVRow>,
   metadata: ColumnMetadata[],
   terms: LinkageTerms,
+  personColumns?: ReadonlyArray<PersonColumn>,
 ): StandardizedDataset {
   const resolution = resolveFieldColumns(terms, standardization, metadata);
   const fields: StandardizedField[] = [];
+  const screens: Array<{ field: StandardizedField; maxPeople: number }> = [];
+  const builtFields: Array<{
+    resolved: FieldColumnResolution;
+    standardized: StandardizedField;
+  }> = [];
 
   for (const field of terms.linkageFields) {
     const resolved = resolution.get(field.name);
     if (resolved === undefined || resolved.column === undefined) continue;
     // Explicit binding has its own steps; a type-fallback binding is the
     // identity transformation (pass the raw column value through unchanged).
-    fields.push(
-      new StandardizedField(
-        field.name,
-        resolved.column,
-        resolved.transform?.steps ?? [],
-        rawRows,
-      ),
+    const standardized = new StandardizedField(
+      field.name,
+      resolved.column,
+      resolved.transform?.steps ?? [],
+      rawRows,
     );
+    fields.push(standardized);
+    const maxPeople = resolved.transform?.maxPeoplePerValue;
+    if (maxPeople !== undefined)
+      screens.push({ field: standardized, maxPeople });
+    builtFields.push({ resolved, standardized });
   }
+
+  if (screens.length === 0)
+    return new StandardizedDataset(fields, terms.linkageKeys);
+  if (personColumns === undefined)
+    throw new Error(
+      "buildStandardizedDataset: a shared-value screen needs the party's person columns",
+    );
+  // A person column cleaned as a linkage field shares that field's cache.
+  const personFields = personColumns.map(
+    ({ type, column, steps }) =>
+      builtFields.find(
+        ({ resolved }) =>
+          resolved.column === column && resolved.transform?.steps === steps,
+      )?.standardized ?? new StandardizedField(type, column, steps, rawRows),
+  );
+  for (const { field, maxPeople } of screens)
+    field.screenSharedValues(maxPeople, personFields);
 
   return new StandardizedDataset(fields, terms.linkageKeys);
 }

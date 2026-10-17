@@ -29,7 +29,6 @@ import type {
   Metadata,
   OwnColumnSelection,
   Standardization,
-  StandardizationStep,
 } from "@alcove/core";
 
 import type {
@@ -648,32 +647,48 @@ export function declarableFieldNames(
   );
 }
 
-/** The steps the recommended per-type pipeline cleans a field of `type`
- * with: {@link defaultStandardizationForRows} over terms declaring that one
- * field, covering an {@link OPT_IN_LINKAGE_FIELD_TYPES} type as well as a
- * default one. `undefined` when these columns supply no `role: linkage`
- * column of the type. The date-of-birth format is the `MM/DD/YYYY` default
- * (no rows are threaded here). */
-function recommendedStepsForType(
+/** What the recommended per-type cleaning gives a field of `type`: its steps
+ * and its shared-value limit. {@link defaultStandardizationForRows} over terms
+ * declaring that one field, covering an {@link OPT_IN_LINKAGE_FIELD_TYPES} type
+ * as well as a default one. `undefined` when these columns supply no
+ * `role: linkage` column of the type. The date-of-birth format is the
+ * `MM/DD/YYYY` default (no rows are threaded here). */
+function recommendedCleaningForType(
   metadata: Metadata,
   identity: string,
   type: LinkageField["type"],
-): Array<StandardizationStep> | undefined {
-  return defaultStandardizationForRows(
+): CleaningOf | undefined {
+  const transformation = defaultStandardizationForRows(
     metadata,
     {
       ...getDefaultLinkageTerms(identity, metadata),
       linkageFields: [{ name: type, type }],
     },
     [],
-  )[0]?.steps;
+  ).at(0);
+  return transformation === undefined ? undefined : cleaningOf(transformation);
+}
+
+/** The part of a transformation that is the field's cleaning rather than its
+ * binding: the steps and the shared-value limit. */
+type CleaningOf = Pick<Standardization[number], "steps" | "maxPeoplePerValue">;
+
+/** The cleaning of `transformation`, leaving an absent limit absent. */
+function cleaningOf(transformation: Standardization[number]): CleaningOf {
+  return {
+    steps: transformation.steps ?? [],
+    ...(transformation.maxPeoplePerValue === undefined
+      ? {}
+      : { maxPeoplePerValue: transformation.maxPeoplePerValue }),
+  };
 }
 
 /**
  * Append a linkage field of `type` bound to its first free `role: linkage`
- * column, holding the type's cleaning: the first field's own steps (including
- * any the operator edited) when the draft already declares one of that type,
- * else the recommended pipeline ({@link recommendedStepsForType}).
+ * column, holding the type's cleaning: the first field's own steps and
+ * shared-value limit (including any the operator edited) when the draft already
+ * declares one of that type, else the recommended cleaning
+ * ({@link recommendedCleaningForType}).
  *
  * The name is the type's own, suffixed `_2`, `_3`, ... only to step past a
  * name the draft already produces -- a first field named `_2` would display
@@ -710,11 +725,10 @@ export function draftWithFieldAdded(
       {
         output,
         input: freeColumn,
-        steps:
-          sibling !== undefined
-            ? (sibling.steps ?? [])
-            : (recommendedStepsForType(draft.metadata, draft.identity, type) ??
-              []),
+        ...(sibling !== undefined
+          ? cleaningOf(sibling)
+          : (recommendedCleaningForType(draft.metadata, draft.identity, type) ??
+            cleaningOf({ output, input: freeColumn }))),
       },
     ],
   };
@@ -948,7 +962,7 @@ function uniqueKeyName(base: string, taken: ReadonlySet<string>): string {
  * over the seed's default terms), then adds a binding for each imported field
  * the default does not already declare (an extra same-type field, or an
  * {@link OPT_IN_LINKAGE_FIELD_TYPES} field), reusing that type's recommended
- * cleaning steps. Each such field binds only to a free `role: linkage` column
+ * cleaning (its steps and shared-value limit). Each such field binds only to a free `role: linkage` column
  * -- never `identifier`- or `payload`-roled -- so a crafted document cannot
  * auto-bind a column the operator did not mark for matching.
  *
@@ -984,21 +998,24 @@ function standardizationForImportedTerms(
     rawRows,
     dateInputFormats,
   );
-  // The recommended steps each imported field's type cleans with, keyed by field
+  // The recommended cleaning each imported field's type gets, keyed by field
   // name. Derived from the default standardization over the IMPORTED terms (not the
   // seed's), so it covers every imported field's type -- including an
   // `OPT_IN_LINKAGE_FIELD_TYPES` type the inviter has columns for but no built-in
   // key uses, which the seed's default terms (and so `base`) do not hold -- and
   // bakes in the row-inferred date format. The input columns it picks collide on the
-  // first per type; only the steps are read here, and the distinct columns are
+  // first per type; only the cleaning is read here, and the distinct columns are
   // assigned below.
-  const stepsByField = new Map(
+  const cleaningByField = new Map(
     defaultStandardizationForRows(
       metadata,
       terms,
       rawRows,
       dateInputFormats,
-    ).map((transformation) => [transformation.output, transformation.steps]),
+    ).map((transformation) => [
+      transformation.output,
+      cleaningOf(transformation),
+    ]),
   );
   // The default-named field each type already binds; only the EXTRA same-typed
   // fields (first_name_2, ...) need a reconstructed binding.
@@ -1021,8 +1038,8 @@ function standardizationForImportedTerms(
     // `freeColumn === undefined` check below: steps exist, but no `role: linkage`
     // column is free.) Reading the steps here (rather than a separate `.has()` probe)
     // also narrows them to a defined array for the push below.
-    const steps = stepsByField.get(field.name);
-    if (steps === undefined) continue;
+    const cleaning = cleaningByField.get(field.name);
+    if (cleaning === undefined) continue;
     // Bind only to a `role: linkage` column -- one the operator designated for
     // matching. An imported terms document is attacker-influenceable (any
     // schema-valid document is accepted on import), so a crafted document declaring
@@ -1047,7 +1064,7 @@ function standardizationForImportedTerms(
     extras.push({
       output: field.name,
       input: freeColumn.name,
-      steps,
+      ...cleaning,
     });
   }
   return [...base, ...extras];
