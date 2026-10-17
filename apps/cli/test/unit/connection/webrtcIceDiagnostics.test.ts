@@ -134,6 +134,23 @@ test("a failure with no relay gathered is distinguishable from one with", () => 
   expect(withRelay[2]).toBe("candidate pairs: 2 tried, none succeeded");
 });
 
+test("a failure names the TURN urls allowed_relays left out, then the remedy, and none when it left none out", () => {
+  const gathered = readIceCandidateReport(
+    report([localCandidate("L1", "host")]),
+  );
+  const details = iceFailureDetails(gathered, "relay", [
+    "turn:left-out.example.org",
+    "turns:other.example.net:443",
+  ]);
+  expect(details.slice(3)).toEqual([
+    "TURN urls left out by connection.allowed_relays: " +
+      "turn:left-out.example.org, turns:other.example.net:443",
+    "to let a run try a relay left out, add its host to " +
+      "connection.allowed_relays, or remove the setting",
+  ]);
+  expect(iceFailureDetails(gathered, "relay")).toHaveLength(3);
+});
+
 test("each policy a connection can take has a line of its own", () => {
   expect(describeIceTransportPolicy("relay")).toBe(
     "ice_transport_policy: relay (relay candidates only)",

@@ -28,6 +28,7 @@ import {
   redactAndSanitizeForDisplay,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
   NEW_INVITATION_REMEDY,
@@ -704,6 +705,15 @@ async function openRunTransport(params: {
     const enrolls = runEnrollsAtInvitationRegistrar(connection);
     const allocatingTurn = selectRunRelay(connection).turn?.[0];
     if (
+      invitationRegistrar !== undefined &&
+      allowedRelaysLeaveOutInvitationRelay(connection)
+    )
+      log.info(
+        "the relay registrar that your partner's invitation names was not " +
+          "contacted, because connection.allowed_relays leaves out the relay " +
+          "it names",
+      );
+    else if (
       invitationRegistrar !== undefined &&
       !enrolls &&
       allocatingTurn !== undefined

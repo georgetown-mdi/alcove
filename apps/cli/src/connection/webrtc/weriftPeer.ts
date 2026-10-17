@@ -45,6 +45,7 @@ import type { SignalingCertificateProbe } from "./signalingTls";
 import type {
   RelayCredential,
   RendezvousRole,
+  RunRelayConnection,
   RunTurnServer,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -371,6 +372,11 @@ export interface WebRtcPeerOptions {
    */
   iceTransportPolicy?: IceTransportPolicy;
   /**
+   * The TURN urls `allowed_relays` left out of this run, as the connection
+   * names them; a failure with no channel names them and the remedy.
+   */
+  relaysLeftOut?: string[];
+  /**
    * Resolves the ICE servers each attempt after the first is built with. Absent,
    * every attempt is built from `iceServers`.
    */
@@ -564,7 +570,7 @@ export const ICE_PROVISION_REFUSAL =
 export function iceServersFromConnection(
   connection: Pick<
     WebRTCConnectionConfig,
-    "stun" | "turn" | "iceProvision" | "invitationRelay"
+    "stun" | "turn" | "iceProvision" | "invitationRelay" | "allowedRelays"
   >,
   runRelayCredential?: RelayCredential,
 ): Array<RTCIceServer> {
@@ -644,7 +650,7 @@ export function turnEntryNeedsSecretMessage(url: string): string {
  *   `sharedSecret` is undefined.
  */
 export async function relayCredentialForRun(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
   sharedSecret: string | undefined,
   now: Date,
 ): Promise<RelayCredential | undefined> {
@@ -670,7 +676,7 @@ export async function relayCredentialForRun(
 export function relayCredentialPerAttempt(
   connection: Pick<
     WebRTCConnectionConfig,
-    "stun" | "turn" | "iceProvision" | "invitationRelay"
+    "stun" | "turn" | "iceProvision" | "invitationRelay" | "allowedRelays"
   >,
   sharedSecret: string,
   now: () => Date = () => new Date(),
@@ -739,7 +745,7 @@ function waitSoFar(ms: number): string {
  * text, so it is named escaped.
  */
 export function relayCredentialNotice(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
   credential: RelayCredential,
 ): string {
   const turn = selectRunRelay(connection).turn ?? [];
@@ -1019,6 +1025,7 @@ export async function openWebRtcPeerSession(
     sharedSecret,
     iceServers,
     iceTransportPolicy,
+    relaysLeftOut,
     attemptIceServers,
     rendezvousTimeoutMs = DEFAULT_RENDEZVOUS_TIMEOUT_MS,
     attemptMs = WEBRTC_ATTEMPT_MS,
@@ -1203,6 +1210,7 @@ export async function openWebRtcPeerSession(
       channelOpenTimeoutMs,
       unreportedOfferResendMs,
       iceTransportPolicy,
+      relaysLeftOut,
       arrivalTimeout,
       partnerRestart: previous?.partnerRestart,
       signal,
@@ -1336,6 +1344,8 @@ interface NegotiationOptions {
   unreportedOfferResendMs: number;
   /** The policy the peer connection was built with; named in a failure. */
   iceTransportPolicy?: IceTransportPolicy;
+  /** See {@link WebRtcPeerOptions.relaysLeftOut}; named in a failure. */
+  relaysLeftOut?: string[];
   /** The failure the wait's last attempt ends with when the partner never sent a description. */
   arrivalTimeout: () => ConnectionError;
   /** The partner's new connection the attempt before this one ended on, which this one answers. */
@@ -1564,7 +1574,11 @@ class Negotiation {
         ? undefined
         : {
             cause: chainDetailCauses(
-              iceFailureDetails(report, this.options.iceTransportPolicy),
+              iceFailureDetails(
+                report,
+                this.options.iceTransportPolicy,
+                this.options.relaysLeftOut,
+              ),
             ),
           },
     );

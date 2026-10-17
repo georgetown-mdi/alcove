@@ -8,6 +8,7 @@ import {
   assertSharedSecretReadyForHandshake,
   handshakeRoleForRendezvousRole,
   redactAndSanitizeForDisplay,
+  selectRunRelay,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -21,6 +22,7 @@ import type {
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
+import { allowedRelaysRunNotice } from "../allowedRelays";
 import { LocalFSClient } from "../connection/localFSClient";
 import { SSH2SFTPClientAdapter } from "../connection/ssh2SftpAdapter";
 import { INACTIVITY_TIMEOUT_GUIDANCE } from "../connection/timeoutGuidance";
@@ -140,6 +142,7 @@ export function webRtcDialFrom(
   // is a network path failure, held to the transport's fixed ceiling.
   const peerTimeoutMs = connection.options?.peerTimeoutMs;
   const inactivityTimeoutMs = connection.options?.inactivityTimeoutMs;
+  const turnLeftOut = selectRunRelay(connection).turnLeftOut;
   return {
     handshakeRole: handshakeRoleForRendezvousRole(role),
     options: {
@@ -152,6 +155,9 @@ export function webRtcDialFrom(
       }),
       ...(connection.iceTransportPolicy !== undefined && {
         iceTransportPolicy: connection.iceTransportPolicy,
+      }),
+      ...(turnLeftOut !== undefined && {
+        relaysLeftOut: turnLeftOut.map((server) => server.url),
       }),
       ...(peerTimeoutMs !== undefined && {
         rendezvousTimeoutMs: peerTimeoutMs,
@@ -686,6 +692,8 @@ export async function prepareTransport(
     // The file-sync construction below has no webrtc counterpart: on this
     // channel there is no client to build.
     build.webRtcDial = checked.webRtcDial;
+    if (connection.allowedRelays !== undefined)
+      log.info(allowedRelaysRunNotice(selectRunRelay(connection)));
     if (checked.runRelayCredential !== undefined)
       log.info(relayCredentialNotice(connection, checked.runRelayCredential));
   } else {

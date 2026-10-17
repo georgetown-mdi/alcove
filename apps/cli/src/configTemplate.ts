@@ -358,7 +358,9 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # username and credential to have each run mint one from the shared secret;
 # credential_type is hmac-sha1 for a time-limited credential your relay's
 # deployment minted, password otherwise); ice_transport_policy: relay uses
-# those relays only.
+# those relays only. allowed_relays names the relay hosts, each with a port
+# when given, that your side may connect through, enroll at and name in its
+# invitations, among your own and an invitation's; unset, it may use them all.
 # connection:
 #   channel: webrtc
 #   server:
@@ -374,6 +376,8 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 #       username: REPLACE_WITH_TURN_USERNAME
 #       credential: "@./turn-credential.txt"
 #       credential_type: password
+#   allowed_relays:
+#     - relay.example.org
 #   ice_transport_policy: all
 
 # unexpected_files (sftp and filedrop): what to do when a file that is not part

@@ -815,7 +815,7 @@ connection:
 
 TURN servers for the case where a direct peer-to-peer connection cannot be established. Credential type `hmac-sha1` indicates how a deployment issues a time-limited credential, not how a client presents one: the issued value is still sent as the password, so both types take the same shape here. Mutually exclusive with `ice_provision`; if `ice_provision` is present, `turn` is invalid.
 
-The CLI passes these entries to its peer connection (the browser client uses its own relay setting instead -- see [`connection.stun`](#connectionstun)). The CLI allocates only on the first TURN url it lists, your first entry here, so on the [invitation's relay](#connectioninvitation_relay) only when that entry names one of its urls, though the exchange may still pass through that relay by way of your partner's relay candidates ([the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator)). What a relayed run has been verified to do, the certificate the CLI requires of a relay before it will use one, and the wait such a run leaves behind afterwards are in [CLI.md](CLI.md#turn).
+The CLI passes these entries to its peer connection (the browser client uses its own relay setting instead -- see [`connection.stun`](#connectionstun)). Which of the relays it lists, these and the [invitation's](#connectioninvitation_relay), a CLI run allocates on: [the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator); [`allowed_relays`](#connectionallowed_relays) narrows them. What a relayed run has been verified to do, the certificate the CLI requires of a relay before it will use one, and the wait such a run leaves behind afterwards are in [CLI.md](CLI.md#turn).
 
 A `url` may set no query parameter other than `transport`, the only one a TURN URI defines: any other (`?credential=...`) is refused without naming it or its value, so a credential pasted into the url is not repeated in the error, and a `url` holding an `@` is refused as naming a user before its host, since a password can hold a `?`. A TURN URI defines no path or fragment either, so a `url` with one (`turns:host:443/x`, `turn:host#x`) is refused naming which, never its value. A refusal names the entry and the refused part and never repeats the url.
 
@@ -852,11 +852,11 @@ The relay the invitation you accepted named: your partner's TURN and STUN urls, 
 
 A run lists it beside your own settings: its `turn` urls after your [`turn`](#connectionturn) entries, and its `stun` urls after your [`stun`](#connectionstun) list, a url both name listed once, as yours. A url is the same relay to the run only when it is written identically in both places: an entry of yours spelled differently is a different relay, and a CLI run that allocates on it does so without the invitation's enrollment. Each run configures the invitation's TURN urls with a credential it derives from the exchange's current shared secret, valid for an hour and derived again for each ten-minute connection attempt while the partner has not connected, and presents it to the one TURN url it allocates on; nothing is stored. Its TURN urls also satisfy [`ice_transport_policy: relay`](#connectionice_transport_policy).
 
-With a `turn` entry of your own, a CLI run allocates on your first one, so on this relay only when that entry names one of its TURN urls, and contacts a `registrar` it names only when that entry also sets no `username` or `credential`; the exchange may still pass through this relay by way of your partner's relay candidates; the browser uses every server it lists ([the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator)).
+Which of these relays a CLI run allocates on, and when it contacts the `registrar`: [the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator); [`allowed_relays`](#connectionallowed_relays) can leave this relay out.
 
-**`registrar`** is the address of the relay's registrar, which an invitation from a web app built with a [default relay](DEPLOYMENT.md#the-default-relay), as the hosted one is, names beside that relay's TURN url. A run that allocates on this relay with the credential it derives from the shared secret enrolls the exchange's relay key there, with no token, once before it first tries to connect, waiting a few seconds at most. A CLI run does so when you have no `turn` entry of your own, or your first one names one of this relay's TURN urls and sets no `username` or `credential`. A run whose first `turn` entry names another url, or sets a credential of its own, contacts no registrar here, and says so on its log; your browser partner enrolls there for its own allocation, so an exchange on a hosted invitation is still enrolled by the party that uses that relay. If the registrar refuses, cannot be reached, or does not answer in time, the run says so on the terminal and on the [event stream](CLI.md#machine-readable-event-stream), and goes on with its other relays. The registrar caps how many such enrollments it holds for each network address at a time, so a host running many exchanges at once can be refused, and says so the same way. The wait and the cap: [PROTOCOL.md](spec/PROTOCOL.md#enrolling-at-a-default-relay).
+**`registrar`** is the address of the relay's registrar, which an invitation from a web app built with a [default relay](DEPLOYMENT.md#the-default-relay), as the hosted one is, names beside that relay's TURN url. A run that allocates on this relay with the credential it derives from the shared secret enrolls the exchange's relay key there, with no token, once before it first tries to connect, waiting a few seconds at most. A CLI run that does not contacts no registrar here, and says so on its log. If the registrar refuses, cannot be reached, or does not answer in time, the run says so on the terminal and on the [event stream](CLI.md#machine-readable-event-stream), and goes on with its other relays. The registrar caps how many such enrollments it holds for each network address at a time, so a host running many exchanges at once can be refused, and says so the same way. The wait and the cap: [PROTOCOL.md](spec/PROTOCOL.md#enrolling-at-a-default-relay).
 
-The relay's operator learns your network address on every run that contacts it, whether or not any traffic is relayed, which is why an acceptance names the relay before you consent; a registrar's operator learns it on every run that enrolls there, and on every [`alcove doctor relay`](CLI.md#checking-the-relay-of-a-webrtc-exchange) of a configuration whose run would enroll there; the check contacts no registrar a run would not. Listing the invitation's relay beside yours means a run may connect through it where your own relay would have served. To stop using it, delete the block. The format and the credential derivation: [PROTOCOL.md](spec/PROTOCOL.md#the-invitations-relay-locator).
+The relay's operator learns your network address on every run that contacts it, whether or not any traffic is relayed, which is why an acceptance names the relay before you consent; a registrar's operator learns it on every run that enrolls there, and on every [`alcove doctor relay`](CLI.md#checking-the-relay-of-a-webrtc-exchange) of a configuration whose run would enroll there; the check contacts no registrar a run would not. Listing the invitation's relay beside yours means a run may connect through it where your own relay would have served. To stop using it, delete the block, or leave it out with [`allowed_relays`](#connectionallowed_relays), which a later acceptance does not rewrite. The format and the credential derivation: [PROTOCOL.md](spec/PROTOCOL.md#the-invitations-relay-locator).
 
 An inviter names its relay from its own settings: the `url` of each `turn` entry that sets no `username` or `credential`, and its `stun` list. The invitation never holds a username, a credential, or anything derived from the shared secret.
 
@@ -880,6 +880,30 @@ connection:
       - "turns:relay.example.org:443?transport=tcp"
     stun:
       - "stun:relay.example.org:3478"
+```
+
+### `connection.allowed_relays`
+
+*Type:* array of strings  
+*Required:* no  
+*Default:* unset, so a run may use every relay it lists  
+*Applies to:* `webrtc`
+
+The TURN relays this party may use, among your own [`turn`](#connectionturn) entries and the [`invitation_relay`](#connectioninvitation_relay) an acceptance wrote. Each entry is a host, with a port when given: `relay.example.org`, `relay.example.org:443`, or `[2001:db8::1]:3478`.
+
+- **How an entry matches a url.** An entry names a TURN url whose host it matches, ignoring letter case and a trailing dot, on the port it names when it names one. A url that names no port is on its scheme's default port, 3478 for `turn:` and 5349 for `turns:`. So a host entry matches the `turn:` and `turns:` forms of that host and every `transport`. No name is resolved: an entry naming an address does not match a url naming a host. An entry with a scheme, a user, a path, or a port outside 1 to 65535 is refused at parse.
+- **What it decides.** A CLI run lists only the TURN urls an entry names, so it allocates on, presents its credential to, and enrolls at the `registrar` of only the relays the setting keeps. An invitation it creates names only the url-only `turn` entries the setting keeps. An empty list keeps no TURN url. STUN servers are not relays, and the setting does not change them.
+- **What it does not decide.** It does not filter your partner's candidates: your partner's side can still connect through a relay the setting leaves out, and that relay then learns your network address. To keep your address off a relay you do not list, also set [`ice_transport_policy: relay`](#connectionice_transport_policy), so every candidate your side offers is on a relay you kept. A run registers its rotated relay key at your own [`relay_registrar`](#connectionrelay_registrar) whatever the setting keeps.
+- **What it reports.** Each run states the TURN urls it keeps and the ones it leaves out. The review before you accept an invitation into a configuration that sets it marks each of the invitation's TURN urls `kept by connection.allowed_relays` or `left out by connection.allowed_relays`. [`alcove doctor relay`](CLI.md#checking-the-relay-of-a-webrtc-exchange) contacts no relay it leaves out, and names each as left out.
+- **When a run does not connect.** The failure names the TURN urls the setting left out after what ICE found, and the remedy: add a host both sides can reach, or remove the setting ([CLI.md](CLI.md#when-a-webrtc-exchange-does-not-connect)). A relay-only run whose every TURN url the setting leaves out gathers no relay candidate, and fails the same way.
+
+> **Honored by the CLI only**, like `turn`. An acceptance never writes or changes it.
+
+```yaml
+connection:
+  allowed_relays:
+    - relay.example.org
+    - backup-relay.example.org:443
 ```
 
 ### `connection.relay_registrar`

@@ -762,6 +762,42 @@ test("an omitted server block resolves to the PeerJS defaults, over TLS", () => 
   });
 });
 
+test("allowed_relays decides the TURN urls the dial lists, and the ones a failure names as left out", () => {
+  const credential = {
+    username: "1:alcove",
+    credential: "placeholder-not-a-secret",
+    expiresAt: new Date(1000),
+  };
+  const connection = {
+    channel: "webrtc" as const,
+    server: { host: "peers.example.org" },
+    role: "acceptor" as const,
+    invitationRelay: {
+      turn: [
+        "turns:left-out.example.org:443?transport=tcp",
+        "turn:kept.example.org:3478",
+      ],
+    },
+  };
+  const { options } = webRtcDialFrom(
+    { ...connection, allowedRelays: ["kept.example.org:3478"] },
+    SECRET,
+    credential,
+  );
+  expect(options.iceServers?.map((server) => server.urls)).toEqual([
+    "turn:kept.example.org:3478",
+  ]);
+  expect(options.relaysLeftOut).toEqual([
+    "turns:left-out.example.org:443?transport=tcp",
+  ]);
+
+  const unset = webRtcDialFrom(connection, SECRET, credential).options;
+  expect(unset.iceServers?.map((server) => server.urls)).toEqual(
+    connection.invitationRelay.turn,
+  );
+  expect(unset).not.toHaveProperty("relaysLeftOut");
+});
+
 test("a plaintext broker resolves to the plaintext default port", () => {
   const { options } = webRtcDialFrom(
     {

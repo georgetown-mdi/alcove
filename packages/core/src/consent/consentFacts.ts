@@ -663,10 +663,10 @@ export const CONSENT_FACTS = {
       "the partner's cooperation. What the relay's operator can observe is " +
       "the note's, since that follows from contacting the relay at all.",
     note:
-      "The relay's operator learns your network address on every run, " +
-      "whether or not any traffic passes through the relay. Your partner " +
-      "named this relay for the exchange, and your side uses it beside any " +
-      "relay of your own.",
+      "The relay's operator learns your network address on every run that " +
+      "contacts it, whether or not any traffic passes through the relay. " +
+      "Your partner named this relay for the exchange; your own relay " +
+      "settings decide whether your side contacts it.",
   },
 } as const satisfies Record<string, ConsentFact>;
 

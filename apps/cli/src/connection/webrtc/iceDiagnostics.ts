@@ -1,3 +1,7 @@
+import {
+  ALLOWED_RELAYS_REMEDY,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+} from "../../allowedRelays";
 import { fittedCauseLink } from "../causeLink";
 
 import type { WebRTCConnectionConfig } from "@alcove/core";
@@ -77,6 +81,7 @@ export const MAX_REPORTED_CANDIDATE_TYPES = 6;
 const LOCAL_CANDIDATES_LABEL = "local candidates gathered: ";
 const REMOTE_CANDIDATES_LABEL = "remote candidates received: ";
 const CANDIDATE_PAIRS_LABEL = "candidate pairs: ";
+const RELAYS_LEFT_OUT_LABEL = `TURN urls ${LEFT_OUT_BY_ALLOWED_RELAYS}: `;
 
 /**
  * The stats report shape these diagnostics read: the map `getStats()` resolves
@@ -245,6 +250,7 @@ export function describeSelectedCandidatePair(
 export function iceFailureDetails(
   report: IceCandidateReport,
   iceTransportPolicy?: IceTransportPolicy,
+  relaysLeftOut: ReadonlyArray<string> = [],
 ): [string, ...string[]] {
   const relay = report.localRelayGathered
     ? "relay candidate gathered"
@@ -265,6 +271,12 @@ export function iceFailureDetails(
     ),
     fittedCauseLink(REMOTE_CANDIDATES_LABEL, describeTally(report.remote)),
     fittedCauseLink(CANDIDATE_PAIRS_LABEL, pairs),
+    ...(relaysLeftOut.length === 0
+      ? []
+      : [
+          fittedCauseLink(RELAYS_LEFT_OUT_LABEL, relaysLeftOut.join(", ")),
+          ALLOWED_RELAYS_REMEDY,
+        ]),
   ];
 }
 

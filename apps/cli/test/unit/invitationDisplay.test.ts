@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   CONSENT_FACTS,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
@@ -43,8 +43,10 @@ import type {
 } from "@alcove/core";
 import type { ConsentFact } from "@alcove/core/testing";
 
+import { ALLOWED_RELAYS_SCOPE } from "../../src/allowedRelays";
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import {
+  displayInvitation,
   invitationRelayRegistrarLine,
   logDecisionFacts,
 } from "../../src/invitationDisplay";
@@ -1417,13 +1419,53 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       "    TURN turns:default-relay.example.net:443?transport=tcp",
       "    A run registers this exchange at " +
         "https://default-relay.example.net before it connects only when " +
-        "that relay is the one it allocates on, and whoever runs that " +
+        "this relay is the one the run uses, and whoever runs that " +
         "registrar then learns your network address.",
       `    ${CONSENT_FACTS.invitationRelay.note}`,
     ]);
     expect(
       invitationRelayRegistrarLine("https://r\\x1b[31m.example" as Displayable),
     ).toContain("https://r\\x1b[31m.example");
+  });
+
+  test("displayInvitation: a kept configuration's allowed_relays marks each TURN url kept or left out and states what it governs", () => {
+    const log = getLogger("accept-display-allowed-relays-test");
+    log.setLevel("silent");
+    const infoSpy = vi.spyOn(log, "info");
+    try {
+      displayInvitation({
+        token: sampleToken(FUTURE(), {
+          channel: "webrtc",
+          host: "peer.example.org",
+          relay: {
+            turn: [
+              "turns:Relay.Example.org:443?transport=tcp",
+              "turn:other-relay.example.net",
+            ],
+            stun: ["stun:relay.example.org:3478"],
+          },
+        }),
+        ownOutboundSend: undefined,
+        emit: (line) => {
+          log.info(line);
+        },
+        promptFollows: true,
+        allowedRelays: ["relay.example.org"],
+      });
+      const lines = infoSpy.mock.calls.map((c) => String(c[0]));
+      const heading = lines.indexOf("  relay your partner named (enforced):");
+      expect(lines.slice(heading + 1, heading + 6)).toEqual([
+        "    TURN turns:Relay.Example.org:443?transport=tcp " +
+          "(kept by connection.allowed_relays)",
+        "    TURN turn:other-relay.example.net " +
+          "(left out by connection.allowed_relays)",
+        "    STUN stun:relay.example.org:3478",
+        `    ${CONSENT_FACTS.invitationRelay.note}`,
+        `    ${ALLOWED_RELAYS_SCOPE}`,
+      ]);
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 
   test("displayInvitation: a registrar written in a typed form is shown as its origin", async () => {

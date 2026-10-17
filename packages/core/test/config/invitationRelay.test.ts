@@ -525,6 +525,20 @@ describe("the inviter's endpoint", () => {
   test("names no relay for a connection with none", () => {
     expect(endpointFromConnection(base)).not.toHaveProperty("relay");
   });
+
+  test("names only the turn entries allowed_relays lists, and every one when it is unset", () => {
+    const turn = [
+      { url: "turn:left-out.example.org:3478" },
+      { url: RELAY.turn[0] },
+    ];
+    const allowedRelays = ["relay.example.org:443"];
+    expect(
+      endpointFromConnection({ ...base, turn, allowedRelays }),
+    ).toHaveProperty("relay", { turn: RELAY.turn });
+    expect(endpointFromConnection({ ...base, turn })).toHaveProperty("relay", {
+      turn: ["turn:left-out.example.org:3478", RELAY.turn[0]],
+    });
+  });
 });
 
 describe("the accepting side's connection", () => {

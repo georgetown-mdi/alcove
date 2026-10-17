@@ -7,11 +7,13 @@ import {
 import type {
   ConnectionConfig,
   RelayCredential,
+  RunRelayConnection,
   RunTurnServer,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 import type { RTCIceServer } from "werift";
 
+import { LEFT_OUT_BY_ALLOWED_RELAYS } from "../allowedRelays";
 import { NO_RELAY_CANDIDATE_GATHERED } from "../connection/webrtc/iceDiagnostics";
 import {
   ICE_PROVISION_REFUSAL,
@@ -62,6 +64,20 @@ export const RELAY_CHECK_NO_TURN_URL =
   "turn url in connection.invitation_relay -- so there is no relay to " +
   "check. Nothing was contacted.";
 
+/**
+ * The refusal of a webrtc configuration whose every TURN url
+ * `allowed_relays` leaves out, naming them; raw, escaped where shown.
+ */
+export function relayCheckAllLeftOutMessage(
+  leftOut: ReadonlyArray<RunTurnServer>,
+): string {
+  return (
+    `connection.allowed_relays leaves out every TURN url this configuration ` +
+    `lists (${leftOut.map((server) => server.url).join(", ")}), so a run ` +
+    "contacts no relay and there is none to check. Nothing was contacted."
+  );
+}
+
 /** The TURN url the check asks, with what it presents there. */
 export interface RelayCheckTarget {
   server: RunTurnServer;
@@ -82,6 +98,8 @@ export interface RelayCheckPlan {
   contacted: RelayCheckTarget;
   /** Every later TURN url a run lists, in its order; none is contacted. */
   notContacted: RunTurnServer[];
+  /** Every TURN url `allowed_relays` left out; none is contacted. */
+  leftOut: RunTurnServer[];
   /** Absent where the configuration's `invitation_relay` names no registrar. */
   registrar?: RelayCheckRegistrar;
 }
@@ -122,8 +140,13 @@ export function relayCheckConnection(
     throw new UsageError(RELAY_CHECK_WEBRTC_ONLY);
   if (connection.iceProvision !== undefined)
     throw new UsageError(ICE_PROVISION_REFUSAL);
-  if ((selectRunRelay(connection).turn ?? []).length === 0)
-    throw new UsageError(RELAY_CHECK_NO_TURN_URL);
+  const { turn, turnLeftOut } = selectRunRelay(connection);
+  if ((turn ?? []).length === 0)
+    throw new UsageError(
+      turnLeftOut === undefined
+        ? RELAY_CHECK_NO_TURN_URL
+        : relayCheckAllLeftOutMessage(turnLeftOut),
+    );
   return connection;
 }
 
@@ -137,10 +160,11 @@ export function relayCheckConnection(
  *   {@link relayCheckConnection} refuses first.
  */
 export function relayCheckPlan(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
   runRelayCredential: RelayCredential | undefined,
 ): RelayCheckPlan {
-  const [first, ...rest] = selectRunRelay(connection).turn ?? [];
+  const { turn, turnLeftOut } = selectRunRelay(connection);
+  const [first, ...rest] = turn ?? [];
   if (first === undefined)
     throw new InternalConsistencyError(
       "relayCheckPlan: the relay check was given no TURN url",
@@ -153,6 +177,7 @@ export function relayCheckPlan(
       iceServer: turnIceServer(first, runRelayCredential),
     },
     notContacted: rest,
+    leftOut: turnLeftOut ?? [],
     ...(registrar !== undefined && {
       registrar: {
         url: registrar,
@@ -188,6 +213,12 @@ function capitalized(sentence: string): string {
 
 /** Why a run of the configuration does not enroll at the registrar. */
 function registrarNotContactedReason(plan: RelayCheckPlan): string {
+  const listed = [plan.contacted.server, ...plan.notContacted];
+  if (
+    plan.leftOut.some((server) => server.source === "invitation") &&
+    !listed.some((server) => server.source === "invitation")
+  )
+    return "connection.allowed_relays leaves out the relay it names";
   return plan.contacted.server.credential !== undefined
     ? "the relay it allocates on is sent its connection.turn entry's own " +
         "credential"
@@ -211,7 +242,7 @@ export function relayHostStatement(
   plan: RelayCheckPlan,
   connection: Pick<WebRTCConnectionConfig, "invitationRelay">,
 ): string[] {
-  const { contacted, notContacted, registrar } = plan;
+  const { contacted, notContacted, leftOut, registrar } = plan;
   const lines = [
     "This check contacts these hosts, as a run of this configuration does:",
     `  ${contacted.server.url}`,
@@ -230,7 +261,11 @@ export function relayHostStatement(
     );
   const skippedRegistrar =
     registrar?.contacted === false ? registrar : undefined;
-  if (notContacted.length > 0 || skippedRegistrar !== undefined)
+  if (
+    notContacted.length > 0 ||
+    leftOut.length > 0 ||
+    skippedRegistrar !== undefined
+  )
     lines.push(
       "It does not contact these hosts, because a run of this configuration " +
         "does not:",
@@ -238,6 +273,11 @@ export function relayHostStatement(
         `  ${server.url}`,
         `    ${capitalized(transportAndSource(server))}. ` +
           `${capitalized(LATER_URL_NOT_CONTACTED)}.`,
+      ]),
+      ...leftOut.flatMap((server) => [
+        `  ${server.url}`,
+        `    ${capitalized(transportAndSource(server))}. ` +
+          `${capitalized(LEFT_OUT_BY_ALLOWED_RELAYS)}.`,
       ]),
       ...(skippedRegistrar === undefined
         ? []

@@ -289,6 +289,11 @@ type AcceptReady = {
    * is written. False when no config existed and a fresh one will be written.
    */
   reuseExistingConfig: boolean;
+  /**
+   * The kept configuration's `allowed_relays`, which governs every later run
+   * and marks the invitation's TURN urls on the review; absent when unset.
+   */
+  allowedRelays?: ReadonlyArray<string>;
 } & (
   | {
       mode: "online";
@@ -449,6 +454,11 @@ export async function validateAccept(params: {
     options.configFile,
     reconciliationSources(resolved.mode === "online"),
   );
+  const keptAllowedRelays =
+    keptConfig?.connection.channel === "webrtc" &&
+    keptConfig.connection.allowedRelays !== undefined
+      ? { allowedRelays: keptConfig.connection.allowedRelays }
+      : {};
   const myIdentity =
     keptConfig !== undefined
       ? keptConfigurationIdentity({
@@ -610,6 +620,7 @@ export async function validateAccept(params: {
       dataSpec,
       prepared,
       reuseExistingConfig,
+      ...keptAllowedRelays,
     };
   }
 
@@ -775,6 +786,7 @@ export async function validateAccept(params: {
       dataSpec,
       prepared,
       reuseExistingConfig,
+      ...keptAllowedRelays,
     };
   }
 
@@ -790,6 +802,7 @@ export async function validateAccept(params: {
     ...(endpointDirectories !== undefined ? { endpointDirectories } : {}),
     dataSpec,
     reuseExistingConfig,
+    ...keptAllowedRelays,
   };
 }
 
@@ -1193,6 +1206,7 @@ export async function handler(argv: Arguments): Promise<void> {
         promptFollows: !consentToTerms,
         runsExchangeThrough,
         endpointDirectories,
+        allowedRelays: ready.allowedRelays,
       });
       // With --consent-to-terms, skip the prompt and proceed on the recorded
       // advance consent. Log the bypass so an unattended run's own log shows the

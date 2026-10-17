@@ -340,6 +340,8 @@ export {
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
   statesServerHost,
+  turnUrlIsAllowed,
+  turnUrlRelay,
   withRetainModeImplications,
 } from "./config/connection";
 export {
@@ -358,6 +360,7 @@ export type {
   FileDropConnectionConfig,
   FileSyncOptions,
   HttpAuth,
+  RelayHostAndPort,
   RelayLocator,
   RelayRegistrar,
   ServerProvision,
@@ -870,6 +873,7 @@ export {
 } from "./webAppSignaling";
 export type { ResolveWebAppSignalingServerOptions } from "./webAppSignaling";
 export {
+  allowedRelaysLeaveOutInvitationRelay,
   deriveRelayExchangeId,
   deriveRelayKey,
   mintRelayCredential,
@@ -880,6 +884,7 @@ export {
 } from "./relayCredential";
 export type {
   RelayCredential,
+  RunRelayConnection,
   RunRelaySelection,
   RunTurnServer,
 } from "./relayCredential";
