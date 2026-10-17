@@ -524,11 +524,20 @@ describe("setDraftMetadata re-derives offerable keys", () => {
       "match",
     ).metadata;
     const next = setDraftMetadata(withDisabled, matched);
-    // The disabled key kept its position and disabled flag; the new ssn keys are
-    // appended enabled.
-    expect(next.keys[0].key.name).toBe(firstName);
-    expect(next.keys[0].enabled).toBe(false);
+    // The disabled key kept its disabled flag and the existing keys their order;
+    // the new ssn keys arrive enabled, at their catalog position above them.
+    const kept = next.keys.filter((e) =>
+      draft.keys.some((old) => old.key.name === e.key.name),
+    );
+    expect(kept.map((e) => e.key.name)).toEqual(
+      draft.keys.map((e) => e.key.name),
+    );
+    expect(kept[0].key.name).toBe(firstName);
+    expect(kept[0].enabled).toBe(false);
     expect(ssnKeyNames(next).length).toBeGreaterThan(0);
+    expect(next.keys.map((e) => e.key.name)).toEqual(
+      getDefaultLinkageTerms("Org", matched).linkageKeys.map((key) => key.name),
+    );
     expect(
       next.keys
         .filter((e) => e.key.elements.some((el) => el.field === "ssn"))
@@ -985,14 +994,20 @@ describe("controls the editor does not expose stay at their safe defaults", () =
   });
 
   test("(e) algorithm stays psi, deduplicate stays off, no fuzzy is added", () => {
+    const builtInKeys = new Set(
+      DEFAULT_LINKAGE_RULE_SET.linkageKeys.map((key) => canonicalString(key)),
+    );
     for (const draft of variants()) {
       const built = buildAdvancedTerms(draft);
       expect(built.algorithm).toBe("psi");
       expect(built.deduplicate).toBe(false);
+      // A fuzzy comparison is one a built-in key declares, never one added.
       expect(
-        built.linkageKeys.every((k) =>
-          k.elements.every((e) => e.generateFuzzyComparisons === undefined),
-        ),
+        built.linkageKeys
+          .filter((k) =>
+            k.elements.some((e) => e.generateFuzzyComparisons !== undefined),
+          )
+          .every((k) => builtInKeys.has(canonicalString(k))),
       ).toBe(true);
       // No payload is authored either.
       expect(built.payload).toBeUndefined();

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
 import { getDefaultStandardization } from "../src/defaults/builtInStandardization";
 import { buildStandardizedDataset } from "../src/standardization";
 import { personColumns } from "../src/personColumns";
@@ -534,6 +535,29 @@ describe("the limit in a standardization document", () => {
         { output: "phone_number", input: "PHONE", max_people_per_value: value },
       ]).success,
     ).toBe(false);
+  });
+});
+
+describe("the default terms", () => {
+  test("screen the ssn, phone and email fields they select at their limits", () => {
+    const defaults = getDefaultLinkageTerms("test", metadata);
+    const limits = new Map(
+      getDefaultStandardization(metadata, defaults).map((transformation) => [
+        transformation.output,
+        transformation.maxPeoplePerValue,
+      ]),
+    );
+    expect(limits.get("ssn")).toBe(1);
+    expect(limits.get("phone_number")).toBe(5);
+    expect(limits.get("email_address")).toBe(5);
+    expect(limits.get("zip_code")).toBeUndefined();
+    expect(limits.get("first_name")).toBeUndefined();
+
+    const people = distinctPeople(6, { phone: PHONE, email: EMAIL, ssn: SSN });
+    for (const field of ["ssn", "phone_number", "email_address"])
+      expect(cleaned(field, people, undefined, defaults)).toEqual(
+        Array.from({ length: 6 }, () => []),
+      );
   });
 });
 

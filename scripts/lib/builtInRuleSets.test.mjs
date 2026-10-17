@@ -39,9 +39,16 @@ const ruleSetBlock = ({
   keySetName = '"hmis-keys"',
   keySetVersion = '"1.0.0"',
   keys = '[{ name: "SSN", elements: [{ field: "ssn" }] }]',
+  bands,
 } = {}) => {
   const declared = declarationsOf(prefix);
-  return `export const ${declared.fieldSetName} = ${fieldSetName};
+  const bandsDeclaration =
+    bands === undefined ? "" : `const ${prefix}_BANDS = ${bands};\n`;
+  const bandsProperty =
+    bands === undefined
+      ? ""
+      : `  ruleBands: frozenThroughContents(${prefix}_BANDS),\n`;
+  return `${bandsDeclaration}export const ${declared.fieldSetName} = ${fieldSetName};
 export const ${declared.fieldSetVersion} = ${fieldSetVersion};
 const ${declared.fields}: ReadonlyArray<LinkageField> = ${fields};
 export const ${declared.keySetName} = ${keySetName};
@@ -60,7 +67,7 @@ export const ${declared.ruleSet}: BuiltInLinkageRuleSet = Object.freeze({
   }),
   linkageFields: frozenThroughContents(${declared.fields}),
   linkageKeys: frozenThroughContents(${declared.keys}),
-});
+${bandsProperty}});
 `;
 };
 
@@ -344,8 +351,26 @@ function build() {
     expect(unreadable).toEqual([]);
     expect(ruleSets.length).toBeGreaterThan(0);
     expect(ruleSets[0].fieldSet.name).toBe("baseline-pii");
-    expect(ruleSets[0].keySet.name).toBe("hmis-keys");
+    expect(ruleSets[0].keySet.name).toBe("precision-ranked-rules");
     expect(ruleSets[0].keySet.content.length).toBeGreaterThan(0);
+    expect(ruleSets[0].keySet.bands.length).toBeGreaterThan(0);
+    expect(ruleSets[1].keySet.name).toBe("hmis-keys");
+    expect(ruleSets[1].keySet.bands).toBeUndefined();
+  });
+
+  it("digests a key set's bands with its keys, where it declares them", () => {
+    const band = (value) =>
+      `[{ rule: "SSN", band: ${value}, coverage: "any" }]`;
+    const digestOf = (options) =>
+      declaredSets(readRuleSets(source({ sets: [options] })).ruleSets)[1];
+    const unbanded = digestOf({});
+    const at99 = digestOf({ bands: band(99) });
+    const at95 = digestOf({ bands: band(95) });
+    expect(unbanded.digest).toBe(
+      contentDigest([{ name: "SSN", elements: [{ field: "ssn" }] }]),
+    );
+    expect(at99.declarations.content).toBe("DEFAULT_KEYS and DEFAULT_BANDS");
+    expect(new Set([unbanded.digest, at99.digest, at95.digest]).size).toBe(3);
   });
 
   it("fails a tree that does not contain the source at all, naming the file", () => {

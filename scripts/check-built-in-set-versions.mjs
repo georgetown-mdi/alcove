@@ -6,7 +6,8 @@
 // version bump. Reads every set the registry in
 // packages/core/src/defaults/builtInLinkageTerms.ts declares, digests each one's
 // evaluated declarations (fields with constraints; keys with elements,
-// transforms, swaps and order), and fails unless:
+// transforms, swaps and order, with each rule's band and coverage condition
+// where the set declares them), and fails unless:
 //
 //   1. each set's digest matches the pin scripts/built-in-set-pins.json records
 //      for the name and version the source declares, so moved content with no

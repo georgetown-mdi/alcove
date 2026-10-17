@@ -10,6 +10,9 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
+  inferMetadata,
+  linkageKeysAtPrecisionFloor,
+  linkageTermsFromRuleSet,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
@@ -39,6 +42,7 @@ import {
   configWithNamedRuleSetRules,
   describeConfigSchemaError,
   diffLinkageTerms,
+  linkageTermsNarrowedToInput,
   linkageTermsWithNamedRuleSetRules,
   formatReconcileDiffs,
   linkageTermsStandingOf,
@@ -5139,6 +5143,152 @@ test("a config naming the built-in set runs on that set's rules", () => {
   expect(terms.date).toBe("2026-01-01");
 });
 
+test("a config selects the named catalog's rules by floor and coverage", () => {
+  const selected = (selection: Record<string, unknown>) =>
+    loadNamedRuleSetConfig({
+      ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+      ...selection,
+    });
+  const strict = selected({
+    precision_floor: 99,
+    one_state_or_metro_area: false,
+  });
+  expect(strict.linkageKeys).toEqual(
+    linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, {
+      floor: 99,
+      oneStateOrMetroArea: false,
+    }),
+  );
+  expect(strict.linkageKeys.map((key) => key.name)).not.toContain("SSN + FN");
+  // Only the fields the selected keys read, and the citation as written.
+  expect(strict.linkageFields.map((field) => field.name)).not.toContain(
+    "email_address",
+  );
+  expect(strict.linkageRuleSet).toEqual(DEFAULT_LINKAGE_RULE_SET.reference);
+
+  const otherAreas = selected({ one_state_or_metro_area: false });
+  expect(otherAreas.linkageKeys.map((key) => key.name)).toContain("SSN + FN");
+  expect(otherAreas.linkageKeys.map((key) => key.name)).not.toContain(
+    "LN + FN + DOB",
+  );
+});
+
+test("a config's floor selection is refused where it cannot select", () => {
+  const refusal = (terms: Record<string, unknown>): string => {
+    try {
+      loadNamedRuleSetConfig(terms);
+    } catch (err) {
+      expect(err).toBeInstanceOf(UsageError);
+      return (err as Error).message;
+    }
+    throw new Error("expected a refusal");
+  };
+  const catalog = namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference);
+  expect(refusal({ ...catalog, precision_floor: 90 })).toContain(
+    "precision_floor as 90, which is not a floor. Write 99 or 95 as a " +
+      "number without quotes (precision_floor: 95)",
+  );
+  expect(refusal({ ...catalog, precision_floor: "99" })).toContain(
+    'precision_floor as "99", which is not a floor',
+  );
+  expect(refusal({ ...catalog, precision_floor: null })).toContain(
+    "precision_floor as null, which is not a floor",
+  );
+  expect(
+    refusal({
+      ...catalog,
+      linkage_rule_set: undefined,
+      precision_floor: 99,
+    }),
+  ).toContain(
+    'Add a linkage_rule_set block naming "precision-ranked-rules" 2.0.0 ' +
+      'over "baseline-pii" 1.1.0',
+  );
+  expect(refusal({ ...catalog, one_state_or_metro_area: "yes" })).toContain(
+    "one_state_or_metro_area as a value other than true or false",
+  );
+  expect(
+    refusal({
+      ...catalog,
+      precision_floor: 99,
+      linkage_fields: DEFAULT_LINKAGE_RULE_SET.linkageFields,
+      linkage_keys: DEFAULT_LINKAGE_RULE_SET.linkageKeys,
+    }),
+  ).toContain("delete both lists to run it");
+  expect(
+    refusal({
+      ...namedRuleSetTerms({
+        fieldSet: { name: "baseline-pii", version: "1.0.0" },
+        keySet: { name: "hmis-keys", version: "1.0.0" },
+      }),
+      precision_floor: 99,
+    }),
+  ).toContain("has no precision bands to select by");
+});
+
+test("a config's floor selection keeps only the keys its input supplies", () => {
+  const columns = ["ssn", "first_name", "last_name", "dob"];
+  const metadata = inferMetadata(columns, []);
+  const suppliedAt = (floor: 99 | 95) =>
+    linkageTermsFromRuleSet(DEFAULT_LINKAGE_RULE_SET, undefined, metadata, {
+      floor,
+      oneStateOrMetroArea: true,
+    });
+  for (const floor of [99, 95] as const) {
+    const source = loadConfigLinkageSource(
+      writeNamedRuleSetConfig(
+        {
+          ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+          precision_floor: floor,
+        },
+        { metadata: snakeizeKeys(metadata) },
+      ),
+    )!;
+    expect(source.linkageTerms.linkageKeys).toEqual(
+      suppliedAt(floor).linkageKeys,
+    );
+    expect(source.linkageTerms.linkageKeys.length).toBeGreaterThan(0);
+    const fields = source.linkageTerms.linkageFields.map((field) => field.name);
+    expect(fields).not.toContain("zip_code");
+    expect(fields).not.toContain("phone_number");
+    expect(source.linkageTerms.linkageRuleSet).toEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+    expect(source.linkageKeysFollowInputHeader).toBeUndefined();
+  }
+
+  // With no metadata block the read keeps the whole selection for the command
+  // that reads the input, which narrows it by the header to the same keys.
+  const unread = loadConfigLinkageSource(
+    writeNamedRuleSetConfig(
+      namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+    ),
+  )!;
+  expect(unread.linkageKeysFollowInputHeader).toBe(true);
+  expect(
+    linkageTermsNarrowedToInput(
+      unread.linkageTerms,
+      columns,
+      undefined,
+      undefined,
+    ).linkageKeys,
+  ).toEqual(suppliedAt(95).linkageKeys);
+});
+
+test("a config naming the catalog's earlier version runs on its rules", () => {
+  const terms = loadNamedRuleSetConfig(
+    namedRuleSetTerms({
+      fieldSet: { name: "baseline-pii", version: "1.0.0" },
+      keySet: { name: "hmis-keys", version: "1.0.0" },
+    }),
+  );
+  expect(terms.linkageKeys).toHaveLength(14);
+  expect(terms.linkageRuleSet?.keySet).toEqual({
+    name: "hmis-keys",
+    version: "1.0.0",
+  });
+});
+
 test("a config naming a non-default set runs on that set's rules", () => {
   const spec = parseExchangeSpec({
     connection: { channel: "filedrop", path: "/mnt/share" },
@@ -5172,7 +5322,7 @@ test("a config naming a set this build does not ship fails at load", () => {
     `It ships "${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}" ` +
       `${DEFAULT_LINKAGE_RULE_SET.reference.keySet.version} over ` +
       `"${DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name}" ` +
-      `${DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.version}.`,
+      `${DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.version};`,
   );
   expect(message).toContain("write the linkage_fields and linkage_keys out");
 });

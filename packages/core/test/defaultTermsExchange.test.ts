@@ -33,6 +33,13 @@ const defaultFields: ReadonlyArray<LinkageField> = defaultTerms.linkageFields;
 
 const fieldsByName = new Map(defaultFields.map((field) => [field.name, field]));
 
+// Transforms of the whole value: two equal values agree on what each reads.
+// A fuzzy expansion likewise keeps the exact value among its candidates.
+const WHOLE_VALUE_TRANSFORMS: ReadonlySet<string> = new Set([
+  "phonetic",
+  "split_on",
+]);
+
 /** The default field an element reads, refusing an element naming none: the
  * generated data below is built per field, so a key element the shipped fields
  * do not declare has no value to generate. */
@@ -108,22 +115,20 @@ function nameCode(party: PartyName, record: number): string {
 
 /**
  * The leading substring a key element takes of its field's standardized value,
- * or `undefined` where it takes the whole value.
+ * or `undefined` where it reads the whole value.
  *
  * Refuses any other transform: the counterpart generator below can only
- * construct agreement on a leading substring, so a default key that grows a
- * different transform must be given a construction here rather than be
- * generated wrongly and pass.
+ * construct agreement on a leading substring or a whole value, so a default
+ * key that grows a different transform must be given a construction here
+ * rather than be generated wrongly and pass.
  */
 function leadingSubstringLength(
   element: LinkageKeyElement,
 ): number | undefined {
-  if (element.generateFuzzyComparisons !== undefined)
-    throw new Error(
-      `the built-in key element on "${element.field}" declares a fuzzy expansion, which this file generates no counterpart value for`,
-    );
   const steps = element.transform;
   if (steps === undefined || steps.length === 0) return undefined;
+  if (steps.length === 1 && WHOLE_VALUE_TRANSFORMS.has(steps[0].function))
+    return undefined;
   const length = steps[0].params?.length;
   if (
     steps.length !== 1 ||
@@ -169,9 +174,20 @@ function baseValues(party: PartyName, record: number): Record<string, string> {
         values[field.name] =
           party === "a" ? `03/14/${1970 + record}` : `07/21/${1900 + record}`;
         break;
+      case "phone_number":
+        values[field.name] =
+          `${party === "a" ? 202 : 303}555${String(record).padStart(4, "0")}`;
+        break;
+      case "email_address":
+        values[field.name] = `${nameCode(party, record)}@${party}.example.org`;
+        break;
+      case "zip_code":
+        values[field.name] =
+          `${party === "a" ? 2 : 7}${String(record).padStart(4, "0")}`;
+        break;
       default:
         throw new Error(
-          `the built-in linkage fields declare a "${field.type}" field, which this file generates no value for`,
+          `the built-in linkage fields declare a "${(field as LinkageField).type}" field, which this file generates no value for`,
         );
     }
   }

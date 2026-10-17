@@ -342,7 +342,13 @@ describe("the consent summary's fan-out register", () => {
 
   test("terms declaring no fan-out are in neither register", () => {
     const summary = summarizeInvitation({
-      linkageTerms: { ...baseTerms, linkageStrategy: "single-pass" },
+      linkageTerms: {
+        ...baseTerms,
+        linkageKeys: baseTerms.linkageKeys.filter(
+          (key) => !key.name.includes("split("),
+        ),
+        linkageStrategy: "single-pass",
+      },
     });
     expect(summary.fansOut).toBe(false);
   });
@@ -588,16 +594,16 @@ describe("the consent summary's chained-grouping register", () => {
     },
   );
 
-  test("states it for the shipped default keys, which declare no split", () => {
+  test("states it for the shipped default keys, which split a last name", () => {
     // The combination an operator reaches with no key authoring at all: the
-    // built-in rule set's swapped key is a candidate set, so a both-sided
-    // deduplicate over the defaults chains groups while the fan-out register
-    // stays silent.
+    // built-in rule set's split, swapped and fuzzy keys are candidate sets, so
+    // a both-sided deduplicate over the defaults chains groups, and the split
+    // puts them in the fan-out register too.
     const summary = summarizeInvitation({
       linkageTerms: { ...baseTerms, deduplicate: true },
     });
     expect(termsDeclareCandidateSet(baseTerms)).toBe(true);
-    expect(summary.fansOut).toBe(false);
+    expect(summary.fansOut).toBe(true);
     expect(summary.candidateSetChainsGrouping).toBe(true);
   });
 

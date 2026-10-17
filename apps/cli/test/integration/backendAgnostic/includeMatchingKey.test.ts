@@ -185,12 +185,12 @@ test.each([
     expect(headerA[headerA.length - 1]).toBe(MATCHED_KEY_COLUMN);
     expect(rowsA.map((row) => row[row.length - 1])).toEqual([
       keyNames[0],
-      keyNames[1],
+      "SSN + FN + LN",
     ]);
     // The key is the first default key for the exact match, and a later one,
     // leaving the date out, for the pair that differs on it.
     expect(keyNames[0]).toBe("SSN + LN + DOB");
-    expect(keyNames[1]).toBe("SSN + LN + FN1");
+    expect(keyNames).toContain("SSN + FN + LN");
 
     const [headerB, ...rowsB] = resultLines(outB);
     expect(headerB).not.toContain(MATCHED_KEY_COLUMN);

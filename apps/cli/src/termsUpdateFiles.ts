@@ -18,7 +18,9 @@ import type { ExchangeSpec } from "@alcove/core";
 import {
   configWithNamedRuleSetRules,
   describeConfigSchemaError,
+  keysFollowUnreadInputHeaderRefusal,
   loadConfigLinkageSource,
+  namedRuleSetKeysFollowInputHeader,
   type ConfigLinkageSource,
 } from "./config";
 import { checkKeyFileExpiry, loadKeyFile } from "./keyFile";
@@ -51,7 +53,9 @@ const ESTABLISHED_PARTNERSHIP_REMEDY =
  * configuration at `configPath`, read as an invitation minted from it reads
  * them (`loadConfigLinkageSource`).
  *
- * @throws {UsageError} where no file is there or it does not load.
+ * @throws {UsageError} where no file is there, it does not load, or its keys
+ *   follow an input file this command does not read
+ *   (`keysFollowUnreadInputHeaderRefusal`).
  */
 export function readPartnershipTermsSource(
   configPath: string,
@@ -63,6 +67,8 @@ export function readPartnershipTermsSource(
       configPath,
       "." + ESTABLISHED_PARTNERSHIP_REMEDY,
     );
+  if (source.linkageKeysFollowInputHeader === true)
+    throw keysFollowUnreadInputHeaderRefusal(configPath, "alcove update");
   return source;
 }
 
@@ -71,7 +77,9 @@ export function readPartnershipTermsSource(
  * reads it: through the sensitive-file parse, with a rule set it names taken
  * from that set, and validated against the exchange schema.
  *
- * @throws {UsageError} where no file is there or it does not load.
+ * @throws {UsageError} where no file is there, it does not load, or its keys
+ *   follow an input file this command does not read
+ *   (`keysFollowUnreadInputHeaderRefusal`).
  */
 export function readPartnershipConfig(configPath: string): ExchangeSpec {
   if (!fs.existsSync(configPath))
@@ -94,6 +102,8 @@ export function readPartnershipConfig(configPath: string): ExchangeSpec {
     source,
     messageWithOperatorText`config file ${operatorSuppliedText(configPath)}`,
   );
+  if (namedRuleSetKeysFollowInputHeader(parsed))
+    throw keysFollowUnreadInputHeaderRefusal(configPath, "alcove apply");
   try {
     return parseExchangeSpec(configWithNamedRuleSetRules(parsed, configPath));
   } catch (err) {

@@ -434,6 +434,28 @@ describe("the check driven end to end", () => {
     expect(stderr).toContain('"1.1.0"');
   });
 
+  it.each([
+    ["a band", "band: 99,", "band: 95,"],
+    [
+      "a coverage condition",
+      'coverage: "one_state_or_metro_area"',
+      'coverage: "any"',
+    ],
+  ])(
+    "fails %s of the shipped catalog moved with no bump",
+    (_moved, from, to) => {
+      const shipped = readRoot(RULE_SET_SOURCE);
+      expect(shipped).toContain(from);
+      const root = fixtureTree({
+        source: shipped.replace(from, to),
+        ledgerText: readRoot(PINS_FILE),
+      });
+      const { status, stderr } = runCheck(root);
+      expect(status).toBe(1);
+      expect(stderr).toContain("has moved under precision-ranked-rules 2.0.0");
+    },
+  );
+
   it("passes the same edit once it bumps and records the new pin", () => {
     const keys = [KEYS[0], { ...KEYS[1], name: "LN only" }];
     const pins = ledgerFor(declaredSets());
@@ -633,7 +655,11 @@ describe("the check's registration", () => {
 
   it("ships a pin for each declared set the rule binds", () => {
     const pins = JSON.parse(readRoot(PINS_FILE)).pins;
-    expect(Object.keys(pins).sort()).toEqual(["baseline-pii", "hmis-keys"]);
+    expect(Object.keys(pins).sort()).toEqual([
+      "baseline-pii",
+      "hmis-keys",
+      "precision-ranked-rules",
+    ]);
     for (const entry of Object.values(pins)) {
       expect(Object.keys(entry).length).toBeGreaterThan(0);
     }

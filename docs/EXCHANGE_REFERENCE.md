@@ -55,20 +55,25 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 
 The built-in rules are two named artifacts, versioned separately:
 
-- **`baseline-pii`, version `1.0.0`** -- the linkage **fields**: five PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, and `date_of_birth`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`hmis-keys`, version `1.0.0`** -- the linkage **keys**: fourteen combinations of those fields, applied in the order the set lists them. Which combinations count as a match is specific to the class of system these keys were settled for, which is what the name states; the fields underneath them are not specific to it.
+- **`baseline-pii`, version `1.1.0`** -- the linkage **fields**: eight PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, and `zip_code`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
+- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. It replaces `hmis-keys` version `1.0.0`, over `baseline-pii` version `1.0.0`; a document or record citing that set still resolves, and is checked against its fourteen keys.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
 What the names do and do not cover:
 
-- Between them they cover the linkage **fields** (with their constraints) and the linkage **keys**, and nothing else. Each version versions its own artifact: an edit to a field or a constraint is a new version of `baseline-pii`, and an edit to the keys -- including a reordering, since the order is the order they are applied in -- is a new version of `hmis-keys`.
+- Between them they cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. Each version versions its own artifact: an edit to a field or a constraint is a new version of `baseline-pii`, and an edit to the keys -- including a reordering, since the order is the order they are applied in, or a moved band -- is a new version of `precision-ranked-rules`.
 - They do not cover the rest of the terms document. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
-- A run matches on a **subset** of the key set, never on an addition to it: when the terms are derived from your input file, a key whose fields no column can supply is left out of them. The terms document that travels with the exchange still records exactly which keys ran, so it -- not either name -- is the authoritative account of any one exchange.
+- A run matches on a **subset** of the key set, never on an addition to it: the keys a precision floor selects, less any key whose fields no column of your input file can supply. The terms document that travels with the exchange still records exactly which keys ran, so it -- not either name -- is the authoritative account of any one exchange.
+- Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
 Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_termslinkage_rule_set) field below, so the citation travels with the exchange: it is in the invitation, on the wire, on the accepting party's terms review, and in each party's exchange record.
 
-`phone_number`, `email_address`, and `zip_code` are matchable semantic types (see [Semantic types](#semantic-types)) that neither built-in artifact uses. To match on one, add it to your keys: the web app's Customize / Matching keys tab offers each one your file can supply inside a compound key -- the type beside fields the built-in keys already use, never on its own -- off until you turn it on, and expert key authoring builds any other key over them. Either way the resulting terms are an addition to the built-in set rather than a subset of it, so they cite no rule set.
+#### Choosing rules by precision floor
+
+A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. A quick exchange, `alcove init`, and the web app's invite paths select the 95% floor with that answered yes; a configuration file selects with `precision_floor` and `one_state_or_metro_area` ([Naming a set instead of writing the rules out](#naming-a-set-instead-of-writing-the-rules-out)). Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
+
+A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
 What the key set's validation rests on, the criticisms recorded against it, what a quick exchange rests on, and the rule for bumping either version are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
 
@@ -287,7 +292,7 @@ The first eight values are the complete type set for a `linkage_fields[].type`. 
 
 Additional types will be added as their use case arises.
 
-A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it is a matchable type with no built-in linkage key, so an inferred ZIP column is used for matching only when a key references it and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
+A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
 
 #### Constraints
 
@@ -397,17 +402,17 @@ Two spellings of the same pipeline are the same pipeline: an omitted `transform`
 *Required:* no  
 *Consistency:* mandatory when both parties declare one
 
-The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the one set Alcove ships.
+The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships, beside its earlier version.
 
 ```yaml
 linkage_terms:
   linkage_rule_set:
     field_set:
       name: "baseline-pii"
-      version: "1.0.0"
+      version: "1.1.0"
     key_set:
-      name: "hmis-keys"
-      version: "1.0.0"
+      name: "precision-ranked-rules"
+      version: "2.0.0"
 ```
 
 Every path that fills in your fields and keys for you writes this citation: a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, and the console's quick exchange, whose confirm screen shows it in the terms it infers from your file. It travels wherever the terms do -- into the invitation, onto the wire, onto the accepting party's terms review, and into each party's exchange record, which is what lets "which rules did this linkage match on" be answered by a name and a version.
@@ -437,20 +442,21 @@ linkage_terms:
   linkage_rule_set:
     field_set:
       name: "baseline-pii"
-      version: "1.0.0"
+      version: "1.1.0"
     key_set:
-      name: "hmis-keys"
-      version: "1.0.0"
+      name: "precision-ranked-rules"
+      version: "2.0.0"
 ```
 
 The exchange this runs is the one the written-out rules run: the filled-in fields and keys travel to your partner, are compared against theirs field by field and key by key, and are recorded in both parties' exchange records under the citation the file wrote. Naming a set is a shorthand for writing its rules into your own file, not a name resolved anywhere else -- your partner's citation is still text your partner wrote, and nothing resolves it.
 
 - **Both lists or neither.** A block that names a set and writes one of the two lists is refused, naming the one it left out. A key set is built from its own fields, so the pair comes from a set or is written out together.
 - **Neither list at the top level.** The short form takes effect when `linkage_terms` names a set and writes neither `linkage_fields` nor `linkage_keys` of its own. A list found at the top level of the file -- a sibling of `linkage_terms` -- is refused rather than filled over, naming where it was found and where it belongs. A list under a mis-spelled key, or nested inside another block such as `linkage_terms.output` or `connection`, is not seen: Alcove cannot tell it from any other key it does not read, and the block it was meant for holds no rules at all. After editing either list by hand, check both lists' indentation before running.
-- **The set is taken whole.** Every key the set declares is filled in, including one your input file cannot supply -- which the exchange refuses before it starts, naming the keys and the fields behind them. Where your file supports only part of the set, run `alcove init INPUT_FILE` and keep the narrowed lists it writes: they are a subset of the set and cite it just the same.
+- **The set is taken at a precision floor, narrowed to your input.** The keys filled in are those the floor selects that your input supplies: the columns your `metadata` block declares, or, in a file with none, the columns of the input file's header, which `alcove exchange` and `alcove invite` read. Where your input supplies none of them, every selected key is filled in and the exchange refuses before it starts, naming the keys and the fields behind them. Beside the citation, `precision_floor: 99` selects only the 99% rules (the default is `95`), and `one_state_or_metro_area: false` leaves out the name-and-date rules (the default is `true`; see [Choosing rules by precision floor](#choosing-rules-by-precision-floor)). Either one is refused beside written-out lists, without a citation, or naming a set with no bands, such as `hmis-keys`. `alcove init INPUT_FILE` writes the same narrowed lists out, with the two selection keys as commented lines: the lists are a subset of the set and cite it just the same.
+- **With no `metadata` block, every command reads the keys from the input file it is given.** `alcove verify-receipt` narrows them by the input named after the record, and `alcove accept`, comparing a configuration it keeps, by its INPUT_FILE. Given no input file, `alcove verify-receipt` warns that the agreed-terms hash cannot match, and `alcove invite` and `alcove accept` refuse. `alcove update` and `alcove apply` take no input file, so they refuse such a file. Give it a `metadata` block, as `alcove init INPUT_FILE` writes one, or write the lists out.
 - **Written rules are the rules.** A block that writes both lists runs on exactly what it writes, cited set or not -- which is what `alcove init` writes, and what the citation-drift warning is about.
 - **A name this build does not ship stops the load.** A block naming a set Alcove does not ship and writing no rules of its own fails to load, naming what it cited and what this build ships; no exchange runs. Beside written-out rules the same name is left alone, so a terms document you imported keeps its author's citation.
-- **The set Alcove ships is the one to name.** [The built-in rules](#the-built-in-rules) are that set, and the template `alcove init` writes cites it.
+- **The set Alcove ships is the one to name.** [The built-in rules](#the-built-in-rules) are that set, and the template `alcove init` writes cites it. Its earlier version, `hmis-keys` `1.0.0` over `baseline-pii` `1.0.0`, can still be named. Its fourteen keys are narrowed to your input the same way, so a file that supplies only some of their fields runs only the keys over those fields.
 
 ### `linkage_terms.legal_agreement`
 

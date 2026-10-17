@@ -79,12 +79,24 @@ export const ALLOWED_OMISSIONS = new Map([
     "A key-element option the built-in keys the template writes do not use.",
   ],
   [
-    "linkage_terms.linkage_keys.elements.generate_fuzzy_comparisons",
-    "A key-element option the built-in keys the template writes do not use.",
-  ],
-  [
     "linkage_terms.payload",
     "Derived from the metadata block's is_payload columns when init reads an input file, and the receive list is set by the first exchange, which the template states.",
+  ],
+]);
+
+/**
+ * Keys the configuration reader takes out of a file before the schema reads
+ * it, each with the reason: a template key the schema lacks, documented all
+ * the same.
+ */
+export const READ_BEFORE_SCHEMA = new Map([
+  [
+    "linkage_terms.precision_floor",
+    "Selects the named rule set's keys; apps/cli/src/config/ruleSetCitation.ts reads it.",
+  ],
+  [
+    "linkage_terms.one_state_or_metro_area",
+    "Selects the named rule set's keys; apps/cli/src/config/ruleSetCitation.ts reads it.",
   ],
 ]);
 
@@ -381,13 +393,15 @@ function strictlyUnder(path, prefixes) {
 /**
  * The comparison the check reports: `omitted` (schema paths no template
  * documents and no ALLOWED_OMISSIONS entry covers), `unknown` (template paths
- * the schema does not define), and `staleAllowances` (entries the template
- * documents, at or under the entry, or the schema does not define).
+ * the schema does not define and READ_BEFORE_SCHEMA does not list), and
+ * `staleAllowances` (entries the template documents, at or under the entry,
+ * or the schema does not define).
  */
 export function compareKeyPaths({
   schema,
   documented,
   allowed = ALLOWED_OMISSIONS,
+  readBeforeSchema = READ_BEFORE_SCHEMA,
 }) {
   const allowedPaths = [...allowed.keys()];
   const omitted = [...schema.paths]
@@ -400,7 +414,10 @@ export function compareKeyPaths({
     .sort();
   const unknown = [...documented]
     .filter(
-      (path) => !schema.paths.has(path) && !strictlyUnder(path, schema.records),
+      (path) =>
+        !schema.paths.has(path) &&
+        !strictlyUnder(path, schema.records) &&
+        !readBeforeSchema.has(path),
     )
     .sort();
   const staleAllowances = allowedPaths

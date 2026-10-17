@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION_MISMATCH_MESSAGE,
   TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TERMS_ENVELOPE_FIELDS,
+  termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
@@ -1470,6 +1471,37 @@ test("each party's terms refusal states which party refused", async () => {
   expect(
     termsDifferenceRefusedBy(new Error("wrapped", { cause: byInitiator })),
   ).toBe("this-party");
+});
+
+test("each party's terms refusal names its own keys the partner does not declare alike", async () => {
+  const reasons = (settled: PromiseSettledResult<unknown>[]): unknown[] =>
+    settled.map((outcome) =>
+      outcome.status === "rejected" ? outcome.reason : undefined,
+    );
+  const withZip: LinkageTerms = {
+    ...termsB,
+    linkageFields: [...sharedFields, { name: "zip_code", type: "zip_code" }],
+    linkageKeys: [
+      {
+        name: "SSN + ZIP5",
+        elements: [{ field: "ssn" }, { field: "zip_code" }],
+      },
+      ...sharedKeys,
+    ],
+  };
+  const [atInitiator, atResponder] = reasons(
+    await runExchange(termsA, withZip),
+  );
+  expect(termsDifferenceRefusedBy(atResponder)).toBe("this-party");
+  expect(termsDifferenceLocalKeys(atResponder)).toEqual(["SSN + ZIP5"]);
+  expect(termsDifferenceRefusedBy(atInitiator)).toBe("partner");
+  expect(termsDifferenceLocalKeys(atInitiator)).toEqual([]);
+
+  const [strategyAtInitiator, strategyAtResponder] = reasons(
+    await runExchange(termsA, { ...termsB, linkageStrategy: "single-pass" }),
+  );
+  expect(termsDifferenceLocalKeys(strategyAtResponder)).toEqual([]);
+  expect(termsDifferenceLocalKeys(strategyAtInitiator)).toEqual([]);
 });
 
 test("an abort naming no differing term is not a terms difference refusal", async () => {

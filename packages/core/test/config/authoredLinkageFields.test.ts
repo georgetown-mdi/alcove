@@ -171,18 +171,16 @@ describe("authoredLinkageFields", () => {
     ]);
   });
 
-  test("synthetic non-default fields follow the default fields, in metadata order", () => {
+  test("default fields follow the built-in field set's order, not metadata order", () => {
     const metadata: Metadata = [
       col("zip", "zip_code"),
       col("f", "first_name"),
       col("email", "email_address"),
     ];
-    // Default types first (first_name), then the present non-default matchable types
-    // in metadata order (zip_code before email_address).
     expect(authoredLinkageFields(metadata).map((f) => f.name)).toEqual([
       "first_name",
-      "zip_code",
       "email_address",
+      "zip_code",
     ]);
   });
 

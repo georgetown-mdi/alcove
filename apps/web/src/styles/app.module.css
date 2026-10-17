@@ -670,14 +670,6 @@
   border: 1px solid var(--app-warn);
 }
 
-/* An offered key the built-in set does not declare. Neutral rather than a
-   severity color: it marks provenance, not a problem, and it sits beside a
-   verdict badge that does hold severity. */
-.keyBadgeOptIn {
-  color: var(--app-secondary);
-  border: 1px solid var(--app-rule);
-}
-
 .movers {
   display: inline-flex;
   gap: 6px;

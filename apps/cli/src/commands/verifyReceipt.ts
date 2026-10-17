@@ -66,6 +66,7 @@ import {
 } from "@alcove/cli-contract";
 
 import {
+  linkageTermsAtInputHeader,
   readConfigLinkageSource,
   warnOnLinkageRuleSetCitationDrift,
   type ConfigLinkageSource,
@@ -897,12 +898,24 @@ export const PARTNER_SEND_SET_UNKNOWN_WARNING =
   "known here and the agreed-terms hash will not match; add the metadata " +
   "block the partner's exchange ran with to that file";
 
+/** What the command says when this party's keys follow an input header it
+ * was not given, so the agreed-terms hash is recomputed over every key the
+ * named rule set selects. */
+export const KEYS_FOLLOW_UNREAD_HEADER_WARNING =
+  "the configuration takes its linkage keys from a named rule set and has " +
+  "no metadata block, so the keys its exchange ran are the ones the input " +
+  "file's header supplied, which is not known here, and the agreed-terms " +
+  "hash will not match; pass the exchange's input and result files after " +
+  "the record";
+
 /**
  * This party's terms as its run stated them at the terms exchange, which the
- * agreed-terms hash covers: an unset `payload.send` stands for the columns the
- * configuration's metadata discloses, or, with no metadata block, the columns
- * the run inferred from the input header. With neither, the terms are used as
- * written and the command says the hash cannot match.
+ * agreed-terms hash covers: keys a named rule set selects are narrowed by the
+ * input header where the configuration has the exchange narrow them
+ * ({@link linkageTermsAtInputHeader}), and an unset `payload.send` stands for
+ * the columns the configuration's metadata discloses, or, with no metadata
+ * block, the columns the run inferred from the input header. Without the
+ * input either is used as written and the command says the hash cannot match.
  */
 function localTermsAsTheRunStatedThem(
   source: ConfigLinkageSource,
@@ -911,7 +924,17 @@ function localTermsAsTheRunStatedThem(
     | undefined,
   log: { warn: (message: string) => void },
 ): LinkageTerms {
-  const stated = termsAsTheRunStatedThem(source.linkageTerms, {
+  if (inputMeta === undefined && source.linkageKeysFollowInputHeader === true)
+    log.warn(KEYS_FOLLOW_UNREAD_HEADER_WARNING);
+  const ranTerms =
+    inputMeta === undefined
+      ? source.linkageTerms
+      : linkageTermsAtInputHeader(
+          source.linkageTerms,
+          source,
+          inputMeta.fields ?? [],
+        );
+  const stated = termsAsTheRunStatedThem(ranTerms, {
     ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
     ...(inputMeta !== undefined
       ? {

@@ -51,8 +51,8 @@ const rootLoglevelImportBan = {
 // questions by byte equality under the canonical encoding, which rejects an explicit
 // `undefined` where it accepts an absent property -- and a draft is live objects the
 // editor rebuilds, where a spread restates an unset property as `undefined`. So a
-// direct import of core's predicate reads a key that says exactly what the offer says
-// as a non-match, dropping its opt-in badge on the screen and its rule-set citation
+// direct import of core's predicate reads rules that say exactly what the set says
+// as a non-match, dropping their rule-set citation
 // from the built terms: a partner-visible provenance claim lost over a property that
 // says nothing. The failure is silent at the call site, which is why the routing is a
 // rule rather than a note in the module.
@@ -61,11 +61,10 @@ const linkageComparisonChokepointBan = {
   importNames: [
     "encodeForComparison",
     "isDrawnFromLinkageRuleSet",
-    "isOptInLinkageKey",
     "linkageRuleSetReferenceFor",
   ],
   message:
-    "Ask rule-set membership about a draft through src/psi/linkageComparison.ts (encodeKeyForComparison / isOptInDraftKey / isDraftDrawnFromLinkageRuleSet / linkageRuleSetReferenceForDraft, re-exported from @psi/authoring/advancedInvite), not core's strict predicates: those compare by canonical byte equality, which reads an explicitly-`undefined` optional property -- what a draft rebuild spreads in -- as a difference and silently drops the key's opt-in badge and the terms' rule-set citation.",
+    "Ask rule-set membership about a draft through src/psi/linkageComparison.ts (encodeKeyForComparison / isDraftDrawnFromLinkageRuleSet / linkageRuleSetReferenceForDraft, re-exported from @psi/authoring/advancedInvite), not core's strict predicates: those compare by canonical byte equality, which reads an explicitly-`undefined` optional property -- what a draft rebuild spreads in -- as a difference and silently drops the terms' rule-set citation.",
 };
 
 // The one message both halves of the fetched-body ban report: the `.json` property

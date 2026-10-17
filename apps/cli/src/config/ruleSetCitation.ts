@@ -4,16 +4,28 @@ import type {
   LinkageRuleSetReference,
   LinkageSetIdentity,
   LinkageTerms,
+  Metadata,
+  PrecisionFloor,
+  PrecisionFloorSelection,
+  Standardization,
+  UsageError,
 } from "@alcove/core";
 import {
   BUILT_IN_LINKAGE_RULE_SETS,
+  DEFAULT_LINKAGE_RULE_SET,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
+  decideLinkageTermsVerdict,
   findBuiltInLinkageRuleSet,
   isDrawnFromLinkageRuleSet,
+  linkageTermsFromRuleSet,
+  referencedLinkageFieldNames,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   resolveLinkageRuleSetCitation,
   ruleSetCitation,
+  safeParseMetadataTheReaderWrote,
+  safeParseStandardizationTheReaderWrote,
 } from "@alcove/core";
 
 import { configFileRefusal } from "./persist";
@@ -151,7 +163,14 @@ function shippedRuleSets(
  *   are the rules, untouched here. The citation beside them stays the claim
  *   {@link warnOnLinkageRuleSetCitationDrift} judges.
  * - Neither list written, and the citation names a shipped set: both lists
- *   come from that set, and the citation stands as the file wrote it.
+ *   come from that set, and the citation stands as the file wrote it. The keys
+ *   are those the block's `precision_floor` and `one_state_or_metro_area`
+ *   select (`linkageKeysAtPrecisionFloor`), the 95% floor with the answer
+ *   yes where it writes neither; a selection is refused beside written lists,
+ *   with no citation, or over a set with no bands. Where the document writes
+ *   a `metadata` block, only the keys its columns supply are kept; where it
+ *   writes none, the command reading the input narrows them by its header
+ *   ({@link namedRuleSetKeysFollowInputHeader}).
  * - Neither list written, and the citation names a set this build does not
  *   ship: refused, naming what was cited and what this build ships. Nothing
  *   here guesses at a name it does not ship, and the file writes no rules to
@@ -170,8 +189,8 @@ function shippedRuleSets(
  * @param ruleSets the sets a citation is looked up in, this build's own
  * ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
  * @param enclosingDocument the raw document the block was read out of, where
- * the caller holds it, for the misplacement check above. Omitting it checks
- * the block alone.
+ * the caller holds it, for the misplacement check above and the narrowing by
+ * its `metadata` block. Omitting it checks the block alone.
  */
 export function linkageTermsWithNamedRuleSetRules(
   rawTerms: unknown,
@@ -185,13 +204,38 @@ export function linkageTermsWithNamedRuleSetRules(
     Array.isArray(rawTerms)
   )
     return rawTerms;
-  const terms = rawTerms as Record<string, unknown>;
+  const { terms, selection, selects } = withoutPrecisionFloorSelection(
+    rawTerms as Record<string, unknown>,
+    configPath,
+  );
   const citation = terms["linkage_rule_set"] ?? terms["linkageRuleSet"];
-  if (citation === undefined) return rawTerms;
+  if (citation === undefined) {
+    if (selects)
+      throw configFileRefusal(
+        configPath,
+        "selects rules by linkage_terms.precision_floor or " +
+          "one_state_or_metro_area but names no linkage_rule_set to select " +
+          "them from. Add a linkage_rule_set block naming " +
+          `${ruleSetCitationClause(DEFAULT_LINKAGE_RULE_SET.reference, refusalRuleSetHalf)}, ` +
+          "or remove the selection.",
+      );
+    return rawTerms;
+  }
 
   const writesFields = declaresKey(terms, "linkage_fields", "linkageFields");
   const writesKeys = declaresKey(terms, "linkage_keys", "linkageKeys");
-  if (writesFields && writesKeys) return rawTerms;
+  if (writesFields && writesKeys) {
+    if (selects)
+      throw configFileRefusal(
+        configPath,
+        "selects rules by linkage_terms.precision_floor or " +
+          "one_state_or_metro_area and also writes linkage_fields and " +
+          "linkage_keys. The selection picks the named set's rules for you: " +
+          "delete both lists to run it, or remove the selection to run the " +
+          "lists as written.",
+      );
+    return rawTerms;
+  }
 
   const reference = citedRuleSetReference(citation);
   if (reference === undefined) return rawTerms;
@@ -234,12 +278,236 @@ export function linkageTermsWithNamedRuleSetRules(
         "in the file.",
     );
 
+  if (selects && ruleSet.ruleBands === undefined)
+    throw configFileRefusal(
+      configPath,
+      `selects rules by linkage_terms.precision_floor or ` +
+        `one_state_or_metro_area, but the rule set ${cited} it names has no ` +
+        `precision bands to select by. Name ` +
+        `${ruleSetCitationClause(DEFAULT_LINKAGE_RULE_SET.reference, refusalRuleSetHalf)}, ` +
+        "or remove the selection.",
+    );
+
+  const selected = linkageTermsFromRuleSet(
+    ruleSet,
+    undefined,
+    undefined,
+    selection,
+  );
+  const declared = declaredColumns(enclosingDocument);
+  const rules =
+    declared === undefined
+      ? selected
+      : linkageTermsNarrowedToInput(
+          selected,
+          declared.metadata.map((column) => column.name),
+          declared.standardization,
+          declared.metadata,
+        );
   // Cloned rather than aliased: a built-in set is frozen through every level,
   // and what this returns is a document later passes rewrite.
   return {
     ...terms,
-    linkageFields: structuredClone(ruleSet.linkageFields),
-    linkageKeys: structuredClone(ruleSet.linkageKeys),
+    linkageFields: structuredClone(rules.linkageFields),
+    linkageKeys: structuredClone(rules.linkageKeys),
+  };
+}
+
+/**
+ * The `metadata` block `document` writes, with its `standardization` block,
+ * or `undefined` where it writes no metadata block or either block fails its
+ * schema, which the schema reports when the file is read.
+ */
+function declaredColumns(
+  document: unknown,
+): { metadata: Metadata; standardization?: Standardization } | undefined {
+  if (
+    document === null ||
+    typeof document !== "object" ||
+    Array.isArray(document)
+  )
+    return undefined;
+  const top = document as Record<string, unknown>;
+  if (top["metadata"] === undefined) return undefined;
+  const metadata = safeParseMetadataTheReaderWrote(top["metadata"]);
+  if (!metadata.success) return undefined;
+  if (top["standardization"] === undefined) return { metadata: metadata.data };
+  const standardization = safeParseStandardizationTheReaderWrote(
+    top["standardization"],
+  );
+  if (!standardization.success) return undefined;
+  return { metadata: metadata.data, standardization: standardization.data };
+}
+
+/**
+ * `terms` less the keys `columns` cannot supply, and the fields only those
+ * keys read: the narrowing a derivation from the built-in rules makes
+ * (`linkageTermsFromRuleSet`), for rules a configuration takes from a named
+ * set. Graded as the exchange grades its input
+ * ({@link decideLinkageTermsVerdict}). Where no key is left, `terms` is
+ * returned whole, so the exchange's refusal names the keys and their fields.
+ */
+export function linkageTermsNarrowedToInput(
+  terms: LinkageTerms,
+  columns: string[],
+  standardization: Standardization | undefined,
+  metadata: Metadata | undefined,
+): LinkageTerms {
+  const unsupplied = new Set(
+    decideLinkageTermsVerdict(columns, terms, standardization, metadata)
+      .unsatisfiableKeys,
+  );
+  const linkageKeys = terms.linkageKeys.filter((key) => !unsupplied.has(key));
+  if (linkageKeys.length === 0 || unsupplied.size === 0) return terms;
+  const referenced = referencedLinkageFieldNames(linkageKeys);
+  return {
+    ...terms,
+    linkageFields: terms.linkageFields.filter((field) =>
+      referenced.has(field.name),
+    ),
+    linkageKeys,
+  };
+}
+
+/**
+ * Whether the keys `rawConfig` runs follow its input file's header: its
+ * `linkage_terms` names a rule set and writes neither rule list, and the file
+ * writes no `metadata` block to narrow them by when it is read. The command
+ * that reads the input then narrows them ({@link linkageTermsNarrowedToInput}).
+ */
+export function namedRuleSetKeysFollowInputHeader(rawConfig: unknown): boolean {
+  if (
+    rawConfig === null ||
+    typeof rawConfig !== "object" ||
+    Array.isArray(rawConfig)
+  )
+    return false;
+  const config = rawConfig as Record<string, unknown>;
+  if (Object.hasOwn(config, "metadata")) return false;
+  const terms = config["linkage_terms"] ?? config["linkageTerms"];
+  if (terms === null || typeof terms !== "object" || Array.isArray(terms))
+    return false;
+  const block = terms as Record<string, unknown>;
+  return (
+    declaresKey(block, "linkage_rule_set", "linkageRuleSet") &&
+    !RULE_LIST_SPELLINGS.some(([written, camelized]) =>
+      declaresKey(block, written, camelized),
+    )
+  );
+}
+
+/**
+ * `terms` as an exchange over an input whose header is `columns` runs them:
+ * narrowed by that header ({@link linkageTermsNarrowedToInput}) where the
+ * configuration they were read from takes its keys from it
+ * ({@link namedRuleSetKeysFollowInputHeader}), and as given otherwise. Every
+ * command that derives a configuration's terms beside its input reads them
+ * through here, so each derives the terms the exchange runs.
+ */
+export function linkageTermsAtInputHeader(
+  terms: LinkageTerms,
+  source: {
+    linkageKeysFollowInputHeader?: boolean;
+    standardization?: Standardization;
+    metadata?: Metadata;
+  },
+  columns: string[],
+): LinkageTerms {
+  return source.linkageKeysFollowInputHeader === true
+    ? linkageTermsNarrowedToInput(
+        terms,
+        columns,
+        source.standardization,
+        source.metadata,
+      )
+    : terms;
+}
+
+/**
+ * The refusal for a command that reads a configuration whose keys follow its
+ * input file's header ({@link namedRuleSetKeysFollowInputHeader}) and has no
+ * input file to narrow them by: the keys it would derive are not the ones the
+ * exchange runs. `inputRemedy`, where the command can take an input file,
+ * names how to pass one, ahead of the remedies every such refusal states.
+ */
+export function keysFollowUnreadInputHeaderRefusal(
+  configPath: string,
+  command: string,
+  inputRemedy?: string,
+): UsageError {
+  const lead = inputRemedy === undefined ? "Add" : `${inputRemedy}, or add`;
+  const noInput =
+    inputRemedy === undefined
+      ? "takes no input file"
+      : "was given no input file";
+  return configFileRefusal(
+    configPath,
+    "names a rule set in linkage_terms.linkage_rule_set and writes no " +
+      "linkage_fields, linkage_keys or metadata block, so the keys it runs " +
+      "are the ones its input file's header supplies, and " +
+      `${command} ${noInput} to read them from. ${lead} a ` +
+      "metadata block declaring your input file's columns, or write " +
+      "linkage_fields and linkage_keys out in the file, then run the " +
+      "command again.",
+  );
+}
+
+/** The floors a configuration may select, as it writes them. */
+const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = [99, 95];
+
+/**
+ * `terms` with its precision-floor selection taken out, and the selection it
+ * wrote, defaulted where it wrote none ({@link DEFAULT_PRECISION_FLOOR_SELECTION}).
+ * Both spellings of each key are read, as every raw read here is. `selects` is
+ * whether the block wrote either key. A value of the wrong shape is refused
+ * here, since the schema never sees these keys.
+ */
+function withoutPrecisionFloorSelection(
+  block: Record<string, unknown>,
+  configPath: string,
+): {
+  terms: Record<string, unknown>;
+  selection: PrecisionFloorSelection;
+  selects: boolean;
+} {
+  const terms = { ...block };
+  const take = (written: string, camelized: string): unknown => {
+    const value = written in terms ? terms[written] : terms[camelized];
+    delete terms[written];
+    delete terms[camelized];
+    return value;
+  };
+  const floor = take("precision_floor", "precisionFloor");
+  const oneArea = take("one_state_or_metro_area", "oneStateOrMetroArea");
+  if (
+    floor !== undefined &&
+    !PRECISION_FLOORS.includes(floor as PrecisionFloor)
+  )
+    throw configFileRefusal(
+      configPath,
+      `writes linkage_terms.precision_floor as ` +
+        `${JSON.stringify(floor) ?? String(floor)}, which is not a floor. ` +
+        `Write ${PRECISION_FLOORS.join(" or ")} as a number without quotes ` +
+        `(precision_floor: ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}), or ` +
+        `remove it to run the ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}% floor.`,
+    );
+  if (oneArea !== undefined && typeof oneArea !== "boolean")
+    throw configFileRefusal(
+      configPath,
+      "writes linkage_terms.one_state_or_metro_area as a value other than " +
+        "true or false. Write true if both files draw their members from one " +
+        "state or one metropolitan area, and false otherwise.",
+    );
+  return {
+    terms,
+    selection: {
+      floor:
+        (floor as PrecisionFloor | undefined) ??
+        DEFAULT_PRECISION_FLOOR_SELECTION.floor,
+      oneStateOrMetroArea:
+        oneArea ?? DEFAULT_PRECISION_FLOOR_SELECTION.oneStateOrMetroArea,
+    },
+    selects: floor !== undefined || oneArea !== undefined,
   };
 }
 

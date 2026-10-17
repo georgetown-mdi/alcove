@@ -25,10 +25,10 @@ import { captureStdio } from "../../loggingTestSupport";
 const PEER_TIMEOUT_SECONDS = 30;
 
 const SENDER_CSV =
-  "ssn,last_name,first_name,date_of_birth,phone,program_code,case_id,household_id\n" +
-  "123456789,SMITH,JOHN,19900115,555-0101,A1,c-1,h-1\n" +
-  "234567890,JONES,MARY,19850623,555-0102,B2,c-2,h-2\n" +
-  "345678901,BROWN,ROBERT,19920815,555-0103,C3,c-3,h-3\n";
+  "ssn,last_name,first_name,date_of_birth,dob,program_code,case_id,household_id\n" +
+  "123456789,SMITH,JOHN,19900115,19900115,A1,c-1,h-1\n" +
+  "234567890,JONES,MARY,19850623,19850623,B2,c-2,h-2\n" +
+  "345678901,BROWN,ROBERT,19920815,19920815,C3,c-3,h-3\n";
 const RECEIVER_CSV =
   "ssn,last_name,first_name,date_of_birth\n" +
   "123456789,SMITH,JOHN,19900115\n" +
@@ -142,10 +142,10 @@ test("a quick exchange sends every column that is not a linkage key, and no link
     stdio.restore();
   }
 
-  // phone is recognized as a linkage key, so it is not sent, and no built-in
-  // key reads it; the sender's display names it, and the receiver has none.
+  // dob is a second date-of-birth column, so it is not sent, and the keys read
+  // the first; the sender's display names it, and the receiver has none.
   const shown = stdio.stderrWrites.join("");
-  expect(shown).toContain("\n  held back (enforced): phone\n");
+  expect(shown).toContain("\n  held back (enforced): dob\n");
   expect(shown.match(/held back/g)).toHaveLength(1);
 
   const sent = ["program_code", "case_id", "household_id"];

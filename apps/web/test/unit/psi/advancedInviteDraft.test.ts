@@ -15,7 +15,7 @@ import {
   setDraftMetadataKeepingKeys,
 } from "../../../src/psi/authoring/advancedInviteDraft.js";
 
-import type { CSVRow, Metadata } from "@alcove/core";
+import type { CSVRow, Metadata, Standardization } from "@alcove/core";
 
 const ALL_COLUMNS = ["ssn", "ssn4", "first_name", "last_name", "dob"];
 
@@ -75,14 +75,14 @@ describe("setDraftMetadataKeepingKeys", () => {
 
 describe("draftWithFieldAdded", () => {
   // Two columns of one opt-in type, so the type's FIRST field and its second are
-  // both reachable, and a guided draft has cleaning for neither (the offers
-  // arrive off).
-  const ZIP_COLUMNS = ["first_name", "last_name", "dob", "zip", "zipcode"];
+  // both reachable, and a guided draft has cleaning for neither (with no date of
+  // birth, no built-in key over these columns reads a ZIP).
+  const ZIP_COLUMNS = ["ssn", "first_name", "last_name", "zip", "zipcode"];
   const ZIP_ROWS: Array<CSVRow> = [
     {
+      ssn: "501-22-3344",
       first_name: "Ada",
       last_name: "Lovelace",
-      dob: "12/10/1985",
       zip: "20001-1234",
       zipcode: "20002-5678",
     },
@@ -299,5 +299,44 @@ describe("a same-typed field carries the type's shared-value limit", () => {
     expect(prepared.dataset.getField("phone_number")?.get(0)).toEqual([
       "2025550100",
     ]);
+  });
+});
+
+describe("the guided draft screens the default fields", () => {
+  const COLUMNS = ["first_name", "last_name", "dob", "ssn", "phone", "email"];
+
+  const limitOf = (standardization: Standardization, output: string) =>
+    standardization.find((transformation) => transformation.output === output)
+      ?.maxPeoplePerValue;
+
+  test("the seed gives ssn, phone and email their limits", () => {
+    const { draft } = seedAdvancedInvite("Org", COLUMNS);
+    expect(limitOf(draft.standardization, "ssn")).toBe(1);
+    expect(limitOf(draft.standardization, "phone_number")).toBe(5);
+    expect(limitOf(draft.standardization, "email_address")).toBe(5);
+    expect(limitOf(draft.standardization, "first_name")).toBeUndefined();
+  });
+
+  test("a phone key a column edit newly offers brings the phone limit", () => {
+    const { draft } = seedAdvancedInvite("Org", COLUMNS);
+    const withoutPhone = setDraftMetadata(
+      draft,
+      draft.metadata.map((column) =>
+        column.name === "phone" ? { ...column, type: "other" } : column,
+      ),
+    );
+    expect(
+      withoutPhone.standardization.some(
+        (transformation) => transformation.output === "phone_number",
+      ),
+    ).toBe(false);
+
+    const restored = setDraftMetadata(withoutPhone, draft.metadata);
+    expect(
+      buildAdvancedTerms(restored).linkageKeys.some((key) =>
+        key.elements.some((element) => element.field === "phone_number"),
+      ),
+    ).toBe(true);
+    expect(limitOf(restored.standardization, "phone_number")).toBe(5);
   });
 });

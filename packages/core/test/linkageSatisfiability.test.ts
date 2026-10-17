@@ -2672,7 +2672,11 @@ describe("assessLinkageSatisfiability", () => {
       ["first_name", "last_name", "dob", "ssn"],
       allKeyTerms,
     );
-    expect(unsatisfied).toEqual([]);
+    expect(unsatisfied.map((f) => f.name)).toEqual([
+      "phone_number",
+      "email_address",
+      "zip_code",
+    ]);
   });
 
   test("with an authored standardization, an ssn column does not satisfy an ssn4 field", () => {

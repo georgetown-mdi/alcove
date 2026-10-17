@@ -35,7 +35,9 @@ import {
   configWithNamedRuleSetRules,
   csvDelimiterForRun,
   describeConfigSchemaError,
+  linkageTermsAtInputHeader,
   linkageTermsStandingOf,
+  namedRuleSetKeysFollowInputHeader,
   persistFilledPayloadReceive,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
@@ -523,6 +525,8 @@ function refuseRetiredSettingBeforeInvitation(configFile: string): void {
 type LoadedExchangeConfig = {
   connection: ProtocolConnectionConfig;
   authentication: AuthPersist;
+  /** {@link namedRuleSetKeysFollowInputHeader} over the file read. */
+  linkageKeysFollowInputHeader: boolean;
 } & ExchangeDataSpec;
 
 /**
@@ -800,6 +804,7 @@ function readExchangeConfig(
   return {
     connection,
     authentication: authPersist,
+    linkageKeysFollowInputHeader: namedRuleSetKeysFollowInputHeader(rawConfig),
     ...exchangeDataSpec,
   };
 }
@@ -915,16 +920,20 @@ export function tokenExpiringAdvisory(
  * `logFile` is the operator's `--log-file`, so the log keeps a copy of the
  * disclosure display printed on the prompt stream.
  *
+ * `linkageKeysFollowInputHeader` narrows the linkage keys to those the input's
+ * header supplies ({@link namedRuleSetKeysFollowInputHeader}).
+ *
  * @internal exported for testing
  */
 export async function prepareDataset(
-  exchangeDataSpec: ExchangeDataSpec,
+  loadedDataSpec: ExchangeDataSpec,
   identity: string | undefined,
   input: string,
   logFile: string | undefined,
   connection: ProtocolConnectionConfig,
   csvDelimiter?: string,
   allowMemoryShortfall = false,
+  linkageKeysFollowInputHeader = false,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
 
@@ -932,6 +941,18 @@ export async function prepareDataset(
     input,
     { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
+
+  const exchangeDataSpec: ExchangeDataSpec =
+    linkageKeysFollowInputHeader && loadedDataSpec.linkageTerms !== undefined
+      ? {
+          ...loadedDataSpec,
+          linkageTerms: linkageTermsAtInputHeader(
+            loadedDataSpec.linkageTerms,
+            { ...loadedDataSpec, linkageKeysFollowInputHeader },
+            columns,
+          ),
+        }
+      : loadedDataSpec;
 
   // Resolve the metadata this run transmits, carrying the positions this read
   // removed direction characters from: a header the removal emptied is refused
@@ -1192,6 +1213,7 @@ export async function handler(argv: Arguments): Promise<void> {
       const {
         connection,
         authentication: loadedAuthentication,
+        linkageKeysFollowInputHeader,
         ...exchangeDataSpec
       } = loadConfig(options, invitedKeyFile);
 
@@ -1325,6 +1347,7 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         csvDelimiter,
         allowMemoryShortfall === true,
+        linkageKeysFollowInputHeader,
       );
       if (includeMatchingKey !== undefined)
         prepared.includeMatchingKey = includeMatchingKey;

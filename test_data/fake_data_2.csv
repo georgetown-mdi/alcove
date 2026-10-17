@@ -1,4 +1,4 @@
-"Client_ID","FirstName","LastName","SSN","DOB","Case_Manager_Phone_Number","Mailing_Address_Zipcode"
+"Client_ID","FirstName","LastName","SSN","DOB","Case_Manager_Phone_Number","Zip"
 186308354,"Robert","Aragon","489-36-8350","6/7/1981","650-555-7695","94040"
 107222288,"Ashley","Borden","514-14-8905","7/8/1981","650-555-0990","94024"
 124774928,"Thomas","Conley","690-05-5315","8/9/1981","650-555-5345","94022"

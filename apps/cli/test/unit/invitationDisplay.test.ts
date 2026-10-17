@@ -89,6 +89,21 @@ function splittingKeyToken(
   };
 }
 
+// The sample token with the built-in keys that split a last name left out: the
+// shape whose only candidate sets are a swapped order and a fuzzy date.
+function nonSplittingToken(expires: string): InvitationToken {
+  const token = sampleToken(expires);
+  return {
+    ...token,
+    linkageTerms: {
+      ...token.linkageTerms,
+      linkageKeys: token.linkageTerms.linkageKeys.filter(
+        (key) => !key.name.includes("split("),
+      ),
+    },
+  };
+}
+
 /**
  * The bullet entries listed directly under `heading`, sliced out of the rendered
  * lines so an assertion about one list cannot be satisfied -- or broken -- by a
@@ -380,7 +395,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     // them: both halves resolve and match.
     const truthful = renderDisplayInvitation(log, base);
     expect(truthful).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "hmis-keys"`,
+      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "precision-ranked-rules"`,
     );
     expect(truthful).toContain(
       `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
@@ -404,7 +419,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       },
     });
     expect(reordered).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "hmis-keys"`,
+      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "precision-ranked-rules"`,
     );
     expect(reordered).toContain(
       `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
@@ -478,7 +493,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     );
     const decision = decisionLines.join("\n");
     expect(decision).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "hmis-keys"`,
+      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "precision-ranked-rules"`,
     );
     expect(decision).toContain(
       `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
@@ -878,9 +893,9 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
 
     // Silent for terms that declare no split, so the line is not a fixture of the
     // prompt itself.
-    expect(renderDisplayInvitation(log, sampleToken(FUTURE()))).not.toContain(
-      "several values per record",
-    );
+    expect(
+      renderDisplayInvitation(log, nonSplittingToken(FUTURE())),
+    ).not.toContain("several values per record");
   });
 
   test("displayInvitation: states what a splitting key pairs where the invitation declares duplicate matching", () => {
@@ -907,9 +922,9 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
   test("displayInvitation: states the grouping a candidate set makes, whichever declares it", () => {
     // The grouping the pair this party's own `deduplicate` completes makes of
     // records no linkage key links. It follows the candidate set rather than
-    // the splitting element alone: the shipped default keys declare a swapped
-    // order and no split, so a prompt reading the fan-out register alone would
-    // say nothing on the terms an operator reaches with no key authoring.
+    // the splitting element alone: the shipped default keys less their split
+    // keys still declare a swapped order and fuzzy dates, on which a prompt
+    // reading the fan-out register alone would say nothing.
     const log = getLogger("accept-display-chained-grouping-test");
     log.setLevel("silent");
     const deduplicating = (token: InvitationToken): string =>
@@ -918,7 +933,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
         linkageTerms: { ...token.linkageTerms, deduplicate: true },
       });
 
-    const defaults = deduplicating(sampleToken(FUTURE()));
+    const defaults = deduplicating(nonSplittingToken(FUTURE()));
     expect(defaults).not.toContain("several values per record");
     expect(defaults).toContain(
       "records grouped with no value in common (enforced):",

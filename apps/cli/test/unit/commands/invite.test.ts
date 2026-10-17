@@ -81,7 +81,11 @@ import {
   validateInvite,
   webAppAcceptLink,
 } from "../../../src/commands/invite";
-import { loadConfigLinkageSource, saveConfig } from "../../../src/config";
+import {
+  linkageTermsNarrowedToInput,
+  loadConfigLinkageSource,
+  saveConfig,
+} from "../../../src/config";
 import { DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS } from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
@@ -1642,9 +1646,15 @@ test("validateInvite: an invitation declares the rule set the config names", asy
       },
     }),
   );
+  const input = path.join(dir, "input.csv");
+  const header = ["first_name", "last_name", "dob", "ssn"];
+  fs.writeFileSync(
+    input,
+    `${header.join(",")}\nAda,Lovelace,1815-12-10,123456789\n`,
+  );
   try {
     const ready = await validateInvite({
-      resolved: { mode: "offline" },
+      resolved: { mode: "offline", input },
       options: testOptions({
         configFile: configPath,
         keyFile: path.join(dir, ".alcove.key"),
@@ -1657,11 +1667,38 @@ test("validateInvite: an invitation declares the rule set the config names", asy
     expect(token.linkageTerms.linkageRuleSet).toEqual(
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
-    expect(token.linkageTerms.linkageKeys).toEqual(
-      DEFAULT_LINKAGE_RULE_SET.linkageKeys,
+    // With no metadata block, the keys are the set's that the header supplies,
+    // as the exchange narrows them.
+    const narrowed = linkageTermsNarrowedToInput(
+      {
+        ...token.linkageTerms,
+        linkageFields: [...DEFAULT_LINKAGE_RULE_SET.linkageFields],
+        linkageKeys: [...DEFAULT_LINKAGE_RULE_SET.linkageKeys],
+      },
+      header,
+      undefined,
+      undefined,
     );
-    expect(token.linkageTerms.linkageFields).toEqual(
-      DEFAULT_LINKAGE_RULE_SET.linkageFields,
+    expect(token.linkageTerms.linkageKeys).toEqual(narrowed.linkageKeys);
+    expect(token.linkageTerms.linkageFields).toEqual(narrowed.linkageFields);
+    expect(token.linkageTerms.linkageKeys.length).toBeLessThan(
+      DEFAULT_LINKAGE_RULE_SET.linkageKeys.length,
+    );
+
+    // Given no input file, the mint cannot derive those keys and refuses.
+    fs.rmSync(path.join(dir, ".alcove.key"), { force: true });
+    await expect(
+      validateInvite({
+        resolved: { mode: "offline" },
+        options: testOptions({
+          configFile: configPath,
+          keyFile: path.join(dir, ".alcove.key"),
+        }),
+        acceptTimeout: 900,
+        log: silentLog,
+      }),
+    ).rejects.toThrow(
+      /writes no linkage_fields, linkage_keys or metadata block.*alcove invite was given no input file.*Pass your input file as INPUT_FILE/,
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

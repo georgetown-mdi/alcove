@@ -56,8 +56,12 @@ export {
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
   configWithNamedRuleSetRules,
+  keysFollowUnreadInputHeaderRefusal,
+  linkageTermsAtInputHeader,
+  linkageTermsNarrowedToInput,
   linkageTermsStandingOf,
   linkageTermsWithNamedRuleSetRules,
+  namedRuleSetKeysFollowInputHeader,
   warnOnLinkageRuleSetCitationDrift,
 } from "./config/ruleSetCitation";
 export type {

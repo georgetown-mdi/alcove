@@ -34,7 +34,7 @@ export const SAMPLE_INVITER_CSV = [
   // 6. Exact match.
   "Devon,Osei,12/02/2001,77004,INV-1006",
   // 7. Looks like the partner's Nguyen row but the surname is transposed
-  //    (Nyguen), so no key fires.
+  //    (Nyguen) and the ZIP differs, so no key fires.
   "Linh,Nyguen,04/22/1986,95112,INV-1007",
   // 8. Shares the partner Sullivan row's name but the birth year differs, so
   //    no name-and-date key fires.
@@ -59,7 +59,7 @@ export const SAMPLE_PARTNER_CSV = [
   "Harold,Brooks Jr.,02/09/1969,30303,PTR-2004",
   "Mary Jane,Kowalski,09/18/1990,48104,PTR-2005",
   "Devon,Osei,12/02/2001,77004,PTR-2006",
-  "Linh,Nguyen,04/22/1986,95112,PTR-2007",
+  "Linh,Nguyen,04/22/1986,95116,PTR-2007",
   "Grace,Sullivan,08/15/1991,19104,PTR-2008",
   // 9-11. Unique to the partner.
   "Naomi,Petrov,03/19/1972,33101,PTR-2009",

@@ -17,6 +17,7 @@ import {
   getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
+  inferMetadata,
   parseExchangeSpec,
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
@@ -2387,18 +2388,79 @@ describe("reconciling a pre-existing config", () => {
 
   test("validateAccept: a reused config naming the shipped rule set reconciles", async () => {
     // The kept file writes no rules, so the reconcile has terms to compare only
-    // because the named set was resolved into them first. The invitation
-    // declares that same whole set.
+    // because the named set was resolved into them first. With no metadata
+    // block its keys are the set's that the input's header supplies, as its
+    // exchange narrows them, and the invitation declares those.
     const options = testOptions();
     writeRuleSetNamingConfig(
       options.configFile,
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
+    const header = ["first_name", "last_name", "dob", "ssn"];
+    const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-accept-header-"));
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      `${header.join(",")}\nAda,Lovelace,1815-12-10,123456789\n`,
+    );
     const stdio = captureStdio();
     try {
       const encoded = await encodeInvitation({
         ...sampleToken(FUTURE()),
-        linkageTerms: getDefaultLinkageTerms("Inviter Org"),
+        linkageTerms: getDefaultLinkageTerms(
+          "Inviter Org",
+          inferMetadata(header, []),
+        ),
+      });
+      const ready = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded, input },
+        options,
+        log: silentLog,
+      });
+      expect(ready.reuseExistingConfig).toBe(true);
+
+      // Given no input file, the kept config's keys cannot be derived.
+      await expect(
+        validateAccept({
+          resolved: { mode: "offline", invitation: encoded },
+          options,
+          log: silentLog,
+        }),
+      ).rejects.toThrow(
+        /writes no linkage_fields, linkage_keys or metadata block.*alcove accept was given no input file.*Pass your input file as INPUT_FILE/,
+      );
+    } finally {
+      stdio.restore();
+      fs.rmSync(options.configFile, { force: true });
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("validateAccept: a reused config naming the rule set over a metadata block reconciles with no input", async () => {
+    const options = testOptions();
+    const header = ["first_name", "last_name", "dob", "ssn"];
+    const metadata = inferMetadata(header, []);
+    const {
+      linkageFields: _fields,
+      linkageKeys: _keys,
+      ...rest
+    } = getDefaultLinkageTerms("Acceptor Org");
+    fs.writeFileSync(
+      options.configFile,
+      YAML.stringify({
+        connection: { channel: "filedrop", path: "/mnt/share" },
+        linkage_terms: {
+          ...rest,
+          linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
+        },
+        metadata,
+      }),
+    );
+    const stdio = captureStdio();
+    try {
+      const encoded = await encodeInvitation({
+        ...sampleToken(FUTURE()),
+        linkageTerms: getDefaultLinkageTerms("Inviter Org", metadata),
       });
       const ready = await validateAccept({
         resolved: { mode: "offline", invitation: encoded },
