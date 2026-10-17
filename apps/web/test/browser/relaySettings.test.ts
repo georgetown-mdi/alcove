@@ -13,9 +13,25 @@ import {
   RELAY_OPERATOR_DISCLOSURE,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
-import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import {
+  RELAY_TEST_FAILED,
+  RELAY_TEST_INTRO,
+  RELAY_TEST_NOTHING_TO_TEST,
+  RELAY_TEST_SAVED_ONLY,
+  RELAY_TEST_UNSUPPORTED,
+  RelayTestSection,
+} from "@exchange/RelayTestSection";
+import {
+  readOwnRelaySetting,
+  writeOwnRelaySetting,
+} from "@psi/transport/ownRelaySetting";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+
+import type {
+  RelayTestResult,
+  RelayTestTarget,
+} from "@psi/transport/relayTest";
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -138,3 +154,185 @@ describe("RelaySettingsScreen", () => {
     await expect.element(stunField()).toHaveValue("");
   });
 });
+
+const SITE_RELAY = {
+  turnUrl: "turn:site-relay.example.org:3478",
+  registrarUrl: "https://registrar.example.org",
+};
+
+/**
+ * Stands in for the browser's peer connection: records each one built and
+ * answers every relay with a 401 once the offer is set, as a relay refusing
+ * the placeholder credential does.
+ */
+function stubRelayAnswering(): Array<RTCConfiguration> {
+  const built: Array<RTCConfiguration> = [];
+  class AnsweringPeerConnection extends EventTarget {
+    iceGatheringState: RTCIceGatheringState = "new";
+    constructor(readonly configuration: RTCConfiguration) {
+      super();
+      built.push(configuration);
+    }
+    createDataChannel(): void {}
+    createOffer(): Promise<RTCSessionDescriptionInit> {
+      return Promise.resolve({ type: "offer", sdp: "" });
+    }
+    setLocalDescription(): Promise<void> {
+      const server = this.configuration.iceServers?.[0];
+      const url = [server?.urls ?? []].flat()[0] ?? "";
+      queueMicrotask(() =>
+        this.dispatchEvent(
+          Object.assign(new Event("icecandidateerror"), {
+            url,
+            errorCode: 401,
+            errorText: "Unauthorized",
+          }),
+        ),
+      );
+      return Promise.resolve();
+    }
+    close(): void {}
+  }
+  vi.stubGlobal("RTCPeerConnection", AnsweringPeerConnection);
+  return built;
+}
+
+describe("the relay test", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const testButton = () =>
+    page.getByRole("button", { name: "Test these relays" });
+
+  test("names the saved and the site's relay and contacts neither until it is started", async () => {
+    const built = stubRelayAnswering();
+    writeOwnRelaySetting({ turn: [TURN_URL], stun: [STUN_URL] });
+    app.render(
+      createElement(RelaySettingsScreen, { defaultRelay: () => SITE_RELAY }),
+    );
+
+    await expect.element(page.getByText(RELAY_TEST_INTRO)).toBeVisible();
+    await expect
+      .element(page.getByRole("listitem").filter({ hasText: TURN_URL }))
+      .toHaveTextContent(`${TURN_URL} - your relay, over TLS`);
+    await expect
+      .element(
+        page.getByRole("listitem").filter({ hasText: SITE_RELAY.turnUrl }),
+      )
+      .toHaveTextContent(`${SITE_RELAY.turnUrl} - this site's relay, over UDP`);
+    await expect.element(testButton()).toBeVisible();
+    expect(built).toHaveLength(0);
+
+    await userEvent.click(testButton());
+
+    await expect
+      .element(page.getByRole("heading", { name: "Test results" }))
+      .toBeVisible();
+    expect(built.map((configuration) => configuration.iceServers)).toEqual([
+      [expect.objectContaining({ urls: [TURN_URL] })],
+      [expect.objectContaining({ urls: [SITE_RELAY.turnUrl] })],
+    ]);
+    const results = page.getByRole("list").last().getByRole("listitem");
+    await expect
+      .element(results.first())
+      .toHaveTextContent(
+        `${TURN_URL}: Answered over TLS: the relay refused the test's placeholder credential, so this browser reaches it over TLS.`,
+      );
+    await expect
+      .element(results.last())
+      .toHaveTextContent(
+        `${SITE_RELAY.turnUrl}: Answered over UDP: the relay refused the test's placeholder credential, so this browser reaches it over UDP.`,
+      );
+  });
+
+  test("tests the saved addresses, and says so while the field differs", async () => {
+    stubRelayAnswering();
+    writeOwnRelaySetting({ turn: [TURN_URL], stun: [] });
+    app.render(
+      createElement(RelaySettingsScreen, { defaultRelay: () => undefined }),
+    );
+    await expect.element(testButton()).toBeVisible();
+    expect(page.getByText(RELAY_TEST_SAVED_ONLY).query()).toBeNull();
+
+    await userEvent.fill(turnField(), "turn:other.example.org:3478");
+
+    await expect.element(page.getByText(RELAY_TEST_SAVED_ONLY)).toBeVisible();
+  });
+
+  test("with no relay saved and none named by the site, offers nothing to test", async () => {
+    const built = stubRelayAnswering();
+    app.render(
+      createElement(RelaySettingsScreen, { defaultRelay: () => undefined }),
+    );
+
+    await expect
+      .element(page.getByText(RELAY_TEST_NOTHING_TO_TEST))
+      .toBeVisible();
+    expect(testButton().query()).toBeNull();
+    expect(built).toHaveLength(0);
+  });
+
+  test("in a browser without peer connections, says the test cannot run and offers none", async () => {
+    vi.stubGlobal("RTCPeerConnection", undefined);
+    app.render(
+      createElement(RelaySettingsScreen, { defaultRelay: () => SITE_RELAY }),
+    );
+
+    await expect.element(page.getByText(RELAY_TEST_UNSUPPORTED)).toBeVisible();
+    expect(testButton().query()).toBeNull();
+    expect(page.getByText("did not accept the address").query()).toBeNull();
+  });
+
+  test("while it runs, announces the wait and keeps focus on the button", async () => {
+    const runTest = vi.fn(
+      () => new Promise<Array<RelayTestResult>>(() => undefined),
+    );
+    app.render(
+      createElement(RelayTestSection, {
+        targets: TWO_TARGETS,
+        unsavedChanges: false,
+        runTest,
+      }),
+    );
+
+    await userEvent.click(testButton());
+
+    await expect
+      .element(
+        page.getByText("Testing 2 relays. This can take up to 30 seconds."),
+      )
+      .toBeVisible();
+    const button = testButton().element();
+    expect(button.hasAttribute("disabled")).toBe(false);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(button);
+
+    await userEvent.keyboard("{Enter}");
+    expect(runTest).toHaveBeenCalledOnce();
+  });
+
+  test("a run that fails says the test could not run and ends the wait", async () => {
+    const runTest = vi.fn(() =>
+      Promise.reject<Array<RelayTestResult>>(new Error("no data channel")),
+    );
+    app.render(
+      createElement(RelayTestSection, {
+        targets: TWO_TARGETS,
+        unsavedChanges: false,
+        runTest,
+      }),
+    );
+
+    await userEvent.click(testButton());
+
+    await expect.element(page.getByText(RELAY_TEST_FAILED)).toBeVisible();
+    expect(testButton().element().hasAttribute("aria-disabled")).toBe(false);
+    expect(page.getByText(/^Testing /).query()).toBeNull();
+  });
+});
+
+const TWO_TARGETS: Array<RelayTestTarget> = [
+  { url: TURN_URL, source: "own", transport: "tls" },
+  { url: SITE_RELAY.turnUrl, source: "site", transport: "udp" },
+];

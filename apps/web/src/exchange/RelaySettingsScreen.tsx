@@ -8,10 +8,14 @@ import {
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { defaultRelaySetting } from "@utils/clientConfig";
+import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
+import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
+import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
 /**
@@ -60,9 +64,15 @@ type SaveStatus =
 /**
  * The relay settings page: this browser's own TURN and STUN urls, kept in
  * browser storage for this site, with what the relay's operator learns stated
- * beside them. The hosted app and a console each hold their own.
+ * beside them, and a test of the relays a browser run lists that the user
+ * starts. The hosted app and a console each hold their own.
  */
-export function RelaySettingsScreen() {
+export function RelaySettingsScreen({
+  defaultRelay = defaultRelaySetting,
+}: {
+  /** The build's default relay; {@link defaultRelaySetting} when unset. */
+  defaultRelay?: () => DefaultRelaySetting | undefined;
+}) {
   const [initial] = useState(readOwnRelaySetting);
   const [turnText, setTurnText] = useState(
     initial.kind === "set" ? initial.relay.turn.join("\n") : "",
@@ -72,11 +82,24 @@ export function RelaySettingsScreen() {
   );
   const [attempted, setAttempted] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
+  const [testTargets, setTestTargets] = useState(() =>
+    relayTestTargets(() => initial, defaultRelay),
+  );
+  const [savedTurn, setSavedTurn] = useState<ReadonlyArray<string>>(
+    initial.kind === "set" ? initial.relay.turn : [],
+  );
 
   const turnLines = parseRelayUrlLines(turnText, "turn");
   const stunLines = parseRelayUrlLines(stunText, "stun");
   const turnError = attempted ? fieldError(turnLines) : undefined;
   const stunError = attempted ? fieldError(stunLines) : undefined;
+  const unsavedTurnChanges =
+    !turnLines.ok || turnLines.urls.join("\n") !== savedTurn.join("\n");
+
+  function refreshTestTargets(turn: ReadonlyArray<string>) {
+    setSavedTurn(turn);
+    setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
+  }
 
   function save() {
     setAttempted(true);
@@ -86,6 +109,7 @@ export function RelaySettingsScreen() {
     }
     try {
       writeOwnRelaySetting({ turn: turnLines.urls, stun: stunLines.urls });
+      refreshTestTargets(turnLines.urls);
       setStatus({
         kind:
           turnLines.urls.length + stunLines.urls.length > 0
@@ -100,6 +124,7 @@ export function RelaySettingsScreen() {
   function remove() {
     try {
       writeOwnRelaySetting({ turn: [], stun: [] });
+      refreshTestTargets([]);
       setTurnText("");
       setStunText("");
       setAttempted(false);
@@ -176,6 +201,12 @@ export function RelaySettingsScreen() {
             "This browser did not save the setting. Check that site storage is allowed for this site, then save again."}
         </p>
       </div>
+
+      <RelayTestSection
+        key={testTargets.map((target) => target.url).join("\n")}
+        targets={testTargets}
+        unsavedChanges={unsavedTurnChanges}
+      />
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">
