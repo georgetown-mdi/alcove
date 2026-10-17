@@ -233,11 +233,23 @@ intermittently crashed its renderer.
   warming up each instance 4 of 120, and a single instance 0 of 60.
 - **Not seen on the x86 box.** 0 crashes in 40 stability runs at 6 workers and 0
   in the 36 matrix workers runs at 1 to 6 workers, with the same Chromium build.
-- **Untested.** A full Chrome on macOS, and the shipped rollup worker bundle in
-  place of the raw module.
+- **On full Chrome.** Google Chrome 154.0.8037.98 (Official Build, arm64) on the
+  same Mac, sandbox on, running N unmodified copies of the production build's
+  PSI worker at N = 100,000, each copy generating its own key: the renderer
+  crashed in 3 of 123 sharded runs (4 workers, 2 of 25; 6 workers, 1 of 25; 0 of
+  25 at 2 and at 8 workers; 0 of 23 at 10), about 2.4 percent, and the
+  single-worker baseline in 0 of 5; 25 more runs at `hardwareConcurrency`, which
+  is 10 on this Mac, did not crash and are not in the total. macOS
+  wrote no crash report and Chrome printed no signal line, so the signal is
+  unknown. The machine was in use, with a load average above 30.
+- **Untested.** A shipped bundle with a sharded path, which does not exist yet.
 
 That several module instances must be computing at once for it to happen is
-measured; nothing beyond that is.
+measured; nothing beyond that is. On full Chrome the crash is real at a low
+rate and, on these counts, not tied to one shard count, so a shard-count cap
+alone does not avoid it: shipping the sharded arm bounds the pool on this
+result, either by falling back to the single-threaded path on the platform or
+by stating the measured rate as a limit.
 
 ## What shipping the sharded arm needs
 
@@ -324,4 +336,7 @@ merged by the rules above. What remains is its realization, on the terms the
 The pthreads/SIMD build is not adopted. It shows no throughput gain over
 sharding at any core count, in Chromium or on Node, and adopting it would add
 cross-origin isolation to the web app and a fork of the library to maintain. The
-renderer crash the sharding arm showed on the Mac is tracked as a follow-up.
+renderer crash the sharding arm showed on the Mac reproduces on full Chrome at a
+low rate ([Renderer crash in the workers arm on the
+Mac](#renderer-crash-in-the-workers-arm-on-the-mac)), and shipping the arm
+bounds its pool on that result.
