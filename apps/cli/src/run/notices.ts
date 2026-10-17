@@ -1,6 +1,7 @@
 import {
   WRITE_WITHOUT_RENAMING_KEY,
   describeUndeclaredColumns,
+  identifierTypedColumnNames,
   redactPrivateKeyMaterial,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
@@ -97,8 +98,54 @@ export const UNDECLARED_COLUMNS_CONFIG_REMEDY =
 export const UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY =
   "To send one, declare it in the configuration's metadata block with " +
   "is_payload: true; to use one as your record identifier, declare it with " +
-  "role: identifier; to leave one out without this notice, declare it " +
-  "with role: ignored.";
+  "role: identifier and is_payload: false, which keeps it from your partner; " +
+  "to leave one out without this notice, declare it with role: ignored.";
+
+const OTHER_IDENTIFIERS_LISTED_MAX = 3;
+
+/**
+ * The sentence added to {@link UNDECLARED_COLUMNS_CONFIG_REMEDY} when the
+ * metadata has an identifier and `others` (identifier-typed undeclared
+ * columns) are left out: it names the record identifier and how to use an
+ * undeclared one instead.
+ */
+function otherIdentifiersRemedy(
+  identifier: string,
+  others: ReadonlyArray<string>,
+): string {
+  const shown = others
+    .slice(0, OTHER_IDENTIFIERS_LISTED_MAX)
+    .map(redactPrivateKeyMaterial);
+  const hidden = others.length - shown.length;
+  const list = shown.join(", ") + (hidden > 0 ? `, and ${hidden} more` : "");
+  const redacted = redactPrivateKeyMaterial(identifier);
+  return (
+    `${redacted} is your record identifier. To use ` +
+    `${others.length > 1 ? `one of ${list}` : list} as the record ` +
+    `identifier instead, declare it with role: identifier and set ` +
+    `${redacted} to role: ignored.`
+  );
+}
+
+/**
+ * The remedy {@link undeclaredColumnsNotice} ends with when the caller names
+ * none: the no-identifier remedy when the metadata has no `role: identifier`
+ * column, else the configuration remedy, followed by how to use an
+ * identifier-typed undeclared column as the record identifier when the run
+ * leaves one out.
+ */
+function defaultUndeclaredColumnsRemedy(
+  prepared: Pick<PreparedExchange, "undeclaredColumns" | "metadata">,
+): string {
+  const identifier = prepared.metadata.find(
+    (column) => column.role === "identifier",
+  );
+  if (identifier === undefined) return UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY;
+  const others = identifierTypedColumnNames(prepared.undeclaredColumns ?? []);
+  return others.length === 0
+    ? UNDECLARED_COLUMNS_CONFIG_REMEDY
+    : `${UNDECLARED_COLUMNS_CONFIG_REMEDY} ${otherIdentifiersRemedy(identifier.name, others)}`;
+}
 
 /**
  * The notice naming the input columns this run does not send because its
@@ -110,11 +157,7 @@ export const UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY =
  */
 export function undeclaredColumnsNotice(
   prepared: Pick<PreparedExchange, "undeclaredColumns" | "metadata">,
-  remedy: string = prepared.metadata.some(
-    (column) => column.role === "identifier",
-  )
-    ? UNDECLARED_COLUMNS_CONFIG_REMEDY
-    : UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY,
+  remedy: string = defaultUndeclaredColumnsRemedy(prepared),
 ): string | undefined {
   return describeUndeclaredColumns(prepared.undeclaredColumns ?? [], remedy);
 }

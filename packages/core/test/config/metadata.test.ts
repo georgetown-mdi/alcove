@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  identifierTypedColumnNames,
   inferMetadata,
   inferMetadataForEveryColumn,
   METADATA_NAME_SHAPE_MESSAGE,
@@ -111,6 +112,13 @@ test("two canonical identifier columns: only the first is the identifier", () =>
   expect(
     inferMetadataForEveryColumn(["identifier", "id"], []).map((c) => c.role),
   ).toEqual(["identifier", "ignored"]);
+});
+
+test("identifierTypedColumnNames lists the identifier-typed names in order and skips an empty one", () => {
+  expect(
+    identifierTypedColumnNames(["notes", "Record ID", "", "case_id", "ssn"]),
+  ).toEqual(["Record ID", "case_id"]);
+  expect(identifierTypedColumnNames([])).toEqual([]);
 });
 
 test("direct mode: a later identifier-typed column is sent as payload", () => {

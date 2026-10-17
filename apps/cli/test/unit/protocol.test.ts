@@ -4430,8 +4430,8 @@ test("undeclared input columns are named on the log and the event stream before 
       "column settings do not declare them: notes, amount. To send one, " +
       "declare it in the configuration's metadata block with is_payload: " +
       "true; to use one as your record identifier, declare it with role: " +
-      "identifier; to leave one out without this notice, declare it with " +
-      "role: ignored.",
+      "identifier and is_payload: false, which keeps it from your partner; " +
+      "to leave one out without this notice, declare it with role: ignored.",
   );
   mockFd3Open();
   try {
@@ -4505,7 +4505,7 @@ test("a wide undeclared header is counted past the listed names and keeps the re
   expect(notice).toContain("column_19, and 280 more. ");
   expect(notice).not.toContain("column_20");
   expect(notice).toMatch(
-    /To send one, declare it in the configuration's metadata block with is_payload: true; to use one as your record identifier, declare it with role: identifier; to leave one out without this notice, declare it with role: ignored\.$/,
+    /To send one, declare it in the configuration's metadata block with is_payload: true; to use one as your record identifier, declare it with role: identifier and is_payload: false, which keeps it from your partner; to leave one out without this notice, declare it with role: ignored\.$/,
   );
   mockFd3Open();
   try {
@@ -4547,6 +4547,40 @@ test("a run with an identifier is not told how to declare one", () => {
       "column settings do not declare it: notes. To send one, declare it in " +
       "the configuration's metadata block with is_payload: true; to leave " +
       "one out without this notice, declare it with role: ignored.",
+  );
+});
+
+test("a run with an identifier names it, and how to use an undeclared id column instead", () => {
+  const metadata = [
+    {
+      name: "case_id",
+      type: "identifier" as const,
+      role: "identifier" as const,
+      isPayload: false,
+    },
+  ];
+  expect(
+    undeclaredColumnsNotice({
+      metadata,
+      undeclaredColumns: ["notes", "Record ID"],
+    }),
+  ).toBe(
+    "2 input columns are not sent to your partner because the exchange's " +
+      "column settings do not declare them: notes, Record ID. To send one, " +
+      "declare it in the configuration's metadata block with is_payload: " +
+      "true; to leave one out without this notice, declare it with role: " +
+      "ignored. case_id is your record identifier. To use Record ID as the " +
+      "record identifier instead, declare it with role: identifier and set " +
+      "case_id to role: ignored.",
+  );
+  const several = undeclaredColumnsNotice({
+    metadata,
+    undeclaredColumns: ["id", "a_id", "b_id", "c_id", "notes"],
+  });
+  expect(several).toContain(
+    "case_id is your record identifier. To use one of id, a_id, b_id, and 1 " +
+      "more as the record identifier instead, declare it with role: " +
+      "identifier and set case_id to role: ignored.",
   );
 });
 

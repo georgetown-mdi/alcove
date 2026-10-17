@@ -278,7 +278,9 @@ test("renderConfigTemplate: undeclared input columns are listed as commented ent
   expect(template).toContain("  # - name: score\n");
   expect(template).toContain("  # - name: free text\n");
   expect(template).toContain("No column above is your record identifier.");
-  expect(template).toContain("set its role to\n  # identifier;");
+  expect(template).toContain(
+    "To use one of the\n  # columns listed below as your record identifier, uncomment its entry\n  # and set its role to identifier; set is_payload to false as well to\n  # keep it from your partner.",
+  );
 });
 
 test("renderConfigTemplate: with an identifier, the undeclared columns are not offered as one", async () => {
@@ -290,6 +292,22 @@ test("renderConfigTemplate: with an identifier, the undeclared columns are not o
   const template = renderConfigTemplate(data);
   expect(template).toContain("not declared above");
   expect(template).not.toContain("record identifier");
+});
+
+test("renderConfigTemplate: with an identifier and another id column undeclared, the comment says how to use the other", async () => {
+  const dir = scratchDir();
+  const file = path.join(dir, "in.csv");
+  fs.writeFileSync(
+    file,
+    "case_id,Record ID,first_name,dob\n7,8,A,1990-01-02\n",
+  );
+  const data = await buildTemplateData(file, "Org");
+  expect(data.undeclaredColumns).toEqual(["Record ID"]);
+  const template = renderConfigTemplate(data);
+  expect(template).toContain(
+    "case_id above is your record identifier, the first id column\n  # in the file. To use Record ID instead,\n  # uncomment its entry, set its role to identifier (and is_payload to\n  # false to keep it from your partner), and set the role of\n  # case_id above to ignored.",
+  );
+  expect(template).not.toContain("No column above");
 });
 
 test("renderConfigTemplate: no input file lists no undeclared columns", async () => {

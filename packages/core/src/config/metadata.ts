@@ -573,6 +573,22 @@ export function undeclaredColumnNames(
   return columnNames.filter((name) => !declared.has(name));
 }
 
+/**
+ * The names among `columnNames`, in order, that infer `type: identifier`
+ * (`id`, `identifier`, or a name ending in `_id`). An empty name is skipped:
+ * inference refuses it, and a run's intake has refused it already.
+ */
+export function identifierTypedColumnNames(
+  columnNames: ReadonlyArray<string>,
+): Array<string> {
+  return inferMetadataForEveryColumn(
+    columnNames.filter((name) => name.length > 0),
+    [],
+  )
+    .filter((column) => column.type === "identifier")
+    .map((column) => column.name);
+}
+
 /** The most undeclared column names one notice lists; an arbitrary working value. */
 export const UNDECLARED_COLUMNS_LISTED_MAX = 20;
 

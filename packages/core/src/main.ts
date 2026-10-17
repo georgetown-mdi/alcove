@@ -561,6 +561,7 @@ export {
   countOnlyTransmitsColumn,
   describeUndeclaredColumns,
   disclosedColumnNames,
+  identifierTypedColumnNames,
   inferMetadata,
   inferMetadataForEveryColumn,
   isDisclosedToPartner,
