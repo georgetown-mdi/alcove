@@ -8,6 +8,7 @@ import type {
   PrecisionFloor,
   PrecisionFloorSelection,
   Standardization,
+  UsageError,
 } from "@alcove/core";
 import {
   BUILT_IN_LINKAGE_RULE_SETS,
@@ -392,6 +393,62 @@ export function namedRuleSetKeysFollowInputHeader(rawConfig: unknown): boolean {
     !RULE_LIST_SPELLINGS.some(([written, camelized]) =>
       declaresKey(block, written, camelized),
     )
+  );
+}
+
+/**
+ * `terms` as an exchange over an input whose header is `columns` runs them:
+ * narrowed by that header ({@link linkageTermsNarrowedToInput}) where the
+ * configuration they were read from takes its keys from it
+ * ({@link namedRuleSetKeysFollowInputHeader}), and as given otherwise. Every
+ * command that derives a configuration's terms beside its input reads them
+ * through here, so each derives the terms the exchange runs.
+ */
+export function linkageTermsAtInputHeader(
+  terms: LinkageTerms,
+  source: {
+    linkageKeysFollowInputHeader?: boolean;
+    standardization?: Standardization;
+    metadata?: Metadata;
+  },
+  columns: string[],
+): LinkageTerms {
+  return source.linkageKeysFollowInputHeader === true
+    ? linkageTermsNarrowedToInput(
+        terms,
+        columns,
+        source.standardization,
+        source.metadata,
+      )
+    : terms;
+}
+
+/**
+ * The refusal for a command that reads a configuration whose keys follow its
+ * input file's header ({@link namedRuleSetKeysFollowInputHeader}) and has no
+ * input file to narrow them by: the keys it would derive are not the ones the
+ * exchange runs. `inputRemedy`, where the command can take an input file,
+ * names how to pass one, ahead of the remedies every such refusal states.
+ */
+export function keysFollowUnreadInputHeaderRefusal(
+  configPath: string,
+  command: string,
+  inputRemedy?: string,
+): UsageError {
+  const lead = inputRemedy === undefined ? "Add" : `${inputRemedy}, or add`;
+  const noInput =
+    inputRemedy === undefined
+      ? "takes no input file"
+      : "was given no input file";
+  return configFileRefusal(
+    configPath,
+    "names a rule set in linkage_terms.linkage_rule_set and writes no " +
+      "linkage_fields, linkage_keys or metadata block, so the keys it runs " +
+      "are the ones its input file's header supplies, and " +
+      `${command} ${noInput} to read them from. ${lead} a ` +
+      "metadata block declaring your input file's columns, or write " +
+      "linkage_fields and linkage_keys out in the file, then run the " +
+      "command again.",
   );
 }
 

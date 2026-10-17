@@ -35,7 +35,7 @@ import {
   configWithNamedRuleSetRules,
   csvDelimiterForRun,
   describeConfigSchemaError,
-  linkageTermsNarrowedToInput,
+  linkageTermsAtInputHeader,
   linkageTermsStandingOf,
   namedRuleSetKeysFollowInputHeader,
   persistFilledPayloadReceive,
@@ -946,11 +946,10 @@ export async function prepareDataset(
     linkageKeysFollowInputHeader && loadedDataSpec.linkageTerms !== undefined
       ? {
           ...loadedDataSpec,
-          linkageTerms: linkageTermsNarrowedToInput(
+          linkageTerms: linkageTermsAtInputHeader(
             loadedDataSpec.linkageTerms,
+            { ...loadedDataSpec, linkageKeysFollowInputHeader },
             columns,
-            loadedDataSpec.standardization,
-            loadedDataSpec.metadata,
           ),
         }
       : loadedDataSpec;

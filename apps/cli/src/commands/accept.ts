@@ -31,6 +31,9 @@ import {
   configWithNamedRuleSetRules,
   csvDelimiterForRun,
   describeConfigSchemaError,
+  keysFollowUnreadInputHeaderRefusal,
+  linkageTermsAtInputHeader,
+  namedRuleSetKeysFollowInputHeader,
   persistExpectedPartnerDeduplicate,
   persistInvitationRelay,
   reconcileConflictError,
@@ -452,7 +455,7 @@ export async function validateAccept(params: {
   const myIdentity =
     keptConfig !== undefined
       ? keptConfigurationIdentity({
-          configured: keptConfig.linkageTerms.identity,
+          configured: keptConfig.spec.linkageTerms.identity,
           supplied: options.identity,
           configPath: options.configFile,
           // The same sink resolution the terms display below takes, on the same
@@ -474,7 +477,7 @@ export async function validateAccept(params: {
   // rather than the consent surface -- the delimiter is a local file-format
   // choice, not a term this acceptance agrees to.
   const csvDelimiter = csvDelimiterForRun({
-    configured: keptConfig?.csvDelimiter,
+    configured: keptConfig?.spec.csvDelimiter,
     supplied: csvDelimiterArg,
     configPath: options.configFile,
     warn: (message) => log.warn(message),
@@ -542,6 +545,23 @@ export async function validateAccept(params: {
       connection.options?.pollIntervalMs,
       log,
     );
+    // accept reads its y/N confirmation from stdin (promptConfirmOrClosed), so
+    // it cannot also take the CSV there -- unless `--consent-to-terms` skips
+    // that prompt, which frees stdin for the CSV. Gate `-` on it: rejected when
+    // the prompt would run, allowed when it is bypassed (see the consentToTerms
+    // doc above).
+    const readInput = () =>
+      loadInputRows(input, {
+        allowStdin: consentToTerms,
+        csvDelimiter,
+        allowMemoryShortfall: options.allowMemoryShortfall,
+      });
+    // A kept config whose keys follow its input's header is compared on the
+    // keys that header supplies, so its input is read first.
+    const keptConfigRows =
+      keptConfig?.linkageKeysFollowInputHeader === true
+        ? await readInput()
+        : undefined;
     // Reconcile a pre-existing config against the invitation AND the connection
     // the exchange will actually use (the built `connection`, now possibly
     // endpoint-influenced) before the input is read and before any network
@@ -549,21 +569,16 @@ export async function validateAccept(params: {
     // is ever sent to the inviter.
     const { reuse: reuseExistingConfig } = reconcileAcceptConfig({
       configPath: options.configFile,
-      existing: keptConfig,
+      existing: keptConfigAtInputHeader(
+        keptConfig,
+        keptConfigRows?.columns,
+        options.configFile,
+      ),
       myTerms,
       target: connection,
       log,
     });
-    // accept reads its y/N confirmation from stdin (promptConfirmOrClosed), so
-    // it cannot also take the CSV there -- unless `--consent-to-terms` skips
-    // that prompt, which frees stdin for the CSV. Gate `-` on it: rejected when
-    // the prompt would run, allowed when it is bypassed (see the consentToTerms
-    // doc above).
-    const rows = await loadInputRows(input, {
-      allowStdin: consentToTerms,
-      csvDelimiter,
-      allowMemoryShortfall: options.allowMemoryShortfall,
-    });
+    const rows = keptConfigRows ?? (await readInput());
     checkLinkageSatisfiability(
       rows.columns,
       myTerms,
@@ -625,9 +640,28 @@ export async function validateAccept(params: {
     { ...options, serverProvision: undefined },
     log,
   );
+  // `-` is gated on `--consent-to-terms` here exactly as on the online path
+  // above: stdin serves the confirmation prompt unless the flag skips it, freeing
+  // it for the CSV.
+  const readInput = async () =>
+    resolved.input !== undefined
+      ? await loadInputRows(resolved.input, {
+          allowStdin: consentToTerms,
+          csvDelimiter,
+          allowMemoryShortfall: options.allowMemoryShortfall,
+        })
+      : undefined;
+  // As online, a kept config whose keys follow its input's header has its
+  // input read ahead of the reconciliation.
+  const keysFollowHeader = keptConfig?.linkageKeysFollowInputHeader === true;
+  const keptConfigRows = keysFollowHeader ? await readInput() : undefined;
   const { reuse: reuseExistingConfig } = reconcileAcceptConfig({
     configPath: options.configFile,
-    existing: keptConfig,
+    existing: keptConfigAtInputHeader(
+      keptConfig,
+      keptConfigRows?.columns,
+      options.configFile,
+    ),
     myTerms,
     log,
   });
@@ -638,17 +672,7 @@ export async function validateAccept(params: {
     endpointConnection,
     "acceptor",
   );
-  // `-` is gated on `--consent-to-terms` here exactly as on the online path
-  // above: stdin serves the confirmation prompt unless the flag skips it, freeing
-  // it for the CSV.
-  const rows =
-    resolved.input !== undefined
-      ? await loadInputRows(resolved.input, {
-          allowStdin: consentToTerms,
-          csvDelimiter,
-          allowMemoryShortfall: options.allowMemoryShortfall,
-        })
-      : undefined;
+  const rows = keysFollowHeader ? keptConfigRows : await readInput();
   // The connection this acceptance can run the exchange on itself, rather than
   // writing a configuration for a later `alcove exchange`: only a webrtc
   // connection is self-contained (the invitation's endpoint is the coordination
@@ -858,6 +882,45 @@ function reconciliationSources(comparesConnectionUrl: boolean): {
     : { against: "the invitation", retryWith: "the same invitation" };
 }
 
+/**
+ * The configuration already at the acceptance's path, as
+ * {@link readExistingAcceptConfig} read it: the parsed spec, and whether its
+ * keys follow its input file's header (`namedRuleSetKeysFollowInputHeader`).
+ */
+type KeptAcceptConfig = {
+  spec: ExchangeSpec;
+  linkageKeysFollowInputHeader: boolean;
+};
+
+/**
+ * The kept configuration's spec with the terms its exchange runs over the
+ * input whose header is `columns` (`linkageTermsAtInputHeader`), for comparing
+ * against the invitation. Where its keys follow that header and this
+ * acceptance has no input file, refused: the keys cannot be derived.
+ */
+function keptConfigAtInputHeader(
+  kept: KeptAcceptConfig | undefined,
+  columns: string[] | undefined,
+  configPath: string,
+): ExchangeSpec | undefined {
+  if (kept === undefined) return undefined;
+  if (!kept.linkageKeysFollowInputHeader) return kept.spec;
+  if (columns === undefined)
+    throw keysFollowUnreadInputHeaderRefusal(
+      configPath,
+      "alcove accept",
+      "Pass your input file as INPUT_FILE",
+    );
+  return {
+    ...kept.spec,
+    linkageTerms: linkageTermsAtInputHeader(
+      kept.spec.linkageTerms,
+      { ...kept.spec, linkageKeysFollowInputHeader: true },
+      columns,
+    ),
+  };
+}
+
 /** What both {@link readExistingAcceptConfig} refusals state ahead of the path. */
 const EXISTING_CONFIG_PREAMBLE = "a configuration file already exists at ";
 
@@ -888,7 +951,7 @@ const RECONCILE_RETRY_REMEDY =
 function readExistingAcceptConfig(
   configPath: string,
   sources: { against: string; retryWith: string },
-): ExchangeSpec | undefined {
+): KeptAcceptConfig | undefined {
   if (detectFileConflicts([configPath]).length === 0) return undefined;
   const { against, retryWith } = sources;
   let source: string;
@@ -925,7 +988,10 @@ function readExistingAcceptConfig(
   // than a document that could not be parsed.
   const namedRuleSetConfig = configWithNamedRuleSetRules(parsed, configPath);
   try {
-    return parseExchangeSpec(namedRuleSetConfig);
+    return {
+      spec: parseExchangeSpec(namedRuleSetConfig),
+      linkageKeysFollowInputHeader: namedRuleSetKeysFollowInputHeader(parsed),
+    };
   } catch (err) {
     const message = messageWithOperatorText`${EXISTING_CONFIG_PREAMBLE}${operatorSuppliedText(
       configPath,

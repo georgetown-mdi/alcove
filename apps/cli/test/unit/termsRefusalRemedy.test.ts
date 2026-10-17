@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { getDefaultLinkageTerms, inferMetadata } from "@alcove/core";
 import { createMessagePipe, exchangeTerms } from "@alcove/core/testing";
-import type { LinkageTerms } from "@alcove/core";
+import type { LinkageTerms, Metadata } from "@alcove/core";
 
 import { buildErrorEvent } from "../../src/eventStream";
 import {
@@ -141,28 +141,91 @@ describe("the next step beneath a terms refusal", () => {
     expect(rendered).not.toContain(PARTNER_REFUSED_NEXT_STEP);
   });
 
-  test("a quick exchange names this party's own phone, email and ZIP columns", async () => {
-    const metadata = inferMetadata(
-      ["ssn", "first_name", "last_name", "dob", "ZIP Code", "phone"],
-      [],
+  type QuickExchangeSide = {
+    err: Error;
+    metadata: Metadata;
+    terms: LinkageTerms;
+  };
+
+  const quickExchangeTerms = (
+    columns: string[],
+  ): { metadata: Metadata; terms: LinkageTerms } => {
+    const metadata = inferMetadata(columns, []);
+    return { metadata, terms: getDefaultLinkageTerms(undefined, metadata) };
+  };
+
+  /** Each party's refusal of a quick exchange between the two headers. */
+  async function quickExchangeRefusals(
+    initiatorColumns: string[],
+    responderColumns: string[],
+    responderStrategy?: LinkageTerms["linkageStrategy"],
+  ): Promise<[QuickExchangeSide, QuickExchangeSide]> {
+    const initiatorSide = quickExchangeTerms(initiatorColumns);
+    const responderSide = quickExchangeTerms(responderColumns);
+    if (responderStrategy !== undefined)
+      responderSide.terms = {
+        ...responderSide.terms,
+        linkageStrategy: responderStrategy,
+      };
+    const [initiatorConn, responderConn] = createMessagePipe();
+    const [initiator, responder] = await Promise.allSettled([
+      exchangeTerms(initiatorConn, "initiator", initiatorSide.terms, 1),
+      exchangeTerms(responderConn, "responder", responderSide.terms, 1),
+    ]);
+    if (initiator.status !== "rejected" || responder.status !== "rejected")
+      throw new Error("expected both parties to refuse");
+    return [
+      { err: initiator.reason as Error, ...initiatorSide },
+      { err: responder.reason as Error, ...responderSide },
+    ];
+  }
+
+  const marked = (side: QuickExchangeSide): string =>
+    renderFailureForOperator(
+      markQuickExchangeContactColumns(
+        markTermsRefusalRun(side.err, "quick-exchange"),
+        side.metadata,
+        side.terms,
+      ),
     );
-    const ownTerms = getDefaultLinkageTerms(undefined, metadata);
-    const { refused, partner } = await bothRefusals();
-    for (const err of [refused, partner]) {
-      const marked = markQuickExchangeContactColumns(
-        markTermsRefusalRun(err, "quick-exchange"),
-        metadata,
-        ownTerms,
+
+  test("a ZIP key only one party's terms hold names that party's ZIP column", async () => {
+    const shared = ["ssn", "first_name", "last_name", "dob", "phone"];
+    for (const zipOnInitiator of [true, false]) {
+      const withZip = [...shared, "ZIP Code"];
+      const [initiator, responder] = await quickExchangeRefusals(
+        zipOnInitiator ? withZip : shared,
+        zipOnInitiator ? shared : withZip,
       );
-      expect(renderFailureForOperator(marked).split("\n").slice(-2)).toEqual([
+      const [hasZip, lacksZip] = zipOnInitiator
+        ? [initiator, responder]
+        : [responder, initiator];
+      expect(marked(hasZip).split("\n").slice(-2)).toEqual([
         QUICK,
-        `Your file's columns "ZIP Code" (ZIP code) and "phone" ` +
-          "(phone number) are matched on. Where your partner's file has no " +
-          "such column, remove that column from your file and run again, or " +
-          "agree the terms through an invitation (alcove invite, then alcove " +
-          "accept).",
+        `Your file's column "ZIP Code" (ZIP code) is matched on. Where your ` +
+          "partner's file has no such column, remove it from your file and " +
+          "run again, or agree the terms through an invitation (alcove " +
+          "invite, then alcove accept).",
       ]);
+      expect(marked(lacksZip).endsWith(`\n${QUICK}`)).toBe(true);
     }
+  });
+
+  test("a quick exchange refused on its linkage strategy adds no column line", async () => {
+    const columns = [
+      "ssn",
+      "first_name",
+      "last_name",
+      "dob",
+      "ZIP Code",
+      "phone",
+    ];
+    for (const side of await quickExchangeRefusals(
+      columns,
+      columns,
+      "single-pass",
+    ))
+      expect(marked(side).endsWith(`\n${QUICK}`)).toBe(true);
   });
 
   test("a quick exchange over no contact column adds no line", async () => {

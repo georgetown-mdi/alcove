@@ -451,6 +451,7 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
+  termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "./protocolSetup";
 export type { TermsChange, TermsDifferenceRefusedBy } from "./protocolSetup";

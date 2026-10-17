@@ -1086,6 +1086,8 @@ Two parties whose linkage terms differ meet the difference at the terms exchange
 
 The step names no partner value.
 
+**Built-in rules narrowed per party.** Terms that take their keys from the built-in rules hold the keys a precision floor selects that the party's own input supplies, so each party narrows its own before the two are compared. Where an input supplies none of the selected keys, the terms are left whole, and the exchange refuses before it starts. Two files where only one has a phone, email or ZIP column cannot run on the built-in rules: their terms differ, and the exchange refuses at the terms exchange, before any linkage key is sent. Such a pair agrees its terms through an invitation instead, and both parties run the terms the invitation holds. On either party's refusal, where that party holds both terms documents, core records the names of its own keys its partner does not declare alike (`termsDifferenceLocalKeys`, `packages/core/src/protocolSetup.ts`), and where one of those keys reads a phone, email or ZIP column, the CLI names that column beneath a quick exchange's step.
+
 **Taking a change on.** Where the caller of `exchangeTerms` supplies `onTermsChange` (`TermsChangeOptions`, `packages/core/src/protocolSetup.ts`), a refusable delta is offered there before the party sends its decision, so before any linkage key or payload moves. The two seats differ:
 
 1. The **responder**, at message 1, may take on the whole of the initiator's terms: every agreed field the initiator's, `output` and `payload` mirrored, and its own `identity` and `deduplicate` kept (`termsAdoptingPartnerTerms`), then its `payload.send` stated from its own metadata. It sends the terms it took on as its message 2, so the initiator's comparison sees them agree.

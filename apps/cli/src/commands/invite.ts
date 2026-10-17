@@ -46,7 +46,8 @@ import type {
 
 import {
   csvDelimiterForRun,
-  linkageTermsNarrowedToInput,
+  keysFollowUnreadInputHeaderRefusal,
+  linkageTermsAtInputHeader,
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
@@ -965,13 +966,11 @@ export async function validateInvite(params: {
       // block, narrows them as the exchange will. Said ahead of the check below,
       // so a user who passed an input expecting it to define the terms reads the
       // refusal it can raise against the right source.
-      if (configSource.linkageKeysFollowInputHeader === true)
-        configTerms = linkageTermsNarrowedToInput(
-          configTerms,
-          rows.columns,
-          configSource.standardization,
-          configSource.metadata,
-        );
+      configTerms = linkageTermsAtInputHeader(
+        configTerms,
+        configSource,
+        rows.columns,
+      );
       log.info(
         `a configuration file at ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(options.configFile),
@@ -1004,6 +1003,12 @@ export async function validateInvite(params: {
         configSource.metadata,
       );
     } else {
+      if (configSource.linkageKeysFollowInputHeader === true)
+        throw keysFollowUnreadInputHeaderRefusal(
+          options.configFile,
+          "alcove invite",
+          "Pass your input file as INPUT_FILE",
+        );
       log.info(
         `a configuration file at ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(options.configFile),

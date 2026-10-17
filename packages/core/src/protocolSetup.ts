@@ -11,6 +11,7 @@ import {
 import {
   adoptableWithoutPreparing,
   compareTerms,
+  localLinkageKeysDifferingFrom,
   partnerRefusalDifferences,
   refusedTermKinds,
   TERMS_DIFFERENCE_KINDS,
@@ -372,9 +373,12 @@ const partnerAbortError = (
     message,
     cause === undefined ? undefined : { cause },
   );
-  return reasons.differingTerms.length === 0 && !reasons.changeNotAccepted
-    ? error
-    : markTermsDifferenceRefusal(error, "partner");
+  if (reasons.differingTerms.length === 0 && !reasons.changeNotAccepted)
+    return error;
+  markTermsDifferenceRefusal(error, "partner");
+  if (partnerTerms !== undefined)
+    markDifferingLocalKeys(error, presented, partnerTerms);
+  return error;
 };
 
 /**
@@ -406,6 +410,35 @@ export function termsDifferenceRefusedBy(
   error: unknown,
 ): TermsDifferenceRefusedBy | undefined {
   return annotationOf(error, TERMS_DIFFERENCE_REFUSED_BY);
+}
+
+const TERMS_DIFFERENCE_LOCAL_KEYS = annotationKey<ReadonlyArray<string>>(
+  "terms difference local keys",
+);
+
+function markDifferingLocalKeys<E extends object>(
+  error: E,
+  local: LinkageTerms,
+  partner: LinkageTerms,
+): E {
+  return annotate(
+    error,
+    TERMS_DIFFERENCE_LOCAL_KEYS,
+    localLinkageKeysDifferingFrom(local, partner),
+  );
+}
+
+/**
+ * The names of this party's own linkage keys its partner does not declare
+ * alike, recorded on a refusal over a difference in the linkage terms where
+ * this party held both terms documents, or `undefined` where it did not or
+ * `error` is no such refusal. Only this party's names are recorded, so an app
+ * can tie a refusal to its own columns without quoting the partner's terms.
+ */
+export function termsDifferenceLocalKeys(
+  error: unknown,
+): ReadonlyArray<string> | undefined {
+  return annotationOf(error, TERMS_DIFFERENCE_LOCAL_KEYS);
 }
 
 // --- Terms exchange ----------------------------------------------------------
@@ -728,12 +761,16 @@ async function settleTermsChange(params: {
       refusedTermKinds(comparison).map(termsDifferenceReason),
       abortTerms,
     );
-    throw markTermsDifferenceRefusal(
-      new TermsChangeRefusedError(
-        `linkage terms are incompatible: ${refusalsOf(comparison).join("; ")}`,
-        comparison.delta,
+    throw markDifferingLocalKeys(
+      markTermsDifferenceRefusal(
+        new TermsChangeRefusedError(
+          `linkage terms are incompatible: ${refusalsOf(comparison).join("; ")}`,
+          comparison.delta,
+        ),
+        "this-party",
       ),
-      "this-party",
+      localTerms,
+      partnerTerms,
     );
   };
   if (

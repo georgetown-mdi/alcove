@@ -61,6 +61,7 @@ import {
   readSignedRecordFile,
   readVerifiableArtifact,
   readVerificationKeysFile,
+  KEYS_FOLLOW_UNREAD_HEADER_WARNING,
   PARTNER_SEND_SET_UNKNOWN_WARNING,
   MAX_AGREED_TERMS_FILE_BYTES,
   RESULT_FROM_ANOTHER_RUN_HEADLINE,
@@ -1372,6 +1373,29 @@ describe("handler", () => {
     // The set was not looked up, so nothing reports on what this build ships.
     expect(stderr).not.toContain("ships");
     expect(stdout).toBe("");
+  });
+
+  test("a --config-file whose keys follow the input header says the hash needs the input", async () => {
+    const { recordPath } = await exchangeArtifacts();
+    const {
+      linkageFields: _fields,
+      linkageKeys: _keys,
+      linkageRuleSet: _ruleSet,
+      ...withoutRules
+    } = baseInputs.localTerms;
+    const { stderr } = await runVerify({
+      record: recordPath,
+      "log-level": "warn",
+      "config-file": writeYaml(
+        YAML.stringify({
+          linkage_terms: {
+            ...withoutRules,
+            linkage_rule_set: DEFAULT_LINKAGE_RULE_SET.reference,
+          },
+        }),
+      ),
+    });
+    expect(stderr).toContain(KEYS_FOLLOW_UNREAD_HEADER_WARNING);
   });
 
   test("a --partner-terms file citing a set this build lacks still verifies", async () => {

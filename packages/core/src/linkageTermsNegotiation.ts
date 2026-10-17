@@ -269,22 +269,22 @@ const linkageFieldsByName = (a: LinkageField, b: LinkageField): number =>
   a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
 /**
- * The clause naming how two lists of named terms entries -- linkage fields or
- * linkage keys -- differ, worded from this party's side: the names only it
- * declares, the names only its partner declares, then the names both declare
- * with different content, each list opened by `: ` and separated
- * by `; `. Empty where no name differs; for two lists holding the same entries
- * in a different order, it says so, which only the ordered keys can reach.
- *
- * An entry is compared by canonical form, the comparison that found the lists
- * unequal; one that cannot be encoded counts as differing, its encoding error
- * reported beside this clause.
+ * How two lists of named terms entries differ by name: the names only this
+ * party declares, the names only its partner declares, and the names both
+ * declare with different content, each in code-unit order. An entry is
+ * compared by canonical form; one that cannot be encoded counts as differing.
+ * A name repeated in one list is judged by its first entry.
  */
-function namedEntryDifferences(
+function namedEntryPartition(
   local: ReadonlyArray<{ readonly name: string }>,
   partner: ReadonlyArray<{ readonly name: string }>,
-  noun: CompatibilityMessageFragment,
-): CompatibilityMessageFragment {
+): {
+  onlyLocal: string[];
+  onlyPartner: string[];
+  differing: string[];
+  localNames: number;
+  partnerNames: number;
+} {
   const canonicalOrUndefined = (entry: unknown): string | undefined => {
     try {
       return canonicalString(entry);
@@ -322,6 +322,51 @@ function namedEntryDifferences(
       );
     })
     .sort(byCodeUnit);
+  return {
+    onlyLocal,
+    onlyPartner,
+    differing,
+    localNames: localByName.size,
+    partnerNames: partnerByName.size,
+  };
+}
+
+/**
+ * The names of this party's linkage keys that its partner does not declare
+ * alike: the keys only this party declares, and the keys both declare with
+ * different content. Empty where every one of this party's keys is among the
+ * partner's as written.
+ */
+export function localLinkageKeysDifferingFrom(
+  local: Pick<LinkageTerms, "linkageKeys">,
+  partner: Pick<LinkageTerms, "linkageKeys">,
+): string[] {
+  const { onlyLocal, differing } = namedEntryPartition(
+    local.linkageKeys,
+    partner.linkageKeys,
+  );
+  return [...onlyLocal, ...differing];
+}
+
+/**
+ * The clause naming how two lists of named terms entries -- linkage fields or
+ * linkage keys -- differ, worded from this party's side: the names only it
+ * declares, the names only its partner declares, then the names both declare
+ * with different content, each list opened by `: ` and separated
+ * by `; `. Empty where no name differs; for two lists holding the same entries
+ * in a different order, it says so, which only the ordered keys can reach.
+ *
+ * An entry is compared by canonical form, the comparison that found the lists
+ * unequal; one that cannot be encoded counts as differing, its encoding error
+ * reported beside this clause.
+ */
+function namedEntryDifferences(
+  local: ReadonlyArray<{ readonly name: string }>,
+  partner: ReadonlyArray<{ readonly name: string }>,
+  noun: CompatibilityMessageFragment,
+): CompatibilityMessageFragment {
+  const { onlyLocal, onlyPartner, differing, localNames, partnerNames } =
+    namedEntryPartition(local, partner);
   const clauses: CompatibilityMessageFragment[] = [];
   if (onlyLocal.length > 0)
     clauses.push(
@@ -338,8 +383,8 @@ function namedEntryDifferences(
   if (
     clauses.length === 0 &&
     local.length === partner.length &&
-    localByName.size === local.length &&
-    partnerByName.size === partner.length
+    localNames === local.length &&
+    partnerNames === partner.length
   )
     clauses.push(
       compatibilityMessage`you and your partner declare the same ${noun} in a different order`,

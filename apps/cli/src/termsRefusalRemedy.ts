@@ -12,6 +12,7 @@ import {
   annotationOf,
   redactAndSanitizeForDisplay,
   referencedLinkageFieldNames,
+  termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 import type {
@@ -110,17 +111,21 @@ const isContactType = (type: string): type is ContactType =>
   Object.hasOwn(CONTACT_TYPE_LABELS, type);
 
 /**
- * The line naming this party's own phone, email and ZIP columns that its
- * quick-exchange terms match on, each header escaped for display, or
- * `undefined` where the terms match on none.
+ * The line naming this party's own phone, email and ZIP columns that the keys
+ * named `differingKeys` of its quick-exchange terms match on, each header
+ * escaped for display, or `undefined` where those keys match on none.
  *
  * @internal exported for testing
  */
 export function quickExchangeContactColumnsLine(
   metadata: Metadata,
   terms: LinkageTerms,
+  differingKeys: ReadonlyArray<string>,
 ): string | undefined {
-  const referenced = referencedLinkageFieldNames(terms.linkageKeys);
+  const named = new Set(differingKeys);
+  const referenced = referencedLinkageFieldNames(
+    terms.linkageKeys.filter((key) => named.has(key.name)),
+  );
   const types = new Set(
     terms.linkageFields
       .filter((field) => referenced.has(field.name))
@@ -154,7 +159,8 @@ export function quickExchangeContactColumnsLine(
 /**
  * Record on `err`, a quick exchange's failure, the line naming this party's
  * own phone, email and ZIP columns ({@link quickExchangeContactColumnsLine}),
- * stated beneath a terms refusal. Any other error is returned unchanged.
+ * stated beneath a terms refusal whose differing keys include one over such a
+ * column (`termsDifferenceLocalKeys`). Any other error is returned unchanged.
  */
 export function markQuickExchangeContactColumns<E>(
   err: E,
@@ -167,7 +173,9 @@ export function markQuickExchangeContactColumns<E>(
     termsDifferenceRefusedBy(err) === undefined
   )
     return err;
-  const line = quickExchangeContactColumnsLine(metadata, terms);
+  const differingKeys = termsDifferenceLocalKeys(err);
+  if (differingKeys === undefined) return err;
+  const line = quickExchangeContactColumnsLine(metadata, terms, differingKeys);
   if (line !== undefined) annotate(err, QUICK_EXCHANGE_CONTACT_COLUMNS, line);
   return err;
 }

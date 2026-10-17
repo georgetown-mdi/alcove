@@ -56,6 +56,8 @@ export {
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
   configWithNamedRuleSetRules,
+  keysFollowUnreadInputHeaderRefusal,
+  linkageTermsAtInputHeader,
   linkageTermsNarrowedToInput,
   linkageTermsStandingOf,
   linkageTermsWithNamedRuleSetRules,
