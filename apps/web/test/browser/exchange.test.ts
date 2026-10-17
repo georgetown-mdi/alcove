@@ -596,7 +596,7 @@ describe("inviter screen", () => {
       .toBeLessThanOrEqual(400);
   });
 
-  test("reports a two-identifier file in the rail's Problems block", async () => {
+  test("a file with two identifier columns opens with the first as the record identifier", async () => {
     app.render(createElement(InviterScreen));
 
     await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
@@ -613,22 +613,15 @@ describe("inviter screen", () => {
     );
     await expect.element(page.getByText("twoids.csv")).toBeInTheDocument();
 
-    // The inferred two-identifier conflict is a rail problem from the moment
-    // the file is read, and its entry navigates into step 2 to fix it.
     await page
-      .getByRole("button", { name: "Choose a single record identifier" })
+      .getByRole("button", { name: "Continue to matching & sharing" })
       .click();
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Matching & sharing");
-
-    // The conflict's audible half: announced even though the seed mounted
-    // already in conflict.
     await expect
-      .element(page.getByText("Problem: choose a single record identifier."))
-      .toBeInTheDocument();
-
-    await page.getByLabelText(usedLabel("identifier")).selectOptions("ignored");
+      .element(page.getByLabelText(usedLabel("id")))
+      .toHaveValue("identifier");
     await expect
       .element(page.getByLabelText(usedLabel("identifier")))
       .toHaveValue("ignored");

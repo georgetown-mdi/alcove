@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
-import { createElement } from "react";
+import { createElement, useState } from "react";
 
 // Load Mantine's stylesheet so components render with their real
 // geometry: without it the Stepper's completed-step icon has no size
@@ -55,6 +55,8 @@ import styles from "@styles/app.module.css";
 // them.
 import { isolatedColumnName } from "@components/ColumnName";
 
+import { MetadataGrid } from "@components/MetadataGrid";
+
 import { applyDisclosure } from "@psi/metadataEditing";
 
 import { createAppMount } from "./renderApp";
@@ -71,6 +73,7 @@ import {
 import type {
   InvitationToken,
   LinkageTerms,
+  Metadata,
   PreparedExchange,
 } from "@alcove/core";
 import type { AcceptorColumnsState } from "@exchange/acceptorColumnsModel";
@@ -1101,29 +1104,11 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     ).toBe(region);
   });
 
-  test("a two-identifier file says which rule to resolve at the disabled button", async () => {
-    // A model-side gate with no transport in it: the keys are all satisfiable and
-    // the invitation accepts what is marked, so the identifier rule alone closes
-    // the launch -- and the button states its sentence rather than falling silent.
+  test("a file with two identifier columns opens with one identifier and the launch open", async () => {
+    // Inference makes the first identifier column the record identifier, so the
+    // single-identifier rule does not close the launch.
     await reachColumns("id,identifier,first_name,last_name\n1,2,Alice,Smith\n");
     const start = page.getByRole("button", { name: "Start the exchange" });
-    await expect.element(start).toBeDisabled();
-    const reasonId = start.element().getAttribute("aria-describedby");
-    expect(reasonId).toBeTruthy();
-    expect(document.getElementById(reasonId!)?.textContent).toBe(
-      "Choose a single record identifier column above before you can start.",
-    );
-
-    // Resolving it empties the region in place and re-opens the launch.
-    await userEvent.click(
-      page.getByRole("combobox", {
-        name: `Type for column ${isolatedColumnName("identifier")}`,
-        exact: true,
-      }),
-    );
-    await userEvent.click(
-      page.getByRole("option", { name: "Other (not used for matching)" }),
-    );
     await expect.element(start).toBeEnabled();
     expect(
       page.getByTestId("launch-blocked-reason").element().textContent,
@@ -1165,11 +1150,29 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
       .toBeInTheDocument();
   });
 
-  test("a two-identifier file ties the conflict error to the offending Type controls", async () => {
-    // `id` and `identifier` both infer to role: identifier, so the file seeds a
-    // single-identifier conflict the grid shows (inferMetadata seeds it; the
-    // mutators never create it).
-    await reachColumns("id,identifier,first_name,last_name\n1,2,Alice,Smith\n");
+  test("two identifier columns tie the conflict error to the offending Type controls", async () => {
+    // Inference promotes one identifier and the grid's edits demote the previous
+    // one, so the grid is mounted on metadata declaring both `id` and
+    // `identifier` as identifiers, as an authored metadata block can.
+    const twoIdentifiers = acceptorInitialColumnsState([
+      "id",
+      "identifier",
+      "first_name",
+      "last_name",
+    ]).metadata.map((column) =>
+      column.name === "identifier"
+        ? { ...column, role: "identifier" as const, isPayload: true }
+        : column,
+    );
+    function GridHarness({ initial }: { initial: Metadata }) {
+      const [metadata, setMetadata] = useState(initial);
+      return createElement(MetadataGrid, {
+        metadata,
+        onChange: setMetadata,
+        caption: "Your columns and how each is used",
+      });
+    }
+    app.render(createElement(GridHarness, { initial: twoIdentifiers }));
     const conflict = page.getByTestId("identifier-conflict");
     await expect.element(conflict).toBeInTheDocument();
     const errorId = conflict.element().getAttribute("id");

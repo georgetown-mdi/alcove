@@ -235,28 +235,46 @@ describe("the _id rule on the lookup key", () => {
       ]);
   });
 
-  test("two folded _id columns are both sent in direct mode, neither the identifier", () => {
+  test("two folded _id columns are both sent in direct mode, the first the identifier", () => {
     expect(
       inferMetadata(["Medicaid ID", "case-id"], [], { mode: "direct" }),
     ).toEqual([
       {
         name: "Medicaid ID",
         type: "identifier",
-        role: "payload",
+        role: "identifier",
         isPayload: true,
       },
       { name: "case-id", type: "identifier", role: "payload", isPayload: true },
     ]);
   });
 
-  test("a folded id is the identifier beside an _id column", () => {
+  test("a folded id is the identifier ahead of an _id column", () => {
     expect(inferMetadata([" ID ", "case_id"], [])).toEqual([
       { name: " ID ", type: "identifier", role: "identifier", isPayload: true },
     ]);
   });
 
-  test("a second identifier-typed header leaves no identifier among _id columns", () => {
+  test("a folded identifier header is the identifier when it comes first", () => {
+    expect(inferMetadata(["Record ID", "case_id", "ssn"], [])).toEqual([
+      {
+        name: "Record ID",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
+      { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    ]);
+  });
+
+  test("an _id column is the identifier ahead of a folded identifier header", () => {
     expect(inferMetadata(["case_id", "Record ID", "ssn"], [])).toEqual([
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
       { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
     ]);
   });

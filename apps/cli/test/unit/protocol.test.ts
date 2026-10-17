@@ -4422,14 +4422,16 @@ test("a missing output folder is created before the run's other local checks", a
 
 test("undeclared input columns are named on the log and the event stream before connecting", async () => {
   const notice = undeclaredColumnsNotice({
+    ...minimalPrepared,
     undeclaredColumns: ["notes", "amount"],
   });
   expect(notice).toBe(
     "2 input columns are not sent to your partner because the exchange's " +
       "column settings do not declare them: notes, amount. To send one, " +
       "declare it in the configuration's metadata block with is_payload: " +
-      "true; to leave one out without this notice, declare it with role: " +
-      "ignored.",
+      "true; to use one as your record identifier, declare it with role: " +
+      "identifier and is_payload: false, which keeps it from your partner; " +
+      "to leave one out without this notice, declare it with role: ignored.",
   );
   mockFd3Open();
   try {
@@ -4462,7 +4464,8 @@ test("undeclared input columns are named on the log and the event stream before 
 test("a key marker in an undeclared column name costs only that name on both sinks", async () => {
   const undeclaredColumns = ["-----BEGIN PRIVATE KEY-----", "notes"];
   const remedy = /declare it with role: ignored\.$/;
-  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+  const notice =
+    undeclaredColumnsNotice({ ...minimalPrepared, undeclaredColumns }) ?? "";
   expect(notice).toContain(": [redacted private key], notes. ");
   mockFd3Open();
   try {
@@ -4496,12 +4499,13 @@ test("a wide undeclared header is counted past the listed names and keeps the re
     { length: 300 },
     (_, i) => `column_${i}`,
   );
-  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+  const notice =
+    undeclaredColumnsNotice({ ...minimalPrepared, undeclaredColumns }) ?? "";
   expect(notice.length).toBeLessThan(WARNING_MESSAGE_MAX_DISPLAY_LENGTH);
   expect(notice).toContain("column_19, and 280 more. ");
   expect(notice).not.toContain("column_20");
   expect(notice).toMatch(
-    /To send one, declare it in the configuration's metadata block with is_payload: true; to leave one out without this notice, declare it with role: ignored\.$/,
+    /To send one, declare it in the configuration's metadata block with is_payload: true; to use one as your record identifier, declare it with role: identifier and is_payload: false, which keeps it from your partner; to leave one out without this notice, declare it with role: ignored\.$/,
   );
   mockFd3Open();
   try {
@@ -4526,9 +4530,65 @@ test("a wide undeclared header is counted past the listed names and keeps the re
   expect(warning.message).toBe(notice);
 });
 
+test("a run with an identifier is not told how to declare one", () => {
+  const notice = undeclaredColumnsNotice({
+    metadata: [
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
+    ],
+    undeclaredColumns: ["notes"],
+  });
+  expect(notice).toBe(
+    "1 input column is not sent to your partner because the exchange's " +
+      "column settings do not declare it: notes. To send one, declare it in " +
+      "the configuration's metadata block with is_payload: true; to leave " +
+      "one out without this notice, declare it with role: ignored.",
+  );
+});
+
+test("a run with an identifier names it, and how to use an undeclared id column instead", () => {
+  const metadata = [
+    {
+      name: "case_id",
+      type: "identifier" as const,
+      role: "identifier" as const,
+      isPayload: false,
+    },
+  ];
+  expect(
+    undeclaredColumnsNotice({
+      metadata,
+      undeclaredColumns: ["notes", "Record ID"],
+    }),
+  ).toBe(
+    "2 input columns are not sent to your partner because the exchange's " +
+      "column settings do not declare them: notes, Record ID. To send one, " +
+      "declare it in the configuration's metadata block with is_payload: " +
+      "true; to leave one out without this notice, declare it with role: " +
+      "ignored. case_id is your record identifier. To use Record ID as the " +
+      "record identifier instead, declare it with role: identifier and set " +
+      "case_id to role: ignored.",
+  );
+  const several = undeclaredColumnsNotice({
+    metadata,
+    undeclaredColumns: ["id", "a_id", "b_id", "c_id", "notes"],
+  });
+  expect(several).toContain(
+    "case_id is your record identifier. To use one of id, a_id, b_id, and 1 " +
+      "more as the record identifier instead, declare it with role: " +
+      "identifier and set case_id to role: ignored.",
+  );
+});
+
 test("a run with no undeclared input column names none", async () => {
-  expect(undeclaredColumnsNotice({ undeclaredColumns: [] })).toBeUndefined();
-  expect(undeclaredColumnsNotice({})).toBeUndefined();
+  expect(
+    undeclaredColumnsNotice({ metadata: [], undeclaredColumns: [] }),
+  ).toBeUndefined();
+  expect(undeclaredColumnsNotice({ metadata: [] })).toBeUndefined();
   await expect(runThroughWarnGate(null)).rejects.toThrow(
     "key file path is empty",
   );
@@ -4645,7 +4705,8 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
   // relative order: signing first (warnSigningWithoutRecord runs first in
   // preflightRun), undeclared columns second, both ahead of the refusal.
   const undeclaredColumns = ["notes"];
-  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+  const notice =
+    undeclaredColumnsNotice({ ...minimalPrepared, undeclaredColumns }) ?? "";
   mockFd3Open();
   try {
     await expect(
@@ -4932,7 +4993,8 @@ test(
     // pass must be the one that warns, and runProtocol's pass (fed
     // undeclaredColumnsWarned back) must not repeat it.
     const undeclaredColumns = ["notes"];
-    const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+    const notice =
+      undeclaredColumnsNotice({ ...minimalPrepared, undeclaredColumns }) ?? "";
     const prepared = { ...minimalPrepared, undeclaredColumns };
     const keyFileA = path.join(tmpDir, "a.key");
     const keyFileB = path.join(tmpDir, "b.key");

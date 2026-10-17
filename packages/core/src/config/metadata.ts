@@ -455,7 +455,8 @@ function assertColumnNamesNonEmpty(
  *
  * - `declaredOnly` -- an invited or recurring exchange, and the default:
  *   such a column is left out, so it is not declared and never sent, and an
- *   `_id` column is declared only as the sole identifier, unsent.
+ *   `_id` column is declared only as the identifier, unsent; an identifier-
+ *   typed column that is not the identifier is left out too.
  * - `direct` -- a run on an input file with no invitation or configuration:
  *   such a column is declared `role: payload` and sent, and every
  *   identifier-typed column (`id`, `identifier`, a name ending in `_id`) is
@@ -481,10 +482,9 @@ export interface InferMetadataOptions {
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
  * as payload and sent ({@link MetadataInferenceMode}).
  *
- * A single identifier-typed column gets `role: identifier`, used to index
- * observations. With more than one, only a column whose lookup key is `id` or
- * `identifier` gets that role; an `_id` column is left out under
- * `declaredOnly` and declared `role: payload` under `direct`.
+ * The first identifier-typed column in header order gets `role: identifier`,
+ * used to index observations, whatever its name. Every later one is left out
+ * under `declaredOnly` and declared `role: payload` under `direct`.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -517,8 +517,9 @@ export function inferMetadata(
 /**
  * {@link inferMetadata} with an entry for every column, in header order:
  * under the default `declaredOnly` mode a column that inference does not
- * recognize gets `role: ignored` and `isPayload: false` (`type: identifier`
- * for an `_id` name, `other` otherwise). For an editor that lists every input
+ * recognize, and every identifier-typed column but the identifier, gets
+ * `role: ignored` and `isPayload: false` (`type: identifier` for an
+ * identifier-typed name, `other` otherwise). For an editor that lists every input
  * column so the operator can declare one; a run resolves its metadata through
  * {@link inferMetadata}.
  *
@@ -546,19 +547,16 @@ export function inferMetadataForEveryColumn(
     return { name, type, role, isPayload };
   });
 
-  const numIdentifiers = result.filter(
+  const identifierIndex = result.findIndex(
     (column) => column.type === "identifier",
-  ).length;
-
-  if (numIdentifiers === 1) {
-    return result.map((column) =>
-      column.type === "identifier" ? { ...column, role: "identifier" } : column,
-    );
-  }
-
-  // id/identifier columns already have role: "identifier" via
-  // ALIAS_TYPE_META_MAP
-  return result;
+  );
+  return result.map((column, index): ColumnMetadata => {
+    if (column.type !== "identifier") return column;
+    if (index === identifierIndex) return { ...column, role: "identifier" };
+    return direct
+      ? { ...column, role: "payload", isPayload: true }
+      : { ...column, role: "ignored", isPayload: false };
+  });
 }
 
 /**
@@ -573,6 +571,22 @@ export function undeclaredColumnNames(
 ): Array<string> {
   const declared = new Set(metadata.map((column) => column.name));
   return columnNames.filter((name) => !declared.has(name));
+}
+
+/**
+ * The names among `columnNames`, in order, that infer `type: identifier`
+ * (`id`, `identifier`, or a name ending in `_id`). An empty name is skipped:
+ * inference refuses it, and a run's intake has refused it already.
+ */
+export function identifierTypedColumnNames(
+  columnNames: ReadonlyArray<string>,
+): Array<string> {
+  return inferMetadataForEveryColumn(
+    columnNames.filter((name) => name.length > 0),
+    [],
+  )
+    .filter((column) => column.type === "identifier")
+    .map((column) => column.name);
 }
 
 /** The most undeclared column names one notice lists; an arbitrary working value. */

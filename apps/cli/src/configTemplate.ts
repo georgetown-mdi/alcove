@@ -10,6 +10,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  identifierTypedColumnNames,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   POLL_INTERVAL_LINES,
@@ -424,8 +425,8 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # beside the values your partner sends, so you do not have to join the result
 # back to your input by hand. disclosed writes the columns you send to the
 # partner; all writes every column your metadata block declares, or, with no
-# metadata block, every column of your input file. Your identifier column is
-# left out either way -- the result's first column already holds it.
+# metadata block, every column of your input file. Your identifier column, if
+# you have one, is left out either way -- the result's first column holds it.
 # Purely local: nothing extra is sent, and your partner's result is unchanged.
 # Omit the field to write your partner's values alone.
 # include_own_columns: disclosed
@@ -490,20 +491,48 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 /**
  * The comment written after an inferred metadata block naming the input
  * columns it does not declare, each as a commented entry that sends the
- * column once uncommented.
+ * column once uncommented. `identifier` is the name of the block's
+ * `role: identifier` column, if it declares one: without one the comment names
+ * how to declare one, and with one it names how to use an identifier-typed
+ * undeclared column instead.
  */
 function undeclaredColumnsComment(
   undeclaredColumns: ReadonlyArray<string>,
+  identifier: string | undefined,
 ): string {
   const entries = undeclaredColumns.flatMap((name) =>
     YAML.stringify([{ name, type: "other", role: "payload", is_payload: true }])
       .trimEnd()
       .split("\n"),
   );
+  const otherIdentifiers =
+    identifier === undefined
+      ? []
+      : identifierTypedColumnNames(undeclaredColumns);
   return commentBlock([
     "Input columns not declared above, and so not sent to your partner.",
     "Uncomment an entry to send that column for matched records, or set its",
     "role to ignored to leave it out without a notice at each run.",
+    ...(identifier === undefined
+      ? [
+          "No column above is your record identifier. To use one of the",
+          "columns listed below as your record identifier, uncomment its entry",
+          "and set its role to identifier; set is_payload to false as well to",
+          "keep it from your partner.",
+        ]
+      : otherIdentifiers.length === 0
+        ? []
+        : [
+            `${identifier} above is your record identifier, the first id column`,
+            "in the file. To use " +
+              (otherIdentifiers.length > 1
+                ? `one of ${otherIdentifiers.join(", ")}`
+                : otherIdentifiers[0]!) +
+              " instead,",
+            "uncomment its entry, set its role to identifier (and is_payload to",
+            "false to keep it from your partner), and set the role of",
+            `${identifier} above to ignored.`,
+          ]),
     ...entries,
   ]);
 }
@@ -558,7 +587,10 @@ export function renderConfigTemplate(
     data.undeclaredColumns.length > 0 &&
     YAML.isSeq(metadataNode)
   )
-    metadataNode.comment = undeclaredColumnsComment(data.undeclaredColumns);
+    metadataNode.comment = undeclaredColumnsComment(
+      data.undeclaredColumns,
+      data.metadata?.find((column) => column.role === "identifier")?.name,
+    );
 
   const sections = [doc.toString().trimEnd()];
   // When no input file seeded metadata/standardization, document them (commented)

@@ -8,6 +8,7 @@ import {
   OWN_COLUMNS_LOCAL_NOTICE,
   OWN_COLUMNS_ORDER,
   ownColumnsEmptySelectionNotice,
+  ownColumnsLeadingColumnsNotice,
   ownColumnsPreview,
 } from "@psi/ownColumnsModel";
 
@@ -62,7 +63,7 @@ export function OwnColumnsChoiceField({
       <h2>Your own columns in the result</h2>
       <NativeSelect
         label="What your result file holds beside your partner's values"
-        description="Your result file already begins with your record identifier and your partner's row number."
+        description={ownColumnsLeadingColumnsNotice(metadata)}
         value={choice}
         data={OWN_COLUMNS_ORDER.map((option) => ({
           value: option,
@@ -94,7 +95,7 @@ export function OwnColumnsChoiceField({
           <div className={styles.stateInset}>
             <p className={styles.stateLabel}>No column left to add</p>
             <p className={styles.small} style={{ margin: 0 }}>
-              {ownColumnsEmptySelectionNotice(choice)}
+              {ownColumnsEmptySelectionNotice(choice, metadata)}
             </p>
           </div>
         ))}

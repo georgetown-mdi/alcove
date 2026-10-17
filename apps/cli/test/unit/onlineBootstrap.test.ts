@@ -3320,7 +3320,10 @@ describe("runOnlineBootstrap", () => {
     const configPath = path.join(dir, "alcove.yaml");
     const base = onlineBootstrapParams(configPath);
     const undeclaredColumns = ["notes"];
-    const notice = undeclaredColumnsNotice({ undeclaredColumns });
+    const notice = undeclaredColumnsNotice({
+      ...base.prepared,
+      undeclaredColumns,
+    });
     const connection: SFTPConnectionConfig = {
       channel: "sftp",
       server: { host: "sftp.example.org" },

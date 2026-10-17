@@ -59,8 +59,15 @@ describe("inference sends only what it recognizes", () => {
     expect(metadata.map((column) => column.name)).toEqual(["id"]);
   });
 
-  test("two _id columns are both left out", () => {
-    expect(inferMetadata(["case_id", "person_id"], [])).toEqual([]);
+  test("of two _id columns, the first is the identifier and the second is left out", () => {
+    expect(inferMetadata(["case_id", "person_id"], [])).toEqual([
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
+    ]);
   });
 
   test("a recognized alias keeps its mapped values", () => {
@@ -100,7 +107,7 @@ describe("inference sends only what it recognizes", () => {
 
 describe("the undeclared-column list", () => {
   test("names the input columns inferred metadata leaves out", () => {
-    const columns = ["first_name", "notes", "case_id", "id", "amount"];
+    const columns = ["first_name", "notes", "id", "case_id", "amount"];
     expect(undeclaredColumnNames(columns, inferMetadata(columns, []))).toEqual([
       "notes",
       "case_id",

@@ -232,7 +232,7 @@ function warnSigningWithoutRecord(params: {
  * `runProtocol` as `undeclaredColumnsWarned`.
  */
 export function warnUndeclaredColumns(params: {
-  prepared: Pick<PreparedExchange, "undeclaredColumns">;
+  prepared: Pick<PreparedExchange, "undeclaredColumns" | "metadata">;
   alreadyWarned: boolean;
   log: ReturnType<typeof getLogger>;
   emit: (fn: (e: EventStreamEmitter) => void) => void;

@@ -97,6 +97,20 @@ export function ownColumnsPreview(
   return ownResultColumnNames(metadata, choice, []);
 }
 
+function declaresIdentifier(metadata: Metadata): boolean {
+  return metadata.some((column) => column.role === "identifier");
+}
+
+/** What the control says the result file begins with whatever the choice: the
+ * record identifier when the metadata declares one, otherwise this party's own
+ * row number. */
+export function ownColumnsLeadingColumnsNotice(metadata: Metadata): string {
+  const leading = declaresIdentifier(metadata)
+    ? "your record identifier"
+    : "your own row number";
+  return `Your result file already begins with ${leading} and your partner's row number.`;
+}
+
 /** What the control says the setting does NOT do, stated at the control rather
  * than left to the reference: the operator is choosing beside a grid whose
  * every other row governs what the partner sees. */
@@ -120,14 +134,24 @@ export const OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE =
   "identifier already begins your result file; mark another column as sent " +
   "to keep it in your result file.";
 
+/** What the control says where `disclosed` resolves to no column and the
+ * metadata declares no record identifier: no column at all is marked as sent. */
+export const OWN_COLUMNS_EMPTY_DISCLOSED_NO_IDENTIFIER_NOTICE =
+  "No column is left to add: no column is marked as sent to your partner, so " +
+  "this choice adds nothing. Mark a column as sent to keep it in your result " +
+  "file.";
+
 /** The notice for a selection that resolves to no column, so the operator is
  * not left reading a chosen setting with nothing under it. Which one applies is
  * the selection's: a file with columns to spare still selects none under
- * `disclosed` when its disclosure choices mark none as sent. */
+ * `disclosed` when its disclosure choices mark none as sent. The `disclosed`
+ * notice names the record identifier only when the metadata declares one. */
 export function ownColumnsEmptySelectionNotice(
   selection: OwnColumnSelection,
+  metadata: Metadata,
 ): string {
-  return selection === "disclosed"
+  if (selection === "all") return OWN_COLUMNS_EMPTY_ALL_NOTICE;
+  return declaresIdentifier(metadata)
     ? OWN_COLUMNS_EMPTY_DISCLOSED_NOTICE
-    : OWN_COLUMNS_EMPTY_ALL_NOTICE;
+    : OWN_COLUMNS_EMPTY_DISCLOSED_NO_IDENTIFIER_NOTICE;
 }

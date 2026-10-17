@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
 
 import {
+  identifierTypedColumnNames,
   inferMetadata,
+  inferMetadataForEveryColumn,
   METADATA_NAME_SHAPE_MESSAGE,
   ALIAS_TYPE_META_MAP,
   ownResultColumnNames,
@@ -70,17 +72,65 @@ test("single _id column: promoted to identifier role", () => {
   expect(col.role).toBe("identifier");
 });
 
-test("multiple _id columns: no promotion, all left out of the inferred metadata", () => {
-  const result = inferMetadata(["client_id", "member_id"], []);
-  expect(result).toEqual([]);
+test("multiple _id columns: the first is the identifier, the rest left out", () => {
+  expect(inferMetadata(["client_id", "member_id"], [])).toEqual([
+    {
+      name: "client_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+  ]);
 });
 
-test("canonical id column alongside _id column: id keeps identifier role, _id is left out", () => {
-  const result = inferMetadata(["id", "client_id"], []);
-  const idCol = result.find((c) => c.name === "id");
-  const clientIdCol = result.find((c) => c.name === "client_id");
-  expect(idCol?.role).toBe("identifier");
-  expect(clientIdCol).toBeUndefined();
+test("canonical id column ahead of an _id column: id is the identifier, _id is left out", () => {
+  expect(inferMetadata(["id", "client_id"], [])).toEqual([
+    { name: "id", type: "identifier", role: "identifier", isPayload: true },
+  ]);
+});
+
+test("an _id column ahead of a canonical id column: the _id column is the identifier, id is left out", () => {
+  expect(inferMetadata(["client_id", "id"], [])).toEqual([
+    {
+      name: "client_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+  ]);
+});
+
+test("two canonical identifier columns: only the first is the identifier", () => {
+  expect(inferMetadata(["identifier", "id"], [])).toEqual([
+    {
+      name: "identifier",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+  ]);
+  expect(
+    inferMetadataForEveryColumn(["identifier", "id"], []).map((c) => c.role),
+  ).toEqual(["identifier", "ignored"]);
+});
+
+test("identifierTypedColumnNames lists the identifier-typed names in order and skips an empty one", () => {
+  expect(
+    identifierTypedColumnNames(["notes", "Record ID", "", "case_id", "ssn"]),
+  ).toEqual(["Record ID", "case_id"]);
+  expect(identifierTypedColumnNames([])).toEqual([]);
+});
+
+test("direct mode: a later identifier-typed column is sent as payload", () => {
+  expect(inferMetadata(["client_id", "id"], [], { mode: "direct" })).toEqual([
+    {
+      name: "client_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+    { name: "id", type: "identifier", role: "payload", isPayload: true },
+  ]);
 });
 
 // --- inferMetadata: name is preserved ----------------------------------------
