@@ -156,13 +156,15 @@ own false share, which grows with file size (reasoning).
   records. Across the range of `f` from a small file to a large one its
   precision runs from 99% to under 50% (computed), so it is not offered;
   rule 19, with the last four SSN digits, covers the error.
-- **A common error with a narrow tolerance passes.** Name swaps are about 1.75%
-  of true pairs (Just et al. 2016), and only records whose two names are each
-  plausible in the other slot are loosened (rule 32). Splitting compound names
+- **A common error with a narrow tolerance passes.** Splitting compound names
   added up to 9.1% of a statewide match's pairs (Barrat and Berliner 2013).
   With `k` taken as 0.3 (reasoning), that meets the 95% band wherever `f` is
-  under about 1.6%, and under about 0.7% if the gain is nearer 4% (rule 33,
-  computed).
+  under about 1.6% (rule 33, computed). Name swaps are about 1.75% of true
+  pairs (Just et al. 2016), but the shipped swap is not a narrow tolerance: the
+  receiving party sends both name orders for every record (rule 32). Placing
+  the swap under this heading assumed a narrower swap than ships, one loosening
+  only records whose two names are each plausible in the other slot; how much
+  the shipped swap multiplies rule 31's chance agreement is unmeasured.
 
 Two loosenings in one rule multiply their factors, while the true pairs they
 add are only those with both errors, the intersection of two small shares. So
@@ -632,8 +634,9 @@ the field's triad. None has a pass-mark.
 These gaps were searched for and not found:
 
 - **No per-position precision** for any published cascade.
-- **No precision for a five-digit ZIP rule, and none for an email rule on
-  program records.** The ZIP5 band is an extrapolation (rule 22), and the one
+- **No precision for a five-digit ZIP rule without sex that is not capped by
+  SSN labels, and none for an email rule on program records.** The ZIP5 band is
+  an extrapolation (rule 22), and the one
   email measurement is of researchers' institutional addresses (Kim et al.
   2019).
   UCLA's selected strata are the nearest figures from program-like records:

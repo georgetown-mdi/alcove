@@ -6,6 +6,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 
 _Status: proposed.
 The rules marked shipped are in the built-in key set today, described in [default-linkage-rule-set.md](default-linkage-rule-set.md), and this catalog gives them bands.
+Rules 22 and 23 ship only as guided opt-in keys, outside the built-in set.
 The other rules are not built, and an entry names the feature a rule needs where Alcove lacks one.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -121,7 +122,8 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Each entry says whether the rule is shipped (in the built-in key set today), new (not built, and needing no feature Alcove lacks), or needs a named feature:
+A rule marked opt-in ships today only as a guided opt-in key, outside the built-in key set, and the guided opt-in offers are to be retired when rules are selected by precision floor.
+Each entry says whether the rule is shipped (in the built-in key set today), opt-in, new (not built, and needing no feature Alcove lacks), or needs a named feature:
 
 - `adjacent_days`, a date one day either side: rule 18.
 - `street_number`, the number of a street address: rule 21.
@@ -322,9 +324,10 @@ Ansolabehere and Hersh (2016) report 97.5% for a voter-file match, but that is a
 
 #### 22. `LN + FN + DOB + ZIP5`
 
-99%. Any coverage. Extrapolation. New.
+99%. Any coverage. Extrapolation. Opt-in.
 
 Catches records with no SSN where the person's ZIP agrees.
+It ships today as the guided opt-in for a ZIP column, named `LN + FN + DOB + ZIP`, outside the built-in set; its default cleaning keeps the first five digits, so it is this rule, and it is to be retired as an opt-in with the others.
 It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
 The 99% is the maintainer's judgment on the following reasoning, not a measurement:
 
@@ -346,11 +349,13 @@ It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rul
 
 #### 23. `LN + FN + DOB + PHONE`
 
-99%. Any coverage. Relative: a subset of `LN + FN + PHONE`. New.
+99%. Any coverage. Relative: a subset of `LN + FN + PHONE`. Opt-in.
+
+It ships today as the guided opt-in for a phone column, outside the built-in set, and is to be retired as an opt-in with the others.
 
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0% at two sites, and this rule adds the date of birth, so its false pairs are a subset (reasoning).
 That measurement is one setting, its truth is mother-child relationships only, and its phone cleaning is not described.
-A gold standard of mother-child relationships drawn from EHR records can be incomplete: Rogerson et al. (2026), testing a maternal-child linkage against relationships taken from maternity encounters and EHR relationship tables, reviewed 200 randomly selected false positives and found 55% were true relationships the gold standard lacked, so the measured figure may understate precision; that source is new and not yet cited elsewhere.
+A gold standard of mother-child relationships drawn from EHR records can be incomplete: Rogerson et al. (2026), testing a maternal-child linkage against relationships taken from maternity encounters and EHR relationship tables, reviewed 200 randomly selected false positives and found 55% were true relationships the gold standard lacked, so the measured figure may understate precision.
 It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rule 31 drops as ambiguous within one party's file, mostly one person recorded twice (reasoning).
 
 #### 24. `FN + DOB + PHONE`
@@ -439,7 +444,7 @@ Within one state or county:
 - **Nechuta et al. (2020)**, in Tennessee, had no confirmed false positive among the reviewed pairs, with 344 unresolved pairs covering 161 of 4,572 decedents, so 96.5% to 100% with the unresolved pairs counted.
 - **Bian et al. (2019)**, in Florida, measured 99.3%.
 - **Trick et al. (2019)**, in Cook County, ran complete name + DOB first, and its six rules together had one confirmed false match among 190 adjudicable sampled matches (see rule 17).
-- **Mirel et al. (2022)** has a pattern-table row of 99.6% where name + sex + DOB and the state token agreed (79,757 true, 315 false; computed here).
+- **Mirel et al. (2022)** has a pattern-table row of 99.6% where name + sex + DOB and the state token agreed (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
   Each row counts the links on which exactly that set of tokens agreed, after each link was chosen for having the most SSN tokens, against an earlier NCHS linkage, so it is a stratum, not a rule's precision.
 - **Ocampo et al. (2016)** matched case records across the whole of DC, Maryland and Virginia on names + DOB + sex or race, confirmed by each jurisdiction's own check rather than reviewed truth.
   It is a data point for the name + date rules, not a precedent for the metropolitan-area condition.
@@ -470,7 +475,7 @@ linkja (MRAIA 2020) and Cook County use the same device.
 Catches one part of a compound last name dropped or the parts reversed.
 Barrat and Berliner (2013), matching California's foster-care records to its K-12 records, found two steps splitting names added 9.1% of the final matches (memorandum Table 4); the 9.1% is an upper bound, since the steps also cut compound first names.
 A review of 20 matches from each step found all 40 true, but the review was run while the steps were being refined, so the sample was not drawn blind.
-With the factor `k` by which splitting multiplies rule 31's chance agreement taken as 0.3 (reasoning), the 95% band is met where rule 31's own false share is under about 1.6% at that 9.1% gain, and under about 0.7% at a 4% gain (computed here, from the formula in [linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)).
+With the factor `k` by which splitting multiplies rule 31's chance agreement taken as 0.3 (reasoning), the 95% band is met where rule 31's own false share is under about 1.6% at that 9.1% gain (computed here, from the formula in [linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)).
 A hyphenated last name was a reason in 50 of the 200 sampled matches Cook County's rules missed, which Table 3 prints as 24% of the reasons listed; Cook County changed its name processing after the project to catch them (Trick et al. 2019).
 linkja's overview describes hashing each part of a compound surname, but the shipped code disables it (MRAIA 2020).
 
@@ -567,7 +572,7 @@ It needs a per-side missing-field condition, which Alcove lacks, and has no band
 ## Not offered
 
 These rules have no evidence placing them at 95% or above.
-An operator reaches them only by authoring them in the expert key editor.
+An operator reaches them by authoring them in the expert key editor, except `FN + EMAIL`, which is also offered as a guided opt-in.
 
 | Rule | Why it has no band |
 | --- | --- |
@@ -576,7 +581,7 @@ An operator reaches them only by authoring them in the expert key editor.
 | `FN3 + LN + DOB` and `FN1 + LN + DOB` without an SSN; `SDX(FN) + SDX(LN) + DOB` without an SSN, geography or a contact field | In Mirel et al. (2022), links on which only these tokens agreed were 53.8% (first initial and three-letter first name), 95.7% (first initial) and 81.4% (Soundex names) false. Cook County's one confirmed false match came from its three-letter first-name rule (Trick et al. 2019) |
 | `FN3 + LN + DOB` for uncommon names | Parked. A general tool cannot define a common name except relative to a particular population, so the name-frequency condition it needs is not built. Cook County's rule of this shape found 7,623 matches, the most of any rule (Trick et al. 2019) |
 | Any contact field alone, or with only a date | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)). Bernstam et al. (2022) measured a phone alone at 95.6%, and remark that infant twins share a birth date and phone |
-| `FN + EMAIL` | No source measures a first name with an email. The email rules offered (37 to 39) add a date or a surname |
+| `FN + EMAIL` | No source measures a first name with an email. The email rules offered (37 to 39) add a date or a surname. It ships today as the guided opt-in for an email column, outside any built-in set and with no precision evidence; the guided opt-in offers are to be retired when rules are selected by precision floor |
 
 ## Sources
 
