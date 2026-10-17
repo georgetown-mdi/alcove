@@ -60,7 +60,12 @@ import type { CSVRow } from "../../src/file";
 import type { AssociationTable } from "../../src/types";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
-import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
+import {
+  partFrame,
+  readPartFrame,
+  receiveHandPlayedRoundTable,
+  sendHandPlayedOriginalIndexList,
+} from "../utils/matchedListPartFrames";
 import {
   deviatingInbound,
   makeParticipant,
@@ -502,11 +507,11 @@ async function runNonConformingStarter(
   );
   await sendPsiSet(conn, await participant.processClientRequest(request));
 
-  const [joinerPositions, sortedRows] = (await conn.receive()) as [
-    Array<number>,
-    Array<number>,
-  ];
-  await conn.send(sortedRows.map((slot) => permutation[slot]));
+  const [joinerPositions, sortedRows] = await receiveHandPlayedRoundTable(conn);
+  await sendHandPlayedOriginalIndexList(
+    conn,
+    sortedRows.map((slot) => permutation[slot]),
+  );
   await conn.receive();
 
   // A party contributing its dataset verbatim has one round position per record,

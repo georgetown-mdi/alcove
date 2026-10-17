@@ -33,7 +33,8 @@ import {
   mirrorCardinality,
   type Column,
 } from "./candidateSetBounds";
-import { deviateListBody } from "./matchedListPartFrames";
+import { deviateListBody, roundFramesInbound } from "./matchedListPartFrames";
+import { candidateSetIsImplementedForStrategy } from "../../src/linkageTermsPolicy";
 import { UNBOUNDED_PSI_ELEMENTS } from "./psiElementBounds";
 
 // --- PSI participants and the cascade ----------------------------------------
@@ -149,7 +150,12 @@ export async function runCascade(
   const connFor = (party: Party, conn: MessageConnection) => {
     const wrapped = options.wrap?.[party]?.(conn) ?? conn;
     return options.deviate?.party === party
-      ? deviatingInbound(wrapped, options.deviate.deviation)
+      ? roundFramesInbound(
+          wrapped,
+          party,
+          candidateSetIsImplementedForStrategy("cascade"),
+          options.deviate.deviation,
+        )
       : wrapped;
   };
   const reported: Partial<Record<Party, EntityClusterSummary>> = {};

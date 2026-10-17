@@ -13,6 +13,7 @@ import {
   type LocalRoundGrouping,
   type OrdinalPositions,
   type RoundCandidates,
+  type RoundGroupingBounds,
   type RoundGroupingField,
   type RoundOwnership,
 } from "./roundGrouping";
@@ -878,14 +879,22 @@ class RoundGrouping implements RoundGroupingExchange {
   private localGrouping: LocalRoundGrouping | undefined;
   private partnerOwnership: RoundOwnership | undefined;
   private partnerField: RoundGroupingField | undefined;
+  readonly partnerSizeBounds: RoundGroupingBounds;
 
   constructor(
-    private readonly participantId: string,
+    participantId: string,
     private readonly candidates: RoundCandidates,
     private readonly sides: MultiplicitySides,
-    private readonly maxPositionsPerRecord: number,
-    private readonly partnerRecordCount: number,
-  ) {}
+    maxPositionsPerRecord: number,
+    partnerRecordCount: number,
+  ) {
+    this.partnerSizeBounds = {
+      participantId,
+      maxPositionsPerRecord,
+      partnerRecordCount,
+      ownerLists: sides.partnerKeepsDuplicates,
+    };
+  }
 
   describe(
     matchedPositions: ReadonlyArray<number>,
@@ -903,12 +912,11 @@ class RoundGrouping implements RoundGroupingExchange {
     matchedPositions: ReadonlyArray<number>,
   ): void {
     this.partnerField = field;
-    this.partnerOwnership = readPartnerRoundGrouping(field, matchedPositions, {
-      participantId: this.participantId,
-      maxPositionsPerRecord: this.maxPositionsPerRecord,
-      partnerRecordCount: this.partnerRecordCount,
-      ownerLists: this.sides.partnerKeepsDuplicates,
-    });
+    this.partnerOwnership = readPartnerRoundGrouping(
+      field,
+      matchedPositions,
+      this.partnerSizeBounds,
+    );
   }
 
   // Whether this party holds the partner's exact partition of the round's

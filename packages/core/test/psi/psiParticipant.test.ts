@@ -5,10 +5,9 @@ import PSI from "@openmined/psi.js";
 import {
   PSIParticipant,
   associationTableMessage,
-  numberArrayMessage,
-  roundAssociationTableMessage,
-  roundOriginalIndexListMessage,
 } from "../../src/psi/participant";
+import { numberArrayMessage } from "../../src/psi/roundTableParts";
+import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   InternalConsistencyError,
@@ -118,7 +117,7 @@ test("a legitimately large association table parses", async () => {
   expect(second).toHaveLength(n);
 });
 
-// --- numberArrayMessage: direct-`.parse()` send-before-parse site -------------
+// --- the original-index list: the send-before-refusal site --------------------
 
 // Replaces the value the Nth receive() on `conn` resolves with, leaving the send
 // path and every other receive untouched. The real frame is still drained from
@@ -156,10 +155,21 @@ test("joiner: a pathological-count final frame fails cleanly, not with a bare Ra
   );
   // ~4M invalid (non-number) elements, past the ~3.3M `Invalid string length`
   // threshold the unbounded `z.array(z.number())` schema hit (a ~4.5s CPU burn
-  // then a bare RangeError). The joiner's 3rd receive is the final original-index
-  // frame parsed at the direct-`.parse()` site; replacing it drives the joiner to
-  // parse a pathological array while the real exchange otherwise proceeds.
-  const pathological = Array.from({ length: 4_000_000 }, () => "x");
+  // then a bare RangeError). The joiner's 3rd receive is the original-index
+  // list's one part; replacing it with a part whose header declares the one
+  // entry the joiner admits drives the joiner to parse a pathological body
+  // while the real exchange otherwise proceeds.
+  const body = new TextEncoder().encode(
+    JSON.stringify(Array.from({ length: 4_000_000 }, () => "x")),
+  );
+  const pathological = new Uint8Array(
+    MATCHED_LIST_PART_HEADER_BYTES + body.byteLength,
+  );
+  const header = new DataView(pathological.buffer);
+  header.setUint32(0, 0);
+  header.setUint32(4, 1);
+  header.setBigUint64(8, 1n);
+  pathological.set(body, MATCHED_LIST_PART_HEADER_BYTES);
   const [starterOutcome, joinerOutcome] = await Promise.allSettled([
     starter.identifyIntersection(serverConn, ["Alice", "Carol"]),
     joiner.identifyIntersection(
@@ -167,8 +177,8 @@ test("joiner: a pathological-count final frame fails cleanly, not with a bare Ra
       ["Carol"],
     ),
   ]);
-  // The joiner acknowledges (status:completed) before parsing, so the starter
-  // completes; only the joiner's direct parse rejects.
+  // The joiner acknowledges (status:completed) before refusing, so the starter
+  // completes; only the joiner's part parse rejects.
   expect(starterOutcome.status).toBe("fulfilled");
   expect(joinerOutcome.status).toBe("rejected");
   const err = (joinerOutcome as PromiseRejectedResult).reason;
@@ -177,9 +187,9 @@ test("joiner: a pathological-count final frame fails cleanly, not with a bare Ra
   expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
 });
 
-test("a legitimately large original-index frame parses", () => {
-  // The original-index list is bounded only by the frame cap, legitimately in
-  // the millions; 200k clears the overflow threshold, so a VALID large frame is
+test("a legitimately large original-index list part parses", () => {
+  // One part of the original-index list legitimately holds millions of
+  // entries; 200k clears the overflow threshold, so a VALID large part is
   // never rejected by the single-issue bound.
   const n = 200_000;
   const valid = Array.from({ length: n }, (_, i) => i);
@@ -675,62 +685,11 @@ test("cascade identifyIntersection (joiner) rejects a non-Raw server setup frame
   expect(refused?.message).not.toMatch(/failed to decode/);
 });
 
-// --- the round's grouped frames, and the frame that stays at two elements ------
-// The cascade round's two position-naming frames gained a grouping element.
-// associationTableMessage is ALSO single-pass's resolved-table frame, which the
-// spec keeps at two elements, so the round reads its own schemas rather than a
-// widened one.
+// --- single-pass's resolved-table frame stays at two elements -----------------
 
 test("single-pass's resolved-table frame rejects a third element", () => {
   expect(associationTableMessage.safeParse([[0], [0]]).success).toBe(true);
   expect(associationTableMessage.safeParse([[0], [0], [1]]).success).toBe(
     false,
   );
-});
-
-test("the round's association table admits the grouping and nothing past it", () => {
-  expect(roundAssociationTableMessage.safeParse([[0], [0]]).success).toBe(true);
-  expect(roundAssociationTableMessage.safeParse([[0], [0], [1]]).success).toBe(
-    true,
-  );
-  expect(
-    roundAssociationTableMessage.safeParse([[0], [0], [[0]]]).success,
-  ).toBe(true);
-  expect(
-    roundAssociationTableMessage.safeParse([[0], [0], [1], [1]]).success,
-  ).toBe(false);
-  expect(
-    roundAssociationTableMessage.safeParse([[0], [0], ["x"]]).success,
-  ).toBe(false);
-});
-
-test("the round's original-index list reads both the bare and the grouped form", () => {
-  expect(roundOriginalIndexListMessage.safeParse([0, 1, 2]).success).toBe(true);
-  expect(roundOriginalIndexListMessage.safeParse([]).success).toBe(true);
-  expect(roundOriginalIndexListMessage.safeParse([[0, 1], [2]]).success).toBe(
-    true,
-  );
-  expect(
-    roundOriginalIndexListMessage.safeParse([
-      [0, 1],
-      [[0], [0]],
-    ]).success,
-  ).toBe(true);
-  expect(
-    roundOriginalIndexListMessage.safeParse([[0, 1], [2], [3]]).success,
-  ).toBe(false);
-  expect(roundOriginalIndexListMessage.safeParse(["x"]).success).toBe(false);
-});
-
-test("a pathological-count grouping fails cleanly, not with a RangeError", async () => {
-  // The grouping is partner-controlled and rides the same frame the index
-  // lists do, so it takes the same single-issue validation: one issue however
-  // many invalid entries it holds.
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, roundAssociationTableMessage);
-  await connB.send([[], [], Array.from({ length: 300_000 }, () => "x")]);
-  const err = await parsed.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
 });

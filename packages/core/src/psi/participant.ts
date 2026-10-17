@@ -1,10 +1,7 @@
 import * as z from "zod";
 
 import type { AssociationTable, Config } from "../types";
-import {
-  parseOrProtocolError,
-  type MessageConnection,
-} from "../connection/messageConnection";
+import type { MessageConnection } from "../connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
   type PsiElementBounds,
@@ -21,6 +18,7 @@ import {
   assertPartnerIndexTable,
 } from "../utils/partnerIndices";
 import {
+  ConnectionError,
   InternalConsistencyError,
   PartnerProtocolRefusalError,
   RoundSetLimitError,
@@ -29,7 +27,6 @@ import { sendAbort } from "../protocolSetup";
 import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
   receiveAfterTerms,
-  throwIfPartnerAbort,
 } from "../partnerAbortFrame";
 import { decodePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
@@ -44,6 +41,13 @@ import {
   type PsiSetCapacity,
 } from "./psiSetParts";
 import type { RoundGroupingField } from "./roundGrouping";
+import {
+  receiveRoundGrouping,
+  receiveRoundIndexList,
+  sendRoundGrouping,
+  sendRoundIndexList,
+  type RoundGroupingSizeBounds,
+} from "./roundTableParts";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
@@ -53,30 +57,13 @@ const statusCompletedMessage = z.object({
   status: z.literal("completed"),
 });
 
-// A flat array of indices: the whole received message (the root) where a
-// round's original-index list arrives ungrouped, and the index element of
-// both grouped round frames below. At the root, with no enclosing
-// array/record/tuple frame, it cannot drive the ~130k STACK overflow
-// {@link associationTableMessage} faces -- but a far larger count (~millions
-// of invalid elements, within MAX_FRAME_SIZE_BYTES) makes Zod throw a
-// DIFFERENT RangeError ("Invalid string length", ~3.3M on Zod 4.5.4)
-// building its error string from one issue per element; nested it faces the
-// stack overflow as well. The single-issue validator caps issue accumulation
-// at one regardless of count and of framing (see utils/singleIssueArray.ts),
-// so a pathological-count frame fails as a clean bounded rejection either
-// way. A count `.max()` is not an option: the legitimate count is the
-// partner's original-index list, in the millions, bounded only by
-// MAX_FRAME_SIZE_BYTES. Number.isFinite mirrors `z.number()` exactly
-// (accepts every finite number, rejects NaN/Infinity and non-numbers). This
-// frame is read by a direct `.parse()` (send-before-parse, below), wrapped
-// via parseOrProtocolError so even a validator throw produces a clean
-// ConnectionError("protocol") rather than escaping bare.
-/** @internal */
-export const numberArrayMessage = singleIssueArray<number>(
-  Number.isFinite,
-  "must be an array of finite numbers",
-);
+const ASSOCIATION_TABLE_PARTNER_HALF = "round association table, partner half";
+const ASSOCIATION_TABLE_LOCAL_HALF = "round association table, local half";
+const ASSOCIATION_TABLE_GROUPING = "round association table grouping";
+const ORIGINAL_INDEX_LIST = "round original-index list";
+const ORIGINAL_INDEX_LIST_GROUPING = "round original-index list grouping";
 
+// Single-pass's resolved association table, one frame.
 // CONFIRMED-EXPOSED to Zod's issue-accumulation stack overflow: a partner can
 // send a tuple whose inner index array holds hundreds of thousands of invalid
 // (non-number) elements, and Zod overflows its call stack spreading one issue
@@ -99,50 +86,6 @@ export const associationTableMessage = z.tuple([
     Number.isFinite,
     "must be an array of finite numbers",
   ),
-]);
-
-// The grouping element the two position-naming frames of a cascade round
-// gained. It holds either run lengths or an owner list per matched position,
-// and which of the two a party is required to have sent follows the resolved
-// cardinality both parties hold, so the schema bounds the structure alone and
-// roundGrouping.ts decides the form. Validated in one `every` pass for the
-// reason every other linkage-frame array is (utils/singleIssueArray.ts): a
-// partner-controlled element count in the millions accumulates one issue
-// rather than one per entry. A nested entry is checked by the same predicate
-// and never recurses, so a deeply nested frame is one rejection too.
-const roundGroupingElement = singleIssueArray<number | Array<number>>(
-  (value) =>
-    Number.isFinite(value) ||
-    (Array.isArray(value) && value.every(Number.isFinite)),
-  "must be an array of finite numbers or of arrays of finite numbers",
-);
-
-// The cascade round's frame 4, the receiver's association table for the round.
-// Distinct from {@link associationTableMessage}, which is also single-pass's
-// resolved-table frame and stays at two elements: widening that one in place
-// would admit a grouping on a frame the spec keeps at two. A round whose
-// sender omits its grouping puts the two-element form on the wire, so a round
-// no producer widened states what the single-valued cascade states, pair for
-// pair once the table's pair order is canonicalized -- the library returns an
-// intersection in no fixed order (docs/spec/PROTOCOL.md, An absent grouping is
-// all ones).
-/** @internal exported for the round-frame schema tests. */
-export const roundAssociationTableMessage = z.tuple([
-  numberArrayMessage,
-  numberArrayMessage,
-  roundGroupingElement.optional(),
-]);
-
-// The cascade round's frame 5, the sender's original-index list, with its own
-// grouping beside it. The bare-array branch is the whole of what an ungrouped
-// round sends, so that round states what the single-valued cascade states,
-// entry for entry once the list's order is canonicalized; the two branches are
-// told apart by their first element's type, which no legitimate frame leaves
-// ambiguous.
-/** @internal exported for the round-frame schema tests. */
-export const roundOriginalIndexListMessage = z.union([
-  numberArrayMessage,
-  z.tuple([numberArrayMessage, roundGroupingElement]),
 ]);
 
 /**
@@ -172,6 +115,8 @@ export interface RoundGroupingExchange {
     field: RoundGroupingField | undefined,
     matchedPositions: ReadonlyArray<number>,
   ): void;
+  /** What the partner's grouping list is sized against as it arrives. */
+  readonly partnerSizeBounds: RoundGroupingSizeBounds;
 }
 
 const DEFAULT_VERBOSITY = 1;
@@ -916,20 +861,33 @@ export class PSIParticipant {
 
       await sendPsiSet(conn, serverResponse);
 
-      // The partner sends [theirIndices, ourIndices]; the swapped names
-      // restore our-first order. A third element is the partner's own grouping
-      // for the round, admitted only where the caller states one of its own:
-      // a round without a grouping neither sends nor accepts one.
-      const [partnerIndices, localIndices, partnerGrouping]: [
-        Array<number>,
-        Array<number>,
-        (RoundGroupingField | undefined)?,
-      ] = grouping
-        ? await receiveAfterTerms(conn, roundAssociationTableMessage)
-        : [
-            ...(await receiveAfterTerms(conn, associationTableMessage)),
-            undefined,
-          ];
+      // The partner sends its own half first, then ours, then its grouping
+      // where the caller states one of its own: a round without a grouping
+      // neither sends nor accepts one. Our half may not repeat a position, so
+      // the table holds at most one pair per element we encrypted.
+      const partnerIndices = await receiveRoundIndexList(
+        conn,
+        this.id,
+        ASSOCIATION_TABLE_PARTNER_HALF,
+        permutation.length,
+        this.elementBounds.request,
+      );
+      const localIndices = await receiveRoundIndexList(
+        conn,
+        this.id,
+        ASSOCIATION_TABLE_LOCAL_HALF,
+        partnerIndices.length,
+        permutation.length,
+      );
+      const partnerGrouping = grouping
+        ? await receiveRoundGrouping(
+            conn,
+            this.id,
+            ASSOCIATION_TABLE_GROUPING,
+            partnerIndices.length,
+            grouping.partnerSizeBounds,
+          )
+        : undefined;
       this.log.debug(`${this.id}: received association table`);
 
       // The round's matches, as computed by the partner: our half indexes the
@@ -964,11 +922,8 @@ export class PSIParticipant {
 
       this.log.debug(`${this.id}: sending my original indices`);
       const localGrouping = grouping?.describe(localIndices);
-      await conn.send(
-        localGrouping === undefined
-          ? localIndices
-          : [localIndices, localGrouping],
-      );
+      await sendRoundIndexList(conn, localIndices);
+      if (grouping) await sendRoundGrouping(conn, localGrouping);
 
       this.log.debug(`${this.id}: waiting for status completed`);
       await receiveAfterTerms(conn, statusCompletedMessage);
@@ -1008,33 +963,45 @@ export class PSIParticipant {
       );
 
       const localGrouping = grouping?.describe(localIndices);
-      await conn.send(
-        localGrouping === undefined
-          ? associationTable
-          : [associationTable[0], associationTable[1], localGrouping],
-      );
+      await sendRoundIndexList(conn, associationTable[0]);
+      await sendRoundIndexList(conn, associationTable[1]);
+      if (grouping) await sendRoundGrouping(conn, localGrouping);
 
-      // Send-before-parse: receive the partner's original indices, acknowledge
-      // with status:completed, then parse. Sending the acknowledgement before
-      // validating ensures a malformed final frame does not strand the partner.
-      const rawData = await conn.receive();
-      throwIfPartnerAbort(rawData);
-      this.log.debug(`${this.id}: receiving original server indices`);
+      // Send-before-refusal: a part of the partner's original-index list or
+      // grouping refused on its header or body is reported only after the
+      // acknowledgement, so a malformed list does not strand the partner.
+      // Each entry indexes the set the partner encrypted, bounded by
+      // authenticated session state.
+      let partnerIndices: Array<number> = [];
+      let partnerGrouping: RoundGroupingField | undefined;
+      let partRefusal: ConnectionError | undefined;
+      try {
+        partnerIndices = await receiveRoundIndexList(
+          conn,
+          this.id,
+          ORIGINAL_INDEX_LIST,
+          localIndices.length,
+          this.elementBounds.setup,
+        );
+        if (grouping)
+          partnerGrouping = await receiveRoundGrouping(
+            conn,
+            this.id,
+            ORIGINAL_INDEX_LIST_GROUPING,
+            partnerIndices.length,
+            grouping.partnerSizeBounds,
+          );
+      } catch (error) {
+        if (!(error instanceof ConnectionError) || error.kind !== "protocol")
+          throw error;
+        partRefusal = error;
+      }
+      this.log.debug(`${this.id}: received original server indices`);
 
       this.log.debug(`${this.id}: sending status completed`);
       await conn.send({ status: "completed" });
+      if (partRefusal !== undefined) throw partRefusal;
 
-      // The partner's own matched records, in its input order: one per pair we
-      // reported, each indexing the set it encrypted -- bounded by the element
-      // count its masked set may declare, which is authenticated session state.
-      // A two-element frame holds the partner's own grouping beside the list,
-      // read only where the caller resolves a candidate set.
-      const frame = grouping
-        ? parseOrProtocolError(roundOriginalIndexListMessage, rawData)
-        : parseOrProtocolError(numberArrayMessage, rawData);
-      const [partnerIndices, partnerGrouping] = Array.isArray(frame[0])
-        ? (frame as [Array<number>, RoundGroupingField])
-        : [frame as Array<number>, undefined];
       assertPartnerIndexCount(
         this.id,
         "the partner's original-index list",

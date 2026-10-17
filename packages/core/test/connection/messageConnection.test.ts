@@ -766,10 +766,10 @@ test("receiveParsed: a transport drop shows as transport, not protocol", async (
 });
 
 // --- parseOrProtocolError ----------------------------------------------------
-// The send-before-parse half of receiveParsed: the two direct `.parse()` sites
-// (participant.ts numberArrayMessage, link.ts associationAndIterationArray) must
-// receive a frame, acknowledge it, then parse, so they call this rather than
-// receiveParsed. It raises a parse failure as the same clean
+// The send-before-parse half of receiveParsed: the part parses of a round's
+// original-index list (roundTableParts.ts numberArrayMessage) and of the
+// returned list (link.ts associationAndIterationArray) report a refusal only
+// after this party's own send, so they call this rather than receiveParsed. It raises a parse failure as the same clean
 // ConnectionError("protocol") -- never the validator's raw throw escaping bare.
 
 test("parseOrProtocolError: returns the validated value on success", () => {

@@ -4,6 +4,14 @@
 // matched records is sent in parts").
 
 import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
+import {
+  receiveRoundGrouping,
+  receiveRoundIndexList,
+  sendRoundGrouping,
+  sendRoundIndexList,
+} from "../../src/psi/roundTableParts";
+
+import type { MessageConnection } from "../../src/connection/messageConnection";
 
 /** One part's header fields. */
 export interface PartHeader {
@@ -86,6 +94,122 @@ export function deviateListBody(
   const read = readPartFrame(frame);
   if (read === undefined || read.header.count !== 1) return deviate(frame);
   return partFrame(deviate(read.body));
+}
+
+/**
+ * `conn` with every inbound frame passed through `deviate` as
+ * {@link deviateListBody} does, except that a cascade round's position-naming
+ * lists -- the one-part lists arriving right after a PSI set part -- are read
+ * together and handed over as the one frame they make up: the association
+ * table `[partnerHalf, localHalf]` on the starter and the original-index list
+ * on the joiner, each with the sender's grouping beside it where one is
+ * present. What `deviate` returns is split back into the lists in the same
+ * reading.
+ *
+ * @param party - The role receiving: the starter reads the association table,
+ *   the joiner the original-index list.
+ * @param grouped - Whether the round sends a grouping list after its index
+ *   lists.
+ */
+export function roundFramesInbound(
+  conn: MessageConnection,
+  party: "starter" | "joiner",
+  grouped: boolean,
+  deviate: (frame: unknown) => unknown,
+): MessageConnection {
+  const queued: Array<unknown> = [];
+  let afterPsiSetPart = false;
+  const indexLists = party === "starter" ? 2 : 1;
+  const readOnePartBody = (frame: unknown): unknown => {
+    const read = readPartFrame(frame);
+    if (read === undefined || read.header.count !== 1)
+      throw new Error("roundFramesInbound reads one-part lists only");
+    return read.body;
+  };
+  const receive = async (timeoutMs?: number): Promise<unknown> => {
+    if (queued.length > 0) return queued.shift();
+    const frame = await conn.receive(timeoutMs);
+    const read = readPartFrame(frame);
+    if (frame instanceof Uint8Array && read === undefined) {
+      afterPsiSetPart = true;
+      return deviate(frame);
+    }
+    if (read === undefined || !afterPsiSetPart)
+      return deviateListBody(frame, deviate);
+    afterPsiSetPart = false;
+    const lists = [readOnePartBody(frame)];
+    for (let i = 1; i < indexLists + (grouped ? 1 : 0); i++)
+      lists.push(readOnePartBody(await conn.receive(timeoutMs)));
+    const grouping = grouped ? lists[indexLists] : null;
+    const indices = lists.slice(0, indexLists);
+    const whole =
+      party === "starter"
+        ? grouping === null
+          ? indices
+          : [...indices, grouping]
+        : grouping === null
+          ? indices[0]
+          : [indices[0], grouping];
+    const deviated = deviate(whole);
+    let bodies: Array<unknown>;
+    if (party === "starter") {
+      const table = deviated as Array<unknown>;
+      bodies = [table[0], table[1]];
+      if (grouped) bodies.push(table.length > 2 ? table[2] : null);
+    } else {
+      const twoPart =
+        Array.isArray(deviated) &&
+        deviated.length === 2 &&
+        Array.isArray(deviated[0]);
+      bodies = [twoPart ? deviated[0] : deviated];
+      if (grouped) bodies.push(twoPart ? deviated[1] : null);
+    }
+    for (const body of bodies) queued.push(partFrame(body));
+    return queued.shift();
+  };
+  return {
+    send: (data) => conn.send(data),
+    receive,
+    close: () => conn.close(),
+    setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
+  };
+}
+
+/**
+ * A cascade round's association table as a hand-played starter receives it,
+ * `[joinerPositions, starterSlots]`, its grouping list read and dropped.
+ */
+export async function receiveHandPlayedRoundTable(
+  conn: MessageConnection,
+): Promise<[Array<number>, Array<number>]> {
+  const read = () =>
+    receiveRoundIndexList(
+      conn,
+      "",
+      "association table",
+      Number.MAX_SAFE_INTEGER,
+      Number.POSITIVE_INFINITY,
+    );
+  const joinerPositions = await read();
+  const starterSlots = await read();
+  await receiveRoundGrouping(conn, "", "grouping", Number.MAX_SAFE_INTEGER, {
+    maxPositionsPerRecord: 2 ** 31,
+    partnerRecordCount: 2 ** 31,
+    ownerLists: true,
+  });
+  return [joinerPositions, starterSlots];
+}
+
+/**
+ * Sends a cascade round's original-index list as a hand-played starter does,
+ * its grouping omitted.
+ */
+export async function sendHandPlayedOriginalIndexList(
+  conn: MessageConnection,
+  list: ReadonlyArray<number>,
+): Promise<void> {
+  await sendRoundIndexList(conn, list);
+  await sendRoundGrouping(conn, undefined);
 }
 
 /**
