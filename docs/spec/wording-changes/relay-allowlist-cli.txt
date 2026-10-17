@@ -18,5 +18,5 @@
 # relay-only policy and otherwise continues with a warning, and the first url
 # kept is the one a run allocates on.
 - - -> A CLI run whose every TURN url the setting leaves out is refused before it contacts any host under `ice_transport_policy: relay` (`webRtcDialFrom` in `apps/cli/src/run/prepare.ts`).
-- - -> Under any other policy it continues without a relay, with a warning that names the setting.
+- - -> Under any other policy it continues without a relay, with a warning that names the setting; where the connection lists no `stun` url, the warning also names the built-in default STUN server (`WERIFT_BUILT_IN_STUN_URI`), which learns the host's public address.
 - - -> With the first TURN url left out by `allowed_relays`, a CLI run allocates on the first url the setting keeps, a host it does not contact with the setting unset.

@@ -511,8 +511,17 @@ test.each([
       leftOut,
     );
     expect(configuration).toEqual({});
-    expect(warnings).toEqual([relaysLeftOutWarning(leftOut)]);
+    expect(warnings).toEqual([relaysLeftOutWarning(leftOut, true)]);
     expect(warnings[0]).not.toBe(NO_ICE_SERVERS_WARNING);
+    expect(warnings[0]).not.toContain(NO_ICE_SERVERS_WARNING);
+    expect(warnings[0]).toContain(
+      `With no \`stun\` url listed, the built-in default (${WERIFT_BUILT_IN_STUN_URI}) ` +
+        "will be used to discover this host's public address. That address, " +
+        "and the fact of a session, are disclosed to that server; no " +
+        "exchange content is. Set `stun` on the connection to use your own " +
+        "server instead.",
+    );
+    expect(warnings[0]).not.toContain("(or `turn`)");
     expect(warnings[0]).toContain("connection.allowed_relays");
     for (const url of leftOut) expect(warnings[0]).toContain(url);
     expect(warnings[0]).toContain("continues without a relay");
@@ -527,9 +536,30 @@ test("the allowed_relays warning escapes the urls it lists", () => {
   );
 });
 
-test("a configured list warns nothing even when allowed_relays left urls out", () => {
+test("an emptied TURN list beside a stun url warns once, without the built-in default's disclosure", () => {
   const warnings: Array<string> = [];
   const iceServers = [{ urls: ["stun:stun.example:3478"] }];
+  const leftOut = ["turn:relay.example.org"];
+  expect(
+    buildPeerConfiguration(
+      iceServers,
+      undefined,
+      (m) => warnings.push(m),
+      leftOut,
+    ),
+  ).toEqual({ iceServers });
+  expect(warnings).toEqual([relaysLeftOutWarning(leftOut)]);
+  expect(warnings[0]).toContain("connection.allowed_relays");
+  expect(warnings[0]).not.toContain(WERIFT_BUILT_IN_STUN_URI);
+  expect(warnings[0]).not.toContain("public address");
+});
+
+test("a list that keeps a TURN url warns nothing though allowed_relays left another out", () => {
+  const warnings: Array<string> = [];
+  const iceServers = [
+    { urls: ["stun:stun.example:3478"] },
+    { urls: "turn:relay.example:3478", username: "u", credential: "c" },
+  ];
   expect(
     buildPeerConfiguration(iceServers, undefined, (m) => warnings.push(m), [
       "turn:relay.example.org",

@@ -214,28 +214,43 @@ export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
  */
 export const WERIFT_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
+/** What a run with no `stun` url discloses, shared by both warnings that give it. */
+const BUILT_IN_STUN_USE =
+  `the built-in default (${WERIFT_BUILT_IN_STUN_URI}) will be used to ` +
+  "discover this host's public address. That address, and the fact of a " +
+  "session, are disclosed to that server; no exchange content is.";
+
 /** The warning line emitted when no ICE servers are configured (see below). */
 export const NO_ICE_SERVERS_WARNING =
-  "no ICE servers are configured for this webrtc connection, so the built-in " +
-  `default (${WERIFT_BUILT_IN_STUN_URI}) will be used to discover this ` +
-  "host's public address. That address, and the fact of a session, are " +
-  "disclosed to that server; no exchange content is. Set `stun` (or `turn`) " +
+  `no ICE servers are configured for this webrtc connection, so ${BUILT_IN_STUN_USE} ` +
+  "Set `stun` (or `turn`) " +
   "on the connection to use your own server instead, or set a single " +
   "unreachable `stun` entry to gather host candidates only, which costs about " +
   "five seconds of gathering and works only where both parties share a network.";
 
+/** {@link NO_ICE_SERVERS_WARNING}'s disclosure, less its advice to set `turn`. */
+const BUILT_IN_STUN_DISCLOSURE =
+  `With no \`stun\` url listed, ${BUILT_IN_STUN_USE} ` +
+  "Set `stun` on the connection to use your own server instead.";
+
 /**
- * The warning line for a run whose TURN list `allowed_relays` emptied, in
- * place of {@link NO_ICE_SERVERS_WARNING}, whose advice to set `turn` the
- * operator already followed. Escaped by the caller, which holds the urls.
+ * The warning line for a run whose every TURN url `allowed_relays` left out,
+ * in place of {@link NO_ICE_SERVERS_WARNING} when the list is empty as well,
+ * whose advice to set `turn` the operator already followed. Where the list
+ * holds no `stun` url (`builtInStun`), werift uses its built-in default, so
+ * the warning gives that disclosure too. Escaped by the caller, which holds the
+ * urls.
  */
-export function relaysLeftOutWarning(leftOut: ReadonlyArray<string>): string {
-  return (
+export function relaysLeftOutWarning(
+  leftOut: ReadonlyArray<string>,
+  builtInStun = false,
+): string {
+  const warning =
     "connection.allowed_relays left out every TURN url this connection " +
     `lists (${redactAndSanitizeForDisplay(leftOut.join(", "))}), so the run ` +
     "continues without a relay. Add the host of a relay to " +
-    "connection.allowed_relays, or remove the setting."
-  );
+    "connection.allowed_relays, or remove the setting.";
+  return builtInStun ? `${warning} ${BUILT_IN_STUN_DISCLOSURE}` : warning;
 }
 
 /** The warning line emitted when the signaling socket is plaintext (see below). */
@@ -840,15 +855,18 @@ export function buildPeerConfiguration(
   relaysLeftOut: ReadonlyArray<string> = [],
 ): WeriftPeerConfiguration {
   const policy = iceTransportPolicy === undefined ? {} : { iceTransportPolicy };
-  if (iceServers === undefined || iceServers.length === 0) {
-    warn(
-      relaysLeftOut.length === 0
-        ? NO_ICE_SERVERS_WARNING
-        : relaysLeftOutWarning(relaysLeftOut),
-    );
-    return policy;
-  }
-  return { iceServers, ...policy };
+  const noServers = iceServers === undefined || iceServers.length === 0;
+  const relaysEmptied =
+    relaysLeftOut.length > 0 && !(iceServers ?? []).some(listsTurnUrl);
+  if (relaysEmptied) warn(relaysLeftOutWarning(relaysLeftOut, noServers));
+  else if (noServers) warn(NO_ICE_SERVERS_WARNING);
+  return noServers ? policy : { iceServers, ...policy };
+}
+
+/** Whether a server entry lists a `turn:` or `turns:` url. */
+function listsTurnUrl(server: RTCIceServer): boolean {
+  const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+  return urls.some((url) => /^turns?:/i.test(url));
 }
 
 /**
