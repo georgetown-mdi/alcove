@@ -92,11 +92,12 @@ function todayIso(now: Date): string {
  * element's `field` reference can be partner-controlled, so echoing it would
  * expose partner text in the UI -- the same reason {@link messageForField} and
  * core's referential-integrity refine locate the offender by issue path rather
- * than value. The operator identifies the key from its "no column for" badge
- * in the expert key editor instead. */
+ * than value. The message points at Expert authoring, whose "no column for"
+ * badge names the field beside the key. */
 const UNSUPPLYABLE_KEY_MESSAGE =
-  "A linkage key needs a field your columns cannot supply. Add a column of that " +
-  "type, or turn that key off.";
+  "A linkage key needs a field your columns cannot supply. Turn on Expert " +
+  "authoring to see which field each key has no column for, then add a " +
+  "column of that type or turn that key off.";
 
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
@@ -373,15 +374,15 @@ function firstParamNameRefusal(
  * unsatisfiable key takes precedence where both hold, since it is the shortfall
  * the operator's own columns determine.
  *
- * The dead case points at the badge rather than the key, the same reason
- * {@link UNSUPPLYABLE_KEY_MESSAGE} names no field: an imported document's key
- * names are partner-influenceable, and the expert key editor shows the badge.
+ * Both cases point at the expert key editor's badge rather than the key, the
+ * same reason {@link UNSUPPLYABLE_KEY_MESSAGE} names no field: an imported
+ * document's key names are partner-influenceable.
  */
 function shortfallRemedy(verdict: LinkageTermsVerdict): string {
   if (verdict.unsatisfiableKeys.length > 0)
     return (
-      "Turn off the keys your columns cannot produce, or map a column to " +
-      "every field they need."
+      'Turn on Expert authoring and map a column to the field each key marked "no ' +
+      'column for" names, or turn those keys off.'
     );
   return (
     "Turn on Expert authoring and review the cleaning on the keys marked " +
@@ -639,8 +640,8 @@ export function validateAdvancedInvite(
   // imported document. Its measured instance is a `substring` window that reads
   // nothing at any value length (an absent or zero bound); a present non-integer
   // bound is rejected earlier, at schema parse. Verified in
-  // advancedInviteValidation.test.ts,
-  // stepListEditor.test.ts, invitation.test.ts, and prepareForExchange.test.ts.
+  // advancedInviteValidation.test.ts, stepListEditor.test.ts, invitation.test.ts,
+  // and prepareForExchange.test.ts.
   if (
     !draft.standardization.every((transformation) =>
       (transformation.steps ?? []).every(isStepValid),

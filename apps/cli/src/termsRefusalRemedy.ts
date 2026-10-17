@@ -7,6 +7,7 @@
 // from its own input file.
 
 import {
+  CONTACT_AND_LOCATION_FIELD_TYPES,
   annotate,
   annotationKey,
   annotationOf,
@@ -98,17 +99,17 @@ const QUICK_EXCHANGE_CONTACT_COLUMNS = annotationKey<string>(
   "quick exchange contact columns",
 );
 
-/** What each contact or address type is called in the line naming a column. */
+type ContactType = (typeof CONTACT_AND_LOCATION_FIELD_TYPES)[number];
+
+/** What each contact or location type is called in the line naming a column. */
 const CONTACT_TYPE_LABELS: { readonly [T in ContactType]: string } = {
   phone_number: "phone number",
   email_address: "email address",
   zip_code: "ZIP code",
 };
 
-type ContactType = "phone_number" | "email_address" | "zip_code";
-
 const isContactType = (type: string): type is ContactType =>
-  Object.hasOwn(CONTACT_TYPE_LABELS, type);
+  (CONTACT_AND_LOCATION_FIELD_TYPES as ReadonlyArray<string>).includes(type);
 
 /**
  * The line naming this party's own phone, email and ZIP columns that the keys

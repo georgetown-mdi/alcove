@@ -66,10 +66,7 @@ function keyVerdictBadge(verdict: KeyVerdict): {
         ariaLabel: "Your file supplies every field this key uses",
       };
     case "unsatisfiable": {
-      const field =
-        verdict.missingField === undefined
-          ? "a field"
-          : sanitizeForDisplay(verdict.missingField);
+      const field = sanitizeForDisplay(verdict.missingField);
       return {
         label: `no column for ${field}`,
         color: "red",

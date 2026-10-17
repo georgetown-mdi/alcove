@@ -13,6 +13,7 @@ import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 
 import {
   AlgorithmSchema,
+  CONTACT_AND_LOCATION_FIELD_TYPES,
   LinkageStrategySchema,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -48,19 +49,16 @@ import type {
 } from "@psi/authoring/advancedInvite";
 import type {
   Algorithm,
-  LinkageField,
   LinkageStrategy,
   LinkageTerms,
   Standardization,
 } from "@alcove/core";
 
-/** The field types a value of which many people can share: the guided list
- * states the shared-value caveat beside keys over these. */
-const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<LinkageField["type"]> = new Set([
-  "phone_number",
-  "email_address",
-  "zip_code",
-]);
+/** {@link CONTACT_AND_LOCATION_FIELD_TYPES} as a membership test: the guided
+ * list states the shared-value caveat beside keys over these types. */
+const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<string> = new Set(
+  CONTACT_AND_LOCATION_FIELD_TYPES,
+);
 
 /** The caveat beside guided keys over a phone, email or ZIP field. */
 const SHARED_VALUE_CAVEAT =
@@ -77,7 +75,7 @@ const SHARED_VALUE_CAVEAT =
  * it writes.
  *
  * The list holds the built-in keys for these columns, each with a checkbox and
- * the reorder pair, and no badge; the expert editor grades each key it shows.
+ * the reorder pair.
  *
  * Also renders {@link importedCitationDropNotice} live from the draft, so a
  * rule-set citation the rebuild drops is flagged as soon as the import lands

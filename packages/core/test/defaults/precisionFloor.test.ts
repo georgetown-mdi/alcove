@@ -229,6 +229,14 @@ describe("the guided opt-in offers", () => {
     expect(Object.keys(core)).not.toContain("isOptInLinkageKey");
     expect(Object.keys(core)).not.toContain("OPT_IN_LINKAGE_FIELD_TYPES");
   });
+
+  test("leave one list of the contact and location types", () => {
+    expect(core.CONTACT_AND_LOCATION_FIELD_TYPES).toStrictEqual([
+      "phone_number",
+      "email_address",
+      "zip_code",
+    ]);
+  });
 });
 
 describe("precisionFloorSelectionStatement", () => {

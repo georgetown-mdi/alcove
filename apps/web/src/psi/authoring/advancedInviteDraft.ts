@@ -1,4 +1,5 @@
 import {
+  CONTACT_AND_LOCATION_FIELD_TYPES,
   INVITATION_LIFETIME_SECONDS,
   authoredLinkageFields,
   columnValues,
@@ -71,14 +72,13 @@ export function defaultStandardizationForRows(
 }
 
 /**
- * The types whose recommended cleaning the draft holds exactly while an
- * enabled key references the field: phone, email and ZIP. The catalog matches
- * on each only beside a name and a date, so a file can hold one of these
- * columns while the terms derived from it declare no field for it.
+ * {@link CONTACT_AND_LOCATION_FIELD_TYPES} as a membership test: the types
+ * whose recommended cleaning the draft holds exactly while an enabled key
+ * references the field.
  */
-const KEY_GATED_CLEANING_TYPES: ReadonlySet<string> = new Set<
-  LinkageField["type"]
->(["phone_number", "email_address", "zip_code"]);
+const KEY_GATED_CLEANING_TYPES: ReadonlySet<string> = new Set(
+  CONTACT_AND_LOCATION_FIELD_TYPES,
+);
 
 /**
  * The inviter's recommended cleaning: {@link defaultStandardizationForRows}

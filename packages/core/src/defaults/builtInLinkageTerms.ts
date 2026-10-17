@@ -911,6 +911,18 @@ export function getDefaultLinkageTerms(
 }
 
 /**
+ * The contact and location types, phone, email and ZIP, whose values many
+ * people can share (a shelter's phone, a site's ZIP code). The catalog matches
+ * on each only beside a name and a date, so a file can hold one of these
+ * columns while the terms derived from it declare no field for it.
+ */
+export const CONTACT_AND_LOCATION_FIELD_TYPES = [
+  "phone_number",
+  "email_address",
+  "zip_code",
+] as const satisfies ReadonlyArray<LinkageField["type"]>;
+
+/**
  * Whether a semantic type can be a linkage field's type. `identifier` and `other`
  * are the non-matchable types -- a {@link LinkageField} is never one of them -- so
  * they are excluded. Written as the negation of those two literals (rather than an

@@ -973,11 +973,15 @@ export function assessLinkageSatisfiability(
  */
 export type LinkageKeyFitness = "satisfiable" | "unsatisfiable" | "dead";
 
-/** One declared linkage key and its {@link LinkageKeyFitness}. */
-interface GradedLinkageKey {
-  key: LinkageKey;
-  fitness: LinkageKeyFitness;
-}
+/**
+ * One declared linkage key and its {@link LinkageKeyFitness}. An
+ * `unsatisfiable` key names `missingField`, the first of its element fields
+ * the columns cannot produce; the field name is the terms' text, which the
+ * caller escapes for display.
+ */
+export type GradedLinkageKey =
+  | { key: LinkageKey; fitness: "satisfiable" | "dead" }
+  | { key: LinkageKey; fitness: "unsatisfiable"; missingField: string };
 
 /**
  * Whether an input may be run under agreed linkage terms, and what a surface
@@ -1026,14 +1030,17 @@ export function decideLinkageTermsVerdict(
       .filter((name) => !unsatisfiedNames.has(name)),
   );
   // Compiles each measured step once (pinned in linkageProbeCost.test.ts).
-  const keys: GradedLinkageKey[] = terms.linkageKeys.map((key) => ({
-    key,
-    fitness: !key.elements.every((e) => producibleNames.has(e.field))
-      ? "unsatisfiable"
-      : key.elements.some((e) => pipelineAlwaysDrops(e.transform))
+  const keys: GradedLinkageKey[] = terms.linkageKeys.map((key) => {
+    const missing = key.elements.find((e) => !producibleNames.has(e.field));
+    if (missing !== undefined)
+      return { key, fitness: "unsatisfiable", missingField: missing.field };
+    return {
+      key,
+      fitness: key.elements.some((e) => pipelineAlwaysDrops(e.transform))
         ? "dead"
         : "satisfiable",
-  }));
+    };
+  });
   const withFitness = (fitness: LinkageKeyFitness): LinkageKey[] =>
     keys.filter((graded) => graded.fitness === fitness).map((g) => g.key);
   const unsatisfiableKeys = withFitness("unsatisfiable");
