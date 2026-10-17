@@ -5,6 +5,7 @@ import { UsageError, mintRunRelayCredential } from "@alcove/core";
 
 import {
   NO_ICE_SERVERS_WARNING,
+  relaysLeftOutWarning,
   PLAINTEXT_SIGNALING_WARNING,
   WERIFT_BUILT_IN_STUN_URI,
   brokerLocationFromConnection,
@@ -490,6 +491,81 @@ test("the warning names the default, what it discloses, and how to override", ()
   expect(NO_ICE_SERVERS_WARNING).toContain("unreachable");
   // And it must not overstate the disclosure: connection metadata, not content.
   expect(NO_ICE_SERVERS_WARNING).toContain("no exchange content is");
+});
+
+test.each([
+  ["no list at all", undefined],
+  ["an empty list", []],
+])(
+  "%s after allowed_relays emptied the TURN list warns once, naming the setting",
+  (_label, servers) => {
+    const warnings: Array<string> = [];
+    const leftOut = [
+      "turn:relay-a.example.org",
+      "turns:relay-b.example.org:443",
+    ];
+    const configuration = buildPeerConfiguration(
+      servers,
+      undefined,
+      (m) => warnings.push(m),
+      leftOut,
+    );
+    expect(configuration).toEqual({});
+    expect(warnings).toEqual([relaysLeftOutWarning(leftOut, true)]);
+    expect(warnings[0]).not.toBe(NO_ICE_SERVERS_WARNING);
+    expect(warnings[0]).not.toContain(NO_ICE_SERVERS_WARNING);
+    expect(warnings[0]).toContain(
+      `With no \`stun\` url listed, the built-in default (${WERIFT_BUILT_IN_STUN_URI}) ` +
+        "will be used to discover this host's public address. That address, " +
+        "and the fact of a session, are disclosed to that server; no " +
+        "exchange content is. Set `stun` on the connection to use your own " +
+        "server instead.",
+    );
+    expect(warnings[0]).not.toContain("(or `turn`)");
+    expect(warnings[0]).toContain("connection.allowed_relays");
+    for (const url of leftOut) expect(warnings[0]).toContain(url);
+    expect(warnings[0]).toContain("continues without a relay");
+    expect(warnings[0]).toContain("Add the host of a relay");
+    expect(warnings[0]).toContain("remove the setting");
+  },
+);
+
+test("the allowed_relays warning escapes the urls it lists", () => {
+  expect(relaysLeftOutWarning(["turn:relay.example.org\x1b[2J"])).toContain(
+    "turn:relay.example.org\\x1b[2J",
+  );
+});
+
+test("an emptied TURN list beside a stun url warns once, without the built-in default's disclosure", () => {
+  const warnings: Array<string> = [];
+  const iceServers = [{ urls: ["stun:stun.example:3478"] }];
+  const leftOut = ["turn:relay.example.org"];
+  expect(
+    buildPeerConfiguration(
+      iceServers,
+      undefined,
+      (m) => warnings.push(m),
+      leftOut,
+    ),
+  ).toEqual({ iceServers });
+  expect(warnings).toEqual([relaysLeftOutWarning(leftOut)]);
+  expect(warnings[0]).toContain("connection.allowed_relays");
+  expect(warnings[0]).not.toContain(WERIFT_BUILT_IN_STUN_URI);
+  expect(warnings[0]).not.toContain("public address");
+});
+
+test("a list that keeps a TURN url warns nothing though allowed_relays left another out", () => {
+  const warnings: Array<string> = [];
+  const iceServers = [
+    { urls: ["stun:stun.example:3478"] },
+    { urls: "turn:relay.example:3478", username: "u", credential: "c" },
+  ];
+  expect(
+    buildPeerConfiguration(iceServers, undefined, (m) => warnings.push(m), [
+      "turn:relay.example.org",
+    ]),
+  ).toEqual({ iceServers });
+  expect(warnings).toEqual([]);
 });
 
 // --- what werift takes from the list ----------------------------------------

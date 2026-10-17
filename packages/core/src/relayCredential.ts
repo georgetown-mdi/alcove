@@ -5,7 +5,7 @@ import {
   hmacSha1,
   toHex,
 } from "./utils/crypto.js";
-import { SHARED_SECRET_REGEX } from "./config/connection.js";
+import { SHARED_SECRET_REGEX, turnUrlIsAllowed } from "./config/connection.js";
 import type { WebRTCConnectionConfig } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
 
@@ -199,11 +199,23 @@ export interface RunRelaySelection {
   stun?: string[];
   /**
    * The connection's own `turn` entries followed by the invitation's TURN
-   * urls, an invitation url an own entry already names left out; absent when
-   * neither side names any.
+   * urls, an invitation url an own entry already names left out, and then
+   * every url the connection's `allowedRelays` does not name left out;
+   * absent when neither side names any.
    */
   turn?: RunTurnServer[];
+  /**
+   * The TURN urls `allowedRelays` left out of {@link turn}, in the order
+   * they would have been listed; absent when it left out none.
+   */
+  turnLeftOut?: RunTurnServer[];
 }
+
+/** The connection fields that decide a run's relay servers. */
+export type RunRelayConnection = Pick<
+  WebRTCConnectionConfig,
+  "stun" | "turn" | "invitationRelay" | "allowedRelays"
+>;
 
 /**
  * Choose the relay servers a webrtc run uses (see {@link RunRelaySelection}).
@@ -211,7 +223,7 @@ export interface RunRelaySelection {
  * `turn`, so a run from an invitation that named no relay is unchanged.
  */
 export function selectRunRelay(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
 ): RunRelaySelection {
   const invitation = connection.invitationRelay;
   const selection: RunRelaySelection = {};
@@ -240,9 +252,30 @@ export function selectRunRelay(
       listed.add(url);
       turn.push({ source: "invitation", url });
     }
-    selection.turn = turn;
+    selection.turn = turn.filter((server) =>
+      turnUrlIsAllowed(server.url, connection.allowedRelays),
+    );
+    const leftOut = turn.filter(
+      (server) => !turnUrlIsAllowed(server.url, connection.allowedRelays),
+    );
+    if (leftOut.length > 0) selection.turnLeftOut = leftOut;
   }
   return selection;
+}
+
+/**
+ * Whether `allowedRelays` left out every TURN url the invitation names that
+ * a run would otherwise list, so a run contacts neither that relay nor its
+ * registrar for that reason alone.
+ */
+export function allowedRelaysLeaveOutInvitationRelay(
+  connection: RunRelayConnection,
+): boolean {
+  const { turn, turnLeftOut } = selectRunRelay(connection);
+  return (
+    (turnLeftOut ?? []).some((server) => server.source === "invitation") &&
+    !(turn ?? []).some((server) => server.source === "invitation")
+  );
 }
 
 /**
@@ -254,7 +287,7 @@ export function selectRunRelay(
  * naming the invitation's url enrolls too.
  */
 export function runEnrollsAtInvitationRegistrar(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
 ): boolean {
   const invitation = connection.invitationRelay;
   if (invitation?.registrar === undefined) return false;

@@ -567,6 +567,69 @@ test("a registrar a run does not enroll at is a skipped enrollment line naming w
   expect(overallOf(report)).toBe("ok");
 });
 
+test("a relay allowed_relays leaves out is not contacted, nor its registrar, and the statement names it as left out", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ url: OWN_TURN }],
+      invitation_relay: { turn: [INVITATION_TURN], registrar: REGISTRAR },
+      allowed_relays: ["own-relay.example.org"],
+    }),
+  );
+  const lines: Array<string> = [];
+  const requests: Array<RTCIceServer> = [];
+  const registrar = fakeRegistrar([registrationAnswer()]);
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    fetch: registrar.fetch,
+    gather: scriptedGathering({ [OWN_TURN]: true }, requests),
+  });
+
+  expect(registrar.requests).toEqual([]);
+  expect(requests.map((server) => server.urls)).toEqual([OWN_TURN]);
+  const leftOut = lines.indexOf(`  ${INVITATION_TURN}`);
+  expect(lines.slice(leftOut, leftOut + 2)).toEqual([
+    `  ${INVITATION_TURN}`,
+    "    Over TLS, from your partner's invitation. Left out by " +
+      "connection.allowed_relays.",
+  ]);
+  expect(lines).toContain(
+    `    The relay registrar your partner's invitation names. A run does ` +
+      "not enroll there, because connection.allowed_relays leaves out the " +
+      "relay it names.",
+  );
+  expect(report.checks.map((check) => check.id)).toEqual([
+    ENROLLMENT_CHECK_ID,
+    "turn_1",
+  ]);
+});
+
+test("a configuration whose every TURN url allowed_relays leaves out is refused, naming them", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ url: OWN_TURN }],
+      allowed_relays: ["elsewhere.example.org"],
+    }),
+  );
+  const requests: Array<RTCIceServer> = [];
+
+  await expect(
+    checkRelay({
+      configFile,
+      keyFile,
+      writeStatementLine: () => undefined,
+      gather: scriptedGathering({}, requests),
+    }),
+  ).rejects.toThrow(
+    `connection.allowed_relays leaves out every TURN url this configuration ` +
+      `lists (${OWN_TURN}), so a run contacts no relay and there is none to ` +
+      "check. Nothing was contacted.",
+  );
+  expect(requests).toEqual([]);
+});
+
 test("a configuration whose invitation relay names no registrar contacts none, and says so", async () => {
   writeConfig(
     webrtcConnection({

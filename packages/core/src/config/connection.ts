@@ -8,6 +8,11 @@ import { boundedArray } from "../utils/boundedArray.js";
 import { MAX_TIMER_MS } from "../utils/promise.js";
 import { SftpPortSchema } from "./sftpUrl.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
+import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
+import {
+  clipToRenderedCost,
+  DEFAULT_MAX_DISPLAY_LENGTH,
+} from "../utils/sanitizeForDisplay.js";
 
 // --- HTTP service authentication ---------------------------------------------
 
@@ -1235,6 +1240,125 @@ const ConnectionRelayLocatorSchema = relayLocatorSchema(
     "registrar url",
 );
 
+// --- Allowed relays ----------------------------------------------------------
+
+/** A relay host, lowercase with no trailing dot, and a port when one is named. */
+export interface RelayHostAndPort {
+  host: string;
+  port?: number;
+}
+
+// The default ports of RFC 7065: 3478 for turn:, 5349 for turns:.
+const TURN_DEFAULT_PORT = 3478;
+const TURNS_DEFAULT_PORT = 5349;
+
+const ALLOWED_RELAY_FORM =
+  "a host and an optional port from 1 to 65535, for example " +
+  "relay.example.org or relay.example.org:443";
+
+// `host`, `host:port`, `[v6]` or `[v6]:port`, with the host characters a turn
+// url admits; undefined for anything else, a url with a scheme included.
+function parseRelayHostAndPort(text: string): RelayHostAndPort | undefined {
+  const match = /^(\[[0-9a-f:.]+\]|[^\s:?@/#[\]]+)(?::(\d{1,5}))?$/i.exec(text);
+  if (match === null) return undefined;
+  const host = (match[1] ?? "").toLowerCase().replace(/\.$/, "");
+  if (host === "") return undefined;
+  if (match[2] === undefined) return { host };
+  const port = Number(match[2]);
+  return port >= 1 && port <= 65535 ? { host, port } : undefined;
+}
+
+/**
+ * The relay a TURN url names: its host and its port, the scheme's default
+ * port where the url names none. `undefined` for a url the grammar of
+ * {@link TurnUrlSchema} does not admit.
+ */
+export function turnUrlRelay(url: string): RelayHostAndPort | undefined {
+  const scheme = /^turns?:/.exec(url)?.[0];
+  if (scheme === undefined) return undefined;
+  const queryStart = url.indexOf("?");
+  const relay = parseRelayHostAndPort(
+    url.slice(scheme.length, queryStart === -1 ? undefined : queryStart),
+  );
+  if (relay === undefined) return undefined;
+  return {
+    host: relay.host,
+    port:
+      relay.port ??
+      (scheme === "turns:" ? TURNS_DEFAULT_PORT : TURN_DEFAULT_PORT),
+  };
+}
+
+/**
+ * Whether a run may use the TURN relay at `url` under `allowedRelays`: every
+ * url when the setting is unset, else a url whose host an entry names, on
+ * the entry's port when it names one. No name is resolved.
+ */
+export function turnUrlIsAllowed(
+  url: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): boolean {
+  if (allowedRelays === undefined) return true;
+  const relay = turnUrlRelay(url);
+  if (relay === undefined) return false;
+  return allowedRelays.some((entry) => {
+    const allowed = parseRelayHostAndPort(entry);
+    return (
+      allowed !== undefined &&
+      allowed.host === relay.host &&
+      (allowed.port === undefined || allowed.port === relay.port)
+    );
+  });
+}
+
+/**
+ * The TURN urls `allowedRelays` leaves out, as a refusal lists them: raw,
+ * redacted and fitted to the per-value display budget, so the remedy a
+ * refusal states after the list still shows.
+ */
+export function relaysLeftOutForDisplay(
+  leftOut: ReadonlyArray<string>,
+): string {
+  return clipToRenderedCost(
+    redactPrivateKeyMaterial(leftOut.join(", ")),
+    DEFAULT_MAX_DISPLAY_LENGTH,
+  );
+}
+
+/**
+ * The refusal of a relay-only webrtc connection whose every TURN url
+ * `allowedRelays` leaves out. The CLI's WebRTC library applies the policy
+ * only when it is given a TURN server (webrtcIceTransportPolicy.test.ts), so
+ * such a run would offer this host's own address. Raw, escaped where shown.
+ */
+export function relayOnlyRelaysLeftOutMessage(
+  leftOut: ReadonlyArray<string>,
+): string {
+  return (
+    "ice_transport_policy `relay` requires a TURN url, and " +
+    "connection.allowed_relays leaves out every TURN url this connection " +
+    `lists (${relaysLeftOutForDisplay(leftOut)}). Add the host of a relay ` +
+    "to connection.allowed_relays, or remove the setting."
+  );
+}
+
+const AllowedRelaySchema = z
+  .string()
+  .trim()
+  .transform((entry, ctx) => {
+    const relay = parseRelayHostAndPort(entry);
+    if (relay === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `each allowed_relays entry must be ${ALLOWED_RELAY_FORM}, with no turn: or turns: scheme`,
+      });
+      return z.NEVER;
+    }
+    return relay.port === undefined
+      ? relay.host
+      : `${relay.host}:${relay.port}`;
+  });
+
 // --- Relay registrar ---------------------------------------------------------
 
 /**
@@ -1393,6 +1517,13 @@ export interface WebRTCConnectionConfig {
    */
   invitationRelay?: RelayLocator;
   /**
+   * The TURN relays a run may use, each a host and an optional port. A run
+   * allocates on, enrolls at the registrar of, and names in the invitations
+   * it creates only the {@link turn} and {@link invitationRelay} TURN urls
+   * an entry names (`turnUrlIsAllowed`). Unset, every listed relay is used.
+   */
+  allowedRelays?: string[];
+  /**
    * The registrar of the relay this party's own {@link turn} entries name,
    * where a run registers the relay key derived from each rotated shared
    * secret, whether or not an {@link invitationRelay} is listed beside it.
@@ -1547,6 +1678,7 @@ const WebRTCConnectionConfigSchema = z.strictObject(
     stun: z.array(StunUrlSchema).optional(),
     turn: z.array(TurnServerSchema).optional(),
     invitationRelay: ConnectionRelayLocatorSchema.optional(),
+    allowedRelays: z.array(AllowedRelaySchema).optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
     iceTransportPolicy: z.enum(["all", "relay"]).optional(),
     iceProvision: IceProvisionSchema.optional(),
@@ -1662,6 +1794,32 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
         "requires at least one turn entry",
     },
   )
+  // The same guarantee once `allowedRelays` filters the TURN urls: a run
+  // checks the list it is about to use too (webRtcDialFrom in the CLI).
+  .superRefine((conn, ctx) => {
+    if (
+      conn.channel !== "webrtc" ||
+      conn.iceTransportPolicy !== "relay" ||
+      conn.allowedRelays === undefined ||
+      conn.iceProvision !== undefined
+    )
+      return;
+    const listed = [
+      ...new Set([
+        ...(conn.turn ?? []).map((entry) => entry.url),
+        ...(conn.invitationRelay?.turn ?? []),
+      ]),
+    ];
+    const allowedRelays = conn.allowedRelays;
+    if (
+      listed.length > 0 &&
+      !listed.some((url) => turnUrlIsAllowed(url, allowedRelays))
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: relayOnlyRelaysLeftOutMessage(listed),
+      });
+  })
   // The registrar holds the key this party's own minted turn entries sign
   // with, so one named with no such entry registers a key no run presents.
   .refine(

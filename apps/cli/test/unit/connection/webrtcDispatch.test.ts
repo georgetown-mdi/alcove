@@ -177,6 +177,7 @@ const {
   generateSharedSecret,
   getDefaultLinkageTerms,
   mintRunRelayCredential,
+  relayOnlyRelaysLeftOutMessage,
   sanitizeErrorForDisplay,
 } = await import("@alcove/core");
 const { fakeRegistrar, jsonResponse, registrationAnswer } =
@@ -738,6 +739,17 @@ test("each refusal survives the display boundary whole", () => {
       DISPLAY_TRUNCATION_MARKER,
     );
   }
+  // These list urls a partner's invitation may name, so the list is fitted
+  // and the remedy after it still shows, however long the list.
+  const urls = Array.from(
+    { length: 40 },
+    (_unused, i) => `turns:relay-${i}.example.org:443?transport=tcp`,
+  );
+  expect(
+    sanitizeErrorForDisplay(
+      new UsageError(relayOnlyRelaysLeftOutMessage(urls)),
+    ),
+  ).toMatch(/or remove the setting\.$/);
 });
 
 // --- the resolver -----------------------------------------------------------
@@ -760,6 +772,109 @@ test("an omitted server block resolves to the PeerJS defaults, over TLS", () => 
     key: "peerjs",
     secure: true,
   });
+});
+
+test("allowed_relays decides the TURN urls the dial lists, and the ones a failure names as left out", () => {
+  const credential = {
+    username: "1:alcove",
+    credential: "placeholder-not-a-secret",
+    expiresAt: new Date(1000),
+  };
+  const connection = {
+    channel: "webrtc" as const,
+    server: { host: "peers.example.org" },
+    role: "acceptor" as const,
+    invitationRelay: {
+      turn: [
+        "turns:left-out.example.org:443?transport=tcp",
+        "turn:kept.example.org:3478",
+      ],
+    },
+  };
+  const { options } = webRtcDialFrom(
+    { ...connection, allowedRelays: ["kept.example.org:3478"] },
+    SECRET,
+    credential,
+  );
+  expect(options.iceServers?.map((server) => server.urls)).toEqual([
+    "turn:kept.example.org:3478",
+  ]);
+  expect(options.relaysLeftOut).toEqual([
+    "turns:left-out.example.org:443?transport=tcp",
+  ]);
+
+  const unset = webRtcDialFrom(connection, SECRET, credential).options;
+  expect(unset.iceServers?.map((server) => server.urls)).toEqual(
+    connection.invitationRelay.turn,
+  );
+  expect(unset).not.toHaveProperty("relaysLeftOut");
+});
+
+test("a relay-only run whose every TURN url allowed_relays leaves out is refused before anything is dialed", async () => {
+  // A kept configuration naming no relay of its own, after an acceptance
+  // wrote an invitation's relay on a host the setting does not name.
+  const NEW_RELAY = "turn:new-partner-relay.example.net";
+  const keyFilePath = path.join(tmpDir, "acceptor.key");
+  saveKeyFile(keyFilePath, { sharedSecret: SECRET });
+  const error = await runProtocol({
+    connection: {
+      channel: "webrtc",
+      server: { host: BROKER_HOST, port: 9000, secure: false },
+      role: "acceptor",
+      invitationRelay: { turn: [NEW_RELAY] },
+      iceTransportPolicy: "relay",
+      allowedRelays: ["old-partner-relay.example.net"],
+    },
+    auth: { sharedSecret: SECRET, keyFilePath },
+    prepared: minimalPrepared,
+    output: path.join(tmpDir, "acceptor.csv"),
+    verbosity: -1,
+    loggerName: "test",
+  }).then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  expect(error).toBeInstanceOf(UsageError);
+  expect(exitCodeForError(error)).toBe(64);
+  expect((error as Error).message).toBe(
+    relayOnlyRelaysLeftOutMessage([NEW_RELAY]),
+  );
+  expect(mockState.dials).toHaveLength(0);
+});
+
+test("a run whose every TURN url allowed_relays leaves out continues, naming them, unless it is relay-only", () => {
+  const credential = {
+    username: "1:alcove",
+    credential: "placeholder-not-a-secret",
+    expiresAt: new Date(1000),
+  };
+  const turn = [{ url: "turn:relay.example.org" }];
+  const base = {
+    channel: "webrtc" as const,
+    server: { host: "peers.example.org" },
+    role: "acceptor" as const,
+    turn,
+    allowedRelays: ["other.example.org"],
+  };
+  const emptied = webRtcDialFrom(base, SECRET, credential).options;
+  expect(emptied.iceServers ?? []).toEqual([]);
+  expect(emptied.relaysLeftOut).toEqual([turn[0].url]);
+  expect(() =>
+    webRtcDialFrom(
+      { ...base, iceTransportPolicy: "relay" as const },
+      SECRET,
+      credential,
+    ),
+  ).toThrow(new UsageError(relayOnlyRelaysLeftOutMessage([turn[0].url])));
+  const withStun = webRtcDialFrom(
+    { ...base, stun: ["stun:stun.example.org:3478"] },
+    SECRET,
+    credential,
+  ).options;
+  expect(withStun.iceServers).toEqual([
+    { urls: ["stun:stun.example.org:3478"] },
+  ]);
+  expect(withStun.relaysLeftOut).toEqual([turn[0].url]);
 });
 
 test("a plaintext broker resolves to the plaintext default port", () => {

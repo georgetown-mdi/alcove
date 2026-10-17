@@ -33,6 +33,7 @@ import {
   describeSelectedCandidatePair,
   iceFailureDetails,
   readIceStats,
+  relaysLeftOutDetails,
 } from "./iceDiagnostics";
 
 import type {
@@ -45,6 +46,7 @@ import type { SignalingCertificateProbe } from "./signalingTls";
 import type {
   RelayCredential,
   RendezvousRole,
+  RunRelayConnection,
   RunTurnServer,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -212,15 +214,44 @@ export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
  */
 export const WERIFT_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
+/** What a run with no `stun` url discloses, shared by both warnings that give it. */
+const BUILT_IN_STUN_USE =
+  `the built-in default (${WERIFT_BUILT_IN_STUN_URI}) will be used to ` +
+  "discover this host's public address. That address, and the fact of a " +
+  "session, are disclosed to that server; no exchange content is.";
+
 /** The warning line emitted when no ICE servers are configured (see below). */
 export const NO_ICE_SERVERS_WARNING =
-  "no ICE servers are configured for this webrtc connection, so the built-in " +
-  `default (${WERIFT_BUILT_IN_STUN_URI}) will be used to discover this ` +
-  "host's public address. That address, and the fact of a session, are " +
-  "disclosed to that server; no exchange content is. Set `stun` (or `turn`) " +
+  `no ICE servers are configured for this webrtc connection, so ${BUILT_IN_STUN_USE} ` +
+  "Set `stun` (or `turn`) " +
   "on the connection to use your own server instead, or set a single " +
   "unreachable `stun` entry to gather host candidates only, which costs about " +
   "five seconds of gathering and works only where both parties share a network.";
+
+/** {@link NO_ICE_SERVERS_WARNING}'s disclosure, less its advice to set `turn`. */
+const BUILT_IN_STUN_DISCLOSURE =
+  `With no \`stun\` url listed, ${BUILT_IN_STUN_USE} ` +
+  "Set `stun` on the connection to use your own server instead.";
+
+/**
+ * The warning line for a run whose every TURN url `allowed_relays` left out,
+ * in place of {@link NO_ICE_SERVERS_WARNING} when the list is empty as well,
+ * whose advice to set `turn` the operator already followed. Where the list
+ * holds no `stun` url (`builtInStun`), werift uses its built-in default, so
+ * the warning gives that disclosure too. Escaped by the caller, which holds the
+ * urls.
+ */
+export function relaysLeftOutWarning(
+  leftOut: ReadonlyArray<string>,
+  builtInStun = false,
+): string {
+  const warning =
+    "connection.allowed_relays left out every TURN url this connection " +
+    `lists (${redactAndSanitizeForDisplay(leftOut.join(", "))}), so the run ` +
+    "continues without a relay. Add the host of a relay to " +
+    "connection.allowed_relays, or remove the setting.";
+  return builtInStun ? `${warning} ${BUILT_IN_STUN_DISCLOSURE}` : warning;
+}
 
 /** The warning line emitted when the signaling socket is plaintext (see below). */
 export const PLAINTEXT_SIGNALING_WARNING =
@@ -370,6 +401,11 @@ export interface WebRtcPeerOptions {
    * Candidate types ICE may use. Absent leaves werift's own default (`all`).
    */
   iceTransportPolicy?: IceTransportPolicy;
+  /**
+   * The TURN urls `allowed_relays` left out of this run, as the connection
+   * names them; a failure with no channel names them and the remedy.
+   */
+  relaysLeftOut?: string[];
   /**
    * Resolves the ICE servers each attempt after the first is built with. Absent,
    * every attempt is built from `iceServers`.
@@ -564,7 +600,7 @@ export const ICE_PROVISION_REFUSAL =
 export function iceServersFromConnection(
   connection: Pick<
     WebRTCConnectionConfig,
-    "stun" | "turn" | "iceProvision" | "invitationRelay"
+    "stun" | "turn" | "iceProvision" | "invitationRelay" | "allowedRelays"
   >,
   runRelayCredential?: RelayCredential,
 ): Array<RTCIceServer> {
@@ -644,7 +680,7 @@ export function turnEntryNeedsSecretMessage(url: string): string {
  *   `sharedSecret` is undefined.
  */
 export async function relayCredentialForRun(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
   sharedSecret: string | undefined,
   now: Date,
 ): Promise<RelayCredential | undefined> {
@@ -670,7 +706,7 @@ export async function relayCredentialForRun(
 export function relayCredentialPerAttempt(
   connection: Pick<
     WebRTCConnectionConfig,
-    "stun" | "turn" | "iceProvision" | "invitationRelay"
+    "stun" | "turn" | "iceProvision" | "invitationRelay" | "allowedRelays"
   >,
   sharedSecret: string,
   now: () => Date = () => new Date(),
@@ -739,7 +775,7 @@ function waitSoFar(ms: number): string {
  * text, so it is named escaped.
  */
 export function relayCredentialNotice(
-  connection: Pick<WebRTCConnectionConfig, "stun" | "turn" | "invitationRelay">,
+  connection: RunRelayConnection,
   credential: RelayCredential,
 ): string {
   const turn = selectRunRelay(connection).turn ?? [];
@@ -816,13 +852,21 @@ export function buildPeerConfiguration(
   iceServers: Array<RTCIceServer> | undefined,
   iceTransportPolicy?: IceTransportPolicy,
   warn: (message: string) => void = (message) => log.warn(message),
+  relaysLeftOut: ReadonlyArray<string> = [],
 ): WeriftPeerConfiguration {
   const policy = iceTransportPolicy === undefined ? {} : { iceTransportPolicy };
-  if (iceServers === undefined || iceServers.length === 0) {
-    warn(NO_ICE_SERVERS_WARNING);
-    return policy;
-  }
-  return { iceServers, ...policy };
+  const noServers = iceServers === undefined || iceServers.length === 0;
+  const relaysEmptied =
+    relaysLeftOut.length > 0 && !(iceServers ?? []).some(listsTurnUrl);
+  if (relaysEmptied) warn(relaysLeftOutWarning(relaysLeftOut, noServers));
+  else if (noServers) warn(NO_ICE_SERVERS_WARNING);
+  return noServers ? policy : { iceServers, ...policy };
+}
+
+/** Whether a server entry lists a `turn:` or `turns:` url. */
+function listsTurnUrl(server: RTCIceServer): boolean {
+  const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+  return urls.some((url) => /^turns?:/i.test(url));
 }
 
 /**
@@ -1019,6 +1063,7 @@ export async function openWebRtcPeerSession(
     sharedSecret,
     iceServers,
     iceTransportPolicy,
+    relaysLeftOut,
     attemptIceServers,
     rendezvousTimeoutMs = DEFAULT_RENDEZVOUS_TIMEOUT_MS,
     attemptMs = WEBRTC_ATTEMPT_MS,
@@ -1069,6 +1114,7 @@ export async function openWebRtcPeerSession(
       servers,
       iceTransportPolicy,
       warn,
+      relaysLeftOut,
     );
     return peerConnectionFactory === undefined
       ? await defaultPeerConnection(configuration)
@@ -1203,6 +1249,7 @@ export async function openWebRtcPeerSession(
       channelOpenTimeoutMs,
       unreportedOfferResendMs,
       iceTransportPolicy,
+      relaysLeftOut,
       arrivalTimeout,
       partnerRestart: previous?.partnerRestart,
       signal,
@@ -1336,6 +1383,8 @@ interface NegotiationOptions {
   unreportedOfferResendMs: number;
   /** The policy the peer connection was built with; named in a failure. */
   iceTransportPolicy?: IceTransportPolicy;
+  /** See {@link WebRtcPeerOptions.relaysLeftOut}; named in a failure. */
+  relaysLeftOut?: string[];
   /** The failure the wait's last attempt ends with when the partner never sent a description. */
   arrivalTimeout: () => ConnectionError;
   /** The partner's new connection the attempt before this one ended on, which this one answers. */
@@ -1541,7 +1590,8 @@ class Negotiation {
 
   /**
    * Latch a failure of the network path, with what ICE gathered, received and
-   * tried attached as labelled cause links.
+   * tried attached as labelled cause links, and the TURN urls `allowed_relays`
+   * left out with the remedy whether or not the stats could be read.
    *
    * The failures that reach here -- the peer connection reporting `failed`,
    * and the channel-open deadline -- are all "both parties are present and no
@@ -1557,16 +1607,21 @@ class Negotiation {
 
   private async iceDiagnosis(summary: string): Promise<ConnectionError> {
     const report = await readIceStats(this.peer, this.options.signal);
+    const relaysLeftOut = this.options.relaysLeftOut ?? [];
+    const details =
+      report === undefined
+        ? relaysLeftOutDetails(relaysLeftOut)
+        : iceFailureDetails(
+            report,
+            this.options.iceTransportPolicy,
+            relaysLeftOut,
+          );
     return new ConnectionError(
       summary,
       "transport",
-      report === undefined
+      details.length === 0
         ? undefined
-        : {
-            cause: chainDetailCauses(
-              iceFailureDetails(report, this.options.iceTransportPolicy),
-            ),
-          },
+        : { cause: chainDetailCauses(details, undefined) },
     );
   }
 

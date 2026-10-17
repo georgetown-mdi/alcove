@@ -144,22 +144,62 @@ test(
     );
     expect(configuration.iceServers).toHaveLength(3);
 
-    const peer = new RTCPeerConnection(configuration);
-    try {
-      const gatheringComplete = peer.iceGatheringStateChange.watch(
-        (state) => state === "complete",
-        GATHERING_TIMEOUT_MS,
-      );
-      peer.createDataChannel("first-url-probe");
-      await peer.setLocalDescription(await peer.createOffer());
-      await gatheringComplete;
-    } finally {
-      await peer.close();
-    }
+    await gatherOnce(configuration);
 
     expect(firstStun.requests).toContain(BINDING_REQUEST);
     expect(firstTurn.requests).toContain(ALLOCATE_REQUEST);
     expect(secondStun.requests).toEqual([]);
     expect(secondTurn.requests).toEqual([]);
+  },
+);
+
+async function gatherOnce(
+  configuration: ReturnType<typeof buildPeerConfiguration>,
+): Promise<void> {
+  const peer = new RTCPeerConnection(configuration);
+  try {
+    const gatheringComplete = peer.iceGatheringStateChange.watch(
+      (state) => state === "complete",
+      GATHERING_TIMEOUT_MS,
+    );
+    peer.createDataChannel("first-url-probe");
+    await peer.setLocalDescription(await peer.createOffer());
+    await gatheringComplete;
+  } finally {
+    await peer.close();
+  }
+}
+
+test(
+  "a CLI peer allocates on the relay allowed_relays lists, not on the invitation's relay it leaves out",
+  { timeout: GATHERING_TIMEOUT_MS + 10_000 },
+  async () => {
+    const [leftOut, listed] = await Promise.all([
+      startCountingServer(),
+      startCountingServer(),
+    ]);
+    const configuration = buildPeerConfiguration(
+      iceServersFromConnection(
+        {
+          invitationRelay: {
+            turn: [
+              `turn:127.0.0.1:${leftOut.port}?transport=udp`,
+              `turn:127.0.0.1:${listed.port}?transport=udp`,
+            ],
+          },
+          allowedRelays: [`127.0.0.1:${listed.port}`],
+        },
+        {
+          username: "1:alcove",
+          credential: "placeholder-not-a-secret",
+          expiresAt: new Date(1000),
+        },
+      ),
+    );
+
+    await gatherOnce(configuration);
+
+    expect(listed.requests).toContain(ALLOCATE_REQUEST);
+    expect(leftOut.requests).toEqual([]);
   },
 );

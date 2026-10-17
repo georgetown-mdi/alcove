@@ -5,6 +5,7 @@ import {
   relayLocatorFromOwnRelay,
 } from "./invitation.js";
 import type { ConnectionEndpoint } from "./invitation.js";
+import { turnUrlIsAllowed } from "./connection.js";
 import type { ConnectionConfig } from "./connection.js";
 
 /**
@@ -62,7 +63,8 @@ export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
  * {@link relayLocatorFromOwnRelay}. A `turn` entry with a static username and
  * credential is left out whole: the partner cannot authenticate to it, so
  * naming it would only show the partner's address to that relay's operator.
- * Everything else (`key`, `username`, `secure`, `provision`,
+ * A `turn` entry the connection's `allowedRelays` does not name is left out
+ * too. Everything else (`key`, `username`, `secure`, `provision`,
  * `invitationRelay`) is left behind: those are either not a public locator or
  * have no endpoint-schema field, so a plaintext-broker locator is unreachable
  * here by construction.
@@ -143,7 +145,9 @@ export function endpointFromConnection(
       turn: connection.turn
         ?.filter(
           (entry) =>
-            entry.username === undefined && entry.credential === undefined,
+            entry.username === undefined &&
+            entry.credential === undefined &&
+            turnUrlIsAllowed(entry.url, connection.allowedRelays),
         )
         .map((entry) => entry.url),
       stun: connection.stun,

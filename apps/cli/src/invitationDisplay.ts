@@ -14,10 +14,17 @@ import {
   redactAndSanitizeForDisplay,
   ruleSetCitation,
   summarizeInvitation,
+  turnUrlIsAllowed,
   UNRECOGNIZED_TRANSFORM_NOTE,
   unshownDeclaredNamesLine,
 } from "@alcove/core";
 
+import {
+  ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_UNSET,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+} from "./allowedRelays";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
 import type { EndpointDirectories } from "./onlineBootstrap";
 import { logFileSeparateFromStderr } from "./util/logging";
@@ -113,16 +120,29 @@ export function marked(
 /**
  * The line the acceptance review shows under a relay whose invitation names a
  * registrar, `registrar` escaped in the summary: a run enrolls there before it
- * connects only when that relay is the one it allocates on
+ * connects only when it allocates on that relay itself, not when traffic
+ * reaches the relay only through the partner's relayed candidates
  * (`invitationRelayEnrollment.ts`), and then its operator sees this party's
  * address.
  */
 export function invitationRelayRegistrarLine(registrar: Displayable): string {
   return (
     `A run registers this exchange at ${registrar} before it connects ` +
-    "only when that relay is the one it allocates on, and whoever runs " +
-    "that registrar then learns your network address."
+    "only when your side sets up its own connection on this relay, and " +
+    "whoever runs that registrar then learns your network address."
   );
+}
+
+// The mark a TURN url of the invitation takes in the review under the kept
+// configuration's `allowed_relays`; none where that setting is unset.
+function allowedRelaysMark(
+  url: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): string {
+  if (allowedRelays === undefined) return "";
+  return turnUrlIsAllowed(url, allowedRelays)
+    ? ` (${KEPT_BY_ALLOWED_RELAYS})`
+    : ` (${LEFT_OUT_BY_ALLOWED_RELAYS})`;
 }
 
 /**
@@ -766,6 +786,11 @@ export function logDecisionFacts(
  * `endpointDirectories` is the directory pair an acceptance takes from the
  * invitation's endpoint, present only when it does
  * ({@link logEndpointDirectories}).
+ *
+ * `allowedRelays` is the `allowed_relays` of the configuration the acceptance
+ * keeps, which governs every later run: each of the invitation's TURN urls is
+ * marked kept or left out by it. Absent, no url is marked, and an acceptance
+ * says how to set it.
  */
 export function displayInvitation(params: {
   token: Parameters<typeof summarizeInvitation>[0];
@@ -775,6 +800,7 @@ export function displayInvitation(params: {
   runsExchangeThrough?: DialedBrokerHostAndPort;
   endpointDirectories?: EndpointDirectoriesOnSurface;
   surface?: ConsentSurfaceKind;
+  allowedRelays?: ReadonlyArray<string>;
 }): void {
   const {
     token,
@@ -784,6 +810,7 @@ export function displayInvitation(params: {
     runsExchangeThrough,
     endpointDirectories,
     surface = "invitation",
+    allowedRelays,
   } = params;
   const summary = summarizeInvitation(token);
   if (runsExchangeThrough !== undefined)
@@ -804,11 +831,24 @@ export function displayInvitation(params: {
   // it: the urls are the partner's, escaped in the summary.
   if (summary.relay !== undefined) {
     emit(`  ${marked("relay your partner named", "invitationRelay")}:`);
-    for (const url of summary.relay.turn) emit(`    TURN ${url}`);
+    // The summary's urls are the endpoint's, escaped, in the endpoint's order.
+    const rawTurn =
+      token.connectionEndpoint?.channel === "webrtc"
+        ? (token.connectionEndpoint.relay?.turn ?? [])
+        : [];
+    summary.relay.turn.forEach((url, index) =>
+      emit(
+        `    TURN ${url}${allowedRelaysMark(rawTurn[index] ?? "", allowedRelays)}`,
+      ),
+    );
     for (const url of summary.relay.stun) emit(`    STUN ${url}`);
     if (summary.relay.registrar !== undefined)
       emit(`    ${invitationRelayRegistrarLine(summary.relay.registrar)}`);
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);
+    // The shared note says nothing of a setting, since a browser party has
+    // none; the CLI's own setting is named here.
+    if (allowedRelays !== undefined) emit(`    ${ALLOWED_RELAYS_SCOPE}`);
+    else if (surface === "invitation") emit(`    ${ALLOWED_RELAYS_UNSET}`);
   }
   // The linkage strategy is a mandatory-consistency term like the
   // algorithm, and single-pass is disclosure-affecting -- the critical

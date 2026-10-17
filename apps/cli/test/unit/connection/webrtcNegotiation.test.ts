@@ -318,6 +318,7 @@ async function startRendezvous(options: {
   /** The ICE servers the harness configures; absent is the harness's one STUN entry. */
   iceServers?: Array<{ urls: string }>;
   iceTransportPolicy?: "all" | "relay";
+  relaysLeftOut?: string[];
   signal?: AbortSignal;
   /**
    * Whether the broker confirms the registration with `OPEN`. A test of the
@@ -388,6 +389,7 @@ async function startRendezvous(options: {
     attemptOfferQuietMs: options.attemptOfferQuietMs,
     idTakenRetryWindowMs: options.idTakenRetryWindowMs,
     iceTransportPolicy: options.iceTransportPolicy,
+    relaysLeftOut: options.relaysLeftOut,
     signal:
       options.signal === undefined
         ? teardown.signal
@@ -1664,11 +1666,13 @@ test("the channel-open ceiling reports the same diagnosis", async () => {
 async function failureWithUnreadableStats(options: {
   statsAnswer: Exclude<ScriptedPeer["statsAnswer"], "never-settles">;
   path: "connection-failed" | "channel-open-ceiling";
+  relaysLeftOut?: string[];
 }): Promise<{ error: ConnectionError; elapsedMs: number }> {
   const { socket, peer, session, inviterId } = await startRendezvous({
     role: "acceptor",
     channelOpenTimeoutMs: 100,
     rendezvousTimeoutMs: 30_000,
+    relaysLeftOut: options.relaysLeftOut,
   });
   peer.statsAnswer = options.statsAnswer;
   const startedAt = Date.now();
@@ -1784,6 +1788,32 @@ test("a channel-open ceiling whose statistics never arrive still reports", async
   });
   expectUndiagnosedFailure(error, "did not open within 0.1s");
 });
+
+test.each(["connection-failed", "channel-open-ceiling"] as const)(
+  "a %s failure with no stats report still names the relays allowed_relays left out, and the remedy",
+  async (path) => {
+    const { error } = await failureWithUnreadableStats({
+      statsAnswer: "throws",
+      path,
+      relaysLeftOut: [
+        "turn:left-out.example.org",
+        "turns:other.example.net:443",
+      ],
+    });
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(error.kind).toBe("transport");
+    const rendered = sanitizeErrorForDisplay(error);
+    expect(rendered).not.toContain("candidates gathered");
+    expect(rendered).toContain(
+      "TURN urls left out by connection.allowed_relays: " +
+        "turn:left-out.example.org, turns:other.example.net:443",
+    );
+    expect(rendered).toContain(
+      "to let a run try a relay left out, add its host to " +
+        "connection.allowed_relays, or remove the setting",
+    );
+  },
+);
 
 // --- waiting in connection attempts -----------------------------------------
 
