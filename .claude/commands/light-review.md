@@ -215,7 +215,8 @@ Common to both:
    The first row written for a branch also contains `"cap"`: the Step 5 bucket's total
    round allowance for this diff (1 for the second bucket or the instruction-file
    floor, 3 for the full pipeline; a cap the owner, or an orchestrating session the owner has delegated budgets to,
-   raises is edited in place with a note).
+   raises is edited in place, with the raise appended to that row's `capRaises`
+   list -- its shape is in `.claude/commands/assess-review.md`, Step 2).
 2. Delete `PRIMARY/scratch/review-rounds/<key>.lock`, the in-flight round lock
    `record-review-round-lock.mjs` wrote when this round launched. A lock left behind refuses the
    branch's next round until it ages out, so releasing it is part of booking the

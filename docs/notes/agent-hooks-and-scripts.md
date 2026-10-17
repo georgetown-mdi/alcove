@@ -391,6 +391,12 @@ Reachability is written by the disposing session rather than read off the findin
 A reachable limit is promoted to a spec limits line at merge-ready ([`.claude/orchestration/ruleset.md`](../../.claude/orchestration/ruleset.md), Review flow),
 and an entry with no `surface` is taken as reachable, so leaving the field off cannot pass a reachable limit.
 
+### Why it reads cap raises
+
+A raise's reasons were written as `capNote` prose, and the prose rule to step back did not stop one branch's cap going from 3 to 7.
+So each raise is a `capRaises` entry with the step-back triggers evaluated, and the second has to name the shared-cause answer and the pivot taken (`.claude/commands/assess-review.md`, Step 2).
+Raises are counted from those entries alone, so a ledger whose raises are only in prose passes: every ledger written before the field reads as having no raise.
+
 ### Legacy rows and dates
 
 Rows written before these fields existed name no commit and no home, so they are skipped under the header's three conditions and reported as skipped rather than refused.

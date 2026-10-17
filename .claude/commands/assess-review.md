@@ -76,6 +76,22 @@ Start with the whole, not the parts:
   lines. All are
   advisory, with thresholds measured on the 2026-08-31 to 2026-09-25 rounds and
   re-fit at each retro; nothing enforces them.
+- **A second cap raise.** A raise that would be the branch's second is
+  step-back trigger 8 below, whatever the reason for it -- a raise a rebase
+  forced counts. Before asking for it, answer whether the confirmed
+  findings share a cause in an assumption the design rests on, and take a
+  pivot: re-scope the branch, convene a panel, or bring the design question to
+  the owner. The request for that raise states the answer and the pivot.
+
+Record every cap raise on the ledger's first row, beside `cap`, as an entry
+appended to its `capRaises` list:
+`{"from": <old cap>, "to": <new cap>, "date": "<date -I>", "triggers": {"<n>": <fired>}}`,
+one key per step-back trigger you evaluated and `true` where it fired. The
+second raise also has
+`"stepBack": {"sharedCause": "<the answer>", "pivot": "re-scope" | "panel" | "owner"}`.
+A `capNote` may still explain the raise in prose; it is not the record.
+`.claude/scripts/check-review-ledger-dispositions.mjs` refuses, at
+merge-ready, a ledger whose second raise has no step-back record.
 
 On a branch whose ledger holds no prior row, skip the trajectory read:
 triggers 1-3 and 7 each compare against a previous round, so with nothing
@@ -106,6 +122,8 @@ round.
 7. A confirmed finding or gating claim lands on code a previous fix round added,
    rather than on the branch's original change, in two consecutive rounds -- the
    guard is churning, not the change, and the pivot to weigh first is narrowing.
+8. The next round needs the branch's second cap raise. Evaluated when a raise
+   is asked for, with the step-back recorded on that raise.
 
 ## Step 3 -- Triage: decide here, dispatch the writing
 
@@ -288,8 +306,9 @@ PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha>` against the PR head.
 It refuses a `fixed` entry whose commit is not contained in the head -- as an
 ancestor, or as a commit with the same patch after a rebase -- and a `deferred`
 entry that names neither a board item nor a limits line the head holds, and a
-`limit` entry on a reachable surface without a limits line the head holds; its
-header states which older rows it skips. A refusal gates readiness: a fix that
+`limit` entry on a reachable surface without a limits line the head holds, and
+a second cap raise with no step-back record (Step 2); its header states which
+older rows it skips. A refusal gates readiness: a fix that
 never reached the head goes back into a fix pass, a deferral with no home is
 given one or rewritten as `limit` with a note, and a reachable limit has its
 limits line written on the branch, or its entry marked `"surface": "internal"`
@@ -432,7 +451,8 @@ run anyway. The round reads the effective diff at the merge head, so the
 resolution delta is inside what it reads. It counts against the branch's round
 budget like any other round; only the owner, or an orchestrating session the owner has
 delegated budgets to, raises a spent cap (when it delivers value, stepping back on a
-repeat hotspot), noted in the ledger. The checklist line then attests the merge head citing that round. An n/a
+repeat hotspot and before a second raise, Step 2), recorded in the ledger's
+`capRaises`. The checklist line then attests the merge head citing that round. An n/a
 line keeps its own path above -- the enumeration re-runs against the merged
 head's diff the same way -- and a head moved by anything other than that merge
 shape is not a base sync: a rebase takes its own path above, and any other

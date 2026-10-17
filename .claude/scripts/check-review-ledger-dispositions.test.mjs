@@ -7,6 +7,7 @@ import { createGitFixtures } from "./lib/gitFixture.mjs";
 import {
   LEGACY_CUTOFF_DATE,
   LIMIT_RULE_DATE,
+  capRaiseCheck,
   checkLedger,
   parseLedger,
   remapFixCommits,
@@ -413,6 +414,74 @@ describe("legacy rows", () => {
   });
 });
 
+describe("cap raises", () => {
+  const TRIGGERS = { 1: false, 2: false, 3: false, 4: false, 5: false };
+  const raise = (from, extra = {}) => ({
+    from,
+    to: from + 1,
+    date: DATE,
+    triggers: TRIGGERS,
+    ...extra,
+  });
+  const STEP_BACK = {
+    sharedCause: "no: the two findings sit in unrelated copy",
+    pivot: "owner",
+  };
+  const caps = (...rows) =>
+    capRaiseCheck(parseLedger(rows.join("\n") + "\n").rows);
+
+  it("passes a ledger with no raise recorded, or with one", () => {
+    expect(caps(row([]))).toEqual({ count: 0, reason: null });
+    expect(caps(row([], { capRaises: [raise(3)] }))).toEqual({
+      count: 1,
+      reason: null,
+    });
+  });
+
+  it("passes two raises whose second records the step-back", () => {
+    expect(
+      caps(
+        row([], {
+          capRaises: [raise(3), raise(4, { stepBack: STEP_BACK })],
+        }),
+      ),
+    ).toEqual({ count: 2, reason: null });
+  });
+
+  it("refuses two raises with no step-back on the second, counting raises across rows", () => {
+    expect(caps(row([], { capRaises: [raise(3), raise(4)] }))).toEqual({
+      count: 2,
+      reason: 'the second cap raise records no "stepBack"',
+    });
+    expect(
+      caps(
+        row([], { capRaises: [raise(3, { stepBack: STEP_BACK })] }),
+        row([], { round: 2, capRaises: [raise(4)] }),
+      ).reason,
+    ).toBe('the second cap raise records no "stepBack"');
+  });
+
+  it("refuses a step-back with no shared-cause answer or an unknown pivot, and a capRaises that is not a list", () => {
+    const second = (stepBack) =>
+      caps(row([], { capRaises: [raise(3), raise(4, { stepBack })] })).reason;
+    expect(second({ sharedCause: " ", pivot: "panel" })).toMatch(
+      /states no "sharedCause"/,
+    );
+    expect(second({ sharedCause: "yes", pivot: "another round" })).toMatch(
+      /pivot is "another round", not one of "re-scope", "panel", "owner"/,
+    );
+    expect(caps(row([], { capRaises: { from: 3 } })).reason).toBe(
+      `round 1's "capRaises" is not a list`,
+    );
+  });
+
+  it("does not count a raise recorded only in capNote prose", () => {
+    expect(
+      caps(row([], { cap: 7, capNote: "raised from 3 to 4 | raised 4 to 5" })),
+    ).toEqual({ count: 0, reason: null });
+  });
+});
+
 // Each case builds a fixture repository and spawns the script up to three
 // times, each a cold Node start, which runs slowly under load and can pass
 // vitest's 5 s default. Sized well past that, the bound catches a hung spawn
@@ -442,6 +511,23 @@ describe("the command line", { timeout: 60_000 }, () => {
 
     writeFileSync(ledgerPath, "{not json\n");
     expect(runScript(fixture.dir, [ledgerPath, oldHead]).status).toBe(2);
+  });
+
+  it("exits 1 on a second cap raise with no step-back, naming it", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const dir = makeTempDir("ledger-file-");
+    const ledgerPath = join(dir, "branch.jsonl");
+    const raise = (from) => ({ from, to: from + 1, date: DATE, triggers: {} });
+    writeFileSync(
+      ledgerPath,
+      `${row([], { capRaises: [raise(3), raise(4)] })}\n`,
+    );
+    const refused = runScript(fixture.dir, [ledgerPath, oldHead]);
+    expect(refused.status).toBe(1);
+    expect(refused.stdout).toMatch(
+      /\[REFUSED\] cap raises: 2 recorded\n\s+the second cap raise records no "stepBack"/,
+    );
+    expect(refused.stdout).toMatch(/dispositions: REFUSED -- 1 entry fail/);
   });
 
   it("exits 1 on a reachable limit with no limits line, 0 once it is internal", () => {

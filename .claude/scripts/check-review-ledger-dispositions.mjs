@@ -17,6 +17,12 @@
 //   no `limitsLine` passing the `deferred` rules, or whose `surface` is any
 //   value other than those two. `"surface": "internal"` passes.
 //
+// It also refuses a ledger recording two or more cap raises whose second raise
+// has no step-back record. The raises are every row's `capRaises` entries in
+// row order; the second needs `"stepBack": {"sharedCause": "<answer>",
+// "pivot": "re-scope" | "panel" | "owner"}`, and a `capRaises` that is not a
+// list is refused. A raise recorded only in `capNote` prose is not counted.
+//
 // `--remap` rewrites each `fixed` entry's commit in place to the commit a rebase
 // made from it, paired by author, author date and message; a fix the rebase
 // squashed or reworded stays unpaired and keeps its old id.
@@ -222,6 +228,44 @@ export function checkLedger({ rows, head, git }) {
   return results;
 }
 
+/** The pivots a step-back record may name. */
+export const STEP_BACK_PIVOTS = ["re-scope", "panel", "owner"];
+
+/**
+ * Why the ledger's cap raises are refused, or null where they pass, with the
+ * number of raises it read: the second raise needs a step-back record stating
+ * the shared-cause answer and the pivot taken.
+ */
+export function capRaiseCheck(rows) {
+  const raises = [];
+  for (const { row } of rows) {
+    if (row.capRaises === undefined) continue;
+    if (!Array.isArray(row.capRaises))
+      return {
+        count: raises.length,
+        reason: `round ${row.round}'s "capRaises" is not a list`,
+      };
+    raises.push(...row.capRaises);
+  }
+  const result = (reason) => ({ count: raises.length, reason });
+  if (raises.length < 2) return result(null);
+  const stepBack = raises[1]?.stepBack;
+  if (stepBack === null || typeof stepBack !== "object")
+    return result('the second cap raise records no "stepBack"');
+  if (
+    typeof stepBack.sharedCause !== "string" ||
+    stepBack.sharedCause.trim() === ""
+  )
+    return result(
+      'the second cap raise\'s "stepBack" states no "sharedCause" answer',
+    );
+  if (!STEP_BACK_PIVOTS.includes(stepBack.pivot))
+    return result(
+      `the second cap raise's "stepBack" pivot is ${JSON.stringify(stepBack.pivot)}, not one of ${STEP_BACK_PIVOTS.map((pivot) => `"${pivot}"`).join(", ")}`,
+    );
+  return result(null);
+}
+
 /** Commits in `base..head`, keyed by author, author date, and message. */
 function commitsByAuthorship({ base, head, git }) {
   const byKey = new Map();
@@ -379,15 +423,22 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       );
       if (status !== "ok") process.stdout.write(`            ${reason}\n`);
     }
+    const caps = capRaiseCheck(rows);
+    process.stdout.write(
+      caps.reason === null
+        ? `  [OK     ] cap raises: ${caps.count} recorded\n`
+        : `  [REFUSED] cap raises: ${caps.count} recorded\n            ${caps.reason}\n`,
+    );
     const refused = results.filter((r) => r.status === "refused").length;
     const skipped = results.filter((r) => r.status === "skipped").length;
     const preRule = results.filter((r) => r.status === "pre-rule").length;
+    const failed = refused + (caps.reason === null ? 0 : 1);
     process.stdout.write(
-      refused === 0
+      failed === 0
         ? `\ndispositions: PASS -- ${results.length - skipped - preRule} checked, ${skipped} skipped as legacy${preRule === 0 ? "" : `, ${preRule} limits before the limit rule`}\n`
-        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
+        : `\ndispositions: REFUSED -- ${failed} entr${failed === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"; record the step-back on a branch's second cap raise\n`,
     );
-    process.exit(refused === 0 ? 0 : 1);
+    process.exit(failed === 0 ? 0 : 1);
   } catch (error) {
     process.stderr.write(`error: ${error.message ?? error}\n`);
     process.exit(2);
