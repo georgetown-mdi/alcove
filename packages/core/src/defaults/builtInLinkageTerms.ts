@@ -467,10 +467,68 @@ export interface PrecisionFloorSelection {
 export const DEFAULT_PRECISION_FLOOR_SELECTION: PrecisionFloorSelection =
   Object.freeze({ floor: 95, oneStateOrMetroArea: true });
 
+/** Every floor a selection may name, most precise first. */
+export const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = Object.freeze([
+  99, 95,
+]);
+
+/** The question whose answer admits the rules with the
+ * `one_state_or_metro_area` coverage condition, as an authoring screen asks
+ * it. */
+export const ONE_STATE_OR_METRO_AREA_QUESTION =
+  "Do both files draw their members from one state or one metropolitan area?";
+
+/** The help an authoring screen shows beside
+ * {@link ONE_STATE_OR_METRO_AREA_QUESTION}, one sentence per entry. */
+export const ONE_STATE_OR_METRO_AREA_HELP: ReadonlyArray<string> =
+  Object.freeze([
+    "A file covering one birth year, such as one school class, behaves like " +
+      "a far larger file, because more of its members share a name and a " +
+      "date of birth.",
+    "Each rule's precision comes from studies of similar rules in other " +
+      "settings.",
+  ]);
+
+/** The rules a floor selects, as a phrase starting lowercase. */
+function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
+  return `the built-in rules at ${String(floor)}% precision and above`;
+}
+
 /**
- * The rules `selection` picks for a file, as every screen that names a quick
- * exchange's selection words it: the console's confirm step and the CLI's
- * display before the run. Starts lowercase, for use after a label.
+ * A floor as the control choosing it states it: a label naming the rules it
+ * selects, and a description of its band's conditions -- the share of matched
+ * pairs that are the same person, and, where the band holds rules with the
+ * `one_state_or_metro_area` coverage condition, that condition.
+ */
+export function precisionFloorStatement(floor: PrecisionFloor): {
+  label: string;
+  description: string;
+} {
+  const label = rulesAtPrecisionFloor(floor);
+  const share =
+    `Of the pairs each rule matches, at least ${String(floor)} in 100 are ` +
+    "the same person.";
+  const bandHoldsCoverageCondition = DEFAULT_LINKAGE_RULE_BANDS.some(
+    (rule) =>
+      rule.band === floor &&
+      rule.coverage === "one_state_or_metro_area" &&
+      rule.needs === undefined,
+  );
+  return {
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+    description: bandHoldsCoverageCondition
+      ? `${share} The rules that match on a name and a date of birth alone ` +
+        "are included only when both files draw their members from one " +
+        "state or one metropolitan area."
+      : share,
+  };
+}
+
+/**
+ * The rules `selection` picks for a file, as every screen that names a
+ * selection words it: the console's confirm step, the CLI's display before
+ * the run, and the web invitation's review. Starts lowercase, for use after a
+ * label.
  */
 export function precisionFloorSelectionStatement(
   selection: PrecisionFloorSelection,
@@ -481,7 +539,7 @@ export function precisionFloorSelectionStatement(
     : "leaving out the rules that need both files to draw their members " +
       "from one state or one metropolitan area";
   return (
-    `the built-in rules at ${String(selection.floor)}% precision and above ` +
+    `${rulesAtPrecisionFloor(selection.floor)} ` +
     `that your file supplies, ${coverage}`
   );
 }

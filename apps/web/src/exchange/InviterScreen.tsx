@@ -80,6 +80,7 @@ import {
   editorWithLinkageStrategy,
   editorWithOutputDirection,
   editorWithPastedConfiguration,
+  editorWithPrecisionFloorSelection,
   editorWithRecommendedCleaning,
   editorWithTransport,
   resetToRecommended,
@@ -2019,6 +2020,19 @@ export function InviterScreen() {
               onExpertMode={(on) =>
                 dispatch({ type: "expert-mode-chosen", expertMode: on })
               }
+              onPrecisionFloorSelection={(selection) => {
+                const reseeded = editorWithPrecisionFloorSelection(
+                  editor,
+                  selection,
+                );
+                if (reseeded === editor) return;
+                const count = reseeded.draft.keys.length;
+                dispatch({
+                  type: "editor-replaced",
+                  editor: reseeded,
+                  announcement: `The key list holds ${count} built-in ${count === 1 ? "rule" : "rules"} your file supplies, all turned on.`,
+                });
+              }}
               onKeyEnabled={(index, enabled) =>
                 applyEditor(editorWithKeyEnabled(editor, index, enabled))
               }

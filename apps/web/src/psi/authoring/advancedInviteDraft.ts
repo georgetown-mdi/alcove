@@ -1,5 +1,7 @@
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
+  DEFAULT_LINKAGE_RULE_SET,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   INVITATION_LIFETIME_SECONDS,
   authoredLinkageFields,
   columnValues,
@@ -9,6 +11,7 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
+  linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
 } from "@alcove/core";
 
@@ -26,6 +29,7 @@ import type {
   LinkageTerms,
   Metadata,
   OwnColumnSelection,
+  PrecisionFloorSelection,
   Standardization,
 } from "@alcove/core";
 
@@ -196,7 +200,11 @@ export function seedAdvancedInvite(
   // unchanged by it.
   const metadata = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   const terms = getDefaultLinkageTerms(identity, metadata);
-  const keys = offerableDraftKeys(identity, metadata);
+  const keys = offerableDraftKeys(
+    identity,
+    metadata,
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+  );
   return {
     draft: {
       identity,
@@ -229,25 +237,75 @@ export function seedAdvancedInvite(
         dateInputFormats,
       ),
       keys,
+      precisionFloorSelection: DEFAULT_PRECISION_FLOOR_SELECTION,
     },
     seed: { terms, metadata, columns },
   };
 }
 
 /**
- * What the guided key list offers for `metadata`: the built-in keys the
- * columns can supply, ON. Each entry's `enabled` is the flag a key arrives
- * with when first offered; {@link reconcileKeys} keeps the operator's own
- * flag for a key already in the draft.
+ * What the guided key list offers for `metadata` under `selection`: the
+ * built-in keys that selection picks and the columns can supply, ON. Each
+ * entry's `enabled` is the flag a key arrives with when first offered;
+ * {@link reconcileKeys} keeps the operator's own flag for a key already in the
+ * draft.
  */
 function offerableDraftKeys(
   identity: string,
   metadata: Metadata,
+  selection: PrecisionFloorSelection,
 ): Array<DraftKey> {
-  return getDefaultLinkageTerms(identity, metadata).linkageKeys.map((key) => ({
-    key,
-    enabled: true,
-  }));
+  return linkageTermsFromRuleSet(
+    DEFAULT_LINKAGE_RULE_SET,
+    identity,
+    metadata,
+    selection,
+  ).linkageKeys.map((key) => ({ key, enabled: true }));
+}
+
+/**
+ * Whether the built-in catalog offers `draft` any key at its precision floor
+ * selection: false for a draft whose columns supply none of the keys that
+ * selection picks, and for a draft built from a terms document.
+ */
+export function draftHasOfferedKeys(draft: AdvancedInviteDraft): boolean {
+  return (
+    draft.precisionFloorSelection !== undefined &&
+    offerableDraftKeys(
+      draft.identity,
+      draft.metadata,
+      draft.precisionFloorSelection,
+    ).length > 0
+  );
+}
+
+/**
+ * Reseed the guided keys from the built-in catalog at `selection`: every key
+ * it picks that these columns supply, ON, in the catalog's order, replacing
+ * the draft's keys and the enabled flags set on them. The cleaning a phone,
+ * email or ZIP key holds follows the new keys, as it follows a key turned on or
+ * off by hand ({@link draftWithKeyEnabled}).
+ *
+ * For the guided list only: the inviter session refuses it on a key set
+ * written in the expert editor or loaded from a terms document
+ * (`editorWithPrecisionFloorSelection`).
+ */
+export function draftWithPrecisionFloorSelection(
+  draft: AdvancedInviteDraft,
+  selection: PrecisionFloorSelection,
+): AdvancedInviteDraft {
+  const keys = offerableDraftKeys(draft.identity, draft.metadata, selection);
+  return {
+    ...draft,
+    keys,
+    precisionFloorSelection: selection,
+    standardization: keyGatedCleaningForKeys(
+      draft.standardization,
+      draft.metadata,
+      draft.identity,
+      enabledLinkageKeys(keys),
+    ),
+  };
 }
 
 /**
@@ -307,7 +365,11 @@ export function setDraftMetadata(
 ): AdvancedInviteDraft {
   const keys = reconcileKeys(
     draft.keys,
-    offerableDraftKeys(draft.identity, metadata),
+    offerableDraftKeys(
+      draft.identity,
+      metadata,
+      draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION,
+    ),
   );
   const enabledKeys = enabledLinkageKeys(keys);
   return {

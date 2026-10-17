@@ -14,7 +14,12 @@ import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 import {
   AlgorithmSchema,
   CONTACT_AND_LOCATION_FIELD_TYPES,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   LinkageStrategySchema,
+  ONE_STATE_OR_METRO_AREA_HELP,
+  ONE_STATE_OR_METRO_AREA_QUESTION,
+  PRECISION_FLOORS,
+  precisionFloorStatement,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -26,21 +31,23 @@ import {
 } from "@psi/linkageStrategyChoice";
 import {
   buildAdvancedTerms,
-  importedCitationDropNotice,
+  citationDropFor,
 } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 import { TermsImportExport } from "@components/TermsImportExport";
 
 import {
+  AUTHORED_KEYS_FLOOR_NOTE,
   declaredFieldsFor,
+  emptyGuidedKeysNotice,
   keySatisfiabilityFor,
   seedRows,
 } from "@psi/inviterEditor";
 
 import styles from "@styles/app.module.css";
 
-import { CITATION_DROP_TITLE, CitationDropNotice } from "./CitationDropNotice";
+import { CitationDropNotice } from "./CitationDropNotice";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {
@@ -51,6 +58,7 @@ import type {
   Algorithm,
   LinkageStrategy,
   LinkageTerms,
+  PrecisionFloorSelection,
   Standardization,
 } from "@alcove/core";
 
@@ -67,26 +75,34 @@ const SHARED_VALUE_CAVEAT =
   "ZIP code column must hold each person's own ZIP code, never the ZIP code " +
   "of a site that serves them.";
 
+/** The coverage question's two answers, as the radio values hold them. */
+const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
+
 /**
- * The Matching keys tab: the guided ordered key list (enable + reorder), the
- * expert switch that opens element-by-element authoring and terms
- * import/export, and the matching settings -- the linkage strategy, matching
- * method, and deduplication controls, each live while the exchange applies what
- * it writes.
+ * The Matching keys tab: the precision floor and coverage question the guided
+ * keys are drawn from the built-in catalog with, the guided ordered key list
+ * (enable + reorder), the expert switch that opens element-by-element
+ * authoring and terms import/export, and the matching settings -- the linkage
+ * strategy, matching method, and deduplication controls, each live while the
+ * exchange applies what it writes.
  *
- * The list holds the built-in keys for these columns, each with a checkbox and
- * the reorder pair.
+ * The list holds the built-in keys the chosen floor and answer select for
+ * these columns, each with a checkbox and the reorder pair. Both choices are
+ * withheld once the keys were written in Expert authoring or loaded from a
+ * document, with a note saying so: no floor selected those keys, and
+ * reseeding would replace them.
  *
- * Also renders {@link importedCitationDropNotice} live from the draft, so a
- * rule-set citation the rebuild drops is flagged as soon as the import lands
- * or an edit costs it. Review & create restates the same notice, for an
- * operator who imports here and leaves without reading it.
+ * Also renders {@link citationDropFor} live from the draft, so a rule-set
+ * citation the rebuild drops is flagged as soon as the import lands or an
+ * edit costs it. Review & create restates the same notice, for an operator
+ * who edits here and leaves without reading it.
  */
 export function KeysTab({
   editor,
   csv,
   expertMode,
   onExpertMode,
+  onPrecisionFloorSelection,
   onKeyEnabled,
   onKeyMoved,
   onAuthoredDraft,
@@ -102,6 +118,8 @@ export function KeysTab({
   csv: AcquiredCsv;
   expertMode: boolean;
   onExpertMode: (on: boolean) => void;
+  /** Reseed the guided keys at a precision floor and coverage answer. */
+  onPrecisionFloorSelection: (selection: PrecisionFloorSelection) => void;
   onKeyEnabled: (index: number, enabled: boolean) => void;
   onKeyMoved: (index: number, offset: -1 | 1) => void;
   onAuthoredDraft: (draft: AdvancedInviteDraft) => void;
@@ -130,9 +148,16 @@ export function KeysTab({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => importedCitationDropNotice(editor.draft, currentTerms),
+    () => citationDropFor(editor.draft, currentTerms),
     [editor.draft, currentTerms],
   );
+  const emptyGuidedKeys = useMemo(
+    () => emptyGuidedKeysNotice(editor),
+    [editor],
+  );
+  const keysAuthored = editor.keysAuthored === true;
+  const selection =
+    editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -154,6 +179,63 @@ export function KeysTab({
       </button>
       <p className={styles.eyebrow}>Customize</p>
       <h1 tabIndex={-1}>Matching keys</h1>
+      {keysAuthored ? (
+        <Alert variant="light" color="gray" role="note" my="sm">
+          {AUTHORED_KEYS_FLOOR_NOTE}
+        </Alert>
+      ) : (
+        <>
+          <Radio.Group
+            label="Built-in rules"
+            description="Changing this or the answer below replaces the keys with the rules it selects that your file supplies, all turned on."
+            value={String(selection.floor)}
+            onChange={(value) => {
+              const floor = PRECISION_FLOORS.find(
+                (candidate) => String(candidate) === value,
+              );
+              if (floor !== undefined)
+                onPrecisionFloorSelection({ ...selection, floor });
+            }}
+          >
+            {PRECISION_FLOORS.map((floor) => {
+              const statement = precisionFloorStatement(floor);
+              return (
+                <Radio
+                  key={floor}
+                  value={String(floor)}
+                  label={statement.label}
+                  description={statement.description}
+                  mt="xs"
+                />
+              );
+            })}
+          </Radio.Group>
+          <Radio.Group
+            label={ONE_STATE_OR_METRO_AREA_QUESTION}
+            description={ONE_STATE_OR_METRO_AREA_HELP.join(" ")}
+            value={
+              selection.oneStateOrMetroArea
+                ? COVERAGE_ANSWER.yes
+                : COVERAGE_ANSWER.no
+            }
+            onChange={(value) =>
+              onPrecisionFloorSelection({
+                ...selection,
+                oneStateOrMetroArea: value === COVERAGE_ANSWER.yes,
+              })
+            }
+            mt="md"
+          >
+            <Radio value={COVERAGE_ANSWER.yes} label="Yes" mt="xs" />
+            <Radio
+              value={COVERAGE_ANSWER.no}
+              label="No"
+              description="The rules that match on a name and a date of birth alone are left out."
+              mt="xs"
+            />
+          </Radio.Group>
+        </>
+      )}
       <p id="key-order-help">
         Records are matched on these keys, tried in order, and earlier keys
         match first. The built-in keys come with the rules at 99% precision
@@ -198,6 +280,11 @@ export function KeysTab({
           );
         })}
       </ol>
+      {emptyGuidedKeys !== undefined && (
+        <Alert variant="light" color="gray" role="note" my="sm">
+          {emptyGuidedKeys}
+        </Alert>
+      )}
       {showsSharedValueKey && (
         <Alert variant="light" color="gray" role="note" my="sm">
           {SHARED_VALUE_CAVEAT}
@@ -218,11 +305,9 @@ export function KeysTab({
         is missed by screen readers watching only what is already in the DOM,
         and repeating the whole body would voice it twice -- once live, once in
         reading order. */}
-      {citationDrop !== undefined && (
-        <CitationDropNotice notice={citationDrop} />
-      )}
+      {citationDrop !== undefined && <CitationDropNotice drop={citationDrop} />}
       <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">
-        {citationDrop !== undefined ? CITATION_DROP_TITLE : ""}
+        {citationDrop?.title ?? ""}
       </VisuallyHidden>
       <Switch
         label="Expert authoring"

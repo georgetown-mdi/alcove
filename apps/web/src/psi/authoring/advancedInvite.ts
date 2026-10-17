@@ -10,9 +10,9 @@
  * - {@link ./advancedInviteTerms} -- the linkage-terms mapping: a draft to the
  *   {@link LinkageTerms} it represents, and the inviter's own exchange spec.
  * - {@link ./advancedInviteValidation} -- the Generate gate, the import-refusal
- *   messages, and the two notices that refuse nothing: an imported rule-set
- *   citation the rebuild drops, and a declared default value the run will not
- *   substitute.
+ *   messages, and the notices that refuse nothing: a rule-set citation the
+ *   rebuild drops, imported or seeded, and a declared default value the run
+ *   will not substitute.
  * - {@link ./linkageComparison} -- the rule-set membership compares taken over
  *   draft-side values, each pruning the explicitly-`undefined` optional
  *   properties core's strict canonical equality cannot read. A lint ban keeps
@@ -40,9 +40,11 @@ export {
   dateInputFormatsForColumns,
   defaultStandardizationForRows,
   draftFromTerms,
+  draftHasOfferedKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
+  draftWithPrecisionFloorSelection,
   inferDateInputFormat,
   inviterDefaultStandardization,
   moveElement,
@@ -68,10 +70,15 @@ export {
   standardizationForTerms,
 } from "./advancedInviteTerms";
 
+export type { CitationDrop } from "./advancedInviteValidation";
 export {
+  IMPORTED_CITATION_DROP_TITLE,
+  SEEDED_CITATION_DROP_TITLE,
+  citationDropFor,
   importedCitationDropNotice,
   importedConstraintDivergenceMessage,
   inertCoalesceNotice,
+  seededCitationDropNotice,
   validateAdvancedInvite,
 } from "./advancedInviteValidation";
 

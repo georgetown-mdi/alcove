@@ -1,21 +1,17 @@
 import { Alert } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-/** The dropped-citation Alert's title. Exported because the Matching keys tab
- * announces it through a persistent live region -- the short heading, not the
- * full body twice (once as a live update, once in reading order next to the
- * Alert). */
-export const CITATION_DROP_TITLE =
-  "The imported rule-set citation will not be included";
+import type { CitationDrop } from "@psi/authoring/advancedInvite";
 
 /**
- * The notice that an imported document's rule-set citation is left out of the
- * terms the editor emits; `importedCitationDropNotice` supplies the body, which
- * names the cause and, where an edit here reaches it, the way back.
+ * The notice that a rule-set citation -- an imported document's, or the
+ * built-in rules' on a draft seeded from them -- is left out of the terms the
+ * editor emits; `citationDropFor` supplies the title and the body, which names
+ * the cause and, where an edit here reaches it, the way back.
  *
  * One component for the two steps that show it -- Matching keys, where the edit
  * that costs the citation is made, and Review & create, where the terms are
- * confirmed -- so an operator who imports in one and creates from the other
+ * confirmed -- so an operator who edits in one and creates from the other
  * cannot meet two wordings of the same fact, and one who works through either
  * step alone still meets it once.
  *
@@ -24,16 +20,16 @@ export const CITATION_DROP_TITLE =
  * than stopped from creating it. It is a `note`, not a Problems entry -- every
  * Problems entry holds the create gate shut.
  */
-export function CitationDropNotice({ notice }: { notice: string }) {
+export function CitationDropNotice({ drop }: { drop: CitationDrop }) {
   return (
     <Alert
       role="note"
       color="yellow"
       icon={<IconAlertCircle aria-hidden />}
-      title={CITATION_DROP_TITLE}
+      title={drop.title}
       mt="md"
     >
-      {notice}
+      {drop.notice}
     </Alert>
   );
 }

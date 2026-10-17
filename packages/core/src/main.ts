@@ -376,6 +376,9 @@ export {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  ONE_STATE_OR_METRO_AREA_HELP,
+  ONE_STATE_OR_METRO_AREA_QUESTION,
+  PRECISION_FLOORS,
   authoredLinkageFields,
   encodeForComparison,
   findBuiltInLinkageRuleSet,
@@ -385,6 +388,7 @@ export {
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
   precisionFloorSelectionStatement,
+  precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {

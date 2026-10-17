@@ -7,18 +7,23 @@
  */
 
 import {
+  DEFAULT_PRECISION_FLOOR_SELECTION,
+  PRECISION_FLOORS,
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
+  precisionFloorStatement,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
 import {
   draftFromTerms,
+  draftHasOfferedKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
+  draftWithPrecisionFloorSelection,
   gradeAuthoredKeys,
   inviterDefaultStandardization,
   seedAdvancedInvite,
@@ -52,6 +57,7 @@ import type {
   LinkageStrategy,
   LinkageTerms,
   Metadata,
+  PrecisionFloorSelection,
   SemanticType,
   Standardization,
 } from "@alcove/core";
@@ -206,6 +212,54 @@ export function editorWithKeyEnabled(
     ...editor,
     draft: draftWithKeyEnabled(editor.draft, index, enabled),
   };
+}
+
+/** Choose the precision floor and coverage answer the guided keys are drawn
+ * with, reseeding them from the built-in catalog
+ * ({@link draftWithPrecisionFloorSelection}). Returns the session unchanged
+ * where its keys were written in the expert editor or loaded from a document
+ * ({@link InviterEditor.keysAuthored}): no floor selected those, and reseeding
+ * would replace them. */
+export function editorWithPrecisionFloorSelection(
+  editor: InviterEditor,
+  selection: PrecisionFloorSelection,
+): InviterEditor {
+  if (editor.sealed === true || editor.keysAuthored === true) return editor;
+  return {
+    ...editor,
+    draft: draftWithPrecisionFloorSelection(editor.draft, selection),
+  };
+}
+
+/** What Matching keys shows in place of the precision floor and coverage
+ * controls on a session whose keys no floor selected
+ * ({@link editorWithPrecisionFloorSelection} refuses there). */
+export const AUTHORED_KEYS_FLOOR_NOTE =
+  "These keys were written in Expert authoring or loaded from a document, so " +
+  "no choice of built-in rules applies to them. To choose the built-in rules " +
+  "again, use Reset to defaults on Review & create, which also resets the " +
+  "other settings.";
+
+/** The note for a guided key list the precision floor and coverage answer
+ * leave empty while a wider choice would not, or `undefined` otherwise. */
+export function emptyGuidedKeysNotice(
+  editor: InviterEditor,
+): string | undefined {
+  if (editor.keysAuthored === true || editor.draft.keys.length > 0)
+    return undefined;
+  const widest: PrecisionFloorSelection = {
+    floor: PRECISION_FLOORS.at(-1) ?? DEFAULT_PRECISION_FLOOR_SELECTION.floor,
+    oneStateOrMetroArea: true,
+  };
+  if (
+    !draftHasOfferedKeys({ ...editor.draft, precisionFloorSelection: widest })
+  )
+    return undefined;
+  return (
+    "Your file's columns supply none of the built-in rules these choices " +
+    `select. ${precisionFloorStatement(widest.floor).label}, with the ` +
+    "question above answered Yes, include rules your file supplies."
+  );
 }
 
 /** Move the key at `index` one place earlier (`-1`) or later (`+1`); a move

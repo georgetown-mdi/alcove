@@ -5,6 +5,7 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  PRECISION_FLOORS,
   checkLinkageRuleSetCitation,
   findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
@@ -12,6 +13,7 @@ import {
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
   precisionFloorSelectionStatement,
+  precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
@@ -258,5 +260,44 @@ describe("precisionFloorSelectionStatement", () => {
         "supplies, leaving out the rules that need both files to draw " +
         "their members from one state or one metropolitan area",
     );
+  });
+});
+
+describe("PRECISION_FLOORS", () => {
+  test("names every band the catalog places a rule in, most precise first", () => {
+    const placed = [...new Set(bands.map((band) => band.band))];
+    expect([...PRECISION_FLOORS].sort()).toStrictEqual(placed.sort());
+    expect(PRECISION_FLOORS).toStrictEqual(
+      [...PRECISION_FLOORS].sort((a, b) => b - a),
+    );
+  });
+});
+
+describe("precisionFloorStatement", () => {
+  test("states the 99% floor's share, with no coverage condition", () => {
+    expect(precisionFloorStatement(99)).toStrictEqual({
+      label: "The built-in rules at 99% precision and above",
+      description:
+        "Of the pairs each rule matches, at least 99 in 100 are the same " +
+        "person.",
+    });
+  });
+
+  test("states the 95% floor's share and its coverage condition", () => {
+    expect(precisionFloorStatement(95)).toStrictEqual({
+      label: "The built-in rules at 95% precision and above",
+      description:
+        "Of the pairs each rule matches, at least 95 in 100 are the same " +
+        "person. The rules that match on a name and a date of birth alone " +
+        "are included only when both files draw their members from one " +
+        "state or one metropolitan area.",
+    });
+  });
+
+  test("names the floor in the words the selection statement uses", () => {
+    for (const floor of PRECISION_FLOORS)
+      expect(
+        precisionFloorSelectionStatement({ floor, oneStateOrMetroArea: true }),
+      ).toContain(precisionFloorStatement(floor).label.toLowerCase());
   });
 });

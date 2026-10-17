@@ -10,6 +10,7 @@ import type {
   Output,
   OwnColumnSelection,
   Payload,
+  PrecisionFloorSelection,
   Standardization,
 } from "@alcove/core";
 
@@ -133,6 +134,13 @@ export interface AdvancedInviteDraft {
    */
   includeMatchingKey?: true;
   keys: Array<DraftKey>;
+  /**
+   * The precision floor and coverage answer the guided keys were drawn from the
+   * built-in catalog with. Set by {@link seedAdvancedInvite} and
+   * {@link draftWithPrecisionFloorSelection}; absent on a draft built from a
+   * terms document, whose keys no floor selected. Never part of the terms.
+   */
+  precisionFloorSelection?: PrecisionFloorSelection;
   /**
    * An imported terms document's `linkageFields`, held verbatim for round-trip
    * fidelity. Set only by {@link draftFromTerms}.

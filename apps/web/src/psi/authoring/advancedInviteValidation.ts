@@ -44,6 +44,7 @@ import {
 import {
   declarableFieldNames,
   draftFromTerms,
+  draftHasOfferedKeys,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
 import { outputForDirection } from "./advancedInviteTypes";
@@ -67,12 +68,12 @@ import type {
 } from "./advancedInviteTypes";
 
 /**
- * The Generate gate, the import-refusal messages, and the two notices that refuse
+ * The Generate gate, the import-refusal messages, and the notices that refuse
  * nothing. {@link validateAdvancedInvite} runs a draft's built terms through the
  * core schema and adds only the gates the schema does not express.
  * {@link importedConstraintDivergenceMessage} refuses an import holding a
- * constraint the editor cannot represent. {@link importedCitationDropNotice}
- * and {@link inertCoalesceNotice} state a consequence rather than block it.
+ * constraint the editor cannot represent. {@link citationDropFor} and
+ * {@link inertCoalesceNotice} state a consequence rather than block it.
  * No React, no I/O.
  */
 
@@ -1035,6 +1036,81 @@ export function importedCitationDropNotice(
   if (cause === "no-keys" && !draftHasSupplyableKey(draft))
     return CITATION_DROP_NO_SUPPLYABLE_KEY;
   return CITATION_DROP_NOTICES[cause];
+}
+
+/** What each cause tells the author of a draft seeded from the built-in rules
+ * whose terms no longer cite them. */
+const SEEDED_CITATION_DROP_NOTICES: Record<
+  Exclude<ImportedCitationDropCause, "shipped-set-unmet">,
+  string
+> = {
+  "no-keys":
+    "A rule-set citation says which set the linkage keys came from, and these " +
+    "terms enable none, so the built-in rule set is not cited in the terms you " +
+    "create. Turn a linkage key back on to keep the citation.",
+  "rules-not-drawn":
+    "A key was added, changed or moved out of the built-in order, so these keys " +
+    "are no longer drawn from the built-in rule set, and the terms you create " +
+    "will not cite it. Undo the key edits to keep the citation, or create the " +
+    "invitation without it.",
+};
+
+/**
+ * The notice for a draft seeded from the built-in rules whose terms will not
+ * cite them, or `undefined` where they will -- and for an imported draft
+ * ({@link importedCitationDropNotice} speaks for it), and for a draft whose
+ * columns supply none of the keys its precision floor selects, which never had
+ * a citation to lose. Blocks nothing, for the reason the imported notice
+ * blocks nothing.
+ */
+export function seededCitationDropNotice(
+  draft: AdvancedInviteDraft,
+  builtTerms?: Pick<
+    LinkageTerms,
+    "linkageFields" | "linkageKeys" | "linkageRuleSet"
+  >,
+): string | undefined {
+  if (draft.importedRuleSetCitation !== undefined) return undefined;
+  if (!draftHasOfferedKeys(draft)) return undefined;
+  const terms = builtTerms ?? buildAdvancedTerms(draft);
+  if (terms.linkageRuleSet !== undefined) return undefined;
+  return SEEDED_CITATION_DROP_NOTICES[
+    terms.linkageKeys.length === 0 ? "no-keys" : "rules-not-drawn"
+  ];
+}
+
+/** The title of the notice {@link importedCitationDropNotice} words. */
+export const IMPORTED_CITATION_DROP_TITLE =
+  "The imported rule-set citation will not be included";
+
+/** The title of the notice {@link seededCitationDropNotice} words. */
+export const SEEDED_CITATION_DROP_TITLE =
+  "The built-in rule-set citation will not be included";
+
+/** A dropped rule-set citation as the editor states it. */
+export interface CitationDrop {
+  title: string;
+  notice: string;
+}
+
+/**
+ * The dropped-citation notice for `draft`, imported or seeded, or `undefined`
+ * where its terms keep the citation they started with: the one read the
+ * Matching keys tab and Review & create both make, so no path that drops a
+ * citation drops it unnoticed.
+ */
+export function citationDropFor(
+  draft: AdvancedInviteDraft,
+  builtTerms?: LinkageTerms,
+): CitationDrop | undefined {
+  const terms = builtTerms ?? buildAdvancedTerms(draft);
+  const imported = importedCitationDropNotice(draft, terms);
+  if (imported !== undefined)
+    return { title: IMPORTED_CITATION_DROP_TITLE, notice: imported };
+  const seeded = seededCitationDropNotice(draft, terms);
+  if (seeded !== undefined)
+    return { title: SEEDED_CITATION_DROP_TITLE, notice: seeded };
+  return undefined;
 }
 
 /**
