@@ -32,6 +32,7 @@ import {
 import {
   WERIFT_BUILT_IN_STUN_URI,
   openWebRtcPeerSession,
+  withoutBuiltInStun,
 } from "../../../src/connection/webrtc/weriftPeer";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { startBrokerProcess } from "../../signaling/brokerProcess";
@@ -194,6 +195,26 @@ test("two CLI peers exchange frames in both directions over a real channel", asy
   });
 }, 120_000);
 
+test("two CLI peers whose connection lists a TURN url and no stun url connect on host candidates", async () => {
+  // The list each builds ends with the unqueried STUN entry, so neither
+  // gathers a server-reflexive candidate; the loopback relay refuses the
+  // allocation, which leaves the host candidates to carry the channel.
+  const common = {
+    ...partyOptions(generateSharedSecret()),
+    iceServers: stunServer.turnIceServers,
+  };
+  const [inviter, acceptor] = await Promise.all([
+    openWebRtcMessageConnection({ ...common, role: "inviter" }),
+    openWebRtcMessageConnection({ ...common, role: "acceptor" }),
+  ]);
+  openConnections.push(inviter, acceptor);
+
+  await acceptor.send({ step: "hello" });
+  expect(await inviter.receive()).toEqual({ step: "hello" });
+  await inviter.send({ step: "hello-back" });
+  expect(await acceptor.receive()).toEqual({ step: "hello-back" });
+}, 120_000);
+
 test.each(["inviter", "acceptor"] as const)(
   "a partner arriving after the %s's first connection attempt ended is met by a later one",
   async (first) => {
@@ -329,8 +350,9 @@ test("a 200,000-record frame crosses the channel whole", async () => {
 
 test("a configured iceServers list is the list the peer connection is built with", async () => {
   // `getConfiguration()` echoes its input, so this asserts PASS-THROUGH -- that
-  // a configured list reaches werift unchanged -- not suppression of the
-  // built-in default, which no readable API can show.
+  // a configured list reaches werift in order, ahead of the unqueried STUN
+  // entry -- not suppression of the built-in default, which no readable API
+  // can show (firstTurnUrl.test.ts measures that).
   const sharedSecret = generateSharedSecret();
   const refusingUrl = (stunServer.iceServers[0] as { urls: string }).urls;
   const configured = [
@@ -361,8 +383,8 @@ test("a configured iceServers list is the list the peer connection is built with
   // No partner is listening, so the rendezvous times out; the configuration was
   // already captured on the way in.
   await expect(attempt).rejects.toThrow(ConnectionError);
-  expect(seen[0]).toEqual(configured);
-  expect(seen[1]).toEqual(configured);
+  expect(seen[0]).toEqual(withoutBuiltInStun(configured));
+  expect(seen[1]).toEqual(withoutBuiltInStun(configured));
 }, 60_000);
 
 /**

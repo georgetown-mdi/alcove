@@ -235,9 +235,12 @@ traverse NAT for operators without the means to run their own STUN server, and
 what it discloses is connection metadata -- the host's public IP and the fact
 of a WebRTC session -- never exchange content. The narrower property the
 transport owed on top of that -- that a configured server list is the list
-actually used -- was measured after this note was written: a non-empty list
-REPLACES the built-in default rather than adding to it, so nothing further was
-needed (the assumption and its check are in
+actually used -- was measured after this note was written: a list naming a
+`stun` url REPLACES the built-in default rather than adding to it. A list naming
+only TURN urls does not, and gathers against the default as an empty one does.
+So every non-empty list the CLI builds ends with a `stun` entry werift never
+queries, an IPv6 loopback literal, which takes the default's place where the
+list names no `stun` url of its own (the assumptions and their checks are in
 [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md)). Separately and optionally, an
 upstream issue proposing that an empty or undefined list mean "no STUN" (an
 accurate host-candidates-only mode for VPN or LAN deployments) is worth opening

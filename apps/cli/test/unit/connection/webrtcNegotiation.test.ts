@@ -40,6 +40,7 @@ import {
   idTakenAfterRetryMessage,
   openWebRtcPeerSession,
   relayCredentialAttemptNotice,
+  withoutBuiltInStun,
 } from "../../../src/connection/webrtc/weriftPeer";
 
 import type {
@@ -2773,7 +2774,11 @@ test("each attempt after the first is built from freshly resolved ICE servers", 
   expect(attemptIceServers).toHaveBeenCalledTimes(2);
   expect(
     configurations.map((configuration) => configuration.iceServers),
-  ).toEqual([[{ urls: "stun:127.0.0.1:3478" }], ATTEMPT_RELAY, ATTEMPT_RELAY]);
+  ).toEqual(
+    [[{ urls: "stun:127.0.0.1:3478" }], ATTEMPT_RELAY, ATTEMPT_RELAY].map(
+      withoutBuiltInStun,
+    ),
+  );
   expect(reasons).toEqual([
     { kind: "partner-not-connected", waitedMs: expect.any(Number) },
     { kind: "partner-not-connected", waitedMs: expect.any(Number) },

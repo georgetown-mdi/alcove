@@ -924,6 +924,13 @@ actually used. An empty or absent list means "use the default"; it does not mean
 nothing is configured, what it discloses, and the unreachable-entry idiom for
 gathering host candidates only -- are in [CLI.md](../CLI.md#webrtc-exchanges).
 
+A non-empty list a run builds ends with one `stun` entry werift never queries
+(`UNQUERIED_STUN_URI`), since werift falls back to the built-in default for a
+list naming no `stun` url, such as one naming only TURN urls. A run that lists a
+`turn` url and no `stun` url therefore asks no STUN server. Why the entry is
+never contacted, and how that is measured, is in
+[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions).
+
 Every run gathers host, server-reflexive and relay candidates, so ICE can pair
 a direct or server-reflexive path and falls back to a relay where none works.
 

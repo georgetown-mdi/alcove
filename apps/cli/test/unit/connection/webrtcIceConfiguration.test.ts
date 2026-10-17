@@ -7,6 +7,7 @@ import {
   NO_ICE_SERVERS_WARNING,
   relaysLeftOutWarning,
   PLAINTEXT_SIGNALING_WARNING,
+  UNQUERIED_STUN_URI,
   WERIFT_BUILT_IN_STUN_URI,
   brokerLocationFromConnection,
   buildPeerConfiguration,
@@ -450,15 +451,53 @@ test("an ice_provision block is refused rather than silently ignored", () => {
 
 // --- the configuration the peer connection is built with --------------------
 
-test("a configured list is passed through verbatim, with no warning", () => {
+const UNQUERIED_STUN_ENTRY = { urls: UNQUERIED_STUN_URI };
+
+test("the unqueried STUN entry is an IPv6 loopback literal", () => {
+  // werift queries STUN from IPv4 sockets only and refuses an IPv6 target
+  // there before any lookup or send; firstTurnUrl.test.ts measures that on the
+  // real library. An IPv6 literal is what that refusal keys on.
+  expect(UNQUERIED_STUN_URI).toMatch(/^stun:\[::1\]:\d+$/);
+});
+
+test("a configured list is passed through in order, followed by the unqueried STUN entry, with no warning", () => {
   const warnings: Array<string> = [];
   const iceServers = [
     { urls: ["stun:stun.example:3478"] },
     { urls: "turn:relay.example:3478", username: "u", credential: "c" },
   ];
   expect(buildPeerConfiguration(iceServers, (m) => warnings.push(m))).toEqual({
-    iceServers,
+    iceServers: [...iceServers, UNQUERIED_STUN_ENTRY],
   });
+  expect(warnings).toEqual([]);
+});
+
+test("a listed STUN url, not the unqueried entry, is the one werift takes", () => {
+  const configuration = buildPeerConfiguration(
+    [{ urls: "stun:stun.example:3478" }],
+    () => undefined,
+  );
+  expect(parseIceServers(configuration.iceServers ?? []).stunServer).toEqual([
+    "stun.example",
+    3478,
+  ]);
+});
+
+test("a TURN-only list gives werift the unqueried entry as its STUN server, with no warning", () => {
+  const warnings: Array<string> = [];
+  const iceServers = [
+    { urls: "turn:relay.example:3478", username: "u", credential: "c" },
+  ];
+  const configuration = buildPeerConfiguration(iceServers, (m) =>
+    warnings.push(m),
+  );
+  expect(configuration).toEqual({
+    iceServers: [...iceServers, UNQUERIED_STUN_ENTRY],
+  });
+  expect(parseIceServers(configuration.iceServers ?? []).stunServer).toEqual([
+    "::1",
+    9,
+  ]);
   expect(warnings).toEqual([]);
 });
 
@@ -487,6 +526,11 @@ test("the warning names the default, what it discloses, and how to override", ()
   expect(NO_ICE_SERVERS_WARNING).toContain("`stun`");
   expect(NO_ICE_SERVERS_WARNING).toContain("`turn`");
   expect(NO_ICE_SERVERS_WARNING).toContain("unreachable");
+  // Setting `turn` alone keeps the run off every STUN server, which the
+  // integration suite measures (firstTurnUrl.test.ts), so the remedy says so.
+  expect(NO_ICE_SERVERS_WARNING).toContain(
+    "set `turn` alone to use your relay and ask no STUN server",
+  );
   // And it must not overstate the disclosure: connection metadata, not content.
   expect(NO_ICE_SERVERS_WARNING).toContain("no exchange content is");
 });
@@ -539,7 +583,7 @@ test("an emptied TURN list beside a stun url warns once, without the built-in de
   const leftOut = ["turn:relay.example.org"];
   expect(
     buildPeerConfiguration(iceServers, (m) => warnings.push(m), leftOut),
-  ).toEqual({ iceServers });
+  ).toEqual({ iceServers: [...iceServers, UNQUERIED_STUN_ENTRY] });
   expect(warnings).toEqual([relaysLeftOutWarning(leftOut)]);
   expect(warnings[0]).toContain("connection.allowed_relays");
   expect(warnings[0]).not.toContain(WERIFT_BUILT_IN_STUN_URI);
@@ -556,7 +600,7 @@ test("a list that keeps a TURN url warns nothing though allowed_relays left anot
     buildPeerConfiguration(iceServers, (m) => warnings.push(m), [
       "turn:relay.example.org",
     ]),
-  ).toEqual({ iceServers });
+  ).toEqual({ iceServers: [...iceServers, UNQUERIED_STUN_ENTRY] });
   expect(warnings).toEqual([]);
 });
 
@@ -587,7 +631,7 @@ test("werift's parser keeps the first TURN url and the first STUN url of the lis
       RUN_CREDENTIAL,
     ),
   );
-  expect(configuration.iceServers).toHaveLength(4);
+  expect(configuration.iceServers).toHaveLength(5);
 
   const options = parseIceServers(configuration.iceServers ?? []);
 

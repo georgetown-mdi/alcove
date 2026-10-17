@@ -71,10 +71,11 @@ import type {
  * registration under that id and a fresh peer connection.
  *
  * Two measured werift behaviours shape this module -- local candidates are
- * queued until this side's description is sent to the broker, and a configured
- * `iceServers` list replaces rather than extends werift's built-in STUN
- * default -- and one measured PeerJS behaviour: a second `OFFER` for a
- * connection id a browser peer holds replaces that connection. Each has its
+ * queued until this side's description is sent to the broker, and werift
+ * falls back to its built-in STUN default whenever its list holds no `stun`
+ * url it can parse, which a non-empty list this module builds always holds
+ * ({@link UNQUERIED_STUN_URI}) -- and one measured PeerJS behaviour: a second
+ * `OFFER` for a connection id a browser peer holds replaces that connection. Each has its
  * assumptions and re-verification in docs/spec/DEPENDENCY_PINS.md. The broker's hold and expiry of frames for an
  * unregistered peer, which decides when the dialer offers again, is in
  * docs/spec/WEBRTC_TRANSPORT.md.
@@ -213,6 +214,17 @@ export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
  */
 export const WERIFT_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
+/**
+ * The `stun` url ending every non-empty ICE server list a run builds, so that
+ * a run listing any server never falls back to {@link WERIFT_BUILT_IN_STUN_URI}:
+ * werift takes the first `stun` url it can parse, and queries it from IPv4
+ * sockets only, refusing an IPv6 target there before any lookup or send. This
+ * entry is therefore never contacted, and a list naming no other `stun` url
+ * gathers no server-reflexive candidate. The assumption and its
+ * re-verification: docs/spec/DEPENDENCY_PINS.md.
+ */
+export const UNQUERIED_STUN_URI = "stun:[::1]:9";
+
 /** What a run with no `stun` url discloses, shared by both warnings that give it. */
 const BUILT_IN_STUN_USE =
   `the built-in default (${WERIFT_BUILT_IN_STUN_URI}) will be used to ` +
@@ -222,9 +234,9 @@ const BUILT_IN_STUN_USE =
 /** The warning line emitted when no ICE servers are configured (see below). */
 export const NO_ICE_SERVERS_WARNING =
   `no ICE servers are configured for this webrtc connection, so ${BUILT_IN_STUN_USE} ` +
-  "Set `stun` (or `turn`) " +
-  "on the connection to use your own server instead, or set a single " +
-  "unreachable `stun` entry to gather host candidates only, which costs about " +
+  "Set `stun` on the connection to use your own STUN server instead, or set " +
+  "`turn` alone to use your relay and ask no STUN server. A single " +
+  "unreachable `stun` entry gathers host candidates only, which costs about " +
   "five seconds of gathering and works only where both parties share a network.";
 
 /** {@link NO_ICE_SERVERS_WARNING}'s disclosure, less its advice to set `turn`. */
@@ -827,16 +839,28 @@ export interface WeriftPeerConfiguration {
 }
 
 /**
+ * `iceServers` followed by the {@link UNQUERIED_STUN_URI} entry. werift takes
+ * the first `stun` url it can parse, so a url the list already names is the one
+ * queried, and a list naming none -- TURN urls only -- gathers no
+ * server-reflexive candidate rather than one from werift's built-in default.
+ */
+export function withoutBuiltInStun(
+  iceServers: ReadonlyArray<RTCIceServer>,
+): Array<RTCIceServer> {
+  return [...iceServers, { urls: UNQUERIED_STUN_URI }];
+}
+
+/**
  * The configuration object the peer connection is constructed with, and the
  * point the no-servers warning is emitted from.
  *
  * An empty list is NOT passed through as an empty list: to werift an empty
  * `iceServers` and an absent one both mean "use the built-in default", so
- * omitting it keeps the two from looking different when they are not. Both arms
- * are driven in webrtcIceConfiguration.test.ts -- an empty list and no list each
- * yield `{}` with the warning, and a non-empty list is passed verbatim, which is
- * what makes it, and not the default, the list actually used. What werift falls
- * back to when it is given neither is measured by the integration suite.
+ * omitting it keeps the two from looking different when they are not. A
+ * non-empty list is passed in order, followed by the unqueried STUN entry
+ * ({@link withoutBuiltInStun}), so it, and not the default, is the list
+ * actually used even where it names no `stun` url. webrtcIceConfiguration.test.ts
+ * pins both arms; the integration suite measures what werift contacts for each.
  */
 export function buildPeerConfiguration(
   iceServers: Array<RTCIceServer> | undefined,
@@ -848,7 +872,7 @@ export function buildPeerConfiguration(
     relaysLeftOut.length > 0 && !(iceServers ?? []).some(listsTurnUrl);
   if (relaysEmptied) warn(relaysLeftOutWarning(relaysLeftOut, noServers));
   else if (noServers) warn(NO_ICE_SERVERS_WARNING);
-  return noServers ? {} : { iceServers };
+  return noServers ? {} : { iceServers: withoutBuiltInStun(iceServers) };
 }
 
 /** Whether a server entry lists a `turn:` or `turns:` url. */

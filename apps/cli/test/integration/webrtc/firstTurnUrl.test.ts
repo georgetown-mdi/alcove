@@ -1,22 +1,24 @@
-import { createSocket } from "node:dgram";
+import { Socket, createSocket } from "node:dgram";
+import dns from "node:dns";
 
 import { RTCPeerConnection } from "werift";
 import { afterEach, expect, test } from "vitest";
 
 import {
+  WERIFT_BUILT_IN_STUN_URI,
   buildPeerConfiguration,
   iceServersFromConnection,
 } from "../../../src/connection/webrtc/weriftPeer";
-
-import type { Socket } from "node:dgram";
 
 /**
  * Which of the STUN and TURN urls a CLI run lists a real werift peer contacts
  * while it gathers. The parser test in webrtcIceConfiguration.test.ts pins
  * what `parseIceServers` keeps; this one counts the requests that reach each
  * server, so a release that gathered from more urls by any path reddens here.
- * The assumption and its re-verification on a bump are in
- * docs/spec/DEPENDENCY_PINS.md.
+ * The last records every DNS lookup and UDP send of a run that lists a TURN
+ * url and no `stun` url, so a release that fell back to its built-in STUN
+ * default past the unqueried entry reddens too. The assumptions and their
+ * re-verification on a bump are in docs/spec/DEPENDENCY_PINS.md.
  */
 
 /** RFC 5389 section 6: the fixed header every STUN message opens with. */
@@ -142,7 +144,7 @@ test(
         ],
       }),
     );
-    expect(configuration.iceServers).toHaveLength(3);
+    expect(configuration.iceServers).toHaveLength(4);
 
     await gatherOnce(configuration);
 
@@ -201,5 +203,107 @@ test(
 
     expect(listed.requests).toContain(ALLOCATE_REQUEST);
     expect(leftOut.requests).toEqual([]);
+  },
+);
+
+/** What a gather looked up and sent, and how long it took. */
+interface GatherTraffic {
+  /** Every hostname resolved through either form of `dns.lookup`. */
+  lookups: Array<string>;
+  /** The `host:port` of every datagram sent by a socket other than `servers`. */
+  sends: Array<string>;
+  gatheringMs: number;
+}
+
+/**
+ * Gather once with `configuration`, recording every DNS lookup and every UDP
+ * send. A lookup is failed rather than answered, so nothing reaches the
+ * network; the attempt alone is what the assertions read.
+ */
+async function gatherRecordingTraffic(
+  configuration: ReturnType<typeof buildPeerConfiguration>,
+  servers: ReadonlyArray<CountingServer> = [],
+): Promise<GatherTraffic> {
+  const serverPorts = new Set(servers.map((server) => server.port));
+  const traffic: GatherTraffic = { lookups: [], sends: [], gatheringMs: 0 };
+  const realPromiseLookup = dns.promises.lookup;
+  const realCallbackLookup = dns.lookup;
+  const realSend = Socket.prototype.send;
+  (dns.promises as { lookup: unknown }).lookup = (hostname: string) => {
+    traffic.lookups.push(hostname);
+    return Promise.reject(new Error("lookup refused by the traffic check"));
+  };
+  (dns as { lookup: unknown }).lookup = (
+    hostname: string,
+    options: unknown,
+    callback: unknown,
+  ): void => {
+    traffic.lookups.push(hostname);
+    const cb = (typeof options === "function" ? options : callback) as (
+      err: Error,
+    ) => void;
+    cb(new Error("lookup refused by the traffic check"));
+  };
+  (Socket.prototype as { send: unknown }).send = function (
+    this: Socket,
+    ...args: Array<unknown>
+  ) {
+    if (!serverPorts.has(this.address().port)) {
+      const [port, address] =
+        typeof args[1] === "number" ? [args[1], args[2]] : [args[3], args[4]];
+      traffic.sends.push(`${String(address)}:${String(port)}`);
+    }
+    return (realSend as (...rest: Array<unknown>) => void).apply(this, args);
+  };
+  const startedAt = Date.now();
+  try {
+    await gatherOnce(configuration);
+  } finally {
+    traffic.gatheringMs = Date.now() - startedAt;
+    (dns.promises as { lookup: unknown }).lookup = realPromiseLookup;
+    (dns as { lookup: unknown }).lookup = realCallbackLookup;
+    (Socket.prototype as { send: unknown }).send = realSend;
+  }
+  return traffic;
+}
+
+/**
+ * werift's own wait for a STUN answer is 5 s; a gather that ends well inside it
+ * queried no server that did not answer.
+ */
+const PROMPT_GATHERING_MS = 2_500;
+
+test(
+  "a CLI peer whose connection names a TURN url and no stun url contacts only that relay",
+  { timeout: GATHERING_TIMEOUT_MS + 10_000 },
+  async () => {
+    const relay = await startCountingServer();
+    const listed = iceServersFromConnection({
+      turn: [
+        {
+          url: `turn:127.0.0.1:${relay.port}?transport=udp`,
+          username: "alcove",
+          credential: "placeholder-not-a-secret",
+        },
+      ],
+    });
+    const traffic = await gatherRecordingTraffic(
+      buildPeerConfiguration(listed),
+      [relay],
+    );
+    expect(traffic.lookups).toEqual([]);
+    expect(traffic.sends.length).toBeGreaterThan(0);
+    for (const send of traffic.sends)
+      expect(send).toBe(`127.0.0.1:${relay.port}`);
+    expect(relay.requests).toContain(ALLOCATE_REQUEST);
+    expect(relay.requests).not.toContain(BINDING_REQUEST);
+    expect(traffic.gatheringMs).toBeLessThan(PROMPT_GATHERING_MS);
+
+    // The control: the same list handed to werift as it stands gathers against
+    // its built-in default, whose lookup the recorder sees.
+    const bare = await gatherRecordingTraffic({ iceServers: listed }, [relay]);
+    expect(bare.lookups).toContain(
+      /^stun:([^:]+):/.exec(WERIFT_BUILT_IN_STUN_URI)?.[1],
+    );
   },
 );

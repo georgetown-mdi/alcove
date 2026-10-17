@@ -57,6 +57,12 @@ export const ALLOWLIST = [
       "default public STUN server, the one third-party host the web app intends to reach; already named in PRIVACY.md's supporting-services table",
   },
   {
+    url: "stun:[::1]:9",
+    match: "exact",
+    reason:
+      "the CLI's STUN entry werift never queries, an IPv6 loopback literal that keeps a TURN-only run off the built-in default; it names no host anything contacts",
+  },
+  {
     url: "https://psi.data-bridge.org",
     match: "exact",
     reason:
