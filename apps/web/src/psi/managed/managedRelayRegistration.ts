@@ -23,11 +23,9 @@ import {
   relayRegistrarLabel,
   relayRegistrationNotice,
   sanitizeForDisplay,
-  turnUrlIsAllowed,
 } from "@alcove/core";
 
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
-import { runRelayRestriction } from "../transport/relayRestriction";
 
 import {
   clearManagedExchangeRelayRegistrationPending,
@@ -48,7 +46,6 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
-import type { RunRelayRestriction } from "../transport/relayRestriction";
 
 const log = getLogger("managedRelayRegistration");
 
@@ -65,25 +62,20 @@ export const MANAGED_RELAY_REENROLLMENT_STEP =
   "registrar holds";
 
 /**
- * The registrar a run of `record` registers at, both the retry of a pending
- * registration and the rotated key's: the one the record was enrolled at,
- * when the run relays through this browser's own relay -- this browser's
- * relay setting names at least one TURN url, each minted from the shared
- * secret, that its allowed relays keep (`turnUrlIsAllowed` in core, read as
- * the run reads it). `undefined` otherwise. Whatever relay the invitation
- * names is listed beside it and decides nothing here.
+ * The registrar a run of `record` registers at: the one the record was
+ * enrolled at, when the run relays through this browser's own relay -- this
+ * browser's relay setting names at least one TURN url, each minted from the
+ * shared secret. `undefined` otherwise. Whatever relay the invitation names
+ * is listed beside it and decides nothing here.
  */
 export function managedRelayRegistrarForRun(
   record: Pick<ManagedExchangeRecord, "relayRegistrar">,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  restriction: () => RunRelayRestriction = runRelayRestriction,
 ): RelayRegistrar | undefined {
   const registrar = record.relayRegistrar;
   if (registrar === undefined) return undefined;
   const own = readOwn();
-  if (own.kind !== "set") return undefined;
-  const { allowedRelays } = restriction();
-  return own.relay.turn.some((url) => turnUrlIsAllowed(url, allowedRelays))
+  return own.kind === "set" && own.relay.turn.length > 0
     ? registrar
     : undefined;
 }

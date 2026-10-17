@@ -1941,7 +1941,7 @@ describe("a saved signaling address the rendezvous refuses", () => {
   });
 });
 
-describe("the relay registrations of a run under this browser's allowed relays", () => {
+describe("the relay registrations of a run whose allowed relays leave its own relay out", () => {
   const OWN_URL = "turns:own.example.org:443?transport=tcp";
   const REGISTRAR = {
     url: "https://own.example.org:8443",
@@ -1974,21 +1974,8 @@ describe("the relay registrations of a run under this browser's allowed relays",
     vi.unstubAllGlobals();
   });
 
-  test("an own relay the allowed relays leave out gets neither the pending retry nor the rotated key's registration", async () => {
+  test("an own relay the allowed relays leave out still gets the pending retry and the rotated key's registration", async () => {
     storeRelaySettings(["elsewhere.example.org"]);
-    const { mc } = makeParkedCloseMc();
-    mockedOpen.mockResolvedValue(mc);
-    acquireResources();
-
-    await runDriver(new AbortController().signal, undefined, ENROLLED);
-
-    expect(mockedAuthenticate).toHaveBeenCalled();
-    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
-    expect(registerRotatedManagedRelayKey).not.toHaveBeenCalled();
-  });
-
-  test("an own relay the allowed relays keep gets the pending retry and the rotated key's registration", async () => {
-    storeRelaySettings(["own.example.org"]);
     vi.mocked(retryPendingManagedRelayRegistration).mockResolvedValueOnce();
     vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
       kind: "registered",
