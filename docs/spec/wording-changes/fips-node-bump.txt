@@ -5,4 +5,4 @@
 - - -> Move `ARG NODE_VERSION` in `Dockerfile.fips` to the current Node 26 release, together with both per-architecture tarball hashes and the matching literals in `scripts/dockerfile-freeze.test.mjs` and [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins).
 - - -> Take each hash from that release's `SHASUMS256.txt` and confirm it by running `sha256sum` over the downloaded tarball.
 - - -> No Dependabot entry tracks the tarball, so a Node security release between base bumps is caught only by a dependency survey.
-- - -> That build ran Node v26.7.0; the v26.10.0 the image now pins links OpenSSL 3.5.8 (nodejs.org release index), so the 3.5.7 and the two-component split above describe the earlier build, and the reading has not been re-taken on the current one.
+- - -> That build ran Node v26.7.0; the v26.10.0 the image pins links OpenSSL 3.5.8 (nodejs.org release index), so the 3.5.7 and the two-component split above describe the earlier build, and the reading has not been re-taken on the current one.
