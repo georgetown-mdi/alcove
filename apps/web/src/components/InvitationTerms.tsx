@@ -46,7 +46,7 @@ import {
   ALLOWED_RELAYS_UNSET,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
-  runRelayRestriction,
+  readRelayRestriction,
 } from "@psi/transport/relayRestriction";
 import {
   DEDUPLICATE_CONTROL_DESCRIPTION,
@@ -551,7 +551,7 @@ export function InvitationTerms({
   // console run is the CLI's. The summary's TURN urls are the endpoint's,
   // escaped, in its order, so each is matched by its raw url.
   const browserRun = !isConsoleBuild();
-  const [relayRestriction] = useState(runRelayRestriction);
+  const [relayRestriction] = useState(readRelayRestriction);
   const rawRelayTurn =
     connectionEndpoint?.channel === "webrtc"
       ? (connectionEndpoint.relay?.turn ?? [])

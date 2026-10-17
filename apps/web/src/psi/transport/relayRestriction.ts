@@ -9,19 +9,19 @@ import { z } from "zod";
 
 import {
   ALLOWED_RELAY_FORM,
-  getLogger,
   maxCodeUnits,
   normalizeAllowedRelay,
   parseBoundedJson,
   sanitizeForDisplay,
 } from "@alcove/core";
 
-const log = getLogger("relayRestriction");
-
 /** The localStorage key the setting is written under. */
 const STORAGE_KEY = "alcove-relay-restriction";
 
-/** The stored value's schema version; a value under any other is refused. */
+/**
+ * The stored value's schema version; a value under any other is treated as
+ * none saved.
+ */
 const SETTING_VERSION = 1;
 
 /**
@@ -43,8 +43,6 @@ const StoredEntrySchema = z
     message: "an allowed relay is not in its normalized form",
   });
 
-// `relayOnly` is a field a pre-release build of this page wrote; it is read
-// and ignored, so such a value is not refused for holding it.
 const StoredRelayRestrictionSchema = z.strictObject({
   version: z.literal(SETTING_VERSION),
   allowedRelays: z
@@ -52,7 +50,6 @@ const StoredRelayRestrictionSchema = z.strictObject({
     .min(1)
     .max(MAX_ALLOWED_RELAYS)
     .optional(),
-  relayOnly: z.boolean().optional(),
 });
 
 /** Which relays a browser run may use. */
@@ -65,28 +62,7 @@ export interface RelayRestriction {
   allowedRelays?: ReadonlyArray<string>;
 }
 
-/** The restriction a run applies ({@link runRelayRestriction}). */
-export interface RunRelayRestriction extends RelayRestriction {
-  /** The stored setting could not be read, so a run is refused. */
-  unreadable?: true;
-}
-
-/** How reading the stored setting turned out. */
-export type RelayRestrictionRead =
-  | { kind: "set"; restriction: RelayRestriction }
-  /** A value is stored that this build refuses. */
-  | { kind: "unreadable" };
-
 const UNRESTRICTED: RelayRestriction = {};
-
-/**
- * What a run applies when the stored setting cannot be read: no relay kept,
- * so a value this build refuses never widens what a run contacts.
- */
-const UNREADABLE_RESTRICTION: RunRelayRestriction = {
-  allowedRelays: [],
-  unreadable: true,
-};
 
 function storage(): Storage | undefined {
   try {
@@ -97,44 +73,26 @@ function storage(): Storage | undefined {
   }
 }
 
-/** Read the stored relay restriction; nothing stored restricts nothing. */
-export function readRelayRestriction(): RelayRestrictionRead {
+/**
+ * Read the stored relay restriction. Nothing stored, storage that cannot be
+ * read, and a stored value this build cannot read all restrict nothing.
+ */
+export function readRelayRestriction(): RelayRestriction {
   let raw: string | null | undefined;
   try {
     raw = storage()?.getItem(STORAGE_KEY);
   } catch {
-    return { kind: "set", restriction: UNRESTRICTED };
+    return UNRESTRICTED;
   }
-  if (raw === null || raw === undefined)
-    return { kind: "set", restriction: UNRESTRICTED };
+  if (raw === null || raw === undefined) return UNRESTRICTED;
   try {
     const parsed = StoredRelayRestrictionSchema.parse(parseBoundedJson(raw));
-    return {
-      kind: "set",
-      restriction:
-        parsed.allowedRelays === undefined
-          ? UNRESTRICTED
-          : { allowedRelays: parsed.allowedRelays },
-    };
+    return parsed.allowedRelays === undefined
+      ? UNRESTRICTED
+      : { allowedRelays: parsed.allowedRelays };
   } catch {
-    return { kind: "unreadable" };
+    return UNRESTRICTED;
   }
-}
-
-/**
- * The restriction a run applies: the stored one, or, where it cannot be read,
- * one that keeps no relay, marked `unreadable` and logged.
- */
-export function runRelayRestriction(
-  read: () => RelayRestrictionRead = readRelayRestriction,
-): RunRelayRestriction {
-  const stored = read();
-  if (stored.kind === "set") return stored.restriction;
-  log.warn(
-    "the stored relay restriction could not be read, so this run keeps no " +
-      "relay; set it again on the Relay server page",
-  );
-  return UNREADABLE_RESTRICTION;
 }
 
 /**
@@ -230,14 +188,6 @@ export const ALLOWED_RELAYS_UNSET =
 export const ALLOWED_RELAYS_REMEDY =
   "To let a run try a relay left out, add its host to Allowed relays on " +
   "the Relay server page, or remove the setting.";
-
-/**
- * The refusal of a run when this browser's stored relay restriction cannot
- * be read, before it contacts any host.
- */
-export const RELAY_RESTRICTION_UNREADABLE =
-  "This browser's saved relay settings could not be read. Open the Relay " +
-  "server page and save them again.";
 
 function urlList(urls: ReadonlyArray<string>): string {
   return urls.map((url) => sanitizeForDisplay(url)).join(", ");

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   KeyFileSchema,
@@ -48,11 +48,8 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type {
-  RelayRestriction,
-  RelayRestrictionRead,
-} from "@psi/transport/relayRestriction";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
+import type { RelayRestriction } from "@psi/transport/relayRestriction";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -611,8 +608,9 @@ describe("this browser's relay restriction", () => {
   };
   const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
   const restricted =
-    (restriction: RelayRestriction): (() => RelayRestrictionRead) =>
-    () => ({ kind: "set", restriction });
+    (restriction: RelayRestriction): (() => RelayRestriction) =>
+    () =>
+      restriction;
 
   function acceptedRecord(): RunnableManagedExchangeRecord {
     return managedRecord({
@@ -666,15 +664,20 @@ describe("this browser's relay restriction", () => {
     expect(exported).toContain("allowed_relays:");
   });
 
-  test("a restriction this build cannot read is refused", () => {
-    expect(() =>
-      composeManagedCronExport(acceptedRecord(), noOwnRelay, () => ({
-        kind: "unreadable",
-      })),
-    ).toThrow(
-      "This browser's saved relay settings could not be read, so the export " +
-        "cannot include them.",
-    );
+  test("a stored restriction this build cannot read writes no field", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-relay-restriction"
+          ? JSON.stringify({ version: 2, allowedRelays: ["relay.example.org"] })
+          : null,
+    });
+    try {
+      const exported = composeManagedCronExport(acceptedRecord(), noOwnRelay)
+        .config.text;
+      expect(exported).not.toContain("allowed_relays");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

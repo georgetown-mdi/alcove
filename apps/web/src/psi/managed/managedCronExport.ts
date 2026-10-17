@@ -56,9 +56,8 @@
  *   registrar with no own TURN url to write, and a registration a re-invite
  *   left pending, which no run can confirm, are refused.
  * - It WRITES this browser's allowed relays, which a run here applies, as
- *   `connection.allowed_relays` where set. A restriction this build cannot
- *   read is refused. The import does not take the field back: it refuses a
- *   configuration holding it.
+ *   `connection.allowed_relays` where set. The import does not take the
+ *   field back: it refuses a configuration holding it.
  *
  * The key file is a plaintext credential under the CLI key file's own trust
  * model: custody and storage permissions, never a passphrase (the spec's
@@ -106,7 +105,7 @@ import type {
 } from "./managedExchangeRecord";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
-import type { RelayRestrictionRead } from "../transport/relayRestriction";
+import type { RelayRestriction } from "../transport/relayRestriction";
 
 /** The config file name `alcove exchange` reads at its default config path
  * (`DEFAULT_CONFIG_PATH`, `apps/cli/src/config.ts`), so a run in the folder
@@ -259,20 +258,12 @@ function relayRegistrationConnectionFields(
 
 /**
  * The connection field this browser's relay restriction sets: its allowed
- * relays, where set. A restriction this build cannot read is refused rather
- * than exported as unset, which would widen what the command line contacts.
+ * relays, where set.
  */
 function relayRestrictionConnectionFields(
-  readRestriction: () => RelayRestrictionRead,
+  readRestriction: () => RelayRestriction,
 ): Pick<WebRTCConnectionConfig, "allowedRelays"> {
-  const stored = readRestriction();
-  if (stored.kind === "unreadable")
-    throw new Error(
-      "This browser's saved relay settings could not be read, so the " +
-        "export cannot include them. Open the Relay server page and save " +
-        "them again, then export again.",
-    );
-  const { allowedRelays } = stored.restriction;
+  const { allowedRelays } = readRestriction();
   return allowedRelays !== undefined
     ? { allowedRelays: [...allowedRelays] }
     : {};
@@ -292,7 +283,7 @@ function exportedConnection(
   connection: ConnectionConfig,
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
-  readRestriction: () => RelayRestrictionRead,
+  readRestriction: () => RelayRestriction,
 ): ConnectionConfig {
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
@@ -383,15 +374,14 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
  * @throws {Error} if the stored connection holds a field or a literal
  *   credential the app does not hold, a webrtc record holds no side, the
  *   stored document holds an `authentication` block, it holds a top-level
- *   field the app does not compose, the record's runs register at a relay
- *   registrar and this browser's relay settings name no TURN url, or the
- *   relay restriction cannot be read.
+ *   field the app does not compose, or the record's runs register at a relay
+ *   registrar and this browser's relay settings name no TURN url.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 function composeCronExportDocument(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
-  readRestriction: () => RelayRestrictionRead,
+  readRestriction: () => RelayRestriction,
 ): ExchangeSpec {
   const connection = heldConnectionOrRefuse(record.exchangeFile);
   assertNoStoredAuthentication(record.exchangeFile);
@@ -466,15 +456,14 @@ function exportedExchangeArgv(
  *
  * @throws {Error} if the record's stored connection holds a field or a
  *   literal credential the app does not hold, its stored document holds an
- *   `authentication` block or a top-level field the app does not compose, its
- *   runs register at a relay registrar and `readOwn` names no TURN url, or
- *   `readRestriction` cannot be read.
+ *   `authentication` block or a top-level field the app does not compose, or
+ *   its runs register at a relay registrar and `readOwn` names no TURN url.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 export function composeManagedCronExportConfig(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  readRestriction: () => RelayRestrictionRead = readRelayRestriction,
+  readRestriction: () => RelayRestriction = readRelayRestriction,
 ): ManagedCommandLineConfig {
   const document = composeCronExportDocument(record, readOwn, readRestriction);
   const argv = exportedExchangeArgv(record.schedule);
@@ -502,15 +491,14 @@ export function composeManagedCronExportConfig(
  * @throws {Error} if the record's stored connection holds a field or a
  *   literal credential the app does not hold, its stored document holds an
  *   `authentication` block or a top-level field the app does not compose, its
- *   runs register at a relay registrar and `readOwn` names no TURN url,
- *   `readRestriction` cannot be read, or a
+ *   runs register at a relay registrar and `readOwn` names no TURN url, or a
  *   re-invite left its relay key registration pending.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  readRestriction: () => RelayRestrictionRead = readRelayRestriction,
+  readRestriction: () => RelayRestriction = readRelayRestriction,
 ): ManagedCronExport {
   assertNoReinviteRegistrationPending(record);
   const commandLine = composeManagedCronExportConfig(

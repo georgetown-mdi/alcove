@@ -148,7 +148,7 @@ vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
 }));
-// Real, and watched, so a case can show a refusal comes before the registrar.
+// Real, and watched, so a case can show what a run registers and when.
 vi.mock(
   "../../../src/psi/managed/managedRelayRegistration.js",
   async (importOriginal) => {
@@ -1908,24 +1908,8 @@ describe("filing a stopped run's disclosure", () => {
 });
 
 describe("a saved signaling address the rendezvous refuses", () => {
-  test("stops the run before the rendezvous and the PSI library load", async () => {
+  test("stops the run before the relay registrar, the rendezvous and the PSI library load", async () => {
     const refusal = new Error("the saved signaling address was refused");
-    vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
-      throw refusal;
-    });
-    acquireResources();
-
-    const rejection = await runDriver(new AbortController().signal).catch(
-      (error: unknown) => error,
-    );
-
-    expect(rejection).toBe(refusal);
-    expect(mockedRendezvous).not.toHaveBeenCalled();
-    expect(loadPsiBackend).not.toHaveBeenCalled();
-  });
-
-  test("a relay settings refusal stops the run before the relay registrar", async () => {
-    const refusal = new Error("saved relay settings could not be read");
     vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
       throw refusal;
     });
@@ -1938,6 +1922,8 @@ describe("a saved signaling address the rendezvous refuses", () => {
     expect(rejection).toBe(refusal);
     expect(managedRelayRegistrarForRun).not.toHaveBeenCalled();
     expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
+    expect(mockedRendezvous).not.toHaveBeenCalled();
+    expect(loadPsiBackend).not.toHaveBeenCalled();
   });
 });
 
