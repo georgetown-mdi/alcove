@@ -479,33 +479,6 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "a fixed constant about this browser's own stored relay settings; " +
       "nothing the stored value holds is quoted.",
   },
-  {
-    file: "apps/web/src/psi/transport/runRelayPlan.ts",
-    anchor: "runRelayList",
-    raises: "OperatorConfigError",
-    interpolates: ["RELAY_ONLY_NO_RELAY"],
-    provenance:
-      "a fixed constant about this browser's own Relay only setting; no " +
-      "url is quoted.",
-  },
-  {
-    file: "apps/web/src/psi/transport/runRelayPlan.ts",
-    anchor: "runRelayList",
-    raises: "OperatorConfigError",
-    interpolates: ["RELAY_ONLY_RELAYS_LEFT_OUT"],
-    provenance:
-      "a fixed constant about this browser's own relay settings; the TURN " +
-      "urls left out, the invitation's among them, are not quoted.",
-  },
-  {
-    file: "apps/web/src/psi/transport/runRelayPlan.ts",
-    anchor: "relayPlanForRun",
-    raises: "OperatorConfigError",
-    interpolates: ["RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED"],
-    provenance:
-      "a fixed constant about this browser's own Relay only setting and " +
-      "the site's relay server; no url is quoted.",
-  },
 ];
 
 /** Every TypeScript source under a repository-relative `dir`, sorted. */

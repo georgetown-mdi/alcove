@@ -9,9 +9,6 @@ import {
 } from "@psi/transport/defaultRelay";
 import {
   MAX_ALLOWED_RELAYS,
-  RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
-  RELAY_ONLY_NO_RELAY,
-  RELAY_ONLY_RELAYS_LEFT_OUT,
   RELAY_RESTRICTION_UNREADABLE,
   allowedRelaysRunNotice,
   parseAllowedRelayLines,
@@ -59,59 +56,66 @@ afterEach(() => {
 describe("the stored relay restriction", () => {
   test("reads back what was written, and restricts nothing when none is stored", () => {
     const values = stubStorage();
-    expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { relayOnly: false },
-    });
+    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
     writeRelayRestriction({
       allowedRelays: ["relay.example.org", "backup.example.org:443"],
-      relayOnly: true,
     });
     expect(JSON.parse(values.get(STORAGE_KEY) ?? "")).toStrictEqual({
       version: 1,
       allowedRelays: ["relay.example.org", "backup.example.org:443"],
-      relayOnly: true,
     });
     expect(readRelayRestriction()).toEqual({
       kind: "set",
       restriction: {
         allowedRelays: ["relay.example.org", "backup.example.org:443"],
-        relayOnly: true,
       },
     });
   });
 
   test("a restriction of nothing removes the stored value", () => {
     const values = stubStorage();
-    writeRelayRestriction({ relayOnly: true });
+    writeRelayRestriction({ allowedRelays: ["relay.example.org"] });
     expect(values.has(STORAGE_KEY)).toBe(true);
-    writeRelayRestriction({ relayOnly: false });
+    writeRelayRestriction({});
     expect(values.has(STORAGE_KEY)).toBe(false);
+  });
+
+  test("a value holding the relayOnly field a pre-release build wrote is read without it", () => {
+    const values = stubStorage();
+    values.set(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        allowedRelays: ["relay.example.org"],
+        relayOnly: true,
+      }),
+    );
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: { allowedRelays: ["relay.example.org"] },
+    });
+    values.set(STORAGE_KEY, JSON.stringify({ version: 1, relayOnly: true }));
+    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
   });
 
   test("an entry not in its normalized form is refused on write and on read", () => {
     const values = stubStorage();
     expect(() =>
-      writeRelayRestriction({
-        allowedRelays: ["Relay.Example.org"],
-        relayOnly: false,
-      }),
+      writeRelayRestriction({ allowedRelays: ["Relay.Example.org"] }),
     ).toThrow();
     values.set(
       STORAGE_KEY,
       JSON.stringify({
         version: 1,
         allowedRelays: ["turns:relay.example.org"],
-        relayOnly: false,
       }),
     );
     expect(readRelayRestriction()).toEqual({ kind: "unreadable" });
   });
 
-  test("a run under a value it cannot read keeps no relay and gathers relay candidates only", () => {
+  test("a run under a value it cannot read keeps no relay", () => {
     expect(runRelayRestriction(() => ({ kind: "unreadable" }))).toEqual({
       allowedRelays: [],
-      relayOnly: true,
       unreadable: true,
     });
   });
@@ -210,45 +214,6 @@ describe("the relays a browser run lists under its allowed relays", () => {
 });
 
 describe("relayPlanForRun", () => {
-  test("under Relay only, refuses before any contact when every TURN url is left out", async () => {
-    const enroll = vi.fn();
-    const onRunNotice = vi.fn();
-    const planning = relayPlanForRun(
-      generateSharedSecret(),
-      { turn: [PARTNER_URL] },
-      {
-        readOwn,
-        setting: () => SITE,
-        enroll,
-        onRunNotice,
-        restriction: () => ({
-          allowedRelays: ["elsewhere.example.org"],
-          relayOnly: true,
-        }),
-      },
-    );
-    await expect(planning).rejects.toThrow(OperatorConfigError);
-    await expect(planning).rejects.toThrow(RELAY_ONLY_RELAYS_LEFT_OUT);
-    expect(enroll).not.toHaveBeenCalled();
-    expect(onRunNotice).not.toHaveBeenCalled();
-  });
-
-  test("under Relay only, refuses before any contact when the run lists no TURN url at all", async () => {
-    const enroll = vi.fn();
-    const onRunNotice = vi.fn();
-    const planning = relayPlanForRun(generateSharedSecret(), undefined, {
-      readOwn: () => ({ kind: "none" }),
-      setting: () => undefined,
-      enroll,
-      onRunNotice,
-      restriction: () => ({ relayOnly: true }),
-    });
-    await expect(planning).rejects.toThrow(OperatorConfigError);
-    await expect(planning).rejects.toThrow(RELAY_ONLY_NO_RELAY);
-    expect(enroll).not.toHaveBeenCalled();
-    expect(onRunNotice).not.toHaveBeenCalled();
-  });
-
   test("a stored restriction this build cannot read refuses the run, naming the saved settings", async () => {
     const enroll = vi.fn();
     const planning = relayPlanForRun(
@@ -266,27 +231,27 @@ describe("relayPlanForRun", () => {
     expect(enroll).not.toHaveBeenCalled();
   });
 
-  test("the refusals are available without planning the run", () => {
+  test("the refusal is available without planning the run", () => {
     expect(() =>
       assertRunRelayPlanPossible(undefined, {
         readOwn: () => ({ kind: "none" }),
         setting: () => undefined,
-        restriction: () => ({ relayOnly: true }),
+        restriction: () => runRelayRestriction(() => ({ kind: "unreadable" })),
       }),
-    ).toThrow(RELAY_ONLY_NO_RELAY);
+    ).toThrow(RELAY_RESTRICTION_UNREADABLE);
     expect(() =>
       assertRunRelayPlanPossible(
         { turn: [PARTNER_URL] },
         {
           readOwn,
           setting: () => undefined,
-          restriction: () => ({ relayOnly: true }),
+          restriction: () => ({ allowedRelays: ["elsewhere.example.org"] }),
         },
       ),
     ).not.toThrow();
   });
 
-  test("keeps the relays named, says which it kept and left out, and gathers relay candidates only", async () => {
+  test("keeps the relays named and says which it kept and left out", async () => {
     const onRunNotice = vi.fn();
     const plan = await relayPlanForRun(
       generateSharedSecret(),
@@ -300,7 +265,6 @@ describe("relayPlanForRun", () => {
         onRunNotice,
         restriction: () => ({
           allowedRelays: ["own.example.org", "site.example.com:443"],
-          relayOnly: true,
         }),
       },
     );
@@ -309,7 +273,6 @@ describe("relayPlanForRun", () => {
         turn: [OWN_URL, SITE.turnUrl],
         stun: ["stun:own.example.org:3478"],
       },
-      iceTransportPolicy: "relay",
       relaysLeftOut: [PARTNER_URL],
     });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
@@ -321,7 +284,7 @@ describe("relayPlanForRun", () => {
     );
   });
 
-  test("unset, lists every relay with no notice and gathers every candidate type", async () => {
+  test("unset, lists every relay with no notice", async () => {
     const onRunNotice = vi.fn();
     const plan = await relayPlanForRun(
       generateSharedSecret(),
@@ -330,7 +293,7 @@ describe("relayPlanForRun", () => {
         readOwn,
         setting: () => undefined,
         onRunNotice,
-        restriction: () => ({ relayOnly: false }),
+        restriction: () => ({}),
       },
     );
     expect(plan).toEqual({
@@ -338,20 +301,16 @@ describe("relayPlanForRun", () => {
         turn: [OWN_URL, PARTNER_URL],
         stun: ["stun:own.example.org:3478"],
       },
-      iceTransportPolicy: "all",
       relaysLeftOut: [],
     });
     expect(onRunNotice).not.toHaveBeenCalled();
   });
 
-  test("not relay-only, a run whose every TURN url is left out continues without one", async () => {
+  test("a run whose every TURN url is left out continues without one", async () => {
     const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
       readOwn,
       setting: () => undefined,
-      restriction: () => ({
-        allowedRelays: ["other.example"],
-        relayOnly: false,
-      }),
+      restriction: () => ({ allowedRelays: ["other.example"] }),
     });
     expect(plan.relay).toEqual({
       turn: [],
@@ -360,54 +319,32 @@ describe("relayPlanForRun", () => {
     expect(plan.relaysLeftOut).toEqual([OWN_URL]);
   });
 
-  test("under Relay only, refuses before dialing when the default relay was the only one kept and its enrollment failed", async () => {
+  test("a failed default relay enrollment says so after the allowed relays notice, and the run continues", async () => {
     const onRunNotice = vi.fn();
-    const enroll = vi.fn(() =>
-      Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
-    );
-    const planning = relayPlanForRun(
+    const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
       {
         readOwn,
         setting: () => SITE,
-        enroll,
+        enroll: vi.fn(() =>
+          Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+        ),
         onRunNotice,
-        restriction: () => ({
-          allowedRelays: ["site.example.com"],
-          relayOnly: true,
-        }),
+        restriction: () => ({ allowedRelays: ["site.example.com"] }),
       },
     );
-    await expect(planning).rejects.toThrow(OperatorConfigError);
-    await expect(planning).rejects.toThrow(
-      RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
-    );
-    expect(enroll).toHaveBeenCalledOnce();
-    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-      allowedRelaysRunNotice([SITE.turnUrl], [OWN_URL, PARTNER_URL]),
-    );
-    expect(onRunNotice).not.toHaveBeenCalledWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-    );
-  });
-
-  test("under Relay only, a run cancelled during the default relay's enrollment is not refused", async () => {
-    const cancel = new AbortController();
-    const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
-      readOwn: () => ({ kind: "none" }),
-      setting: () => SITE,
-      signal: cancel.signal,
-      enroll: vi.fn(() => {
-        cancel.abort();
-        return Promise.resolve({ kind: "cancelled" as const });
-      }),
-      restriction: () => ({ relayOnly: true }),
+    expect(plan).toEqual({
+      relay: { turn: [], stun: ["stun:own.example.org:3478"] },
+      relaysLeftOut: [OWN_URL, PARTNER_URL],
     });
-    expect(plan).toEqual({ iceTransportPolicy: "relay", relaysLeftOut: [] });
+    expect(onRunNotice.mock.calls).toEqual([
+      [allowedRelaysRunNotice([SITE.turnUrl], [OWN_URL, PARTNER_URL])],
+      [DEFAULT_RELAY_NOT_ENROLLED_NOTICE],
+    ]);
   });
 
-  test("not relay-only, a failed default relay enrollment says so and the run continues", async () => {
+  test("with no relay at all, a failed default relay enrollment says so and the run continues", async () => {
     const onRunNotice = vi.fn();
     const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
       readOwn: () => ({ kind: "none" }),
@@ -416,9 +353,9 @@ describe("relayPlanForRun", () => {
         Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
       ),
       onRunNotice,
-      restriction: () => ({ relayOnly: false }),
+      restriction: () => ({}),
     });
-    expect(plan).toEqual({ iceTransportPolicy: "all", relaysLeftOut: [] });
+    expect(plan).toEqual({ relaysLeftOut: [] });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );

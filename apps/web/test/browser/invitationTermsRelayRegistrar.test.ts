@@ -181,10 +181,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
   });
 
   test("the hosted build marks each TURN url kept or left out, and says what the setting decides", async () => {
-    writeRelayRestriction({
-      allowedRelays: ["partner.example.net"],
-      relayOnly: false,
-    });
+    writeRelayRestriction({ allowedRelays: ["partner.example.net"] });
     const text = await producesText(relayEndpoint);
     expect(text).toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
     expect(text).toContain(
@@ -205,10 +202,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
 
   test("the console build, whose run is the CLI's, marks nothing whatever the browser holds", async () => {
     build.console = true;
-    writeRelayRestriction({
-      allowedRelays: ["partner.example.net"],
-      relayOnly: true,
-    });
+    writeRelayRestriction({ allowedRelays: ["partner.example.net"] });
     const text = await producesText(relayEndpoint);
     expect(text).toContain(`TURN ${KEPT_URL}`);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);

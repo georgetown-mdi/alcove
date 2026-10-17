@@ -203,8 +203,8 @@ sharply:
   `AuthenticationSchema` and the `connection` union's webrtc member are
   `z.strictObject`s: an unrecognized key is rejected, not stripped, because each
   holds an operator control a typo must not silently disable --
-  `token_max_age_days`, which bounds token age, and `ice_transport_policy`,
-  which decides whether this party offers a partner any direct address. A newer
+  `token_max_age_days`, which bounds token age, and `allowed_relays`, which
+  decides which relays this party contacts. A newer
   application that adds a webrtc connection field is therefore rejected by an
   older CLI rather than narrowed, the trade the top level already makes. A
   minted file never includes the `authentication` block, and a

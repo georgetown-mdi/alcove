@@ -3,9 +3,6 @@ import { OperatorConfigError, turnUrlIsAllowed } from "@alcove/core";
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import {
-  RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
-  RELAY_ONLY_NO_RELAY,
-  RELAY_ONLY_RELAYS_LEFT_OUT,
   RELAY_RESTRICTION_UNREADABLE,
   allowedRelaysRunNotice,
   runRelayRestriction,
@@ -18,12 +15,10 @@ import type { DefaultRelayDependencies } from "./defaultRelay";
 import type { RelayLocator } from "./rendezvous";
 import type { RunRelayRestriction } from "./relayRestriction";
 
-/** The relay a browser run dials with, and how it gathers. */
+/** The relay a browser run dials with. */
 export interface RunRelayPlan {
   /** The relay its peer connection gathers against; none when absent. */
   relay?: RelayLocator;
-  /** `relay` under this browser's Relay only setting, else `all`. */
-  iceTransportPolicy: RTCIceTransportPolicy;
   /** The TURN urls the allowed relays left out, named by a failed open. */
   relaysLeftOut: ReadonlyArray<string>;
 }
@@ -44,7 +39,6 @@ export type RunRelayRefusalDependencies = Pick<
 
 interface RunRelayList {
   allowedRelays?: ReadonlyArray<string>;
-  relayOnly: boolean;
   own: OwnRelayRead;
   listed: Array<string>;
   kept: Array<string>;
@@ -61,9 +55,7 @@ function runRelayList(
   dependencies: RunRelayRefusalDependencies,
 ): RunRelayList {
   const { readOwn = readOwnRelaySetting, restriction, setting } = dependencies;
-  const { allowedRelays, relayOnly, unreadable } = (
-    restriction ?? runRelayRestriction
-  )();
+  const { allowedRelays, unreadable } = (restriction ?? runRelayRestriction)();
   if (unreadable === true)
     throw new OperatorConfigError(RELAY_RESTRICTION_UNREADABLE);
   const own = readOwn();
@@ -79,13 +71,8 @@ function runRelayList(
   const relaysLeftOut = listed.filter(
     (url) => !turnUrlIsAllowed(url, allowedRelays),
   );
-  if (relayOnly && listed.length === 0)
-    throw new OperatorConfigError(RELAY_ONLY_NO_RELAY);
-  if (relayOnly && kept.length === 0)
-    throw new OperatorConfigError(RELAY_ONLY_RELAYS_LEFT_OUT);
   return {
     ...(allowedRelays !== undefined && { allowedRelays }),
-    relayOnly,
     own,
     listed,
     kept,
@@ -112,49 +99,29 @@ export function assertRunRelayPlanPossible(
  * browser's own, the invitation's and the build's default relay's, is kept or
  * left out by the allowed relays (`turnUrlIsAllowed` in core). A run is
  * refused here, before it contacts any host, when this browser's stored
- * relay restriction cannot be read, and under Relay only when it lists no
- * TURN url or every one is left out. Where the allowed relays are set, the
+ * relay restriction cannot be read. Where the allowed relays are set, the
  * urls kept and left out are shown through `onRunNotice`. The default relay
  * is then enrolled at and added as {@link relayWithDefaultForRun} does, if it
- * is kept. Under Relay only, a run whose only TURN url was the default
- * relay's, and whose enrollment there failed, is refused before it dials.
+ * is kept.
  *
- * @throws {OperatorConfigError} with {@link RELAY_RESTRICTION_UNREADABLE},
- *   {@link RELAY_ONLY_NO_RELAY}, {@link RELAY_ONLY_RELAYS_LEFT_OUT} or
- *   {@link RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED}.
+ * @throws {OperatorConfigError} with {@link RELAY_RESTRICTION_UNREADABLE}.
  */
 export async function relayPlanForRun(
   sharedSecret: string,
   invitationRelay: RelayUrls | undefined,
   dependencies: RunRelayPlanDependencies = {},
 ): Promise<RunRelayPlan> {
-  const { readOwn, restriction, onRunNotice, ...defaultRelay } = dependencies;
-  const { allowedRelays, relayOnly, own, listed, kept, relaysLeftOut } =
-    runRelayList(invitationRelay, dependencies);
+  const { readOwn, restriction, ...defaultRelay } = dependencies;
+  const { allowedRelays, own, listed, kept, relaysLeftOut } = runRelayList(
+    invitationRelay,
+    dependencies,
+  );
   if (allowedRelays !== undefined && listed.length > 0)
-    onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
-  // Shown only once the run is known to dial: that notice says the run
-  // connects without the default relay, which a refused run does not.
-  const enrollmentNotices: Array<string> = [];
+    defaultRelay.onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
   const relay = await relayWithDefaultForRun(
     sharedSecret,
     relayForRun(invitationRelay, () => own, allowedRelays),
-    {
-      ...defaultRelay,
-      onRunNotice: (message) => enrollmentNotices.push(message),
-      allowedRelays: () => allowedRelays,
-    },
+    { ...defaultRelay, allowedRelays: () => allowedRelays },
   );
-  if (
-    relayOnly &&
-    (relay?.turn ?? []).length === 0 &&
-    defaultRelay.signal?.aborted !== true
-  )
-    throw new OperatorConfigError(RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED);
-  for (const message of enrollmentNotices) onRunNotice?.(message);
-  return {
-    ...(relay !== undefined && { relay }),
-    iceTransportPolicy: relayOnly ? "relay" : "all",
-    relaysLeftOut,
-  };
+  return { ...(relay !== undefined && { relay }), relaysLeftOut };
 }

@@ -18,10 +18,8 @@ export const ALLOWED_RELAYS_SCOPE =
   "connection.allowed_relays decides which relays your side connects " +
   "through, enrolls at and names in the invitations it creates; your own " +
   "connection.relay_registrar, where set, still receives each rotated " +
-  "relay key. Your " +
-  "partner's side can still connect through a relay it leaves out; to keep " +
-  "your network address off such a relay, also set ice_transport_policy: " +
-  "relay.";
+  "relay key. Your partner's side can still connect through a relay it " +
+  "leaves out.";
 
 /**
  * The acceptance review's line under the invitation's relay when the

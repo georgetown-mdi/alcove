@@ -214,7 +214,7 @@ type ManagedRendezvousAcquisition =
  * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
  * enrolled there, right before it connects, each only where this browser's
- * allowed relays keep it, and under its Relay only setting. A failed
+ * allowed relays keep it. A failed
  * enrollment is reported through `onRunNotice` as it happens, and the flow
  * starts without the default relay.
  */

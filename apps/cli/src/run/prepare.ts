@@ -8,7 +8,6 @@ import {
   assertSharedSecretReadyForHandshake,
   handshakeRoleForRendezvousRole,
   redactAndSanitizeForDisplay,
-  relayOnlyRelaysLeftOutMessage,
   selectRunRelay,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -124,9 +123,8 @@ interface WebRtcDial {
  *   (`relayCredentialPerAttempt`).
  * @throws {UsageError} when the run holds no shared secret, when the connection
  *   names no role, when the server block cannot be resolved to a broker, or
- *   when the connection sets `ice_provision` (via `iceServersFromConnection`),
- *   and when `allowed_relays` leaves out every TURN url the run lists under
- *   a relay-only policy.
+ *   or when the connection sets `ice_provision` (via
+ *   `iceServersFromConnection`).
  * @internal exported for testing
  */
 export function webRtcDialFrom(
@@ -140,17 +138,7 @@ export function webRtcDialFrom(
   if (role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
   const location = brokerLocationFromConnection(connection.server);
   const iceServers = iceServersFromConnection(connection, runRelayCredential);
-  const { turn, turnLeftOut } = selectRunRelay(connection);
-  // Checked on the list this run uses, however the connection was built: the
-  // schema refuses the relay-only case only for a parsed configuration.
-  if (
-    turnLeftOut !== undefined &&
-    (turn ?? []).length === 0 &&
-    connection.iceTransportPolicy === "relay"
-  )
-    throw new UsageError(
-      relayOnlyRelaysLeftOutMessage(turnLeftOut.map((server) => server.url)),
-    );
+  const { turnLeftOut } = selectRunRelay(connection);
   // peer_timeout_ms bounds the partner's arrival (the rendezvous) and
   // inactivity_timeout_ms a present partner's silence on the open channel.
   // Neither reaches the channel open between them: once both descriptions are
@@ -167,9 +155,6 @@ export function webRtcDialFrom(
       iceServers,
       ...(runRelayCredential !== undefined && {
         attemptIceServers: relayCredentialPerAttempt(connection, sharedSecret),
-      }),
-      ...(connection.iceTransportPolicy !== undefined && {
-        iceTransportPolicy: connection.iceTransportPolicy,
       }),
       ...(turnLeftOut !== undefined && {
         relaysLeftOut: turnLeftOut.map((server) => server.url),

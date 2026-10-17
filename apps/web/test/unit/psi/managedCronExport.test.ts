@@ -628,15 +628,14 @@ describe("this browser's relay restriction", () => {
     });
   }
 
-  test("exports the allowed relays and Relay only as the CLI's fields", () => {
+  test("exports the allowed relays as the CLI's field", () => {
     const exported = composeManagedCronExport(
       acceptedRecord(),
       noOwnRelay,
-      restricted({ allowedRelays: ["relay.example.org"], relayOnly: true }),
+      restricted({ allowedRelays: ["relay.example.org"] }),
     ).config.text;
 
     expect(exported).toContain("allowed_relays:");
-    expect(exported).toContain("ice_transport_policy: relay");
     expect(
       parseExchangeSpec(parseSensitiveYaml(exported, "exported alcove.yaml"))
         .connection,
@@ -646,28 +645,25 @@ describe("this browser's relay restriction", () => {
       invitationRelay: relay,
       role: "acceptor",
       allowedRelays: ["relay.example.org"],
-      iceTransportPolicy: "relay",
     });
   });
 
-  test("an unset restriction writes neither field", () => {
+  test("an unset restriction writes no field", () => {
     const exported = composeManagedCronExport(
       acceptedRecord(),
       noOwnRelay,
-      restricted({ relayOnly: false }),
+      restricted({}),
     ).config.text;
     expect(exported).not.toContain("allowed_relays");
-    expect(exported).not.toContain("ice_transport_policy");
   });
 
-  test("allowed relays alone are written without Relay only", () => {
+  test("allowed relays that leave out every relay the configuration names are written as set", () => {
     const exported = composeManagedCronExport(
       acceptedRecord(),
       noOwnRelay,
-      restricted({ allowedRelays: ["other.example.org"], relayOnly: false }),
+      restricted({ allowedRelays: ["other.example.org"] }),
     ).config.text;
     expect(exported).toContain("allowed_relays:");
-    expect(exported).not.toContain("ice_transport_policy");
   });
 
   test("a restriction this build cannot read is refused", () => {
@@ -678,29 +674,6 @@ describe("this browser's relay restriction", () => {
     ).toThrow(
       "This browser's saved relay settings could not be read, so the export " +
         "cannot include them.",
-    );
-  });
-
-  test("Relay only with no relay to gather on is refused", () => {
-    expect(() =>
-      composeManagedCronExport(
-        managedRecord(),
-        noOwnRelay,
-        restricted({ relayOnly: true }),
-      ),
-    ).toThrow(
-      "This browser's Relay only setting needs a relay, and the command-line " +
-        "configuration names none.",
-    );
-    expect(() =>
-      composeManagedCronExport(
-        acceptedRecord(),
-        noOwnRelay,
-        restricted({ allowedRelays: ["other.example.org"], relayOnly: true }),
-      ),
-    ).toThrow(
-      "its allowed relays leave out every relay the command-line " +
-        "configuration names.",
     );
   });
 });

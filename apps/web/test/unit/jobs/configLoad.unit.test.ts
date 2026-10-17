@@ -422,7 +422,7 @@ describe("a webrtc configuration", () => {
             credential: "@/run/secrets/turn-credential",
           },
         ],
-        ice_transport_policy: "relay",
+        allowed_relays: ["turn.example.org"],
         options: { peer_timeout_ms: 600_000 },
       },
       linkage_terms: snakeizeKeys(terms()),

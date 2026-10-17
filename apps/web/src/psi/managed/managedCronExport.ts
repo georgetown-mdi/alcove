@@ -55,12 +55,10 @@
  *   when the relay it allocates on is one the invitation names. A
  *   registrar with no own TURN url to write, and a registration a re-invite
  *   left pending, which no run can confirm, are refused.
- * - It WRITES this browser's relay restriction, which a run here applies:
- *   its allowed relays as `connection.allowed_relays` and Relay only as
- *   `connection.ice_transport_policy: relay`, each where set. A restriction
- *   this build cannot read, and Relay only on a configuration whose every
- *   TURN url is left out or that names none, are refused. The import does
- *   not take either field back: it refuses a configuration holding one.
+ * - It WRITES this browser's allowed relays, which a run here applies, as
+ *   `connection.allowed_relays` where set. A restriction this build cannot
+ *   read is refused. The import does not take the field back: it refuses a
+ *   configuration holding it.
  *
  * The key file is a plaintext credential under the CLI key file's own trust
  * model: custody and storage permissions, never a passphrase (the spec's
@@ -74,7 +72,6 @@ import {
   relayRegistrarLabel,
   serializeExchangeDocument,
   serializeKeyFile,
-  turnUrlIsAllowed,
 } from "@alcove/core";
 
 import {
@@ -261,14 +258,13 @@ function relayRegistrationConnectionFields(
 }
 
 /**
- * The connection fields this browser's relay restriction sets: its allowed
- * relays and Relay only, each where set. A restriction this build cannot
- * read is refused rather than exported as unset, which would widen what the
- * command line contacts.
+ * The connection field this browser's relay restriction sets: its allowed
+ * relays, where set. A restriction this build cannot read is refused rather
+ * than exported as unset, which would widen what the command line contacts.
  */
 function relayRestrictionConnectionFields(
   readRestriction: () => RelayRestrictionRead,
-): Pick<WebRTCConnectionConfig, "allowedRelays" | "iceTransportPolicy"> {
+): Pick<WebRTCConnectionConfig, "allowedRelays"> {
   const stored = readRestriction();
   if (stored.kind === "unreadable")
     throw new Error(
@@ -276,37 +272,10 @@ function relayRestrictionConnectionFields(
         "export cannot include them. Open the Relay server page and save " +
         "them again, then export again.",
     );
-  const { allowedRelays, relayOnly } = stored.restriction;
-  return {
-    ...(allowedRelays !== undefined && { allowedRelays: [...allowedRelays] }),
-    ...(relayOnly && { iceTransportPolicy: "relay" as const }),
-  };
-}
-
-/**
- * Refuse a relay-only connection with no TURN url left to gather on, in
- * place of the exchange-file schema's refusal of the same, which names the
- * command line's fields rather than this browser's settings.
- */
-function assertRelayOnlyKeepsRelay(connection: WebRTCConnectionConfig): void {
-  if (connection.iceTransportPolicy !== "relay") return;
-  const listed = [
-    ...(connection.turn ?? []).map((entry) => entry.url),
-    ...(connection.invitationRelay?.turn ?? []),
-  ];
-  if (listed.length === 0)
-    throw new Error(
-      "This browser's Relay only setting needs a relay, and the " +
-        "command-line configuration names none. Turn off Relay only on the " +
-        "Relay server page, then export again.",
-    );
-  if (!listed.some((url) => turnUrlIsAllowed(url, connection.allowedRelays)))
-    throw new Error(
-      "This browser's Relay only setting needs a relay, and its allowed " +
-        "relays leave out every relay the command-line configuration " +
-        "names. Change Allowed relays or turn off Relay only on the Relay " +
-        "server page, then export again.",
-    );
+  const { allowedRelays } = stored.restriction;
+  return allowedRelays !== undefined
+    ? { allowedRelays: [...allowedRelays] }
+    : {};
 }
 
 /**
@@ -341,7 +310,6 @@ function exportedConnection(
       ? relayRegistrationConnectionFields(record.relayRegistrar, readOwn)
       : {}),
   };
-  assertRelayOnlyKeepsRelay(exported);
   return exported;
 }
 
@@ -417,7 +385,7 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
  *   stored document holds an `authentication` block, it holds a top-level
  *   field the app does not compose, the record's runs register at a relay
  *   registrar and this browser's relay settings name no TURN url, or the
- *   relay restriction cannot be read or leaves Relay only no relay.
+ *   relay restriction cannot be read.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 function composeCronExportDocument(
@@ -500,7 +468,7 @@ function exportedExchangeArgv(
  *   literal credential the app does not hold, its stored document holds an
  *   `authentication` block or a top-level field the app does not compose, its
  *   runs register at a relay registrar and `readOwn` names no TURN url, or
- *   `readRestriction` cannot be read or leaves Relay only no relay.
+ *   `readRestriction` cannot be read.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 export function composeManagedCronExportConfig(
@@ -535,7 +503,7 @@ export function composeManagedCronExportConfig(
  *   literal credential the app does not hold, its stored document holds an
  *   `authentication` block or a top-level field the app does not compose, its
  *   runs register at a relay registrar and `readOwn` names no TURN url,
- *   `readRestriction` cannot be read or leaves Relay only no relay, or a
+ *   `readRestriction` cannot be read, or a
  *   re-invite left its relay key registration pending.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */

@@ -1,10 +1,8 @@
 /**
  * This browser's relay restriction: the relays a run may use, each an entry of
- * core's `connection.allowed_relays` form (`normalizeAllowedRelay`), and
- * whether a run gathers relay candidates only, the CLI's
- * `ice_transport_policy: relay`. Kept in localStorage beside the own relay
- * setting, and so held per origin. Operator page: docs/EXCHANGE_REFERENCE.md,
- * connection.allowed_relays.
+ * core's `connection.allowed_relays` form (`normalizeAllowedRelay`). Kept in
+ * localStorage beside the own relay setting, and so held per origin. Operator
+ * page: docs/EXCHANGE_REFERENCE.md, connection.allowed_relays.
  */
 
 import { z } from "zod";
@@ -45,21 +43,19 @@ const StoredEntrySchema = z
     message: "an allowed relay is not in its normalized form",
   });
 
-const StoredRelayRestrictionSchema = z
-  .strictObject({
-    version: z.literal(SETTING_VERSION),
-    allowedRelays: z
-      .array(StoredEntrySchema)
-      .min(1)
-      .max(MAX_ALLOWED_RELAYS)
-      .optional(),
-    relayOnly: z.boolean(),
-  })
-  .refine((value) => value.allowedRelays !== undefined || value.relayOnly, {
-    message: "a stored relay restriction restricts nothing",
-  });
+// `relayOnly` is a field a pre-release build of this page wrote; it is read
+// and ignored, so such a value is not refused for holding it.
+const StoredRelayRestrictionSchema = z.strictObject({
+  version: z.literal(SETTING_VERSION),
+  allowedRelays: z
+    .array(StoredEntrySchema)
+    .min(1)
+    .max(MAX_ALLOWED_RELAYS)
+    .optional(),
+  relayOnly: z.boolean().optional(),
+});
 
-/** Which relays a browser run may use, and which candidates it gathers. */
+/** Which relays a browser run may use. */
 export interface RelayRestriction {
   /**
    * The relays a run may use; unset, every relay it lists. A run allocates
@@ -67,8 +63,6 @@ export interface RelayRestriction {
    * an entry names (`turnUrlIsAllowed` in core).
    */
   allowedRelays?: ReadonlyArray<string>;
-  /** Whether a run gathers relay candidates only. */
-  relayOnly: boolean;
 }
 
 /** The restriction a run applies ({@link runRelayRestriction}). */
@@ -83,16 +77,14 @@ export type RelayRestrictionRead =
   /** A value is stored that this build refuses. */
   | { kind: "unreadable" };
 
-const UNRESTRICTED: RelayRestriction = { relayOnly: false };
+const UNRESTRICTED: RelayRestriction = {};
 
 /**
- * What a run applies when the stored setting cannot be read: no relay kept
- * and relay candidates only, so a value this build refuses never widens what
- * a run contacts or offers.
+ * What a run applies when the stored setting cannot be read: no relay kept,
+ * so a value this build refuses never widens what a run contacts.
  */
 const UNREADABLE_RESTRICTION: RunRelayRestriction = {
   allowedRelays: [],
-  relayOnly: true,
   unreadable: true,
 };
 
@@ -119,12 +111,10 @@ export function readRelayRestriction(): RelayRestrictionRead {
     const parsed = StoredRelayRestrictionSchema.parse(parseBoundedJson(raw));
     return {
       kind: "set",
-      restriction: {
-        ...(parsed.allowedRelays !== undefined && {
-          allowedRelays: parsed.allowedRelays,
-        }),
-        relayOnly: parsed.relayOnly,
-      },
+      restriction:
+        parsed.allowedRelays === undefined
+          ? UNRESTRICTED
+          : { allowedRelays: parsed.allowedRelays },
     };
   } catch {
     return { kind: "unreadable" };
@@ -133,8 +123,7 @@ export function readRelayRestriction(): RelayRestrictionRead {
 
 /**
  * The restriction a run applies: the stored one, or, where it cannot be read,
- * one that keeps no relay under relay-only gathering, marked `unreadable` and
- * logged.
+ * one that keeps no relay, marked `unreadable` and logged.
  */
 export function runRelayRestriction(
   read: () => RelayRestrictionRead = readRelayRestriction,
@@ -143,8 +132,7 @@ export function runRelayRestriction(
   if (stored.kind === "set") return stored.restriction;
   log.warn(
     "the stored relay restriction could not be read, so this run keeps no " +
-      "relay and gathers relay candidates only; set it again on the Relay " +
-      "server page",
+      "relay; set it again on the Relay server page",
   );
   return UNREADABLE_RESTRICTION;
 }
@@ -159,16 +147,13 @@ export function writeRelayRestriction(restriction: RelayRestriction): void {
   const store = storage();
   if (store === undefined)
     throw new Error("this browser's storage is not available");
-  if (restriction.allowedRelays === undefined && !restriction.relayOnly) {
+  if (restriction.allowedRelays === undefined) {
     store.removeItem(STORAGE_KEY);
     return;
   }
   const value = StoredRelayRestrictionSchema.parse({
     version: SETTING_VERSION,
-    ...(restriction.allowedRelays !== undefined && {
-      allowedRelays: [...restriction.allowedRelays],
-    }),
-    relayOnly: restriction.relayOnly,
+    allowedRelays: [...restriction.allowedRelays],
   });
   store.setItem(STORAGE_KEY, JSON.stringify(value));
 }
@@ -229,9 +214,7 @@ export const ALLOWED_RELAYS_SCOPE =
   "enrolls at and names in the invitations it creates; a run still " +
   "registers each new key at its own relay's registrar whatever the " +
   "setting keeps. " +
-  "Your partner's side can still connect through a relay they leave out; " +
-  "to keep your network address off such a relay, also turn on Relay only " +
-  "on the Relay server page.";
+  "Your partner's side can still connect through a relay you leave out.";
 
 /**
  * The acceptance review's line under the invitation's relay when the setting
@@ -247,34 +230,6 @@ export const ALLOWED_RELAYS_UNSET =
 export const ALLOWED_RELAYS_REMEDY =
   "To let a run try a relay left out, add its host to Allowed relays on " +
   "the Relay server page, or remove the setting.";
-
-/**
- * The refusal of a relay-only run whose every TURN url the allowed relays
- * leave out, before it contacts any host. Fixed text: the urls left out
- * include the invitation's, so they are named in the run notice instead.
- */
-export const RELAY_ONLY_RELAYS_LEFT_OUT =
-  "Relay only requires a relay, and your allowed relays leave out every " +
-  "relay this run lists. Add the host of a relay to Allowed relays on the " +
-  "Relay server page, or remove the setting.";
-
-/**
- * The refusal of a relay-only run that lists no TURN url at all, before it
- * contacts any host: the browser's counterpart of the CLI's refusal of
- * `ice_transport_policy: relay` with no turn entry.
- */
-export const RELAY_ONLY_NO_RELAY =
-  "Relay only requires a relay, and no relay is set for this run. Set a " +
-  "relay on the Relay server page, or turn off Relay only.";
-
-/**
- * The refusal of a relay-only run whose only TURN url was the build's default
- * relay, when its enrollment there failed, before it dials.
- */
-export const RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED =
-  "Relay only requires a relay, and the site's relay server could not be " +
-  "set up for this exchange. Try again later, set a relay of your own on " +
-  "the Relay server page, or turn off Relay only.";
 
 /**
  * The refusal of a run when this browser's stored relay restriction cannot

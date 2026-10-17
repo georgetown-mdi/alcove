@@ -214,7 +214,6 @@ describe("which runs register", () => {
           ? JSON.stringify({
               version: 1,
               allowedRelays: ["elsewhere.example.org"],
-              relayOnly: true,
             })
           : null,
     });

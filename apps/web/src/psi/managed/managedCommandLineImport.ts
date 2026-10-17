@@ -20,9 +20,9 @@
  * Three fields of the document are LOCAL fields of the record rather than
  * document fields, and each is read out of the document and dropped from it --
  * the three the export injects on the way out ({@link ./managedCronExport.ts})
- * besides this browser's relay restriction, whose two fields the import
- * refuses, so an unedited import and re-export from a browser with no relay
- * restriction yield the same document:
+ * besides this browser's allowed relays, whose field the import refuses, so
+ * an unedited import and re-export from a browser with no allowed relays set
+ * yield the same document:
  *
  * - A webrtc `connection.role` becomes the record's `side`. The document a
  *   stored record holds has none (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a

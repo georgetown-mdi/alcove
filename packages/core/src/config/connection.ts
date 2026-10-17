@@ -8,11 +8,6 @@ import { boundedArray } from "../utils/boundedArray.js";
 import { MAX_TIMER_MS } from "../utils/promise.js";
 import { SftpPortSchema } from "./sftpUrl.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
-import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
-import {
-  clipToRenderedCost,
-  DEFAULT_MAX_DISPLAY_LENGTH,
-} from "../utils/sanitizeForDisplay.js";
 
 // --- HTTP service authentication ---------------------------------------------
 
@@ -497,9 +492,9 @@ interface TurnServer {
 
 // A TURN or STUN URI names its host directly after the scheme. An entry with
 // no host -- `turn:` left by an empty environment substitution, say -- reaches
-// the ICE layer as a server it cannot resolve and is dropped there: a
-// relay-only policy then gathers host candidates, and a stun list replaces the
-// built-in default with nothing. Both are refused here instead. Each pattern is
+// the ICE layer as a server it cannot resolve and is dropped there: a turn
+// list then names no relay, and a stun list replaces the built-in default with
+// nothing. Both are refused here instead. Each pattern is
 // applied to the trimmed value, and the trimmed value is what the connection
 // holds, so the padding a quoted entry can carry decides nothing: a padded
 // `turn:relay.example.org:3478` names its host, and a padded `turn:` none.
@@ -591,11 +586,11 @@ function urlGrammarMessage(
 
 // werift refuses a turn url whose `transport` parameter holds anything but
 // lowercase `tcp` or `udp`, and refuses `udp` on a `turns:` url, continuing
-// silently without that entry: under `ice_transport_policy: relay` the run then
-// gathers host candidates. Every occurrence is held to the rule, so a url
-// repeating the parameter is refused unless each value qualifies, rather than
-// resting on werift reading the first. Measured in
-// apps/cli/test/integration/webrtc/webrtcIceTransportPolicy.test.ts.
+// silently without that entry, so the run gathers no relay candidate from it.
+// Every occurrence is held to the rule, so a url repeating the parameter is
+// refused unless each value qualifies, rather than resting on werift reading
+// the first. Measured in
+// apps/cli/test/integration/webrtc/webrtcTurnUrlTransport.test.ts.
 function turnUrlTransportIsSupported(url: string): boolean {
   const queryStart = url.indexOf("?");
   if (queryStart === -1) return true;
@@ -1313,37 +1308,6 @@ export function turnUrlIsAllowed(
 }
 
 /**
- * The TURN urls `allowedRelays` leaves out, as a refusal lists them: raw,
- * redacted and fitted to the per-value display budget, so the remedy a
- * refusal states after the list still shows.
- */
-export function relaysLeftOutForDisplay(
-  leftOut: ReadonlyArray<string>,
-): string {
-  return clipToRenderedCost(
-    redactPrivateKeyMaterial(leftOut.join(", ")),
-    DEFAULT_MAX_DISPLAY_LENGTH,
-  );
-}
-
-/**
- * The refusal of a relay-only webrtc connection whose every TURN url
- * `allowedRelays` leaves out. The CLI's WebRTC library applies the policy
- * only when it is given a TURN server (webrtcIceTransportPolicy.test.ts), so
- * such a run would offer this host's own address. Raw, escaped where shown.
- */
-export function relayOnlyRelaysLeftOutMessage(
-  leftOut: ReadonlyArray<string>,
-): string {
-  return (
-    "ice_transport_policy `relay` requires a TURN url, and " +
-    "connection.allowed_relays leaves out every TURN url this connection " +
-    `lists (${relaysLeftOutForDisplay(leftOut)}). Add the host of a relay ` +
-    "to connection.allowed_relays, or remove the setting."
-  );
-}
-
-/**
  * An allowed-relays entry as the setting holds it: trimmed, its host
  * lowercase with no trailing dot, and its port when it names one.
  * `undefined` for text not of {@link ALLOWED_RELAY_FORM}, a url with a
@@ -1539,17 +1503,6 @@ export interface WebRTCConnectionConfig {
    */
   relayRegistrar?: RelayRegistrar;
   /**
-   * Which candidate types ICE may use. `all` permits host, server-reflexive
-   * and relay candidates; `relay` gathers relay candidates only, so every
-   * path the exchange can take runs through a configured TURN server and no
-   * host or server-reflexive address is offered to the partner. Omitting it
-   * leaves the transport's own default, which is `all`.
-   *
-   * `relay` needs a source of relay candidates, so it requires `turn`,
-   * `iceProvision`, or an {@link invitationRelay} naming a TURN url.
-   */
-  iceTransportPolicy?: "all" | "relay";
-  /**
    * ICE credential API returning combined STUN + TURN servers.
    * Mutually exclusive with `stun` and `turn`.
    */
@@ -1672,11 +1625,11 @@ function unknownWebRtcKeysMessage(keys: ReadonlyArray<string>): string {
 }
 
 /**
- * `strictObject`, unlike the sibling channel members: `ice_transport_policy`
- * decides which candidate types ICE may gather, so a misspelled or misplaced
- * key must reject at parse rather than drop and leave the run on a policy the
- * operator did not choose. {@link AuthenticationSchema} is strict for the same
- * reason, and EXCHANGE_FILE.md records what both cost an older reader.
+ * `strictObject`, unlike the sibling channel members: `allowed_relays` decides
+ * which relays a run contacts, so a misspelled or misplaced key must reject at
+ * parse rather than drop and leave the run on relays the operator did not
+ * choose. {@link AuthenticationSchema} is strict for the same reason, and
+ * EXCHANGE_FILE.md records what both cost an older reader.
  */
 const WebRTCConnectionConfigSchema = z.strictObject(
   {
@@ -1688,7 +1641,6 @@ const WebRTCConnectionConfigSchema = z.strictObject(
     invitationRelay: ConnectionRelayLocatorSchema.optional(),
     allowedRelays: z.array(AllowedRelaySchema).optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
-    iceTransportPolicy: z.enum(["all", "relay"]).optional(),
     iceProvision: IceProvisionSchema.optional(),
     options: SharedOptionsSchema.optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
@@ -1779,55 +1731,6 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
       ),
     { message: "iceProvision is mutually exclusive with stun and turn" },
   )
-  // A relay-only policy gathers nothing but relay candidates, so a connection
-  // that names no relay server can never form a candidate pair. Refusing it
-  // here answers at config time what would otherwise be a rendezvous that runs
-  // its whole budget and then reports that no relay candidate was gathered.
-  // An `iceProvision` endpoint also answers with relay servers, so it satisfies
-  // the policy here, as does an invitation relay naming a TURN url; the message
-  // names only `turn`, the one source the operator authors (the CLI refuses
-  // `iceProvision` outright).
-  .refine(
-    (conn) =>
-      !(
-        conn.channel === "webrtc" &&
-        conn.iceTransportPolicy === "relay" &&
-        (conn.turn === undefined || conn.turn.length === 0) &&
-        conn.invitationRelay?.turn === undefined &&
-        conn.iceProvision === undefined
-      ),
-    {
-      message:
-        "ice_transport_policy `relay` gathers relay candidates only, so it " +
-        "requires at least one turn entry",
-    },
-  )
-  // The same guarantee once `allowedRelays` filters the TURN urls: a run
-  // checks the list it is about to use too (webRtcDialFrom in the CLI).
-  .superRefine((conn, ctx) => {
-    if (
-      conn.channel !== "webrtc" ||
-      conn.iceTransportPolicy !== "relay" ||
-      conn.allowedRelays === undefined ||
-      conn.iceProvision !== undefined
-    )
-      return;
-    const listed = [
-      ...new Set([
-        ...(conn.turn ?? []).map((entry) => entry.url),
-        ...(conn.invitationRelay?.turn ?? []),
-      ]),
-    ];
-    const allowedRelays = conn.allowedRelays;
-    if (
-      listed.length > 0 &&
-      !listed.some((url) => turnUrlIsAllowed(url, allowedRelays))
-    )
-      ctx.addIssue({
-        code: "custom",
-        message: relayOnlyRelaysLeftOutMessage(listed),
-      });
-  })
   // The registrar holds the key this party's own minted turn entries sign
   // with, so one named with no such entry registers a key no run presents.
   .refine(

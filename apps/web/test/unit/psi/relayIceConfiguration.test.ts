@@ -315,8 +315,8 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
 
   // The console names its relay as TURN urls alone. The browser's entry is that
   // url unchanged, under the credential the console's own run mints for the
-  // same secret and instant, beside the default STUN server, with no
-  // relay-only policy.
+  // same secret and instant, beside the default STUN server, gathering every
+  // candidate type.
   test("from an encoded TURN-only invitation holds the inviter's url and the command line's credential", async () => {
     stubWindow();
     vi.useFakeTimers({ now: NOW, toFake: ["Date"] });

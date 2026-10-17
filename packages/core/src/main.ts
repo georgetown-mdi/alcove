@@ -338,8 +338,6 @@ export {
   hasMintedTurnEntry,
   normalizeAllowedRelay,
   relayLocatorSchema,
-  relayOnlyRelaysLeftOutMessage,
-  relaysLeftOutForDisplay,
   safeParseConnectionConfig,
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,

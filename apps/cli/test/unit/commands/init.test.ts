@@ -416,7 +416,7 @@ test("the commented sections nested under an active block are valid when uncomme
     server: { key: "peerjs" },
     stun: ["stun:stun.example.org:3478"],
     turn: [{ url: "turns:relay.example.org:443?transport=tcp" }],
-    iceTransportPolicy: "all",
+    allowedRelays: ["relay.example.org"],
   });
 
   const unexpected = nested("unexpected_files: warn", "connection");

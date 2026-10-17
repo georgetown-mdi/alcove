@@ -1925,7 +1925,7 @@ describe("a saved signaling address the rendezvous refuses", () => {
   });
 
   test("a relay settings refusal stops the run before the relay registrar", async () => {
-    const refusal = new Error("Relay only requires a relay");
+    const refusal = new Error("saved relay settings could not be read");
     vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
       throw refusal;
     });
@@ -1962,7 +1962,7 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       ],
       [
         "alcove-relay-restriction",
-        JSON.stringify({ version: 1, allowedRelays, relayOnly: false }),
+        JSON.stringify({ version: 1, allowedRelays }),
       ],
     ]);
     vi.stubGlobal("localStorage", {

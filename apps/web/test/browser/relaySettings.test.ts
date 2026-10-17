@@ -16,7 +16,6 @@ import {
   CONSOLE_RELAY_RESTRICTION_LINE,
   NOTHING_SAVED,
   RELAY_KEY_NOTICE,
-  RELAY_ONLY_DESCRIPTION,
   RELAY_OPERATOR_DISCLOSURE,
   REMOVED_RESTRICTION_UNREADABLE,
   RESTRICTION_SAVED_RELAY_NOT_SAVED,
@@ -186,16 +185,17 @@ describe("RelaySettingsScreen", () => {
   });
 });
 
-describe("RelaySettingsScreen: allowed relays and Relay only", () => {
+describe("RelaySettingsScreen: allowed relays", () => {
   const allowedField = () =>
     page.getByRole("textbox", { name: "Allowed relays" });
-  const relayOnlyBox = () => page.getByRole("checkbox", { name: "Relay only" });
 
   test("states what the setting decides, and that an accepted invitation's relay is listed beside this browser's", async () => {
     await mountScreen();
 
     await expect.element(page.getByText(ALLOWED_RELAYS_SCOPE)).toBeVisible();
-    await expect.element(page.getByText(RELAY_ONLY_DESCRIPTION)).toBeVisible();
+    expect(ALLOWED_RELAYS_SCOPE).toContain(
+      "Your partner's side can still connect through a relay you leave out.",
+    );
     await expect
       .element(allowedField())
       .toHaveAccessibleDescription(
@@ -204,14 +204,13 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     expect(document.body.textContent).not.toContain("in their place");
   });
 
-  test("a save keeps the entries normalized and Relay only across a reload, and clearing both removes them", async () => {
+  test("a save keeps the entries normalized across a reload, and clearing them removes them", async () => {
     await mountScreen();
 
     await userEvent.fill(
       allowedField(),
       " Relay.Example.ORG. \nbackup.example.org:443",
     );
-    await userEvent.click(relayOnlyBox());
     await userEvent.click(saveButton());
 
     await expect
@@ -221,7 +220,6 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       kind: "set",
       restriction: {
         allowedRelays: ["relay.example.org", "backup.example.org:443"],
-        relayOnly: true,
       },
     });
 
@@ -229,10 +227,8 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     await expect
       .element(allowedField())
       .toHaveValue("relay.example.org\nbackup.example.org:443");
-    await expect.element(relayOnlyBox()).toBeChecked();
 
     await userEvent.fill(allowedField(), "");
-    await userEvent.click(relayOnlyBox());
     await userEvent.click(saveButton());
 
     await expect
@@ -255,10 +251,7 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       .element(allowedField())
       .toHaveAttribute("aria-invalid", "true");
     expect(page.getByRole("alert").all()).toHaveLength(1);
-    expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { relayOnly: false },
-    });
+    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
 
@@ -284,13 +277,13 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       .element(statusLine())
       .toHaveTextContent(RESTRICTION_SAVED_RELAY_NOT_SAVED);
     expect(RESTRICTION_SAVED_RELAY_NOT_SAVED).toBe(
-      "Your allowed relays and Relay only were saved, and the relay server " +
-        "addresses were not. Check that site storage is allowed for this " +
-        "site, then save again.",
+      "Your allowed relays were saved, and the relay server addresses " +
+        "were not. Check that site storage is allowed for this site, then " +
+        "save again.",
     );
     expect(readRelayRestriction()).toEqual({
       kind: "set",
-      restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
+      restriction: { allowedRelays: ["relay.example.org"] },
     });
     expect(readOwnRelaySetting()).toEqual({
       kind: "set",
@@ -323,14 +316,11 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
 
     await expect.element(statusLine()).toHaveTextContent(NOTHING_SAVED);
     expect(NOTHING_SAVED).toBe(
-      "This browser did not save the relay server addresses, the allowed " +
-        "relays or Relay only. Check that site storage is allowed for this " +
-        "site, then save again.",
+      "This browser did not save the relay server addresses or the allowed " +
+        "relays. Check that site storage is allowed for this site, then " +
+        "save again.",
     );
-    expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { relayOnly: false },
-    });
+    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
     expect(readOwnRelaySetting()).toEqual({
       kind: "set",
       relay: { turn: [TURN_URL], stun: [] },
@@ -340,11 +330,7 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
   test("a stored value this build cannot read is reported until it is saved again", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
-      JSON.stringify({
-        version: 1,
-        allowedRelays: ["Not Normal"],
-        relayOnly: false,
-      }),
+      JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
     );
     await mountScreen();
 
@@ -355,8 +341,7 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       .element(
         page.getByText(
           "Every exchange in this browser is refused until the relay " +
-            "settings are saved again. Enter your allowed relays, choose " +
-            "Relay only if you want it, and save.",
+            "settings are saved again. Enter your allowed relays and save.",
         ),
       )
       .toBeVisible();
@@ -367,7 +352,7 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     await expect.element(notice()).not.toBeInTheDocument();
     expect(readRelayRestriction()).toEqual({
       kind: "set",
-      restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
+      restriction: { allowedRelays: ["relay.example.org"] },
     });
 
     await userEvent.fill(allowedField(), "backup.example.org");
@@ -378,11 +363,7 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
   test("removing the relay while the stored value cannot be read says every exchange is still refused", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
-      JSON.stringify({
-        version: 1,
-        allowedRelays: ["Not Normal"],
-        relayOnly: false,
-      }),
+      JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
     );
     await mountScreen();
 
@@ -410,14 +391,11 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
 });
 
 describe("RelaySettingsScreen: the relays a run may use on each build", () => {
-  test("the hosted build shows Allowed relays and Relay only", async () => {
+  test("the hosted build shows Allowed relays", async () => {
     await mountScreen();
 
     await expect
       .element(page.getByRole("textbox", { name: "Allowed relays" }))
-      .toBeVisible();
-    await expect
-      .element(page.getByRole("checkbox", { name: "Relay only" }))
       .toBeVisible();
     expect(page.getByText(CONSOLE_RELAY_RESTRICTION_LINE).query()).toBeNull();
     expect(document.body.textContent).toContain(
@@ -438,15 +416,11 @@ describe("RelaySettingsScreen: the relays a run may use on each build", () => {
       .toBeVisible();
     expect(CONSOLE_RELAY_RESTRICTION_LINE).toBe(
       "Exchanges run from this console follow the command-line " +
-        "configuration: its connection.allowed_relays and " +
-        "connection.ice_transport_policy keys decide which relays an " +
-        "exchange may use and whether it connects through a relay only.",
+        "configuration: its connection.allowed_relays key decides which " +
+        "relays an exchange may use.",
     );
     expect(
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
-    ).toBeNull();
-    expect(
-      page.getByRole("checkbox", { name: "Relay only" }).query(),
     ).toBeNull();
     expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
     expect(
