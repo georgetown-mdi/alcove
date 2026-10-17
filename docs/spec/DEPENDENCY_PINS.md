@@ -461,11 +461,10 @@ or which override forced an edge.
 behavior an author who adds an override and moves on meets later. With a root
 `overrides` block present, npm does not always hoist a later range bump
 incrementally: the stale hoisted copy is kept and the new version is nested
-under the workspace that raised its range. Which npm releases and which
-commands do this is stated below. What an operator or
-reviewer actually sees is not that mechanism but its result -- two copies of one
-package split across the workspace boundary, resolved by different dependents --
-and nothing at install time reports the split.
+under the workspace that raised its range. What an operator or reviewer
+actually sees is not that mechanism but its result -- two copies of one package
+split across the workspace boundary, resolved by different dependents -- and
+nothing at install time reports the split.
 
 The split depends on the command as well as the npm release. Re-driven
 2026-10-01 by re-applying the `vite` bump below to the lockfile it started from
@@ -494,7 +493,9 @@ Re-driven 2026-10-17 on npm 11.20.0, with the block present and not toggled.
 
 So a lockfile update can still produce the split: a named workspace install on
 npm 11.20.0, or a re-resolve on npm 11.17, run by hand or by a bump tool whose
-bundled npm is such a release. No bump tool was driven here.
+bundled npm is such a release. A named install was driven only on npm 11.20.0,
+not on 11.17 through 11.19.1, and only with the block present, so whether it
+splits without the block is not measured. No bump tool was driven here.
 
 **Measured** on the `apps/web` bump of `vite` from `^8.1.4` to `^8.1.5`: the
 regenerated lockfile kept `node_modules/vite` at 8.1.4 and nested
