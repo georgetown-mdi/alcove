@@ -303,8 +303,8 @@ describe("an expert-authored key over a recognized type cleans as its partner do
     expect(mintedZip?.steps?.length).toBeGreaterThan(0);
   });
 
-  test("keying a type the guided offer already turned on adds no second pipeline", () => {
-    // The offer's checkbox binds the same type-named field this key references, so
+  test("keying a type a guided key already turned on adds no second pipeline", () => {
+    // The guided checkbox binds the same type-named field this key references, so
     // the expert edit must find the cleaning already there and leave it -- including
     // any steps the operator edited into it -- rather than appending a duplicate
     // output the built terms could not declare twice.

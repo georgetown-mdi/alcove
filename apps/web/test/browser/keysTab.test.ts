@@ -6,7 +6,13 @@ import { page } from "vitest/browser";
 
 import { createElement } from "react";
 
-import { editorFromCsv, editorWithAuthoredDraft } from "@psi/inviterEditor";
+import {
+  declaredFieldsFor,
+  editorFromCsv,
+  editorWithAuthoredDraft,
+} from "@psi/inviterEditor";
+
+import { CONTACT_AND_LOCATION_FIELD_TYPES } from "@alcove/core";
 
 import {
   buildAdvancedTerms,
@@ -62,13 +68,13 @@ function withDeadDobKey(editor: ReturnType<typeof editorFromCsv>) {
 
 const app = createAppMount();
 
-function render() {
+function render(expertMode = false) {
   const editor = withDeadDobKey(editorFromCsv("Dana Okafor", csv));
   app.render(
     createElement(KeysTab, {
       editor,
       csv,
-      expertMode: false,
+      expertMode,
       onExpertMode: () => undefined,
       onKeyEnabled: () => undefined,
       onKeyMoved: () => undefined,
@@ -86,19 +92,31 @@ function render() {
 
 afterEach(app.unmount);
 
-describe("KeysTab: the guided-list dead-key badge", () => {
-  test('reads "won\'t match" and has an explanatory aria-label', async () => {
+describe("KeysTab: the dead-key badge", () => {
+  const deadKeyBadge = {
+    name: "This key's cleaning drops every value; review the transform",
+  };
+
+  test("is absent from the guided list", async () => {
     render();
 
     await expect
       .element(page.getByRole("heading", { name: "Matching keys" }))
       .toBeInTheDocument();
+    expect(page.getByRole("img", deadKeyBadge).elements()).toHaveLength(0);
+    const body = document.body.textContent;
+    expect(body).not.toContain("satisfiable");
+    expect(body).not.toContain("cleaning drops every value");
+  });
 
-    const badge = page.getByRole("img", {
-      name: "This key's cleaning can never produce a value; review the transform",
-    });
+  test('reads "cleaning drops every value" in the expert editor', async () => {
+    render(true);
+
+    const badge = page.getByRole("img", deadKeyBadge);
     await expect.element(badge).toBeInTheDocument();
-    await expect.element(badge).toMatchTextContent("won't match");
+    await expect
+      .element(badge)
+      .toMatchTextContent("cleaning drops every value");
   });
 });
 
@@ -217,6 +235,99 @@ describe("KeysTab: a file with a ZIP column", () => {
     const body = document.body.textContent;
     expect(body).not.toContain("outside the default set");
     expect(body).not.toContain("Phone number, email address and ZIP code");
+  });
+
+  test("states the shared-value caveat beside the ZIP keys", async () => {
+    renderFor(withZip);
+
+    await expect
+      .element(
+        page.getByRole("note").filter({
+          hasText: "must hold each person's own ZIP code",
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("states no shared-value caveat with no phone, email or ZIP key", async () => {
+    renderFor(csv);
+
+    await expect
+      .element(page.getByRole("heading", { name: "Matching keys" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(
+      "must hold each person's own ZIP code",
+    );
+  });
+});
+
+describe("KeysTab: the shared-value caveat follows the enabled keys", () => {
+  const withContacts: AcquiredCsv = {
+    ...csv,
+    rawRows: [
+      {
+        ...csv.rawRows[0],
+        zip: "60614",
+        phone: "3125550100",
+        email: "ann@example.org",
+      },
+    ],
+    columns: [...csv.columns, "zip", "phone", "email"],
+  };
+  const caveat = "must hold each person's own ZIP code";
+
+  function renderWith(turnOff: (type: string | undefined) => boolean) {
+    const editor = editorFromCsv("Dana Okafor", withContacts);
+    const typeOf = new Map(
+      declaredFieldsFor(editor.draft).map((field) => [field.name, field.type]),
+    );
+    const keys = editor.draft.keys.map((entry) => ({
+      ...entry,
+      enabled:
+        entry.enabled &&
+        !entry.key.elements.some((element) =>
+          turnOff(typeOf.get(element.field)),
+        ),
+    }));
+    app.render(
+      createElement(KeysTab, {
+        editor: editorWithAuthoredDraft(editor, { ...editor.draft, keys }),
+        csv: withContacts,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onAlgorithm: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  const isContact = (type: string | undefined) =>
+    type !== undefined &&
+    (CONTACT_AND_LOCATION_FIELD_TYPES as ReadonlyArray<string>).includes(type);
+
+  test("is absent when every phone, email and ZIP key is turned off", async () => {
+    renderWith(isContact);
+
+    await expect
+      .element(page.getByRole("heading", { name: "Matching keys" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(caveat);
+  });
+
+  test("is present when one such key is on", async () => {
+    renderWith((type) => isContact(type) && type !== "zip_code");
+
+    await expect
+      .element(page.getByRole("note").filter({ hasText: caveat }))
+      .toBeInTheDocument();
   });
 });
 

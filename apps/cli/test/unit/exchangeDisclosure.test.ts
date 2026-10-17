@@ -11,10 +11,12 @@ import {
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   DEFAULT_LINKAGE_RULE_SET,
   inferMetadata,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
+  precisionFloorSelectionStatement,
   setDiagnosticSink,
 } from "@alcove/core";
 import {
@@ -25,6 +27,7 @@ import type {
   ExchangeDataSpec,
   LinkageTerms,
   Metadata,
+  PreparedExchange,
   Standardization,
 } from "@alcove/core";
 import type { ConsentFact } from "@alcove/core/testing";
@@ -34,6 +37,7 @@ import {
   disclosureDestination,
   disclosureDigest,
   displayExchangeDisclosure,
+  displayZeroSetupDisclosure,
   lastRecordedDisclosureDigest,
   renderExchangeDisclosure,
 } from "../../src/exchangeDisclosure";
@@ -453,6 +457,45 @@ test("a file-sync run writing without renaming says so on the display, and only 
     shownFor({ ...TEST_CONNECTION, options: { writeWithoutRenaming: true } }),
   ).toContain(line);
   expect(shownFor(TEST_CONNECTION)).not.toContain(line);
+});
+
+test("a quick exchange names its rule selection above the keys, and a configured run does not", () => {
+  const metadata = metadataDisclosing([]);
+  const shown = (quick: boolean): string => {
+    const stdio = captureStdio();
+    const common = {
+      connection: TEST_CONNECTION,
+      logFile: undefined,
+      log: getLogger("exchange"),
+      unattended: false,
+    };
+    try {
+      if (quick)
+        displayZeroSetupDisclosure({
+          ...common,
+          prepared: {
+            linkageTerms: localTerms,
+            metadata,
+          } as PreparedExchange,
+        });
+      else
+        displayExchangeDisclosure({
+          ...common,
+          metadata,
+          inputColumns: metadata.map((column) => column.name),
+          linkageTerms: localTerms,
+          standardization: undefined,
+        });
+      return stdio.stderrWrites.join("");
+    } finally {
+      stdio.restore();
+    }
+  };
+  const line = `  rules selected: ${precisionFloorSelectionStatement(
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+  )}`;
+  expect(shown(true)).toContain(`${line}\n  linkage keys (`);
+  expect(shown(false)).not.toContain("rules selected");
 });
 
 // --- The shapes the columns line takes ---------------------------------------

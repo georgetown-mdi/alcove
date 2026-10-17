@@ -672,7 +672,7 @@ Before any credential, terms, or data are sent, the `INPUT_FILE`'s columns are c
 
 ### What the run shows before it starts
 
-An exchange prints what it will disclose before any credential, terms, or data are sent. Two runs do: [`alcove exchange`](#recurring-exchange), whichever command wrote its configuration, and a [quick exchange](#quick-exchange), whose terms are inferred from the input file you point it at. Both print the same lines:
+An exchange prints what it will disclose before any credential, terms, or data are sent. Two runs do: [`alcove exchange`](#recurring-exchange), whichever command wrote its configuration, and a [quick exchange](#quick-exchange), whose terms are inferred from the input file you point it at. Both print these lines, and a quick exchange one more, naming the rules it selected:
 
 - the columns you send your partner for matched records, resolved from your input file exactly as the exchange transmits them;
 - which of you receives the result;
@@ -681,6 +681,7 @@ An exchange prints what it will disclose before any credential, terms, or data a
 - whether several of your records may match a single one of your partner's, and what that grouping tells your partner;
 - the fields the run matches on, each followed in parentheses by its column where the column's name differs from the field's (`date of birth (dob)`), and the linkage keys it combines them into;
 - the columns of your input it neither sends nor matches on, listed as held back in input order where there is at least one: a column whose name Alcove recognizes as a linkage key that no key uses, or a second column of a type the keys already read from an earlier one, such as a second date-of-birth column;
+- on a quick exchange, the rules selected, above the linkage keys: the built-in rules at 95% precision and above that your file supplies, for two files that both draw their members from one state or one metropolitan area. The console's quick exchange confirm step names them in the same words;
 - the rule set your terms cite, where Alcove ships that set and the keys or fields declared for it are not drawn from it. The two cited halves are named under what this build found for each, beneath the keys the finding is about, and the remedy is the one you can act on: restore the rules the cited set declares, or drop the citation. A citation the declared rules do support, and one naming a set Alcove does not ship, add no line -- neither leaves you anything to correct. The same divergence is reported once more when the configuration loads, naming the file and the field ([A rule-set citation that no longer fits](#a-rule-set-citation-that-no-longer-fits)); the display states it whatever your `--log-level`;
 - last, on an `sftp` or `filedrop` run with [`--write-without-renaming`](#a-server-that-does-not-allow-renames) on, a line saying so.
 

@@ -3261,6 +3261,27 @@ describe("decideLinkageTermsVerdict", () => {
     ]);
   });
 
+  test("an unsatisfiable key names the first field the columns cannot produce", () => {
+    const verdict = decideLinkageTermsVerdict(
+      ["dob"],
+      twoKeyTerms([
+        [{ field: "dob" }, { field: "ssn" }],
+        [{ field: "undeclared" }, { field: "ssn" }],
+        [{ field: "dob" }],
+      ]),
+    );
+    const named = (name: string) => expect.objectContaining({ name });
+    expect(verdict.keys).toEqual([
+      { key: named("KEY0"), fitness: "unsatisfiable", missingField: "ssn" },
+      {
+        key: named("KEY1"),
+        fitness: "unsatisfiable",
+        missingField: "undeclared",
+      },
+      { key: named("KEY2"), fitness: "satisfiable" },
+    ]);
+  });
+
   test("one dead key among live ones -> refused", () => {
     // Both keys' columns are present, so the column check passes; KEY0's own
     // element cleaning drops every record regardless of the data.

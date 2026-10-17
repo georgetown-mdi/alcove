@@ -66,14 +66,16 @@ exchange still records exactly which keys ran.
 A zero-setup exchange authors nothing. Each party derives its terms from its own
 input file, keeping the built-in keys that file can satisfy, and the two derived
 documents are then cross-checked against each other. That works with no
-authoring for one reason: every built-in key is built from `baseline-pii`, which
-is the guaranteed-minimum PII both parties are sure to bring.
+authoring because every built-in key is built from `baseline-pii`, so a party
+derives each key from the same field declarations as its partner.
 
 A built-in key over a field outside that substrate would strand the party whose
-file does not include it -- `phone_number`, `email_address`, and `zip_code` are
-recognized matchable types no built-in field covers. It would do so at run time,
-as a cancelled exchange or as terms referencing a field they never declare, and
-neither of those names its cause to an operator who authored nothing.
+file does not include it, as terms referencing a field they never declare,
+which names no cause to an operator who authored nothing. A key over a field
+inside it that only one party's file supplies -- a phone, email or ZIP column,
+which `baseline-pii` 1.1.0 declares -- stops the exchange at the terms check
+instead, before any data moves, and the party whose file has the column is
+told which column to remove ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules)).
 
 So the property is held by a check rather than by review:
 `npm run check:zero-setup-keys` reads every set the built-in registry declares
@@ -176,44 +178,38 @@ beside a full SSN fall in its 99% band.
 
 **Recognized matchable fields go unused.** `phone_number`, `email_address`, and
 `zip_code` are semantic types the product recognizes, infers from column names,
-and can match on -- and no built-in key references any of them. A party whose
-data includes a phone number gets no matching value from it under the built-in
-rules; it has to add a key itself. The gap is not an oversight to be closed
-by adding keys casually: rules for those fields would have their own
+and can match on -- and no key of the first built-in key set, 1.0.0,
+references any of them. A party whose data includes a phone number gets no
+matching value from it under that set; it has to add a key itself. The gap is
+not an oversight to be closed by adding keys casually: rules for those fields would have their own
 precision/recall consequences and are not covered by the validation these keys
 rest on, so they need their own grounding before they could ship as built-in.
 
-What closes the gap without moving the set is offering those types beside it
-rather than inside it. The web app's guided key list offers, turned off, one key
-per such type its file supplies every element of, and says at the control that
-turning one on departs from the validated set.
+The catalog closes the gap with that grounding. `precision-ranked-rules` 2.0.0
+matches on each of those types, each rule with the band
+[linkage-rule-catalog.md](linkage-rule-catalog.md) gives it, and `baseline-pii`
+1.1.0 declares the three fields. Where a refinement sits in the order is in
+[linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
 
-Each offered key is compound -- the type beside fields the built-in keys already
-use -- and never the type alone, on two grounds that agree. A key
+Each such rule is compound -- the type beside a name and a birth date, or its
+year and month -- and never the type alone, on two grounds that agree. A key
 over a single identifier is a membership oracle: a party holding a candidate
 value learns from the result whether its holder is in the other party's file,
 which is the differencing exposure [SECURITY_DESIGN.md](../SECURITY_DESIGN.md)
 scopes the guarantee against. And a contact value is a shared value in
 program-application data -- one phone number or email address is shared across a
 household, and across the people an organization files for -- so a key over one
-alone reports different people as the same person. The evidence for phone,
-email and ZIP rules, and the band each supports, is in
-[linkage-rule-catalog.md](linkage-rule-catalog.md); where a refinement sits in
-the order is in
-[linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
-The catalog gives the email shape, `FN + EMAIL`, no band: no source measures
-it, yet it ships today as the guided opt-in for an email column, outside any
-built-in set. The guided opt-in offers for phone, email and ZIP are to be
-retired when rules are selected by precision floor.
+alone reports different people as the same person. The web app's guided key
+list states that caveat beside the phone, email and ZIP keys it shows.
 
-One shape per type is the whole offer, not a builder over the types: any other
-combination is a rule nothing here has grounded, and authoring one is what the
-expert key editor is for. Terms with an added key are not drawn from the set,
-so they cite none -- the departure reaches the accepting party's terms review,
-not only the operator's screen.
+The email shape `FN + EMAIL` has no band, since no source measures it, and is
+in no built-in set. An operator reaches it, or any other combination nothing
+here has grounded, only by authoring it in the expert key editor. Terms with an
+added key are not drawn from the set, so they cite none -- the departure
+reaches the accepting party's terms review, not only the operator's screen.
 
 A key over one of these types gets the type's recommended cleaning whichever
-door authors it -- the guided offer's checkbox, an imported document, or the
+door authors it -- the guided list's checkbox, an imported document, or the
 expert key editor. The cleaning is per-party and is never sent, so the accepting
 party derives its own from the terms it accepted: a party matching one of these
 columns raw would hash `20001-1234` against a partner hashing `20001` and match
@@ -221,7 +217,7 @@ nothing, with neither side told. The editor seeds the recommended pipeline
 instead, and an operator who wants other steps edits them in the data-prep
 workbench, where the change is theirs and visible.
 
-The accurate summary is that the key set is looser than some standards where it
+In short, the first built-in key set is looser than some standards where it
 matches, and narrower than the product's own capability in what it can match
 on.
 

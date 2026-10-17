@@ -53,7 +53,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// A linkage column no built-in linkage key references (phone is opt-in only).
+// A linkage column no built-in linkage key reads alone (each phone key also
+// needs a name and a date of birth).
 // The online mint derives its terms from the input's own columns, so the terms
 // it would hold declare no linkage key at all -- the draft shortfall this path
 // reaches.

@@ -468,6 +468,25 @@ export const DEFAULT_PRECISION_FLOOR_SELECTION: PrecisionFloorSelection =
   Object.freeze({ floor: 95, oneStateOrMetroArea: true });
 
 /**
+ * The rules `selection` picks for a file, as every screen that names a quick
+ * exchange's selection words it: the console's confirm step and the CLI's
+ * display before the run. Starts lowercase, for use after a label.
+ */
+export function precisionFloorSelectionStatement(
+  selection: PrecisionFloorSelection,
+): string {
+  const coverage = selection.oneStateOrMetroArea
+    ? "for two files that both draw their members from one state or one " +
+      "metropolitan area"
+    : "leaving out the rules that need both files to draw their members " +
+      "from one state or one metropolitan area";
+  return (
+    `the built-in rules at ${String(selection.floor)}% precision and above ` +
+    `that your file supplies, ${coverage}`
+  );
+}
+
+/**
  * The keys of `ruleSet` that `selection` selects, in the set's cascade order:
  * each key whose band is at or above the floor, less a key with the
  * `one_state_or_metro_area` coverage condition where the answer is no. A set
@@ -892,13 +911,12 @@ export function getDefaultLinkageTerms(
 }
 
 /**
- * The contact and address types: phone, email and ZIP. The catalog matches on
- * each only beside a name and a date, so a file can hold one of these columns
- * while the terms derived from it declare no field for it; the web inviter's
- * recommended cleaning covers such a field wherever an enabled key references
- * it.
+ * The contact and location types, phone, email and ZIP, whose values many
+ * people can share (a shelter's phone, a site's ZIP code). The catalog matches
+ * on each only beside a name and a date, so a file can hold one of these
+ * columns while the terms derived from it declare no field for it.
  */
-export const OPT_IN_LINKAGE_FIELD_TYPES = [
+export const CONTACT_AND_LOCATION_FIELD_TYPES = [
   "phone_number",
   "email_address",
   "zip_code",

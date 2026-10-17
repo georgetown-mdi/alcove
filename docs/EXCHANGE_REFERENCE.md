@@ -56,7 +56,7 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 The built-in rules are two named artifacts, versioned separately:
 
 - **`baseline-pii`, version `1.1.0`** -- the linkage **fields**: eight PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, and `zip_code`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. The earlier built-in rules it replaces are retired: a document or record citing them names a set this build does not ship.
+- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. The earlier built-in rules it replaces are retired: a document or record citing them names a set this build does not ship.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -71,7 +71,7 @@ Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_ter
 
 #### Choosing rules by precision floor
 
-A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. No configuration key sets the floor or that answer; they decide which keys are written into the terms. A quick exchange, `alcove init`, and the web app's invite paths write the keys for the 95% floor with that answered yes. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to answer no. Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
+A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. No configuration key sets the floor or that answer; they decide which keys are written into the terms. A quick exchange, `alcove init`, and the web app's invite paths write the keys for the 95% floor with that answered yes. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to answer no. Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected, and on a quick exchange names the selection ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
@@ -314,7 +314,7 @@ The table above is the complete set of constraints. A constraint not listed for 
 *Required:* yes, written out even where the block names a rule set  
 *Consistency:* mandatory
 
-An ordered list of linkage keys applied in sequence from most to least precise. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
+An ordered list of linkage keys applied in sequence, in the order listed. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
 
 The name of each linkage key must be unique. The elements within any linkage must either reference a unique linkage field or have an alias that is unique. Each element's `field` must name a declared linkage field (a `name` from `linkage_terms.linkage_fields`); a key that references an undeclared field is rejected when the terms are decoded, rather than silently collapsing to an empty key at exchange time.
 
@@ -1368,7 +1368,7 @@ Your own columns are not covered by the exchange record's commitments, which bin
 
 ## The key each match was made on
 
-Optional. Under the `cascade` [linkage strategy](#linkage_termslinkage_strategy) each linkage key runs in turn, most precise first, so a pair can be accepted on a precise key or on a later, looser one. This key adds a last column to your result file naming which.
+Optional. Under the `cascade` [linkage strategy](#linkage_termslinkage_strategy) each linkage key runs in turn, in the order listed, so a pair can be accepted on an earlier key or on a later, looser one. This key adds a last column to your result file naming which.
 
 Purely local, like [`include_own_columns`](#include_own_columns): it is not a linkage term, nothing about it is sent to your partner or folded into the agreed-terms hash, and your partner's result file is unchanged. Each party counts its own cascade rounds, so the column needs nothing from your partner.
 

@@ -373,9 +373,9 @@ export type {
 export type { ServerProvisionMode } from "./config/connection";
 export {
   BUILT_IN_LINKAGE_RULE_SETS,
+  CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
-  OPT_IN_LINKAGE_FIELD_TYPES,
   authoredLinkageFields,
   encodeForComparison,
   findBuiltInLinkageRuleSet,
@@ -384,6 +384,7 @@ export {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorSelectionStatement,
   resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {
@@ -646,6 +647,7 @@ export type {
   StandardizationFunctionDescriptor,
 } from "./standardization";
 export type {
+  GradedLinkageKey,
   LinkageKeyFitness,
   LinkageTermsStanding,
   LinkageTermsVerdict,

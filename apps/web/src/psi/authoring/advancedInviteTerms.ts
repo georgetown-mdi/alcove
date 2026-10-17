@@ -491,11 +491,18 @@ function authoringProbeTerms(
   };
 }
 
+/** One authored key's grade: core's `GradedLinkageKey` less the key,
+ * so an `unsatisfiable` grade names the first field the columns cannot
+ * produce. */
+export type AuthoredKeyGrade =
+  | { fitness: Exclude<LinkageKeyFitness, "unsatisfiable"> }
+  | { fitness: "unsatisfiable"; missingField: string };
+
 /**
  * How each of a draft's authored keys fares against the operator's columns, in
- * declaration order -- the per-key badge verdict, taken from core's own
+ * declaration order -- the expert editor's per-key badge, taken from core's own
  * classification ({@link decideLinkageTermsVerdict}) rather than re-derived, so a
- * badge cannot come to read `satisfiable` for a key the Generate gate, the mint,
+ * badge cannot come to say the file supplies a key the Generate gate, the mint,
  * and the run boundary all refuse.
  */
 export function gradeAuthoredKeys(
@@ -503,11 +510,15 @@ export function gradeAuthoredKeys(
   standardization: Standardization,
   columns: ReadonlyArray<string>,
   linkageKeys: ReadonlyArray<LinkageKey>,
-): Array<LinkageKeyFitness> {
+): Array<AuthoredKeyGrade> {
   return decideLinkageTermsVerdict(
     [...columns],
     authoringProbeTerms(metadata, standardization, linkageKeys),
     standardization,
     metadata,
-  ).keys.map((graded) => graded.fitness);
+  ).keys.map((graded) =>
+    graded.fitness === "unsatisfiable"
+      ? { fitness: graded.fitness, missingField: graded.missingField }
+      : { fitness: graded.fitness },
+  );
 }

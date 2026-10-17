@@ -99,6 +99,38 @@ describe("the guided key list", () => {
   });
 });
 
+describe("a catalog key this file cannot supply", () => {
+  const BACKBONE = ["ssn", "first_name", "last_name", "dob", "zip"];
+
+  test("is absent from the guided list and its terms, not listed off", () => {
+    const draft = seedAdvancedInvite("Inviter", BACKBONE, ROWS).draft;
+    const listed = draft.keys.map((entry) => entry.key.name);
+    expect(listed).toContain("LN + FN + DOB + ZIP5");
+    expect(listed).not.toContain("LN + FN + DOB + PHONE");
+    expect(listed).not.toContain("FN + DOB + EMAIL");
+    const termKeys = buildAdvancedTerms(draft).linkageKeys.map(
+      (key) => key.name,
+    );
+    expect(termKeys).toStrictEqual(listed);
+  });
+
+  test("leaves the list when a column edit takes away its column", () => {
+    const draft = guided();
+    const retyped = setDraftMetadata(
+      draft,
+      setColumnTypeForMatching(draft.metadata, "phone", "other"),
+      ROWS,
+    );
+    const listed = retyped.keys.map((entry) => entry.key.name);
+    expect(listed).not.toContain("LN + FN + DOB + PHONE");
+    expect(listed).toContain("LN + FN + DOB + ZIP5");
+    expect(listed).toContain("FN + DOB + EMAIL");
+    expect(
+      buildAdvancedTerms(retyped).linkageKeys.map((key) => key.name),
+    ).toStrictEqual(listed);
+  });
+});
+
 describe("a key a column edit newly makes offerable", () => {
   const BACKBONE = ["ssn", "first_name", "last_name", "dob", "postal", "tel"];
   const edited = () => {

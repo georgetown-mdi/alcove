@@ -1047,7 +1047,9 @@ describe("the dead-key gate on a key-element transform that matches nothing", ()
       // The dead-key half of the shortfall, whose remedy sends the operator to
       // the key list rather than to their own columns or a discarded draft.
       expect(result.errors.keys, label).toMatch(/drops every record/);
-      expect(result.errors.keys, label).toMatch(/badged "won't match"/);
+      expect(result.errors.keys, label).toMatch(
+        /marked "cleaning drops every value"/,
+      );
       expect(result.errors.keys, label).not.toMatch(
         /cannot be produced from this input's columns/,
       );
@@ -1081,7 +1083,9 @@ describe("the dead-key gate on a key-element transform that matches nothing", ()
       const result = validateAdvancedInvite(imported, seed, now);
       expect([label, result.canGenerate]).toEqual([label, false]);
       expect(result.errors.keys, label).toMatch(/drops every record/);
-      expect(result.errors.keys, label).toMatch(/badged "won't match"/);
+      expect(result.errors.keys, label).toMatch(
+        /marked "cleaning drops every value"/,
+      );
     }
   });
 
