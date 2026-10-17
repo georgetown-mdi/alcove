@@ -295,6 +295,7 @@ describe("substringCollapsesParsedDateToConstant", () => {
     function: "substring",
     params: { start, length },
   });
+  const zip3Step: TransformStep = { function: "zip3" };
   // What the shipped pipeline does with the whole corpus: the value every date
   // leaves behind, or undefined where they differ or any date is dropped.
   const collapsedValue = (
@@ -952,6 +953,7 @@ describe("substringCollapsesParsedDateToConstant", () => {
       "YYYYMMDD",
       "MM/DD/YY",
       "DD.MM.YYYY",
+      "DDMM1",
     ];
     // Params for the listed functions that take them, chosen so the step does
     // something rather than compiling to a pass-through or an always-null.
@@ -1048,7 +1050,6 @@ describe("substringCollapsesParsedDateToConstant", () => {
   });
 
   test("a zip3 ends a measured run as a substring keeping three characters does", () => {
-    const zip3Step: TransformStep = { function: "zip3" };
     const viaZip3 = [parseDate("000MM"), zip3Step];
     const viaSubstring = [parseDate("000MM"), slice(1, 3)];
     expect(collapsedValue(viaZip3)).toBe("000");
@@ -1058,13 +1059,61 @@ describe("substringCollapsesParsedDateToConstant", () => {
     expect(pipelineCollapsesParsedDateToConstant(viaZip3)).toBe(true);
     // A zip3 over a ZIP field has no parse_date ahead of it to collapse.
     expect(pipelineCollapsesParsedDateToConstant([zip3Step])).toBe(false);
-    // A zip3 that drops every date (eight digits is not a ZIP) is not a collapse.
+    // A zip3 that drops every date (eight digits is not a ZIP) is dead, not a
+    // collapse.
     expect(anyVerdict([parseDate("YYYYMMDD"), zip3Step])).toBe(false);
     // Leading digits that change with the date are not a collapse.
     const varying = [parseDate("DDMM1"), zip3Step];
     expect(collapsedValue(varying)).toBeUndefined();
     expect(anyVerdict(varying)).toBe(false);
     expect(pipelineCollapsesParsedDateToConstant(varying)).toBe(false);
+  });
+
+  test("a zip3 whose drop of every probe depends on the data takes the collapse word, as a substring does", () => {
+    // The replacement skips exactly the days the probes use, so every probe
+    // reaches the zip3 as eight digits and is dropped, while most real dates
+    // become one constant.
+    const skipsProbeDays = {
+      function: "replace_regex",
+      params: {
+        pattern: "^[0-9]{6}(0[13-9]|1[0-24-9]|2[0-35-9]|30)$",
+        replacement: "12345",
+      },
+    };
+    const viaZip3 = [parseDate("YYYYMMDD"), skipsProbeDays, zip3Step];
+    const viaSubstring = [
+      parseDate("YYYYMMDD"),
+      skipsProbeDays,
+      { function: "filter_regex", params: { pattern: "^[0-9]{5}$" } },
+      slice(1, 3),
+    ];
+    expect(runPipeline("03/04/2021", viaZip3)).toBe("123");
+    expect(anyVerdict(viaSubstring)).toBe(true);
+    expect(anyVerdict(viaZip3)).toBe(true);
+    expect(pipelineCollapsesParsedDateToConstant(viaZip3)).toBe(true);
+    expect(pipelineAlwaysDrops(viaZip3)).toBe(false);
+  });
+
+  test("a zip3 that drops every date is dead, as the equivalent substring spelling is", () => {
+    for (const outputFormat of ["YYYYMMDD", "000MMDD", "ACME-YYYYMMDD"]) {
+      const viaZip3 = [parseDate(outputFormat), zip3Step];
+      for (const date of DATES)
+        expect(runPipeline(date, viaZip3), outputFormat).toBeNull();
+      expect(anyVerdict(viaZip3), outputFormat).toBe(false);
+      expect(pipelineAlwaysDrops(viaZip3), outputFormat).toBe(true);
+      expect(
+        pipelineAlwaysDrops([
+          ...viaZip3,
+          { function: "coalesce", params: { default: "UNKNOWN" } },
+        ]),
+        outputFormat,
+      ).toBe(false);
+    }
+    expect(pipelineAlwaysDrops([parseDate("YYYYMMDD"), slice(1, 0)])).toBe(
+      true,
+    );
+    expect(pipelineAlwaysDrops([parseDate("000MM"), zip3Step])).toBe(false);
+    expect(pipelineAlwaysDrops([parseDate("DDMM1"), zip3Step])).toBe(false);
   });
 });
 
@@ -2852,6 +2901,22 @@ describe("assessLinkageSatisfiability dead keys", () => {
       terms,
     );
     expect(buildKeyStrings(terms.linkageKeys[0], dataset, 0)).toBeNull();
+  });
+
+  test("a zip3 after a parse_date that renders no ZIP is a dead key", () => {
+    for (const outputFormat of ["YYYYMMDD", "000MMDD", "ACME-YYYYMMDD"]) {
+      const { deadKeys } = assessLinkageSatisfiability(
+        columns,
+        dobTerms([
+          { function: "parse_date", params: { outputFormat } },
+          { function: "zip3" },
+        ]),
+      );
+      expect(
+        deadKeys.map((k) => k.name),
+        outputFormat,
+      ).toEqual(["DOB"]);
+    }
   });
 
   test("a non-string parse_date input format is a dead key, without crashing the check", () => {

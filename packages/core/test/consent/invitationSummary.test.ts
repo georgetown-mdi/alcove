@@ -1218,6 +1218,31 @@ describe("the consent summary's date-collapse marker", () => {
     ]);
   });
 
+  test("a zip3 that drops every probe date takes the word its substring spelling does", () => {
+    const skipsProbeDays: TransformStep = {
+      function: "replace_regex",
+      params: {
+        pattern: "^[0-9]{6}(0[13-9]|1[0-24-9]|2[0-35-9]|30)$",
+        replacement: "12345",
+      },
+    };
+    expect(
+      headerFor([parseDate("YYYYMMDD"), skipsProbeDays, { function: "zip3" }]),
+    ).toEqual(["date of birth (any date)"]);
+    expect(
+      headerFor([
+        parseDate("YYYYMMDD"),
+        skipsProbeDays,
+        { function: "filter_regex", params: { pattern: "^[0-9]{5}$" } },
+        slice(1, 3),
+      ]),
+    ).toEqual(["date of birth (any date)"]);
+    // Eight digits is never a ZIP, so the element matches nothing: no marker.
+    expect(headerFor([parseDate("YYYYMMDD"), { function: "zip3" }])).toEqual([
+      "date of birth",
+    ]);
+  });
+
   test("a plain reformatting keeps no marker", () => {
     // Routine canonicalization between equivalent full layouts, unflagged by
     // design; the slice that reads the date itself is the milder word.

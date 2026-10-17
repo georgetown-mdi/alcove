@@ -561,6 +561,7 @@ export const LAYOUT_DETERMINED_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "remove_accents",
   "substring",
   "pad_left",
+  "zip3",
   "coalesce",
 ]);
 
@@ -738,15 +739,7 @@ function parsedDateRunReadings(
     for (let index = parseDateIndex + 1; index <= lastRunEnd; index += 1) {
       advanceParsedDateSpan(span, steps[index], index, compiledStep, work);
       if (!endsMeasuredRun(steps, index)) continue;
-      const reading = parsedDateSpanReading(span);
-      // A `zip3` that drops every probe is not a date collapse: it keeps the
-      // milder word it had before it was measured.
-      readings[index] =
-        steps[index].function === "zip3" &&
-        (reading.kind === "valueDependentDrop" ||
-          reading.kind === "layoutDeterminedDrop")
-          ? UNDETERMINED
-          : reading;
+      readings[index] = parsedDateSpanReading(span);
     }
   }
   return readings;
