@@ -56,7 +56,7 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 The built-in rules are two named artifacts, versioned separately:
 
 - **`baseline-pii`, version `1.1.0`** -- the linkage **fields**: eight PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, and `zip_code`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. It replaces `hmis-keys` version `1.0.0`, over `baseline-pii` version `1.0.0`; a document or record citing that set still resolves, and is checked against its fourteen keys.
+- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), applied most precise first, each in a precision band of 99% or 95%. The earlier built-in rules it replaces are retired: a document or record citing them names a set this build does not ship.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 

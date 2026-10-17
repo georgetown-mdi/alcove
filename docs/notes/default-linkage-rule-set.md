@@ -18,9 +18,10 @@ records what the two sets are, why they are named apart, what the key set's
 validation rests on, the criticisms on record against it, and why both names
 are neutral. See [docs/notes/README.md](README.md).
 
-The key set it describes is `hmis-keys` 1.0.0 over `baseline-pii` 1.0.0, which
-stays in the registry so a citation of it resolves. The built-in key set is
-the catalog of [linkage-rule-catalog.md](linkage-rule-catalog.md), published as
+The key set it describes is the first built-in key set, 1.0.0 over
+`baseline-pii` 1.0.0. Both are retired: a citation of either names a set this
+build does not ship. The built-in key set is the catalog of
+[linkage-rule-catalog.md](linkage-rule-catalog.md), published as
 `precision-ranked-rules` 2.0.0 over `baseline-pii` 1.1.0, which adds
 `phone_number`, `email_address` and `zip_code`._
 
@@ -37,7 +38,7 @@ has. It is a substrate: it fixes what can be matched on and how each
 element is cleaned and bounded, and says nothing about what constitutes a
 match.
 
-`hmis-keys` names the **linkage keys**: the fourteen combinations built from
+The key set names the **linkage keys**: the fourteen combinations built from
 those fields, applied in the order the set lists them. It is the specific
 artifact -- which combinations count as a match, and in what cascade order.
 That order is not a precision order: two keys with no SSN run above
@@ -52,7 +53,7 @@ Everything else in a default terms document is a per-party choice made at the
 time of the exchange and is outside both names: the party `identity`, the
 `date`, the `algorithm`, the linkage strategy, the output preferences, and
 `deduplicate`. Two parties can run these rules and still disagree about who
-receives output; they cannot run `hmis-keys` and disagree about what a key is.
+receives output; they cannot run one key set and disagree about what a key is.
 
 Terms derived from an input file leave out any key that input cannot supply, so
 an exchange matches on a **subset** of the key set, never on an addition to it.
@@ -226,9 +227,9 @@ on.
 
 ## Why both names are neutral
 
-`baseline-pii` names the fields by what they are; `hmis-keys` names the keys by
-the class of system they serve. Neither names who validated anything. That is by
-design, for three reasons.
+`baseline-pii` names the fields by what they are; the key set's name states the
+class of system its keys serve. Neither names who validated anything. That is
+by design, for three reasons.
 
 1. **The repository is public and the attribution is not the product's to
    publish.** Naming a validating partner in source code publishes an

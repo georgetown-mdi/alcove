@@ -286,13 +286,13 @@ describe("InvitationTerms: per-key matching disclosures", () => {
   // Terms citing a rule set, rendered under each perspective below so the three
   // cases differ at the perspective alone. The two halves reach DIFFERENT
   // verdicts against this build, which is what the citation's independent halves
-  // are for: `baseline-pii 1.0.0` is a set this build ships, and the fields above
+  // are for: `baseline-pii 1.1.0` is a set this build ships, and the fields above
   // are not it (no constraints on `ssn`, a field named `dob`), while
   // `precision-ranked-rules 2.3.0` is a version it does not ship at all.
   const citingTerms: LinkageTerms = {
     ...terms,
     linkageRuleSet: {
-      fieldSet: { name: "baseline-pii", version: "1.0.0" },
+      fieldSet: { name: "baseline-pii", version: "1.1.0" },
       keySet: { name: "precision-ranked-rules", version: "2.3.0" },
     },
   };
@@ -308,7 +308,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     expect(app.container.textContent).toContain(
       '"precision-ranked-rules" 2.3.0',
     );
-    expect(app.container.textContent).toContain('"baseline-pii" 1.0.0');
+    expect(app.container.textContent).toContain('"baseline-pii" 1.1.0');
     expect(app.container.textContent).toContain(
       `Keys (${LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker}):`,
     );
@@ -365,7 +365,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
       {
         ...citingTerms,
         linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
+          fieldSet: { name: "baseline-pii", version: "1.1.0" },
           keySet: { name: "precision-ranked-rules 9.9.9", version: "2.3.0" },
         },
       },
@@ -437,7 +437,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
       {
         ...citingTerms,
         linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
+          fieldSet: { name: "baseline-pii", version: "1.1.0" },
           keySet: { name: "precision-ranked-rules", version: '1.0.0" 9.9.9' },
         },
       },
@@ -468,7 +468,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     expect(app.container.textContent).toContain(
       '"precision-ranked-rules" 2.3.0',
     );
-    expect(app.container.textContent).toContain('"baseline-pii" 1.0.0');
+    expect(app.container.textContent).toContain('"baseline-pii" 1.1.0');
     expect(app.container.textContent).toContain(
       linkageRuleSetVerdictNote("contradicted", "citing-party"),
     );

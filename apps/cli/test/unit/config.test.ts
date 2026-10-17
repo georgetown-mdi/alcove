@@ -5120,13 +5120,6 @@ const RULE_SET_WITHOUT_RULES_REFUSAL =
 test.each<[string, LinkageRuleSetReference]>([
   ["the shipped set", DEFAULT_LINKAGE_RULE_SET.reference],
   [
-    "the earlier version",
-    {
-      fieldSet: { name: "baseline-pii", version: "1.0.0" },
-      keySet: { name: "hmis-keys", version: "1.0.0" },
-    },
-  ],
-  [
     "a set this build does not ship",
     {
       fieldSet: { name: "no-such-fields", version: "9.9.9" },

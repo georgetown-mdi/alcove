@@ -660,7 +660,6 @@ describe("the check's registration", () => {
     const pins = JSON.parse(readRoot(PINS_FILE)).pins;
     expect(Object.keys(pins).sort()).toEqual([
       "baseline-pii",
-      "hmis-keys",
       "precision-ranked-rules",
     ]);
     for (const entry of Object.values(pins)) {

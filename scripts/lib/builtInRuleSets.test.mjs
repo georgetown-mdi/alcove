@@ -349,13 +349,11 @@ function build() {
   it("reads the committed source", () => {
     const { ruleSets, unreadable } = readRuleSetsFrom(repoRoot);
     expect(unreadable).toEqual([]);
-    expect(ruleSets.length).toBeGreaterThan(0);
+    expect(ruleSets.length).toBe(1);
     expect(ruleSets[0].fieldSet.name).toBe("baseline-pii");
     expect(ruleSets[0].keySet.name).toBe("precision-ranked-rules");
     expect(ruleSets[0].keySet.content.length).toBeGreaterThan(0);
     expect(ruleSets[0].keySet.bands.length).toBeGreaterThan(0);
-    expect(ruleSets[1].keySet.name).toBe("hmis-keys");
-    expect(ruleSets[1].keySet.bands).toBeUndefined();
   });
 
   it("digests a key set's bands with its keys, where it declares them", () => {
