@@ -266,7 +266,7 @@ The rest of the part is its body, UTF-8 JSON. Known-answer vectors: `packages/co
 
 **The part body.** A mapped-element list's part is a JSON array of the part's entries, in list order; each array element is one entry. A payload's part is a payload message (`hasData`, `columns`, `rowIndices`, `rows`) holding the part's rows and their row indices, every part naming the same columns; each row is one entry. A payload with no data (`{"hasData": false}`) is one part of no entries, and an empty mapped-element list one part holding `[]`. A part of a round's index list is a JSON array of the part's positions, and a part of a grouping a JSON array of the part's run lengths or owner lists. A grouping the sender omits is one part of no entries holding `null`, and an empty grouping one part holding `[]` (`packages/core/src/psi/roundTableParts.ts`).
 
-**The part size.** A sender fills each part's body to the bytes one part of a PSI set holds on the same connection (`psiSetPartPayloadBytes`): on SFTP or a synced folder, a message file of `MAX_FRAME_SIZE_BYTES` inside the AEAD envelope; on WebRTC, the data-channel bound ([The part size](#a-psi-set-is-sent-in-parts)). It cuts the list before the entry that would take the body past that, or past `MAX_JSON_ARRAY_ELEMENTS` entries, measuring each entry as its UTF-8 JSON with its separator. A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, each body to the JSON structure bounds, and a mapped-element list's part to the byte bound below.
+**The part size.** A sender fills each part's body to the bytes one part of a PSI set holds on the same connection (`psiSetPartPayloadBytes`): on SFTP or a synced folder, a message file of `MAX_FRAME_SIZE_BYTES` inside the AEAD envelope; on WebRTC, the data-channel bound ([The part size](#a-psi-set-is-sent-in-parts)). It cuts the list before the entry that would take the body past that, or past `MAX_JSON_ARRAY_ELEMENTS` entries, measuring each entry as its UTF-8 JSON with its separator. A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, each body to the JSON structure bounds, and a part of a mapped-element list, of a round's index list or of its grouping to the byte bounds below.
 
 **The entries a receiver admits.** The first part's declared entry count is held, before any part's body is parsed, to a bound read from the agreed terms and this party's own result:
 
@@ -285,7 +285,14 @@ The rest of the part is its body, UTF-8 JSON. Known-answer vectors: `packages/co
 
 A part of a round's index list is held to the same bound, its longest entry the digits of the largest position the list may name, with its separator (`roundIndexEntryBytes`, `packages/core/src/psi/roundTableParts.ts`): below the elements this party encrypted for the round, for its own half of the association table; below the element bound of the partner's set for the round (`psiElementBounds`), for the partner's half and the original-index list.
 
-A payload's part has no byte bound of this kind: its rows hold the partner's column values, which no agreed term bounds. Nor has a grouping's part: an owner list holds as many ordinals as records stand behind its position, which only the partner's record count bounds.
+A part of a round's grouping is held to a byte bound over the whole list instead, since one owner list may hold an ordinal for every record the partner declared (`roundGroupingBound`, `packages/core/src/psi/roundTableParts.ts`). A part may hold the 16-byte header, 2 bytes for the array's brackets, and what the bodies of the earlier parts, less 2 bytes each, left of the list's total. The total counts each entry at the digits of the largest value it may hold, read from the round's matched positions (the entries of the index list the grouping follows), the record count the partner declared on the terms exchange, and the candidate count one record may contribute to the key ([The checks stay local](#the-per-round-grouping-the-two-frames-hold)):
+
+- run lengths: one entry per record, at most the lesser of the matched positions and the record count, each at most the lesser of that candidate count and the matched positions, with its separator;
+- owner lists: one entry per matched position, with its brackets and separator, and its ordinals, each below the record count and with its separator, at most the record count times the lesser of that candidate count and the matched positions in all.
+
+The total is at least 2 bytes, the bytes by which an omitted grouping's `null` is longer than `[]`.
+
+A payload's part has no byte bound of this kind: its rows hold the partner's column values, which no agreed term bounds.
 
 **What the receiver refuses, from the headers.** Each refusal is a `protocol` `ConnectionError` naming the list and the condition, raised before the refused part's body is parsed:
 
@@ -293,7 +300,7 @@ A payload's part has no byte bound of this kind: its rows hold the partner's col
 - A part shorter than its header, or with no body.
 - A part whose index is below the one expected (a repeated part) or above it (a missing part).
 - On a later part, a part count or entry count that differs from the first part's.
-- On a part of a mapped-element list or of a round's index list, a part longer than the byte bound above. The refusal names the bound, and the part's own length is on a cause link of its own.
+- On a part of a mapped-element list, of a round's index list or of its grouping, a part longer than the byte bound above. The refusal names the bound, and the part's own length is on a cause link of its own.
 
 **What the receiver refuses, parsing the parts.** Each body is parsed as its part arrives, through `parseBoundedJson` and the list's own schema, before the next part is read, and refused as a `protocol` `ConnectionError`: a body that is not JSON, the refusal naming no byte of it; a body the list's schema refuses; a part holding no entries in a list that is not empty; and a part running past the declared entry count. Once the last part has arrived, parts ending short of the declared entry count are refused, and, for a payload, a part naming other columns than the first part, or a row index repeated across parts. No part reaches the matching path before every part of the list has passed these checks.
 

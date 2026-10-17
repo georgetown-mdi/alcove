@@ -192,7 +192,11 @@ export async function receiveHandPlayedRoundTable(
     );
   const joinerPositions = await read();
   const starterSlots = await read();
-  await receiveRoundGrouping(conn, "", "grouping", Number.MAX_SAFE_INTEGER);
+  await receiveRoundGrouping(conn, "", "grouping", Number.MAX_SAFE_INTEGER, {
+    maxPositionsPerRecord: 2 ** 31,
+    partnerRecordCount: 2 ** 31,
+    ownerLists: true,
+  });
   return [joinerPositions, starterSlots];
 }
 

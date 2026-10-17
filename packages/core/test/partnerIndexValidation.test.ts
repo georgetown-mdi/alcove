@@ -1161,23 +1161,40 @@ test("the round refuses a run longer than the key's candidate count", async () =
 test("the round refuses a fractional run length", async () => {
   const err = await widenedRound(
     "starter",
-    onRoundTable((table) => [table[0], table[1], [1.5, 1.5]]),
+    onRoundTable((table) => [table[0], table[1], [1.5]]),
   );
   expectProtocolRefusal(err, /not a positive whole number/);
 });
 
+// Two records' runs of at most 3 positions are 2 * 2 bytes of entries, so a
+// third run is past the grouping's byte bound before the reader sees it.
 test("the round refuses runs naming more records than the partner counted", async () => {
   const err = await widenedRound(
     "starter",
     onRoundTable((table) => [table[0], table[1], [1, 1, 1]]),
   );
-  expectProtocolRefusal(err, /more runs than the 2 record\(s\) the partner/);
+  expectProtocolRefusal(err, /part 0 is over the 22 bytes this party admits/);
+  let readError: unknown;
+  try {
+    readPartnerRoundGrouping([1, 1, 1], [0, 1, 2], {
+      participantId: "party",
+      maxPositionsPerRecord: 20,
+      partnerRecordCount: 2,
+      ownerLists: false,
+    });
+  } catch (error) {
+    readError = error;
+  }
+  expectProtocolRefusal(
+    readError,
+    /more runs than the 2 record\(s\) the partner/,
+  );
 });
 
 test("the round refuses an owner list where run lengths are due", async () => {
   const err = await widenedRound(
     "starter",
-    onRoundTable((table) => [table[0], table[1], [[0], [0], [1]]]),
+    onRoundTable((table) => [table[0], table[1], [[1]]]),
   );
   expectProtocolRefusal(err, /states an owner list where its side/);
 });

@@ -436,8 +436,8 @@ No list is bounded by one frame. One part's body holds at most 267,532,635
 bytes, what one part of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the
 application envelope
 ([PROTOCOL.md, The part size](PROTOCOL.md#a-psi-set-is-sent-in-parts)), and at
-most `MAX_JSON_ARRAY_ELEMENTS` entries. A part of either mapped-element list or
-of a round's index list is refused past the byte bound PROTOCOL.md derives from
+most `MAX_JSON_ARRAY_ELEMENTS` entries. A part of either mapped-element list, or
+of a round's index list or grouping, is refused past the byte bound PROTOCOL.md derives from
 the agreed terms and this party's own round, before its body is parsed; the
 data channel has reassembled the part by then, up to `MAX_WEBRTC_FRAME_BYTES`,
 since no receive on this transport reads a frame under a tighter bound.

@@ -46,6 +46,7 @@ import {
   receiveRoundIndexList,
   sendRoundGrouping,
   sendRoundIndexList,
+  type RoundGroupingSizeBounds,
 } from "./roundTableParts";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -114,6 +115,8 @@ export interface RoundGroupingExchange {
     field: RoundGroupingField | undefined,
     matchedPositions: ReadonlyArray<number>,
   ): void;
+  /** What the partner's grouping list is sized against as it arrives. */
+  readonly partnerSizeBounds: RoundGroupingSizeBounds;
 }
 
 const DEFAULT_VERBOSITY = 1;
@@ -882,6 +885,7 @@ export class PSIParticipant {
             this.id,
             ASSOCIATION_TABLE_GROUPING,
             partnerIndices.length,
+            grouping.partnerSizeBounds,
           )
         : undefined;
       this.log.debug(`${this.id}: received association table`);
@@ -985,6 +989,7 @@ export class PSIParticipant {
             this.id,
             ORIGINAL_INDEX_LIST_GROUPING,
             partnerIndices.length,
+            grouping.partnerSizeBounds,
           );
       } catch (error) {
         if (!(error instanceof ConnectionError) || error.kind !== "protocol")
