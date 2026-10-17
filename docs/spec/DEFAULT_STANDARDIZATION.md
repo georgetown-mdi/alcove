@@ -60,9 +60,11 @@ surface rather than a local formatting choice.
   [Date-format inference](#date-format-inference)). It is safe because every
   input layout is reformatted to the same `YYYYMMDD` output. A step whose
   parameter changed the *output* form could not be inferred per party this way.
-  A placeholder list is the other per-party parameter; it decides only which
+  A placeholder list is another per-party parameter; it decides only which
   values are dropped, never the form of a value kept (see
-  [Per-party placeholder lists](#per-party-placeholder-lists)).
+  [Per-party placeholder lists](#per-party-placeholder-lists)). The
+  shared-value limit is the third, and it also decides only which values are
+  dropped (see [Shared-value screens](#shared-value-screens)).
 
 ### Per-party placeholder lists
 
@@ -113,6 +115,9 @@ terms declare the fields:
   reconstruction never leaves a matching field uncleaned. The two
   metadata-only types (`identifier` and `other`) have no pipeline and are not
   linkage-field types; a column of either is never hashed into a key.
+- An `ssn`, `phone_number` or `email_address` field's transformation also
+  states its **`max_people_per_value`**, the limit of the
+  [shared-value screen](#shared-value-screens) its pipeline block lists.
 
 Two behaviors of the pipelines as a whole are specified elsewhere and apply to
 every sequence below: the input value is normalized to Unicode NFC before the
@@ -125,9 +130,10 @@ linkage key that references the field (see
 ## Per-type pipelines
 
 Each pipeline below is written as the `steps` array of a data standardizing
-transformation, in the on-disk snake_case form: pasting one under an authored
-transformation for a column of that type reproduces the default cleaning
-exactly.
+transformation, in the on-disk snake_case form, beside the
+`max_people_per_value` of the three types that state one: pasting one under an
+authored transformation for a column of that type reproduces the default
+cleaning exactly.
 
 The worked examples give the standardized result for a raw cell value. Both
 columns are JSON scalars, so whitespace is visible and `null` is the no-value
@@ -137,6 +143,7 @@ linkage key referencing it.
 ### `ssn`
 
 ```yaml
+max_people_per_value: 1
 steps:
   - function: trim_whitespace
   - function: filter_regex
@@ -196,6 +203,9 @@ Result: exactly nine digits.
   two) is `00`, or its serial number (the last four) is `0000`.
 - **Placeholders.** A value of one digit repeated nine times is dropped, and
   so is `123456789`.
+- **Shared within the file.** A value more than one person in the party's own
+  file holds is dropped from every record holding it (see
+  [Shared-value screens](#shared-value-screens)).
 
 The area-number rule rests on one Social Security Administration rule: no SSN
 is issued with the area number `000`. A value with that area is therefore not
@@ -707,6 +717,7 @@ examples below use the `MM/DD/YYYY` default.
 ### `phone_number`
 
 ```yaml
+max_people_per_value: 5
 steps:
   - function: trim_whitespace
   - function: remove_non_ascii
@@ -727,7 +738,9 @@ Result: exactly ten digits. Formatting characters are removed, a leading US
 country code on an eleven-digit number is stripped, and anything that is not
 ten digits afterwards is dropped. The pipeline assumes the North American
 ten-digit form: an international number of another length is dropped rather
-than normalized, and no country other than `1` is recognized.
+than normalized, and no country other than `1` is recognized. A number more
+than five people in the party's own file hold is dropped from every record
+holding it (see [Shared-value screens](#shared-value-screens)).
 
 | Input | Result |
 | ----- | ------ |
@@ -739,6 +752,7 @@ than normalized, and no country other than `1` is recognized.
 ### `email_address`
 
 ```yaml
+max_people_per_value: 5
 steps:
   - function: trim_whitespace
   - function: remove_non_ascii
@@ -752,7 +766,9 @@ Result: a lowercased address of the shape `local@domain.tld`. The filter is a
 shape test, not a validator: it requires one `@` with a dotted right-hand side
 and no whitespace, and admits addresses no mail system would accept. The
 engine's `\s` does not match a vertical tab (U+000B), so an address holding one
-passes the filter.
+passes the filter. An address more than five people in the party's own file
+hold is dropped from every record holding it (see
+[Shared-value screens](#shared-value-screens)).
 
 `remove_non_ascii` precedes the filter, so a non-ASCII character in an address
 is deleted rather than causing the value to be dropped -- an internationalized
@@ -809,6 +825,96 @@ standardizes to the same value as the five-digit form.
 | `"  2057  "` | `"02057"` |
 | `"00000"` | `"00000"` |
 | `"abc"` | `null` |
+
+## Shared-value screens
+
+A shared-value screen drops a cleaned value held by more people in the party's
+own file than the field allows. It is stated as a transformation's
+`max_people_per_value`, a whole number of at least 1, rather than as a step,
+because it reads the whole file and a step reads one value.
+
+### What the screen does
+
+The screen runs after the field's pipeline has cleaned every record, and
+before any key is built. It counts the distinct people in the file who hold
+each cleaned value of the field. A value held by more than
+`max_people_per_value` people is dropped from every record holding it, as a
+step producing `null` drops it: the records keep their other fields, and every
+key that references the field leaves them out.
+
+The defaults state these limits:
+
+| Field type | `max_people_per_value` |
+| ---------- | ---------------------- |
+| `ssn` | `1` |
+| `phone_number` | `5` |
+| `email_address` | `5` |
+
+No other default transformation states one.
+
+### Counting distinct people
+
+A person is a record's cleaned `first_name`, `last_name` and `date_of_birth`
+values. They are read from the first linkage field of each of those types the
+terms declare, so a type the terms do not declare takes no part in the count.
+
+- Records holding the same three values are one person, so a person's own
+  duplicate records count once.
+- A record missing one or more of the values, because its cell was empty or
+  its pipeline dropped the value, is the same person as a record that holds
+  the same value of the field, agrees with it on every value it has, and has a
+  value it lacks. A record no other record completes this way is a person of
+  its own.
+- When the terms declare none of the three types, every record holding a value
+  is one person, and the screen drops nothing.
+
+For example, two records sharing an SSN, one holding `MARIA`, `LOPEZ`,
+`19800101` and the other no name and `19900505`, are two people, so the SSN is
+dropped from both. Had the second record held `19800101`, the two would be one
+person and the SSN would be kept. A record holding `MARIA`, `LOPES`,
+`19800101` beside the first is another person: the count compares cleaned
+values and corrects no spelling.
+
+Under one-to-one matching the cascade accepts a pair only on a key value one
+record on each side holds (see [PSI](PROTOCOL.md#psi)), so a key value two of
+a party's records share already matches neither of them. When one of two records sharing an SSN lacks the name or date a key
+needs, only the other builds that key and its value is unique, so the SSN
+screen is what drops it.
+
+### Why five people for a phone or email
+
+A household shares a phone number or an email address, and an organization --
+a shelter, a clinic, a case manager -- records its own number on many of its
+clients. A shared number causes a false match only when two different people
+on it share a first name, which a key on first name and phone number cannot
+separate.
+
+- Household sizes in the US Census run 1 person 28%, 2 at 35%, 3 at 15%, 4 at
+  13%, 5 at 6%, 6 at 2%, and 7 or more about 1.5%, so a limit of five keeps
+  about 96% of households.
+- The expected number of same-first-name pairs among h people is about
+  h(h-1)/2 times the first-name collision rate, about 1% in general and 3%
+  among concentrated names: 0.1 to 0.3 pairs among five people, and 12 to 37
+  among fifty.
+
+The cost that remains is a household of six or more, which loses its phone and
+email values, and a household where two members share a first name, which only
+a date of birth separates.
+
+### Per-party limits
+
+Each party may change a limit or remove it in its own standardization. A limit
+decides only which values are dropped, never the form of a value kept, so it
+cannot make two different values equal. Each party applies the screens to its
+own file only: the partner's records take no part in the count, and nothing
+about the screens is sent beyond the values that remain.
+
+An authored standardization replaces the defaults entirely, so a transformation
+it writes without `max_people_per_value` has no screen. A coverage count taken
+record by record before the run does not apply the screen.
+
+No screen drops a date of birth for being frequent in the file. The
+date-of-birth screens are the per-value ones its pipeline lists.
 
 ## Type inference from column names
 

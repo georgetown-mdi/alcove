@@ -1580,6 +1580,9 @@ A `split_on` step fails closed under a combination that matches one value per re
 | `output` | string | yes | Name of a linkage field from `linkage_terms.linkage_fields` |
 | `input` | string | yes | Column name in the raw input CSV |
 | `steps` | array | no | Steps applied in order; if omitted the raw value is used unchanged |
+| `max_people_per_value` | integer | no | The most distinct people in your own file who may hold one cleaned value of this field; a value held by more is dropped from every record holding it. If omitted, no value is dropped for being shared |
+
+`max_people_per_value` screens the whole file after the steps have cleaned each record, before keys are built. It drops a value one person in your file could not hold alone, such as one SSN recorded for two people, or an organization's phone number recorded for many of its clients. A person is a record's cleaned first name, last name and date of birth, so a person's own duplicate records count once. The default cleaning sets it to `1` for an `ssn` field and `5` for a `phone_number` or `email_address` field, and you may change or remove it in your own standardization. It is never sent to your partner. The counting rule and the reason for each default are in [Shared-value screens](spec/DEFAULT_STANDARDIZATION.md#shared-value-screens).
 
 ### Step fields
 

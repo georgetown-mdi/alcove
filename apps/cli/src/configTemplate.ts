@@ -480,6 +480,8 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 # standardization:
 #   - output: ssn
 #     input: ssn
+#     # Drop an SSN more than this many people in the file hold.
+#     max_people_per_value: 1
 #     steps:
 #       - function: trim_whitespace
 #       - function: pad_left

@@ -100,6 +100,14 @@ export interface StandardizationTransformation {
    * Steps applied in order. If omitted the raw input value is used unchanged.
    */
   steps?: StandardizationStep[];
+  /**
+   * The most distinct people in this party's file who may hold one cleaned
+   * value of this field. A value held by more is dropped from the whole file
+   * before keys are built; omitted, no value is dropped for being shared. The
+   * counting rule is in docs/spec/DEFAULT_STANDARDIZATION.md, Shared-value
+   * screens.
+   */
+  maxPeoplePerValue?: number;
 }
 
 const StandardizationTransformationSchema: z.ZodType<StandardizationTransformation> =
@@ -112,6 +120,7 @@ const StandardizationTransformationSchema: z.ZodType<StandardizationTransformati
     output: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
     input: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
     steps: z.array(StandardizationStepSchema).optional(),
+    maxPeoplePerValue: z.int().min(1).optional(),
   });
 
 // --- Standardization ---------------------------------------------------------
