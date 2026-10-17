@@ -46,6 +46,7 @@ import {
   draftFromTerms,
   draftHasOfferedKeys,
   draftKeysAreBuiltIn,
+  draftOffersBuiltInKeys,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
 import { outputForDirection } from "./advancedInviteTypes";
@@ -1063,8 +1064,14 @@ const SEEDED_CITATION_DROP_NOTICES = {
     "A key was added or changed in Expert authoring, so these keys are no " +
     "longer drawn from the built-in rule set, and " +
     `${SEEDED_CITATION_DROP_CONSEQUENCE}. To keep the citation, choose ` +
-    `${USE_BUILT_IN_RULES_LABEL} on Matching keys, which replaces these keys, ` +
-    "or create the invitation without it.",
+    `${USE_BUILT_IN_RULES_LABEL} on Matching keys, which replaces the keys, ` +
+    "fields and cleaning with the ones a new invitation starts with, or " +
+    "create the invitation without it.",
+  editedNoBuiltInKeys:
+    "A key was added or changed in Expert authoring, so these keys are no " +
+    "longer drawn from the built-in rule set, and " +
+    `${SEEDED_CITATION_DROP_CONSEQUENCE}. The built-in rules supply no key ` +
+    "for this file's columns as they are now.",
 } as const;
 
 /**
@@ -1097,9 +1104,10 @@ export function seededCitationDropNotice(
     return undefined;
   if (terms.linkageKeys.length === 0)
     return SEEDED_CITATION_DROP_NOTICES.noKeys;
-  return draftKeysAreBuiltIn(draft)
-    ? SEEDED_CITATION_DROP_NOTICES.reordered
-    : SEEDED_CITATION_DROP_NOTICES.edited;
+  if (draftKeysAreBuiltIn(draft)) return SEEDED_CITATION_DROP_NOTICES.reordered;
+  return draftOffersBuiltInKeys(draft)
+    ? SEEDED_CITATION_DROP_NOTICES.edited
+    : SEEDED_CITATION_DROP_NOTICES.editedNoBuiltInKeys;
 }
 
 /** The title of the notice {@link importedCitationDropNotice} words. */

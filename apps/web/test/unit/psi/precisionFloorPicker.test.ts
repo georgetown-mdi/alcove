@@ -16,6 +16,7 @@ import {
   citationDropFor,
   draftFromTerms,
   draftHasOfferedKeys,
+  draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   removeKey,
   seededCitationDropNotice,
@@ -689,9 +690,37 @@ describe("a seeded draft's dropped citation", () => {
         "longer drawn from the built-in rule set, and the terms you create " +
         "will not cite it, so they will not tell your partner that these " +
         "keys are the built-in rules. To keep the citation, choose Use the " +
-        "built-in rules on Matching keys, which replaces these keys, or " +
-        "create the invitation without it.",
+        "built-in rules on Matching keys, which replaces the keys, fields " +
+        "and cleaning with the ones a new invitation starts with, or create " +
+        "the invitation without it.",
     );
+  });
+
+  test("does not offer the built-in rules where the columns supply no key", () => {
+    const named = editorFromCsv("Dana", namesAndDate);
+    expect(buildAdvancedTerms(named.draft).linkageRuleSet).toBeDefined();
+    const retyped = editorWithColumnType(
+      named,
+      namesAndDate,
+      "dob",
+      "other",
+    ).editor;
+    expect(draftHasOfferedKeys(retyped.draft)).toBe(false);
+    expect(draftOffersBuiltInKeys(retyped.draft)).toBe(false);
+    const authored = editorWithAuthoredDraft(
+      retyped,
+      addKey(retyped.draft, "first_name"),
+    );
+    expect(buildAdvancedTerms(authored.draft).linkageRuleSet).toBeUndefined();
+    const notice = seededCitationDropNotice(authored.draft, authored.seed);
+    expect(notice).toBe(
+      "A key was added or changed in Expert authoring, so these keys are no " +
+        "longer drawn from the built-in rule set, and the terms you create " +
+        "will not cite it, so they will not tell your partner that these " +
+        "keys are the built-in rules. The built-in rules supply no key for " +
+        "this file's columns as they are now.",
+    );
+    expect(notice).not.toContain(USE_BUILT_IN_RULES_LABEL);
   });
 
   test("is noticed when every key is off", () => {
