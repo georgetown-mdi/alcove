@@ -402,8 +402,10 @@ disguised missing value (Ong et al. 2024). HUD tells staff
 to record `01` for an unknown month and day, unless the Continuum has its own
 filler (HUD 2025a), so two records independently agree on a date neither knows,
 and its name data-quality codes admit placeholder and made-up names entered to
-create a record (HUD 2025a). `baseline-pii` excludes placeholder SSNs, but
-nothing bounds a filler date or a placeholder name.
+create a record (HUD 2025a). `baseline-pii` excludes placeholder SSNs, and the
+default cleaning drops a listed placeholder name or date
+([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#per-party-placeholder-lists)),
+but nothing bounds a filler month and day.
 
 **A missing field yields no key.** A record missing any element of a rule
 contributes nothing to that round and stays eligible for later ones. A rule's

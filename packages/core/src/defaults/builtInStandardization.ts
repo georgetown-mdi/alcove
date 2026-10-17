@@ -35,6 +35,29 @@ const NAME_STEPS: StandardizationStep[] = [
   // word, none of which is a name alone, as the SSN pipelines drop their
   // placeholders.
   { function: "null_if", params: { values: [...cleanedTitles] } },
+  // Every one-character value is a letter here, so this drops an initial.
+  { function: "filter_regex", params: { pattern: "^.{2,}$" } },
+  {
+    function: "null_if",
+    params: {
+      values: [
+        "UNKNOWN",
+        "UNK",
+        "DOE",
+        "BABY",
+        "BOY",
+        "GIRL",
+        "TWIN",
+        "MALE",
+        "FEMALE",
+        "TRAUMA",
+        "REFUSED",
+        "ANONYMOUS",
+        "NONE",
+        "TEST",
+      ],
+    },
+  },
 ];
 
 /** The `date_of_birth` input format used when none is supplied or inferred. */
@@ -53,6 +76,10 @@ export function dateOfBirthSteps(inputFormat: string): StandardizationStep[] {
       function: "parse_date",
       params: { inputFormat, outputFormat: "YYYYMMDD" },
     },
+    // Drop a year before 1900. A future date is kept: cleaning reads no
+    // clock, so two parties could not agree on which day is today.
+    { function: "filter_regex", params: { pattern: "^(?:19|[2-9])" } },
+    { function: "null_if", params: { values: ["19000101", "19010101"] } },
   ];
 }
 

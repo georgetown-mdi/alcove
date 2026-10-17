@@ -522,15 +522,15 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];
   const rows: Array<CSVRow> = [
     {
-      ssn: "123-45-6789",
-      ssn4: "6789",
+      ssn: "234-56-7890",
+      ssn4: "7890",
       first_name: "Ada",
       last_name: "Lovelace",
-      date_of_birth: "12/10/1815",
+      date_of_birth: "12/10/1915",
     },
     {
-      ssn: "987-65-4321",
-      ssn4: "4321",
+      ssn: "345-67-8901",
+      ssn4: "8901",
       first_name: "Alan",
       last_name: "Turing",
       date_of_birth: "06/23/1912",

@@ -55,11 +55,33 @@ surface rather than a local formatting choice.
   neither sent nor committed to. Agreement on the pipelines comes from both
   sides running the same specification, not from a check at run time.
 - **A per-party parameter is legitimate only when the output is canonical.**
-  The one instance is the `date_of_birth` input format, which each party infers
+  One instance is the `date_of_birth` input format, which each party infers
   from its own file's layout (see
   [Date-format inference](#date-format-inference)). It is safe because every
   input layout is reformatted to the same `YYYYMMDD` output. A step whose
   parameter changed the *output* form could not be inferred per party this way.
+  A placeholder list is the other per-party parameter; it decides only which
+  values are dropped, never the form of a value kept (see
+  [Per-party placeholder lists](#per-party-placeholder-lists)).
+
+### Per-party placeholder lists
+
+The `first_name`, `last_name` and `date_of_birth` pipelines each end in a
+placeholder list: a `null_if` whose `values` are dropped. The defaults give both
+name fields one list, and each name field has its own copy of it as that
+field's own step parameter. An operator may edit any of the three lists in their
+own standardization, to add a filler their system writes or to keep a value the
+list drops.
+
+Both parties still derive the same pipelines from the defaults. An edit is one
+party's own, and it is never sent. It changes no value the pipeline keeps, so it
+cannot make two different values equal: a value one party's list drops and the
+other's keeps is absent from the first party's keys and matches nothing there.
+
+The other screens are fixed parts of their pipelines: the single-letter name
+screen, the date-of-birth screen for a year before 1900, and the `ssn` and
+`ssn4` structural and placeholder screens. Editing them is editing the pipeline,
+as for any other step.
 
 ## When the defaults apply
 
@@ -135,9 +157,18 @@ steps:
   - function: filter_regex
     params:
       pattern: "^0{0,2}[1-9]"
+  - function: filter_regex
+    params:
+      pattern: "^(?:[0-578]|6[0-57-9]|66[0-57-9])"
+  - function: filter_regex
+    params:
+      pattern: "^\\d{3}(?:[1-9]\\d|\\d[1-9])"
+  - function: filter_regex
+    params:
+      pattern: "[1-9]\\d{0,3}$"
   - function: null_if
     params:
-      values: ["000000000", "111111111", "123456789"]
+      values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999", "123456789"]
 ```
 
 Result: exactly nine digits.
@@ -159,7 +190,11 @@ Result: exactly nine digits.
   padding -- ten digits, say -- is dropped.
 - **Area number `000`.** A value whose first three digits are `000` after
   padding is dropped.
-- **Placeholders.** Three placeholder values are then dropped.
+- **Numbers never issued.** A value is dropped when its area number (the
+  first three digits) is `666` or `900` to `999`, its group number (the next
+  two) is `00`, or its serial number (the last four) is `0000`.
+- **Placeholders.** A value of one digit repeated nine times is dropped, and
+  so is `123456789`.
 
 The area-number rule rests on one Social Security Administration rule: no SSN
 is issued with the area number `000`. A value with that area is therefore not
@@ -177,12 +212,18 @@ The empty-value drop precedes `pad_left` by design: a blank cell padded to
 area-number rule or the placeholder list, so an operator who edited either for
 their own data would silently reintroduce the blank-cell match.
 
-Area `000` is the one SSA structural rule the pipeline applies, because a value
-with that area is a fragment or a mask rather than an SSN: any other area, and
-any group or serial, that the SSA never issues passes through. The `valid_only`
-constraint the default `ssn` field declares is a data-quality signal reported
-against the cleaned dataset (see
-[Constraints](../EXCHANGE_REFERENCE.md#constraints)), not a step here.
+The other area, group and serial rules are the rest of the SSA structural
+rules: the SSA issues no number in area `666` or `900` to `999`, with group
+`00`, or with serial `0000`. A value breaking one is not an issued SSN but a
+test, made-up or mistyped value, which two parties can hold for two different
+people. The `valid_only` constraint the default `ssn` field declares states the
+same rules as a data-quality signal reported against the cleaned dataset (see
+[Constraints](../EXCHANGE_REFERENCE.md#constraints)).
+
+The placeholder list names every repeated-digit value, including the three
+(`000000000`, `666666666`, `999999999`) a structural rule already drops, so a
+value of one repeated digit is dropped even where an operator edits a
+structural rule for their own data.
 
 | Input | Result |
 | ----- | ------ |
@@ -198,6 +239,11 @@ against the cleaned dataset (see
 | `"1234567\uff18\uff19"` | `null` |
 | `"78051120.0"` | `null` |
 | `"000-00-8924"` | `null` |
+| `"666-12-3456"` | `null` |
+| `"900-12-3456"` | `null` |
+| `"123-00-4567"` | `null` |
+| `"123-45-0000"` | `null` |
+| `"222-22-2222"` | `null` |
 | `"1234567890"` | `null` |
 | `"123-45-6789"` | `null` |
 | `"abc"` | `null` |
@@ -228,15 +274,16 @@ steps:
       pattern: "^\\d{4}$"
   - function: null_if
     params:
-      values: ["0000"]
+      values: ["0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"]
 ```
 
 Result: exactly four digits. The pipeline accepts either a bare last-four value
 or a full nine-digit SSN and takes the trailing four digits in both cases, so a
 column holding whole SSNs and one holding only the last four standardize to the
 same value once both are declared `ssn4`. A cleaned-empty cell is dropped before
-padding, a short value is zero-padded to four, and the all-zero serial is
-dropped.
+padding, a short value is zero-padded to four, and a value of one digit
+repeated four times is dropped: the all-zero serial, which the SSA never
+issues, and the nine placeholders beside it.
 
 After surrounding whitespace is trimmed, and before any character is removed, a
 value is kept only in one of two forms:
@@ -267,6 +314,8 @@ the SSN.
 | `"XXXX"` | `null` |
 | `"1120.0"` | `null` |
 | `"0000"` | `null` |
+| `"7777"` | `null` |
+| `"123-45-7777"` | `null` |
 | `"abcd"` | `null` |
 
 #### Last four derived from a full SSN
@@ -281,7 +330,9 @@ one pipeline.
 The pipeline reads the cell as written, not the `ssn` result, so the `ssn`
 character screen does not reach it: `***-**-8924` is `null` as `ssn` and
 `"8924"` as `ssn4`. Nor does the `ssn` area-number rule: `000-00-8924` is
-likewise `null` as `ssn` and `"8924"` as `ssn4`.
+likewise `null` as `ssn` and `"8924"` as `ssn4`. The `ssn` rules for numbers
+never issued do not reach it either: `900-12-3456` is `null` as `ssn` and
+`"3456"` as `ssn4`.
 
 A file with its own `role: linkage` column of type `ssn4` keeps using it, and
 nothing is derived. An `ssn4` column with any other role does not stop the
@@ -320,6 +371,12 @@ steps:
   - function: null_if
     params:
       values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
+  - function: filter_regex
+    params:
+      pattern: "^.{2,}$"
+  - function: null_if
+    params:
+      values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
 ```
 
 Result: an uppercase ASCII value whose word separators are single spaces, with
@@ -345,13 +402,27 @@ Order determines the meaning here:
   parties must therefore tokenize identically for a hyphenated name to match.
 - The second `squash_spaces` collapses the runs of spaces that the separator,
   affix, and punctuation steps leave behind.
-- The closing `filter_regex` drops a value containing no letter at all, which is
-  what removes a cell that cleaned to empty or to punctuation alone.
-- The trailing `null_if` drops a value that is only a title (`"Mr."`,
+- The `filter_regex` on `[A-Z]` drops a value containing no letter at all,
+  which is what removes a cell that cleaned to empty or to punctuation alone.
+- The `null_if` after it drops a value that is only a title (`"Mr."`,
   `"DR"`, `"Miss"`): `remove_affixes` never empties a field, so a cell holding
   a title alone reaches this step intact. Its values are every word in the
   Titles list under [affix removal](#affix-removal), upper-cased, and none of
   them is a name on its own.
+- The `filter_regex` on `^.{2,}$` drops a value of one character. Every such
+  value left at this point is a letter, so this drops an initial written in
+  place of a name (`"J"`, `"J."`).
+- The closing `null_if` is the placeholder list: it drops a value that is
+  exactly one of its `values`, words that stand in for a name nobody recorded.
+  It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are
+  each dropped, while a name holding one of the words beside another
+  (`"Jane Doe"`, `"Baby Boy"`) or inside a longer one (`"Doering"`) is kept.
+
+Each name field has its own copy of the placeholder list, and an operator may
+edit either one for their own data (see
+[Per-party placeholder lists](#per-party-placeholder-lists)). A value is
+written in the cleaned form, upper-case ASCII letters and spaces, since that is
+the form the list is compared with.
 
 Digits are not punctuation and are not removed: a value containing one keeps
 it.
@@ -369,6 +440,12 @@ it.
 | `"Mary\tJane"` | `"MARY JANE"` |
 | `"Ann_Marie"` | `"ANN MARIE"` |
 | `"\u0141ucja"` | `"LUCJA"` |
+| `"Jo"` | `"JO"` |
+| `"Jane Doe"` | `"JANE DOE"` |
+| `"Doering"` | `"DOERING"` |
+| `"J."` | `null` |
+| `"Unknown"` | `null` |
+| `"baby"` | `null` |
 | `"5"` | `null` |
 | `"   "` | `null` |
 
@@ -439,6 +516,12 @@ steps:
   - function: null_if
     params:
       values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
+  - function: filter_regex
+    params:
+      pattern: "^.{2,}$"
+  - function: null_if
+    params:
+      values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
 ```
 
 The `last_name` and `first_name` sequences are identical, step for step and
@@ -453,6 +536,9 @@ defaults: a change to one is not automatically a change to the other.
 | `"Alesund"` | `"ALESUND"` |
 | `"\u00d8stergaard"` | `"OSTERGAARD"` |
 | `"Gro\u00df"` | `"GROSS"` |
+| `"Doe"` | `null` |
+| `"Refused"` | `null` |
+| `"Q"` | `null` |
 | `"!!!"` | `null` |
 
 #### Affix removal
@@ -513,16 +599,39 @@ steps:
     params:
       input_format: "MM/DD/YYYY"
       output_format: "YYYYMMDD"
+  - function: filter_regex
+    params:
+      pattern: "^(?:19|[2-9])"
+  - function: null_if
+    params:
+      values: ["19000101", "19010101"]
 ```
 
-Result: eight digits, `YYYYMMDD`. A value the input format cannot parse is
-dropped, as is one that parses to a date the calendar does not have; the
-normative parsing, two-digit-year, and calendar-check rules are in
+Result: eight digits, `YYYYMMDD`, for a date in 1900 or later. A value the
+input format cannot parse is dropped, as is one that parses to a date the
+calendar does not have; the normative parsing, two-digit-year, and
+calendar-check rules are in
 [PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect).
+
+Two screens follow the parse, on the `YYYYMMDD` value:
+
+- **Before 1900.** The `filter_regex` drops a date whose year is before 1900,
+  taken as a typing error or a filler rather than a birth date.
+- **Placeholders.** The closing `null_if` is the placeholder list. Its default
+  values, `19000101` and `19010101` (1900-01-01 and 1901-01-01), are dates a
+  system writes when a birth date is unknown. A value is written in the
+  `YYYYMMDD` output form, since that is the form the list is compared with.
+  An operator may edit the list for their own data (see
+  [Per-party placeholder lists](#per-party-placeholder-lists)).
+
+A date after the day of the run is kept. Deciding which dates lie in the future
+would need the date of the run, and cleaning reads no clock: the two-digit-year
+pivot under `parse_date` is a constant for the same reason, so that both
+parties derive the same value from the same cell whenever each runs.
 
 `output_format` is fixed at `YYYYMMDD` -- it is the cross-party canonical form,
 and changing it changes every date key. `input_format` is the one default
-parameter that varies per party.
+parameter that varies per party without an operator's edit.
 
 #### Date-format inference
 
@@ -539,7 +648,8 @@ Inference scans the column's non-empty values, up to the scan cap, and tests
 each against every candidate in the table below. A candidate parses a value
 when the `date_of_birth` pipeline above, with that candidate as its
 `input_format`, keeps the value -- the same rule the run applies, so a format
-is never inferred from values the run would drop.
+is never inferred from values the run would drop. A date before 1900 or on the
+default placeholder list therefore counts for no candidate.
 
 - The result is the candidate that parses the most scanned values. On a tie
   the earlier candidate in the table's order wins: a column whose days are all
@@ -575,6 +685,10 @@ examples below use the `MM/DD/YYYY` default.
 | `"1/2/1990"` | `"19900102"` |
 | `"1990-01-02"` | `null` |
 | `"02/30/1990"` | `null` |
+| `"01/02/1900"` | `"19000102"` |
+| `"12/31/1899"` | `null` |
+| `"01/01/1900"` | `null` |
+| `"1/1/1901"` | `null` |
 
 ### `phone_number`
 

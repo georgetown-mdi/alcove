@@ -2,10 +2,9 @@
  * The two synthetic CSVs behind the sample-data walkthrough, the single source
  * for the download, the in-place seed, and the console's copy into its folder.
  *
- * Every SSN has area 900, never issued and structurally invalid to
- * `isStructurallyValidSsn`; the sample relies on the default SSN pipeline not
- * enforcing `validOnly`, so these values standardize and match while avoiding
- * the placeholders the pipeline drops.
+ * Every SSN has area 900, which the SSA never issues, so none is a person's.
+ * The default SSN pipeline drops a never-issued number, so the sample's SSNs
+ * reach no key and its pairs match on names and dates.
  */
 
 /** The filename the inviter's sample downloads and seeds under. */
@@ -31,7 +30,8 @@ export const SAMPLE_INVITER_CSV = [
   "Renee,Etienne,07/14/1992,900-19-4471,94110,INV-1003",
   // 4. The partner row has a Jr. affix the default cleaning strips.
   "Harold,Brooks,02/09/1969,900-63-7712,30303,INV-1004",
-  // 5. SSN punctuation differs from the partner's unpunctuated value.
+  // 5. SSN punctuation differs from the partner's unpunctuated value; the
+  //    pair matches on its name and date.
   "Priya,Natarajan,05/30/1983,900-45-6789,02139,INV-1005",
   // 6. Hyphenated name; the partner spells it spaced.
   "Mary-Jane,Kowalski,09/18/1990,900-77-3391,48104,INV-1006",

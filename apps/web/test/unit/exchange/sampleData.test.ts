@@ -2,7 +2,13 @@ import { Readable } from "node:stream";
 
 import { describe, expect, test } from "vitest";
 
-import { inferMetadata, isOptInLinkageKey, loadCSVFile } from "@alcove/core";
+import {
+  getDefaultStandardization,
+  inferMetadata,
+  isOptInLinkageKey,
+  loadCSVFile,
+  runPipeline,
+} from "@alcove/core";
 
 import {
   buildKeyStrings,
@@ -95,14 +101,26 @@ describe("sample data", () => {
     expect(partner.rawRows).toHaveLength(12);
   });
 
-  test("every SSN is a never-issued 900-area value, none a dropped placeholder", async () => {
-    const dropped = new Set(["000000000", "111111111", "123456789"]);
+  test("every SSN is a never-issued 900-area value the default cleaning drops", async () => {
+    const [ssnCleaning] = getDefaultStandardization(
+      [{ name: "ssn", type: "ssn", role: "linkage", isPayload: false }],
+      {
+        version: "1.0.0",
+        date: "2025-01-01",
+        algorithm: "psi",
+        linkageStrategy: "cascade",
+        output: { expectsOutput: true, shareWithPartner: false },
+        deduplicate: false,
+        linkageFields: [{ name: "ssn", type: "ssn" }],
+        linkageKeys: [{ name: "ssn", elements: [{ field: "ssn" }] }],
+      },
+    );
     for (const csvText of [SAMPLE_INVITER_CSV, SAMPLE_PARTNER_CSV]) {
       const result = await loadCSVFile(Readable.from(csvText));
       for (const row of result.data as ReadonlyArray<CSVRow>) {
-        const digits = (row.ssn ?? "").replace(/\D/g, "");
-        expect(digits).toMatch(/^900\d{6}$/);
-        expect(dropped.has(digits)).toBe(false);
+        const ssn = row.ssn ?? "";
+        expect(ssn.replace(/\D/g, "")).toMatch(/^900\d{6}$/);
+        expect(runPipeline(ssn, ssnCleaning.steps!)).toBeNull();
       }
     }
   });
