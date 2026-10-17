@@ -3779,7 +3779,7 @@ describe("referencedLinkageFieldNames", () => {
 describe("linkageRuleSet", () => {
   const citation = {
     fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "hmis-keys", version: "1.0.0" },
+    keySet: { name: "example-keys", version: "1.0.0" },
   };
 
   test("parses a citation and leaves a document without one alone", () => {
@@ -3801,7 +3801,7 @@ describe("linkageRuleSet", () => {
         ...base,
         linkage_rule_set: {
           ...citation,
-          keySet: { name: "hmis-keys", version: "1" },
+          keySet: { name: "example-keys", version: "1" },
         },
       }),
     ).toThrow(ZodError);
@@ -3823,13 +3823,13 @@ describe("linkageRuleSet", () => {
       output: { expectsOutput: false, shareWithPartner: true },
       linkage_rule_set: {
         ...citation,
-        keySet: { name: "hmis-keys", version: "2.0.0" },
+        keySet: { name: "example-keys", version: "2.0.0" },
       },
     });
     const { errors } = validateCompatibility(local, partner);
     expect(errors).toEqual([
-      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over ' +
-        `"baseline-pii" 1.0.0, your partner's names "hmis-keys" 2.0.0 over ` +
+      'linkage rule set mismatch: yours names "example-keys" 1.0.0 over ' +
+        `"baseline-pii" 1.0.0, your partner's names "example-keys" 2.0.0 over ` +
         '"baseline-pii" 1.0.0',
     ]);
     // Symmetric: both parties reach the same verdict from their own copy.
@@ -3847,13 +3847,16 @@ describe("linkageRuleSet", () => {
       output: { expectsOutput: false, shareWithPartner: true },
       linkage_rule_set: {
         ...citation,
-        keySet: { name: "hmis-keys 9.9.9 over baseline-pii", version: "1.0.0" },
+        keySet: {
+          name: "example-keys 9.9.9 over baseline-pii",
+          version: "1.0.0",
+        },
       },
     });
     expect(validateCompatibility(local, partner).errors).toEqual([
-      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over ' +
+      'linkage rule set mismatch: yours names "example-keys" 1.0.0 over ' +
         `"baseline-pii" 1.0.0, your partner's names ` +
-        '"hmis-keys 9.9.9 over baseline-pii" 1.0.0 over "baseline-pii" 1.0.0',
+        '"example-keys 9.9.9 over baseline-pii" 1.0.0 over "baseline-pii" 1.0.0',
     ]);
   });
 
@@ -3875,7 +3878,7 @@ describe("linkageRuleSet", () => {
       ...base,
       output: { expectsOutput: false, shareWithPartner: true },
       linkage_rule_set: {
-        key_set: { version: "1.0.0", name: "hmis-keys" },
+        key_set: { version: "1.0.0", name: "example-keys" },
         field_set: { version: "1.0.0", name: "baseline-pii" },
       },
     });

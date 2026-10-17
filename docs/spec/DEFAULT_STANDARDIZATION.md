@@ -989,7 +989,7 @@ Every other inference is declared-only: a configuration with no `metadata`
 block, and an invitation composed from an input file.
 
 - A name whose lookup key is absent from the table but ends in `_id`, such as
-  `case_id` or `Medicaid ID`, infers `type: identifier`.
+  `case_id` or `Member ID`, infers `type: identifier`.
   Declared-only, it infers `is_payload: false` and has a role only if the
   second pass below makes it the identifier. In direct mode it infers
   `role: payload` and `is_payload: true`, and the second pass may still make it

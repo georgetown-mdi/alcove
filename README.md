@@ -35,7 +35,7 @@ To run the web app from source instead, see [apps/web/README.md](apps/web/README
 
 ## Example use cases
 
-- A county HMIS administrator and a Medicaid agency identify clients enrolled in both systems and exchange fields such as renewal dates or case manager contact information (for shared clients only).
+- Two agencies identify clients enrolled in both of their programs and exchange fields such as renewal dates or case manager contact information (for shared clients only).
 - Two service providers with a data sharing agreement determine which clients they serve in common without disclosing their full caseloads to each other.
 - An agency IT team runs a recurring, scheduled exchange with a partner as part of a monthly data pipeline, using the command line app.
 

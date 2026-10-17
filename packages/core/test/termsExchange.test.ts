@@ -1309,7 +1309,7 @@ function bothRenders(settled: PromiseSettledResult<unknown>[]): string[] {
 }
 
 const ruleSet = (version: string): LinkageTerms["linkageRuleSet"] => ({
-  keySet: { name: "hmis-keys", version },
+  keySet: { name: "example-keys", version },
   fieldSet: { name: "baseline-pii", version: "1.0.0" },
 });
 const agreement = {
@@ -1382,11 +1382,11 @@ const RESPONDER_REFUSALS: ReadonlyArray<{
     kind: "linkage rule set",
     responderTerms: { ...termsB, linkageRuleSet: ruleSet("2.0.0") },
     initiator:
-      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over "baseline-pii" 1.0.0, ' +
-      `your partner's names "hmis-keys" 2.0.0 over "baseline-pii" 1.0.0`,
+      'linkage rule set mismatch: yours names "example-keys" 1.0.0 over "baseline-pii" 1.0.0, ' +
+      `your partner's names "example-keys" 2.0.0 over "baseline-pii" 1.0.0`,
     responder:
-      'linkage rule set mismatch: yours names "hmis-keys" 2.0.0 over "baseline-pii" 1.0.0, ' +
-      `your partner's names "hmis-keys" 1.0.0 over "baseline-pii" 1.0.0`,
+      'linkage rule set mismatch: yours names "example-keys" 2.0.0 over "baseline-pii" 1.0.0, ' +
+      `your partner's names "example-keys" 1.0.0 over "baseline-pii" 1.0.0`,
   },
   {
     kind: "legal agreement",

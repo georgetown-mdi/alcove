@@ -235,9 +235,9 @@ design, for three reasons.
    association that partner did not agree to publish, permanently and in a place
    nobody can retract it from. Attribution belongs in user-facing communications
    and in an agreement, where it can be made with the partner's consent and
-   withdrawn. A system class is not an attribution: `hmis` states the kind of
-   system the keys were settled for, which is a property of the keys, not the
-   identity of anyone who ran one.
+   withdrawn. A system class is not an attribution: the key set's name states
+   the kind of system the keys were settled for, which is a property of the
+   keys, not the identity of anyone who ran one.
 2. **Each name claims exactly the scope its artifact has.** The fields match on
    SSN, names, and date of birth, which is not specific to any jurisdiction or
    program: `baseline` says what they are -- the built-in substrate everything

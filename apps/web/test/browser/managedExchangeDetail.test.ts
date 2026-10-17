@@ -2351,7 +2351,7 @@ describe("managed exchange detail accounting of disclosures", () => {
     await page.getByRole("button", { name: entry.when, exact: false }).click();
 
     await expect
-      .element(page.getByText('Keys: "hmis-keys" 2.1.0'))
+      .element(page.getByText('Keys: "precision-ranked-rules" 2.1.0'))
       .toBeVisible();
     await expect
       .element(page.getByText('Fields: "baseline-pii" 1.0.0'))
@@ -2379,7 +2379,7 @@ describe("managed exchange detail accounting of disclosures", () => {
     // version neither half is recorded at, so neither string can reach the
     // screen from anywhere but a run the crafted name broke out of.
     const imitated = {
-      keys: 'Keys: "hmis-keys" 9.9.9',
+      keys: 'Keys: "precision-ranked-rules" 9.9.9',
       fields: 'Fields: "baseline-pii" 9.9.9',
     };
     const accounting = appendDisclosureRecord(
@@ -2387,7 +2387,7 @@ describe("managed exchange detail accounting of disclosures", () => {
       await disclosureRecord({
         linkageRuleSet: {
           fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-          keySet: { name: 'hmis-keys" 9.9.9', version: "1.0.0" },
+          keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
         },
       }),
     );
@@ -2424,7 +2424,9 @@ describe("managed exchange detail accounting of disclosures", () => {
 
     await expect
       .element(
-        page.getByText('Keys: "hmis-keys"" 9.9.9" 1.0.0', { exact: true }),
+        page.getByText('Keys: "precision-ranked-rules"" 9.9.9" 1.0.0', {
+          exact: true,
+        }),
       )
       .toBeVisible();
     await expect

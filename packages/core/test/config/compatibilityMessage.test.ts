@@ -233,17 +233,22 @@ describe("ruleSetCitation", () => {
     // grammar core's mismatch diagnostic, both consent surfaces, and the CLI's
     // drift warning share is asserted where it is written rather than only in
     // each of their renderings.
-    expect(ruleSetCitation("hmis-keys", "1.2.0")).toBe('"hmis-keys" 1.2.0');
+    expect(ruleSetCitation("example-keys", "1.2.0")).toBe(
+      '"example-keys" 1.2.0',
+    );
   });
 
   test("a name cannot spell the pair beside it", () => {
     // What the delimiting is for: a name displaying as a name plus a version,
     // or holding a delimiter of its own, stays one run rather than standing
     // in the citation as a set at a version the invitation does not name.
-    const citation = ruleSetCitation('hmis-keys 9.9.9" over "other', "1.2.0");
-    expect(citation).toBe('"hmis-keys 9.9.9"" over ""other" 1.2.0');
+    const citation = ruleSetCitation(
+      'example-keys 9.9.9" over "other',
+      "1.2.0",
+    );
+    expect(citation).toBe('"example-keys 9.9.9"" over ""other" 1.2.0');
     const read = readMessage(citation);
-    expect(read.values).toEqual(['hmis-keys 9.9.9" over "other']);
+    expect(read.values).toEqual(['example-keys 9.9.9" over "other']);
     expect(read.skeleton).toBe("<value> 1.2.0");
   });
 
@@ -251,13 +256,12 @@ describe("ruleSetCitation", () => {
     // Checked on the value in hand: a citation reaches these surfaces from a
     // partner's decoded invitation as readily as from a schema parse.
     const version = '1.2.0" over "forged';
-    expect(ruleSetCitation("hmis-keys", version)).toBe(
-      `"hmis-keys" ${quoteTermsValue(version)}`,
+    expect(ruleSetCitation("example-keys", version)).toBe(
+      `"example-keys" ${quoteTermsValue(version)}`,
     );
-    expect(readMessage(ruleSetCitation("hmis-keys", version)).values).toEqual([
-      "hmis-keys",
-      version,
-    ]);
+    expect(
+      readMessage(ruleSetCitation("example-keys", version)).values,
+    ).toEqual(["example-keys", version]);
   });
 });
 
@@ -569,7 +573,7 @@ interface SweptDiagnostic {
 const SWEPT: readonly SweptDiagnostic[] = [
   {
     id: "rule set mismatch, local key set name",
-    benign: "hmis-keys",
+    benign: "example-keys",
     compose: (value) =>
       errorStartingWith(
         withRuleSet(
@@ -588,7 +592,7 @@ const SWEPT: readonly SweptDiagnostic[] = [
   },
   {
     id: "rule set mismatch, partner key set name",
-    benign: "hmis-keys",
+    benign: "example-keys",
     compose: (value) =>
       errorStartingWith(
         withRuleSet(
@@ -612,12 +616,12 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: value, version: "1.0.0" },
         ),
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "other-pii", version: "2.0.0" },
         ),
         "linkage rule set mismatch",
@@ -631,12 +635,12 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "other-pii", version: "2.0.0" },
         ),
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: value, version: "1.0.0" },
         ),
         "linkage rule set mismatch",
@@ -650,7 +654,7 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: value },
+          { name: "example-keys", version: value },
           { name: "baseline-pii", version: "1.0.0" },
         ),
         withRuleSet(
@@ -669,12 +673,12 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "baseline-pii", version: "1.0.0" },
         ),
         withRuleSet(
           base,
-          { name: "hmis-keys", version: value },
+          { name: "example-keys", version: value },
           { name: "baseline-pii", version: "1.0.0" },
         ),
         "linkage rule set mismatch",
@@ -688,12 +692,12 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "baseline-pii", version: value },
         ),
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "other-pii", version: "1.0.0" },
         ),
         "linkage rule set mismatch",
@@ -707,12 +711,12 @@ const SWEPT: readonly SweptDiagnostic[] = [
       errorStartingWith(
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "baseline-pii", version: "1.0.0" },
         ),
         withRuleSet(
           base,
-          { name: "hmis-keys", version: "1.0.0" },
+          { name: "example-keys", version: "1.0.0" },
           { name: "other-pii", version: value },
         ),
         "linkage rule set mismatch",

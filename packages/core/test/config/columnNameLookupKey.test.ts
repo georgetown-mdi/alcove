@@ -203,7 +203,7 @@ describe.each(MODES)("under %s", (mode) => {
 });
 
 describe("the _id rule on the lookup key", () => {
-  test.each(["Medicaid ID", "medicaid-id", "Medicaid.Id", " medicaid _ ID "])(
+  test.each(["Member ID", "member-id", "Member.Id", " member _ ID "])(
     "%j is the sole identifier, unsent when declared-only",
     (header) => {
       expect(inferMetadata([header, "dob"], [])).toEqual([
@@ -223,8 +223,8 @@ describe("the _id rule on the lookup key", () => {
     },
   );
 
-  test("Medicaid ID is sent in direct mode, as medicaid_id is", () => {
-    for (const header of ["Medicaid ID", "medicaid_id"])
+  test("Member ID is sent in direct mode, as member_id is", () => {
+    for (const header of ["Member ID", "member_id"])
       expect(inferMetadata([header], [], { mode: "direct" })).toEqual([
         {
           name: header,
@@ -237,10 +237,10 @@ describe("the _id rule on the lookup key", () => {
 
   test("two folded _id columns are both sent in direct mode, the first the identifier", () => {
     expect(
-      inferMetadata(["Medicaid ID", "case-id"], [], { mode: "direct" }),
+      inferMetadata(["Member ID", "case-id"], [], { mode: "direct" }),
     ).toEqual([
       {
-        name: "Medicaid ID",
+        name: "Member ID",
         type: "identifier",
         role: "identifier",
         isPayload: true,
@@ -279,9 +279,9 @@ describe("the _id rule on the lookup key", () => {
     ]);
   });
 
-  test("MedicaidID, with no separator, is not an identifier", () => {
-    expect(inferMetadata(["MedicaidID"], [], { mode: "direct" })).toEqual([
-      { name: "MedicaidID", type: "other", role: "payload", isPayload: true },
+  test("MemberID, with no separator, is not an identifier", () => {
+    expect(inferMetadata(["MemberID"], [], { mode: "direct" })).toEqual([
+      { name: "MemberID", type: "other", role: "payload", isPayload: true },
     ]);
   });
 });

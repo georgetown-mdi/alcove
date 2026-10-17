@@ -177,7 +177,7 @@ What the budget does not cover is a notice composed near it on a route that esca
 The escape above governs which bytes an operator can be shown.
 A second, orthogonal control governs which clauses: the cross-party compatibility diagnostics (`validateCompatibility`, `packages/core/src/linkageTermsNegotiation.ts`) are first-party prose whose structure an operator treats as Alcove's own -- `legal agreement reference mismatch: yours is X, your partner's is Y` -- around values a mutually-distrusting partner chooses.
 Both sides of that sentence can be the partner's, since `deriveAcceptedLinkageTerms` adopts the inviter's `legalAgreement` and `linkageRuleSet` verbatim into the acceptor's terms ("yours" names provenance in the exchange, not trust in the bytes).
-The escape does not reach this class: it rewrites what is not printable ASCII, and a reference of `A", your partner's is "B`, a rule-set name of `hmis-keys 9.9.9 over baseline-pii`, or a payload column named `a,b` is printable ASCII throughout.
+The escape does not reach this class: it rewrites what is not printable ASCII, and a reference of `A", your partner's is "B`, a rule-set name of `precision-ranked-rules 9.9.9 over baseline-pii`, or a payload column named `a,b` is printable ASCII throughout.
 What answers it is delimiting, applied once at composition.
 
 Every value one of these diagnostics names passes through one module (`packages/core/src/config/compatibilityMessage.ts`) in one of two forms.

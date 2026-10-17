@@ -199,7 +199,7 @@ describe("the citation", () => {
 });
 
 describe("the catalog's earlier version", () => {
-  const hmisCitation = {
+  const earlierCitation = {
     fieldSet: { name: "baseline-pii", version: "1.0.0" },
     keySet: { name: "hmis-keys", version: "1.0.0" },
   };
@@ -209,21 +209,23 @@ describe("the catalog's earlier version", () => {
       DEFAULT_LINKAGE_RULE_SET,
       EARLIER_LINKAGE_RULE_SET,
     ]);
-    expect(EARLIER_LINKAGE_RULE_SET.reference).toStrictEqual(hmisCitation);
+    expect(EARLIER_LINKAGE_RULE_SET.reference).toStrictEqual(earlierCitation);
   });
 
   test("resolves an old citation and verifies the rules beside it", () => {
-    expect(findBuiltInLinkageRuleSet(hmisCitation)).toBe(
+    expect(findBuiltInLinkageRuleSet(earlierCitation)).toBe(
       EARLIER_LINKAGE_RULE_SET,
     );
-    const resolved = resolveLinkageRuleSetCitation(hmisCitation);
+    const resolved = resolveLinkageRuleSetCitation(earlierCitation);
     expect(resolved.linkageKeys).toHaveLength(14);
     const oldTerms = linkageTermsFromRuleSet(
       EARLIER_LINKAGE_RULE_SET,
       "Party A",
     );
-    expect(oldTerms.linkageRuleSet).toStrictEqual(hmisCitation);
-    expect(checkLinkageRuleSetCitation(hmisCitation, oldTerms)).toStrictEqual({
+    expect(oldTerms.linkageRuleSet).toStrictEqual(earlierCitation);
+    expect(
+      checkLinkageRuleSetCitation(earlierCitation, oldTerms),
+    ).toStrictEqual({
       fieldSet: "consistent",
       keySet: "consistent",
     });

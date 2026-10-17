@@ -118,7 +118,7 @@ the records (both computed). The bands assume files spanning all ages
 ### The person's own ZIP
 
 A ZIP rule needs the ZIP of the person's own address. Some data standards
-record only the ZIP of the site that serves a person: HUD's FY2026 HMIS
+record only the ZIP of the site that serves a person: HUD's FY2026 data
 standards have no client ZIP, and their one ZIP is the project's principal site
 (HUD 2025a; HUD 2025b), held in the project file of the export, not the client
 file (HUD 2025c). Everyone served at one site shares it, so a party must never
@@ -189,7 +189,7 @@ contribution depends on the file and on the fields beside it.
 
 ### Published unduplication guidance
 
-HUD's HMIS standards define what is collected and how it is coded, and leave
+HUD's data standards define what is collected and how it is coded, and leave
 matching to the software vendor; their one statement on it is that the software
 "should allow for the effective matching of partial SSNs" (HUD 2025a). HUD's one
 published matching rule is its 2005 unduplication guidance: agreement on any two
@@ -539,9 +539,9 @@ bands are Alcove's own choice, and the bar is what a rule set must show for a
 band to be checked rather than extrapolated.
 
 **The state of practice is worse than the guidance.** Of forty-five published
-studies linking Medicaid claims to birth certificates, four mentioned a
+studies linking public insurance claims to birth certificates, four mentioned a
 validation study and "none of the studies provided results of the validation
-exercises" (Heins et al. 2022). A published match of Medicaid claims to a
+exercises" (Heins et al. 2022). A published match of public insurance claims to a
 housing-services information system states no matching method, and its quality
 assessment is that "manual inspection of the matches indicates that those that
 matched appeared accurate" (Nescott et al. 2023).
