@@ -4,7 +4,9 @@ import { OperatorConfigError, generateSharedSecret } from "@alcove/core";
 
 import {
   MAX_ALLOWED_RELAYS,
+  RELAY_ONLY_NO_RELAY,
   RELAY_ONLY_RELAYS_LEFT_OUT,
+  RELAY_RESTRICTION_UNREADABLE,
   allowedRelaysRunNotice,
   parseAllowedRelayLines,
   readRelayRestriction,
@@ -12,11 +14,14 @@ import {
   writeRelayRestriction,
 } from "@psi/transport/relayRestriction";
 import {
+  assertRunRelayPlanPossible,
+  relayPlanForRun,
+} from "@psi/transport/runRelayPlan";
+import {
   invitationRelayWithDefault,
   relayWithDefaultForRun,
 } from "@psi/transport/defaultRelay";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
-import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { relayTestTargets } from "@psi/transport/relayTest";
 
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
@@ -105,6 +110,7 @@ describe("the stored relay restriction", () => {
     expect(runRelayRestriction(() => ({ kind: "unreadable" }))).toEqual({
       allowedRelays: [],
       relayOnly: true,
+      unreadable: true,
     });
   });
 });
@@ -223,6 +229,59 @@ describe("relayPlanForRun", () => {
     await expect(planning).rejects.toThrow(RELAY_ONLY_RELAYS_LEFT_OUT);
     expect(enroll).not.toHaveBeenCalled();
     expect(onRunNotice).not.toHaveBeenCalled();
+  });
+
+  test("under Relay only, refuses before any contact when the run lists no TURN url at all", async () => {
+    const enroll = vi.fn();
+    const onRunNotice = vi.fn();
+    const planning = relayPlanForRun(generateSharedSecret(), undefined, {
+      readOwn: () => ({ kind: "none" }),
+      setting: () => undefined,
+      enroll,
+      onRunNotice,
+      restriction: () => ({ relayOnly: true }),
+    });
+    await expect(planning).rejects.toThrow(OperatorConfigError);
+    await expect(planning).rejects.toThrow(RELAY_ONLY_NO_RELAY);
+    expect(enroll).not.toHaveBeenCalled();
+    expect(onRunNotice).not.toHaveBeenCalled();
+  });
+
+  test("a stored restriction this build cannot read refuses the run, naming the saved settings", async () => {
+    const enroll = vi.fn();
+    const planning = relayPlanForRun(
+      generateSharedSecret(),
+      { turn: [PARTNER_URL] },
+      {
+        readOwn,
+        setting: () => SITE,
+        enroll,
+        restriction: () => runRelayRestriction(() => ({ kind: "unreadable" })),
+      },
+    );
+    await expect(planning).rejects.toThrow(OperatorConfigError);
+    await expect(planning).rejects.toThrow(RELAY_RESTRICTION_UNREADABLE);
+    expect(enroll).not.toHaveBeenCalled();
+  });
+
+  test("the refusals are available without planning the run", () => {
+    expect(() =>
+      assertRunRelayPlanPossible(undefined, {
+        readOwn: () => ({ kind: "none" }),
+        setting: () => undefined,
+        restriction: () => ({ relayOnly: true }),
+      }),
+    ).toThrow(RELAY_ONLY_NO_RELAY);
+    expect(() =>
+      assertRunRelayPlanPossible(
+        { turn: [PARTNER_URL] },
+        {
+          readOwn,
+          setting: () => undefined,
+          restriction: () => ({ relayOnly: true }),
+        },
+      ),
+    ).not.toThrow();
   });
 
   test("keeps the relays named, says which it kept and left out, and gathers relay candidates only", async () => {

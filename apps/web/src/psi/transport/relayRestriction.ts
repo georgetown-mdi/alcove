@@ -71,6 +71,12 @@ export interface RelayRestriction {
   relayOnly: boolean;
 }
 
+/** The restriction a run applies ({@link runRelayRestriction}). */
+export interface RunRelayRestriction extends RelayRestriction {
+  /** The stored setting could not be read, so a run is refused. */
+  unreadable?: true;
+}
+
 /** How reading the stored setting turned out. */
 export type RelayRestrictionRead =
   | { kind: "set"; restriction: RelayRestriction }
@@ -84,9 +90,10 @@ const UNRESTRICTED: RelayRestriction = { relayOnly: false };
  * and relay candidates only, so a value this build refuses never widens what
  * a run contacts or offers.
  */
-const UNREADABLE_RESTRICTION: RelayRestriction = {
+const UNREADABLE_RESTRICTION: RunRelayRestriction = {
   allowedRelays: [],
   relayOnly: true,
+  unreadable: true,
 };
 
 function storage(): Storage | undefined {
@@ -126,11 +133,12 @@ export function readRelayRestriction(): RelayRestrictionRead {
 
 /**
  * The restriction a run applies: the stored one, or, where it cannot be read,
- * one that keeps no relay under relay-only gathering, logged.
+ * one that keeps no relay under relay-only gathering, marked `unreadable` and
+ * logged.
  */
 export function runRelayRestriction(
   read: () => RelayRestrictionRead = readRelayRestriction,
-): RelayRestriction {
+): RunRelayRestriction {
   const stored = read();
   if (stored.kind === "set") return stored.restriction;
   log.warn(
@@ -246,6 +254,23 @@ export const RELAY_ONLY_RELAYS_LEFT_OUT =
   "Relay only requires a relay, and your allowed relays leave out every " +
   "relay this run lists. Add the host of a relay to Allowed relays on the " +
   "Relay server page, or remove the setting.";
+
+/**
+ * The refusal of a relay-only run that lists no TURN url at all, before it
+ * contacts any host: the browser's counterpart of the CLI's refusal of
+ * `ice_transport_policy: relay` with no turn entry.
+ */
+export const RELAY_ONLY_NO_RELAY =
+  "Relay only requires a relay, and no relay is set for this run. Set a " +
+  "relay on the Relay server page, or turn off Relay only.";
+
+/**
+ * The refusal of a run when this browser's stored relay restriction cannot
+ * be read, before it contacts any host.
+ */
+export const RELAY_RESTRICTION_UNREADABLE =
+  "This browser's saved relay settings could not be read. Open the Relay " +
+  "server page and save them again.";
 
 function urlList(urls: ReadonlyArray<string>): string {
   return urls.map((url) => sanitizeForDisplay(url)).join(", ");

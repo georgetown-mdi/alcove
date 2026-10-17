@@ -48,6 +48,10 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type {
+  RelayRestriction,
+  RelayRestrictionRead,
+} from "@psi/transport/relayRestriction";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
@@ -597,6 +601,107 @@ describe("an accepted exchange whose invitation named a relay", () => {
       invitationRelay: relay,
       role: "acceptor",
     });
+  });
+});
+
+describe("this browser's relay restriction", () => {
+  const relay = {
+    turn: ["turns:relay.example.org:443?transport=tcp"],
+    stun: ["stun:relay.example.org:3478"],
+  };
+  const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
+  const restricted =
+    (restriction: RelayRestriction): (() => RelayRestrictionRead) =>
+    () => ({ kind: "set", restriction });
+
+  function acceptedRecord(): RunnableManagedExchangeRecord {
+    return managedRecord({
+      side: "acceptor",
+      exchangeFile: composeManagedDocument(
+        { side: "acceptor", linkageTerms },
+        webrtcLocatorFromEndpoint({
+          channel: "webrtc",
+          host: "signaling.example.org",
+          relay,
+        }),
+      ),
+    });
+  }
+
+  test("exports the allowed relays and Relay only as the CLI's fields", () => {
+    const exported = composeManagedCronExport(
+      acceptedRecord(),
+      noOwnRelay,
+      restricted({ allowedRelays: ["relay.example.org"], relayOnly: true }),
+    ).config.text;
+
+    expect(exported).toContain("allowed_relays:");
+    expect(exported).toContain("ice_transport_policy: relay");
+    expect(
+      parseExchangeSpec(parseSensitiveYaml(exported, "exported alcove.yaml"))
+        .connection,
+    ).toEqual({
+      channel: "webrtc",
+      server: { host: "signaling.example.org" },
+      invitationRelay: relay,
+      role: "acceptor",
+      allowedRelays: ["relay.example.org"],
+      iceTransportPolicy: "relay",
+    });
+  });
+
+  test("an unset restriction writes neither field", () => {
+    const exported = composeManagedCronExport(
+      acceptedRecord(),
+      noOwnRelay,
+      restricted({ relayOnly: false }),
+    ).config.text;
+    expect(exported).not.toContain("allowed_relays");
+    expect(exported).not.toContain("ice_transport_policy");
+  });
+
+  test("allowed relays alone are written without Relay only", () => {
+    const exported = composeManagedCronExport(
+      acceptedRecord(),
+      noOwnRelay,
+      restricted({ allowedRelays: ["other.example.org"], relayOnly: false }),
+    ).config.text;
+    expect(exported).toContain("allowed_relays:");
+    expect(exported).not.toContain("ice_transport_policy");
+  });
+
+  test("a restriction this build cannot read is refused", () => {
+    expect(() =>
+      composeManagedCronExport(acceptedRecord(), noOwnRelay, () => ({
+        kind: "unreadable",
+      })),
+    ).toThrow(
+      "This browser's saved relay settings could not be read, so the export " +
+        "cannot include them.",
+    );
+  });
+
+  test("Relay only with no relay to gather on is refused", () => {
+    expect(() =>
+      composeManagedCronExport(
+        managedRecord(),
+        noOwnRelay,
+        restricted({ relayOnly: true }),
+      ),
+    ).toThrow(
+      "This browser's Relay only setting needs a relay, and the command-line " +
+        "configuration names none.",
+    );
+    expect(() =>
+      composeManagedCronExport(
+        acceptedRecord(),
+        noOwnRelay,
+        restricted({ allowedRelays: ["other.example.org"], relayOnly: true }),
+      ),
+    ).toThrow(
+      "its allowed relays leave out every relay the command-line " +
+        "configuration names.",
+    );
   });
 });
 

@@ -194,8 +194,7 @@ const RELAY_REMEDY =
  * 40 seconds to report an unanswered UDP relay, past the open timeout.
  *
  * Where the allowed relays left TURN urls out of the run, the message names
- * them and {@link ALLOWED_RELAYS_REMEDY} after any relay failure, and is
- * never `undefined`.
+ * them and {@link ALLOWED_RELAYS_REMEDY} after the relay failure.
  *
  * The url and error text are raw here and escaped where the failure is shown.
  *
@@ -206,11 +205,36 @@ export function relayFailureMessage(
   timedOut: boolean,
 ): string | undefined {
   const relayFailure = gatheringFailureMessage(record, timedOut);
-  if (record.relaysLeftOut.length === 0) return relayFailure;
-  const leftOut =
+  const leftOut = relaysLeftOutNote(record);
+  return relayFailure === undefined || leftOut === undefined
+    ? relayFailure
+    : `${relayFailure} ${leftOut}`;
+}
+
+function relaysLeftOutNote(record: IceGatheringRecord): string | undefined {
+  if (record.relaysLeftOut.length === 0) return undefined;
+  return (
     `Your allowed relays left out ${listNamed([...new Set(record.relaysLeftOut)])}. ` +
-    ALLOWED_RELAYS_REMEDY;
-  return `${relayFailure ?? "The connection did not open."} ${leftOut}`;
+    ALLOWED_RELAYS_REMEDY
+  );
+}
+
+// The note is added to `failure` itself, so it keeps its class and kind and
+// the caller redacts its message as it would have.
+function withNoteAdded(failure: Error, note: string): Error {
+  const separator = /[.!?]$/.test(failure.message) ? " " : ". ";
+  const message = `${failure.message}${separator}${note}`;
+  try {
+    failure.message = message;
+    return failure;
+  } catch {
+    // A read-only `message`: a copy of the same kind, without the cause.
+    if (failure instanceof ConnectionError)
+      return new ConnectionError(message, failure.kind);
+    const copy = new Error(message);
+    copy.name = failure.name;
+    return copy;
+  }
 }
 
 function gatheringFailureMessage(
@@ -240,8 +264,10 @@ function gatheringFailureMessage(
 
 /**
  * `failure` as the error an unopened `conn` rejects with: a `transport`
- * {@link ConnectionError} naming the failed relay or the relays left out where
- * {@link relayFailureMessage} finds either, and `failure` unchanged otherwise.
+ * {@link ConnectionError} naming the failed relay where
+ * {@link relayFailureMessage} finds one; else `failure` with the relays the
+ * allowed relays left out and {@link ALLOWED_RELAYS_REMEDY} added to its
+ * message where the run left any out; else `failure` unchanged.
  * `timedOut` says the open ran out its time rather than failing early.
  * `failure` is not kept as a cause: a PeerJS negotiation error names the
  * remote rendezvous id, and the callers redact only the error they throw.
@@ -252,8 +278,9 @@ export function withIceServerFailure(
   timedOut: boolean,
 ): Error {
   const record = records.get(conn);
-  const message =
-    record === undefined ? undefined : relayFailureMessage(record, timedOut);
-  if (message === undefined) return failure;
-  return new ConnectionError(message, "transport");
+  if (record === undefined) return failure;
+  const message = relayFailureMessage(record, timedOut);
+  if (message !== undefined) return new ConnectionError(message, "transport");
+  const leftOut = relaysLeftOutNote(record);
+  return leftOut === undefined ? failure : withNoteAdded(failure, leftOut);
 }

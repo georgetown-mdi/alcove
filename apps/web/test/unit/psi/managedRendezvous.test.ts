@@ -18,6 +18,7 @@ import {
 } from "@psi/managed/managedRendezvous";
 import { BROKER_REGISTRATION_TIMEOUT_MS } from "@psi/transport/rendezvous";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
+import { RELAY_ONLY_NO_RELAY } from "@psi/transport/relayRestriction";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import type {
@@ -398,6 +399,35 @@ describe("an acceptor's saved signaling address that fails validation", () => {
     ).not.toThrow();
     await begin("inviter", generateSharedSecret(), file, { flows });
     expect(inviterCalls).toHaveLength(1);
+  });
+});
+
+describe("assertManagedRendezvousPossible and the relay settings", () => {
+  test("refuses a Relay only run with no relay before any contact", () => {
+    for (const side of ["inviter", "acceptor"] as const)
+      expect(() =>
+        assertManagedRendezvousPossible(
+          { side, exchangeFile: exchangeFile(), label: LABEL },
+          {
+            readOwn: () => ({ kind: "none" }),
+            setting: () => undefined,
+            restriction: () => ({ relayOnly: true }),
+          },
+        ),
+      ).toThrow(RELAY_ONLY_NO_RELAY);
+  });
+
+  test("passes a run its relay settings allow", () => {
+    expect(() =>
+      assertManagedRendezvousPossible(
+        { side: "inviter", exchangeFile: exchangeFile(), label: LABEL },
+        {
+          readOwn: () => ({ kind: "none" }),
+          setting: () => undefined,
+          restriction: () => ({ relayOnly: false }),
+        },
+      ),
+    ).not.toThrow();
   });
 });
 

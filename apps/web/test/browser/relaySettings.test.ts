@@ -231,6 +231,47 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
 
+  test("a save that stores the allowed relays but not the own relay shows what is stored", async () => {
+    const backupUrl = "turn:backup.example.org:3478";
+    writeOwnRelaySetting({ turn: [TURN_URL, backupUrl], stun: [] });
+    await mountScreen();
+    const setItem = Storage.prototype.setItem;
+    const refused = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (key === "alcove-own-relay") throw new Error("quota exceeded");
+        setItem.call(this, key, value);
+      });
+    try {
+      await userEvent.fill(allowedField(), "relay.example.org");
+      await userEvent.click(saveButton());
+    } finally {
+      refused.mockRestore();
+    }
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent(
+        "This browser did not save the setting. Check that site storage is " +
+          "allowed for this site, then save again.",
+      );
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
+    });
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { turn: [TURN_URL, backupUrl], stun: [] },
+    });
+    await expect
+      .element(page.getByRole("listitem").filter({ hasText: TURN_URL }))
+      .toBeVisible();
+    expect(
+      page.getByRole("listitem").filter({ hasText: backupUrl }).query(),
+    ).toBeNull();
+    expect(page.getByText(RELAY_TEST_SAVED_ONLY).query()).toBeNull();
+  });
+
   test("a stored value this build cannot read is reported until it is saved again", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",

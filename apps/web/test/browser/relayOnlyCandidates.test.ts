@@ -6,6 +6,7 @@ import { default as EventEmitter } from "eventemitter3";
 
 import { generateSharedSecret } from "@alcove/core";
 
+import { RELAY_ONLY_NO_RELAY } from "@psi/transport/relayRestriction";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
@@ -127,16 +128,11 @@ describe("a browser run under Relay only", () => {
     },
   );
 
-  test(
-    "with no TURN url to use, offers no candidate at all",
-    { timeout: 60_000 },
-    async () => {
-      const configuration = await configurationForRun(true, []);
-      expect(configuration.iceTransportPolicy).toBe("relay");
-      const { gathered, inOffer } = await offeredCandidateTypes(configuration);
-      expect({ gathered, inOffer }).toEqual({ gathered: [], inOffer: [] });
-    },
-  );
+  test("with no TURN url to use, is refused before a peer is built", async () => {
+    await expect(configurationForRun(true, [])).rejects.toThrow(
+      RELAY_ONLY_NO_RELAY,
+    );
+  });
 
   test(
     "without Relay only, the same run offers a host candidate well within the window",

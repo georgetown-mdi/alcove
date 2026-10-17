@@ -46,6 +46,10 @@ import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
+import {
+  managedRelayRegistrarForRun,
+  retryPendingManagedRelayRegistration,
+} from "../../../src/psi/managed/managedRelayRegistration.js";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
@@ -64,6 +68,7 @@ import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 
 import type * as AlcoveCore from "@alcove/core";
+import type * as ManagedRelayRegistration from "../../../src/psi/managed/managedRelayRegistration.js";
 import type {
   BuiltExchangeRecord,
   HandshakeRole,
@@ -142,6 +147,20 @@ vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
 }));
+// Real, and watched, so a case can show a refusal comes before the registrar.
+vi.mock(
+  "../../../src/psi/managed/managedRelayRegistration.js",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ManagedRelayRegistration>();
+    return {
+      ...actual,
+      managedRelayRegistrarForRun: vi.fn(actual.managedRelayRegistrarForRun),
+      retryPendingManagedRelayRegistration: vi.fn(
+        actual.retryPendingManagedRelayRegistration,
+      ),
+    };
+  },
+);
 vi.mock("../../../src/psi/transport/peerMessageConnection.js", () => ({
   openPeerMessageConnection: vi.fn(),
 }));
@@ -1899,5 +1918,21 @@ describe("a saved signaling address the rendezvous refuses", () => {
     expect(rejection).toBe(refusal);
     expect(mockedRendezvous).not.toHaveBeenCalled();
     expect(loadPsiBackend).not.toHaveBeenCalled();
+  });
+
+  test("a relay settings refusal stops the run before the relay registrar", async () => {
+    const refusal = new Error("Relay only requires a relay");
+    vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
+      throw refusal;
+    });
+    acquireResources();
+
+    const rejection = await runDriver(new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBe(refusal);
+    expect(managedRelayRegistrarForRun).not.toHaveBeenCalled();
+    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
   });
 });

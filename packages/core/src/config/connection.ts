@@ -1262,7 +1262,7 @@ export const ALLOWED_RELAY_FORM =
 function parseRelayHostAndPort(text: string): RelayHostAndPort | undefined {
   const match = /^(\[[0-9a-f:.]+\]|[^\s:?@/#[\]]+)(?::(\d{1,5}))?$/i.exec(text);
   if (match === null) return undefined;
-  const host = (match[1] ?? "").toLowerCase().replace(/\.$/, "");
+  const host = (match[1] ?? "").toLowerCase().replace(/\.+$/, "");
   if (host === "") return undefined;
   if (match[2] === undefined) return { host };
   const port = Number(match[2]);

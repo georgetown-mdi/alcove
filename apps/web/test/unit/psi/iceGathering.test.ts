@@ -2,11 +2,16 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { ConnectionError, generateSharedSecret } from "@alcove/core";
+import {
+  ConnectionError,
+  classifyFailure,
+  generateSharedSecret,
+} from "@alcove/core";
 
 import {
   MAX_RECORDED_ICE_ERRORS,
   iceGatheringRecordFor,
+  recordRelaysLeftOut,
   relayFailureMessage,
   watchIceGathering,
 } from "../../../src/psi/transport/iceGathering.js";
@@ -153,6 +158,38 @@ describe("waitForConnectionOpen with a relay configured", () => {
     const opening = waitForConnectionOpen(conn, 1000);
     fake.emit("close");
     await expect(opening).rejects.toThrow(/^connection closed before open$/);
+  });
+
+  test("a partner close with relays left out keeps its own error and class, and adds the note", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const provider = {};
+    recordRelaysLeftOut(provider, [leftOut]);
+    const pc = new FakePeerConnection([{ urls: ["stun:stun.example.org"] }]);
+    const fake = new FakeConn(pc, provider);
+    const opening = waitForConnectionOpen(fake as unknown as DataConnection);
+    fake.emit("close");
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect(error).not.toBeInstanceOf(ConnectionError);
+    expect(classifyFailure(error)).toBe("unavailable");
+    expect((error as Error).message).toBe(
+      `connection closed before open. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
+    );
+  });
+
+  test("a channel error with relays left out keeps its kind", async () => {
+    const provider = {};
+    recordRelaysLeftOut(provider, ["turn:partner.example.net:3478"]);
+    const pc = new FakePeerConnection([{ urls: ["stun:stun.example.org"] }]);
+    const fake = new FakeConn(pc, provider);
+    const opening = waitForConnectionOpen(fake as unknown as DataConnection);
+    fake.emit("error", new ConnectionError("the partner refused.", "protocol"));
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(classifyFailure(error)).toBe("partner-refused");
+    expect((error as Error).message).toMatch(
+      /^the partner refused\. Your allowed relays left out turn:partner/,
+    );
   });
 
   test("an early close after a relay error names the relay", async () => {
@@ -336,7 +373,7 @@ describe("dialAsAcceptor with a relay configured", () => {
     );
   });
 
-  test("a failed open with no relay kept names the relays left out alone", async () => {
+  test("a failed open with no relay kept keeps its own error and adds the relays left out", async () => {
     const leftOut = "turn:partner.example.net:3478";
     const error = await dialFailure(
       (pc) => pc.gather("host"),
@@ -344,10 +381,10 @@ describe("dialAsAcceptor with a relay configured", () => {
       [leftOut],
       [{ urls: ["stun:stun.example.org:3478"] }],
     );
-    expect(error).toBeInstanceOf(ConnectionError);
+    expect(error).not.toBeInstanceOf(ConnectionError);
     expect((error as Error).message).toBe(
-      `The connection did not open. Your allowed relays left out ${leftOut}. ` +
-        ALLOWED_RELAYS_REMEDY,
+      "timed out opening a connection to the inviter. Your allowed relays " +
+        `left out ${leftOut}. ${ALLOWED_RELAYS_REMEDY}`,
     );
   });
 });

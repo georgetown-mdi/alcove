@@ -174,6 +174,10 @@ export function RelaySettingsScreen({
               : "removed",
       });
     } catch {
+      // The restriction may be stored while the own relay is not, so the
+      // saved state and the test are re-read from storage.
+      const stored = readOwnRelaySetting();
+      refreshTestTargets(stored.kind === "set" ? stored.relay.turn : []);
       setStatus({ kind: "failed" });
     }
   }

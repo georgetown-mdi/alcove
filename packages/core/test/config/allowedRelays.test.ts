@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  normalizeAllowedRelay,
   parseConnectionConfig,
   relayOnlyRelaysLeftOutMessage,
   relaysLeftOutForDisplay,
@@ -51,6 +52,12 @@ describe("an allowed_relays entry", () => {
         allowed_relays: [entry],
       }),
     ).toThrow(/each allowed_relays entry must be a host and an optional port/);
+  });
+
+  test("normalizing is idempotent for a host with trailing dots", () => {
+    const normalized = normalizeAllowedRelay("a..");
+    expect(normalized).toBe("a");
+    expect(normalizeAllowedRelay(normalized ?? "")).toBe(normalized);
   });
 });
 
