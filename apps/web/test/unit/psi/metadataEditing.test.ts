@@ -10,6 +10,7 @@ import {
 import { preparePayload } from "@alcove/core/testing";
 
 import {
+  SEMANTIC_TYPE_LABELS,
   applyDisclosure,
   disclosedColumnNames,
   disclosureChoicesForType,
@@ -516,5 +517,26 @@ describe("disclosureChoicesForType gates nonsensical pairings", () => {
   });
   test("a linkage type offers match", () => {
     expect(disclosureChoicesForType("first_name")).toContain("match");
+  });
+});
+
+describe("the state and county column types", () => {
+  test("are offered for matching with a label of their own", () => {
+    for (const type of ["state", "county"] as const) {
+      expect(SEMANTIC_TYPES).toContain(type);
+      expect(disclosureChoicesForType(type)).toContain("match");
+    }
+    expect(SEMANTIC_TYPE_LABELS.state).toBe("State");
+    expect(SEMANTIC_TYPE_LABELS.county).toBe("County");
+  });
+
+  test("a column picked for a state field becomes a match column", () => {
+    const md: Metadata = [
+      col({ name: "st", type: "other", role: "payload", isPayload: true }),
+    ];
+    const out = setColumnTypeForMatching(md, "st", "state");
+    expect(out[0].type).toBe("state");
+    expect(disclosureOf(out[0])).toBe("match");
+    expect(isDisclosedToPartner(out[0])).toBe(false);
   });
 });

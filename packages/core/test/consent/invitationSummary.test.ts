@@ -40,6 +40,7 @@ import { DATE_COLLAPSE_PROBES } from "../../src/linkageSatisfiability.js";
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
 import type { Metadata } from "../../src/config/metadata.js";
 import type {
+  LinkageField,
   LinkageStrategy,
   LinkageTerms,
   Output,
@@ -1198,6 +1199,50 @@ describe("the consent summary's date-collapse marker", () => {
     ).toEqual(["date of birth (fallback)"]);
   });
 
+  test("a zip3 after a parse_date earns the label its substring spelling does", () => {
+    // `000MM` renders every date as 000 plus a month, so the first three
+    // characters are the constant `000` however the run is written.
+    const collapsingFormat = "000MM";
+    expect(headerFor([parseDate(collapsingFormat), slice(1, 3)])).toEqual([
+      "date of birth (any date)",
+    ]);
+    expect(
+      headerFor([parseDate(collapsingFormat), { function: "zip3" }]),
+    ).toEqual(["date of birth (any date)"]);
+  });
+
+  test("a zip3 after a parse_date whose leading digits vary is not any date", () => {
+    // `DDMM1` renders five digits whose first three change with the date.
+    expect(headerFor([parseDate("DDMM1"), { function: "zip3" }])).toEqual([
+      "date of birth (partial)",
+    ]);
+  });
+
+  test("a zip3 that drops every probe date takes the word its substring spelling does", () => {
+    const skipsProbeDays: TransformStep = {
+      function: "replace_regex",
+      params: {
+        pattern: "^[0-9]{6}(0[13-9]|1[0-24-9]|2[0-35-9]|30)$",
+        replacement: "12345",
+      },
+    };
+    expect(
+      headerFor([parseDate("YYYYMMDD"), skipsProbeDays, { function: "zip3" }]),
+    ).toEqual(["date of birth (any date)"]);
+    expect(
+      headerFor([
+        parseDate("YYYYMMDD"),
+        skipsProbeDays,
+        { function: "filter_regex", params: { pattern: "^[0-9]{5}$" } },
+        slice(1, 3),
+      ]),
+    ).toEqual(["date of birth (any date)"]);
+    // Eight digits is never a ZIP, so the element matches nothing: no marker.
+    expect(headerFor([parseDate("YYYYMMDD"), { function: "zip3" }])).toEqual([
+      "date of birth",
+    ]);
+  });
+
   test("a plain reformatting keeps no marker", () => {
     // Routine canonicalization between equivalent full layouts, unflagged by
     // design; the slice that reads the date itself is the milder word.
@@ -1248,6 +1293,60 @@ describe("the consent summary's date-collapse marker", () => {
     ]);
     expect(params[0]).toBe(`output_format: ${LITERAL_REGION_FORMAT}`);
     expect(params[1]).toMatch(/^flood: F+\.\.\.\[truncated\]$/);
+  });
+});
+
+describe("the consent summary's geography elements", () => {
+  const baseTerms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+  const keyFor = (field: LinkageField, transform?: TransformStep[]) =>
+    summarizeInvitation({
+      linkageTerms: {
+        ...baseTerms,
+        linkageFields: [...baseTerms.linkageFields, field],
+        linkageKeys: [
+          {
+            name: "geo",
+            elements: [
+              { field: "last_name" },
+              { field: field.name, ...(transform ? { transform } : {}) },
+            ],
+          },
+        ],
+      },
+    }).linkageKeys[0];
+
+  test("a zip3 element is stated as the first three ZIP digits, partial", () => {
+    const key = keyFor({ name: "zip_code", type: "zip_code" }, [
+      { function: "zip3" },
+    ]);
+    expect(key.headerFields).toEqual(["last name", "ZIP (partial)"]);
+    expect(key.elements[1].transforms[0].description).toBe(
+      "Matches on only the first three digits of a five-digit ZIP code, so ZIP codes in the same area can match; any other value is dropped.",
+    );
+  });
+
+  test("state and county fields are named by their type", () => {
+    expect(keyFor({ name: "state", type: "state" }).headerFields).toEqual([
+      "last name",
+      "state",
+    ]);
+    expect(keyFor({ name: "county", type: "county" }).headerFields).toEqual([
+      "last name",
+      "county",
+    ]);
+  });
+
+  test("a state_code element states its replacement and no marker", () => {
+    const key = keyFor({ name: "state", type: "state" }, [
+      { function: "state_code" },
+    ]);
+    expect(key.headerFields).toEqual(["last name", "state"]);
+    expect(key.elements[1].transforms[0].description).toMatch(
+      /^Replaces a US state, DC or territory name with its two-letter postal abbreviation/,
+    );
   });
 });
 

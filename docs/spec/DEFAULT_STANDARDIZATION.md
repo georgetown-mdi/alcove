@@ -826,6 +826,169 @@ standardizes to the same value as the five-digit form.
 | `"00000"` | `"00000"` |
 | `"abc"` | `null` |
 
+A linkage key element over a `zip_code` field can match on the three-digit ZIP
+area instead of the full ZIP with the `zip3` transform. It keeps the first
+three digits of the cleaned five-digit value, leading zeros included, so
+`02139` becomes `021`; any value that is not exactly five digits is dropped.
+It is a key-element transform, not part of this pipeline, and the consent
+display states it on each key that uses it. Over a date, the consent display
+measures a `zip3` as it measures a `substring` keeping the first three
+characters, with one limit those share: a `coalesce` between the `parse_date`
+and the `zip3` is read as fixed by the date's layout, so an element whose
+`coalesce` default is what reaches the `zip3` is reported as a key that can
+never match, and the exchange is refused, rather than marked as matching any
+date.
+
+### `state`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: squash_spaces
+  - function: remove_non_ascii
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: squash_spaces
+  - function: trim_whitespace
+  - function: state_code
+```
+
+Result: a two-letter USPS code. The value is uppercased with its punctuation
+removed, and `state_code` then replaces a full name with its code, keeps a code
+as it is, and drops anything else. A misspelled name, an abbreviation other
+than the USPS code (`Calif`), and a foreign province are all dropped.
+
+The recognized places are the 50 states, the District of Columbia, and the five
+inhabited territories with a USPS code: American Samoa, Guam, the Northern
+Mariana Islands, Puerto Rico and the US Virgin Islands. Two groups of USPS
+codes are not recognized: the freely associated states (`FM`, `MH`, `PW`),
+which are sovereign countries, and the military codes (`AA`, `AE`, `AP`), which
+route mail rather than name a place of residence.
+
+#### State and territory codes
+
+| Code | Names |
+| ---- | ----- |
+| `AL` | `ALABAMA` |
+| `AK` | `ALASKA` |
+| `AZ` | `ARIZONA` |
+| `AR` | `ARKANSAS` |
+| `CA` | `CALIFORNIA` |
+| `CO` | `COLORADO` |
+| `CT` | `CONNECTICUT` |
+| `DE` | `DELAWARE` |
+| `FL` | `FLORIDA` |
+| `GA` | `GEORGIA` |
+| `HI` | `HAWAII` |
+| `ID` | `IDAHO` |
+| `IL` | `ILLINOIS` |
+| `IN` | `INDIANA` |
+| `IA` | `IOWA` |
+| `KS` | `KANSAS` |
+| `KY` | `KENTUCKY` |
+| `LA` | `LOUISIANA` |
+| `ME` | `MAINE` |
+| `MD` | `MARYLAND` |
+| `MA` | `MASSACHUSETTS` |
+| `MI` | `MICHIGAN` |
+| `MN` | `MINNESOTA` |
+| `MS` | `MISSISSIPPI` |
+| `MO` | `MISSOURI` |
+| `MT` | `MONTANA` |
+| `NE` | `NEBRASKA` |
+| `NV` | `NEVADA` |
+| `NH` | `NEW HAMPSHIRE` |
+| `NJ` | `NEW JERSEY` |
+| `NM` | `NEW MEXICO` |
+| `NY` | `NEW YORK` |
+| `NC` | `NORTH CAROLINA` |
+| `ND` | `NORTH DAKOTA` |
+| `OH` | `OHIO` |
+| `OK` | `OKLAHOMA` |
+| `OR` | `OREGON` |
+| `PA` | `PENNSYLVANIA` |
+| `RI` | `RHODE ISLAND` |
+| `SC` | `SOUTH CAROLINA` |
+| `SD` | `SOUTH DAKOTA` |
+| `TN` | `TENNESSEE` |
+| `TX` | `TEXAS` |
+| `UT` | `UTAH` |
+| `VT` | `VERMONT` |
+| `VA` | `VIRGINIA` |
+| `WA` | `WASHINGTON` |
+| `WV` | `WEST VIRGINIA` |
+| `WI` | `WISCONSIN` |
+| `WY` | `WYOMING` |
+| `DC` | `DISTRICT OF COLUMBIA` |
+| `AS` | `AMERICAN SAMOA` |
+| `GU` | `GUAM` |
+| `MP` | `NORTHERN MARIANA ISLANDS` |
+| `PR` | `PUERTO RICO` |
+| `VI` | `VIRGIN ISLANDS`, `US VIRGIN ISLANDS` |
+
+| Input | Result |
+| ----- | ------ |
+| `"Maryland"` | `"MD"` |
+| `"md"` | `"MD"` |
+| `" new  york "` | `"NY"` |
+| `"D.C."` | `"DC"` |
+| `"U.S. Virgin Islands"` | `"VI"` |
+| `"Calif"` | `null` |
+| `""` | `null` |
+
+### `county`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: squash_spaces
+  - function: remove_accents
+  - function: replace_regex
+    params:
+      pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]"
+      replacement: " "
+  - function: remove_non_ascii
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: replace_regex
+    params:
+      pattern: "^COUNTY OF |\\bCOUNTY\\b"
+      replacement: ""
+  - function: squash_spaces
+  - function: trim_whitespace
+  - function: filter_regex
+    params:
+      pattern: "[A-Z0-9]"
+```
+
+Result: an uppercase county name with the word `COUNTY` and punctuation
+removed. A hyphen or typographic dash (an en dash, for one) becomes a space before non-ASCII characters and punctuation are removed, so
+`Miami-Dade`, `Miami–Dade` and `Miami Dade` agree, while an apostrophe is deleted, so
+`Prince George's` and `Prince Georges` agree. A leading `COUNTY OF` is removed
+as well as the word `COUNTY` anywhere in the value. A value left with no letter
+or digit is dropped. No other spelling is reconciled: `St Marys` and `Saint
+Marys` stay different, as do `DeKalb` and `De Kalb`; an abbreviated `Co` and
+the words `Parish` and `Borough` are kept.
+
+A county name is ambiguous across states: Washington, Jefferson and Franklin,
+among others, each name a county in many states, and the cleaned value holds
+no state. A `county` field therefore identifies a place only when both
+parties' files come from one state or one region whose county names do not
+repeat; across states it matches people in different counties of the same
+name.
+
+| Input | Result |
+| ----- | ------ |
+| `"Montgomery County"` | `"MONTGOMERY"` |
+| `"MONTGOMERY COUNTY"` | `"MONTGOMERY"` |
+| `"montgomery"` | `"MONTGOMERY"` |
+| `"Prince George's County"` | `"PRINCE GEORGES"` |
+| `"Miami-Dade"` | `"MIAMI DADE"` |
+| `"Miami–Dade"` | `"MIAMI DADE"` |
+| `"County of Los Angeles"` | `"LOS ANGELES"` |
+| `"County"` | `null` |
+| `""` | `null` |
+
 ## Shared-value screens
 
 A shared-value screen drops a cleaned value held by more people in the party's
@@ -977,6 +1140,8 @@ whitespace.
 | `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
+| `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false` |
+| `county` | `county`, `county_name`, `countyname` | `linkage` | `false` |
 
 Each multi-word type also lists its no-separator spelling, since the lookup key
 keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)

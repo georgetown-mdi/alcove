@@ -162,6 +162,14 @@ test.each([
   ["zip5", "zip_code"],
   ["zip_5", "zip_code"],
   ["zipcode", "zip_code"],
+  ["state", "state"],
+  ["state_code", "state"],
+  ["statecode", "state"],
+  ["state_name", "state"],
+  ["statename", "state"],
+  ["county", "county"],
+  ["county_name", "county"],
+  ["countyname", "county"],
   ["id", "identifier"],
   // No-separator spellings: a single-token column export still infers. The
   // lookup key joins words with `_`, so these must stay explicit aliases.

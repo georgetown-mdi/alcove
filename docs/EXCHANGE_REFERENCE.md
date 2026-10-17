@@ -285,14 +285,19 @@ linkage_terms:
 | `phone_number` | Phone number |
 | `email_address` | Email address |
 | `zip_code` | US ZIP code; canonical form is 5 digits, zero-padded |
+| `state` | US state, District of Columbia, or inhabited territory; canonical form is the two-letter USPS code |
+| `county` | County name; canonical form is uppercase with the word `COUNTY` and punctuation removed |
 | `identifier` | Column that indexes a party's own records; never matchable |
 | `other` | A column whose PII type is none of the above |
 
-The first eight values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
+The first ten values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
 
 Additional types will be added as their use case arises.
 
 A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
+A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`.
+
+A `state` column is inferred from `state`, `state_code` or `state_name`, and a `county` column from `county` or `county_name` (the no-separator spellings too; complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Neither has a built-in linkage key, so either is matched on only where your terms declare a key that uses it. A state is cleaned to its two-letter code from the full name or the code, and a value that is neither is dropped. A county name is cleaned to uppercase with the word `COUNTY` and punctuation removed. The same county name exists in many states, so a `county` element identifies a place only when both files come from one state or one region; the cleaning steps for both types are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
 
 #### Constraints
 
@@ -1626,6 +1631,8 @@ Parameter names below are written in snake_case in YAML (e.g. `input_format`, `i
 | `parse_date` | Reformat a date string | `input_format` (default `MM/DD/YYYY`), `output_format` (default `YYYYMMDD`), each at most 256 characters; an empty `output_format` is refused, since it would render every date to the empty string; tokens: `YYYY`, `YY`, `MM`, `DD` |
 | `pad_left` | Left-pad the value with a fill character up to a target length; pass-through if already at or above the length | `length` (positive integer, required; capped at 256 in a linkage key element's `transform`, uncapped in a `standardization` step), `char` (single character, default `"0"`) |
 | `phonetic` | Apply a phonetic encoding | `algorithm`: `soundex` (default); result is a 4-character string, or `null` for a value carrying no letters |
+| `zip3` | Keep the first three digits of a five-digit ZIP code, leading zeros included (`02139` -> `021`); produce `null` for any value that is not exactly five digits | - |
+| `state_code` | Replace a US state, District of Columbia or territory name, in any letter case, with its two-letter USPS code, keeping a code as it is; produce `null` for any other value. The recognized names: [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#state-and-territory-codes) | - |
 | `replace_regex` | Replace all regex matches | `pattern` (required), `replacement` (default `""`) |
 | `extract_regex` | Keep the first capture group, or the whole match if the pattern has none; produce `null` if there is no match or the result is empty | `pattern` (required) |
 

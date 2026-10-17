@@ -87,6 +87,8 @@ export const SEMANTIC_TYPES = [
   "phone_number",
   "email_address",
   "zip_code",
+  "state",
+  "county",
   "other",
 ] as const;
 

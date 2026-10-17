@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   decodeInvitation,
   deriveAcceptedLinkageTerms,
+  getDefaultStandardization,
   prepareForExchange,
   safeParseLinkageTerms,
 } from "@alcove/core";
@@ -26,7 +27,7 @@ import {
 } from "../../../src/psi/authoring/advancedInvite.js";
 import { generateInvitation } from "../../../src/psi/invitation.js";
 
-import type { CSVRow, LinkageKeyElement } from "@alcove/core";
+import type { CSVRow, LinkageKeyElement, Standardization } from "@alcove/core";
 
 import type { AdvancedInviteDraft } from "../../../src/psi/authoring/advancedInvite.js";
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
@@ -201,12 +202,22 @@ describe("expert authoring round-trips", () => {
 
 describe("an expert-authored key over a recognized type cleans as its partner does", () => {
   // The expert editor offers a field for every matchable column, including
-  // types no built-in key uses (phone_number, email_address, zip_code); the
-  // authored-field derivation declares each under the type's own name whether
-  // or not the draft cleans it. Without a cleaning pipeline for the column,
-  // this party would hash the raw cell while the accepting party hashes the
-  // cleaned one, and the key would match nothing.
-  const COLUMNS = ["first_name", "last_name", "dob", "zip", "phone", "email"];
+  // types the guided keys leave off (phone_number, email_address, zip_code)
+  // and types no built-in key uses (state, county); the authored-field
+  // derivation declares each under the type's own name whether or not the
+  // draft cleans it. Without a cleaning pipeline for the column, this party
+  // would hash the raw cell while the accepting party hashes the cleaned one,
+  // and the key would match nothing.
+  const COLUMNS = [
+    "first_name",
+    "last_name",
+    "dob",
+    "zip",
+    "phone",
+    "email",
+    "state",
+    "county",
+  ];
   const ROWS: Array<CSVRow> = [
     {
       first_name: "Ada",
@@ -215,6 +226,8 @@ describe("an expert-authored key over a recognized type cleans as its partner do
       zip: "20001-1234",
       phone: "(202) 555-0143",
       email: "  Ada@Example.ORG  ",
+      state: "Maryland",
+      county: "Miami-Dade County",
     },
   ];
 
@@ -259,6 +272,8 @@ describe("an expert-authored key over a recognized type cleans as its partner do
     ["zip_code", "20001-1234", "20001"],
     ["phone_number", "(202) 555-0143", "2025550143"],
     ["email_address", "  Ada@Example.ORG  ", "ada@example.org"],
+    ["state", "Maryland", "MD"],
+    ["county", "Miami-Dade County", "MIAMI DADE"],
   ])("%s matches cleaned on both sides, not raw", (field, raw, cleaned) => {
     const draft = expertKeyed(field);
     const [inviterValue, acceptorValue] = cleanedByBothParties(draft, field);
@@ -268,6 +283,27 @@ describe("an expert-authored key over a recognized type cleans as its partner do
     // cleaned value, so a party matching on it matches nothing the other offers.
     expect(cleaned).not.toEqual(raw);
   });
+
+  test.each(["state", "county"])(
+    "a key over %s holds the cleaning the accepting party derives",
+    (field) => {
+      const { draft } = seedAdvancedInvite("Inviter", COLUMNS, ROWS);
+      expect(draft.standardization.some((t) => t.output === field)).toBe(false);
+      for (const keyed of [addKey(draft, field), expertKeyed(field)]) {
+        const terms = buildAdvancedTerms(keyed);
+        const stepsFor = (standardization: Standardization) =>
+          standardization.find((t) => t.output === field)?.steps;
+        const acceptorSteps = stepsFor(
+          getDefaultStandardization(
+            keyed.metadata,
+            deriveAcceptedLinkageTerms(terms, "Acceptor"),
+          ),
+        );
+        expect(acceptorSteps).toBeDefined();
+        expect(stepsFor(keyed.standardization)).toEqual(acceptorSteps);
+      }
+    },
+  );
 
   test("the authored key generates and mints holding its cleaning", async () => {
     const { seed } = seedAdvancedInvite("Inviter", COLUMNS, ROWS);

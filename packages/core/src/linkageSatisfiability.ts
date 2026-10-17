@@ -561,10 +561,11 @@ export const LAYOUT_DETERMINED_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "remove_accents",
   "substring",
   "pad_left",
+  "zip3",
   "coalesce",
 ]);
 
-// What a substring run's measurement over {@link DATE_COLLAPSE_PROBES}
+// What a run's measurement over {@link DATE_COLLAPSE_PROBES}
 // establishes. `undetermined` (no measurement, or distinct survivors) resolves
 // to the milder marker; `cannotMeasure` (a ceiling crossing, a candidate set, a
 // throw) resolves up to the collapse word, since understating breadth is the
@@ -618,15 +619,17 @@ interface ParsedDateSpan {
   everyStepLayoutDetermined: boolean;
 }
 
-/** Whether `index` ends a maximal run of consecutive `substring` steps, whose
- * last link decides the value the run leaves. */
-function endsSubstringRun(
+/** Whether `index` ends a measured run: a maximal run of consecutive
+ * `substring` steps, whose last link decides the value the run leaves, or a
+ * `zip3`, which keeps the first three characters of a five-digit value. */
+function endsMeasuredRun(
   steps: ReadonlyArray<TransformStep>,
   index: number,
 ): boolean {
+  const { function: name } = steps[index];
   return (
-    steps[index].function === "substring" &&
-    steps[index + 1]?.function !== "substring"
+    name === "zip3" ||
+    (name === "substring" && steps[index + 1]?.function !== "substring")
   );
 }
 
@@ -709,11 +712,11 @@ function parsedDateSpanReading(span: ParsedDateSpan): ParsedDateRunReading {
 }
 
 /**
- * The reading of every substring run of one element, by the index that ends
+ * The reading of every measured run of one element, by the index that ends
  * it; an absent index is `undetermined`. A run is measured only where it ends a
- * maximal `substring` run with a `parse_date` ahead whose input format can
- * parse a date; the nearest such `parse_date` laid out the value. One forward
- * pass per span keeps the walk linear in the declared steps
+ * maximal `substring` run, or is a `zip3`, with a `parse_date` ahead whose input
+ * format can parse a date; the nearest such `parse_date` laid out the value.
+ * One forward pass per span keeps the walk linear in the declared steps
  * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 function parsedDateRunReadings(
@@ -730,22 +733,22 @@ function parsedDateRunReadings(
       spanEnd += 1;
     let lastRunEnd = -1;
     for (let index = parseDateIndex + 1; index < spanEnd; index += 1)
-      if (endsSubstringRun(steps, index)) lastRunEnd = index;
+      if (endsMeasuredRun(steps, index)) lastRunEnd = index;
     if (lastRunEnd < 0) continue;
     const span = openParsedDateSpan(parseDateStep);
     for (let index = parseDateIndex + 1; index <= lastRunEnd; index += 1) {
       advanceParsedDateSpan(span, steps[index], index, compiledStep, work);
-      if (endsSubstringRun(steps, index))
-        readings[index] = parsedDateSpanReading(span);
+      if (!endsMeasuredRun(steps, index)) continue;
+      readings[index] = parsedDateSpanReading(span);
     }
   }
   return readings;
 }
 
 /**
- * Whether the `substring` run ending at `index` leaves every record that
- * survives an earlier `parse_date` on one constant, such as a window inside an
- * output format's literal region (`ACME-YYYYMMDD` read as `ACME`). Measured by
+ * Whether the `substring` run (or `zip3`) ending at `index` leaves every record
+ * that survives an earlier `parse_date` on one constant, such as a window inside
+ * an output format's literal region (`ACME-YYYYMMDD` read as `ACME`). Measured by
  * running the shipped steps over {@link DATE_COLLAPSE_PROBES}, since whether a
  * step preserves what a window reads depends on the window too.
  *

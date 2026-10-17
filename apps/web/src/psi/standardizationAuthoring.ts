@@ -154,6 +154,10 @@ export const STANDARDIZATION_FUNCTION_GROUPS: Array<StandardizationFunctionGroup
       label: "Reshape the value",
       functionNames: ["substring", "pad_left", "parse_date"],
     },
+    {
+      label: "Places",
+      functionNames: ["zip3", "state_code"],
+    },
     { label: "Drop or default", functionNames: ["null_if", "coalesce"] },
   ];
 

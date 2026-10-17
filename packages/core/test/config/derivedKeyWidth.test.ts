@@ -173,6 +173,8 @@ const WIDTH_SHAPING_STEPS: ReadonlyArray<[string, TransformStep, number]> = [
     10,
   ],
   ["phonetic", { function: "phonetic" }, 4],
+  ["zip3", { function: "zip3" }, 3],
+  ["state_code", { function: "state_code" }, 2],
   ["parse_date", { function: "parse_date" }, 8],
   [
     "parse_date with its own output layout",

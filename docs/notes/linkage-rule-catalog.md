@@ -120,11 +120,11 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
+Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks or a rule not yet added to the set:
 
 - `street_number`, the number of a street address: rule 21.
-- A three-digit ZIP: rule 27.
-- State and county types: rule 30.
+- Rule 27: the `zip3` element exists; the rule is not yet in the built-in key set.
+- Rule 30: the `state` and `county` types exist; the rule is not yet in the built-in key set.
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
 - The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 
@@ -390,7 +390,7 @@ No measured relative exists.
 
 #### 27. `LN + FN + DOB + ZIP3`
 
-95%. Any coverage. Measured. Needs a three-digit ZIP.
+95%. Any coverage. Measured. The `zip3` element exists; the rule is not yet in the built-in key set.
 
 Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against SSN-based labels, with 0.95 for first + last name + gender + DOB; it is the only measurement of a three-digit ZIP rule.
 Against email-based and phone-based labels, on records with no valid SSN, the ZIP token scored 0.76 and 0.74; the authors attribute the drop to noisier labels.
@@ -416,7 +416,7 @@ One loosening on rule 22 stays at 95%, for the reason given under rule 28.
 
 #### 30. `LN + FN + DOB + STATE` or `LN + FN + DOB + COUNTY`
 
-95%. Any coverage. Measured relatives. Needs state and county types.
+95%. Any coverage. Measured relatives. The `state` and `county` types exist; the rule is not yet in the built-in key set.
 
 Rule 31 with its coverage condition written into the rule.
 Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechuta et al. (2020), and Mirel et al.'s (2022) row with the state token agreeing.

@@ -61,10 +61,10 @@ function parseDateWidthBound(
 /**
  * The most characters an element's standardized value can contain after its
  * `transform` chain, or `undefined` when the terms bound no width. Walked in
- * order: `substring`, `phonetic` and `parse_date` replace the width,
- * `pad_left` raises it, `null_if` and `filter_regex` pass it through, and
- * every other step clears it, since clearing is always safe and too small a
- * width refuses a valid row. A derived width is at least 1. See
+ * order: `substring`, `phonetic`, `parse_date`, `zip3` and `state_code`
+ * replace the width, `pad_left` raises it, `null_if` and `filter_regex` pass
+ * it through, and every other step clears it, since clearing is always safe
+ * and too small a width refuses a valid row. A derived width is at least 1. See
  * docs/spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare.
  */
 export function elementValueWidthBound(
@@ -85,6 +85,12 @@ export function elementValueWidthBound(
         break;
       case "parse_date":
         bound = parseDateWidthBound(params);
+        break;
+      case "zip3":
+        bound = 3;
+        break;
+      case "state_code":
+        bound = 2;
         break;
       case "null_if":
       case "filter_regex":
