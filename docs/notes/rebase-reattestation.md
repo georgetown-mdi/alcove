@@ -41,7 +41,7 @@ moves the branch's diff.
 | What the rebase did | Where it shows | Verdict |
 | --- | --- | --- |
 | The conflict resolution invented an executable line | Between the two heads | Violates |
-| The staging range changed a file the branch also changed, away from the branch's hunks | Between the two bases; the hunk comparison finds the branch's hunks unchanged | Holds, unless a review claim names the file |
+| The staging range changed a file the branch also changed, away from the branch's hunks | Between the two bases; the hunk comparison finds the branch's hunks unchanged | Holds, unless a review claim names the file or a claim names no file |
 | The staging range changed a file the branch also changed, inside a branch hunk or its context | Between the two bases; the hunk comparison finds the hunks differ | Violates |
 | The staging range changed a file the branch did not touch | Neither -- that path is not compared | Holds |
 
@@ -107,10 +107,19 @@ So the verifier takes the branch's rounds ledger (`--ledger`) and reads the
 every role's claims count, not only the security role's. A shared path with
 unchanged hunks that a claim names VIOLATES, and the head takes the
 standing-contract round. A
-claim's `file` is free text, so any claim whose file contains the path counts:
-matching too much costs a round, and matching too little admits a path a claim
-covers. A ledger line that does not parse stops the run rather than reading as
-a ledger naming no path.
+claim's `file` is free text, and matching too much costs a round while matching
+too little admits a path a claim covers, so the match fails closed:
+
+- a `file` under a `.claude/worktrees/<name>/` directory, the worktree the run
+  is in, or the primary checkout is read as the repo-relative path below it;
+- a claim names a path when its file is that path, a directory above it, or
+  text containing it;
+- a claim with no file, or one naming a whole checkout, could cover any path,
+  so one such claim turns the hunk comparison off for the whole ledger and
+  every shared file takes the two-ended comparison.
+
+A ledger line that does not parse stops the run rather than reading as a ledger
+naming no path.
 
 ## Why a rebase is admitted where a base sync is not
 
@@ -140,7 +149,9 @@ answer at a round's price.
   the staging range both changed, only the branch's hunks and their three lines
   of context are compared. A staging change further away -- one that renames a
   binding a hunk uses, or wraps the hunk in a new scope -- is not read here,
-  except on a path a review claim names.
+  except on a path a review claim names. Hunk identity also ignores position,
+  so a branch hunk a resolution re-applied at a different occurrence of the
+  same three context lines compares equal.
 - **The composition, as a matter of review.** What covers it instead is
   mechanical: every gate re-runs at the new head, and a pull-request gate runs
   against the head merged with the base tip, so a composition that fails to

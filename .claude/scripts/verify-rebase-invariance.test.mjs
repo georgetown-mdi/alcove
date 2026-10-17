@@ -12,6 +12,7 @@ import {
   isAncestor,
   parseArguments,
   rebaseShapeError,
+  repoRelativeClaimFile,
   rollUpVerdicts,
   summarizeInvariance,
   violationLine,
@@ -35,7 +36,7 @@ afterEach(cleanup);
 const byPath = (results) =>
   Object.fromEntries(results.map((r) => [r.path, r.verdict]));
 
-const NO_CLAIMS = new Set();
+const NO_CLAIMS = { files: new Set(), unscoped: 0 };
 
 /** Seven one-line declarations, the first holding `first`. */
 const spaced = (first) =>
@@ -43,14 +44,14 @@ const spaced = (first) =>
   "export const b = 2;\nexport const c = 3;\nexport const d = 4;\n" +
   "export const e = 5;\nexport const f = 6;\nexport const g = 7;\n";
 
-const shared = ({ fixture, oldHead, newBase, newHead, claimFiles }) =>
+const shared = ({ fixture, oldHead, newBase, newHead, claims }) =>
   collectInvariance({
     oldBase: fixture.oldBase,
     oldHead,
     newBase,
     newHead,
     git: fixture.git,
-    claimFiles: claimFiles ?? NO_CLAIMS,
+    claims: claims ?? NO_CLAIMS,
   });
 
 /**
@@ -115,7 +116,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({
       "docs/notes.md": "exempt",
@@ -159,7 +160,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({ [list]: "exempt" });
@@ -192,7 +193,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({
@@ -231,7 +232,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({
@@ -274,7 +275,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({ "src/shared.ts": "executable-delta" });
     const summary = summarizeInvariance(results);
@@ -306,36 +307,81 @@ describe("across a real rebase", () => {
     });
   });
 
-  it("violates when a review claim names the shared file, though the branch's hunks are unchanged", () => {
-    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
-    fixture.write("src/shared.ts", spaced(1) + "export const h = 8;\n");
+  /**
+   * The results for a shared file the rebase left the branch's hunks to,
+   * `src/util/shared.ts`, under a ledger whose one claim has `file`.
+   */
+  const sharedFileUnderClaim = (file) => {
+    const fixture = rebaseFixture({ "src/util/shared.ts": spaced(1) });
+    fixture.write("src/util/shared.ts", spaced(1) + "export const h = 8;\n");
     const oldHead = fixture.commit("Append to the shared file");
     fixture.git(["switch", "-q", "staging"]);
-    fixture.write("src/shared.ts", spaced(11));
+    fixture.write("src/util/shared.ts", spaced(11));
     const newBase = fixture.commit("Change the same file at the top");
     const newHead = rebaseOntoStaging(fixture);
 
-    const claimFiles = claimFilesOf(
+    const claim = { claim: "c", verdict: "HOLDS" };
+    if (file !== undefined) claim.file = file;
+    const claims = claimFilesOf(
       JSON.stringify({ round: 1, kind: "light", clusters: [] }) +
         "\n" +
         JSON.stringify({
           round: 2,
           kind: "security-reviewer",
-          claims: [{ claim: "c", verdict: "HOLDS", file: "src/shared.ts" }],
+          claims: [claim],
         }) +
         "\n",
     );
-    const { results } = shared({
-      fixture,
-      oldHead,
-      newBase,
-      newHead,
-      claimFiles,
+    return shared({ fixture, oldHead, newBase, newHead, claims }).results;
+  };
+
+  it.each([
+    ["names the file", "src/util/shared.ts"],
+    ["names it with a line range", "src/util/shared.ts:8"],
+    ["names a directory above it", "src/util"],
+    ["names a directory above it with a trailing slash", "src/util/"],
+    [
+      "names it under an absolute worktree path",
+      "/workspace/.claude/worktrees/agent-a1/src/util/shared.ts",
+    ],
+    [
+      "names a directory above it under an absolute worktree path",
+      "/workspace/.claude/worktrees/agent-a1/src/util",
+    ],
+  ])(
+    "violates when a review claim %s, though the branch's hunks are unchanged",
+    (_, file) => {
+      const results = sharedFileUnderClaim(file);
+      expect(byPath(results)).toEqual({ "src/util/shared.ts": "claim-named" });
+      const summary = summarizeInvariance(results);
+      expect(summary).toMatchObject({ holds: false, exitCode: 1 });
+      expect(violationLine(summary.first)).toMatch(/a review claim names it/);
+    },
+  );
+
+  it.each([
+    ["is empty", ""],
+    ["is missing", undefined],
+    ["names the whole worktree", "/workspace/.claude/worktrees/agent-a1/"],
+  ])("turns the hunk comparison off when a claim's file %s", (_, file) => {
+    const [result] = sharedFileUnderClaim(file);
+    expect(result).toMatchObject({
+      path: "src/util/shared.ts",
+      verdict: "executable-delta",
+      where: "base",
+      reason: expect.stringMatching(/names no file/),
     });
-    expect(byPath(results)).toEqual({ "src/shared.ts": "claim-named" });
-    const summary = summarizeInvariance(results);
-    expect(summary).toMatchObject({ holds: false, exitCode: 1 });
-    expect(violationLine(summary.first)).toMatch(/a review claim names it/);
+    expect(summarizeInvariance([result]).holds).toBe(false);
+  });
+
+  it.each([
+    ["another file", "src/util/other.ts"],
+    ["a sibling directory sharing a prefix", "src/ut"],
+    ["a file outside every checkout", "/tmp/tmp.x/src/util"],
+  ])("keeps same-hunks when the only claim names %s", (_, file) => {
+    expect(byPath(sharedFileUnderClaim(file))).toEqual({
+      "src/util/shared.ts": "same-hunks",
+    });
   });
 
   it("violates when the staging change overlaps a branch hunk's context and the rebase still applies", () => {
@@ -512,7 +558,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({ "package.json": "unverifiable" });
     expect(summarizeInvariance(results)).toMatchObject({
@@ -540,7 +586,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(results).toEqual([]);
     expect(summarizeInvariance(results)).toMatchObject({
@@ -652,7 +698,7 @@ describe("path collection", () => {
       newBase: "c",
       newHead: "d",
       git,
-      claimFiles: NO_CLAIMS,
+      claims: NO_CLAIMS,
     });
     expect(collected.results).toEqual([]);
     expect(collected.unreadable).toHaveLength(2);
@@ -692,21 +738,47 @@ describe("the claims a ledger names", () => {
           claims: [
             { claim: "c", verdict: "HOLDS", file: "src/a.ts" },
             { claim: "d", verdict: "HOLDS", file: "" },
+            { claim: "e", verdict: "HOLDS" },
+            { claim: "f", verdict: "HOLDS", file: "/repo/src/b.ts" },
+            { claim: "g", verdict: "HOLDS", file: "/repo" },
           ],
         },
       ]
         .map((row) => JSON.stringify(row))
         .join("\n") + "\n";
-    expect(claimFilesOf(ledger)).toEqual(new Set(["src/a.ts"]));
+    expect(claimFilesOf(ledger, { checkoutRoots: ["/repo/"] })).toEqual({
+      files: new Set(["src/a.ts", "src/b.ts"]),
+      unscoped: 3,
+    });
     expect(() => claimFilesOf(ledger + "[1]\n")).toThrow(/line 3/);
     expect(() => claimFilesOf("not json\n")).toThrow();
   });
 
-  it("matches a claim whose file contains the path", () => {
-    const files = new Set(["src/a.ts:10-20", "src/b.ts"]);
-    expect(claimNames(files, "src/a.ts")).toBe(true);
-    expect(claimNames(files, "src/b.ts")).toBe(true);
-    expect(claimNames(files, "src/c.ts")).toBe(false);
+  it.each([
+    ["src/a.ts", "src/a.ts"],
+    ["./src/a.ts", "src/a.ts"],
+    ["src/util/", "src/util"],
+    ["/workspace/.claude/worktrees/agent-a1/src/a.ts", "src/a.ts"],
+    [".claude/worktrees/agent-a1/src/a.ts", "src/a.ts"],
+    ["/workspace/.claude/worktrees/agent-a1", ""],
+    ["/workspace/src/a.ts", "src/a.ts"],
+    ["/workspace", ""],
+    ["/workspaces/src/a.ts", "/workspaces/src/a.ts"],
+    ["/tmp/tmp.x/a.cpp", "/tmp/tmp.x/a.cpp"],
+  ])("reads the claim file %j as %j", (file, relative) => {
+    expect(repoRelativeClaimFile(file, ["/workspace"])).toBe(relative);
+  });
+
+  it("matches a claim whose file is the path, a directory above it, or contains it", () => {
+    const claims = {
+      files: new Set(["src/a.ts:10-20", "src/b.ts", "lib/util"]),
+      unscoped: 0,
+    };
+    expect(claimNames(claims, "src/a.ts")).toBe(true);
+    expect(claimNames(claims, "src/b.ts")).toBe(true);
+    expect(claimNames(claims, "lib/util/x.ts")).toBe(true);
+    expect(claimNames(claims, "src/c.ts")).toBe(false);
+    expect(claimNames(claims, "lib/utility.ts")).toBe(false);
   });
 });
 

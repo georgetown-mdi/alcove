@@ -387,7 +387,8 @@ Each path is recorded on the checklist line naming both shas:
   Recorded as a rebase-invariance verification naming both heads. An executable
   line a conflict resolution invented or changed in a branch hunk, a staging
   change inside a branch hunk or its three lines of context, a shared file a
-  claim in the ledger names, a shared YAML file, and a path the comparison
+  claim in the ledger names (or any shared file, when a claim names no file),
+  a shared YAML file, and a path the comparison
   cannot read each void it and take a full round; so does a head of any other
   shape, which the verifier refuses rather than answering about.
 

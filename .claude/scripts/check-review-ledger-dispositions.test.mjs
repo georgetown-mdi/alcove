@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
+import { parseLedger } from "./lib/reviewLedger.mjs";
 import {
   LEGACY_CUTOFF_DATE,
   LIMIT_RULE_DATE,
   capRaiseCheck,
   checkLedger,
-  parseLedger,
   remapFixCommits,
 } from "./check-review-ledger-dispositions.mjs";
 
@@ -525,9 +525,9 @@ describe("the command line", { timeout: 60_000 }, () => {
     const refused = runScript(fixture.dir, [ledgerPath, oldHead]);
     expect(refused.status).toBe(1);
     expect(refused.stdout).toMatch(
-      /\[REFUSED\] cap raises: 2 recorded\n\s+the second cap raise records no "stepBack"/,
+      /^cap raises: REFUSED -- the second cap raise records no "stepBack";/m,
     );
-    expect(refused.stdout).toMatch(/dispositions: REFUSED -- 1 entry fail/);
+    expect(refused.stdout).toMatch(/^dispositions: PASS -- 0 checked/m);
   });
 
   it("exits 1 on a reachable limit with no limits line, 0 once it is internal", () => {

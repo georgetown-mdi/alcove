@@ -34,13 +34,15 @@
 // LIMIT_RULE_DATE is exempt from the `limit` rule. Git runs in the worktree the
 // process was invoked from; name full shas, not a per-worktree ref.
 //
-// Exit 0 every held entry passes; 1 an entry is refused; 2 usage, an
-// unreadable ledger line, an invocation outside a git worktree, or a git error.
+// Exit 0 every held entry and the cap raises pass; 1 an entry or the cap raises
+// are refused, each reported on its own summary line; 2 usage, an unreadable
+// ledger line, an invocation outside a git worktree, or a git error.
 // Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseLedger } from "./lib/reviewLedger.mjs";
 import { isAncestor } from "./verify-rebase-invariance.mjs";
 
 /** Rows dated on or after this day are never treated as legacy. */
@@ -48,28 +50,6 @@ export const LEGACY_CUTOFF_DATE = "2026-10-01";
 
 /** Rows dated on or after this day are held to the `limit` check. */
 export const LIMIT_RULE_DATE = "2026-10-07";
-
-/**
- * The ledger's rows as `{rows, unreadable}`. Each row keeps the index of the
- * line it came from so `--remap` can rewrite that line alone; a line that is
- * not a JSON object lands in `unreadable`.
- */
-export function parseLedger(text) {
-  const rows = [];
-  const unreadable = [];
-  text.split("\n").forEach((line, lineIndex) => {
-    if (line.trim() === "") return;
-    try {
-      const row = JSON.parse(line);
-      if (row === null || typeof row !== "object" || Array.isArray(row))
-        throw new Error("not a JSON object");
-      rows.push({ lineIndex, row });
-    } catch (error) {
-      unreadable.push({ lineNumber: lineIndex + 1, reason: error.message });
-    }
-  });
-  return { rows, unreadable };
-}
 
 const dispositionsOf = (row) =>
   Array.isArray(row.dispositions) ? row.dispositions : [];
@@ -424,21 +404,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (status !== "ok") process.stdout.write(`            ${reason}\n`);
     }
     const caps = capRaiseCheck(rows);
-    process.stdout.write(
-      caps.reason === null
-        ? `  [OK     ] cap raises: ${caps.count} recorded\n`
-        : `  [REFUSED] cap raises: ${caps.count} recorded\n            ${caps.reason}\n`,
-    );
     const refused = results.filter((r) => r.status === "refused").length;
     const skipped = results.filter((r) => r.status === "skipped").length;
     const preRule = results.filter((r) => r.status === "pre-rule").length;
-    const failed = refused + (caps.reason === null ? 0 : 1);
     process.stdout.write(
-      failed === 0
+      refused === 0
         ? `\ndispositions: PASS -- ${results.length - skipped - preRule} checked, ${skipped} skipped as legacy${preRule === 0 ? "" : `, ${preRule} limits before the limit rule`}\n`
-        : `\ndispositions: REFUSED -- ${failed} entr${failed === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"; record the step-back on a branch's second cap raise\n`,
+        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
     );
-    process.exit(failed === 0 ? 0 : 1);
+    process.stdout.write(
+      caps.reason === null
+        ? `cap raises: PASS -- ${caps.count} recorded\n`
+        : `cap raises: REFUSED -- ${caps.reason}; record each raise in a "capRaises" list, and a "stepBack" on the second\n`,
+    );
+    process.exit(refused === 0 && caps.reason === null ? 0 : 1);
   } catch (error) {
     process.stderr.write(`error: ${error.message ?? error}\n`);
     process.exit(2);

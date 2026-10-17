@@ -16,7 +16,8 @@
 // path the staging range changed is invariant when the branch's own hunks to it
 // are unchanged instead: the same `git patch-id --verbatim` over the
 // comment-free canonical form of its base-to-head diff, three lines of context
-// included, at both ends -- unless a claim in the ledger's rows names the path.
+// included, at both ends -- unless a claim in the ledger's rows names the path,
+// or any claim names no file.
 // Refuses on shape unless each base is an ancestor of its own head, the new base
 // descends from the old, and the pre-rebase head is not an ancestor of the new
 // head. A diff record it does not model fails the run.
@@ -31,7 +32,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import {
@@ -41,6 +42,7 @@ import {
   parseChangedPaths,
   soundnessProbes,
 } from "./verify-nonexecutable-delta.mjs";
+import { parseLedger } from "./lib/reviewLedger.mjs";
 
 /**
  * The paths one end's branch diff touches, as `{paths, unreadable}`. A record
@@ -178,38 +180,70 @@ export function hunkIdentity(before, after) {
   }
 }
 
+const WORKTREE_PREFIX = /^(?:.*\/)?\.claude\/worktrees\/[^/]+(?:\/|$)/;
+
 /**
- * Every path a claim in a ledger's rows names, read from the `file` field of
- * each row's `claims`. A line that is not a JSON object throws, so a ledger the
- * run cannot read does not pass for one naming no path.
+ * A claim's `file` as a repo-relative path: a prefix up to a
+ * `.claude/worktrees/<name>/` directory, or one of `checkoutRoots` (absolute
+ * checkout roots), is stripped, as are a leading `./` and trailing slashes. A
+ * file naming a checkout root itself comes back as "".
  */
-export function claimFilesOf(text) {
-  const files = new Set();
-  text.split("\n").forEach((line, index) => {
-    if (line.trim() === "") return;
-    let row;
-    try {
-      row = JSON.parse(line);
-    } catch {
-      row = null;
-    }
-    if (row === null || typeof row !== "object" || Array.isArray(row))
-      throw new Error(`ledger line ${index + 1} is not a JSON object`);
-    for (const claim of Array.isArray(row.claims) ? row.claims : []) {
-      if (typeof claim?.file === "string" && claim.file !== "")
-        files.add(claim.file);
-    }
-  });
-  return files;
+export function repoRelativeClaimFile(file, checkoutRoots = []) {
+  let relative = file.trim();
+  if (WORKTREE_PREFIX.test(relative)) {
+    relative = relative.replace(WORKTREE_PREFIX, "");
+  } else {
+    const root = checkoutRoots
+      .map((candidate) => candidate.replace(/\/+$/, ""))
+      .find(
+        (bare) =>
+          bare !== "" && (relative === bare || relative.startsWith(`${bare}/`)),
+      );
+    if (root !== undefined) relative = relative.slice(root.length + 1);
+  }
+  return relative
+    .replace(/^(?:\.\/)+/, "")
+    .replace(/\/+$/, "")
+    .replace(/^\.$/, "");
 }
 
 /**
- * Whether a claim names `path`. A claim's `file` is free text, so one that
- * contains the path anywhere counts: matching too much costs a round, and
- * matching too little admits a path a claim covers.
+ * The claims in a ledger's rows, as `{files, unscoped}`: `files` is each
+ * claim's `file` field made repo-relative by `repoRelativeClaimFile`, and
+ * `unscoped` counts the claims whose `file` is missing, not a string, or names
+ * no path below a checkout root. A line that is not a JSON object throws, so a
+ * ledger the run cannot read does not pass for one naming no path.
  */
-export function claimNames(claimFiles, path) {
-  return [...claimFiles].some((file) => file.includes(path));
+export function claimFilesOf(text, { checkoutRoots = [] } = {}) {
+  const { rows, unreadable } = parseLedger(text);
+  if (unreadable.length > 0)
+    throw new Error(
+      `ledger line ${unreadable[0].lineNumber} is not a JSON object`,
+    );
+  const files = new Set();
+  let unscoped = 0;
+  for (const { row } of rows) {
+    for (const claim of Array.isArray(row.claims) ? row.claims : []) {
+      const relative =
+        typeof claim?.file === "string"
+          ? repoRelativeClaimFile(claim.file, checkoutRoots)
+          : "";
+      if (relative === "") unscoped += 1;
+      else files.add(relative);
+    }
+  }
+  return { files, unscoped };
+}
+
+/**
+ * Whether a claim names `path`: its file is the path, a directory above it, or
+ * free text containing it. Matching too much costs a round, and matching too
+ * little admits a path a claim covers.
+ */
+export function claimNames(claims, path) {
+  return [...claims.files].some(
+    (file) => path.startsWith(`${file}/`) || file.includes(path),
+  );
 }
 
 /**
@@ -239,7 +273,7 @@ export function sharedPathVerdict({
   newBase,
   newHead,
   git,
-  claimFiles,
+  claims,
 }) {
   const sides = [oldBase, oldHead, newBase, newHead].map((ref) =>
     canonicalSource(textAt({ ref, path, git }), path),
@@ -255,7 +289,7 @@ export function sharedPathVerdict({
   const [a, b, c, d] = sides.map((side) => side.canonical);
   if (hunkIdentity(a, b) !== hunkIdentity(c, d))
     return { path, verdict: "executable-delta", where: "hunks" };
-  if (claimNames(claimFiles, path))
+  if (claimNames(claims, path))
     return {
       path,
       verdict: "claim-named",
@@ -270,9 +304,10 @@ export function sharedPathVerdict({
  * Per-path results for the branch's diff across the rebase. `git` runs one git
  * command from an array of arguments and returns its stdout, throwing on a
  * nonzero exit; injecting it lets a test drive a fixture repository through the
- * same code the CLI runs against this one. `claimFiles` is `claimFilesOf` the
- * branch's ledger. `unreadable` holds the diff records whose shape stopped the
- * run from naming a path set at all.
+ * same code the CLI runs against this one. `claims` is `claimFilesOf` the
+ * branch's ledger; one claim naming no file could cover any shared path, so it
+ * turns the hunk comparison off. `unreadable` holds the diff records whose
+ * shape stopped the run from naming a path set at all.
  */
 export function collectInvariance({
   oldBase,
@@ -280,10 +315,10 @@ export function collectInvariance({
   newBase,
   newHead,
   git,
-  claimFiles,
+  claims,
 }) {
-  if (!(claimFiles instanceof Set))
-    throw new TypeError("claimFiles is the Set claimFilesOf returns");
+  if (!(claims?.files instanceof Set) || !Number.isInteger(claims.unscoped))
+    throw new TypeError("claims is the {files, unscoped} claimFilesOf returns");
   const before = branchChangedPaths({ base: oldBase, head: oldHead, git });
   const after = branchChangedPaths({ base: newBase, head: newHead, git });
   const unreadable = [...before.unreadable, ...after.unreadable];
@@ -301,21 +336,28 @@ export function collectInvariance({
     paths,
     base,
     head: compare(oldHead, newHead),
-  }).map((result) =>
-    result.verdict === "executable-delta" &&
-    movedAtBase.has(result.path) &&
-    classifyPath(result.path) === "source"
-      ? sharedPathVerdict({
-          path: result.path,
-          oldBase,
-          oldHead,
-          newBase,
-          newHead,
-          git,
-          claimFiles,
-        })
-      : result,
-  );
+  }).map((result) => {
+    const shared =
+      result.verdict === "executable-delta" &&
+      movedAtBase.has(result.path) &&
+      classifyPath(result.path) === "source";
+    if (!shared) return result;
+    if (claims.unscoped > 0)
+      return {
+        ...result,
+        reason:
+          "a claim in the ledger names no file, so it could cover this path and the branch's hunks are not compared",
+      };
+    return sharedPathVerdict({
+      path: result.path,
+      oldBase,
+      oldHead,
+      newBase,
+      newHead,
+      git,
+      claims,
+    });
+  });
   return { results, unreadable };
 }
 
@@ -419,9 +461,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     });
 
   const { oldBase, oldHead, newBase, newHead, ledger } = parsed;
-  let claimFiles;
+  let claims;
   try {
-    claimFiles = claimFilesOf(readFileSync(ledger, "utf8"));
+    const primaryCheckout = dirname(
+      git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
+    );
+    claims = claimFilesOf(readFileSync(ledger, "utf8"), {
+      checkoutRoots: [worktree, primaryCheckout],
+    });
   } catch (error) {
     process.stderr.write(
       `error: cannot read the claims in ${ledger}: ${error.message ?? error}\n`,
@@ -429,7 +476,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(2);
   }
 
-  const refs = { oldBase, oldHead, newBase, newHead, git, claimFiles };
+  const refs = { oldBase, oldHead, newBase, newHead, git, claims };
   let collected;
   try {
     for (const ref of [oldBase, oldHead, newBase, newHead]) {
@@ -453,7 +500,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   process.stdout.write(`worktree: ${worktree}\n`);
   process.stdout.write(
-    `ledger: ${ledger} (${claimFiles.size} path(s) named by a claim)\n`,
+    `ledger: ${ledger} (${claims.files.size} path(s) named by a claim${claims.unscoped > 0 ? `; ${claims.unscoped} claim(s) name no file, so no shared file is admitted by its hunks` : ""})\n`,
   );
   process.stdout.write(
     `branch diff before the rebase: ${oldBase}..${oldHead}\n`,
