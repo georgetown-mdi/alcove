@@ -459,25 +459,43 @@ or which override forced an edge.
 
 **A later range bump splits across the workspace boundary.** This is the
 behavior an author who adds an override and moves on meets later. With a root
-`overrides` block present, npm 11.17 does not hoist a later range bump
+`overrides` block present, npm does not always hoist a later range bump
 incrementally: the stale hoisted copy is kept and the new version is nested
-under the workspace that raised its range. What an operator or
-reviewer actually sees is not that mechanism but its result -- two copies of one
-package split across the workspace boundary, resolved by different dependents --
-and nothing at install time reports the split.
+under the workspace that raised its range. What an operator or reviewer
+actually sees is not that mechanism but its result -- two copies of one package
+split across the workspace boundary, resolved by different dependents -- and
+nothing at install time reports the split.
 
-The split is a property of npm 11.17. Re-driven 2026-10-01 by re-applying the
-`vite` bump below to the lockfile it started from and running
-`npm install --package-lock-only`, with the block present and with it removed:
+The split depends on the command as well as the npm release. Re-driven
+2026-10-01 by re-applying the `vite` bump below to the lockfile it started from
+and running `npm install --package-lock-only`, with the block present and with
+it removed:
 
 - npm 11.17.0 keeps `node_modules/vite` at 8.1.4 and nests the bumped range's
   8.3.2 under `apps/web` with the block present, and hoists 8.3.2 to the root
   with it removed.
 - npm 11.18.0, 11.19.0 and 11.19.1 hoist 8.3.2 to the root either way.
 
-So a lockfile update driven by npm 11.17 can still produce the split, whether
-run by hand or by a bump tool whose bundled npm is that release; no bump tool
-was driven here.
+Re-driven 2026-10-17 on npm 11.20.0, with the block present and not toggled.
+`vite` has no release after the 8.3.4 the lockfile holds, so `playwright`, which
+`apps/web` declares and the root also holds, stood in for it:
+
+- A named install into the workspace, `npm install -w apps/web playwright@1.64.1`
+  over a root `playwright` 1.64.0, nests `playwright` and `playwright-core`
+  1.64.1 under `apps/web`, and `scripts/check-nested-root-package.mjs` fails
+  naming both.
+- Deleting those two `apps/web/node_modules` lockfile entries and running
+  `npm install --package-lock-only` hoists 1.64.1 to the root and the check
+  passes, so the remedy below clears the split on this release.
+- Raising only the range in `apps/web/package.json` and running
+  `npm install --package-lock-only` on the same bump hoists 1.64.1 to the root
+  and nests nothing.
+
+So a lockfile update can still produce the split: a named workspace install on
+npm 11.20.0, or a re-resolve on npm 11.17, run by hand or by a bump tool whose
+bundled npm is such a release. A named install was driven only on npm 11.20.0,
+not on 11.17 through 11.19.1, and only with the block present, so whether it
+splits without the block is not measured. No bump tool was driven here.
 
 **Measured** on the `apps/web` bump of `vite` from `^8.1.4` to `^8.1.5`: the
 regenerated lockfile kept `node_modules/vite` at 8.1.4 and nested
