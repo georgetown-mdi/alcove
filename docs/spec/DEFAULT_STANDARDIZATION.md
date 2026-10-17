@@ -831,7 +831,13 @@ area instead of the full ZIP with the `zip3` transform. It keeps the first
 three digits of the cleaned five-digit value, leading zeros included, so
 `02139` becomes `021`; any value that is not exactly five digits is dropped.
 It is a key-element transform, not part of this pipeline, and the consent
-display states it on each key that uses it.
+display states it on each key that uses it. Over a date, the consent display
+measures a `zip3` as it measures a `substring` keeping the first three
+characters, with one limit those share: a `coalesce` between the `parse_date`
+and the `zip3` is read as fixed by the date's layout, so an element whose
+`coalesce` default is what reaches the `zip3` is reported as a key that can
+never match, and the exchange is refused, rather than marked as matching any
+date.
 
 ### `state`
 

@@ -123,3 +123,4 @@
 - - -> `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false`
 - - -> `county` | `county`, `county_name`, `countyname` | `linkage` | `false`
 - - -> A `zip3` and a `state_code` fix a width of 3 and 2 characters whatever value they are handed, and replace the width handed to them the same way.
+- - -> Over a date, the consent display measures a `zip3` as it measures a `substring` keeping the first three characters, with one limit those share: a `coalesce` between the `parse_date` and the `zip3` is read as fixed by the date's layout, so an element whose `coalesce` default is what reaches the `zip3` is reported as a key that can never match, and the exchange is refused, rather than marked as matching any date.
