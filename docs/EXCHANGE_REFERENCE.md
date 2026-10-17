@@ -402,7 +402,7 @@ Two spellings of the same pipeline are the same pipeline: an omitted `transform`
 *Required:* no  
 *Consistency:* mandatory when both parties declare one
 
-The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships, beside its earlier version.
+The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships.
 
 ```yaml
 linkage_terms:

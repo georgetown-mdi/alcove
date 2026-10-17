@@ -1,6 +1,7 @@
 {
   "pins": {
     "baseline-pii": {
+      "1.0.0": "sha256:9aed0ced1287e7c6ddba25b5ffae15a6b3f611e00d9b101ac324b1f8263acee0",
       "1.1.0": "sha256:51c383bcc2328effe4ca28da7033bab82c250839540bc427fab192c2f0cd37ca"
     },
     "precision-ranked-rules": {

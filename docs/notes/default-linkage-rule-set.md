@@ -227,31 +227,29 @@ on.
 
 ## Why both names are neutral
 
-`baseline-pii` names the fields by what they are; the key set's name states the
-class of system its keys serve. Neither names who validated anything. That is
-by design, for three reasons.
+`baseline-pii` names the fields by what they are, and `precision-ranked-rules`
+names the keys by how they are organized: ranked by precision, so a party can
+select them by floor. Neither names who validated anything, and neither names a
+class of system or a use case. That is by design, for three reasons.
 
 1. **The repository is public and the attribution is not the product's to
    publish.** Naming a validating partner in source code publishes an
    association that partner did not agree to publish, permanently and in a place
    nobody can retract it from. Attribution belongs in user-facing communications
    and in an agreement, where it can be made with the partner's consent and
-   withdrawn. A system class is not an attribution: the key set's name states
-   the kind of system the keys were settled for, which is a property of the
-   keys, not the identity of anyone who ran one.
+   withdrawn.
 2. **Each name claims exactly the scope its artifact has.** The fields match on
    SSN, names, and date of birth, which is not specific to any jurisdiction or
    program: `baseline` says what they are -- the built-in substrate everything
-   else starts from -- with no use case attached. The keys are the narrower
-   thing, so their name states the use case rather than implying an
-   applicability they have not been shown to have. A single name over both would
-   have to be wrong in one direction: general enough for the fields and
-   overclaiming for the keys, or accurate for the keys and misleadingly narrow
-   for the fields.
+   else starts from -- with no use case attached. The keys are named for their
+   structure, not for a kind of system or program, so the name implies no
+   applicability they have not been shown to have. An earlier key set, named for
+   the kind of system it served, has been retired; the current names say what
+   the set is, not who uses it.
 3. **A name should not make a claim the repository cannot substantiate.**
    Calling either set "validated" or "certified" in its own identifier would put
    a claim into every citation of it that this repository holds no evidence for
-   (see the limits above). These names say what the rules are for; the
+   (see the limits above). These names say what the rules are, and the
    provenance is here, where it can be qualified.
 
 The cost of a neutral name is that the trust anchor -- the engagement that
