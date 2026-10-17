@@ -254,7 +254,7 @@ describe("block-worktree-deletions hook", () => {
       `git -C /repo worktree unlock ${SIBLING}`,
     ]);
 
-    const { dir, tree } = makeRepoWithWorktree();
+    const { dir, tree, precious } = makeRepoWithWorktree();
     execFileSync("git", ["worktree", "lock", tree], { cwd: dir });
     const locked = spawnSync("git", ["worktree", "remove", tree], {
       cwd: dir,
@@ -264,6 +264,12 @@ describe("block-worktree-deletions hook", () => {
     expect(locked.stderr).toContain("cannot remove a locked working tree");
     expect(locked.stderr).toContain("unlock first");
     execFileSync("git", ["worktree", "unlock", tree], { cwd: dir });
+    const unlocked = spawnSync("git", ["worktree", "remove", tree], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(unlocked.status).not.toBe(0);
+    expect(existsSync(precious)).toBe(true);
     const options = { cwd: dir, projectDir: dir };
     expectAllowed(
       [`git worktree unlock ${tree}`, `git worktree remove ${tree}`],
