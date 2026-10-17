@@ -937,12 +937,12 @@ steps:
   - function: trim_whitespace
   - function: squash_spaces
   - function: remove_accents
-  - function: remove_non_ascii
-  - function: to_upper_case
   - function: replace_regex
     params:
-      pattern: "-"
+      pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]"
       replacement: " "
+  - function: remove_non_ascii
+  - function: to_upper_case
   - function: remove_punctuation
   - function: replace_regex
     params:
@@ -956,8 +956,8 @@ steps:
 ```
 
 Result: an uppercase county name with the word `COUNTY` and punctuation
-removed. A hyphen becomes a space before punctuation is removed, so
-`Miami-Dade` and `Miami Dade` agree, while an apostrophe is deleted, so
+removed. A hyphen or typographic dash (an en dash, for one) becomes a space before non-ASCII characters and punctuation are removed, so
+`Miami-Dade`, `Miami–Dade` and `Miami Dade` agree, while an apostrophe is deleted, so
 `Prince George's` and `Prince Georges` agree. A leading `COUNTY OF` is removed
 as well as the word `COUNTY` anywhere in the value. A value left with no letter
 or digit is dropped. No other spelling is reconciled: `St Marys` and `Saint
@@ -978,6 +978,7 @@ name.
 | `"montgomery"` | `"MONTGOMERY"` |
 | `"Prince George's County"` | `"PRINCE GEORGES"` |
 | `"Miami-Dade"` | `"MIAMI DADE"` |
+| `"Miami–Dade"` | `"MIAMI DADE"` |
 | `"County of Los Angeles"` | `"LOS ANGELES"` |
 | `"County"` | `null` |
 | `""` | `null` |

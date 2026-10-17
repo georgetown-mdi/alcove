@@ -101,12 +101,12 @@
 - - -> `""` | `null`
 - - -> `""` | `null`
 - - -> `county`
-- - -> pattern: "-"
+- - -> pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]"
 - - -> replacement: " "
 - - -> pattern: "^COUNTY OF |\\bCOUNTY\\b"
 - - -> pattern: "[A-Z0-9]"
 - - -> Result: an uppercase county name with the word `COUNTY` and punctuation removed.
-- - -> A hyphen becomes a space before punctuation is removed, so `Miami-Dade` and `Miami Dade` agree, while an apostrophe is deleted, so `Prince George's` and `Prince Georges` agree.
+- - -> A hyphen or typographic dash (an en dash, for one) becomes a space before non-ASCII characters and punctuation are removed, so `Miami-Dade`, `Miami–Dade` and `Miami Dade` agree, while an apostrophe is deleted, so `Prince George's` and `Prince Georges` agree.
 - - -> A leading `COUNTY OF` is removed as well as the word `COUNTY` anywhere in the value.
 - - -> A value left with no letter or digit is dropped.
 - - -> No other spelling is reconciled: `St Marys` and `Saint Marys` stay different, as do `DeKalb` and `De Kalb`; an abbreviated `Co` and the words `Parish` and `Borough` are kept.
@@ -117,6 +117,7 @@
 - - -> `"montgomery"` | `"MONTGOMERY"`
 - - -> `"Prince George's County"` | `"PRINCE GEORGES"`
 - - -> `"Miami-Dade"` | `"MIAMI DADE"`
+- - -> `"Miami–Dade"` | `"MIAMI DADE"`
 - - -> `"County of Los Angeles"` | `"LOS ANGELES"`
 - - -> `"County"` | `null`
 - - -> `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false`

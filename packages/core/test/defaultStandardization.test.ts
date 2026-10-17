@@ -1457,6 +1457,7 @@ describe("default county pipeline", () => {
     ["Prince George's County", "PRINCE GEORGES"],
     ["St. Mary's", "ST MARYS"],
     ["Miami-Dade County", "MIAMI DADE"],
+    ["Miami–Dade County", "MIAMI DADE"],
     ["County of Los Angeles", "LOS ANGELES"],
     ["Doña Ana County", "DONA ANA"],
     ["  Fairfax   County  ", "FAIRFAX"],

@@ -161,15 +161,18 @@ const STATE_STEPS: StandardizationStep[] = [
 ];
 
 // An uppercase county name with the word COUNTY, a leading "COUNTY OF", and
-// punctuation removed. A hyphen becomes a space first, so MIAMI-DADE and
-// MIAMI DADE agree.
+// punctuation removed. A hyphen or typographic dash becomes a space first, so
+// MIAMI-DADE and MIAMI DADE agree.
 const COUNTY_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "squash_spaces" },
   { function: "remove_accents" },
+  {
+    function: "replace_regex",
+    params: { pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]", replacement: " " },
+  },
   { function: "remove_non_ascii" },
   { function: "to_upper_case" },
-  { function: "replace_regex", params: { pattern: "-", replacement: " " } },
   { function: "remove_punctuation" },
   {
     function: "replace_regex",
