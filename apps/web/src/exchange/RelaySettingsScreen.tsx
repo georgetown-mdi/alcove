@@ -71,12 +71,6 @@ export const NOTHING_SAVED =
   "relays. Check that site storage is allowed for this site, then save " +
   "again.";
 
-/** The status after a remove while the stored restriction is unreadable. */
-export const REMOVED_RESTRICTION_UNREADABLE =
-  "The relay was removed. Every exchange in this browser is still refused " +
-  "because the saved allowed relays could not be read. Save the relay " +
-  "settings to replace them.";
-
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(
   lines: RelayUrlLines | AllowedRelayLines,
@@ -91,17 +85,12 @@ function fieldError(
     .join("; ");
 }
 
-/**
- * The relays a run may use, with the notice of a stored value this build
- * cannot read while `unreadable`.
- */
+/** The relays a run may use. */
 function AllowedRelaysControls({
-  unreadable,
   allowedText,
   allowedError,
   onAllowedText,
 }: {
-  unreadable: boolean;
   allowedText: string;
   allowedError: string | undefined;
   onAllowedText: (text: string) => void;
@@ -109,16 +98,6 @@ function AllowedRelaysControls({
   return (
     <>
       <p>{ALLOWED_RELAYS_SCOPE}</p>
-
-      {unreadable && (
-        <Alert
-          color="yellow"
-          title="The saved allowed relays could not be read"
-        >
-          Every exchange in this browser is refused until the relay settings are
-          saved again. Enter your allowed relays and save.
-        </Alert>
-      )}
 
       <Stack gap="md" mt="md">
         <Textarea
@@ -141,8 +120,6 @@ type SaveStatus =
   | { kind: "saved" }
   | { kind: "savedWithoutRelay" }
   | { kind: "removed" }
-  /** The relay was removed, and the stored restriction is unreadable. */
-  | { kind: "removedRestrictionUnreadable" }
   /** The relay server addresses were not stored; nothing else was written. */
   | { kind: "failed" }
   /** The restriction was stored, and the relay server addresses were not. */
@@ -173,13 +150,8 @@ export function RelaySettingsScreen({
     initial.kind === "set" ? initial.relay.stun.join("\n") : "",
   );
   const [initialRestriction] = useState(readRelayRestriction);
-  const [restrictionUnreadable, setRestrictionUnreadable] = useState(
-    initialRestriction.kind === "unreadable",
-  );
   const [allowedText, setAllowedText] = useState(
-    initialRestriction.kind === "set"
-      ? (initialRestriction.restriction.allowedRelays ?? []).join("\n")
-      : "",
+    (initialRestriction.allowedRelays ?? []).join("\n"),
   );
   const [attempted, setAttempted] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
@@ -190,9 +162,7 @@ export function RelaySettingsScreen({
     initial.kind === "set" ? initial.relay.turn : [],
   );
   const [savedAllowed, setSavedAllowed] = useState<ReadonlyArray<string>>(
-    initialRestriction.kind === "set"
-      ? (initialRestriction.restriction.allowedRelays ?? [])
-      : [],
+    initialRestriction.allowedRelays ?? [],
   );
 
   const turnLines = parseRelayUrlLines(turnText, "turn");
@@ -209,11 +179,7 @@ export function RelaySettingsScreen({
 
   function refreshTestTargets(turn: ReadonlyArray<string>) {
     setSavedTurn(turn);
-    const stored = readRelayRestriction();
-    setRestrictionUnreadable(stored.kind === "unreadable");
-    setSavedAllowed(
-      stored.kind === "set" ? (stored.restriction.allowedRelays ?? []) : [],
-    );
+    setSavedAllowed(readRelayRestriction().allowedRelays ?? []);
     setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
   }
 
@@ -268,16 +234,11 @@ export function RelaySettingsScreen({
       setTurnText("");
       setStunText("");
       setAttempted(false);
-      const stored = readRelayRestriction();
       setStatus({
         kind:
-          consoleBuild ||
-          (stored.kind === "set" &&
-            stored.restriction.allowedRelays === undefined)
+          consoleBuild || readRelayRestriction().allowedRelays === undefined
             ? "removed"
-            : stored.kind === "unreadable"
-              ? "removedRestrictionUnreadable"
-              : "savedWithoutRelay",
+            : "savedWithoutRelay",
       });
     } catch {
       setStatus({ kind: "failed" });
@@ -344,7 +305,6 @@ export function RelaySettingsScreen({
         <p>{CONSOLE_RELAY_RESTRICTION_LINE}</p>
       ) : (
         <AllowedRelaysControls
-          unreadable={restrictionUnreadable}
           allowedText={allowedText}
           allowedError={allowedError}
           onAllowedText={(text) => {
@@ -373,8 +333,6 @@ export function RelaySettingsScreen({
           {status.kind === "restrictionSavedOnly" &&
             RESTRICTION_SAVED_RELAY_NOT_SAVED}
           {status.kind === "nothingSaved" && NOTHING_SAVED}
-          {status.kind === "removedRestrictionUnreadable" &&
-            REMOVED_RESTRICTION_UNREADABLE}
         </p>
       </div>
 

@@ -17,7 +17,7 @@ import {
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
-import { runRelayRestriction } from "./relayRestriction";
+import { readRelayRestriction } from "./relayRestriction";
 
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayLocator } from "./rendezvous";
@@ -53,7 +53,7 @@ export interface DefaultRelayDependencies {
 }
 
 function storedAllowedRelays(): ReadonlyArray<string> | undefined {
-  return runRelayRestriction().allowedRelays;
+  return readRelayRestriction().allowedRelays;
 }
 
 /**

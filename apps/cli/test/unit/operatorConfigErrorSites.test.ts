@@ -470,15 +470,6 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "rather than adopting from the invitation (see the sibling core site " +
       "above).",
   },
-  {
-    file: "apps/web/src/psi/transport/runRelayPlan.ts",
-    anchor: "runRelayList",
-    raises: "OperatorConfigError",
-    interpolates: ["RELAY_RESTRICTION_UNREADABLE"],
-    provenance:
-      "a fixed constant about this browser's own stored relay settings; " +
-      "nothing the stored value holds is quoted.",
-  },
 ];
 
 /** Every TypeScript source under a repository-relative `dir`, sorted. */

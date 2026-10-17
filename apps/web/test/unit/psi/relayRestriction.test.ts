@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { OperatorConfigError, generateSharedSecret } from "@alcove/core";
+import { generateSharedSecret } from "@alcove/core";
 
 import {
   DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
@@ -9,18 +9,13 @@ import {
 } from "@psi/transport/defaultRelay";
 import {
   MAX_ALLOWED_RELAYS,
-  RELAY_RESTRICTION_UNREADABLE,
   allowedRelaysRunNotice,
   parseAllowedRelayLines,
   readRelayRestriction,
-  runRelayRestriction,
   writeRelayRestriction,
 } from "@psi/transport/relayRestriction";
-import {
-  assertRunRelayPlanPossible,
-  relayPlanForRun,
-} from "@psi/transport/runRelayPlan";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
+import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { relayTestTargets } from "@psi/transport/relayTest";
 
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
@@ -56,7 +51,7 @@ afterEach(() => {
 describe("the stored relay restriction", () => {
   test("reads back what was written, and restricts nothing when none is stored", () => {
     const values = stubStorage();
-    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
+    expect(readRelayRestriction()).toEqual({});
     writeRelayRestriction({
       allowedRelays: ["relay.example.org", "backup.example.org:443"],
     });
@@ -65,10 +60,7 @@ describe("the stored relay restriction", () => {
       allowedRelays: ["relay.example.org", "backup.example.org:443"],
     });
     expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: {
-        allowedRelays: ["relay.example.org", "backup.example.org:443"],
-      },
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
     });
   });
 
@@ -80,44 +72,36 @@ describe("the stored relay restriction", () => {
     expect(values.has(STORAGE_KEY)).toBe(false);
   });
 
-  test("a value holding the relayOnly field a pre-release build wrote is read without it", () => {
-    const values = stubStorage();
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        allowedRelays: ["relay.example.org"],
-        relayOnly: true,
-      }),
-    );
-    expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { allowedRelays: ["relay.example.org"] },
-    });
-    values.set(STORAGE_KEY, JSON.stringify({ version: 1, relayOnly: true }));
-    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
-  });
-
-  test("an entry not in its normalized form is refused on write and on read", () => {
-    const values = stubStorage();
+  test("an entry not in its normalized form is refused on write", () => {
+    stubStorage();
     expect(() =>
       writeRelayRestriction({ allowedRelays: ["Relay.Example.org"] }),
     ).toThrow();
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        allowedRelays: ["turns:relay.example.org"],
-      }),
-    );
-    expect(readRelayRestriction()).toEqual({ kind: "unreadable" });
   });
 
-  test("a run under a value it cannot read keeps no relay", () => {
-    expect(runRelayRestriction(() => ({ kind: "unreadable" }))).toEqual({
-      allowedRelays: [],
-      unreadable: true,
-    });
+  test.each([
+    [
+      "a version this build does not know",
+      { version: 2, allowedRelays: ["relay.example.org"] },
+    ],
+    [
+      "a field this build does not know",
+      { version: 1, allowedRelays: ["relay.example.org"], other: true },
+    ],
+    [
+      "an entry not in its normalized form",
+      { version: 1, allowedRelays: ["turns:relay.example.org"] },
+    ],
+  ])("a stored value holding %s is treated as none saved", (_name, value) => {
+    const values = stubStorage();
+    values.set(STORAGE_KEY, JSON.stringify(value));
+    expect(readRelayRestriction()).toEqual({});
+  });
+
+  test("a stored value that is not JSON is treated as none saved", () => {
+    const values = stubStorage();
+    values.set(STORAGE_KEY, "{not json");
+    expect(readRelayRestriction()).toEqual({});
   });
 });
 
@@ -214,41 +198,30 @@ describe("the relays a browser run lists under its allowed relays", () => {
 });
 
 describe("relayPlanForRun", () => {
-  test("a stored restriction this build cannot read refuses the run, naming the saved settings", async () => {
-    const enroll = vi.fn();
-    const planning = relayPlanForRun(
+  test("a stored restriction this build cannot read lets the run proceed with no restriction", async () => {
+    const values = stubStorage();
+    values.set(
+      STORAGE_KEY,
+      JSON.stringify({ version: 2, allowedRelays: ["other.example"] }),
+    );
+    const enroll = vi.fn(() =>
+      Promise.resolve({ kind: "enrolled" as const, lapsesAt: "x" }),
+    );
+    const onRunNotice = vi.fn();
+    const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
-      {
-        readOwn,
-        setting: () => SITE,
-        enroll,
-        restriction: () => runRelayRestriction(() => ({ kind: "unreadable" })),
-      },
+      { readOwn, setting: () => SITE, enroll, onRunNotice },
     );
-    await expect(planning).rejects.toThrow(OperatorConfigError);
-    await expect(planning).rejects.toThrow(RELAY_RESTRICTION_UNREADABLE);
-    expect(enroll).not.toHaveBeenCalled();
-  });
-
-  test("the refusal is available without planning the run", () => {
-    expect(() =>
-      assertRunRelayPlanPossible(undefined, {
-        readOwn: () => ({ kind: "none" }),
-        setting: () => undefined,
-        restriction: () => runRelayRestriction(() => ({ kind: "unreadable" })),
-      }),
-    ).toThrow(RELAY_RESTRICTION_UNREADABLE);
-    expect(() =>
-      assertRunRelayPlanPossible(
-        { turn: [PARTNER_URL] },
-        {
-          readOwn,
-          setting: () => undefined,
-          restriction: () => ({ allowedRelays: ["elsewhere.example.org"] }),
-        },
-      ),
-    ).not.toThrow();
+    expect(plan).toEqual({
+      relay: {
+        turn: [OWN_URL, PARTNER_URL, SITE.turnUrl],
+        stun: ["stun:own.example.org:3478"],
+      },
+      relaysLeftOut: [],
+    });
+    expect(enroll).toHaveBeenCalledOnce();
+    expect(onRunNotice).not.toHaveBeenCalled();
   });
 
   test("keeps the relays named and says which it kept and left out", async () => {

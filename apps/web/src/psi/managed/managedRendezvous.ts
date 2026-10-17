@@ -34,14 +34,10 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
-import {
-  assertRunRelayPlanPossible,
-  relayPlanForRun,
-} from "../transport/runRelayPlan";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
+import { relayPlanForRun } from "../transport/runRelayPlan";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
-import type { RunRelayRefusalDependencies } from "../transport/runRelayPlan";
 
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
@@ -160,27 +156,18 @@ export function managedAcceptorSignalingEndpoint(
 
 /**
  * Check, before any connection, that `record` can begin its rendezvous: a
- * webrtc exchange, on the acceptor side a saved signaling address that passes
- * {@link managedAcceptorSignalingEndpoint}, and relay settings this browser's
- * run accepts (`assertRunRelayPlanPossible`). A caller that contacts anything
- * before {@link beginManagedRendezvous} runs this first, so a record that will
- * refuse refuses before that contact. `relayDependencies` injects what the
- * relay check reads, for tests.
+ * webrtc exchange and, on the acceptor side, a saved signaling address that
+ * passes {@link managedAcceptorSignalingEndpoint}. A caller that contacts
+ * anything before {@link beginManagedRendezvous} runs this first, so a record
+ * that will refuse refuses before that contact.
  *
- * @throws {Error} as {@link managedAcceptorSignalingEndpoint} does, and
- *   `OperatorConfigError` as `relayPlanForRun` does.
+ * @throws {Error} as {@link managedAcceptorSignalingEndpoint} does.
  */
 export function assertManagedRendezvousPossible(
   record: Pick<ManagedRendezvousRecord, "side" | "exchangeFile" | "label">,
-  relayDependencies?: RunRelayRefusalDependencies,
 ): void {
   if (record.side === "acceptor") managedAcceptorSignalingEndpoint(record);
   else assertManagedRerunDispatchable(record.exchangeFile);
-  const connection = record.exchangeFile.connection;
-  assertRunRelayPlanPossible(
-    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
-    relayDependencies,
-  );
 }
 
 /**

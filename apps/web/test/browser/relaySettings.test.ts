@@ -17,7 +17,6 @@ import {
   NOTHING_SAVED,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
-  REMOVED_RESTRICTION_UNREADABLE,
   RESTRICTION_SAVED_RELAY_NOT_SAVED,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
@@ -217,10 +216,7 @@ describe("RelaySettingsScreen: allowed relays", () => {
       .element(statusLine())
       .toHaveTextContent("Saved. No relay of your own is set.");
     expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: {
-        allowedRelays: ["relay.example.org", "backup.example.org:443"],
-      },
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
     });
 
     await mountScreen();
@@ -251,7 +247,7 @@ describe("RelaySettingsScreen: allowed relays", () => {
       .element(allowedField())
       .toHaveAttribute("aria-invalid", "true");
     expect(page.getByRole("alert").all()).toHaveLength(1);
-    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
+    expect(readRelayRestriction()).toEqual({});
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
 
@@ -282,8 +278,7 @@ describe("RelaySettingsScreen: allowed relays", () => {
         "save again.",
     );
     expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { allowedRelays: ["relay.example.org"] },
+      allowedRelays: ["relay.example.org"],
     });
     expect(readOwnRelaySetting()).toEqual({
       kind: "set",
@@ -320,73 +315,38 @@ describe("RelaySettingsScreen: allowed relays", () => {
         "relays. Check that site storage is allowed for this site, then " +
         "save again.",
     );
-    expect(readRelayRestriction()).toEqual({ kind: "set", restriction: {} });
+    expect(readRelayRestriction()).toEqual({});
     expect(readOwnRelaySetting()).toEqual({
       kind: "set",
       relay: { turn: [TURN_URL], stun: [] },
     });
   });
 
-  test("a stored value this build cannot read is reported until it is saved again", async () => {
+  test("a stored value this build cannot read shows no saved restriction, and a save writes a fresh one", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
       JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
     );
     await mountScreen();
 
-    const notice = () =>
-      page.getByText("The saved allowed relays could not be read");
-    await expect.element(notice()).toBeVisible();
+    await expect.element(allowedField()).toHaveValue("");
+    expect(page.getByRole("alert").all()).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("could not be read");
+
+    await userEvent.click(removeButton());
     await expect
-      .element(
-        page.getByText(
-          "Every exchange in this browser is refused until the relay " +
-            "settings are saved again. Enter your allowed relays and save.",
-        ),
-      )
-      .toBeVisible();
+      .element(statusLine())
+      .toHaveTextContent("No relay is set. Exchanges connect without one.");
 
     await userEvent.fill(allowedField(), "relay.example.org");
     await userEvent.click(saveButton());
 
-    await expect.element(notice()).not.toBeInTheDocument();
-    expect(readRelayRestriction()).toEqual({
-      kind: "set",
-      restriction: { allowedRelays: ["relay.example.org"] },
-    });
-
-    await userEvent.fill(allowedField(), "backup.example.org");
-    await expect.poll(() => statusLine().element().textContent).toBe("");
-    expect(notice().query()).toBeNull();
-  });
-
-  test("removing the relay while the stored value cannot be read says every exchange is still refused", async () => {
-    window.localStorage.setItem(
-      "alcove-relay-restriction",
-      JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
-    );
-    await mountScreen();
-
-    await userEvent.click(removeButton());
-
     await expect
-      .element(page.getByText(REMOVED_RESTRICTION_UNREADABLE))
-      .toBeVisible();
-    expect(REMOVED_RESTRICTION_UNREADABLE).toBe(
-      "The relay was removed. Every exchange in this browser is still " +
-        "refused because the saved allowed relays could not be read. Save " +
-        "the relay settings to replace them.",
-    );
-    expect(document.body.textContent).not.toContain("Saved.");
-    await expect
-      .element(
-        page.getByText("The saved allowed relays could not be read", {
-          exact: true,
-        }),
-      )
-      .toBeVisible();
-    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
-    expect(readRelayRestriction().kind).toBe("unreadable");
+      .element(statusLine())
+      .toHaveTextContent("Saved. No relay of your own is set.");
+    expect(
+      JSON.parse(window.localStorage.getItem("alcove-relay-restriction") ?? ""),
+    ).toStrictEqual({ version: 1, allowedRelays: ["relay.example.org"] });
   });
 });
 
@@ -423,9 +383,6 @@ describe("RelaySettingsScreen: the relays a run may use on each build", () => {
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
     ).toBeNull();
     expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
-    expect(
-      page.getByText("The saved allowed relays could not be read").query(),
-    ).toBeNull();
     expect(document.body.textContent).not.toContain("allowed relays below");
     await expect.element(turnField()).toBeVisible();
     await expect
