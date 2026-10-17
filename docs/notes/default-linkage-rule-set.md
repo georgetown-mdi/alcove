@@ -34,6 +34,9 @@ match.
 `hmis-keys` names the **linkage keys**: the fourteen combinations built from
 those fields, applied in the order the set lists them. It is the specific
 artifact -- which combinations count as a match, and in what cascade order.
+That order is not a precision order: two keys with no SSN run above
+SSN-bearing keys. The precision order the catalog proposes for the same keys
+is in [linkage-rule-catalog.md](linkage-rule-catalog.md#order).
 
 Every built-in key is built from the fields of `baseline-pii`, so a citation of
 the key set cites the field set with it. The reverse does not hold: the same
@@ -158,6 +161,11 @@ several substitute year-and-month of birth for a full date. Each of those is a
 recall trade: it exists to match a record a stricter rule leaves unmatched, at
 the cost of a wider door for a false match. A standard set for a lower tolerance
 of false matches would be expected to challenge exactly those keys.
+[linkage-rule-catalog.md](linkage-rule-catalog.md) bands each key: the two keys
+with no SSN evidence fall in its 95% band, offered only when both files draw
+their members from one state or one metropolitan area. `SSN4 + LN4 + YOB + MOB`
+also falls in its 95% band, offered for any pair of files; the truncated keys
+beside a full SSN fall in its 99% band.
 
 **Recognized matchable fields go unused.** `phone_number`, `email_address`, and
 `zip_code` are semantic types the product recognizes, infers from column names,
@@ -181,11 +189,15 @@ which is the differencing exposure [SECURITY_DESIGN.md](../SECURITY_DESIGN.md)
 scopes the guarantee against. And a contact value is a shared value in
 program-application data -- one phone number or email address is shared across a
 household, and across the people an organization files for -- so a key over one
-alone reports different people as the same person. The evidence for the phone
-and ZIP shapes is in [linkage-rule-catalog.md](linkage-rule-catalog.md), which
-lists the email shape, `FN + EMAIL`, among the shapes it does not propose; where
-a refinement sits in the order is in
+alone reports different people as the same person. The evidence for phone,
+email and ZIP rules, and the band each supports, is in
+[linkage-rule-catalog.md](linkage-rule-catalog.md); where a refinement sits in
+the order is in
 [linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
+The catalog gives the email shape, `FN + EMAIL`, no band: no source measures
+it, yet it ships today as the guided opt-in for an email column, outside any
+built-in set. The guided opt-in offers for phone, email and ZIP are to be
+retired when rules are selected by precision floor.
 
 One shape per type is the whole offer, not a builder over the types: any other
 combination is a rule nothing here has grounded, and authoring one is what the

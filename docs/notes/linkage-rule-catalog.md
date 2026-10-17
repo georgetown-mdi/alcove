@@ -1,14 +1,14 @@
 ---
-title: "Linkage Rule Catalog: Proposed Rules and Their Precision Bands"
+title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 ---
 
-# Linkage rule catalog: proposed rules and their precision bands
+# Linkage rule catalog: rules and their precision bands
 
 _Status: proposed.
-The rules marked as in `hmis-keys` today are shipped, and this catalog gives them bands.
-The other rules are not built, and the operator-facing form follows when they ship.
-The shipped key set, `hmis-keys`, is described in [default-linkage-rule-set.md](default-linkage-rule-set.md).
-The design rationale behind this catalog -- how the rules compare with published practice, why they run in precision order, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
+The rules marked shipped are in the built-in key set today, described in [default-linkage-rule-set.md](default-linkage-rule-set.md), and this catalog gives them bands.
+Rules 22 and 23 ship only as guided opt-in keys, outside the built-in set.
+The other rules are not built, and an entry names the feature a rule needs where Alcove lacks one.
+The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 
 This is design rationale.
@@ -25,429 +25,606 @@ A rule matches two records only when every element agrees exactly.
 - `LN` and `FN` are the last and first name, standardized.
   `LN3` and `LN4` are the first three or four letters of the last name.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
+- `SFX` is the name suffix, standardized to a code (JR, SR, II, III, IV) or to the empty string when there is none, so two records without a suffix agree.
+  It is read from a column of its own or taken from the name column, and suffixes stay stripped from `LN` and `FN`.
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
-- `ZIP5` is the client's own five-digit ZIP code.
-  `PHONE` is a ten-digit phone number.
+- `ZIP5` is the five-digit ZIP code of the person's own address, and `ZIP3` its first three digits.
+  `street number` is the number of the person's street address.
+  `STATE` and `COUNTY` are the state and county of the person's address.
+- `PHONE` is a ten-digit phone number.
   `EMAIL` is an email address, trimmed and lowercased.
 - `SDX(LN)` is the Soundex code of the last name.
+  `phonetic(FN)` and `phonetic(LN)` are a phonetic code of each name (rule 8 names which code).
 - `swap(LN, FN)` matches the two names in either order.
 - `split(LN)` matches on the whole last name or on any one hyphen- or space-separated part of it.
 - `DOB +/-1 year` matches a date with the same month and day and a year one higher or lower.
   `DOB +/-1 day` matches a date one day earlier or later.
-  `DOB with day and month exchanged` matches the date with those two parts swapped.
+  `DOB day/month exchanged` matches the date with those two parts swapped.
   Each also matches the exact date.
+
+A party supplies the person's own ZIP, never the ZIP of the site that serves the person: everyone served at one site shares it.
+A former address's ZIP, such as the person's last permanent address, may be supplied as the person's ZIP; where the other party records a current address it costs matches, not precision (reasoning).
 
 ### Bands
 
 A rule's precision is the share of the pairs it accepts, at its position in the order, that are the same person.
-Each rule has one of three bands: above 99.5%, 99% to 99.5%, or 95% to 99%.
-The bands are the basis for precision tiers: rules will be grouped into tiers that a user selects together.
-Each band is information a party consents to when it accepts a rule.
+Two bands are offered:
 
-Each entry states the basis for its band in one of three ways:
+- **99%**: 99% and above.
+- **95%**: 95% to 99%.
 
-- **A measured close relative.** A source measured a rule of a similar shape, and the entry says what differs.
-- **Reasoning.** No measured relative exists, and the band is this note's inference from how much each element narrows a match.
-- **The owner's judgment.** The band was set by the maintainer where neither measurement nor a close relative exists.
+No rule is offered below 95%.
+A lower band, such as 90%, is added only when a rule has evidence placing it there.
+An operator selects the rules by band; the screens an operator sees show the band, and this catalog keeps the evidence and the reasoning behind it.
+Why two bands and not three: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-two-bands).
 
-No rule here is measured directly in its exact shape.
-The confidence stated with a band (high, medium or low) is about the band, not about the source.
+### The evidence standard
 
-Three differences apply to every measurement cited, and an entry restates them only where they matter most:
+A rule gets a band only when there is evidence for it, of one of four kinds.
+Each entry names its kind:
 
-- No source is HMIS-to-Medicaid matching, or HMIS data at all.
-  The measurements are from health, death, voter and school records.
-- Most measured rules include sex or gender.
-  Alcove's fields have none, so a rule without it accepts more false pairs than its measured relative (reasoning).
-- The bands assume an exchange within one county.
-  A county's files are far smaller than the state and national files most sources measured, and chance agreement grows with file size (Hillestad et al. 2008).
-  Zech et al. (2016) compared a random 13.1% subset of the national Death Master File with the whole file, so their figures show the effect of the number of people covered, not of geography; that the effect carries to a county is reasoning.
+- **Measured.** A source measured the rule, or the same rule with a difference the entry names.
+- **Relative.** A source measured a rule of close shape, and the entry says what differs.
+- **Refinement.** The rule has every element of a banded rule and more, so the candidate pairs it accepts are a subset of that rule's (see [Order](#order)).
+- **Extrapolation.** Reasoning from a measurement, with each step stated in the entry.
+
+The band must apply wherever the rule is offered.
+Where it applies only to some files, the rule has a coverage condition (below), and it is offered only where the condition is met.
+A rule with no such evidence is not offered: an operator reaches it only by authoring it in the expert key editor.
+Those rules are listed, each with its reason, under [Not offered](#not-offered).
+
+One exception is made by the maintainer's judgment: the three email rules (37 to 39) are offered at 95% while evidence for them is gathered.
+
+### Coverage
+
+Most rules are offered for any pair of files.
+Rules 31 to 33, name and date with no SSN, contact field or geography, are offered only when both files draw their members from one state or one metropolitan area.
+Chance agreement on a name and a date grows with the number of people the two files cover (Hillestad et al. 2008; Goel et al. 2020), and the measurements that place these rules at 95% are within one state or county.
+Rule 30 puts the same condition into the rule itself, as a `STATE` or `COUNTY` element.
+
+A file drawn from one age group, such as one school class or one birth cohort, behaves like a far larger file, because its members share birth years.
+In one graduating class of 428,410 students, about 500 combinations of name and date of birth appeared more than once, 0.12% (Fong et al. 2018), so at least about 0.23% of the students shared theirs (computed here).
+Among California's 5,969,112 K-12 records, 14,781 combinations appeared more than once, 0.25% (Barrat and Berliner 2013), so at least 0.49% of the records shared theirs (computed here).
+The bands assume files spanning all ages (reasoning).
+
+### One loosened element
+
+A rule loosens at most one element relative to an exact name and date: a Soundex surname, a date tolerance, a name swap or split, or a truncation.
+Rules with a full SSN are the exception, and rules 10, 12 and 13 have two.
+Rule 26, with two loosenings beside the last four SSN digits, is placed in the 95% band for that reason.
+Why: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element).
+
+### Weight of the sources
+
+Each basis is weighed on four points, and an entry says where its source falls short:
+
+- **Design.** Whether the truth is independent of the matcher measured, whether pairs were reviewed, and whether there are enough true pairs to bound the figure.
+- **Reach.** How close the records are to program records shared between two agencies.
+- **Age.** Whether an SSN-dependent result comes from an older file, collected when SSNs were more often present.
+- **Vendor.** Whether a co-author works for the vendor whose method is measured.
+
+The bands are the strongest evidence available, and it is mostly from health and voter files.
+No source measures a rule on two agencies' program records matched exactly.
+Most measured rules include sex or gender, which Alcove's fields do not; a rule without it accepts more false pairs than its measured relative (reasoning).
 
 ### Order
 
-Rules run in precision order, highest band first, and the catalog lists them in that order.
-Within a band, a rule that another rule contains runs first; otherwise rules with a full SSN run before rules with the last four digits, and those before rules with neither (reasoning).
-Rule 12 is placed by the maintainer ahead of rules 13 to 16.
-Why precision order, and which placements the evidence forces: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-precision-order).
+Rules run in precision order, the 99% band before the 95% band, and the catalog lists them in that order.
+Within a band:
 
-Each entry says whether the rule is in `hmis-keys` today.
-Three rules need a feature Alcove lacks, and their entries name it: rules 14, 20 and 33.
+1. A refinement runs before the rule that contains it.
+2. Otherwise rules with a full SSN run before rules with the last four digits, and those before rules with neither.
 
-## Rules above 99.5%
+A refinement adds a match only where one party holds two records tied on the broader rule's value, which a one-to-one round drops as ambiguous ([PROTOCOL.md](../spec/PROTOCOL.md#value-level-round-participation)).
+In Alcove a record dropped as ambiguous stays eligible for later rounds, so the order of a refinement and the rule containing it decides which rule is credited with a pair, not whether the pair matches.
+Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-precision-order).
 
-### 1. `SSN + LN + DOB`
+### Status
 
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
+A rule marked opt-in ships today only as a guided opt-in key, outside the built-in key set, and the guided opt-in offers are to be retired when rules are selected by precision floor.
+Each entry says whether the rule is shipped (in the built-in key set today), opt-in, new (not built, and needing no feature Alcove lacks), or needs a named feature:
+
+- `adjacent_days`, a date one day either side: rule 18.
+- `street_number`, the number of a street address: rule 21.
+- A three-digit ZIP: rule 27.
+- State and county types: rule 30.
+- `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
+- The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
+
+Eleven of the fourteen shipped rules are in the 99% band; rules 26, 31 and 32 are in the 95% band.
+
+## The 99% band
+
+### Rules with a full SSN
+
+Rules 1 to 13 rest on one measurement.
+Grannis et al. (2002) linked the registries of two Indiana hospitals to the Indiana Death Master File by SSN, with partial review of the links, in one 1990s dataset.
+Grannis et al. (2003) and Grannis et al. (2004) used the same two registries and the same pairs, so they do not replicate the result.
+SSN availability in health systems' records fell from 83% in 2005 to 50% in 2014 (Culbertson et al. 2017), so the measured file had more SSNs than a file collected today.
+
+The most common SSN error there "appeared to be" a spousal mix-up, a woman's record linked to a man's sharing her last name, read as the guarantor's number on the spouse's record (Grannis et al. 2002).
+
+The refinements of rule 6 (rules 1 to 5) stay in the catalog although rule 6 contains them as candidate pairs.
+They add a match only where one party holds two records tied on the `SSN + DOB` value, and an operator cannot be expected to know whether their file does.
+Their cost is rounds, not precision.
+
+#### 1. `SSN + LN + DOB`
+
+99%. Any coverage. Refinement of rule 6. Shipped.
 
 The strictest rule: a full SSN with the last name and the full date of birth.
-Grannis et al. (2002) linked two hospitals' records to the Indiana Death Master File by SSN.
-SSN plus full date of birth made 2 wrong links against 4,557 and 5,216 correct ones.
-This rule adds the last name, so its false pairs are a subset of those (reasoning).
-In Mirel et al. (2022), links on which only the SSN + sex + DOB token agreed were 6 false against 2,151 true.
 
-### 2. `SSN + LN4 + DOB`
+#### 2. `SSN + LN4 + DOB`
 
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
+99%. Any coverage. Refinement of rule 6. Shipped.
 
 Catches a last name written differently after its fourth letter.
-Its false pairs are a subset of SSN + full date of birth, measured as for rule 1 (Grannis et al. 2002).
 
-### 3. `SSN + LN4 + YOB + MOB`
+#### 3. `SSN + LN3 + DOB`
 
-Above 99.5%. Reasoning; low confidence. In `hmis-keys` today.
+99%. Any coverage. Refinement of rule 6. Shipped.
+
+As rule 2, with a three-letter prefix.
+
+#### 4. `SSN + DOB + FN`
+
+99%. Any coverage. Refinement of rule 6. Shipped.
+
+Catches a changed last name when the full SSN agrees.
+Bernstam et al. (2022) measured SSN + first name at 247 true pairs and 1 false, by manual review of candidate pairs blocked within one data warehouse; the authors include Datavant staff.
+
+#### 5. `SSN + FN3 + DOB`
+
+99%. Any coverage. Refinement of rule 6. Shipped.
+
+Catches a changed last name together with a first name spelled differently after its third letter.
+The N3C linkage configuration (Regenstrief Institute 2021) ships a token with the same three-letter first name.
+
+#### 6. `SSN + DOB`
+
+99%. Any coverage. Measured. New.
+
+Grannis et al. (2002) found SSN + full date of birth made 2 wrong links of 4,559 at one hospital and 2 of 5,218 at the other.
+That bounds its false share under 0.14% (computed here), the one measurement in this catalog that would support a band above 99.5%.
+In Mirel et al. (2022), links on which only the SSN + sex + DOB token agreed were 6 false against 2,151 true.
+Its floor is the spousal mix-up above, where the spouses share a birth date.
+
+#### 7. `SSN + FN + LN`
+
+99%. Any coverage. Measured. New.
+
+Catches any date-of-birth error when the SSN and both names agree.
+In Grannis et al. (2002), SSN + last name + first name made 7 wrong links of 4,548 and 2 of 5,159.
+A full first name separates spouses who share a surname and an SSN.
+
+#### 8. `SSN + phonetic(FN) + phonetic(LN)`
+
+99%. Any coverage. Measured with a different phonetic code. New.
+
+Catches names spelled differently that keep their phonetic code; it runs after rule 7, a refinement of it.
+In Grannis et al. (2002), SSN + NYSIIS-coded names found 234 and 90 more correct links than rule 7 (4,775 and 5,247), at the same count of wrong links (7 and 2).
+Alcove's phonetic transform is Soundex, not NYSIIS.
+Three sources compare the two codes (Sun and Golden 2019; Bailey et al. 2020; Christen 2006); only Sun and Golden compare them beside a full SSN, and they count the pairs each code agrees on, not false agreements; [linkage-rule-grounding.md](linkage-rule-grounding.md#phonetic-names) sets them out.
+
+#### 9. `SSN + LN + FN1`
+
+99%. Any coverage. Relative of rule 7. Shipped.
+
+Catches a first name recorded differently, when the full SSN and last name agree; it runs after rule 7, a refinement of it.
+It differs from rule 7 by a first initial, which lets through spouses who share one (reasoning; no source gives that rate).
+
+#### 10. `SSN + LN3 + FN1`
+
+99%. Any coverage. Relative of rule 7. Shipped.
+
+As rule 9, with a three-letter last name.
+A three-letter last name adds little, because the spousal errors already share the whole surname (reasoning).
+
+#### 11. `SSN + FN + YOB + MOB`
+
+99%. Any coverage. Relative. Shipped.
+
+Catches a changed last name and a wrong day of birth together.
+In Grannis et al. (2002), SSN + first name + birth year + gender made no wrong links at either hospital (4,350 and 4,997 correct), and SSN + phonetic first name + birth month + gender made none either.
+This rule has the year and month but no gender (reasoning).
+In Mirel et al. (2022), links on which only the SSN + first name token agreed were 98.0% correct (2,705 true, 56 false); this rule also requires the birth year and month, so it is stricter than that token (reasoning).
+
+#### 12. `SSN + FN3 + YOB + MOB`
+
+99%. Any coverage. Relative of rule 11. Shipped.
+
+As rule 11, with a three-letter first name; it runs after rule 11, a refinement of it.
+
+#### 13. `SSN + LN4 + YOB + MOB`
+
+99%. Any coverage. Extrapolation from rule 6. Shipped.
 
 Catches a wrong day of birth when the full SSN agrees.
 No measured relative drops the day.
-The most common SSN error in Grannis et al. (2002), a spouse's record under the guarantor's number, would also need the same birth year and month (reasoning).
+The spousal mix-up behind rule 6's wrong links would also need the same birth year and month to match here (reasoning).
 
-### 4. `SSN + LN3 + DOB`
+### Rules with the last four SSN digits
 
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
+Some record systems collect only the last four SSN digits.
+The four digits take 10,000 values, so adding them to a name + date key divides its chance agreements by about 10,000 where the digits are spread evenly (computed here).
+In Hillestad et al.'s (2008) collision counts, removing them from a name + DOB + ZIP key created nearly 1,000 false positives in a 79-million-record file.
 
-As rule 2, with a three-letter prefix.
-Its false pairs are a subset of SSN + full date of birth (Grannis et al. 2002).
+#### 14. `SSN4 + LN + DOB`
 
-### 5. `SSN + DOB + FN`
+99%. Any coverage. Relative. Shipped.
 
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
-
-Catches a changed last name when the full SSN agrees.
-Its false pairs are a subset of SSN + full date of birth (Grannis et al. 2002).
-Bernstam et al. (2022) measured SSN + first name at 99.6% precision on blocked candidate pairs from one data warehouse.
-It runs before rule 6, which contains it.
-
-### 6. `SSN + FN3 + DOB`
-
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
-
-Catches a changed last name together with a first name spelled differently after its third letter.
-Its false pairs are a subset of SSN + full date of birth (Grannis et al. 2002).
-The N3C linkage configuration (Regenstrief Institute 2021) ships a token with the same three-letter first name.
-
-### 7. `SSN + FN + YOB + MOB`
-
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
-
-Catches a changed last name and a wrong day of birth together.
-In Grannis et al. (2002), SSN + phonetic first name + birth month + gender made no wrong links at either hospital.
-In Mirel et al. (2022), links on which only the SSN + first name token agreed were 98.0% correct (2,705 true, 56 false).
-This rule also requires the birth year and month, so it is stricter than that token (reasoning).
-
-### 8. `SSN + FN3 + YOB + MOB`
-
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
-
-As rule 7, with a three-letter first name; it runs after rule 7, which it contains.
-In Grannis et al. (2002), SSN + first name + birth year + gender made no wrong links at either hospital (4,350 and 4,997 correct), and neither did the same rule with a phonetic first name.
-This rule has the month but no gender, and truncates the first name rather than coding it phonetically (reasoning).
-
-### 9. `SSN4 + LN + DOB`
-
-Above 99.5%. A measured close relative; medium confidence. In `hmis-keys` today.
-
-Catches records that hold only the last four SSN digits, the only digits HUD has required an HMIS to collect since FY2024 (HUD 2025d).
+Catches records holding only the last four SSN digits.
 Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value, with 3 false positives.
 This rule replaces sex with the last name, which narrows a match more (reasoning).
-Hillestad et al. (2008) found that removing the last four SSN digits from a name + DOB + ZIP key creates nearly 1,000 false positives in a 79-million-record file.
-Naessens linked one health system's discharges to each other, and cut the four digits from complete SSNs held in both sources.
+Naessens linked one health system's discharges to each other, in one region, and cut the four digits from complete SSNs held in both sources; its readmissions table fits 6,516 readmissions rather than the 52,212 its heading states.
 
-### 10. `LN + FN + DOB + PHONE`
+#### 15. `SSN4 + split(LN) + FN + DOB`
 
-Above 99.5%. A measured close relative; medium confidence. New.
+99%. Any coverage. Refinement of rule 16. New.
 
-Accepts the pairs rule 12 accepts that also agree on a phone.
-It adds a match only where rule 12's value is held by two records in one party's file, which a one-to-one round drops as ambiguous ([PROTOCOL.md](../spec/PROTOCOL.md#value-level-round-participation)).
-The Sequoia Project (2018) found first + last name + DOB + sex + phone identified a single person in 99.5% of matches, in one health system's own records; that is uniqueness, not precision.
-A shared household or shelter phone needs the same full name and date of birth as well to make a false match (reasoning).
+Catches one part of a compound last name dropped or the parts reversed, beside the last four SSN digits.
+Cook County added a two-last-names step after its validation that found 1,988 more matches, unvalidated (Trick et al. 2019).
 
-### 11. `LN + FN + DOB + ZIP5`
+#### 16. `SSN4 + FN + DOB`
 
-Above 99.5%, where the ZIP is the client's own. A measured close relative and reasoning; low confidence. New.
+99%. Any coverage. Relative of rule 14. New.
 
-Accepts the pairs rule 12 accepts that also agree on the client's ZIP, and adds matches as rule 10 does.
-It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
-In Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4% false where the state token did not agree and 0.3% false where it agreed; a ZIP is a finer geography than a state (reasoning).
-Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against SSN-based labels, with 0.95 for first + last name + gender + DOB.
-Against email-based and phone-based labels, on records with no valid SSN, the ZIP token scored 0.76 and 0.74; the authors attribute the drop to noisier labels.
-Its false pairs are a subset of rule 12's, so its band cannot be lower (reasoning).
-A party must never supply HUD's project ZIP as the client's: every client of a shelter shares it.
+Catches a changed last name when only the last four SSN digits are held.
+A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
+It was a reason in 48 of the 200 sampled matches Cook County's rules missed, which Table 3 prints as 23% of the reasons listed, some matches having several (Trick et al. 2019).
+Naessens et al. (2015) found last four SSN + DOB + sex at 99.9%; this rule replaces sex with the first name (reasoning).
 
-### 12. `LN + FN + DOB`
+#### 17. `SSN4 + LN + FN + DOB +/-1 year`
 
-Above 99.5% within one county. A measured close relative and reasoning; low confidence. In `hmis-keys` today.
-
-A rule with no SSN evidence, catching records whose SSN is missing or wrong.
-Mirel et al. (2022) found links agreeing on name + sex + DOB and on state were 99.6% correct (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
-Each row of that table counts the links on which exactly that set of tokens agreed, after each link was chosen for having the most high-precision (SSN) tokens, other tokens breaking ties, and the truth is an earlier NCHS linkage, so the figure describes a stratum rather than a rule's precision.
-That row includes sex and covers a state; without sex more false pairs agree, and a county's files are far smaller than a state's (reasoning).
-Where the state token did not agree, or a state was missing on one side, the same links were 41.4% false (2,314 true, 1,638 false), so the band applies only to an exchange within one county.
-Bernstam et al. (2022) measured last + first name + gender + DOB at 787 true and 1 false (99.9%), a one-sided 95% lower bound of 99.40% (computed here).
-That is manual review of candidate pairs blocked within one data warehouse, not an exchange between two parties.
-
-### 13. `SSN4 + LN + FN + DOB +/-1 year`
-
-Above 99.5%. Reasoning; medium confidence. New.
+99%. Any coverage. Relative. New.
 
 Catches a birth year off by one.
 The year differed in 40.0% of confirmed duplicate pairs with a date-of-birth discrepancy, by an amount Just et al. (2016) do not give.
-HUD lets staff estimate an unknown birth year from the client's age (HUD 2025a).
 linkja emits a hash of the date plus one year, and its matching component compares it with every record's exact-date hash, which covers a one-year difference in either direction (MRAIA 2020).
 Cook County's rule of the same shape found 313 matches its EHR process missed (Trick et al. 2019).
-No source publishes its precision; Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable (Trick et al. 2019); that is 189 of 190 adjudicable, 99.47% (computed here).
+Cook County's six rules together had 189 of 201 sampled matches confirmed, 1 false and 11 not adjudicable, which is 189 of 190 adjudicable (computed here).
 The sample holds only matches the EHR process missed, the matches both systems found being assumed true, so it is not the six rules' precision.
-With the last four SSN digits and both full names, three candidate years add few chance agreements (reasoning).
+With the last four SSN digits dividing chance agreement by about 10,000 (computed here, from their 10,000 values), three candidate years add few chance agreements (reasoning).
 
-### 14. `SSN4 + LN + FN + DOB +/-1 day`
+#### 18. `SSN4 + LN + FN + DOB +/-1 day`
 
-Above 99.5%. Reasoning; medium confidence. New.
-Needs a date expansion of one day either side, which Alcove lacks.
+99%. Any coverage. Relative, as rule 17. Needs `adjacent_days`.
 
 Catches a birth day off by one.
 The day is the most frequent date-of-birth discrepancy, differing in 48.3% of pairs with one, by an amount Just et al. (2016) do not give, and Cook County's largest spike in date differences was at 1 day.
 linkja emits a hash of the date plus one day, compared the same way in both directions (MRAIA 2020).
 Cook County's rule of the same shape found 371 matches its EHR process missed (Trick et al. 2019).
-The band rests on the same reasoning as rule 13.
 
-### 15. `SSN4 + LN + FN + DOB with day and month exchanged`
+#### 19. `SSN4 + LN + FN + DOB day/month exchanged`
 
-Above 99.5%. Reasoning; medium confidence. New.
+99%. Any coverage. Relative, as rule 17. New.
 
-Catches a day and month recorded in the wrong order, only 2.6% of date discrepancies (Just et al. 2016), so it adds little.
+Catches a day and month recorded in the wrong order, only 2.6% of date discrepancies (Just et al. 2016).
 linkja emits this hash (MRAIA 2020); Cook County's rule of this shape, without the last four SSN digits, found 454 matches its EHR process missed (Trick et al. 2019).
-HUD's filler of `01` for an unknown month and day is unchanged by the exchange (HUD 2025a).
+A filler of `01` for an unknown month and day is unchanged by the exchange.
+This rule covers the error the not-offered `LN + FN + DOB` with day and month exchanged would catch.
 
-### 16. `SSN4 + FN + DOB`
+#### 20. `SSN4 + swap(LN, FN) + DOB`
 
-Above 99.5%. A measured close relative; medium confidence. New.
+99%. Any coverage. Relative, as rule 17. New.
 
-Catches a changed last name when only the last four SSN digits are held.
-A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
-It appeared in 48 of the 200 sampled matches Cook County's rules missed, 24% (computed here), and some matches had several errors (Trick et al. 2019).
-Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value; this rule replaces sex with the first name (reasoning).
-Naessens's death figures are for Minnesota residents only, and its readmissions link one health system's discharges to each other.
-
-## Rules from 99% to 99.5%
-
-### 17. `SSN + LN + FN1`
-
-99% to 99.5%. A measured close relative and reasoning; low confidence. In `hmis-keys` today.
-
-Catches a first name recorded differently, when the full SSN and last name agree.
-In Grannis et al. (2002), SSN + last name + first name made 7 wrong links against 4,541 correct, and 2 against 5,157.
-The most common SSN error there "appeared to be" a spouse sharing the last name, and a first initial lets through spouses who share an initial (reasoning; no source gives that rate).
-
-### 18. `SSN + LN3 + FN1`
-
-99% to 99.5%. A measured close relative and reasoning; low confidence. In `hmis-keys` today.
-
-As rule 17.
-A three-letter last name adds little looseness, because the spousal errors already share the whole surname (reasoning).
-
-### 19. `SSN4 + LN4 + YOB + MOB`
-
-99% to 99.5%. Reasoning; low confidence. In `hmis-keys` today.
-
-The thinnest rule in `hmis-keys`: about 13 bits from the four SSN digits, a four-letter prefix, and about 10 bits from the year and month (reasoning).
-No measured relative exists.
-
-### 20. `FN + LN + SSN4`, unless the dates of birth disagree
-
-99% to 99.5%. Reasoning; low confidence. New.
-Needs a conflict veto -- fire only when a field is not present and different on both sides -- which Alcove lacks.
-
-Catches a date of birth that is missing, a filler, or off by more than rules 13 to 15 allow.
-HUD's 2005 unduplication guidance treats agreement on any two of first name, last name, DOB and a partial SSN as a potential match, and a full-SSN match alone as one too.
-It deletes the match when two of gender, name suffix, the parts of the date and the full SSN conflict, unless the full SSN and two of the names and date agree; a null never counts as a conflict.
-A further rule deletes a match made on last name + DOB where the SSN does not match, both clients are under 18 and the first names conflict, which targets twins (Sokol and Gutierrez 2005).
-The veto stops the rule when both sides hold a valid date beyond rules 13 to 15's tolerances; without it, two same-name people sharing four digits would match (reasoning).
-Ong et al. (2020) ran last name + last four SSN + birth year after first + last name + DOB, and it added no links, in a heart-disease registry.
-
-### 21. `LN + FN + DOB with day and month exchanged`
-
-99% to 99.5%. Reasoning; low confidence. New.
-
-Catches a day and month exchanged when no SSN evidence agrees.
-Cook County's third rule has this shape (Trick et al. 2019), and Massachusetts's school-meals match ran it as its second round after exact name + DOB (Cole and Logan 2006).
-It doubles the candidate dates of rule 12, so it roughly doubles chance agreement (reasoning).
-It runs after rules 12 and 15, which it contains.
-
-### 22. `swap(LN, FN) + DOB`
-
-99% to 99.5%. Reasoning; low confidence. In `hmis-keys` today.
-
-Catches a first and last name recorded in the wrong fields.
-The receiving party sends both orders ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termslinkage_keys)), so the rule accepts what rule 12 accepts plus reversed names (reasoning).
-linkja (MRAIA 2020) and Cook County use the same device.
+Catches a first and last name recorded in the wrong fields, beside the last four SSN digits.
+Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
 Trick et al. (2019) conflict on whether Cook County's reversed-name rule needed the last four SSN digits: the Methods and Figure 1 list transposed name + DOB without them, and footnote b of Table 2 says reversed-name matches required them.
-This rule does not.
 
-### 23. `ZIP5 + SDX(LN) + FN + DOB`
+### Rules with a ZIP or a phone and no SSN
 
-99% to 99.5%. A measured close relative and reasoning; low confidence. New, added provisionally by the maintainer.
+#### 21. `LN + FN + DOB + street number + ZIP5`
 
-Catches a misspelled last name that keeps its Soundex code, with no SSN.
-UCLA found 94 of 100 reviewed pairs agreeing on first name + DOB + ZIP were the same person, in a stratum selected by match score (Ross et al. 2020); this rule adds a Soundex surname, so its false pairs are a subset (reasoning).
-The stratum holds the queries Care Everywhere left unlinked that had a single candidate scoring above 20 on its weights, so no measurement reaches this rule's band (reasoning).
-Beside an SSN, phonetic names added true links and no false ones (Grannis et al. 2002, with a different phonetic code; Mirel et al. 2022).
-As the only name evidence they do badly: the Soundex-names token alone was 81.4% false in Mirel.
-Twins sharing a birth date and address made Naessens's two false positives on DOB + sex + ZIP, and a full first name excludes twins with different names.
+99%. Any coverage. Refinement of rule 22. Needs `street_number`.
 
-## Rules from 95% to 99%
+Its 99% rests on rule 22's extrapolation.
+Ansolabehere and Hersh (2016) report 97.5% for a voter-file match, but that is a recall over a union of matching sweeps, and the paper measures neither `ZIP5` nor street number + `ZIP5` alone, so it is not a basis here.
 
-### 24. `split(LN) + FN + DOB`
+#### 22. `LN + FN + DOB + ZIP5`
 
-95% to 99%. Reasoning; low confidence. New.
+99%. Any coverage. Extrapolation. Opt-in.
 
-Catches one part of a compound last name dropped or the parts reversed.
-A hyphenated last name appeared in 50 of the 200 sampled matches Cook County's rules missed, 25% (computed here), and some matches had several errors; Cook County added a two-last-names step afterward that found 1,988 more matches, outside its validation sample (Trick et al. 2019).
-linkja's overview describes hashing each part of a compound surname, but the shipped code disables it and collapses a hyphenated surname into one word (MRAIA 2020).
-A Texas voter-file match split hyphenated names (Ansolabehere and Hersh 2016).
-Agreement on one common part, such as Garcia against Smith-Garcia with the same first name and date, is open to chance agreement (reasoning).
+Catches records with no SSN where the person's ZIP agrees.
+It ships today as the guided opt-in for a ZIP column, named `LN + FN + DOB + ZIP`, outside the built-in set; its default cleaning keeps the first five digits, so it is this rule, and it is to be retired as an opt-in with the others.
+It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
+The 99% is the maintainer's judgment on the following reasoning, not a measurement:
 
-### 25. `FN + DOB + PHONE`
+1. Cao et al. (2026) measured `LN + FN + DOB + sex + ZIP5` at 0.98 precision against shared-SSN labels, across thirty systems nationally.
+   Labels of that kind count a true pair with a keying error in one SSN as false, which Just et al. (2016) put at about 1.7% of true pairs alone, so 0.98 is a ceiling for any key measured that way rather than an estimate of its precision.
+   Cao et al. is vendor-authored and unreplicated, and Just et al. is a vendor's sample from cleanup projects, so both figures are approximate.
+2. Hillestad et al. (2008) found one name + date + ZIP collision per 21,000 records in a 42,000-record regional file.
+   There a ZIP divided name + date collisions about threefold; the about 700-fold division in the same report is the national file's.
+3. Three relatives without names, or with a weaker name element, measured 97.7% to 99.2%: Naessens et al. (2015) on DOB + sex + `ZIP5`, Karmel and Gibson (2007) on DOB + sex + postcode + event date at 98.4%, and Beauchamp et al. (2011) on `FN3` + DOB + sex + postcode at 0.8% disagreement with a linkage on the Medicare number.
+   Names only remove false pairs from them.
+   Karmel and Gibson's figure gives a direction only.
+4. The floor is a same-name parent and child with a copied birthdate at the same address, which a ZIP cannot separate.
+   Goel et al.'s (2020) per-state figures (Figure A.3) put such pairs near zero in most states, about 1.25% of records in Mississippi and 0.9% in the District of Columbia.
+   So the 99% can fail in a file like those, unless a suffix separates the pair.
 
-95% to 99%. A measured close relative and reasoning; low confidence. New, added provisionally by the maintainer.
+Of these, Hillestad's collision counts and Goel's household floor are the independent support; the ceiling argument leans on Just, and the measurement it explains away is Cao's.
+In Mirel et al. (2022), links agreeing on name + sex + DOB with no SSN were 41.4% false where the state token did not agree and 0.3% false where it agreed; a ZIP is a finer geography than a state (reasoning).
+It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rule 31 drops as ambiguous within one party's file, mostly one person recorded twice (reasoning).
+
+#### 23. `LN + FN + DOB + PHONE`
+
+99%. Any coverage. Relative: a subset of `LN + FN + PHONE`. Opt-in.
+
+It ships today as the guided opt-in for a phone column, outside the built-in set, and is to be retired as an opt-in with the others.
+
+Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0% at two sites, and this rule adds the date of birth, so its false pairs are a subset (reasoning).
+That measurement is one setting, its truth is mother-child relationships only, and its phone cleaning is not described.
+A gold standard of mother-child relationships drawn from EHR records can be incomplete: Rogerson et al. (2026), testing a maternal-child linkage against relationships taken from maternity encounters and EHR relationship tables, reviewed 200 randomly selected false positives and found 55% were true relationships the gold standard lacked, so the measured figure may understate precision.
+It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rule 31 drops as ambiguous within one party's file, mostly one person recorded twice (reasoning).
+
+#### 24. `FN + DOB + PHONE`
+
+99%. Any coverage. Extrapolation. New.
 
 Catches a changed last name with no SSN.
-The N3C configuration ships first name + cell phone (Regenstrief Institute 2021), and this rule adds the date of birth (reasoning: a subset of its false pairs).
-A phone narrows a match far more than a ZIP: in one health system's records its distinctiveness was 51.6% against 0.6% for postal code (The Sequoia Project 2018).
-UCLA found only 26 of 100 pairs agreeing on a phone alone were the same person (Ross et al. 2020), so a false match needs a shared phone, first name and date, such as same-name twins (reasoning).
+The reasoning:
 
-### 26. `FN + DOB + EMAIL`
+1. Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites, with no date.
+2. What a first name and a phone leave is the same-name parent and child on a household phone, and the date of birth removes it (reasoning).
+3. The measurement's mother-child truth may understate its precision (Rogerson et al. 2026), as for rule 23.
 
-95% to 99%. Reasoning; low confidence. New.
+The N3C configuration ships first name + cell phone (Regenstrief Institute 2021).
+The shared-contact screen (rule 36a) shrinks this rule's floor too.
 
-The email counterpart of rule 25.
-No source measures any rule with an email address.
-The N3C configuration ships first name + email (Regenstrief Institute 2021).
-The HL7 identity-matching guide grades first + last name + DOB + email "Superior", above first + last name + DOB + sex + last four SSN, on uniqueness rather than measured precision (HL7 International 2025).
-UCLA found 13 of 100 pairs agreeing on an email alone were the same person (Ross et al. 2020).
-It will rarely fire for an HMIS party: HUD's export format has no client email field (HUD 2025c).
+## The 95% band
 
-### 27. `ZIP5 + SDX(LN) + FN + DOB +/-1 year`
+### Rules with an SSN or its last four digits
 
-95% to 99%. Reasoning; low confidence. New, added provisionally by the maintainer.
+#### 25. `SSN + FN`
 
-Catches a birth year off by one with no SSN, as rule 13 does with it.
-It contains rule 23, and three candidate years roughly triple its chance agreement (reasoning).
-The one-year device comes from linkja and Cook County, both of which pair it with the last four SSN digits.
+95%. Any coverage. Measured. New.
 
-### 28. `LN + FN + YOB + MOB + ZIP5`
+Catches any date-of-birth error and a changed last name when the full SSN agrees.
+Bernstam et al. (2022) measured it at 247 true pairs and 1 false, on blocked candidate pairs from one data warehouse, with Datavant co-authors.
+Its floor is a junior recorded under his father's SSN as guarantor, sharing his first name, which nothing else in the rule separates (reasoning).
 
-95% to 99%. Reasoning; low confidence. New.
+#### 26. `SSN4 + LN4 + YOB + MOB`
+
+95%. Any coverage. Extrapolation. Shipped.
+
+The thinnest shipped rule: two loosenings, a four-letter last name and no day of birth, beside the last four SSN digits.
+In a national file it leaves about one chance partner per 190 records (reasoning).
+No measured relative exists.
+
+### Rules with geography or a name and date alone
+
+#### 27. `LN + FN + DOB + ZIP3`
+
+95%. Any coverage. Measured. Needs a three-digit ZIP.
+
+Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against SSN-based labels, with 0.95 for first + last name + gender + DOB; it is the only measurement of a three-digit ZIP rule.
+Against email-based and phone-based labels, on records with no valid SSN, the ZIP token scored 0.76 and 0.74; the authors attribute the drop to noisier labels.
+A three-digit ZIP covers a hundred thousand to a million people, so it stays at 95% where rule 22 reaches 99%.
+A ZIP costs matches where a person moves or gives another address: ZIP mismatches caused the largest share of one emergency medical service's failed record lookups (Park and Finnell 2012).
+
+#### 28. `ZIP5 + SDX(LN) + FN + DOB`
+
+95%. Any coverage. One loosening on rule 22. New.
+
+Catches a misspelled last name that keeps its Soundex code, with no SSN.
+Beside the ZIP, a Soundex surname admits about 2.9 times the false agreements of the exact surname (Randall et al. 2013), far inside the band.
+One loosening on rule 22 stays at 95%, because rule 22's 99% is itself an extrapolation.
+It is one of the three least supported rules in the catalog: [The Soundex-surname rules](#the-soundex-surname-rules).
+
+#### 29. `ZIP5 + LN + FN + DOB +/-1 year`
+
+95%. Any coverage. One loosening on rule 22. New.
+
+Catches a birth year off by one with no SSN, as rule 17 does with it.
+Three candidate years roughly triple rule 22's chance agreement (reasoning).
+One loosening on rule 22 stays at 95%, for the reason given under rule 28.
+
+#### 30. `LN + FN + DOB + STATE` or `LN + FN + DOB + COUNTY`
+
+95%. Any coverage. Measured relatives. Needs state and county types.
+
+Rule 31 with its coverage condition written into the rule.
+Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechuta et al. (2020), and Mirel et al.'s (2022) row with the state token agreeing.
+
+#### 31. `LN + FN + DOB`
+
+95%. Offered only when both files draw from one state or one metropolitan area. Measured relatives. Shipped.
+
+A rule with no SSN evidence, catching records whose SSN is missing or wrong.
+The evidence spans a range, and both ends are stated.
+
+Within one state or county:
+
+- **Cole and Lee (2004)** matched WIC to food stamp records in Florida, Iowa and Kentucky and found name + date false positives of 0.2% to 6.5% by state, against a probabilistic reference, and 11.8% for infants in Iowa.
+  It is cited at low weight; Nechuta and Bian are the main in-state evidence.
+  Iowa is the one in-state outlier, at 6.5% (93.5% precision on the one reading of Table 27 that reconciles its rows, computed here), and plausibly an error in the reference.
+  Iowa's WIC file had no SSN field, SSNs were taken from participant identifiers for women only, and the "false" pairs fall where the reference was weakest: women 0.0%, children 6.9%, infants 11.8%.
+  The authors' own conclusion is that false positives were under one percent.
+- **Nechuta et al. (2020)**, in Tennessee, had no confirmed false positive among the reviewed pairs, with 344 unresolved pairs covering 161 of 4,572 decedents, so 96.5% to 100% with the unresolved pairs counted.
+- **Bian et al. (2019)**, in Florida, measured 99.3%.
+- **Trick et al. (2019)**, in Cook County, ran complete name + DOB first, and its six rules together had one confirmed false match among 190 adjudicable sampled matches (see rule 17).
+- **Mirel et al. (2022)** has a pattern-table row of 99.6% where name + sex + DOB and the state token agreed (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
+  Each row counts the links on which exactly that set of tokens agreed, after each link was chosen for having the most SSN tokens, against an earlier NCHS linkage, so it is a stratum, not a rule's precision.
+- **Ocampo et al. (2016)** matched case records across the whole of DC, Maryland and Virginia on names + DOB + sex or race, confirmed by each jurisdiction's own check rather than reviewed truth.
+  It is a data point for the name + date rules, not a precedent for the metropolitan-area condition.
+- **Bernstam et al. (2022)** measured last + first name + gender + DOB at 787 true and 1 false (99.9%), a one-sided 95% lower bound of 99.40% (computed here), on candidate pairs blocked within one data warehouse.
+
+Wider than one state:
+
+- **Goel et al. (2020)** matched voter files across states on first name, last name and DOB; roughly three-quarters of the cross-state pairings were confirmed duplicates, and the rest included keying errors.
+- **Hillestad et al. (2008)**: the 42,000-record regional subset collided thirty times more often than scaling from the national file predicts, so a local file concentrates names and dates.
+
+Florida, Tennessee and Cook County sit at or above 95%, most of them at or above 99%, so the rule is placed in the 95% band with Iowa named as the outlier.
+An age-cohort file behaves like a far larger file ([Coverage](#coverage)).
+
+#### 32. `swap(LN, FN) + DOB`
+
+95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31. Shipped.
+
+Catches a first and last name recorded in the wrong fields.
+Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
+How much it multiplies rule 31's chance agreement is unmeasured, and the multiplier is largest where the order of names varies by culture (reasoning).
+The receiving party sends both orders ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termslinkage_keys)), so the rule accepts what rule 31 accepts plus reversed names.
+linkja (MRAIA 2020) and Cook County use the same device.
+
+#### 33. `split(LN) + FN + DOB`
+
+95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31. New.
+
+Catches one part of a compound last name dropped or the parts reversed.
+Barrat and Berliner (2013), matching California's foster-care records to its K-12 records, found two steps splitting names added 9.1% of the final matches (memorandum Table 4); the 9.1% is an upper bound, since the steps also cut compound first names.
+A review of 20 matches from each step found all 40 true, but the review was run while the steps were being refined, so the sample was not drawn blind.
+With the factor `k` by which splitting multiplies rule 31's chance agreement taken as 0.3 (reasoning), the 95% band is met where rule 31's own false share is under about 1.6% at that 9.1% gain (computed here, from the formula in [linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)).
+A hyphenated last name was a reason in 50 of the 200 sampled matches Cook County's rules missed, which Table 3 prints as 24% of the reasons listed; Cook County changed its name processing after the project to catch them (Trick et al. 2019).
+linkja's overview describes hashing each part of a compound surname, but the shipped code disables it (MRAIA 2020).
+
+#### 34. `LN + FN + YOB + MOB + ZIP5`
+
+95%. Any coverage. Relative. New.
 
 Catches a wrong day of birth with no SSN.
 It is a token the N3C configuration ships, without gender (Regenstrief Institute 2021).
 Hillestad et al. (2008) put first + last name + birth year + ZIP at about one possible false match in 3,500 in a 42,000-record file, with error-free keys; this rule adds the month (reasoning).
-A shelter ZIP pools many clients into one value (Park and Finnell 2012).
 
-### 29. `LN + FN + PHONE`
+### Rules with a phone or an email
 
-95% to 99%. A measured close relative and reasoning; low confidence. New.
+#### 35. `LN + FN + SFX + PHONE`
+
+95%. Any coverage. Measured without the suffix. Needs `name_suffix`.
 
 Catches any date-of-birth error with no SSN.
-It is stricter than Bernstam et al.'s (2022) cell-phone-alone token, measured at 95.6% precision (reasoning: a subset of its false pairs).
-A household phone shared by a father and son with the same name, or a shelter's or case manager's number on two same-name clients, could make a false match.
-Phones change often in this population: 54.5% of homeless adults with a cell phone reported two or more numbers in three months (Rhoades et al. 2017), which costs matches but not precision (reasoning).
+Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
+It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
+The suffix removes that pair where both sides record a suffix, at the cost of the pair where only one side did, which loses this rule and keeps every rule without the element.
+The band does not rise: Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
+Where one party's file has no suffix at all, the rule runs without the element rather than being dropped, since otherwise every junior recorded in the other file would fail it.
+Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
-### 30. `PHONE + SDX(LN) + FN`
+#### 36. `PHONE + SDX(LN) + FN + SFX`
 
-95% to 99%. Reasoning; low confidence. New.
+95%. Any coverage. One loosening on rule 35. Needs `name_suffix`.
 
-As rule 29, with a last name that keeps its Soundex code; it runs after rule 29, which it contains.
-The people most likely to share a phone are relatives, who share the surname exactly, so the Soundex code adds little risk (reasoning).
-No source measures it.
+As rule 35, with a last name that keeps its Soundex code; it runs after rule 35, a refinement of it.
+The people most likely to share a phone are relatives, who share the surname exactly, so the Soundex code adds little (reasoning).
 
-### 31. `LN + FN + EMAIL`
+#### 36a. `FN + SFX + PHONE`
 
-95% to 99%. The owner's judgment; low confidence. New.
+95%. Any coverage. Measured without the suffix. Needs `name_suffix` and the shared-contact screen.
 
-Catches any date-of-birth error with no SSN, for records holding an email address.
-No source measures any rule with an email address.
-It is stricter than both first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
-The two lists are otherwise identical, but N3C has first name + email in the slot where Bell has last name + email, so the two lists differ in that slot, and the last name + email token rests on Bell's description rather than a Datavant document.
-UCLA found 13 of 100 pairs agreeing on an email alone were the same person (Ross et al. 2020).
+Catches a changed last name and any date-of-birth error with no SSN.
+Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites.
+It is offered only because the default cleaning drops a phone or email held by more than five distinct people in a party's file.
+Without that screen, a shelter's, clinic's or case manager's number on many clients gives each client one unique first-name-plus-phone value, which the one-to-one rule cannot catch, and no source measures numbers shared by an organization.
+The same screen shrinks the sharing floor of every phone and email rule.
+
+#### 37. `FN + DOB + EMAIL`
+
+95%. Any coverage. The maintainer's judgment, pending evidence. New.
+
+The email counterpart of rule 24.
+See [The email rules](#the-email-rules).
+
+#### 38. `LN + FN + SFX + EMAIL`
+
+95%. Any coverage. The maintainer's judgment, pending evidence. Needs `name_suffix`.
+
+Catches any date-of-birth error with no SSN, for records with an email address.
+Kim et al. (2019) is its nearest measurement.
+It is stricter than first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
+
+#### 39. `EMAIL + SDX(LN) + FN + SFX`
+
+95%. Any coverage. One loosening on rule 38. Needs `name_suffix`.
+
+As rule 38, with a last name that keeps its Soundex code; it runs after rule 38, a refinement of it, on the reasoning of rule 36.
+
+### The Soundex-surname rules
+
+Rules 28, 36 and 39 are the least supported in the catalog.
+Every measurement of a Soundex surname as the only loosened name element, without geography or a contact field, falls below 95%:
+
+- Rogot et al. (1983) found 2 of 34 reviewed pairs true where the last name agreed only by Soundex, the first name and birth year and month agreed exactly, and no SSN was available (Table 1).
+- In Mirel et al. (2022), the Soundex-names token alone was 81.4% false.
+- In Ocampo et al. (2016), the tier that pools Soundex-coded first and last names + DOB with an exact last name + DOB rule had 46.7% to 90.3% of its matches confirmed across six jurisdiction checks (Tables 3 to 5); the Maryland figures come from a 5% sample.
+- NCHS planned to drop Soundex from National Death Index matching and use NYSIIS on last names, after evaluations found Soundex agreed on dissimilar names, adding false positives and very few true positives; no counts are given (Patterson and Bilgrad 1985).
+
+The three rules are unmeasured rather than contradicted, since each has a ZIP or a contact field.
+Beside a ZIP, a Soundex surname admits about three times the chance pairs (Randall et al. 2013), far inside the band; beside a phone or email the floor is household sharing, where the surname is the same anyway (reasoning).
+They stay in the 95% band.
+Whether Alcove adds a NYSIIS transform is open ([linkage-rule-grounding.md](linkage-rule-grounding.md#phonetic-names)).
+
+### The email rules
+
+The three email rules are in the 95% band by the maintainer's judgment, an exception to the evidence standard while evidence for them is gathered.
+No source measures an email rule on program records.
+One measurement exists outside program data: Kim et al. (2019) found pairs sharing a full email address were the same author in 26,870 of 26,942 (99.73%) against ORCID identifiers.
+The email was attached only where it resembled the author's name, so it is nearest rule 38 on researchers' institutional addresses.
+UCLA found 13 of 100 pairs agreeing on an email alone were the same person, in a stratum its EHR module had left unlinked (Ross et al. 2020).
+The HL7 identity-matching guide grades first + last name + DOB + email "Superior" on uniqueness rather than measured precision (HL7 International 2025).
 Two forms of one mailbox, with dots or a plus tag, produce different values, which costs matches but not precision (reasoning).
 
-### 32. `EMAIL + SDX(LN) + FN`
+## Follow-on, unbanded until measured
 
-95% to 99%. Reasoning; low confidence. New.
+`FN + LN + SSN4`, when one side has no valid date of birth, catches a date that is missing or a filler.
+It needs a per-side missing-field condition, which Alcove lacks, and has no band until it is measured ([linkage-rule-grounding.md](linkage-rule-grounding.md#rule-features-the-evidence-calls-for)).
 
-As rule 31, with a last name that keeps its Soundex code; it runs after rule 31, which it contains, on the reasoning of rule 30.
+## Not offered
 
-## Precision not established
+These rules have no evidence placing them at 95% or above.
+An operator reaches them by authoring them in the expert key editor, except `FN + EMAIL`, which is also offered as a guided opt-in.
 
-### 33. `FN3 + LN + DOB`, uncommon names only
-
-Not established; its nearest measured relative is below 95%. New.
-Needs a name-frequency condition, a score saying how common a first and last name combination is, which Alcove lacks.
-
-Catches a first name spelled differently after its third letter, such as Priscilla and Priscila.
-Cook County's rule of this shape found 7,623 matches, the most of any rule, and also made its one confirmed false match: two first names sharing three letters, the last name Smith, and one date (Trick et al. 2019).
-The Link King accepts a looser match only for a rare name, scoring name combinations from .1 to 1 and treating 0.3 or lower as rare (Campbell et al. 2006).
-Against it: in Mirel et al. (2022), links on which only the first-initial and three-letter-first-name tokens agreed, with no SSN or state, were 53.8% false.
-With an SSN token also agreeing, the same links were 720 true and none false.
-A county's smaller files and the condition might bring it into 95% to 99% (reasoning, low confidence); no source measures the restricted rule.
-
-## Owner questions and rulings
-
-- **Rule 33.**
-  Its nearest measured relative is below 95% precision, and so below every other rule's band.
-  It stays in the list while the owner consults the partner who uses rules of this shape.
-- **HUD's older client ZIP.**
-  HUD's FY2026 standards have no client ZIP; their only ZIP is the project's (HUD 2025a; HUD 2025b).
-  HUD's earlier standards had a client ZIP, the ZIP of the last permanent address, where the client last lived for 90 days or more (HUD 2010).
-  For a client already homeless it is a former address, while a Medicaid plan records a current one.
-  ZIP change caused 95.7% of the true readmissions Naessens et al.'s (2015) DOB + sex + ZIP rules missed.
-  The owner ruled that a county may supply that ZIP as the client ZIP for rules 11, 23, 27 and 28.
-- **The shipped email opt-in.**
-  The web app's guided offer adds `FN + EMAIL`, a shape this catalog does not propose; rule 31 is its stricter form.
-  Whether the offer is retired, or changed to rule 31, is open.
-
-## Shapes considered and not proposed
-
-| Shape | Evidence | Why not |
-| --- | --- | --- |
-| `FN + DOB + ZIP5` | UCLA: 94 of 100 reviewed pairs were the same person, in a stratum selected by match score (Ross et al. 2020) | Measured below the band of every SSN rule. Rule 23 adds a Soundex surname to it |
-| `FN + EMAIL` | N3C configuration token (Regenstrief Institute 2021), unmeasured | UCLA's email-only pairs were the same person in 13 of 100. Rule 31 is the stricter form |
-| `LN + EMAIL` | Token Bell et al. (2026) list among Datavant's recommended tokens, where N3C's list has first name + email in that slot; unmeasured | The same sharing concern. Rule 31 adds the first name |
-| `FN + PHONE` | N3C configuration token (Regenstrief Institute 2021), unmeasured | Household sharing (Ross et al. 2020; The Pew Charitable Trusts 2018). Rule 29 is the stricter form |
-| `FN3 + LN + DOB` for every name; `SDX(FN) + SDX(LN) + DOB` | Bernstam et al. 2022, the same shapes with gender measured at 98.5% and 98.6% on blocked pairs | In Mirel et al. (2022), the Soundex token alone was 81.4% false and the first-initial token alone 95.7%. Cook County's one confirmed false match came from its three-letter rule. Rule 33 keeps the three-letter form for uncommon names |
-| `PHONE + DOB`, `EMAIL + DOB` | None | No name element. Bernstam et al. (2022) remark that infant twins share a birth date and phone, as a limit of their manual review |
-| `LN + FN + ZIP5` | N3C configuration token (Regenstrief Institute 2021), with gender, unmeasured | Unmeasured, and rule 28 keeps a year and month |
-| Any contact field alone | Bernstam et al. 2022, phone alone 95.6% | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)) |
+| Rule | Why it has no band |
+| --- | --- |
+| `LN + FN + DOB` with day and month exchanged | Its precision runs from 99% to under 50% as file size grows ([linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)). Rule 19, with the last four SSN digits, covers the error |
+| `LN + FN + DOB`, its swap and split forms, where the files cover more than one state or metropolitan area | Goel et al. (2020) confirmed only about three-quarters of cross-state name + date pairings as duplicates. Grannis (2005) measured a no-SSN name + date + gender rule at 89.1% and 89.5% specificity against the national Death Master File |
+| `FN3 + LN + DOB` and `FN1 + LN + DOB` without an SSN; `SDX(FN) + SDX(LN) + DOB` without an SSN, geography or a contact field | In Mirel et al. (2022), links on which only these tokens agreed were 53.8% (first initial and three-letter first name), 95.7% (first initial) and 81.4% (Soundex names) false. Cook County's one confirmed false match came from its three-letter first-name rule (Trick et al. 2019) |
+| `FN3 + LN + DOB` for uncommon names | Parked. A general tool cannot define a common name except relative to a particular population, so the name-frequency condition it needs is not built. Cook County's rule of this shape found 7,623 matches, the most of any rule (Trick et al. 2019) |
+| Any contact field alone, or with only a date | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)). Bernstam et al. (2022) measured a phone alone at 95.6%, and remark that infant twins share a birth date and phone |
+| `FN + EMAIL` | No source measures a first name with an email. The email rules offered (37 to 39) add a date or a surname. It ships today as the guided opt-in for an email column, outside any built-in set and with no precision evidence; the guided opt-in offers are to be retired when rules are selected by precision floor |
 
 ## Sources
 
 Each entry begins with the short form the text cites it by.
-Sources cited only by the design rationale are listed in [linkage-rule-grounding.md](linkage-rule-grounding.md#sources).
+The list includes the sources the design rationale cites for the bands; the rationale's other sources are listed in [linkage-rule-grounding.md](linkage-rule-grounding.md#sources).
 
 - **Ansolabehere and Hersh 2016.** Ansolabehere S, Hersh ED. "ADGN: An Algorithm for Record Linkage Using Address, Date of Birth, Gender and Name." Author manuscript, 2016. https://www.eitanhersh.com/uploads/7/9/7/5/7975685/agdn_v1_4.pdf
+- **Bailey et al. 2020.** Bailey, Cole, Henderson, Massey. "How Well Do Automated Linking Methods Perform? Lessons from U.S. Historical Data." Journal of Economic Literature 58(4):997-1044, 2020. doi:10.1257/jel.20191526. https://pmc.ncbi.nlm.nih.gov/articles/PMC8294155/
+- **Barrat and Berliner 2013.** Barrat VX, Berliner B. "The Invisible Achievement Gap, Part 1: Education Outcomes of Students in Foster Care in California's Public Schools." WestEd, 2013; with its "Technical Memorandum for The Invisible Achievement Gap, Part 1: Linkage Between Data From the California Department of Education and From the California Department of Social Services," WestEd, 2013, Table 4. https://courts.ca.gov/sites/default/files/courts/default/2024-12/btb_xxii_iiia_13.pdf and https://web.archive.org/web/20140711145758id_/http://www.cftl.org/documents/2013/IAG/IAG_TM.pdf
+- **Beauchamp et al. 2011.** Beauchamp A, Tonkin AM, Kelsall H, et al. "Validation of de-identified record linkage to ascertain hospital admissions in a cohort study." BMC Medical Research Methodology 11:42, 2011. doi:10.1186/1471-2288-11-42
 - **Bell et al. 2026.** Bell DS, Saleh T, Sanz Vidorreta FJ, Pirani CN, Pevnick JM, Jenders RA, et al. "Accuracy of an XGBoost-based privacy preserving record linkage system compared with an electronic health record patient matching module in identifying patients shared between nearby academic health centers." Journal of the American Medical Informatics Association 33(4):901-908, 2026; Supplementary Table 1. doi:10.1093/jamia/ocag020
 - **Bernstam et al. 2022.** Bernstam EV, Applegate RJ, Yu A, Chaudhari D, Liu T, Coda A, et al. "Real-World Matching Performance of Deidentified Record-Linking Tokens." Applied Clinical Informatics 13(4):865-873, 2022. doi:10.1055/a-1910-4154
-- **Campbell et al. 2006.** Campbell K, Deck D, Cox A, Broderick C. "The Link King: User Manual, Version v5.2." Washington State Department of Social and Health Services, 2006. https://web.archive.org/web/20070106073145id_/http://www.the-link-king.com:80/user_manual.zip
+- **Bian et al. 2019.** Bian J, Loiacono A, Sura A, Mendoza Viramontes T, Lipori G, Guo Y, et al. "Implementing a hash-based privacy-preserving record linkage tool in the OneFlorida clinical research network." JAMIA Open 2(4):562-569, 2019. doi:10.1093/jamiaopen/ooz050
 - **Cao et al. 2026.** Cao C, Pillai J, Daraei S, Ghadermarzi S. "Linking patient records at scale with a hybrid approach combining contrastive learning and deterministic rules." Biology Methods and Protocols 11(1):bpag009, 2026. doi:10.1093/biomethods/bpag009
-- **Cole and Logan 2006.** Cole N, Logan C. "Data Matching in the National School Lunch Program: 2005. Volume 2: State Case Studies." Abt Associates for the U.S. Department of Agriculture, Food and Nutrition Service, Report CN-06-DM2, 2006. https://www.fns.usda.gov/sites/default/files/DataMatching-V2.pdf
+- **Christen 2006.** Christen P. "A comparison of personal name matching: techniques and practical issues." Joint Computer Science Technical Report Series TR-CS-06-02, Department of Computer Science, Australian National University, 2006; Table 4. A version appeared in the ICDM 2006 workshops, doi:10.1109/icdmw.2006.2.
+- **Cole and Lee 2004.** Cole N, Lee E. "Feasibility and Accuracy of Record Linkage To Estimate Multiple Program Participation, Volume III: Results of Record Linkage." Abt Associates for the U.S. Department of Agriculture, Economic Research Service, E-FAN-03-008-3, 2004; Table 27. https://www.ers.usda.gov/webdocs/publications/43308/30264_efan03008-3_002.pdf
+- **Culbertson et al. 2017.** Culbertson A, Goel S, Madden MB, Safaeinili N, Jackson KL, Carton T, et al. "The Building Blocks of Interoperability: A Multisite Analysis of Patient Demographic Attributes Available for Matching." Applied Clinical Informatics 8(2):322-336, 2017. doi:10.4338/ACI-2016-11-RA-0196
+- **Fong et al. 2018.** Fong A, Barrat V, Finkelstein N. "Examination of data usability options for assessing eligibility for higher education in California." WestEd, 2018.
+- **Goel et al. 2020.** Goel S, Meredith M, Morse M, Rothschild D, Shirani-Mehr H. "One Person, One Vote: Estimating the Prevalence of Double Voting in U.S. Presidential Elections." American Political Science Review 114(2):456-469, 2020; supplementary appendix, Figure A.3. doi:10.1017/S000305541900087X
+- **Grannis 2005.** Grannis SJ. Slides presented to the National Committee on Vital and Health Statistics, 2005 (presentation, not peer-reviewed); the no-SSN rule's specificity against the Indiana subset and the full Death Master File.
 - **Grannis et al. 2002.** Grannis SJ, Overhage JM, McDonald CJ. "Analysis of Identifier Performance Using a Deterministic Linkage Algorithm." Proceedings of the AMIA Annual Symposium 2002:305-309. https://pmc.ncbi.nlm.nih.gov/articles/PMC2244404/
+- **Grannis et al. 2003.** Grannis SJ, Overhage JM, Hui S, et al. "Analysis of a probabilistic record linkage technique without human review." Proceedings of the AMIA Annual Symposium 2003:259-263.
+- **Grannis et al. 2004.** Grannis SJ, Overhage JM, McDonald C. "Real world performance of approximate string comparators for use in patient matching." Studies in Health Technology and Informatics 107(Pt 1):43-47, 2004 (MEDINFO 2004). https://lhncbc.nlm.nih.gov/LHC-publications/PDF/pub9111.pdf
 - **Hillestad et al. 2008.** Hillestad R, Bigelow JH, Chaudhry B, Dreyer P, Greenberg MD, Meili RC, et al. "Identity Crisis: An Examination of the Costs and Benefits of a Unique Patient Identifier for the U.S. Health Care System." RAND Corporation, MG-753-HLTH, 2008. https://www.rand.org/content/dam/rand/pubs/monographs/2008/RAND_MG753.pdf
 - **HL7 International 2025.** HL7 International, Patient Administration Work Group. "Patient Matching," in Interoperable Digital Identity and Patient Matching, v2.0.0 (STU 2), HL7 FHIR US implementation guide, 2025. https://hl7.org/fhir/us/identity-matching/patient-matching.html
-- **HUD 2010.** U.S. Department of Housing and Urban Development. "Homeless Management Information System (HMIS) Data Standards Revised Notice." March 2010. https://web.archive.org/web/20170829223119id_/https://www.hudexchange.info/resources/documents/FinalHMISDataStandards_March2010.pdf
-- **HUD 2025a.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Standards Manual." 2025. https://files.hudexchange.info/resources/documents/HMIS-Data-Standards.pdf
-- **HUD 2025b.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Data Dictionary." HUD Exchange, 2025.
-- **HUD 2025c.** U.S. Department of Housing and Urban Development. "HMIS CSV Format Specifications, Version 1.0 (FY 2026)." HUD Exchange, 2025.
-- **HUD 2025d.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Standard Reporting Terminology Glossary." 2025. https://files.hudexchange.info/resources/documents/HMIS-Standard-Reporting-Terminology-Glossary.pdf
 - **Just et al. 2016.** Just BH, Marc D, Munns M, Sandefer R. "Why Patient Matching Is a Challenge: Research on Master Patient Index (MPI) Data Discrepancies in Key Identifying Fields." Perspectives in Health Information Management 13(Spring):1e, 2016. https://pmc.ncbi.nlm.nih.gov/articles/PMC4832129/
+- **Karmel and Gibson 2007.** Karmel R, Gibson D. "Event-based record linkage in health and aged care services data: a methodological innovation." BMC Health Services Research 7:154, 2007. doi:10.1186/1472-6963-7-154
+- **Kim et al. 2019.** Kim J, Kim J, Owen-Smith J. "Generating automatically labeled data for author name disambiguation: an iterative clustering method." Scientometrics 118(1):253-280, 2019; Table 4. doi:10.1007/s11192-018-2968-3
+- **Landsbach 2016.** Landsbach GD. "Study Analyzes Causes and Consequences of Patient Overlay Errors." Journal of AHIMA 87(9):40-43, 2016.
 - **Mirel et al. 2022.** Mirel LB, Resnick DM, Aram J, Cox CS. "A methodological assessment of privacy preserving record linkage using survey and administrative data." Statistical Journal of the IAOS 38(2):413-421, 2022; Figure 1 and Table 1. doi:10.3233/sji-210891
 - **MRAIA 2020.** Medical Research Analytics and Informatics Alliance. linkja-hashing and linkja-matching, source code as shipped, with "Privacy Preserving Record Linkage: Linkja Overview" (2019). GitHub, last revised 2020. https://github.com/MRAIA-ORG/linkja-hashing
 - **Naessens et al. 2015.** Naessens JM, Visscher SL, Peterson SM, Swanson KM, Johnson MG, Rahman PA, et al. "Incorporating the Last Four Digits of Social Security Numbers Substantially Improves Linking Patient Data from De-identified Hospital Claims Databases." Health Services Research 50(Suppl 1):1339-1350, 2015. doi:10.1111/1475-6773.12323
-- **Ong et al. 2020.** Ong TC, Duca LM, Kahn MG, Crume TL. "A hybrid approach to record linkage using a combination of deterministic and probabilistic methodology." Journal of the American Medical Informatics Association 27(4):505-513, 2020. doi:10.1093/jamia/ocz232
+- **Nechuta et al. 2020.** Nechuta S, Mukhopadhyay S, Krishnaswami S, Golladay M, McPheeters M. "Record Linkage Approaches Using Prescription Drug Monitoring Program and Mortality Data for Public Health Analyses and Epidemiologic Studies." Epidemiology 31(1):22-31, 2020. doi:10.1097/EDE.0000000000001110
+- **Newman and Brown 1997.** Newman TB, Brown AN. "Use of Commercial Record Linkage Software and Vital Statistics to Identify Patient Deaths." Journal of the American Medical Informatics Association 4(3):233-237, 1997. doi:10.1136/jamia.1997.0040233
+- **Ocampo et al. 2016.** Ocampo JMF, Smart JC, Allston A, Bhattacharjee R, Boggavarapu S, Carter S, et al. "Improving HIV Surveillance Data for Public Health Action in Washington, DC: A Novel Multiorganizational Data-Sharing Method." JMIR Public Health and Surveillance 2(1):e3, 2016. doi:10.2196/publichealth.5317
+- **Ong et al. 2024.** Ong T, et al. "Linkability measures to assess the data characteristics for record linkage." Journal of the American Medical Informatics Association 31(11):2651-2659, 2024. doi:10.1093/jamia/ocae248
 - **Park and Finnell 2012.** Park SC, Finnell JT. "Indianapolis Emergency Medical Service and the Indiana Network for Patient Care: Evaluating the Patient Match Algorithm." AMIA Annual Symposium Proceedings 2012:1221-1228. https://pmc.ncbi.nlm.nih.gov/articles/PMC3540486/
+- **Patterson and Bilgrad 1985.** Patterson JE, Bilgrad R. "The National Death Index Experience: 1981-1985." In Record Linkage Techniques - 1985, Internal Revenue Service, Statistics of Income, 1985, pp. 245-254. https://www.irs.gov/pub/irs-soi/1985preprintar17.pdf
+- **Polubriaginof et al. 2018.** Polubriaginof FCG, Vanguri R, Quinnies K, et al. "Disease Heritability Inferred from Familial Relationships Reported in Medical Records." Cell 173(7):1692-1704, 2018; Table S4. doi:10.1016/j.cell.2018.04.032
+- **Randall et al. 2013.** Randall SM, Ferrante AM, Boyd JH, Semmens JB. "The effect of data cleaning on record linkage quality." BMC Medical Informatics and Decision Making 13:64, 2013. doi:10.1186/1472-6947-13-64
 - **Regenstrief Institute 2021.** Regenstrief Institute. "N3C Linkage Honest Broker - Site Technical Engagement Packet," version 6, 2021; Appendix H. https://www.regenstrief.org/wp-content/uploads/2022/04/siteengagementpacket-pre-nda-v06.pdf
-- **Rhoades et al. 2017.** Rhoades H, Wenzel S, Rice E, Winetrobe H, Henwood B. "No Digital Divide? Technology Use among Homeless Adults." Journal of Social Distress and the Homeless 26(1):73-77, 2017. doi:10.1080/10530789.2017.1305140
+- **Rogerson et al. 2026.** Rogerson CM, Bartlett CW, Price J, Li L, Mendonca EA, Grannis S. "Derivation and validation of an algorithm for maternal-child linkage in electronic health records." Journal of the American Medical Informatics Association 33(2):451-456, 2026. doi:10.1093/jamia/ocaf177
+- **Rogot et al. 1983.** Rogot E, Schwartz SH, O'Conor KV, Olsen CL. "The Use of Probabilistic Methods in Matching Census Samples to the National Death Index." In Record Linkage Techniques preprints, Internal Revenue Service, Statistics of Income, 1983; Table 1. https://www.irs.gov/pub/irs-soi/1983preprintar30.pdf
 - **Ross et al. 2020.** Ross MK, Sanz J, Tep B, Follett R, Soohoo SL, Bell DS. "Accuracy of an Electronic Health Record Patient Linkage Module Evaluated between Neighboring Academic Health Care Centers." Applied Clinical Informatics 11(5):725-732, 2020. doi:10.1055/s-0040-1718374
-- **Sokol and Gutierrez 2005.** Sokol B, Gutierrez O. "Technical Guidelines for Unduplicating and De-identifying HMIS Client Records." U.S. Department of Housing and Urban Development, 2005. https://web.archive.org/web/2017id_/https://www.hudexchange.info/resources/documents/TechnicalGuidelinesForUnduplicatingAndDeIdentifyingClientRecords.pdf
-- **The Pew Charitable Trusts 2018.** The Pew Charitable Trusts. "Enhanced Patient Matching Is Critical to Achieving Full Promise of Digital Health Records." 2018. https://www.pewtrusts.org/-/media/assets/2018/09/healthit_enhancedpatientmatching_report_final.pdf
-- **The Sequoia Project 2018.** The Sequoia Project. "A Framework for Cross-Organizational Patient Identity Management." 2018. https://sequoiaproject.org/wp-content/uploads/2018/06/The-Sequoia-Project-Framework-for-Patient-Identity-Management-v31.pdf
+- **Sun and Golden 2019.** Sun Y, Golden C. "Comparing Multiple SAS Functions for Text Field Matching in Data Linkage: SOUNDEX, NYSIIS, COMPGED." SAS Global Forum 2019, paper 3755-2019. https://support.sas.com/resources/papers/proceedings19/3755-2019.pdf
 - **Trick et al. 2019.** Trick WE, Doshi K, Ray MJ, Angulo F. "Development and Evaluation of Record Linkage Rules in a Safety-Net Health System Serving Disadvantaged Communities." ACI Open 3:e63-e70, 2019. doi:10.1055/s-0039-1693129
-- **Zech et al. 2016.** Zech J, Husk G, Moore T, Shapiro JS. "Measuring the Degree of Unmatched Patient Records in a Health Information Exchange Using Exact Matching." Applied Clinical Informatics 7(2):330-340, 2016. doi:10.4338/ACI-2015-11-RA-0158
