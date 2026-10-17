@@ -61,6 +61,8 @@ const FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   phone_number: displayText`Phone number`,
   email_address: displayText`Email address`,
   zip_code: displayText`ZIP code`,
+  state: displayText`State`,
+  county: displayText`County`,
 };
 
 /**
@@ -77,6 +79,8 @@ const COMPACT_FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   phone_number: displayText`phone`,
   email_address: displayText`email`,
   zip_code: displayText`ZIP`,
+  state: displayText`state`,
+  county: displayText`county`,
 };
 
 /**
@@ -126,6 +130,9 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
     "Left-pads the value to a fixed length before matching (e.g. zero-filling a short identifier).",
   phonetic:
     "Matches names by a sound-alike code rather than the literal spelling, so different names that sound alike can match.",
+  zip3: "Matches on only the first three digits of a five-digit ZIP code, so ZIP codes in the same area can match; any other value is dropped.",
+  state_code:
+    "Replaces a US state, DC or territory name with its two-letter postal abbreviation before matching, so a name and its abbreviation can match; any other value is dropped.",
   null_if: "Treats listed values as empty, dropping them from matching.",
   replace_regex:
     "Rewrites the parts of the value matching a pattern before matching.",
@@ -727,7 +734,8 @@ const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
  *    "fallback" (a `coalesce` that substitutes a constant,
  *    {@link coalesceSubstitutesConstant}).
  * 4. "partial" (a truncating `substring`, counted after a routine normalizer
- *    but not after {@link LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS}), "fuzzy",
+ *    but not after {@link LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS}, or a
+ *    `zip3`), "fuzzy",
  *    "sound-alike" (`phonetic`), then a component-dropping `parse_date`'s
  *    "partial".
  * 5. Rules whose direction is indeterminate: "pattern replacement", "pattern
@@ -779,7 +787,7 @@ function elementBreadthMarker(
           LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS.has(prior.function),
         ),
   );
-  if (truncatesLiteral) return displayText`partial`;
+  if (truncatesLiteral || functions.has("zip3")) return displayText`partial`;
   if (element.generateFuzzyComparisons !== undefined) return displayText`fuzzy`;
   if (functions.has("phonetic")) return displayText`sound-alike`;
   if (parseDateBreadths.includes("partial")) return displayText`partial`;

@@ -452,6 +452,20 @@ interface ZipCodeField {
   type: "zip_code";
   constraints?: AnyConstraints;
 }
+interface StateField {
+  name: string;
+  type: "state";
+  constraints?: AnyConstraints;
+}
+/**
+ * A county name. Ambiguous across states, so it identifies a place only where
+ * both files come from one state or one region.
+ */
+interface CountyField {
+  name: string;
+  type: "county";
+  constraints?: AnyConstraints;
+}
 
 /**
  * A standardized PII field that participates in linkage. Linkage key elements
@@ -467,7 +481,9 @@ export type LinkageField =
   | Ssn4Field
   | PhoneNumberField
   | EmailAddressField
-  | ZipCodeField;
+  | ZipCodeField
+  | StateField
+  | CountyField;
 
 const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
   "type",
@@ -502,6 +518,14 @@ const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
     }),
     z.object({
       type: z.literal("zip_code"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("state"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("county"),
       ...linkageFieldBase(AnyConstraintsSchema),
     }),
   ],

@@ -147,6 +147,39 @@ const ZIP_CODE_STEPS: StandardizationStep[] = [
   { function: "pad_left", params: { length: 5 } },
 ];
 
+// A US state, DC or inhabited territory as its two-letter postal code, from
+// the code or the full name in any case and punctuation.
+const STATE_STEPS: StandardizationStep[] = [
+  { function: "trim_whitespace" },
+  { function: "squash_spaces" },
+  { function: "remove_non_ascii" },
+  { function: "to_upper_case" },
+  { function: "remove_punctuation" },
+  { function: "squash_spaces" },
+  { function: "trim_whitespace" },
+  { function: "state_code" },
+];
+
+// An uppercase county name with the word COUNTY, a leading "COUNTY OF", and
+// punctuation removed. A hyphen becomes a space first, so MIAMI-DADE and
+// MIAMI DADE agree.
+const COUNTY_STEPS: StandardizationStep[] = [
+  { function: "trim_whitespace" },
+  { function: "squash_spaces" },
+  { function: "remove_accents" },
+  { function: "remove_non_ascii" },
+  { function: "to_upper_case" },
+  { function: "replace_regex", params: { pattern: "-", replacement: " " } },
+  { function: "remove_punctuation" },
+  {
+    function: "replace_regex",
+    params: { pattern: "^COUNTY OF |\\bCOUNTY\\b", replacement: "" },
+  },
+  { function: "squash_spaces" },
+  { function: "trim_whitespace" },
+  { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
+];
+
 // The most distinct people one value may belong to in a party's own file. A
 // household shares a phone or an email, so five keeps most of them, while an
 // organization's number on dozens of clients is dropped.
@@ -190,6 +223,10 @@ function stepsForType(
       return EMAIL_ADDRESS_STEPS;
     case "zip_code":
       return ZIP_CODE_STEPS;
+    case "state":
+      return STATE_STEPS;
+    case "county":
+      return COUNTY_STEPS;
     default:
       return undefined;
   }

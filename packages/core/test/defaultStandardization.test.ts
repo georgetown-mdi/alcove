@@ -45,6 +45,8 @@ const minimalTerms: LinkageTerms = {
     { name: "phone_number", type: "phone_number" },
     { name: "email_address", type: "email_address" },
     { name: "zip_code", type: "zip_code" },
+    { name: "state", type: "state" },
+    { name: "county", type: "county" },
   ],
   linkageKeys: [
     {
@@ -63,6 +65,8 @@ const fullMetadata: ColumnMetadata[] = [
   { name: "PHONE", type: "phone_number", role: "linkage", isPayload: false },
   { name: "EMAIL", type: "email_address", role: "linkage", isPayload: false },
   { name: "ZIP", type: "zip_code", role: "linkage", isPayload: false },
+  { name: "STATE", type: "state", role: "linkage", isPayload: false },
+  { name: "COUNTY", type: "county", role: "linkage", isPayload: false },
 ];
 
 // A copy of `steps` whose `null_if` list containing `marker` is replaced by
@@ -89,7 +93,7 @@ function withPlaceholders(
 describe("getDefaultStandardization — structure", () => {
   test("returns one transformation per matching linkage field", () => {
     const result = getDefaultStandardization(fullMetadata, minimalTerms);
-    expect(result).toHaveLength(8);
+    expect(result).toHaveLength(10);
   });
 
   test("output names match linkage field names", () => {
@@ -103,6 +107,8 @@ describe("getDefaultStandardization — structure", () => {
     expect(outputs).toContain("phone_number");
     expect(outputs).toContain("email_address");
     expect(outputs).toContain("zip_code");
+    expect(outputs).toContain("state");
+    expect(outputs).toContain("county");
   });
 
   test("input names come from metadata column names", () => {
@@ -198,7 +204,14 @@ describe("getDefaultStandardization — structure", () => {
     // The second party names its columns differently, lists them in another
     // order, holds an extra column, and derives ssn4 from its SSN column.
     const partnerMetadata: ColumnMetadata[] = [
+      {
+        name: "county_name",
+        type: "county",
+        role: "linkage",
+        isPayload: false,
+      },
       { name: "Zip5", type: "zip_code", role: "linkage", isPayload: false },
+      { name: "St", type: "state", role: "linkage", isPayload: false },
       { name: "notes", type: "other", role: "payload", isPayload: true },
       {
         name: "eMail",
@@ -300,8 +313,8 @@ describe('default chains: a blank input yields null, never ""', () => {
   const transformations = getDefaultStandardization(fullMetadata, minimalTerms);
 
   // Guard: every default linkage field is exercised, so this is not a vacuous pass.
-  test("covers all eight default linkage fields", () => {
-    expect(transformations).toHaveLength(8);
+  test("covers all ten default linkage fields", () => {
+    expect(transformations).toHaveLength(10);
   });
 
   for (const t of transformations) {
@@ -1344,6 +1357,115 @@ describe("default zip_code pipeline", () => {
     const padIdx = steps.findIndex((s) => s.function === "pad_left");
     expect(emptyDropIdx).toBeGreaterThanOrEqual(0);
     expect(padIdx).toBeGreaterThan(emptyDropIdx);
+  });
+});
+
+// --- ZIP3 transform ----------------------------------------------------------
+
+describe("the zip3 transform over a cleaned zip_code", () => {
+  function zip3Of(raw: string) {
+    const [t] = getDefaultStandardization(
+      [{ name: "ZIP", type: "zip_code", role: "linkage", isPayload: false }],
+      {
+        ...minimalTerms,
+        linkageFields: [{ name: "zip_code", type: "zip_code" }],
+      },
+    );
+    const cleaned = runPipeline(raw, t.steps!);
+    if (typeof cleaned !== "string") return cleaned;
+    return runPipeline(cleaned, [{ function: "zip3" }]);
+  }
+
+  test("keeps the leading zeros of a New England ZIP", () => {
+    expect(zip3Of("02139")).toBe("021");
+    expect(zip3Of("2139")).toBe("021");
+    expect(zip3Of("00501")).toBe("005");
+  });
+
+  test("takes the area of a ZIP+4 from its cleaned five digits", () => {
+    expect(zip3Of("20057-1234")).toBe("200");
+    expect(zip3Of("200571234")).toBe("200");
+  });
+
+  test("drops a value that is not a cleaned five-digit ZIP", () => {
+    expect(runPipeline("2005", [{ function: "zip3" }])).toBeNull();
+    expect(runPipeline("20057-1234", [{ function: "zip3" }])).toBeNull();
+    expect(runPipeline("ABCDE", [{ function: "zip3" }])).toBeNull();
+    expect(runPipeline("", [{ function: "zip3" }])).toBeNull();
+    expect(zip3Of("abc")).toBeNull();
+  });
+});
+
+// --- State and county pipelines ----------------------------------------------
+
+function runDefault(type: "state" | "county", input: string) {
+  const [t] = getDefaultStandardization(
+    [{ name: "COL", type, role: "linkage", isPayload: false }],
+    { ...minimalTerms, linkageFields: [{ name: type, type }] },
+  );
+  return runPipeline(input, t.steps!);
+}
+
+describe("default state pipeline", () => {
+  test("state_code alone folds letter case but no other spelling", () => {
+    const stateCode = [{ function: "state_code" }];
+    expect(runPipeline("maryland", stateCode)).toBe("MD");
+    expect(runPipeline("Md", stateCode)).toBe("MD");
+    expect(runPipeline("NEW  YORK", stateCode)).toBeNull();
+    expect(runPipeline("D.C.", stateCode)).toBeNull();
+  });
+
+  test.each([
+    ["Maryland", "MD"],
+    ["MARYLAND", "MD"],
+    ["mArYlAnD", "MD"],
+    ["MD", "MD"],
+    ["md", "MD"],
+    [" New   York ", "NY"],
+    ["District of Columbia", "DC"],
+    ["D.C.", "DC"],
+    ["Puerto Rico", "PR"],
+    ["U.S. Virgin Islands", "VI"],
+    ["Virgin Islands", "VI"],
+    ["Guam", "GU"],
+  ])("keeps %j as %j", (input, expected) => {
+    expect(runDefault("state", input)).toBe(expected);
+  });
+
+  test.each([
+    "Calif",
+    "Ontario",
+    "ZZ",
+    "FM",
+    "AE",
+    "Marylandd",
+    "Washington DC",
+    "",
+    "   ",
+  ])("drops %j", (input) => {
+    expect(runDefault("state", input)).toBeNull();
+  });
+});
+
+describe("default county pipeline", () => {
+  test.each([
+    ["Montgomery County", "MONTGOMERY"],
+    ["MONTGOMERY COUNTY", "MONTGOMERY"],
+    ["montgomery county", "MONTGOMERY"],
+    ["Montgomery", "MONTGOMERY"],
+    ["Montgomery Co.", "MONTGOMERY CO"],
+    ["Prince George's County", "PRINCE GEORGES"],
+    ["St. Mary's", "ST MARYS"],
+    ["Miami-Dade County", "MIAMI DADE"],
+    ["County of Los Angeles", "LOS ANGELES"],
+    ["Doña Ana County", "DONA ANA"],
+    ["  Fairfax   County  ", "FAIRFAX"],
+  ])("keeps %j as %j", (input, expected) => {
+    expect(runDefault("county", input)).toBe(expected);
+  });
+
+  test.each(["", "   ", "County", "COUNTY", "..."])("drops %j", (input) => {
+    expect(runDefault("county", input)).toBeNull();
   });
 });
 

@@ -2319,6 +2319,10 @@ describe("summarizeInvitation", () => {
       to_lower_case: "partial",
       remove_accents: "partial",
       remove_affixes: "partial",
+      // A ZIP area is a truncation already, and a slice of a state code reads
+      // part of the code the value names.
+      zip3: "partial",
+      state_code: "partial",
       // Likewise for the value-deriving steps that still derive from the value: a
       // slice of a slice, a captured run of the value's own characters, a
       // pass-through-or-drop, a date laid out from its own components, and a
@@ -2365,6 +2369,7 @@ describe("summarizeInvitation", () => {
       // Effect named where the matching direction is determinable.
       substring: "partial",
       phonetic: "sound-alike",
+      zip3: "partial",
       // Named for the candidate set it realizes, which both linkage strategies
       // match on. Its other marker, under a combination that refuses one, has
       // its own test above.
@@ -2388,6 +2393,7 @@ describe("summarizeInvitation", () => {
       remove_accents: null,
       remove_affixes: null,
       pad_left: null,
+      state_code: null,
       parse_date: null,
       // Routine as the only step for a reason of position rather than of kind: a
       // coalesce is reached with the value the record realized still in hand, so

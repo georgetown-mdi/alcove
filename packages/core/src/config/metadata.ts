@@ -368,6 +368,18 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     role: "linkage",
     isPayload: false,
   },
+  {
+    type: "state",
+    aliases: ["state_code", "statecode", "state_name", "statename"],
+    role: "linkage",
+    isPayload: false,
+  },
+  {
+    type: "county",
+    aliases: ["county_name", "countyname"],
+    role: "linkage",
+    isPayload: false,
+  },
 ];
 
 /**

@@ -40,6 +40,7 @@ import { DATE_COLLAPSE_PROBES } from "../../src/linkageSatisfiability.js";
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
 import type { Metadata } from "../../src/config/metadata.js";
 import type {
+  LinkageField,
   LinkageStrategy,
   LinkageTerms,
   Output,
@@ -1248,6 +1249,60 @@ describe("the consent summary's date-collapse marker", () => {
     ]);
     expect(params[0]).toBe(`output_format: ${LITERAL_REGION_FORMAT}`);
     expect(params[1]).toMatch(/^flood: F+\.\.\.\[truncated\]$/);
+  });
+});
+
+describe("the consent summary's geography elements", () => {
+  const baseTerms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+  const keyFor = (field: LinkageField, transform?: TransformStep[]) =>
+    summarizeInvitation({
+      linkageTerms: {
+        ...baseTerms,
+        linkageFields: [...baseTerms.linkageFields, field],
+        linkageKeys: [
+          {
+            name: "geo",
+            elements: [
+              { field: "last_name" },
+              { field: field.name, ...(transform ? { transform } : {}) },
+            ],
+          },
+        ],
+      },
+    }).linkageKeys[0];
+
+  test("a zip3 element is stated as the first three ZIP digits, partial", () => {
+    const key = keyFor({ name: "zip_code", type: "zip_code" }, [
+      { function: "zip3" },
+    ]);
+    expect(key.headerFields).toEqual(["last name", "ZIP (partial)"]);
+    expect(key.elements[1].transforms[0].description).toBe(
+      "Matches on only the first three digits of a five-digit ZIP code, so ZIP codes in the same area can match; any other value is dropped.",
+    );
+  });
+
+  test("state and county fields are named by their type", () => {
+    expect(keyFor({ name: "state", type: "state" }).headerFields).toEqual([
+      "last name",
+      "state",
+    ]);
+    expect(keyFor({ name: "county", type: "county" }).headerFields).toEqual([
+      "last name",
+      "county",
+    ]);
+  });
+
+  test("a state_code element states its replacement and no marker", () => {
+    const key = keyFor({ name: "state", type: "state" }, [
+      { function: "state_code" },
+    ]);
+    expect(key.headerFields).toEqual(["last name", "state"]);
+    expect(key.elements[1].transforms[0].description).toMatch(
+      /^Replaces a US state, DC or territory name with its two-letter postal abbreviation/,
+    );
   });
 });
 

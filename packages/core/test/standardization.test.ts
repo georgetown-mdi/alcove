@@ -4331,6 +4331,8 @@ describe("buildKeyStrings", () => {
       parse_date: { inputFormat: "MM/DD/YYYY", outputFormat: "YYYYMMDD" },
       pad_left: { length: 9 },
       phonetic: { algorithm: "soundex" },
+      zip3: undefined,
+      state_code: undefined,
       null_if: { values: ["EXCLUDED"] },
       replace_regex: { pattern: "[A-Z]+", replacement: "" },
       extract_regex: { pattern: "([0-9]+)" },

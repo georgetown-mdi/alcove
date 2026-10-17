@@ -9,6 +9,7 @@ import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
 import { runPipeline, suffixes, titles } from "../../src/standardization";
 import { SEMANTIC_TYPES } from "../../src/types";
+import { US_STATE_CODES } from "../../src/usStateCodes";
 import { snakeizeKeys } from "../../src/utils/camelizeKeys";
 import {
   CANDIDATE_DATE_FORMATS,
@@ -93,6 +94,7 @@ function parseDocument() {
   const aliasRows: string[][] = [];
   const parameterRows: string[][] = [];
   const affixRows: string[][] = [];
+  const stateCodeRows: string[][] = [];
   const affixExamples: Array<{ input: string; result: string | null }> = [];
   let currentType: string | undefined;
   let inAffixSection = false;
@@ -162,13 +164,27 @@ function parseDocument() {
     if (/^\| Parameter \| Value \|/.test(line))
       parameterRows.push(...tableRows(i));
     if (/^\| List \| Words \|/.test(line)) affixRows.push(...tableRows(i));
+    if (/^\| Code \| Names \|/.test(line)) stateCodeRows.push(...tableRows(i));
   }
 
-  return { typeSections, aliasRows, parameterRows, affixRows, affixExamples };
+  return {
+    typeSections,
+    aliasRows,
+    parameterRows,
+    affixRows,
+    affixExamples,
+    stateCodeRows,
+  };
 }
 
-const { typeSections, aliasRows, parameterRows, affixRows, affixExamples } =
-  parseDocument();
+const {
+  typeSections,
+  aliasRows,
+  parameterRows,
+  affixRows,
+  affixExamples,
+  stateCodeRows,
+} = parseDocument();
 
 // The Words cell is a plain comma-separated list (unlike the alias table's code
 // spans), in the order the doc lists them for reading.
@@ -315,6 +331,16 @@ describe("DEFAULT_STANDARDIZATION.md affix table", () => {
         `last_name input ${JSON.stringify(input)}`,
       ).toEqual(result);
     }
+  });
+});
+
+describe("DEFAULT_STANDARDIZATION.md state table", () => {
+  test("lists exactly the codes and names state_code recognizes", () => {
+    const documented = stateCodeRows.map(([code, names]) => ({
+      code: unwrapCodeSpan(code),
+      names: names.split(",").map(unwrapCodeSpan),
+    }));
+    expect(documented).toEqual(US_STATE_CODES);
   });
 });
 

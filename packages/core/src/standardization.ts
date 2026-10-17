@@ -26,6 +26,7 @@ import {
   transformParamTypeMessage,
 } from "./config/transformParamTypes.js";
 import type { TransformParamType } from "./config/transformParamTypes.js";
+import { usStateCode } from "./usStateCodes.js";
 import type { ScanBudget } from "./utils/linearRegex.js";
 import type {
   Standardization,
@@ -827,6 +828,12 @@ function padLeftFactory(params: Params): PlainStandardizingFn {
   return (s) => s.padStart(length, char);
 }
 
+const FIVE_DIGIT_ZIP_PATTERN = /^\d{5}$/;
+
+function zip3(s: string): string | null {
+  return FIVE_DIGIT_ZIP_PATTERN.test(s) ? s.slice(0, 3) : null;
+}
+
 function nullIfFactory(params: Params): PlainStandardizingFn {
   // `values` first, then the single `value`: a step declaring both excludes
   // the list.
@@ -938,6 +945,8 @@ const STANDARDIZING_FUNCTIONS = frozenLookupTable({
   parse_date: parseDateFactory,
   pad_left: padLeftFactory,
   phonetic: phoneticFactory,
+  zip3: (_params) => zip3,
+  state_code: (_params) => usStateCode,
   null_if: nullIfFactory,
   replace_regex: replaceRegexFactory,
   extract_regex: extractRegexFactory,
@@ -1320,6 +1329,22 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     params: z.object({
       algorithm: z.enum(["soundex"]).default("soundex"),
     }),
+  },
+  zip3: {
+    name: "zip3",
+    label: "First 3 ZIP digits",
+    blurb:
+      "Keep the first three digits of a five-digit ZIP code; drop any other value.",
+    tier: "standard",
+    params: noParams,
+  },
+  state_code: {
+    name: "state_code",
+    label: "State code",
+    blurb:
+      "Replace a US state, DC or territory name with its two-letter postal abbreviation, keeping an abbreviation as it is; drop any other value.",
+    tier: "standard",
+    params: noParams,
   },
   null_if: {
     name: "null_if",

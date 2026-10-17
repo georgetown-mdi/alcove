@@ -4323,6 +4323,65 @@ describe("readConfigLinkageSource", () => {
     });
   });
 
+  test("reads state, county and a zip3 transform from a config", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const defaults = getDefaultLinkageTerms("Agency A");
+    const terms: LinkageTerms = {
+      ...defaults,
+      linkageRuleSet: undefined,
+      linkageFields: [
+        ...defaults.linkageFields,
+        { name: "state", type: "state" },
+        { name: "county", type: "county" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+ZIP3",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "zip_code", transform: [{ function: "zip3" }] },
+          ],
+        },
+        {
+          name: "LN+FN+DOB+STATE",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "state" },
+          ],
+        },
+        {
+          name: "LN+FN+DOB+COUNTY",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "county" },
+          ],
+        },
+      ],
+    };
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share" },
+      linkageTerms: terms,
+    });
+    const written = fs.readFileSync(configPath, "utf8");
+    expect(written).toContain("type: state");
+    expect(written).toContain("function: zip3");
+    expect(readConfigLinkageSource(configPath)).toMatchObject({
+      status: "loaded",
+      source: {
+        linkageTerms: {
+          linkageFields: terms.linkageFields,
+          linkageKeys: terms.linkageKeys,
+        },
+      },
+    });
+  });
+
   // The delimiter the exchange this config governs reads and writes by, lifted so
   // a command grading an input against this config reads the file the same way.
   // The spellings and the accepted set are core's own, shared with the schema the
