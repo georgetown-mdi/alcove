@@ -218,12 +218,22 @@ const FUZZY_CASES: ReadonlyArray<FuzzyCase> = [
   { kind: "edit_distances", initiator: "SMITH", responder: "SMYTH" },
   // The year either side, on the canonical date layout.
   { kind: "adjacent_years", initiator: "19900115", responder: "19910115" },
+  // The day either side, here across a year boundary.
+  { kind: "adjacent_days", initiator: "19991231", responder: "20000101" },
   // The one date the day and month exchange to.
   { kind: "day_month_swaps", initiator: "19900112", responder: "19901201" },
 ];
 
+function isDateKind(kind: GenerateFuzzyComparisons): boolean {
+  return (
+    kind === "adjacent_years" ||
+    kind === "adjacent_days" ||
+    kind === "day_month_swaps"
+  );
+}
+
 function fuzzyTerms(kind: GenerateFuzzyComparisons): LinkageTerms {
-  const dateKind = kind === "adjacent_years" || kind === "day_month_swaps";
+  const dateKind = isDateKind(kind);
   return cascadeTerms(
     [
       {
@@ -257,7 +267,7 @@ describe("each fuzzy comparison kind matches under the cascade", () => {
   test.each(FUZZY_CASES)(
     "$kind relates the pair its expansion reaches",
     async ({ kind, initiator, responder }) => {
-      const dateKind = kind === "adjacent_years" || kind === "day_month_swaps";
+      const dateKind = isDateKind(kind);
       const column = dateKind ? "date_of_birth" : "last_name";
       const [initiatorResult, responderResult] = await runBothParties(
         fuzzyTerms(kind),
@@ -566,7 +576,7 @@ describe("each fuzzy comparison kind matches with both parties deduplicating", (
   test.each(FUZZY_CASES)(
     "$kind relates the pair its expansion reaches",
     async ({ kind, initiator, responder }) => {
-      const dateKind = kind === "adjacent_years" || kind === "day_month_swaps";
+      const dateKind = isDateKind(kind);
       const column = dateKind ? "date_of_birth" : "last_name";
       // Two rows a side holding one value each, so the expansion's pair is a
       // 2x2 block rather than the single pair the one-to-one run takes.

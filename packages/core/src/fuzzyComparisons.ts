@@ -1,5 +1,8 @@
 import { UsageError } from "./errors.js";
-import { isCalendarDateValid } from "./utils/calendarDate.js";
+import {
+  calendarDateDaysAway,
+  isCalendarDateValid,
+} from "./utils/calendarDate.js";
 import type { GenerateFuzzyComparisons } from "./config/linkageTermsSchema.js";
 
 /**
@@ -53,8 +56,8 @@ function nonCanonicalDateRefusal(kind: GenerateFuzzyComparisons): UsageError {
  *
  * @throws {UsageError} if `value` is above
  * {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, or if `kind` is
- * `adjacent_years` or `day_month_swaps` and `value` is not a canonical
- * `YYYYMMDD` date.
+ * `adjacent_years`, `adjacent_days` or `day_month_swaps` and `value` is not a
+ * canonical `YYYYMMDD` date.
  */
 export function assertFuzzyExpansionAccepts(
   value: string,
@@ -64,6 +67,7 @@ export function assertFuzzyExpansionAccepts(
     throw fuzzyValueTooLongRefusal(kind);
   switch (kind) {
     case "adjacent_years":
+    case "adjacent_days":
     case "day_month_swaps":
       if (!CANONICAL_DATE_PATTERN.test(value))
         throw nonCanonicalDateRefusal(kind);
@@ -132,6 +136,28 @@ export function adjacentYearCandidates(value: string): string[] {
 }
 
 /**
+ * The day before and the day after a canonical `YYYYMMDD` value, across month,
+ * year and leap-day boundaries; a full-variant enumeration
+ * (docs/notes/one-sided-fuzzy-expansion.md). An input that is not itself a
+ * valid date emits none, which keeps the relation symmetric, as in
+ * {@link adjacentYearCandidates}.
+ *
+ * @throws {UsageError} when `value` is not a canonical `YYYYMMDD` date.
+ */
+export function adjacentDayCandidates(value: string): string[] {
+  assertFuzzyExpansionAccepts(value, "adjacent_days");
+  const year = value.slice(0, 4);
+  const month = value.slice(4, 6);
+  const day = value.slice(6, 8);
+  const candidates: string[] = [];
+  for (const offsetDays of [-1, 1]) {
+    const shifted = calendarDateDaysAway(year, month, day, offsetDays);
+    if (shifted !== undefined) candidates.push(shifted);
+  }
+  return candidates;
+}
+
+/**
  * The canonical `YYYYMMDD` value with day and month exchanged, when both
  * readings are valid dates and differ; a full-variant enumeration
  * (docs/notes/one-sided-fuzzy-expansion.md).
@@ -164,6 +190,7 @@ export function expandsOnReceiverOnly(kind: GenerateFuzzyComparisons): boolean {
   switch (kind) {
     case "transpositions":
     case "adjacent_years":
+    case "adjacent_days":
     case "day_month_swaps":
       return true;
     case "edit_distances":
@@ -190,6 +217,7 @@ export function fuzzyCandidateCeiling(
   );
   switch (kind) {
     case "adjacent_years":
+    case "adjacent_days":
       return 3;
     case "day_month_swaps":
       return 2;
@@ -224,6 +252,9 @@ export function expandFuzzyComparisons(
       break;
     case "adjacent_years":
       candidates = adjacentYearCandidates(value);
+      break;
+    case "adjacent_days":
+      candidates = adjacentDayCandidates(value);
       break;
     case "day_month_swaps":
       candidates = dayMonthSwapCandidates(value);

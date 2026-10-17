@@ -452,6 +452,13 @@ describe("buildKeyStrings: the expanding side", () => {
       onReceiver: ["19900115", "19890115", "19910115"],
     },
     {
+      kind: "adjacent_days" as const,
+      field: "date_of_birth",
+      transform: undefined,
+      value: "19900301",
+      onReceiver: ["19900301", "19900228", "19900302"],
+    },
+    {
       kind: "day_month_swaps" as const,
       field: "date_of_birth",
       transform: undefined,
@@ -487,6 +494,13 @@ describe("buildKeyStrings: the expanding side", () => {
       transform: undefined,
       mine: "19900115",
       theirs: "19910115",
+    },
+    {
+      kind: "adjacent_days" as const,
+      field: "date_of_birth",
+      transform: undefined,
+      mine: "19900131",
+      theirs: "19900201",
     },
     {
       kind: "day_month_swaps" as const,

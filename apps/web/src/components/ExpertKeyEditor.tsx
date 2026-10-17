@@ -84,6 +84,7 @@ const FUZZY_LABELS: Record<FuzzyComparison, string> = {
   transpositions: "Two-digit transpositions",
   edit_distances: "Single-character edits",
   adjacent_years: "Adjacent years (+/- 1)",
+  adjacent_days: "Adjacent days (+/- 1)",
   day_month_swaps: "Day and month exchanged",
 };
 
@@ -92,6 +93,7 @@ const FUZZY_DESCRIPTIONS: Record<FuzzyComparison, string> = {
   transpositions: "Also match values with two characters swapped",
   edit_distances: "Also match values one typo away",
   adjacent_years: "Also match dates one year away",
+  adjacent_days: "Also match dates one day away",
   day_month_swaps: "Also match dates with the day and month swapped",
 };
 
