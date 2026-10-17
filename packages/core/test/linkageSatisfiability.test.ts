@@ -1046,6 +1046,26 @@ describe("substringCollapsesParsedDateToConstant", () => {
     expect(collapsedValue(cleanPartial)).toBeUndefined();
     expect(anyVerdict(cleanPartial)).toBe(false);
   });
+
+  test("a zip3 ends a measured run as a substring keeping three characters does", () => {
+    const zip3Step: TransformStep = { function: "zip3" };
+    const viaZip3 = [parseDate("000MM"), zip3Step];
+    const viaSubstring = [parseDate("000MM"), slice(1, 3)];
+    expect(collapsedValue(viaZip3)).toBe("000");
+    expect(collapsedValue(viaSubstring)).toBe("000");
+    expect(anyVerdict(viaZip3)).toBe(true);
+    expect(anyVerdict(viaSubstring)).toBe(true);
+    expect(pipelineCollapsesParsedDateToConstant(viaZip3)).toBe(true);
+    // A zip3 over a ZIP field has no parse_date ahead of it to collapse.
+    expect(pipelineCollapsesParsedDateToConstant([zip3Step])).toBe(false);
+    // A zip3 that drops every date (eight digits is not a ZIP) is not a collapse.
+    expect(anyVerdict([parseDate("YYYYMMDD"), zip3Step])).toBe(false);
+    // Leading digits that change with the date are not a collapse.
+    const varying = [parseDate("DDMM1"), zip3Step];
+    expect(collapsedValue(varying)).toBeUndefined();
+    expect(anyVerdict(varying)).toBe(false);
+    expect(pipelineCollapsesParsedDateToConstant(varying)).toBe(false);
+  });
 });
 
 // --- CONSENT_VERDICT_PARAM_NAMES ---------------------------------------------

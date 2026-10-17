@@ -1199,6 +1199,25 @@ describe("the consent summary's date-collapse marker", () => {
     ).toEqual(["date of birth (fallback)"]);
   });
 
+  test("a zip3 after a parse_date earns the label its substring spelling does", () => {
+    // `000MM` renders every date as 000 plus a month, so the first three
+    // characters are the constant `000` however the run is written.
+    const collapsingFormat = "000MM";
+    expect(headerFor([parseDate(collapsingFormat), slice(1, 3)])).toEqual([
+      "date of birth (any date)",
+    ]);
+    expect(
+      headerFor([parseDate(collapsingFormat), { function: "zip3" }]),
+    ).toEqual(["date of birth (any date)"]);
+  });
+
+  test("a zip3 after a parse_date whose leading digits vary is not any date", () => {
+    // `DDMM1` renders five digits whose first three change with the date.
+    expect(headerFor([parseDate("DDMM1"), { function: "zip3" }])).toEqual([
+      "date of birth (partial)",
+    ]);
+  });
+
   test("a plain reformatting keeps no marker", () => {
     // Routine canonicalization between equivalent full layouts, unflagged by
     // design; the slice that reads the date itself is the milder word.
