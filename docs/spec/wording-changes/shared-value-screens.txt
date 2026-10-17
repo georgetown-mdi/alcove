@@ -24,11 +24,17 @@
 - - -> No other default transformation states one.
 - - -> Counting distinct people
 - - -> A person is a record's cleaned `first_name`, `last_name` and `date_of_birth` values.
-- - -> They are read from the first linkage field of each of those types the terms declare that binds a column, so a type with no such field takes no part in the count.
+- - -> Each is read from the party's own column of that type, the first `role: linkage` column of the type in its metadata, declared or inferred, whether or not the terms declare a field of the type.
+- - -> A type with no such column takes no part in the count.
+- - -> The column is cleaned by the party's own transformation for a linkage field of that type where its standardization has one reading that column, and otherwise by the default pipeline for the type, a date's format inferred from the column (see [Date-format inference](#date-format-inference)).
+- - -> The terms cannot remove a column from the count.
 - - -> Records holding the same three values are one person, so a person's own duplicate records count once.
 - - -> A record missing one or more of the values, because its cell was empty or its pipeline dropped the value, is the same person as a record that holds the same value of the field, agrees with it on every value it has, and has a value it lacks.
 - - -> A record no other record completes this way is a person of its own.
-- - -> When the terms declare none of the three types, every record holding a value is one person, and the screen drops nothing.
+- - -> When the file has none of the three columns, every record holding a value is one person, and the screen drops nothing.
+- - -> The count has two limits:
+- - -> A record with neither a name nor a date of birth agrees with every holder of its value, so it never counts as another person.
+- - -> A person's own duplicate record whose cleaned name differs, such as a spelling variant, counts as another person, so a value can be dropped from one person's records.
 - - -> For example, two records sharing an SSN, one holding `MARIA`, `LOPEZ`, `19800101` and the other no name and `19900505`, are two people, so the SSN is dropped from both.
 - - -> Had the second record held `19800101`, the two would be one person and the SSN would be kept.
 - - -> A record holding `MARIA`, `LOPES`, `19800101` beside the first is another person: the count compares cleaned values and corrects no spelling.

@@ -196,6 +196,18 @@ function stepsForType(
 }
 
 /**
+ * A copy of the default pipeline for a column of `semanticType`, or `undefined`
+ * for a type with none.
+ */
+export function defaultStepsForType(
+  semanticType: string,
+  options: DefaultStandardizationOptions = {},
+): StandardizationStep[] | undefined {
+  const steps = stepsForType(semanticType, options);
+  return steps === undefined ? undefined : structuredClone(steps);
+}
+
+/**
  * Generates a default {@link Standardization} for the linkage fields in
  * `terms`, sourcing input column names from `metadata`.
  *

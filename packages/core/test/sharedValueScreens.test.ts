@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { getDefaultStandardization } from "../src/defaults/builtInStandardization";
 import { buildStandardizedDataset } from "../src/standardization";
+import { personColumns } from "../src/personColumns";
 import { safeParseStandardization } from "../src/config/standardizationSchema";
 import {
   droppedSharedValues,
@@ -32,7 +33,15 @@ const terms: LinkageTerms = {
   linkageKeys: [{ name: "ssn", elements: [{ field: "ssn" }] }],
 };
 
-const COLUMNS = ["SSN", "FIRST", "LAST", "DOB", "PHONE", "EMAIL"] as const;
+const COLUMNS = [
+  "SSN",
+  "FIRST",
+  "LAST",
+  "DOB",
+  "PHONE",
+  "EMAIL",
+  "ZIP",
+] as const;
 const COLUMN_TYPES = [
   "ssn",
   "first_name",
@@ -40,6 +49,7 @@ const COLUMN_TYPES = [
   "date_of_birth",
   "phone_number",
   "email_address",
+  "zip_code",
 ] as const;
 
 const metadata: ColumnMetadata[] = COLUMNS.map((name, index) => ({
@@ -56,6 +66,7 @@ interface Person {
   dob?: string;
   phone?: string;
   email?: string;
+  zip?: string;
 }
 
 function row(person: Person): CSVRow {
@@ -66,7 +77,37 @@ function row(person: Person): CSVRow {
     DOB: person.dob ?? "",
     PHONE: person.phone ?? "",
     EMAIL: person.email ?? "",
+    ZIP: person.zip ?? "",
   };
+}
+
+function termsDeclaring(...types: Array<(typeof COLUMN_TYPES)[number]>) {
+  return {
+    ...terms,
+    linkageFields: types.map((type) => ({ name: type, type })),
+    linkageKeys: [
+      { name: "key", elements: types.map((type) => ({ field: type })) },
+    ],
+  } satisfies LinkageTerms;
+}
+
+function dataset(
+  people: Person[],
+  agreedTerms: LinkageTerms = terms,
+  standardization: Standardization = getDefaultStandardization(
+    metadata,
+    agreedTerms,
+  ),
+  columns: ColumnMetadata[] = metadata,
+) {
+  const rows = people.map(row);
+  return buildStandardizedDataset(
+    standardization,
+    rows,
+    columns,
+    agreedTerms,
+    personColumns(standardization, columns, agreedTerms, rows),
+  );
 }
 
 const SSN = "123-45-6780";
@@ -80,18 +121,18 @@ const maria: Person = { first: "Maria", last: "Lopez", dob: "01/02/1980" };
 function cleaned(
   field: string,
   people: Person[],
-  standardization: Standardization = getDefaultStandardization(metadata, terms),
+  standardization?: Standardization,
+  agreedTerms: LinkageTerms = terms,
+  columns: ColumnMetadata[] = metadata,
 ): string[][] {
-  const rows = people.map(row);
-  const dataset = buildStandardizedDataset(
-    standardization,
-    rows,
-    metadata,
-    terms,
-  );
-  const standardized = dataset.getField(field);
+  const standardized = dataset(
+    people,
+    agreedTerms,
+    standardization ?? getDefaultStandardization(columns, agreedTerms),
+    columns,
+  ).getField(field);
   if (standardized === undefined) throw new Error(`no field ${field}`);
-  return rows.map((_, index) => standardized.get(index));
+  return people.map((_, index) => standardized.get(index));
 }
 
 // `count` different people, each with a name and date of their own.
@@ -258,6 +299,109 @@ describe("shared phone or email within a file", () => {
         standardization,
       ),
     ).toEqual(Array.from({ length: 6 }, () => ["2025550123"]));
+  });
+});
+
+describe("people counted from the party's own columns", () => {
+  const ana: Person = { first: "Ana", last: "Silva", dob: "05/05/1990" };
+
+  test.each([
+    ["only ssn", termsDeclaring("ssn")],
+    ["ssn and zip_code", termsDeclaring("ssn", "zip_code")],
+  ])(
+    "terms declaring %s still drop an SSN two different people hold",
+    (_, agreedTerms) => {
+      const people = [
+        { ...maria, ssn: SSN, zip: "20057" },
+        { ...ana, ssn: SSN, zip: "20057" },
+      ];
+      expect(cleaned("ssn", people, undefined, agreedTerms)).toEqual([[], []]);
+      expect(
+        cleaned("ssn", [people[0], { ...people[0] }], undefined, agreedTerms),
+      ).toEqual([["123456780"], ["123456780"]]);
+    },
+  );
+
+  test("terms declaring a phone but no name still drop a phone six people hold", () => {
+    const agreedTerms = termsDeclaring("phone_number");
+    expect(
+      cleaned(
+        "phone_number",
+        distinctPeople(6, { phone: PHONE }),
+        undefined,
+        agreedTerms,
+      ),
+    ).toEqual(Array.from({ length: 6 }, () => []));
+    expect(
+      cleaned(
+        "phone_number",
+        distinctPeople(5, { phone: PHONE }),
+        undefined,
+        agreedTerms,
+      ),
+    ).toEqual(Array.from({ length: 5 }, () => ["2025550123"]));
+  });
+
+  test("a date of birth the terms do not declare is parsed in the format inferred from its column", () => {
+    const agreedTerms = termsDeclaring("ssn");
+    const people = [
+      { ...maria, dob: "1980-01-02", ssn: SSN },
+      { ...maria, dob: "1990-05-05", ssn: SSN },
+    ];
+    expect(cleaned("ssn", people, undefined, agreedTerms)).toEqual([[], []]);
+  });
+
+  test("a name the party's own standardization cleans is counted as it cleans it", () => {
+    const agreedTerms = termsDeclaring("ssn", "first_name");
+    const people = [
+      { ...maria, ssn: SSN },
+      { ...maria, first: "MARIA", ssn: SSN },
+    ];
+    expect(cleaned("ssn", people, undefined, agreedTerms)).toEqual([
+      ["123456780"],
+      ["123456780"],
+    ]);
+    const ownStandardization = getDefaultStandardization(
+      metadata,
+      agreedTerms,
+    ).map((transformation) =>
+      transformation.output === "first_name"
+        ? { ...transformation, steps: [] }
+        : transformation,
+    );
+    expect(cleaned("ssn", people, ownStandardization, agreedTerms)).toEqual([
+      [],
+      [],
+    ]);
+  });
+
+  test("a file with no name or date of birth column drops nothing", () => {
+    const columns = metadata.filter((column) => column.type === "ssn");
+    const agreedTerms = termsDeclaring("ssn");
+    expect(
+      cleaned(
+        "ssn",
+        [
+          { ...maria, ssn: SSN },
+          { ...ana, ssn: SSN },
+        ],
+        undefined,
+        agreedTerms,
+        columns,
+      ),
+    ).toEqual([["123456780"], ["123456780"]]);
+  });
+
+  test("a screen stated without the party's person columns is refused", () => {
+    const rows = [row({ ...maria, ssn: SSN })];
+    expect(() =>
+      buildStandardizedDataset(
+        getDefaultStandardization(metadata, terms),
+        rows,
+        metadata,
+        terms,
+      ),
+    ).toThrow(/person columns/);
   });
 });
 
@@ -430,11 +574,21 @@ describe("cross-party parity", () => {
         ]),
       ),
     );
+    const partnerStandardization = getDefaultStandardization(
+      partnerMetadata,
+      terms,
+    );
     const partnerDataset = buildStandardizedDataset(
-      getDefaultStandardization(partnerMetadata, terms),
+      partnerStandardization,
       partnerRows,
       partnerMetadata,
       terms,
+      personColumns(
+        partnerStandardization,
+        partnerMetadata,
+        terms,
+        partnerRows,
+      ),
     );
     for (const field of ["ssn", "phone_number"]) {
       const partnerField = partnerDataset.getField(field)!;

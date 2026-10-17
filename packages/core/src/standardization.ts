@@ -2347,14 +2347,18 @@ export function heldBackColumnNames(
   });
 }
 
-// The field types whose values tell one person in a file from another, for the
-// shared-value screens: the first linkage field of each type the terms declare
-// that binds a column.
-const PERSON_FIELD_TYPES: ReadonlyArray<SemanticType> = [
-  "first_name",
-  "last_name",
-  "date_of_birth",
-];
+/**
+ * One of a party's own columns whose cleaned values tell one person in its file
+ * from another, for the shared-value screens, as `personColumns` selects them.
+ */
+export interface PersonColumn {
+  /** The column's semantic type. */
+  readonly type: SemanticType;
+  /** The input column. */
+  readonly column: string;
+  /** The steps that clean it. */
+  readonly steps: StandardizationStep[];
+}
 
 /**
  * Build a {@link StandardizedDataset} for the linkage fields in `terms`, binding
@@ -2366,18 +2370,23 @@ const PERSON_FIELD_TYPES: ReadonlyArray<SemanticType> = [
  * Linkage fields that resolve to no column are absent from the dataset; records
  * referencing those fields are excluded from the corresponding linkage keys.
  * A transformation stating `maxPeoplePerValue` screens its field's values over
- * the whole of `rawRows` ({@link StandardizedField.screenSharedValues}).
+ * the whole of `rawRows` ({@link StandardizedField.screenSharedValues}),
+ * counting people from `personColumns`, which such a screen requires.
  */
 export function buildStandardizedDataset(
   standardization: Standardization | undefined,
   rawRows: ReadonlyArray<CSVRow>,
   metadata: ColumnMetadata[],
   terms: LinkageTerms,
+  personColumns?: ReadonlyArray<PersonColumn>,
 ): StandardizedDataset {
   const resolution = resolveFieldColumns(terms, standardization, metadata);
   const fields: StandardizedField[] = [];
   const screens: Array<{ field: StandardizedField; maxPeople: number }> = [];
-  const fieldOfPersonType = new Map<SemanticType, StandardizedField>();
+  const builtFields: Array<{
+    resolved: FieldColumnResolution;
+    standardized: StandardizedField;
+  }> = [];
 
   for (const field of terms.linkageFields) {
     const resolved = resolution.get(field.name);
@@ -2394,17 +2403,23 @@ export function buildStandardizedDataset(
     const maxPeople = resolved.transform?.maxPeoplePerValue;
     if (maxPeople !== undefined)
       screens.push({ field: standardized, maxPeople });
-    if (
-      PERSON_FIELD_TYPES.includes(field.type) &&
-      !fieldOfPersonType.has(field.type)
-    )
-      fieldOfPersonType.set(field.type, standardized);
+    builtFields.push({ resolved, standardized });
   }
 
-  const personFields = PERSON_FIELD_TYPES.flatMap((type) => {
-    const field = fieldOfPersonType.get(type);
-    return field === undefined ? [] : [field];
-  });
+  if (screens.length === 0)
+    return new StandardizedDataset(fields, terms.linkageKeys);
+  if (personColumns === undefined)
+    throw new Error(
+      "buildStandardizedDataset: a shared-value screen needs the party's person columns",
+    );
+  // A person column cleaned as a linkage field shares that field's cache.
+  const personFields = personColumns.map(
+    ({ type, column, steps }) =>
+      builtFields.find(
+        ({ resolved }) =>
+          resolved.column === column && resolved.transform?.steps === steps,
+      )?.standardized ?? new StandardizedField(type, column, steps, rawRows),
+  );
   for (const { field, maxPeople } of screens)
     field.screenSharedValues(maxPeople, personFields);
 
