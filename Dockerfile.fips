@@ -15,7 +15,7 @@
 # The per-architecture sha256 the tarball is checked against is committed below
 # and covers this release's bytes only, so a Node bump moves this version and
 # both of those hashes together.
-ARG NODE_VERSION=v26.7.0
+ARG NODE_VERSION=v26.10.0
 
 # The Amazon Linux release snapshot every dnf transaction below resolves
 # against. AWS retains superseded NVRs -- both certified provider packages are
@@ -73,8 +73,8 @@ RUN dnf -y --releasever=${AL2023_RELEASEVER} install tar gzip xz findutils libat
 RUN set -eux; \
   arch="$(uname -m)"; \
   case "$arch" in \
-  x86_64) node_arch=x64; node_sha256=982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee ;; \
-  aarch64) node_arch=arm64; node_sha256=afc7a004018485092ac8985b817b0d5684472bd9472e0b57d2ab88737e50090d ;; \
+  x86_64) node_arch=x64; node_sha256=ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022 ;; \
+  aarch64) node_arch=arm64; node_sha256=7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5 ;; \
   *) echo "unsupported architecture $arch" >&2; exit 1 ;; \
   esac; \
   cd /tmp; \
