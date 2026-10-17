@@ -8,6 +8,7 @@
 import { parseOrProtocolError } from "../connection/messageConnection";
 import { singleIssueArray } from "../utils/singleIssueArray";
 import {
+  MATCHED_LIST_PART_HEADER_BYTES,
   arraySource,
   receiveMatchedArray,
   receiveMatchedListParts,
@@ -111,6 +112,13 @@ export async function sendRoundGrouping(
   await sendMatchedList(conn, groupingSource(field));
 }
 
+// A part's header and its body's brackets, charged for each part the list
+// declares; the receiver holds that count to one part per entry.
+const GROUPING_PART_OVERHEAD_BYTES = MATCHED_LIST_PART_HEADER_BYTES + 2;
+
+// The one part an omitted grouping sends: its header and `null`.
+const OMITTED_GROUPING_PART_BYTES = MATCHED_LIST_PART_HEADER_BYTES + 4;
+
 /** What a received grouping's size is derived from, all of it locally held. */
 export type RoundGroupingSizeBounds = Pick<
   RoundGroupingBounds,
@@ -124,10 +132,10 @@ export type RoundGroupingSizeBounds = Pick<
  * at most `min(matchedPositions, partnerRecordCount)`, each at most
  * `min(maxPositionsPerRecord, matchedPositions)`. Owner lists: one per
  * position, holding ordinals below `partnerRecordCount`, each ordinal on at
- * most `maxPositionsPerRecord` lists and on each list once. The bytes of all
- * its parts together are held to `frameBound`, the bound a grouping rode in
- * one frame under, and are never below the 2 bytes by which an omitted
- * grouping's `null` is longer than `[]`.
+ * most `maxPositionsPerRecord` lists and on each list once. Each part the
+ * list declares adds its header and brackets. Every byte of every part counts
+ * against the total, which is at most `frameBound`, the bound a grouping was
+ * held to in one frame, and at least the one part of an omitted grouping.
  *
  * @internal
  */
@@ -137,23 +145,30 @@ export function roundGroupingBound(
   frameBound: number,
 ): MatchedListBound {
   const { maxPositionsPerRecord, partnerRecordCount } = bounds;
-  let listBytes: number;
+  let entryBytes: number;
   if (bounds.ownerLists) {
     const ordinals = Math.min(
       partnerRecordCount * maxPositionsPerRecord,
       partnerRecordCount * matchedPositions,
     );
-    listBytes =
+    entryBytes =
       2 * matchedPositions +
       ordinals * (roundIndexEntryBytes(partnerRecordCount) ?? 0);
   } else {
     const runs = Math.min(matchedPositions, partnerRecordCount);
     const longestRun = Math.min(maxPositionsPerRecord, matchedPositions);
-    listBytes = runs * (roundIndexEntryBytes(longestRun + 1) ?? 0);
+    entryBytes = runs * (roundIndexEntryBytes(longestRun + 1) ?? 0);
   }
   return {
     entries: matchedPositions,
-    listBytes: Math.max(2, Math.min(listBytes, frameBound)),
+    listBytes: (declaredParts) =>
+      Math.max(
+        OMITTED_GROUPING_PART_BYTES,
+        Math.min(
+          entryBytes + GROUPING_PART_OVERHEAD_BYTES * declaredParts,
+          frameBound,
+        ),
+      ),
   };
 }
 
@@ -161,8 +176,9 @@ export function roundGroupingBound(
  * Receives a grouping sent by {@link sendRoundGrouping}: `undefined` where
  * the sender omitted it, else its entries joined in order. A list declaring
  * more entries than `matchedPositions` is refused at its first part, and a
- * part past the bytes {@link roundGroupingBound} admits, at most the
- * connection's stated frame bound in all, before its body is parsed.
+ * part past the bytes {@link roundGroupingBound} admits, every part's header
+ * included and at most the connection's stated frame bound in all, before
+ * its body is parsed.
  */
 export async function receiveRoundGrouping(
   conn: MessageConnection,

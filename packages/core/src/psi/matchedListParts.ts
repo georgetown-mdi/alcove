@@ -54,29 +54,27 @@ export interface MatchedListBound {
    */
   readonly entryBytes?: number;
   /**
-   * The most UTF-8 bytes the bodies of all the list's parts hold together,
-   * beyond the 2 each part's brackets take: each part is then held to the
-   * header, 2 bytes, and what the earlier parts' bodies left of this. For a
-   * list whose entries have no useful single longest length.
+   * The most bytes all the list's parts hold together, every part counted
+   * whole with its header, given the part count the list declares at its
+   * first part: each part is then held to what the earlier parts left of
+   * this. For a list whose entries have no useful single longest length.
    */
-  readonly listBytes?: number;
+  readonly listBytes?: (declaredParts: number) => number;
 }
 
-// The most bytes the part expected next may hold under `bound`, or undefined
-// where the bound states no byte limit.
+// The most bytes the part expected next may hold, or undefined where the
+// bound states no byte limit.
 function partByteBound(
   bound: MatchedListBound,
+  listBytes: number | undefined,
   remainingEntries: number,
-  heldBodyBytes: number,
+  heldPartBytes: number,
 ): number | undefined {
   let maxPartBytes: number | undefined;
   if (bound.entryBytes !== undefined)
     maxPartBytes = matchedListPartByteBound(remainingEntries, bound.entryBytes);
-  if (bound.listBytes !== undefined) {
-    const left =
-      MATCHED_LIST_PART_HEADER_BYTES +
-      2 +
-      Math.max(0, bound.listBytes - heldBodyBytes);
+  if (listBytes !== undefined) {
+    const left = Math.max(0, listBytes - heldPartBytes);
     maxPartBytes =
       maxPartBytes === undefined ? left : Math.min(maxPartBytes, left);
   }
@@ -260,7 +258,8 @@ function refusal(
  * refused. Where `bound.entryBytes` is given, a part longer than
  * {@link matchedListPartByteBound} over the entries the list has still to send
  * is refused next, and where `bound.listBytes` is given, a part longer than
- * what the earlier parts left of it. Its body is then parsed through
+ * what the earlier parts, headers included, left of it at the part count the
+ * first part declares. Its body is then parsed through
  * {@link parseBoundedJson} and `parsePart`, which validates it and states how
  * many entries it holds, before the next part is read. A body that is not
  * JSON, a part holding no entries in a list that is not empty, a part running
@@ -289,7 +288,8 @@ export async function receiveMatchedListParts<T>(
   let count = 1;
   let entries = 0;
   let filled = 0;
-  let heldBodyBytes = 0;
+  let heldPartBytes = 0;
+  let listBytes: number | undefined;
   for (let expected = 0; expected < count; expected++) {
     const part = await receiveBinaryFrame(conn, participantId, what);
     if (part.byteLength < MATCHED_LIST_PART_HEADER_BYTES)
@@ -316,10 +316,16 @@ export async function receiveMatchedListParts<T>(
         throw refuse(
           `declares ${count} parts for a list of ${entryCount(entries)}`,
         );
+      listBytes = bound.listBytes?.(count);
     } else if (declaredCount !== count || declaredEntries !== BigInt(entries)) {
       throw refuse(`part ${index} declares a different list than part 0`);
     }
-    const maxPartBytes = partByteBound(bound, entries - filled, heldBodyBytes);
+    const maxPartBytes = partByteBound(
+      bound,
+      listBytes,
+      entries - filled,
+      heldPartBytes,
+    );
     if (maxPartBytes !== undefined && part.byteLength > maxPartBytes)
       throw refuse(
         `part ${index} is over the ${maxPartBytes} bytes this party admits ` +
@@ -340,7 +346,7 @@ export async function receiveMatchedListParts<T>(
     if (parsed.entries > entries - filled)
       throw refuse(`part ${index} runs past the list's declared entries`);
     filled += parsed.entries;
-    heldBodyBytes += Math.max(0, body.byteLength - 2);
+    heldPartBytes += part.byteLength;
     parts.push(parsed.part);
   }
   if (filled !== entries)
