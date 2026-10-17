@@ -1,13 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
 import {
   branchChangedPaths,
+  claimFilesOf,
+  claimNames,
   collectInvariance,
+  hunkIdentity,
   isAncestor,
+  parseArguments,
   rebaseShapeError,
+  repoRelativeClaimFile,
   rollUpVerdicts,
   summarizeInvariance,
   violationLine,
@@ -30,6 +35,24 @@ afterEach(cleanup);
 
 const byPath = (results) =>
   Object.fromEntries(results.map((r) => [r.path, r.verdict]));
+
+const NO_CLAIMS = { files: new Set(), unscoped: 0 };
+
+/** Seven one-line declarations, the first holding `first`. */
+const spaced = (first) =>
+  `export const a = ${first};\n` +
+  "export const b = 2;\nexport const c = 3;\nexport const d = 4;\n" +
+  "export const e = 5;\nexport const f = 6;\nexport const g = 7;\n";
+
+const shared = ({ fixture, oldHead, newBase, newHead, claims }) =>
+  collectInvariance({
+    oldBase: fixture.oldBase,
+    oldHead,
+    newBase,
+    newHead,
+    git: fixture.git,
+    claims: claims ?? NO_CLAIMS,
+  });
 
 /**
  * A repository whose `staging` branch holds one base commit, with `branch` cut
@@ -93,6 +116,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({
       "docs/notes.md": "exempt",
@@ -136,6 +160,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({ [list]: "exempt" });
@@ -168,6 +193,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({
@@ -206,6 +232,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(unreadable).toEqual([]);
     expect(byPath(results)).toEqual({
@@ -248,6 +275,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({ "src/shared.ts": "executable-delta" });
     const summary = summarizeInvariance(results);
@@ -258,11 +286,7 @@ describe("across a real rebase", () => {
     });
   });
 
-  it("violates when the staging range changed a file the branch also changed", () => {
-    const spaced = (first) =>
-      `export const a = ${first};\n` +
-      "export const b = 2;\nexport const c = 3;\nexport const d = 4;\n" +
-      "export const e = 5;\nexport const f = 6;\nexport const g = 7;\n";
+  it("holds when the staging range changed a file the branch also changed, outside the branch's hunks", () => {
     const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
     fixture.write("src/shared.ts", spaced(1) + "export const h = 8;\n");
     const oldHead = fixture.commit("Append to the shared file");
@@ -275,20 +299,233 @@ describe("across a real rebase", () => {
     // own patch is untouched, and the file it lands on is not.
     const newHead = rebaseOntoStaging(fixture);
 
-    const { results } = collectInvariance({
-      oldBase: fixture.oldBase,
-      oldHead,
-      newBase,
-      newHead,
-      git: fixture.git,
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "src/shared.ts": "same-hunks" });
+    expect(summarizeInvariance(results)).toMatchObject({
+      holds: true,
+      exitCode: 0,
     });
+  });
+
+  /**
+   * The results for a shared file the rebase left the branch's hunks to,
+   * `src/util/shared.ts`, under a ledger whose one claim has `file`.
+   */
+  const sharedFileUnderClaim = (file) => {
+    const fixture = rebaseFixture({ "src/util/shared.ts": spaced(1) });
+    fixture.write("src/util/shared.ts", spaced(1) + "export const h = 8;\n");
+    const oldHead = fixture.commit("Append to the shared file");
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("src/util/shared.ts", spaced(11));
+    const newBase = fixture.commit("Change the same file at the top");
+    const newHead = rebaseOntoStaging(fixture);
+
+    const claim = { claim: "c", verdict: "HOLDS" };
+    if (file !== undefined) claim.file = file;
+    const claims = claimFilesOf(
+      JSON.stringify({ round: 1, kind: "light", clusters: [] }) +
+        "\n" +
+        JSON.stringify({
+          round: 2,
+          kind: "security-reviewer",
+          claims: [claim],
+        }) +
+        "\n",
+    );
+    return shared({ fixture, oldHead, newBase, newHead, claims }).results;
+  };
+
+  it.each([
+    ["names the file", "src/util/shared.ts"],
+    ["names it with a line range", "src/util/shared.ts:8"],
+    ["names a directory above it", "src/util"],
+    ["names a directory above it with a trailing slash", "src/util/"],
+    [
+      "names it under an absolute worktree path",
+      "/workspace/.claude/worktrees/agent-a1/src/util/shared.ts",
+    ],
+    [
+      "names a directory above it under an absolute worktree path",
+      "/workspace/.claude/worktrees/agent-a1/src/util",
+    ],
+  ])(
+    "violates when a review claim %s, though the branch's hunks are unchanged",
+    (_, file) => {
+      const results = sharedFileUnderClaim(file);
+      expect(byPath(results)).toEqual({ "src/util/shared.ts": "claim-named" });
+      const summary = summarizeInvariance(results);
+      expect(summary).toMatchObject({ holds: false, exitCode: 1 });
+      expect(violationLine(summary.first)).toMatch(/a review claim names it/);
+    },
+  );
+
+  it.each([
+    ["is empty", ""],
+    ["is missing", undefined],
+    ["names the whole worktree", "/workspace/.claude/worktrees/agent-a1/"],
+  ])("turns the hunk comparison off when a claim's file %s", (_, file) => {
+    const [result] = sharedFileUnderClaim(file);
+    expect(result).toMatchObject({
+      path: "src/util/shared.ts",
+      verdict: "executable-delta",
+      where: "base",
+      reason: expect.stringMatching(/names no file/),
+    });
+    expect(summarizeInvariance([result]).holds).toBe(false);
+  });
+
+  it.each([
+    ["another file", "src/util/other.ts"],
+    ["a sibling directory sharing a prefix", "src/ut"],
+    ["a file outside every checkout", "/tmp/tmp.x/src/util"],
+  ])("keeps same-hunks when the only claim names %s", (_, file) => {
+    expect(byPath(sharedFileUnderClaim(file))).toEqual({
+      "src/util/shared.ts": "same-hunks",
+    });
+  });
+
+  it("violates when the staging change overlaps a branch hunk's context and the rebase still applies", () => {
+    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
+    fixture.write(
+      "src/shared.ts",
+      spaced(1).replace("export const d = 4;\n", "export const d = 44;\n"),
+    );
+    const oldHead = fixture.commit("Change d");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write(
+      "src/shared.ts",
+      spaced(1).replace("export const b = 2;\n", "export const b = 22;\n"),
+    );
+    const newBase = fixture.commit("Change b, two lines above d");
+
+    const newHead = rebaseOntoStaging(fixture);
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
     expect(byPath(results)).toEqual({ "src/shared.ts": "executable-delta" });
     const summary = summarizeInvariance(results);
     expect(summary).toMatchObject({ holds: false, exitCode: 1 });
-    expect(summary.first).toMatchObject({
-      path: "src/shared.ts",
-      where: "base",
+    expect(summary.first).toMatchObject({ where: "hunks" });
+  });
+
+  it("violates when the conflict resolution changed a branch hunk in a file the staging range changed", () => {
+    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
+    fixture.write("src/shared.ts", spaced(1).replace("= 1;", "= 100;"));
+    const oldHead = fixture.commit("Change a");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("src/shared.ts", spaced(11));
+    const newBase = fixture.commit("Change a differently");
+
+    const newHead = rebaseOntoStaging(fixture, () =>
+      fixture.write("src/shared.ts", spaced(111)),
+    );
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "src/shared.ts": "executable-delta" });
+    expect(summarizeInvariance(results)).toMatchObject({
+      holds: false,
+      exitCode: 1,
     });
+  });
+
+  it("violates when the rebased branch adds a hunk to a shared file that it did not change before", () => {
+    const fixture = rebaseFixture({
+      "src/shared.ts": spaced(1),
+      "src/branch.ts": "export const b = 1;\n",
+    });
+    fixture.write("src/branch.ts", "export const b = 2;\n");
+    const oldHead = fixture.commit("Branch work");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("src/shared.ts", spaced(11));
+    const newBase = fixture.commit("Staging changes the shared file");
+
+    rebaseOntoStaging(fixture);
+    fixture.write("src/shared.ts", spaced(11) + "export const h = 8;\n");
+    const newHead = fixture.commit("Further branch work");
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({
+      "src/branch.ts": "identical",
+      "src/shared.ts": "executable-delta",
+    });
+  });
+
+  it("holds when the only change beside a branch hunk is a staging comment", () => {
+    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
+    fixture.write(
+      "src/shared.ts",
+      spaced(1).replace("export const d = 4;\n", "export const d = 44;\n"),
+    );
+    const oldHead = fixture.commit("Change d");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write(
+      "src/shared.ts",
+      "// staging's note\n" +
+        spaced(1).replace(
+          "export const b = 2;\n",
+          "export const b = 2; // why\n",
+        ) +
+        "export const z = 9;\n",
+    );
+    const newBase = fixture.commit("Append z, and comment two lines above d");
+
+    const newHead = rebaseOntoStaging(fixture);
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "src/shared.ts": "same-hunks" });
+  });
+
+  it("violates when the branch's string literal lost only whitespace across the rebase", () => {
+    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
+    fixture.write("src/shared.ts", spaced(1) + 'export const s = "a b";\n');
+    const oldHead = fixture.commit("Add s");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("src/shared.ts", spaced(11));
+    const newBase = fixture.commit("Change a");
+
+    rebaseOntoStaging(fixture);
+    fixture.write("src/shared.ts", spaced(11) + 'export const s = "ab";\n');
+    fixture.git(["commit", "-q", "--amend", "-a", "--no-edit"]);
+    const newHead = fixture.head();
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "src/shared.ts": "executable-delta" });
+  });
+
+  it("fails closed on a shared source file that does not parse at one end", () => {
+    const fixture = rebaseFixture({ "src/shared.ts": spaced(1) });
+    fixture.write("src/shared.ts", spaced(1) + "export const h = 8;\n");
+    const oldHead = fixture.commit("Append to the shared file");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("src/shared.ts", "export const = ;\n" + spaced(1));
+    const newBase = fixture.commit("Break the top of the file");
+
+    const newHead = rebaseOntoStaging(fixture);
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "src/shared.ts": "unverifiable" });
+  });
+
+  it("keeps the two-ended comparison for a shared YAML file", () => {
+    const yamlLines = (first) =>
+      `a: ${first}\nb: 2\nc: 3\nd: 4\ne: 5\nf: 6\ng: 7\n`;
+    const fixture = rebaseFixture({ "config.yaml": yamlLines(1) });
+    fixture.write("config.yaml", yamlLines(1) + "h: 8\n");
+    const oldHead = fixture.commit("Append to the shared file");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("config.yaml", yamlLines(11));
+    const newBase = fixture.commit("Change the same file at the top");
+
+    const newHead = rebaseOntoStaging(fixture);
+
+    const { results } = shared({ fixture, oldHead, newBase, newHead });
+    expect(byPath(results)).toEqual({ "config.yaml": "executable-delta" });
   });
 
   it("fails closed on a path it cannot read for executable content", () => {
@@ -321,6 +558,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(byPath(results)).toEqual({ "package.json": "unverifiable" });
     expect(summarizeInvariance(results)).toMatchObject({
@@ -348,6 +586,7 @@ describe("across a real rebase", () => {
       newBase,
       newHead,
       git: fixture.git,
+      claims: NO_CLAIMS,
     });
     expect(results).toEqual([]);
     expect(summarizeInvariance(results)).toMatchObject({
@@ -459,9 +698,105 @@ describe("path collection", () => {
       newBase: "c",
       newHead: "d",
       git,
+      claims: NO_CLAIMS,
     });
     expect(collected.results).toEqual([]);
     expect(collected.unreadable).toHaveLength(2);
+  });
+});
+
+describe("hunk identity, as real git patch-id computes it", () => {
+  const add = (text) =>
+    text.replace("export const d = 4;\n", "$&const x = 1;\n");
+
+  it("is empty for an unchanged text, and ignores where in the file a hunk sits", () => {
+    expect(hunkIdentity(spaced(1), spaced(1))).toBe("");
+    const shifted = "export const z = 0;\n".repeat(9) + spaced(1);
+    expect(hunkIdentity(spaced(1), add(spaced(1)))).toMatch(/^[0-9a-f]{40}$/);
+    expect(hunkIdentity(shifted, add(shifted))).toBe(
+      hunkIdentity(spaced(1), add(spaced(1))),
+    );
+  });
+
+  it("counts the three context lines on each side and nothing past them", () => {
+    const inContext = spaced(1).replace("= 2;", "= 22;");
+    const pastContext = spaced(11);
+    const id = hunkIdentity(spaced(1), add(spaced(1)));
+    expect(hunkIdentity(inContext, add(inContext))).not.toBe(id);
+    expect(hunkIdentity(pastContext, add(pastContext))).toBe(id);
+  });
+});
+
+describe("the claims a ledger names", () => {
+  it("collects every claim's file from every row, and throws on a line that is not an object", () => {
+    const ledger =
+      [
+        { round: 1, kind: "light", clusters: [{ file: "src/lens.ts" }] },
+        {
+          round: 2,
+          kind: "security-reviewer",
+          claims: [
+            { claim: "c", verdict: "HOLDS", file: "src/a.ts" },
+            { claim: "d", verdict: "HOLDS", file: "" },
+            { claim: "e", verdict: "HOLDS" },
+            { claim: "f", verdict: "HOLDS", file: "/repo/src/b.ts" },
+            { claim: "g", verdict: "HOLDS", file: "/repo" },
+          ],
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n";
+    expect(claimFilesOf(ledger, { checkoutRoots: ["/repo/"] })).toEqual({
+      files: new Set(["src/a.ts", "src/b.ts"]),
+      unscoped: 3,
+    });
+    expect(() => claimFilesOf(ledger + "[1]\n")).toThrow(/line 3/);
+    expect(() => claimFilesOf("not json\n")).toThrow();
+  });
+
+  it.each([
+    ["src/a.ts", "src/a.ts"],
+    ["./src/a.ts", "src/a.ts"],
+    ["src/util/", "src/util"],
+    ["/workspace/.claude/worktrees/agent-a1/src/a.ts", "src/a.ts"],
+    [".claude/worktrees/agent-a1/src/a.ts", "src/a.ts"],
+    ["/workspace/.claude/worktrees/agent-a1", ""],
+    ["/workspace/src/a.ts", "src/a.ts"],
+    ["/workspace", ""],
+    ["/workspaces/src/a.ts", "/workspaces/src/a.ts"],
+    ["/tmp/tmp.x/a.cpp", "/tmp/tmp.x/a.cpp"],
+  ])("reads the claim file %j as %j", (file, relative) => {
+    expect(repoRelativeClaimFile(file, ["/workspace"])).toBe(relative);
+  });
+
+  it("matches a claim whose file is the path, a directory above it, or contains it", () => {
+    const claims = {
+      files: new Set(["src/a.ts:10-20", "src/b.ts", "lib/util"]),
+      unscoped: 0,
+    };
+    expect(claimNames(claims, "src/a.ts")).toBe(true);
+    expect(claimNames(claims, "src/b.ts")).toBe(true);
+    expect(claimNames(claims, "lib/util/x.ts")).toBe(true);
+    expect(claimNames(claims, "src/c.ts")).toBe(false);
+    expect(claimNames(claims, "lib/utility.ts")).toBe(false);
+  });
+});
+
+describe("the command line", () => {
+  it("takes four refs and a ledger in either order", () => {
+    const want = {
+      oldBase: "a",
+      oldHead: "b",
+      newBase: "c",
+      newHead: "d",
+      ledger: "l",
+    };
+    expect(parseArguments([..."abcd", "--ledger", "l"])).toEqual(want);
+    expect(parseArguments(["--ledger", "l", ..."abcd"])).toEqual(want);
+    expect(parseArguments([..."abcd"])).toBeNull();
+    expect(
+      parseArguments([..."abcd", "--ledger", "l", "--ledger", "m"]),
+    ).toBeNull();
   });
 });
 
@@ -542,6 +877,13 @@ const runScript = (args, cwd = dirname(SCRIPT)) => {
   }
 };
 
+/** A ledger file whose rows name no claim, in a directory the suite removes. */
+const emptyLedger = () => {
+  const fixture = makeBareFixture("rebase-ledger-");
+  fixture.write("ledger.jsonl", '{"round": 1, "kind": "light"}\n');
+  return join(fixture.dir, "ledger.jsonl");
+};
+
 describe("the script as an agent runs it", () => {
   // Five cold Node spawns in one case: 1.4s together alone against vitest's 5s
   // default, and 11.4s with the rest of the script suites competing for the same
@@ -551,14 +893,14 @@ describe("the script as an agent runs it", () => {
   const USAGE_SPAWN_TIMEOUT_MS = 60_000;
 
   it(
-    "prints usage and exits 2 unless given exactly four refs",
+    "prints usage and exits 2 unless given exactly four refs and a ledger",
     () => {
       for (const args of [
         [],
-        ["a"],
-        ["a", "b"],
-        ["a", "b", "c"],
-        "abcde".split(""),
+        "abcd".split(""),
+        ["a", "b", "c", "--ledger", "l"],
+        [..."abcde", "--ledger", "l"],
+        [..."abcd", "--ledger"],
       ]) {
         const result = runScript(args);
         expect(result.status).toBe(2);
@@ -580,8 +922,35 @@ describe("the script as an agent runs it", () => {
     "exits 2 when a ref does not resolve, rather than reporting a verdict",
     { timeout: SOUNDNESS_PROBE_TIMEOUT_MS },
     () => {
-      const result = runScript(["HEAD", "HEAD", "HEAD", "no-such-ref-9f3c1a"]);
+      const result = runScript([
+        "HEAD",
+        "HEAD",
+        "HEAD",
+        "no-such-ref-9f3c1a",
+        "--ledger",
+        emptyLedger(),
+      ]);
       expect(result.status).toBe(2);
+      expect(result.stdout).not.toMatch(/HOLDS|VIOLATES/);
+    },
+  );
+
+  it(
+    "exits 2 on a ledger line that is not a JSON object, rather than reading it as naming no path",
+    { timeout: SOUNDNESS_PROBE_TIMEOUT_MS },
+    () => {
+      const fixture = makeBareFixture("rebase-ledger-");
+      fixture.write("ledger.jsonl", '{"round": 1}\nnot json\n');
+      const result = runScript([
+        "HEAD",
+        "HEAD",
+        "HEAD",
+        "HEAD",
+        "--ledger",
+        join(fixture.dir, "ledger.jsonl"),
+      ]);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toMatch(/cannot read the claims in /);
       expect(result.stdout).not.toMatch(/HOLDS|VIOLATES/);
     },
   );
@@ -599,7 +968,7 @@ describe("the script as an agent runs it", () => {
     const newHead = rebaseOntoStaging(fixture);
 
     const result = runScript(
-      [fixture.oldBase, oldHead, newBase, newHead],
+      [fixture.oldBase, oldHead, newBase, newHead, "--ledger", emptyLedger()],
       fixture.dir,
     );
     expect(result.status).toBe(0);
@@ -631,12 +1000,12 @@ describe("the script as an agent runs it", () => {
     );
 
     const result = runScript(
-      [fixture.oldBase, oldHead, newBase, newHead],
+      [fixture.oldBase, oldHead, newBase, newHead, "--ledger", emptyLedger()],
       fixture.dir,
     );
     expect(result.status).toBe(1);
     expect(result.stdout).toMatch(
-      /rebase-invariance property: VIOLATES -- src\/shared\.ts changed at the branch's base/,
+      /rebase-invariance property: VIOLATES -- src\/shared\.ts changed at the branch's own hunks/,
     );
   });
 
@@ -651,7 +1020,14 @@ describe("the script as an agent runs it", () => {
     fixture.git(["merge", "-q", "--no-ff", "-m", "Merge staging", "staging"]);
 
     const result = runScript(
-      [fixture.oldBase, oldHead, newBase, fixture.head()],
+      [
+        fixture.oldBase,
+        oldHead,
+        newBase,
+        fixture.head(),
+        "--ledger",
+        emptyLedger(),
+      ],
       fixture.dir,
     );
     expect(result.status).toBe(2);

@@ -30,8 +30,10 @@ push:
   reviewed ref.
   `check-review-ledger-dispositions.mjs` checks, at merge-ready, that a
   branch's review ledger names a fix commit the PR head contains for every
-  `fixed` finding, a home for every `deferred` one, and a spec limits line for
-  every `limit` on a reachable surface.
+  `fixed` finding, a home for every `deferred` one, a spec limits line for
+  every `limit` on a reachable surface, and a step-back record on a second cap
+  raise. It and `verify-rebase-invariance.mjs` read a ledger through
+  `lib/reviewLedger.mjs`.
   `lib/gitFixture.mjs` holds the throwaway repositories the suites drive real git
   through
 - `measure-pr-checks.mjs`, which measures the wall clock a pull request pays for

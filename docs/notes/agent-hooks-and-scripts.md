@@ -283,7 +283,7 @@ rather than a path set one short, because a path missing from the set is a path 
 ### Limits
 
 Beyond the non-executable-delta verifier's: markdown content wholesale, including a conflict resolved inside a governing document,
-and every path outside the branch's own diff, which is the unread content the path in Step 4 admits.
+every path outside the branch's own diff, and, in a source file the staging range also changed, every line past three lines of a branch hunk -- the unread content the path in Step 4 admits.
 The spec wording-change lists, the `.txt` files under `docs/spec/wording-changes/`, are exempt in both verifiers and their content is not compared: only the sentence check in CI reads them, and they cannot be parsed as source. The legacy single list, `docs/spec/wording-changes.txt`, is exempt in both verifiers too, and no check reads it.
 
 ## Scratch-symlink write guard
@@ -390,6 +390,12 @@ which a rebase preserves and a conflict resolution does not touch.
 Reachability is written by the disposing session rather than read off the finding's file, because one file can hold both a partner-facing message and an internal helper.
 A reachable limit is promoted to a spec limits line at merge-ready ([`.claude/orchestration/ruleset.md`](../../.claude/orchestration/ruleset.md), Review flow),
 and an entry with no `surface` is taken as reachable, so leaving the field off cannot pass a reachable limit.
+
+### Why it reads cap raises
+
+A raise's reasons were written as `capNote` prose, and the prose rule to step back did not stop one branch's cap going from 3 to 7.
+So each raise is a `capRaises` entry with the step-back triggers evaluated, and the second has to name the shared-cause answer and the pivot taken (`.claude/commands/assess-review.md`, Step 2).
+Raises are counted from those entries alone, so a ledger whose raises are only in prose passes: every ledger written before the field reads as having no raise.
 
 ### Legacy rows and dates
 
