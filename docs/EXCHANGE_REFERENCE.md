@@ -71,7 +71,7 @@ Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_ter
 
 #### Choosing rules by precision floor
 
-A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. The floor and that answer are authoring choices, not configuration: they select which keys `alcove init`, the console and the web app write into the terms. A quick exchange, `alcove init`, and the web app's invite paths select the 95% floor with that answered yes. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to answer no. Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
+A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. No configuration key sets the floor or that answer; they decide which keys are written into the terms. A quick exchange, `alcove init`, and the web app's invite paths write the keys for the 95% floor with that answered yes. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to answer no. Neither travels: the terms hold the keys selected, and the citation names the set and its version. The display a run shows before it connects lists the keys selected ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
@@ -226,7 +226,7 @@ expected_partner_deduplicate: true
 ### `linkage_terms.linkage_fields`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set; the precision floor and the coverage answer are authoring choices that select which keys `alcove init`, the console and the web app write ([Choosing rules by precision floor](#choosing-rules-by-precision-floor))  
+*Required:* yes, written out even where the block names a rule set  
 *Consistency:* mandatory
 
 The linkage fields define the standardized form of each PII element that participates in linkage. Each field has a name, a semantic type, and optional constraints. The name is a unique identifier used by linkage key elements and data standardizing transformations.
@@ -311,7 +311,7 @@ The table above is the complete set of constraints. A constraint not listed for 
 ### `linkage_terms.linkage_keys`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set; the precision floor and the coverage answer are authoring choices that select which keys `alcove init`, the console and the web app write ([Choosing rules by precision floor](#choosing-rules-by-precision-floor))  
+*Required:* yes, written out even where the block names a rule set  
 *Consistency:* mandatory
 
 An ordered list of linkage keys applied in sequence from most to least precise. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
