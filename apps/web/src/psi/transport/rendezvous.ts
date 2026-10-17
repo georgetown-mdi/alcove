@@ -27,7 +27,12 @@ import {
   redactErrorIds,
   resolvePeerDebugLevel,
 } from "./peerLogging";
-import { watchIceGathering, withIceServerFailure } from "./iceGathering";
+import {
+  recordRelaysLeftOut,
+  watchIceGathering,
+  withIceServerFailure,
+  withPeerRelaysLeftOut,
+} from "./iceGathering";
 import { boundPeerSignaling } from "./signalingBounds";
 
 import type { DataConnection, PeerOptions } from "peerjs";
@@ -352,16 +357,18 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      from it.
  * @param options       `signal` cancels the listen before or during broker
  *                      registration; `relay` is the relay this run gathers
- *                      against, none when absent; `peerFactory` injects the
- *                      {@link Peer} constructor for testing;
- *                      `registrationTimeoutMs` overrides
- *                      {@link BROKER_REGISTRATION_TIMEOUT_MS}.
+ *                      against, none when absent; `relaysLeftOut` are the TURN
+ *                      urls the allowed relays left out, named by a failed
+ *                      open; `peerFactory` injects the {@link Peer}
+ *                      constructor for testing; `registrationTimeoutMs`
+ *                      overrides {@link BROKER_REGISTRATION_TIMEOUT_MS}.
  */
 export async function listenAsInviter(
   sharedSecret: string,
   options?: {
     signal?: AbortSignal;
     relay?: RelayLocator;
+    relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
   },
@@ -386,6 +393,7 @@ export async function listenAsInviter(
     inviterId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
+  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
   try {
     await waitForPeerOpen(peer, {
       signal,
@@ -540,8 +548,9 @@ async function dialInviterWithRetry(
         });
       onFatal = (err) =>
         settle(() => {
+          const failure = withPeerRelaysLeftOut(peer, asError(err));
           conn.close();
-          reject(asError(err));
+          reject(failure);
         });
       conn.once("open", onOpen);
       conn.once("error", onConnError);
@@ -555,7 +564,8 @@ async function dialInviterWithRetry(
   try {
     for (;;) {
       if (signal?.aborted) throw new Error("dialing the inviter was aborted");
-      if (fatalError !== undefined) throw asError(fatalError);
+      if (fatalError !== undefined)
+        throw withPeerRelaysLeftOut(peer, asError(fatalError));
       const remaining = deadline - Date.now();
       if (remaining <= 0)
         throw new PartnerNoShowError(
@@ -592,10 +602,11 @@ async function dialInviterWithRetry(
  *                      from it.
  * @param endpoint      The invitation's WebRTC signaling endpoint.
  * @param options       `signal` cancels the dial (and its retry loop) on unmount;
- *                      `relay` is the relay this run gathers against, none when
- *                      absent; `peerFactory` injects the {@link Peer}
- *                      constructor for testing; the `*Ms` overrides tune the
- *                      registration bound and the retry timing.
+ *                      `relay` and `relaysLeftOut` are as
+ *                      {@link listenAsInviter} takes them; `peerFactory`
+ *                      injects the {@link Peer} constructor for testing; the
+ *                      `*Ms` overrides tune the registration bound and the
+ *                      retry timing.
  */
 export async function dialAsAcceptor(
   sharedSecret: string,
@@ -603,6 +614,7 @@ export async function dialAsAcceptor(
   options?: {
     signal?: AbortSignal;
     relay?: RelayLocator;
+    relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
     retryDelayMs?: number;
@@ -633,6 +645,7 @@ export async function dialAsAcceptor(
     acceptorId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
+  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
   try {
     await waitForPeerOpen(peer, {
       signal,

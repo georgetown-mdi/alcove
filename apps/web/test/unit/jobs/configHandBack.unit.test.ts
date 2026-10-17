@@ -70,7 +70,7 @@ function webrtcDocument(
           credential: TURN_CREDENTIAL,
         },
       ],
-      ice_transport_policy: "relay",
+      allowed_relays: ["turn.example.org"],
       options: { peer_timeout_ms: 600_000 },
       provider_options: { debug_level: 0, config_file: PROVIDER_OPTION_PATH },
     },
@@ -507,7 +507,7 @@ describe("the signing block a hand-back writes", () => {
     >;
     const dir = mountHolding(
       webrtcDocument({
-        connection: { ...direct, ice_transport_policy: "all" },
+        connection: direct,
         signing: undefined,
       }),
     );

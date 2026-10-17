@@ -207,6 +207,24 @@ describe("which runs register", () => {
     ).toEqual(REGISTRAR);
   });
 
+  test("a run registers at the enrolled registrar whatever the allowed relays keep", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-relay-restriction"
+          ? JSON.stringify({
+              version: 1,
+              allowedRelays: ["elsewhere.example.org"],
+            })
+          : null,
+    });
+    expect(
+      managedRelayRegistrarForRun(
+        record({ relayRegistrar: REGISTRAR }),
+        ownRelay(["turns:relay.example.org:443"]),
+      ),
+    ).toEqual(REGISTRAR);
+  });
+
   test("a browser with no relay of its own, or an exchange not enrolled, registers nothing", () => {
     expect(
       managedRelayRegistrarForRun(

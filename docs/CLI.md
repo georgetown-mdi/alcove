@@ -785,26 +785,11 @@ connection:
 
 **A relayed exchange has been verified against the project's standing relay:** a CLI party with UDP blocked outright completed an authenticated exchange whose data-channel traffic the relay transported, over TURN-over-TLS on 443. werift verifies the TURN server's certificate, so a relay presenting a certificate the CLI host does not trust yields no relay candidate and no relayed path. Verify relayed connectivity in your own environment before depending on it. `ice_provision` (an ICE-credential API) is not supported by the CLI and is refused rather than ignored, so a connection that configures it does not silently fall back to the default.
 
-**To keep a run off any direct path, set `ice_transport_policy: relay`.** A relay entry alone does not force one: ICE tries every candidate it gathered and settles on whichever pair works first, which on a network where a direct path exists is a direct one. The relay-only policy gathers relay candidates and nothing else, so this party offers the partner no host or server-reflexive address and every path the exchange can take runs through the relay:
+**A relay is a fallback.** A run gathers host, server-reflexive and relay candidates, and ICE settles on whichever pair works first, which on a network where a direct path exists is a direct one. The relay carries the exchange where no direct path works.
 
-```yaml
-connection:
-  channel: webrtc
-  server:
-    host: peers.example.org
-  role: acceptor
-  ice_transport_policy: relay
-  turn:
-    - url: turns:relay.example.org:443?transport=tcp
-      username: alcove
-      credential: "@/run/secrets/turn"
-```
+**A `turn` url the ICE layer cannot use is refused.** A `url` that names no host is a usage error (exit 64) before anything is dialed. A `url`'s `transport` parameter is held to the same standard, because the ICE layer drops an entry whose transport it cannot use and continues without it: leave `transport` unset or set it to lowercase `tcp`, or to `udp` on a `turn:` url. Any other value -- `TCP`, `quic`, an empty one, or `udp` on a `turns:` url -- is refused at parse rather than leaving the run without that relay.
 
-Two things follow from it. A run so configured has no direct path to fall back to, so a relay this host cannot reach ends the run rather than degrading to a direct connection -- reported as [no relay candidate gathered](#when-a-webrtc-exchange-does-not-connect), which on this setting is the whole story. And setting it with no `turn` entry -- or with one whose `url` names no host, which is no relay either -- is a usage error (exit 64) before anything is dialed, since a relay-only run with no relay could gather nothing to pair. A `url`'s `transport` parameter is held to the same standard, because the ICE layer drops an entry whose transport it cannot use and continues without it: leave `transport` unset or set it to lowercase `tcp`, or to `udp` on a `turn:` url, and any other value -- `TCP`, `quic`, an empty one, or `udp` on a `turns:` url -- is refused at parse rather than leaving the run to gather host addresses. It is this party's own setting: it constrains only what this host gathers, and the partner is free to offer whatever its own network allows. It lives in the connection block an `alcove exchange` run reads: an acceptance that runs the exchange from the partner's invitation with no kept configuration composes its connection from the locator, which never holds this setting, so that run gathers host candidates like any other -- relaying through the partner's relay where the invitation names one ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). To keep an accepted exchange off a direct path, add the setting, and a `turn` entry where the invitation names no relay, to the configuration `alcove accept` writes and run it with `alcove exchange`.
-
-**The run says which policy it applied.** Every WebRTC run states it as it opens the rendezvous -- `ice_transport_policy: relay (relay candidates only)`, or `all by default` where the connection sets none -- so the run's own log -- a `--log-file` included -- records which candidate types the exchange gathered. A relay-only run that gathers no relay candidate names the policy in the failure as well.
-
-**A key the connection block does not define is refused.** `ice_transport_polcy` for `ice_transport_policy`, or a `server` key written beside it rather than under it, is a usage error (exit 64) naming the key, before anything is dialed. A setting that decides which addresses this party offers cannot be dropped in silence and leave the run on a policy you did not choose.
+**A key the connection block does not define is refused.** `allowed_relay` for `allowed_relays`, or a `server` key written beside it rather than under it, is a usage error (exit 64) naming the key, before anything is dialed. A setting that decides which relays this party contacts cannot be dropped in silence and leave the run on relays you did not choose.
 
 #### Using only the relays you choose
 
@@ -818,8 +803,8 @@ connection:
 ```
 
 - **What it decides.** A run lists only the TURN urls an entry names, so it allocates on the first of them, enrolls at an invitation's registrar only when it keeps that relay, and an invitation it creates names only the `turn` entries it keeps. A host entry names the `turn:` and `turns:` forms of that host, on any port and transport; no name is resolved.
-- **What it does not decide.** Your partner's side can still connect through a relay the setting leaves out, and that relay then learns your network address. To keep your address off such a relay, also set `ice_transport_policy: relay`, so every candidate your side offers is on a relay you kept. Your own [`relay_registrar`](#registering-the-relay-key-at-your-relay), where set, still receives each rotated relay key.
-- **When it keeps no relay.** A run whose every TURN url the setting leaves out and that also sets `ice_transport_policy: relay` is refused before it contacts any host, naming those urls. Any other run continues without a relay and warns, naming those urls; where the connection lists no `stun` url the warning also names the default STUN server, which learns the host's public address. Either way, add the host of a relay to `allowed_relays`, or remove the setting. The setting does not change `stun`.
+- **What it does not decide.** Your partner's side can still connect through a relay the setting leaves out, and that relay then learns your network address. Your own [`relay_registrar`](#registering-the-relay-key-at-your-relay), where set, still receives each rotated relay key.
+- **When it keeps no relay.** A run whose every TURN url the setting leaves out continues without a relay and warns, naming those urls; where the connection lists no `stun` url the warning also names the default STUN server, which learns the host's public address. To use a relay, add its host to `allowed_relays`, or remove the setting. The setting does not change `stun`.
 - **What a run says.** Each run states the TURN urls it keeps and the ones it leaves out, and [`alcove doctor relay`](#checking-the-relay-of-a-webrtc-exchange) contacts no relay it leaves out and names each as left out.
 - **When the run does not connect.** The failure names the TURN urls the setting left out after what ICE found, with the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
 
@@ -855,9 +840,9 @@ A rendezvous that ends without a data channel names what ICE found, so the failu
 - **No relay candidate was gathered, and no `turn` entry or invitation relay is configured.** A relay that is not configured cannot be gathered, so this is what a direct-only connection reports when no direct path was found. Arrange a direct path between the two parties -- the same network, or a VPN -- or [configure a relay](#turn).
 - **No relay candidate was gathered from a configured `turn` entry or invitation relay.** Nothing on this host could reach the one relay the run tries, its first `turn` entry or else the invitation's first TURN url -- the network blocked it, the credentials were wrong, or the relay presented a certificate this host does not trust. Fix the relay, or arrange a direct path; waiting longer changes nothing.
 - **A relay candidate was gathered and no candidate pair succeeded.** Both sides had addresses to try and none of the pairs worked. This is a path problem between the two parties, so the partner's side is where to look next.
-- **Any of these, with relays left out by [`allowed_relays`](#using-only-the-relays-you-choose).** The failure also names the TURN urls the setting left out and the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting. A relay-only run whose every TURN url the setting leaves out does not get this far: it is refused before it connects.
+- **Any of these, with relays left out by [`allowed_relays`](#using-only-the-relays-you-choose).** The failure also names the TURN urls the setting left out and the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
 
-The failure states whether a relay candidate was gathered, how many remote candidates the partner sent, and how many pairs were tried. A report of no relay candidate is the first case or the second according to your own `turn` configuration and the `invitation_relay` beside it, which the failure does not read. It does read [`ice_transport_policy`](#turn) and names it where a relay-only run gathered none, the case with no direct path left to fall back on. A completed exchange reports the candidate pair it settled on at `--log-level debug`, which is what tells you whether a run that worked went direct or through the relay.
+The failure states whether a relay candidate was gathered, how many remote candidates the partner sent, and how many pairs were tried. A report of no relay candidate is the first case or the second according to your own `turn` configuration and the `invitation_relay` beside it, which the failure does not read. A completed exchange reports the candidate pair it settled on at `--log-level debug`, which is what tells you whether a run that worked went direct or through the relay.
 
 To learn whether this host reaches the relay a run allocates on before the run that needs it, run [`alcove doctor relay`](#checking-the-relay-of-a-webrtc-exchange).
 

@@ -924,41 +924,30 @@ actually used. An empty or absent list means "use the default"; it does not mean
 nothing is configured, what it discloses, and the unreachable-entry idiom for
 gathering host candidates only -- are in [CLI.md](../CLI.md#webrtc-exchanges).
 
-`connection.ice_transport_policy` selects the candidate types this side may
-gather: `all`, which is what an absent value leaves in force, or `relay`. Under
-`relay` no host or server-reflexive candidate is gathered, so this side's
-whole offer is relay candidates and every pair it can form runs through a
-configured TURN server. The value is per party and never a term of the exchange:
-it is not representable in an invitation endpoint, and it constrains nothing the
-partner gathers. A `relay` policy with no `turn` entry and no `ice_provision` is
-rejected by the connection schema, since it could gather nothing to pair.
+Every run gathers host, server-reflexive and relay candidates, so ICE can pair
+a direct or server-reflexive path and falls back to a relay where none works.
 
-The policy holds for a `turn` entry the transport keeps, and the connection
-schema accepts no url the transport would drop, and refuses a few it would
-keep (a repeated `transport` parameter, whose first occurrence the transport
-reads) rather than rest on which occurrence is read. The transport reads a
-turn url's `transport` parameter itself and refuses the whole entry over
-a value it does not support, continuing without it, which under `relay`
-leaves the run gathering the host candidates the policy exists to keep
-off the wire. So the schema accepts a url that leaves `transport` unset or
+A `turn` entry gives relay candidates only where the transport keeps it, and
+the connection schema accepts no url the transport would drop, and refuses a
+few it would keep (a repeated `transport` parameter, whose first occurrence the
+transport reads) rather than rest on which occurrence is read. The transport
+reads a turn url's `transport` parameter itself and refuses the whole entry
+over a value it does not support, continuing without it, so the run loses
+that relay with nothing stated. So the schema accepts a url that leaves `transport` unset or
 sets it to lowercase `tcp`, and `udp` on a `turn:` url; every other value --
 another protocol, an uppercase spelling, an empty one, or `udp` on a `turns:`
 url -- is refused at parse. A url setting the parameter more than once is held
 to the same rule at every occurrence, rather than resting on the transport
 reading the first. Which values the transport keeps is measured per form in
-`apps/cli/test/integration/webrtc/webrtcIceTransportPolicy.test.ts`, which
+`apps/cli/test/integration/webrtc/webrtcTurnUrlTransport.test.ts`, which
 the grammar in `packages/core/src/config/connection.ts` is drawn from.
 
 The connection schema's webrtc member is a strict object: a key it does not
 define is refused at parse, naming the key in the snake_case the document
-writes, rather than stripped. A dropped `ice_transport_policy` would leave a
-run that asked for relay-only candidates gathering under the default, with
+writes, rather than stripped. A dropped `allowed_relays` would leave a run
+that named the relays it may use contacting every relay it lists, with
 nothing stating that it had -- the reason `authentication` is strict as well
 (`packages/core/src/config/connection.ts`).
-
-Every run states the policy it applied as it opens the rendezvous: the
-configured value, or the transport's own default where the connection sets
-none.
 
 A CLI rendezvous that fails with both parties present -- the peer connection
 reporting `failed`, or the channel-open budget running out -- reports the
@@ -967,11 +956,7 @@ candidate pairs were tried, each on a labelled cause link of its own, so a
 relay that was never gathered is distinguishable from one that was and still
 found no path. A rendezvous that ends on the rendezvous budget, on the
 partner's `LEAVE`, or on the data channel closing before it opened reports no
-candidate detail. Where the policy is `relay` and no relay candidate was
-gathered, the first link names the policy: that run had no direct path to fall
-back on, so the policy is part of the diagnosis rather than context the
-operator supplies. What an operator
-does with that answer is in [CLI.md](../CLI.md#webrtc-exchanges).
+candidate detail. What an operator does with that answer is in [CLI.md](../CLI.md#webrtc-exchanges).
 
 `connection.provider_options` is inert on this channel: no transport on either
 side reads it, so no key in it reaches the PeerJS client, the peer connection,

@@ -143,10 +143,10 @@ Each is a working value reviewed against the largest exchange, as the relay's ar
 Two steps, the second designed with the first so the first does not foreclose it:
 
 1. **Explicit.** The inviter's relay locator in the invitation gains the relay's `wss` url beside its TURN and STUN urls ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)); the browser's Relay settings page and the CLI's connection block each gain the same entry for a party's own relay, listed beside the invitation's as `selectRunRelay` lists TURN and STUN (`packages/core/src/relayCredential.ts`).
-   A per-party transport policy, the shape of `ice_transport_policy` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionice_transport_policy)), names the relay as the only path: a party whose network is known to stop TURN sets it once, and the invitation tells the partner where the relay is.
-   Both parties must take the relay path for the pairing to form; a mismatch fails at the rendezvous budget with a message naming the policy, as a relay-only ICE run that gathers nothing does ([CLI.md](../CLI.md#when-a-webrtc-exchange-does-not-connect)).
+   A per-party setting names the relay as the only path: a party whose network is known to stop TURN sets it once, and the invitation tells the partner where the relay is.
+   Both parties must take the relay path for the pairing to form; a mismatch fails at the rendezvous budget with a message naming the setting.
 2. **Automatic fallback.** Each party opens its relay socket as it starts the WebRTC rendezvous and sends its hello; the relay pairs the two sockets and forwards nothing until both have sent a start frame.
-   A party sends start when its data channel fails to open within the channel-open budget, or at once under the relay-only policy; a party that receives the partner's start abandons its WebRTC attempt and sends its own.
+   A party sends start when its data channel fails to open within the channel-open budget, or at once under that setting; a party that receives the partner's start abandons its WebRTC attempt and sends its own.
    A data channel that opens closes both relay sockets.
    The relay then learns of every exchange that names it, whether or not it carries one, which is what a TURN allocation already discloses ([COMMUNICATION.md](../COMMUNICATION.md#stunturn), "What a relay's operator learns"), and a party behind a network that blocks the broker outright still reaches its partner.
 
@@ -343,7 +343,7 @@ Relay path, in order:
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
-- **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the transport policy.
+- **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
 - **Relay locator and settings** -- the `wss` url on the invitation locator, the Relay settings page, and the CLI's connection block, selected per kind.
 - **Automatic fallback** -- the start frame, the parked relay socket during the WebRTC rendezvous, and the hand-over.

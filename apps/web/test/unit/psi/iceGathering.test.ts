@@ -2,14 +2,20 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { ConnectionError, generateSharedSecret } from "@alcove/core";
+import {
+  ConnectionError,
+  classifyFailure,
+  generateSharedSecret,
+} from "@alcove/core";
 
 import {
   MAX_RECORDED_ICE_ERRORS,
   iceGatheringRecordFor,
+  recordRelaysLeftOut,
   relayFailureMessage,
   watchIceGathering,
 } from "../../../src/psi/transport/iceGathering.js";
+import { ALLOWED_RELAYS_REMEDY } from "../../../src/psi/transport/relayRestriction.js";
 import { dialAsAcceptor } from "../../../src/psi/transport/rendezvous.js";
 import { waitForConnectionOpen } from "../../../src/psi/transport/waitForOpen.js";
 
@@ -52,7 +58,10 @@ class FakePeerConnection extends EventTarget {
 class FakeConn extends EventEmitter {
   open = false;
   close = vi.fn();
-  constructor(readonly peerConnection: FakePeerConnection) {
+  constructor(
+    readonly peerConnection: FakePeerConnection,
+    readonly provider?: object,
+  ) {
     super();
   }
 }
@@ -151,6 +160,55 @@ describe("waitForConnectionOpen with a relay configured", () => {
     await expect(opening).rejects.toThrow(/^connection closed before open$/);
   });
 
+  test("a partner close with relays left out keeps its own error and class, and adds the note", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const provider = {};
+    recordRelaysLeftOut(provider, [leftOut]);
+    const pc = new FakePeerConnection([{ urls: ["stun:stun.example.org"] }]);
+    const fake = new FakeConn(pc, provider);
+    const opening = waitForConnectionOpen(fake as unknown as DataConnection);
+    fake.emit("close");
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect(error).not.toBeInstanceOf(ConnectionError);
+    expect(classifyFailure(error)).toBe("unavailable");
+    expect((error as Error).message).toBe(
+      `connection closed before open. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
+    );
+  });
+
+  test("a channel error with relays left out keeps its kind", async () => {
+    const provider = {};
+    recordRelaysLeftOut(provider, ["turn:partner.example.net:3478"]);
+    const pc = new FakePeerConnection([{ urls: ["stun:stun.example.org"] }]);
+    const fake = new FakeConn(pc, provider);
+    const opening = waitForConnectionOpen(fake as unknown as DataConnection);
+    fake.emit("error", new ConnectionError("the partner refused.", "protocol"));
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(classifyFailure(error)).toBe("partner-refused");
+    expect((error as Error).message).toMatch(
+      /^the partner refused\. Your allowed relays left out turn:partner/,
+    );
+  });
+
+  test("a close on a connection with no gathering record still adds the relays left out", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const provider = {};
+    recordRelaysLeftOut(provider, [leftOut]);
+    const fake = new FakeConn(null as unknown as FakePeerConnection, provider);
+    const conn = fake as unknown as DataConnection;
+    const opening = waitForConnectionOpen(conn);
+    expect(iceGatheringRecordFor(conn)).toBeUndefined();
+    fake.emit("close");
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect(error).not.toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toBe(
+      `connection closed before open. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
+    );
+  });
+
   test("an early close after a relay error names the relay", async () => {
     const { fake, pc, conn } = relayConn();
     const opening = waitForConnectionOpen(conn, 1000);
@@ -243,30 +301,50 @@ describe("dialAsAcceptor with a relay configured", () => {
   class FakePeer extends EventEmitter {
     destroy = vi.fn();
     disconnect = vi.fn();
-    constructor(private readonly gather: (pc: FakePeerConnection) => void) {
+    constructor(
+      private readonly gather: (pc: FakePeerConnection, peer: FakePeer) => void,
+      private readonly iceServers: Array<RTCIceServer>,
+    ) {
       super();
     }
     connect = vi.fn(() => {
-      const pc = new FakePeerConnection([
-        { urls: [RELAY_URL], username: "u", credential: "c" },
-      ]);
-      queueMicrotask(() => this.gather(pc));
-      return new FakeConn(pc) as unknown as DataConnection;
+      const pc = new FakePeerConnection(this.iceServers);
+      queueMicrotask(() => this.gather(pc, this));
+      return new FakeConn(pc, this) as unknown as DataConnection;
     });
   }
 
+  /** A PeerJS peer-level error: an `Error` subclass with a `type`. */
+  class FakePeerError extends Error {
+    constructor(
+      readonly type: string,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+
   async function dialFailure(
-    gather: (pc: FakePeerConnection) => void,
-    timeouts: { openTimeoutMs: number; totalTimeoutMs?: number } = {
+    gather: (pc: FakePeerConnection, peer: FakePeer) => void,
+    timeouts: {
+      openTimeoutMs: number;
+      totalTimeoutMs?: number;
+      retryDelayMs?: number;
+    } = {
       openTimeoutMs: 20,
     },
+    relaysLeftOut: ReadonlyArray<string> = [],
+    iceServers: Array<RTCIceServer> = [
+      { urls: [RELAY_URL], username: "u", credential: "c" },
+    ],
   ): Promise<unknown> {
-    const fake = new FakePeer(gather);
+    const fake = new FakePeer(gather, iceServers);
     const dialing = dialAsAcceptor(
       generateSharedSecret(),
       { channel: "webrtc", host: "127.0.0.1", port: 3000, path: "/api/" },
       {
         peerFactory: () => fake as unknown as Peer,
+        relaysLeftOut,
         ...timeouts,
       },
     ).catch((err: unknown) => err);
@@ -310,6 +388,112 @@ describe("dialAsAcceptor with a relay configured", () => {
     expect(error).toBeInstanceOf(ConnectionError);
     expect((error as Error).message).toContain(
       `Relay server ${RELAY_URL} did not give a relay address.`,
+    );
+  });
+
+  test("a failed open names the relays the allowed relays left out, and the remedy, after any relay failure", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(() => undefined, undefined, [leftOut]);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toBe(
+      `The connection did not open: no relay candidate was gathered. ` +
+        `Relay server ${RELAY_URL} did not give a relay address. Check that ` +
+        "the relay address is correct and that this network allows " +
+        "connections to it, then try again. Your allowed relays left out " +
+        `${leftOut}. ${ALLOWED_RELAYS_REMEDY}`,
+    );
+  });
+
+  test("a failed open with no relay kept keeps its own error and adds the relays left out", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(
+      (pc) => pc.gather("host"),
+      undefined,
+      [leftOut],
+      [{ urls: ["stun:stun.example.org:3478"] }],
+    );
+    expect(error).not.toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toBe(
+      "timed out opening a connection to the inviter. Your allowed relays " +
+        `left out ${leftOut}. ${ALLOWED_RELAYS_REMEDY}`,
+    );
+  });
+
+  test("a peer error during the dial keeps its own error and class, and adds the relays left out", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(
+      (pc, peer) => {
+        pc.gather("host");
+        peer.emit(
+          "error",
+          new FakePeerError("negotiation-failed", "Negotiation failed"),
+        );
+      },
+      { openTimeoutMs: 1000 },
+      [leftOut],
+      [{ urls: ["stun:stun.example.org:3478"] }],
+    );
+    expect(error).toBeInstanceOf(FakePeerError);
+    expect((error as FakePeerError).type).toBe("negotiation-failed");
+    expect((error as Error).message).toBe(
+      `Negotiation failed. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
+    );
+  });
+
+  test.each([
+    { restriction: "no relays left out", relaysLeftOut: [], note: "" },
+    {
+      restriction: "relays left out",
+      relaysLeftOut: ["turn:partner.example.net:3478"],
+      note:
+        ". Your allowed relays left out turn:partner.example.net:3478. " +
+        ALLOWED_RELAYS_REMEDY,
+    },
+  ])(
+    "a peer error after a relay error keeps its own error and class, with $restriction",
+    async ({ relaysLeftOut, note }) => {
+      const error = await dialFailure(
+        (pc, peer) => {
+          pc.fail(RELAY_URL, 701, "TURN host lookup failed");
+          peer.emit(
+            "error",
+            new FakePeerError("network", "Lost connection to server"),
+          );
+        },
+        { openTimeoutMs: 1000 },
+        relaysLeftOut,
+      );
+      expect(error).toBeInstanceOf(FakePeerError);
+      expect(error).not.toBeInstanceOf(ConnectionError);
+      expect((error as FakePeerError).type).toBe("network");
+      expect((error as Error).message).toBe(`Lost connection to server${note}`);
+    },
+  );
+
+  test("a peer error while the dial waits to retry adds the relays left out", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(
+      (_pc, peer) => {
+        peer.emit(
+          "error",
+          new FakePeerError("peer-unavailable", "the inviter is not listening"),
+        );
+        setTimeout(() =>
+          peer.emit(
+            "error",
+            new FakePeerError("network", "Lost connection to server"),
+          ),
+        );
+      },
+      { openTimeoutMs: 1000, retryDelayMs: 50 },
+      [leftOut],
+      [{ urls: ["stun:stun.example.org:3478"] }],
+    );
+    expect(error).toBeInstanceOf(FakePeerError);
+    expect((error as Error).message).toBe(
+      `Lost connection to server. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
     );
   });
 });

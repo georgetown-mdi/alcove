@@ -845,8 +845,7 @@ export function displayInvitation(params: {
     if (summary.relay.registrar !== undefined)
       emit(`    ${invitationRelayRegistrarLine(summary.relay.registrar)}`);
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);
-    // The shared note says nothing of a setting, since a browser party has
-    // none; the CLI's own setting is named here.
+    // The shared note names neither app's setting; the CLI's is named here.
     if (allowedRelays !== undefined) emit(`    ${ALLOWED_RELAYS_SCOPE}`);
     else if (surface === "invitation") emit(`    ${ALLOWED_RELAYS_UNSET}`);
   }

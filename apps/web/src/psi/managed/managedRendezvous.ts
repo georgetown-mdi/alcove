@@ -34,12 +34,14 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
+import {
+  assertRunRelayPlanPossible,
+  relayPlanForRun,
+} from "../transport/runRelayPlan";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
-import { relayForRun } from "../transport/ownRelaySetting";
-
-import { relayWithDefaultForRun } from "../transport/defaultRelay";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
+import type { RunRelayRefusalDependencies } from "../transport/runRelayPlan";
 
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
@@ -158,18 +160,27 @@ export function managedAcceptorSignalingEndpoint(
 
 /**
  * Check, before any connection, that `record` can begin its rendezvous: a
- * webrtc exchange and, on the acceptor side, a saved signaling address that
- * passes {@link managedAcceptorSignalingEndpoint}. A caller that contacts
- * anything before {@link beginManagedRendezvous} runs this first, so a record
- * that will refuse refuses before that contact.
+ * webrtc exchange, on the acceptor side a saved signaling address that passes
+ * {@link managedAcceptorSignalingEndpoint}, and relay settings this browser's
+ * run accepts (`assertRunRelayPlanPossible`). A caller that contacts anything
+ * before {@link beginManagedRendezvous} runs this first, so a record that will
+ * refuse refuses before that contact. `relayDependencies` injects what the
+ * relay check reads, for tests.
  *
- * @throws {Error} as {@link managedAcceptorSignalingEndpoint} does.
+ * @throws {Error} as {@link managedAcceptorSignalingEndpoint} does, and
+ *   `OperatorConfigError` as `relayPlanForRun` does.
  */
 export function assertManagedRendezvousPossible(
   record: Pick<ManagedRendezvousRecord, "side" | "exchangeFile" | "label">,
+  relayDependencies?: RunRelayRefusalDependencies,
 ): void {
   if (record.side === "acceptor") managedAcceptorSignalingEndpoint(record);
   else assertManagedRerunDispatchable(record.exchangeFile);
+  const connection = record.exchangeFile.connection;
+  assertRunRelayPlanPossible(
+    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    relayDependencies,
+  );
 }
 
 /**
@@ -199,12 +210,13 @@ type ManagedRendezvousAcquisition =
  * scheduled attempt near its window's close cannot sit on a silent signaling
  * server past that close. Absent, both flows keep their shared defaults.
  *
- * Both flows gather against the relays {@link relayForRun} lists from this
+ * Both flows gather against the relays `relayPlanForRun` lists from this
  * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
- * enrolled there, right before it connects (`relayWithDefaultForRun`). A
- * failed enrollment is reported through `onRunNotice` as it happens, and the
- * flow starts without the default relay.
+ * enrolled there, right before it connects, each only where this browser's
+ * allowed relays keep it. A failed
+ * enrollment is reported through `onRunNotice` as it happens, and the flow
+ * starts without the default relay.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -223,11 +235,9 @@ export async function beginManagedRendezvous(
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
   const connection = exchangeFile.connection;
-  const relay = await relayWithDefaultForRun(
+  const relayPlan = await relayPlanForRun(
     sharedSecret,
-    relayForRun(
-      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
-    ),
+    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
     {
       ...options.defaultRelay,
       ...(signal !== undefined ? { signal } : {}),
@@ -249,14 +259,14 @@ export async function beginManagedRendezvous(
   if (endpoint === undefined) {
     const peer = await flows.listenAsInviter(sharedSecret, {
       signal,
-      relay,
+      ...relayPlan,
       ...registrationBound,
     });
     return { side: "inviter", peer };
   }
   const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
     signal,
-    relay,
+    ...relayPlan,
     ...registrationBound,
     ...(peerWaitTimeoutMs !== undefined
       ? { totalTimeoutMs: peerWaitTimeoutMs }

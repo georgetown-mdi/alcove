@@ -15,7 +15,10 @@ import {
   getLogger,
   maxCodeUnits,
   parseBoundedJson,
+  turnUrlIsAllowed,
 } from "@alcove/core";
+
+import { runRelayRestriction } from "./relayRestriction";
 
 import type { RelayLocator } from "./rendezvous";
 
@@ -169,14 +172,17 @@ export interface RelayUrls {
 /**
  * The relay a run's peer connection gathers against: every relay it may use,
  * this browser's own and the invitation's. Its TURN urls are this browser's
- * own followed by the invitation's, each listed once, and its STUN urls
- * likewise. With neither it is none. A stored setting this build cannot read
- * adds nothing, and is logged. The command line lists them the same way
+ * own followed by the invitation's, each listed once, less every one
+ * `allowedRelays` leaves out, and its STUN urls likewise, none left out.
+ * With neither it is none. A stored setting this build cannot read adds
+ * nothing, and is logged. The command line lists them the same way
  * (`selectRunRelay` in core).
  */
 export function relayForRun(
   invitationRelay?: RelayUrls,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
+  allowedRelays: ReadonlyArray<string> | undefined = runRelayRestriction()
+    .allowedRelays,
 ): RelayLocator | undefined {
   const own = readOwn();
   if (own.kind === "unreadable")
@@ -187,7 +193,7 @@ export function relayForRun(
   const ownRelay = own.kind === "set" ? own.relay : undefined;
   const turn = [
     ...new Set([...(ownRelay?.turn ?? []), ...(invitationRelay?.turn ?? [])]),
-  ];
+  ].filter((url) => turnUrlIsAllowed(url, allowedRelays));
   const stun = [
     ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
   ];

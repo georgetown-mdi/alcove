@@ -177,7 +177,6 @@ const {
   generateSharedSecret,
   getDefaultLinkageTerms,
   mintRunRelayCredential,
-  relayOnlyRelaysLeftOutMessage,
   sanitizeErrorForDisplay,
 } = await import("@alcove/core");
 const { fakeRegistrar, jsonResponse, registrationAnswer } =
@@ -272,26 +271,12 @@ afterEach(() => {
 
 const BROKER_HOST = "peers.example.org";
 
-/** The relay source a `relay` policy needs; the schema refuses it without one. */
-const RELAY_TURN = {
-  url: "turns:relay.example.org:443?transport=tcp",
-  username: "alcove",
-  credential: "placeholder-not-a-secret",
-};
-
-function webrtcConnection(
-  role: "inviter" | "acceptor",
-  host = BROKER_HOST,
-  iceTransportPolicy?: "all" | "relay",
-) {
+function webrtcConnection(role: "inviter" | "acceptor", host = BROKER_HOST) {
   return {
     channel: "webrtc" as const,
     server: { host, port: 9000, secure: false },
     role,
     stun: ["stun:stun.example.org:3478"],
-    ...(iceTransportPolicy === undefined
-      ? {}
-      : { iceTransportPolicy, turn: [RELAY_TURN] }),
   };
 }
 
@@ -299,12 +284,11 @@ function webrtcConnection(
 function runParty(
   role: "inviter" | "acceptor",
   host = BROKER_HOST,
-  iceTransportPolicy?: "all" | "relay",
 ): Promise<unknown> {
   const keyFilePath = path.join(tmpDir, `${role}.key`);
   saveKeyFile(keyFilePath, { sharedSecret: SECRET });
   return runProtocol({
-    connection: webrtcConnection(role, host, iceTransportPolicy),
+    connection: webrtcConnection(role, host),
     auth: { sharedSecret: SECRET, keyFilePath },
     prepared: minimalPrepared,
     output: path.join(tmpDir, `${role}.csv`),
@@ -410,40 +394,6 @@ test("the rendezvous line names the authority dialed, not the configured text", 
     `${rendezvousLine} peers.example.org:9000`,
   ]);
 });
-
-const POLICY_LINES: Array<
-  [label: string, policy: "all" | "relay" | undefined, line: string]
-> = [
-  ["relay", "relay", "ice_transport_policy: relay (relay candidates only)"],
-  [
-    "all",
-    "all",
-    "ice_transport_policy: all (host, server-reflexive and relay candidates)",
-  ],
-  // An unconfigured run gathers under the transport's own default, which is
-  // the case an operator most needs stated: nothing in their configuration
-  // says what the run did.
-  [
-    "no policy",
-    undefined,
-    "ice_transport_policy: all by default (host, server-reflexive and relay candidates)",
-  ],
-];
-
-test.each(POLICY_LINES)(
-  "a run configured with %s states the policy it applied, once",
-  async (_label, policy, line) => {
-    await Promise.all([
-      runParty("inviter", BROKER_HOST, policy),
-      runParty("acceptor", BROKER_HOST, policy),
-    ]);
-    expect(
-      mockState.logLines.filter((emitted) =>
-        emitted.startsWith("ice_transport_policy:"),
-      ),
-    ).toEqual([line, line]);
-  },
-);
 
 /**
  * Trap the signal handler's `process.exit` and hand back a promise that
@@ -739,17 +689,6 @@ test("each refusal survives the display boundary whole", () => {
       DISPLAY_TRUNCATION_MARKER,
     );
   }
-  // These list urls a partner's invitation may name, so the list is fitted
-  // and the remedy after it still shows, however long the list.
-  const urls = Array.from(
-    { length: 40 },
-    (_unused, i) => `turns:relay-${i}.example.org:443?transport=tcp`,
-  );
-  expect(
-    sanitizeErrorForDisplay(
-      new UsageError(relayOnlyRelaysLeftOutMessage(urls)),
-    ),
-  ).toMatch(/or remove the setting\.$/);
 });
 
 // --- the resolver -----------------------------------------------------------
@@ -810,39 +749,7 @@ test("allowed_relays decides the TURN urls the dial lists, and the ones a failur
   expect(unset).not.toHaveProperty("relaysLeftOut");
 });
 
-test("a relay-only run whose every TURN url allowed_relays leaves out is refused before anything is dialed", async () => {
-  // A kept configuration naming no relay of its own, after an acceptance
-  // wrote an invitation's relay on a host the setting does not name.
-  const NEW_RELAY = "turn:new-partner-relay.example.net";
-  const keyFilePath = path.join(tmpDir, "acceptor.key");
-  saveKeyFile(keyFilePath, { sharedSecret: SECRET });
-  const error = await runProtocol({
-    connection: {
-      channel: "webrtc",
-      server: { host: BROKER_HOST, port: 9000, secure: false },
-      role: "acceptor",
-      invitationRelay: { turn: [NEW_RELAY] },
-      iceTransportPolicy: "relay",
-      allowedRelays: ["old-partner-relay.example.net"],
-    },
-    auth: { sharedSecret: SECRET, keyFilePath },
-    prepared: minimalPrepared,
-    output: path.join(tmpDir, "acceptor.csv"),
-    verbosity: -1,
-    loggerName: "test",
-  }).then(
-    () => undefined,
-    (err: unknown) => err,
-  );
-  expect(error).toBeInstanceOf(UsageError);
-  expect(exitCodeForError(error)).toBe(64);
-  expect((error as Error).message).toBe(
-    relayOnlyRelaysLeftOutMessage([NEW_RELAY]),
-  );
-  expect(mockState.dials).toHaveLength(0);
-});
-
-test("a run whose every TURN url allowed_relays leaves out continues, naming them, unless it is relay-only", () => {
+test("a run whose every TURN url allowed_relays leaves out continues, naming them", () => {
   const credential = {
     username: "1:alcove",
     credential: "placeholder-not-a-secret",
@@ -859,13 +766,6 @@ test("a run whose every TURN url allowed_relays leaves out continues, naming the
   const emptied = webRtcDialFrom(base, SECRET, credential).options;
   expect(emptied.iceServers ?? []).toEqual([]);
   expect(emptied.relaysLeftOut).toEqual([turn[0].url]);
-  expect(() =>
-    webRtcDialFrom(
-      { ...base, iceTransportPolicy: "relay" as const },
-      SECRET,
-      credential,
-    ),
-  ).toThrow(new UsageError(relayOnlyRelaysLeftOutMessage([turn[0].url])));
   const withStun = webRtcDialFrom(
     { ...base, stun: ["stun:stun.example.org:3478"] },
     SECRET,
@@ -1144,38 +1044,6 @@ test("an unset options block leaves all three transport defaults in place", () =
   expect(options.inactivityTimeoutMs).toBeUndefined();
   expect(options.rendezvousTimeoutMs).toBeUndefined();
   expect(options.channelOpenTimeoutMs).toBeUndefined();
-});
-
-test("ice_transport_policy reaches the rendezvous", () => {
-  const { options } = webRtcDialFrom(
-    {
-      channel: "webrtc",
-      server: { host: "peers.example.org" },
-      role: "inviter",
-      turn: [
-        {
-          url: "turns:relay.example.org:443?transport=tcp",
-          username: "alcove",
-          credential: "placeholder-not-a-secret",
-        },
-      ],
-      iceTransportPolicy: "relay",
-    },
-    SECRET,
-  );
-  expect(options.iceTransportPolicy).toBe("relay");
-});
-
-test("an unset ice_transport_policy leaves the transport's own default", () => {
-  const { options } = webRtcDialFrom(
-    {
-      channel: "webrtc",
-      server: { host: "peers.example.org" },
-      role: "inviter",
-    },
-    SECRET,
-  );
-  expect(options).not.toHaveProperty("iceTransportPolicy");
 });
 
 // --- the invitation relay's registrar ---------------------------------------

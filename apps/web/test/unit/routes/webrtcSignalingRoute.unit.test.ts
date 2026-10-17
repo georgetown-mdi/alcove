@@ -735,7 +735,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
           url: "https://registrar.example.org",
           exchange_id: "q3-linkage-7f2c",
         },
-        ice_transport_policy: "relay",
+        allowed_relays: ["turn.example.org"],
       },
       linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
     });

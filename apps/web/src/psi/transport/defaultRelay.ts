@@ -12,9 +12,12 @@ import {
   MAX_RELAY_LOCATOR_URLS,
   enrollRelayKeyWithinWait,
   getLogger,
+  turnUrlIsAllowed,
 } from "@alcove/core";
 
 import { defaultRelaySetting } from "@utils/clientConfig";
+
+import { runRelayRestriction } from "./relayRestriction";
 
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayLocator } from "./rendezvous";
@@ -45,21 +48,29 @@ export interface DefaultRelayDependencies {
   /** Receives {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} when the enrollment
    * fails. */
   onRunNotice?: (message: string) => void;
+  /** The allowed relays; this browser's stored setting when unset. */
+  allowedRelays?: () => ReadonlyArray<string> | undefined;
+}
+
+function storedAllowedRelays(): ReadonlyArray<string> | undefined {
+  return runRelayRestriction().allowedRelays;
 }
 
 /**
  * The relay an invitation names: `ownRelay`, followed by the default relay's
- * TURN url when the build names one, once, and only where the locator has
- * room for it under {@link MAX_RELAY_LOCATOR_URLS}. Where the result names
- * that url, it also names the default relay's registrar, where a command-line
- * party enrolls without a token. A new invitation and a managed re-invite both
- * name it this way.
+ * TURN url when the build names one and `allowedRelays` keeps it, once, and
+ * only where the locator has room for it under {@link MAX_RELAY_LOCATOR_URLS}.
+ * Where the result names that url, it also names the default relay's
+ * registrar, where a command-line party enrolls without a token. A new
+ * invitation and a managed re-invite both name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
   defaultRelay: DefaultRelaySetting | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined = storedAllowedRelays(),
 ): RelayUrls | undefined {
   if (defaultRelay === undefined) return ownRelay;
+  if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return ownRelay;
   const turn = ownRelay?.turn ?? [];
   if (turn.includes(defaultRelay.turnUrl))
     return { ...ownRelay, registrar: defaultRelay.registrarUrl };
@@ -88,6 +99,7 @@ export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
  * it, and the run dials with the rest. A refused, unreachable or unanswered
  * enrollment shows {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through
  * `onRunNotice`, once, before this returns; a cancelled one shows nothing.
+ * A default relay the allowed relays leave out is not enrolled at or listed.
  */
 export async function relayWithDefaultForRun(
   sharedSecret: string,
@@ -96,6 +108,8 @@ export async function relayWithDefaultForRun(
 ): Promise<RelayLocator | undefined> {
   const setting = (dependencies.setting ?? defaultRelaySetting)();
   if (setting === undefined) return relay;
+  const allowedRelays = (dependencies.allowedRelays ?? storedAllowedRelays)();
+  if (!turnUrlIsAllowed(setting.turnUrl, allowedRelays)) return relay;
   const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;
   const enrollment = await enroll(
     { registrarUrl: setting.registrarUrl, sharedSecret },

@@ -63,7 +63,6 @@ import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
-import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
 import {
   FinalFrameUnconfirmedError,
   openWebRtcMessageConnection,
@@ -756,12 +755,6 @@ async function openRunTransport(params: {
       redactAndSanitizeForDisplay(
         dialedBrokerAuthority(build.webRtcDial.options.location),
       ),
-    );
-    // Which candidate types the run gathers under, stated before the
-    // rendezvous that uses them: nothing else the run reports tells a
-    // relay-only exchange from a default one until one of them fails.
-    log.info(
-      describeIceTransportPolicy(build.webRtcDial.options.iceTransportPolicy),
     );
     // The rendezvous is this channel's open: it registers with the broker,
     // negotiates, and resolves only once the data channel is up. Its own

@@ -317,7 +317,6 @@ async function startRendezvous(options: {
   idTakenRetryWindowMs?: number;
   /** The ICE servers the harness configures; absent is the harness's one STUN entry. */
   iceServers?: Array<{ urls: string }>;
-  iceTransportPolicy?: "all" | "relay";
   relaysLeftOut?: string[];
   signal?: AbortSignal;
   /**
@@ -388,7 +387,6 @@ async function startRendezvous(options: {
     attemptMs: options.attemptMs,
     attemptOfferQuietMs: options.attemptOfferQuietMs,
     idTakenRetryWindowMs: options.idTakenRetryWindowMs,
-    iceTransportPolicy: options.iceTransportPolicy,
     relaysLeftOut: options.relaysLeftOut,
     signal:
       options.signal === undefined
@@ -1616,23 +1614,6 @@ test("a relay gathered that still found no path is reported apart", async () => 
   );
   expect(rendered).toContain("remote candidates received: 1 (host)");
   expect(rendered).toContain("candidate pairs: 1 tried, none succeeded");
-});
-
-test("a relay-only run's failure names the policy that shaped it", async () => {
-  // The run gathered nothing because the policy permitted nothing else, which
-  // is the one reading of an empty tally the operator can act on: the remedy
-  // is the relay or the policy, never a direct path.
-  const { peer, session } = await startRendezvous({
-    role: "acceptor",
-    iceTransportPolicy: "relay",
-  });
-  peer.stats = iceStats([]);
-  peer.failConnection();
-  const rendered = await renderedFailure(session);
-  expect(rendered).toContain(
-    "local candidates gathered: no relay candidate gathered under " +
-      "ice_transport_policy relay; none",
-  );
 });
 
 test("the channel-open ceiling reports the same diagnosis", async () => {

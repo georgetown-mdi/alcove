@@ -46,6 +46,11 @@ import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
+import {
+  managedRelayRegistrarForRun,
+  registerRotatedManagedRelayKey,
+  retryPendingManagedRelayRegistration,
+} from "../../../src/psi/managed/managedRelayRegistration.js";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
@@ -64,6 +69,7 @@ import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 
 import type * as AlcoveCore from "@alcove/core";
+import type * as ManagedRelayRegistration from "../../../src/psi/managed/managedRelayRegistration.js";
 import type {
   BuiltExchangeRecord,
   HandshakeRole,
@@ -142,6 +148,23 @@ vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
 }));
+// Real, and watched, so a case can show a refusal comes before the registrar.
+vi.mock(
+  "../../../src/psi/managed/managedRelayRegistration.js",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ManagedRelayRegistration>();
+    return {
+      ...actual,
+      managedRelayRegistrarForRun: vi.fn(actual.managedRelayRegistrarForRun),
+      retryPendingManagedRelayRegistration: vi.fn(
+        actual.retryPendingManagedRelayRegistration,
+      ),
+      registerRotatedManagedRelayKey: vi.fn(
+        actual.registerRotatedManagedRelayKey,
+      ),
+    };
+  },
+);
 vi.mock("../../../src/psi/transport/peerMessageConnection.js", () => ({
   openPeerMessageConnection: vi.fn(),
 }));
@@ -1899,5 +1922,82 @@ describe("a saved signaling address the rendezvous refuses", () => {
     expect(rejection).toBe(refusal);
     expect(mockedRendezvous).not.toHaveBeenCalled();
     expect(loadPsiBackend).not.toHaveBeenCalled();
+  });
+
+  test("a relay settings refusal stops the run before the relay registrar", async () => {
+    const refusal = new Error("saved relay settings could not be read");
+    vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
+      throw refusal;
+    });
+    acquireResources();
+
+    const rejection = await runDriver(new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBe(refusal);
+    expect(managedRelayRegistrarForRun).not.toHaveBeenCalled();
+    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
+  });
+});
+
+describe("the relay registrations of a run whose allowed relays leave its own relay out", () => {
+  const OWN_URL = "turns:own.example.org:443?transport=tcp";
+  const REGISTRAR = {
+    url: "https://own.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const ENROLLED = {
+    ...RECORD,
+    relayRegistrar: REGISTRAR,
+    relayRegistrationPendingSince: "2026-09-29T12:00:00.000Z",
+  } as RunnableManagedExchangeRecord;
+
+  /** This browser's stored own relay and allowed relays, as a run reads them. */
+  function storeRelaySettings(allowedRelays: Array<string>) {
+    const values = new Map([
+      [
+        "alcove-own-relay",
+        JSON.stringify({ version: 1, turn: [OWN_URL], stun: [] }),
+      ],
+      [
+        "alcove-relay-restriction",
+        JSON.stringify({ version: 1, allowedRelays }),
+      ],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("an own relay the allowed relays leave out still gets the pending retry and the rotated key's registration", async () => {
+    storeRelaySettings(["elsewhere.example.org"]);
+    vi.mocked(retryPendingManagedRelayRegistration).mockResolvedValueOnce();
+    vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
+      kind: "registered",
+    });
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal, undefined, ENROLLED);
+
+    expect(retryPendingManagedRelayRegistration).toHaveBeenCalledWith(
+      ENROLLED,
+      REGISTRAR,
+      expect.anything(),
+    );
+    expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrar: REGISTRAR,
+        preRotationSecret: RECORD.sharedSecret,
+        rotatedSecret: "next",
+      }),
+      expect.anything(),
+    );
   });
 });

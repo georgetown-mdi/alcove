@@ -34,12 +34,20 @@ import {
   linkageRuleSetVerdictNote,
   ruleSetCitation,
   summarizeInvitation,
+  turnUrlIsAllowed,
   unshownDeclaredNamesLine,
 } from "@alcove/core";
 
 import { ColumnChips } from "@components/ColumnChips";
 import { ColumnName } from "@components/ColumnName";
 
+import {
+  ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_UNSET,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+  runRelayRestriction,
+} from "@psi/transport/relayRestriction";
 import {
   DEDUPLICATE_CONTROL_DESCRIPTION,
   DEDUPLICATE_CONTROL_LABEL,
@@ -124,7 +132,7 @@ const DUPLICATE_MATCHES_HEADLINE = {
 /**
  * The line naming the registrar an invitation's relay names, `registrar`
  * escaped in the summary. A console run is the CLI's, which enrolls there
- * before it connects only when that relay is the one it allocates on
+ * before it connects only when it allocates on that relay itself
  * (apps/cli/src/invitationDisplay.ts states the same); a browser run enrolls
  * only at its own build's default relay, so the hosted line names the
  * registrar and nothing more.
@@ -132,9 +140,25 @@ const DUPLICATE_MATCHES_HEADLINE = {
 function invitationRelayRegistrarLine(registrar: Displayable): string {
   return isConsoleBuild()
     ? `A run registers this exchange at ${registrar} before it connects ` +
-        "only when that relay is the one it allocates on, and whoever runs " +
-        "that registrar then learns this machine's network address."
+        "only when your side sets up its own connection on this relay, and " +
+        "whoever runs that registrar then learns this machine's network " +
+        "address."
     : `The invitation also names this relay's registrar: ${registrar}`;
+}
+
+/**
+ * The mark a TURN url of the invitation takes under this browser's allowed
+ * relays: none where they are unset, and none on a console, whose run is the
+ * CLI's and follows its own configuration.
+ */
+function allowedRelaysMark(
+  url: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): string {
+  if (allowedRelays === undefined) return "";
+  return turnUrlIsAllowed(url, allowedRelays)
+    ? ` (${KEPT_BY_ALLOWED_RELAYS})`
+    : ` (${LEFT_OUT_BY_ALLOWED_RELAYS})`;
 }
 
 /** A labelled block: a bold caption above its value(s). When `captionId` is set it
@@ -523,6 +547,15 @@ export function InvitationTerms({
     inviterRetainsFiles,
     connectionEndpoint,
   });
+  // A hosted run is this browser's, under its own relay restriction; a
+  // console run is the CLI's. The summary's TURN urls are the endpoint's,
+  // escaped, in its order, so each is matched by its raw url.
+  const browserRun = !isConsoleBuild();
+  const [relayRestriction] = useState(runRelayRestriction);
+  const rawRelayTurn =
+    connectionEndpoint?.channel === "webrtc"
+      ? (connectionEndpoint.relay?.turn ?? [])
+      : [];
   // This party's own side WHERE THE INVITATION ADMITS ONE: a sole-receiver
   // invitation mirrors the accepting party to expectsOutput false, which the
   // schema takes no deduplicate from, so that accept gets no control and no
@@ -1035,6 +1068,11 @@ export function InvitationTerms({
             {summary.relay.turn.map((url, index) => (
               <Text size="sm" key={`turn-${index}`}>
                 TURN {url}
+                {browserRun &&
+                  allowedRelaysMark(
+                    rawRelayTurn[index] ?? "",
+                    relayRestriction.allowedRelays,
+                  )}
               </Text>
             ))}
             {summary.relay.stun.map((url, index) => (
@@ -1045,6 +1083,13 @@ export function InvitationTerms({
             {summary.relay.registrar !== undefined && (
               <Text size="sm">
                 {invitationRelayRegistrarLine(summary.relay.registrar)}
+              </Text>
+            )}
+            {browserRun && (
+              <Text size="sm">
+                {relayRestriction.allowedRelays === undefined
+                  ? ALLOWED_RELAYS_UNSET
+                  : ALLOWED_RELAYS_SCOPE}
               </Text>
             )}
             <Text size="xs" c="dimmed">

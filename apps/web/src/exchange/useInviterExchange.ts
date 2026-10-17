@@ -60,9 +60,7 @@ import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
-import { relayForRun } from "@psi/transport/ownRelaySetting";
-
-import { relayWithDefaultForRun } from "@psi/transport/defaultRelay";
+import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
@@ -1282,14 +1280,13 @@ export function useInviterExchange({
       // connection. Destroy the peer on a wait failure so acquisition stays
       // atomic (the lifecycle's teardown only ever covers a returned
       // {peer, conn}).
-      const relay = await relayWithDefaultForRun(
-        minted.sharedSecret,
-        relayForRun(),
-        { signal, onRunNotice },
-      );
+      const relayPlan = await relayPlanForRun(minted.sharedSecret, undefined, {
+        signal,
+        onRunNotice,
+      });
       const peer = await listenAsInviter(minted.sharedSecret, {
         signal,
-        relay,
+        ...relayPlan,
       });
       // The wait ends at the partner-wait ceiling, or sooner where the
       // invitation expires first, and the share screen states that deadline.

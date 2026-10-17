@@ -150,7 +150,6 @@ function webrtcConnection(variant: Variant, ice: Record<string, unknown>) {
       stun: [`stun:${host(variant, "relay")}:3478`],
       registrar: `https://${host(variant, "relay-registrar")}`,
     },
-    iceTransportPolicy: pick(variant, "all", "relay"),
     options: connectionTimeouts(variant),
     providerOptions: { debugLevel: doubled(variant, 1) },
     ...ice,

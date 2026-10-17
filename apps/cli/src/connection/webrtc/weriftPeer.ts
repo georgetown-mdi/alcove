@@ -41,7 +41,6 @@ import type {
   BrokerLocation,
   BrokerMessage,
 } from "./brokerClient";
-import type { IceTransportPolicy } from "./iceDiagnostics";
 import type { SignalingCertificateProbe } from "./signalingTls";
 import type {
   RelayCredential,
@@ -397,10 +396,6 @@ export interface WebRtcPeerOptions {
   sharedSecret: string;
   /** ICE servers, already resolved. Empty or absent selects werift's default. */
   iceServers?: Array<RTCIceServer>;
-  /**
-   * Candidate types ICE may use. Absent leaves werift's own default (`all`).
-   */
-  iceTransportPolicy?: IceTransportPolicy;
   /**
    * The TURN urls `allowed_relays` left out of this run, as the connection
    * names them; a failure with no channel names them and the remedy.
@@ -827,7 +822,8 @@ function allocationSentence(turn: RunTurnServer[]): string {
 /** The `RTCConfiguration` fields the peer connection is constructed with. */
 export interface WeriftPeerConfiguration {
   iceServers?: Array<RTCIceServer>;
-  iceTransportPolicy?: IceTransportPolicy;
+  /** Set by the relay check alone ({@link gatherRelayCandidate}). */
+  iceTransportPolicy?: "relay";
 }
 
 /**
@@ -841,26 +837,18 @@ export interface WeriftPeerConfiguration {
  * yield `{}` with the warning, and a non-empty list is passed verbatim, which is
  * what makes it, and not the default, the list actually used. What werift falls
  * back to when it is given neither is measured by the integration suite.
- *
- * An absent `iceTransportPolicy` is likewise omitted rather than spelled out as
- * `"all"`, so an unconfigured connection is constructed with the same object it
- * always was and the library's own default decides. What werift does with each
- * arm -- the value it reports back, and the candidates a relay-only policy
- * gathers -- is driven in webrtcIceTransportPolicy.test.ts.
  */
 export function buildPeerConfiguration(
   iceServers: Array<RTCIceServer> | undefined,
-  iceTransportPolicy?: IceTransportPolicy,
   warn: (message: string) => void = (message) => log.warn(message),
   relaysLeftOut: ReadonlyArray<string> = [],
 ): WeriftPeerConfiguration {
-  const policy = iceTransportPolicy === undefined ? {} : { iceTransportPolicy };
   const noServers = iceServers === undefined || iceServers.length === 0;
   const relaysEmptied =
     relaysLeftOut.length > 0 && !(iceServers ?? []).some(listsTurnUrl);
   if (relaysEmptied) warn(relaysLeftOutWarning(relaysLeftOut, noServers));
   else if (noServers) warn(NO_ICE_SERVERS_WARNING);
-  return noServers ? policy : { iceServers, ...policy };
+  return noServers ? {} : { iceServers };
 }
 
 /** Whether a server entry lists a `turn:` or `turns:` url. */
@@ -899,8 +887,8 @@ async function closePeer(peer: RTCPeerConnection): Promise<void> {
 
 /**
  * Ask one TURN server for a relay address the way a run's ICE gathering does:
- * a peer connection listing `server` alone, under the relay-only policy,
- * gathering for a local offer. Resolves whether a relay candidate is among
+ * a peer connection listing `server` alone, gathering relay candidates only
+ * so that a host candidate cannot be read as an answer, for a local offer. Resolves whether a relay candidate is among
  * this side's once gathering completes or `signal` aborts, and closes the
  * peer connection either way, so an abort ends a gather still in progress.
  *
@@ -912,9 +900,10 @@ export async function gatherRelayCandidate(
   signal: AbortSignal,
 ): Promise<boolean> {
   if (signal.aborted) return false;
-  const peer = await defaultPeerConnection(
-    buildPeerConfiguration([server], "relay"),
-  );
+  const peer = await defaultPeerConnection({
+    iceServers: [server],
+    iceTransportPolicy: "relay",
+  });
   let onAbort: (() => void) | undefined;
   try {
     const aborted = new Promise<"aborted">((resolve) => {
@@ -1062,7 +1051,6 @@ export async function openWebRtcPeerSession(
     role,
     sharedSecret,
     iceServers,
-    iceTransportPolicy,
     relaysLeftOut,
     attemptIceServers,
     rendezvousTimeoutMs = DEFAULT_RENDEZVOUS_TIMEOUT_MS,
@@ -1110,12 +1098,7 @@ export async function openWebRtcPeerSession(
     servers: Array<RTCIceServer> | undefined,
     warn?: (message: string) => void,
   ): Promise<RTCPeerConnection> => {
-    const configuration = buildPeerConfiguration(
-      servers,
-      iceTransportPolicy,
-      warn,
-      relaysLeftOut,
-    );
+    const configuration = buildPeerConfiguration(servers, warn, relaysLeftOut);
     return peerConnectionFactory === undefined
       ? await defaultPeerConnection(configuration)
       : peerConnectionFactory(configuration);
@@ -1248,7 +1231,6 @@ export async function openWebRtcPeerSession(
       remoteId,
       channelOpenTimeoutMs,
       unreportedOfferResendMs,
-      iceTransportPolicy,
       relaysLeftOut,
       arrivalTimeout,
       partnerRestart: previous?.partnerRestart,
@@ -1381,8 +1363,6 @@ interface NegotiationOptions {
   remoteId: string;
   channelOpenTimeoutMs: number;
   unreportedOfferResendMs: number;
-  /** The policy the peer connection was built with; named in a failure. */
-  iceTransportPolicy?: IceTransportPolicy;
   /** See {@link WebRtcPeerOptions.relaysLeftOut}; named in a failure. */
   relaysLeftOut?: string[];
   /** The failure the wait's last attempt ends with when the partner never sent a description. */
@@ -1611,11 +1591,7 @@ class Negotiation {
     const details =
       report === undefined
         ? relaysLeftOutDetails(relaysLeftOut)
-        : iceFailureDetails(
-            report,
-            this.options.iceTransportPolicy,
-            relaysLeftOut,
-          );
+        : iceFailureDetails(report, relaysLeftOut);
     return new ConnectionError(
       summary,
       "transport",

@@ -456,9 +456,7 @@ test("a configured list is passed through verbatim, with no warning", () => {
     { urls: ["stun:stun.example:3478"] },
     { urls: "turn:relay.example:3478", username: "u", credential: "c" },
   ];
-  expect(
-    buildPeerConfiguration(iceServers, undefined, (m) => warnings.push(m)),
-  ).toEqual({
+  expect(buildPeerConfiguration(iceServers, (m) => warnings.push(m))).toEqual({
     iceServers,
   });
   expect(warnings).toEqual([]);
@@ -469,7 +467,7 @@ test.each([
   ["an empty list", []],
 ])("%s warns and leaves the built-in default selected", (_label, servers) => {
   const warnings: Array<string> = [];
-  const configuration = buildPeerConfiguration(servers, undefined, (m) =>
+  const configuration = buildPeerConfiguration(servers, (m) =>
     warnings.push(m),
   );
   // An empty list is NOT passed through: to werift an empty `iceServers` and an
@@ -506,7 +504,6 @@ test.each([
     ];
     const configuration = buildPeerConfiguration(
       servers,
-      undefined,
       (m) => warnings.push(m),
       leftOut,
     );
@@ -541,12 +538,7 @@ test("an emptied TURN list beside a stun url warns once, without the built-in de
   const iceServers = [{ urls: ["stun:stun.example:3478"] }];
   const leftOut = ["turn:relay.example.org"];
   expect(
-    buildPeerConfiguration(
-      iceServers,
-      undefined,
-      (m) => warnings.push(m),
-      leftOut,
-    ),
+    buildPeerConfiguration(iceServers, (m) => warnings.push(m), leftOut),
   ).toEqual({ iceServers });
   expect(warnings).toEqual([relaysLeftOutWarning(leftOut)]);
   expect(warnings[0]).toContain("connection.allowed_relays");
@@ -561,7 +553,7 @@ test("a list that keeps a TURN url warns nothing though allowed_relays left anot
     { urls: "turn:relay.example:3478", username: "u", credential: "c" },
   ];
   expect(
-    buildPeerConfiguration(iceServers, undefined, (m) => warnings.push(m), [
+    buildPeerConfiguration(iceServers, (m) => warnings.push(m), [
       "turn:relay.example.org",
     ]),
   ).toEqual({ iceServers });

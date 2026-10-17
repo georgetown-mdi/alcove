@@ -656,18 +656,20 @@ export const CONSENT_FACTS = {
     basis: "enforced",
     reason:
       "The urls shown are the invitation's own, and a side that relays " +
-      "through them is choosing to with its own software: the browser lists " +
-      "them beside its own relay, the command line beside its own only " +
-      "where its allowed_relays keeps them, and each mints the credential " +
-      "itself, so nothing about which relay a side contacts rests on the " +
-      "partner's cooperation. What the relay's operator can observe is the " +
-      "note's, since that follows from contacting the relay at all. The " +
-      "note names no setting, since a browser party has none deciding " +
-      "whether it contacts the relay.",
+      "through them is choosing to with its own software: each lists them " +
+      "beside its own relay only where its own allowed relays keep them, " +
+      "and mints the credential itself, so nothing about which relay a side " +
+      "contacts rests on the partner's cooperation. What the relay's " +
+      "operator can observe is the note's, since that follows from " +
+      "contacting the relay at all. The note says a run may contact the " +
+      "relay rather than that it does, since a command-line run allocates " +
+      "on the first TURN url it lists alone; a browser run, which contacts " +
+      "every relay it lists, says so beside the note.",
     note:
-      "The relay's operator learns your network address on every run that " +
-      "contacts it, whether or not any traffic passes through the relay. " +
-      "Your partner named this relay for the exchange.",
+      "Your partner named this relay for the exchange. A run on your side " +
+      "may contact it unless your allowed relays leave it out, and the " +
+      "relay's operator learns your network address on every run that " +
+      "contacts it, whether or not any traffic passes through the relay.",
   },
 } as const satisfies Record<string, ConsentFact>;
 

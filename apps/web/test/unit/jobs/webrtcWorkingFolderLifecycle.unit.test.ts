@@ -542,7 +542,7 @@ describe("a run of the webrtc configuration the operator opened", () => {
           url: "https://registrar.example.org",
           exchange_id: "q3-linkage-7f2c",
         },
-        ice_transport_policy: "relay",
+        allowed_relays: ["turn.example.org"],
       },
     );
     const before = fs.readFileSync(configPathIn(dataRoot), "utf8");

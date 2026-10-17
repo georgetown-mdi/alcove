@@ -608,23 +608,4 @@ describe("the accepting side's connection", () => {
       }),
     ).toMatchObject({ invitationRelay: relay });
   });
-
-  test("a relay-only policy is satisfied by the invitation's TURN urls", () => {
-    expect(() =>
-      parseConnectionConfig({
-        channel: "webrtc",
-        server: { host: "signal.example" },
-        ice_transport_policy: "relay",
-        invitation_relay: { turn: RELAY.turn },
-      }),
-    ).not.toThrow();
-    expect(() =>
-      parseConnectionConfig({
-        channel: "webrtc",
-        server: { host: "signal.example" },
-        ice_transport_policy: "relay",
-        invitation_relay: { stun: RELAY.stun },
-      }),
-    ).toThrow(/requires at least one turn entry/);
-  });
 });

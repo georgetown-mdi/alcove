@@ -285,9 +285,8 @@ the limits each states are in
 [standing-relay-delivery.md](standing-relay-delivery.md); the two that bear on
 this transport are that no run has crossed real NAT and that the remote party's
 selected candidate has never been read. A deployment still verifies relayed
-connectivity in its own environment, which
-[`ice_transport_policy: relay`](../CLI.md#turn) is the way to do without
-arranging a network that blocks the direct path.
+connectivity in its own environment, on a network that blocks the direct
+path.
 
 ## Supply chain and the vendoring fallback
 

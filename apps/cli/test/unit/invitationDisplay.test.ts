@@ -1411,10 +1411,11 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       `    ${ALLOWED_RELAYS_UNSET}`,
     ]);
     expect(heading).toBeLessThan(lines.indexOf(REPEAT_HEADING));
-    // The note is shared with the browser, which has no setting deciding
-    // whether it contacts the relay: the CLI's setting is named on a line of
-    // its own.
-    expect(CONSENT_FACTS.invitationRelay.note).not.toMatch(/setting/i);
+    // The note is shared with the browser, whose setting has another name:
+    // each app names its own on a line of its own.
+    expect(CONSENT_FACTS.invitationRelay.note).not.toMatch(
+      /setting|allowed_relays|relay server page/i,
+    );
 
     const without = renderDisplayInvitation(
       log,
