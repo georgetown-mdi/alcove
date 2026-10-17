@@ -46,6 +46,13 @@ const TEST_TIMEOUT_MS = 120_000;
 // minute per operation.
 const STALL_DEADLINE_MS = 3_000;
 
+// The same deadline for the cases that time a whole transfer and its re-issue.
+// An operation that rode its deadline settled no sooner than the deadline, so
+// one settled inside it was settled by its tear. Raised from the one above
+// because the span timed holds the transfer, the re-dial and the re-issue,
+// which took up to 6.9 s under eight concurrent CLI suites.
+const TRANSFER_STALL_DEADLINE_MS = 30_000;
+
 // The bound on a fan of deletes the tear settles. A fan settled by a deadline
 // apiece takes at least STALL_DEADLINE_MS, twice this; a fan the tear settles
 // took 3-13 ms over thirteen runs, over 100 times below the bound.
@@ -270,7 +277,7 @@ for (const order of ["list-first", "get-first"] as const)
     async () => {
       const party = await connectPartyOnOwnServer({
         maxReconnectAttempts: 4,
-        stallDeadlineMs: STALL_DEADLINE_MS,
+        stallDeadlineMs: TRANSFER_STALL_DEADLINE_MS,
       });
       try {
         const remoteFile = await plantTransfer(party);
@@ -323,10 +330,14 @@ for (const order of ["list-first", "get-first"] as const)
           detail: `Buffer(${TRANSFER_BYTES})`,
         });
 
-        // A ceiling, not a timing assertion: an operation that rode the liveness
-        // deadline instead of its tear would sit above it whatever the machine,
-        // and one that recovered sits an order of magnitude below.
-        expect(outcomes.elapsedMs).toBeLessThan(2_000);
+        // Not a timing assertion: an operation that rode its liveness deadline
+        // instead of its tear settled no sooner than that deadline, whatever
+        // the machine.
+        expect(
+          outcomes.elapsedMs,
+          "the pair, measured at 0.4-6.9 s under four to eight concurrent CLI " +
+            "suites",
+        ).toBeLessThan(TRANSFER_STALL_DEADLINE_MS);
 
         // One cut, and every dial it cost was one the adapter kept: a dial a stale
         // lifecycle event failed would leave a session behind at the server.
@@ -388,7 +399,12 @@ inProcessOnly(
           name.startsWith("victim-"),
         ),
       ).toEqual([]);
-      expect(outcomes.elapsedMs).toBeLessThan(2_000);
+      // A member that rode its deadline settled no sooner than that deadline.
+      expect(
+        outcomes.elapsedMs,
+        "the fan, measured at 0.2-0.8 s under four to eight concurrent CLI " +
+          "suites",
+      ).toBeLessThan(STALL_DEADLINE_MS);
       // The whole fan cost one tear, not one per torn member: a fan that re-dialed
       // per member would hold the same results, land inside the same ceiling, and
       // reject no dial, so nothing else here separates the two.

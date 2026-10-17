@@ -63,6 +63,21 @@ describe("SFTP session controls: wall-clock caps and forced drops", () => {
     expect(end).toHaveBeenCalledTimes(1);
   });
 
+  test("an idle cap sparing the active session drops only the sessions superseded by a newer one", () => {
+    const controls = createSftpSessionControls();
+    const superseded = stubConnection();
+    const active = stubConnection();
+    controls.idleCapSparesActiveSession = true;
+    controls.maxIdleMs = 50;
+    controls.onConnectionReady(superseded.conn);
+    vi.advanceTimersByTime(60); // still the active session: spared
+    expect(superseded.end).not.toHaveBeenCalled();
+    controls.onConnectionReady(active.conn);
+    vi.advanceTimersByTime(500);
+    expect(superseded.end).toHaveBeenCalledTimes(1);
+    expect(active.end).not.toHaveBeenCalled();
+  });
+
   test("a one-shot dropActiveAfterMs fires once on wall-clock", () => {
     const controls = createSftpSessionControls();
     const { conn, end } = stubConnection();
