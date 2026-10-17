@@ -6,7 +6,15 @@ import { page } from "vitest/browser";
 
 import { createElement } from "react";
 
-import { editorFromCsv, editorWithAuthoredDraft } from "@psi/inviterEditor";
+import {
+  declaredFieldsFor,
+  editorFromCsv,
+  editorWithAuthoredDraft,
+} from "@psi/inviterEditor";
+
+import { CONTACT_AND_LOCATION_FIELD_TYPES } from "@alcove/core";
+
+import { UNSUPPLYABLE_KEY_MESSAGE } from "@psi/authoring/advancedInviteValidation";
 
 import {
   buildAdvancedTerms,
@@ -252,6 +260,128 @@ describe("KeysTab: a file with a ZIP column", () => {
     expect(document.body.textContent).not.toContain(
       "must hold each person's own ZIP code",
     );
+  });
+});
+
+describe("KeysTab: the shared-value caveat follows the enabled keys", () => {
+  const withContacts: AcquiredCsv = {
+    ...csv,
+    rawRows: [
+      {
+        ...csv.rawRows[0],
+        zip: "60614",
+        phone: "3125550100",
+        email: "ann@example.org",
+      },
+    ],
+    columns: [...csv.columns, "zip", "phone", "email"],
+  };
+  const caveat = "must hold each person's own ZIP code";
+
+  function renderWith(turnOff: (type: string | undefined) => boolean) {
+    const editor = editorFromCsv("Dana Okafor", withContacts);
+    const typeOf = new Map(
+      declaredFieldsFor(editor.draft).map((field) => [field.name, field.type]),
+    );
+    const keys = editor.draft.keys.map((entry) => ({
+      ...entry,
+      enabled:
+        entry.enabled &&
+        !entry.key.elements.some((element) =>
+          turnOff(typeOf.get(element.field)),
+        ),
+    }));
+    app.render(
+      createElement(KeysTab, {
+        editor: editorWithAuthoredDraft(editor, { ...editor.draft, keys }),
+        csv: withContacts,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onAlgorithm: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  const isContact = (type: string | undefined) =>
+    type !== undefined &&
+    (CONTACT_AND_LOCATION_FIELD_TYPES as ReadonlyArray<string>).includes(type);
+
+  test("is absent when every phone, email and ZIP key is turned off", async () => {
+    renderWith(isContact);
+
+    await expect
+      .element(page.getByRole("heading", { name: "Matching keys" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(caveat);
+  });
+
+  test("is present when one such key is on", async () => {
+    renderWith((type) => isContact(type) && type !== "zip_code");
+
+    await expect
+      .element(page.getByRole("note").filter({ hasText: caveat }))
+      .toBeInTheDocument();
+  });
+});
+
+describe("KeysTab: a key this file cannot supply, with expert authoring off", () => {
+  const withZip: AcquiredCsv = {
+    ...csv,
+    rawRows: [{ ...csv.rawRows[0], zip: "60614" }],
+    columns: [...csv.columns, "zip"],
+  };
+
+  function renderEditor(editor: ReturnType<typeof editorFromCsv>) {
+    app.render(
+      createElement(KeysTab, {
+        editor,
+        csv,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onAlgorithm: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  test("states the unsupplyable-key line above the guided list", async () => {
+    // Keys authored against a file with a ZIP column, imported over a file
+    // without one: the ZIP keys stay enabled and this file cannot supply them.
+    const base = editorFromCsv("Dana Okafor", csv);
+    const zipKeys = editorFromCsv("Dana Okafor", withZip).draft.keys;
+    renderEditor(
+      editorWithAuthoredDraft(base, { ...base.draft, keys: zipKeys }),
+    );
+
+    await expect
+      .element(page.getByText(UNSUPPLYABLE_KEY_MESSAGE))
+      .toBeInTheDocument();
+  });
+
+  test("states no such line for a seeded draft", async () => {
+    renderEditor(editorFromCsv("Dana Okafor", csv));
+
+    await expect
+      .element(page.getByRole("heading", { name: "Matching keys" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(UNSUPPLYABLE_KEY_MESSAGE);
   });
 });
 

@@ -94,7 +94,7 @@ function todayIso(now: Date): string {
  * core's referential-integrity refine locate the offender by issue path rather
  * than value. The message points at Expert authoring, whose "no column for"
  * badge names the field beside the key. */
-const UNSUPPLYABLE_KEY_MESSAGE =
+export const UNSUPPLYABLE_KEY_MESSAGE =
   "A linkage key needs a field your columns cannot supply. Turn on Expert " +
   "authoring to see which field each key has no column for, then add a " +
   "column of that type or turn that key off.";
