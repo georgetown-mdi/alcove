@@ -6,7 +6,6 @@ import YAML from "yaml";
 import {
   DEFAULT_LINKAGE_RULE_SET,
   getDefaultLinkageTerms,
-  inferMetadata,
   UsageError,
 } from "@alcove/core";
 
@@ -37,10 +36,8 @@ test("readPartnershipConfig refuses a configuration it cannot read as a usage er
 });
 
 describe("a configuration naming the rule set and writing no rules", () => {
-  const header = ["first_name", "last_name", "dob", "ssn"];
-
-  /** A configuration citing the shipped set, with or without metadata. */
-  function writeRuleSetConfig(withMetadata: boolean): string {
+  /** A configuration citing the shipped set and writing neither list. */
+  function writeRuleSetConfig(): string {
     const {
       linkageFields: _fields,
       linkageKeys: _keys,
@@ -55,13 +52,12 @@ describe("a configuration naming the rule set and writing no rules", () => {
           ...rest,
           linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
         },
-        ...(withMetadata ? { metadata: inferMetadata(header, []) } : {}),
       }),
     );
     return configPath;
   }
 
-  const readers = [
+  test.each([
     {
       command: "alcove update",
       read: (configPath: string) =>
@@ -72,34 +68,12 @@ describe("a configuration naming the rule set and writing no rules", () => {
       read: (configPath: string) =>
         readPartnershipConfig(configPath).linkageTerms,
     },
-  ];
-
-  test.each(readers)(
-    "$command refuses one with no metadata block, since its keys follow an input header",
-    ({ command, read }) => {
-      const configPath = writeRuleSetConfig(false);
-      expect(() => read(configPath)).toThrow(UsageError);
-      expect(() => read(configPath)).toThrow(
-        new RegExp(
-          "writes no linkage_fields, linkage_keys or metadata block, so the " +
-            `keys it runs are the ones its input file's header supplies, and ${command} ` +
-            "takes no input file to read them from. Add a metadata block",
-        ),
-      );
-    },
-  );
-
-  test.each(readers)(
-    "$command reads one with a metadata block as the exchange runs it",
-    ({ read }) => {
-      const configPath = writeRuleSetConfig(true);
-      const expected = getDefaultLinkageTerms(
-        "Agency A",
-        inferMetadata(header, []),
-      );
-      const terms = read(configPath);
-      expect(terms.linkageKeys).toEqual(expected.linkageKeys);
-      expect(terms.linkageFields).toEqual(expected.linkageFields);
-    },
-  );
+  ])("$command refuses it", ({ read }) => {
+    const configPath = writeRuleSetConfig();
+    expect(() => read(configPath)).toThrow(UsageError);
+    expect(() => read(configPath)).toThrow(
+      "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+        "linkage_fields or linkage_keys. Run 'alcove init'",
+    );
+  });
 });

@@ -55,13 +55,8 @@ export {
 } from "./config/termsUpdate";
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
-  configWithNamedRuleSetRules,
-  keysFollowUnreadInputHeaderRefusal,
-  linkageTermsAtInputHeader,
-  linkageTermsNarrowedToInput,
   linkageTermsStandingOf,
-  linkageTermsWithNamedRuleSetRules,
-  namedRuleSetKeysFollowInputHeader,
+  refuseRuleSetCitationWithoutRules,
   warnOnLinkageRuleSetCitationDrift,
 } from "./config/ruleSetCitation";
 export type {
@@ -80,7 +75,7 @@ export {
 export type {
   ConfigLinkageSource,
   ConfigLinkageSourceResult,
-  NamedRuleSetRules,
+  TermsDocumentAuthor,
   SFTPConnectionAwaitingAddress,
   WebRTCConnectionAwaitingAddress,
 } from "./config/loaders";

@@ -17,7 +17,6 @@ import {
   getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
-  inferMetadata,
   parseExchangeSpec,
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
@@ -2098,9 +2097,7 @@ function identityNoEffectNotice(promptWrites: string): string {
 
 /**
  * A configuration at `configPath` whose linkage terms name `reference` and
- * write no `linkage_fields` or `linkage_keys` of their own -- the short form
- * `readExistingAcceptConfig` fills in from the named set before the reconcile
- * compares the file against the invitation.
+ * write no `linkage_fields` or `linkage_keys` of their own.
  */
 function writeRuleSetNamingConfig(
   configPath: string,
@@ -2386,102 +2383,14 @@ describe("reconciling a pre-existing config", () => {
     }
   });
 
-  test("validateAccept: a reused config naming the shipped rule set reconciles", async () => {
-    // The kept file writes no rules, so the reconcile has terms to compare only
-    // because the named set was resolved into them first. With no metadata
-    // block its keys are the set's that the input's header supplies, as its
-    // exchange narrows them, and the invitation declares those.
+  test("validateAccept: a reused config naming a rule set and writing no rules refuses", async () => {
+    // The file writes no rules to compare against the invitation, so the
+    // acceptance stops on the file rather than on a terms diff.
     const options = testOptions();
     writeRuleSetNamingConfig(
       options.configFile,
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
-    const header = ["first_name", "last_name", "dob", "ssn"];
-    const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-accept-header-"));
-    const input = path.join(dir, "input.csv");
-    fs.writeFileSync(
-      input,
-      `${header.join(",")}\nAda,Lovelace,1815-12-10,123456789\n`,
-    );
-    const stdio = captureStdio();
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE()),
-        linkageTerms: getDefaultLinkageTerms(
-          "Inviter Org",
-          inferMetadata(header, []),
-        ),
-      });
-      const ready = await validateAccept({
-        resolved: { mode: "offline", invitation: encoded, input },
-        options,
-        log: silentLog,
-      });
-      expect(ready.reuseExistingConfig).toBe(true);
-
-      // Given no input file, the kept config's keys cannot be derived.
-      await expect(
-        validateAccept({
-          resolved: { mode: "offline", invitation: encoded },
-          options,
-          log: silentLog,
-        }),
-      ).rejects.toThrow(
-        /writes no linkage_fields, linkage_keys or metadata block.*alcove accept was given no input file.*Pass your input file as INPUT_FILE/,
-      );
-    } finally {
-      stdio.restore();
-      fs.rmSync(options.configFile, { force: true });
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("validateAccept: a reused config naming the rule set over a metadata block reconciles with no input", async () => {
-    const options = testOptions();
-    const header = ["first_name", "last_name", "dob", "ssn"];
-    const metadata = inferMetadata(header, []);
-    const {
-      linkageFields: _fields,
-      linkageKeys: _keys,
-      ...rest
-    } = getDefaultLinkageTerms("Acceptor Org");
-    fs.writeFileSync(
-      options.configFile,
-      YAML.stringify({
-        connection: { channel: "filedrop", path: "/mnt/share" },
-        linkage_terms: {
-          ...rest,
-          linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
-        },
-        metadata,
-      }),
-    );
-    const stdio = captureStdio();
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE()),
-        linkageTerms: getDefaultLinkageTerms("Inviter Org", metadata),
-      });
-      const ready = await validateAccept({
-        resolved: { mode: "offline", invitation: encoded },
-        options,
-        log: silentLog,
-      });
-      expect(ready.reuseExistingConfig).toBe(true);
-    } finally {
-      stdio.restore();
-      fs.rmSync(options.configFile, { force: true });
-    }
-  });
-
-  test("validateAccept: a reused config naming a set this build lacks refuses", async () => {
-    // Nothing fills the rules in, and the file writes none to fall back to, so
-    // the acceptance stops on the citation rather than on a terms diff.
-    const options = testOptions();
-    writeRuleSetNamingConfig(options.configFile, {
-      fieldSet: { name: "no-such-fields", version: "9.9.9" },
-      keySet: { name: "no-such-keys", version: "9.9.9" },
-    });
     try {
       const encoded = await encodeInvitation({
         ...sampleToken(FUTURE()),
@@ -2494,7 +2403,10 @@ describe("reconciling a pre-existing config", () => {
           log: silentLog,
         });
       await expect(run()).rejects.toBeInstanceOf(UsageError);
-      await expect(run()).rejects.toThrow("ships no such rule set");
+      await expect(run()).rejects.toThrow(
+        "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+          "linkage_fields or linkage_keys. Run 'alcove init'",
+      );
       await expect(run()).rejects.toThrow(options.configFile);
     } finally {
       fs.rmSync(options.configFile, { force: true });

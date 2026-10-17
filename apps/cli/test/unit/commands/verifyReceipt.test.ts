@@ -61,7 +61,6 @@ import {
   readSignedRecordFile,
   readVerifiableArtifact,
   readVerificationKeysFile,
-  KEYS_FOLLOW_UNREAD_HEADER_WARNING,
   PARTNER_SEND_SET_UNKNOWN_WARNING,
   MAX_AGREED_TERMS_FILE_BYTES,
   RESULT_FROM_ANOTHER_RUN_HEADLINE,
@@ -1344,11 +1343,9 @@ describe("handler", () => {
     expect(stdout).toBe("");
   });
 
-  test("a --partner-terms file naming a rule set is not filled in from it", async () => {
-    // A citation in the partner's document is text the partner wrote about the
-    // partner's own rules. Substituting this build's content under it would
-    // hash rules that party never sent, so the file is read as written and a
-    // document writing no rules fails the schema.
+  test("a --partner-terms file naming a rule set and writing no rules fails the schema", async () => {
+    // A partner's document is read as the partner wrote it, so its missing
+    // lists are a schema failure rather than this party's refusal and remedy.
     const { recordPath } = await exchangeArtifacts();
     const {
       linkageFields: _fields,
@@ -1370,12 +1367,11 @@ describe("handler", () => {
     expect(exits).toEqual([64]);
     expect(stderr).toContain("has invalid linkage_terms");
     expect(stderr).toContain("linkage_fields");
-    // The set was not looked up, so nothing reports on what this build ships.
-    expect(stderr).not.toContain("ships");
+    expect(stderr).not.toContain("alcove init");
     expect(stdout).toBe("");
   });
 
-  test("a --config-file whose keys follow the input header says the hash needs the input", async () => {
+  test("a --config-file naming a rule set and writing no rules is refused", async () => {
     const { recordPath } = await exchangeArtifacts();
     const {
       linkageFields: _fields,
@@ -1383,9 +1379,8 @@ describe("handler", () => {
       linkageRuleSet: _ruleSet,
       ...withoutRules
     } = baseInputs.localTerms;
-    const { stderr } = await runVerify({
+    const { stdout, stderr, exits } = await runVerify({
       record: recordPath,
-      "log-level": "warn",
       "config-file": writeYaml(
         YAML.stringify({
           linkage_terms: {
@@ -1395,7 +1390,12 @@ describe("handler", () => {
         }),
       ),
     });
-    expect(stderr).toContain(KEYS_FOLLOW_UNREAD_HEADER_WARNING);
+    expect(exits).toEqual([64]);
+    expect(stderr).toContain(
+      "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+        "linkage_fields or linkage_keys. Run 'alcove init'",
+    );
+    expect(stdout).toBe("");
   });
 
   test("a --partner-terms file citing a set this build lacks still verifies", async () => {

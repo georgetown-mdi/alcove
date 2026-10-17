@@ -1,15 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MockInstance } from "vitest";
 import YAML from "yaml";
-import {
-  DEFAULT_LINKAGE_RULE_SET,
-  getDefaultLinkageTerms,
-  inferMetadata,
-} from "@alcove/core";
+import { DEFAULT_LINKAGE_RULE_SET } from "@alcove/core";
 
 import { buildCli } from "../../../src/cliParser";
 import { saveKeyFile } from "../../../src/keyFile";
@@ -17,18 +14,18 @@ import { DEFAULT_RECORD_BASENAME } from "../../../src/recordFile";
 import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
 import { captureProcessExit } from "../../exitCapture";
 
-// A configuration that names the built-in rule set and writes no rules runs
-// the keys its precision floor selects, narrowed by its metadata block or,
-// with none, by the input's header. verify-receipt given that configuration
-// and the input re-derives the same terms, so the record verifies.
+// Configurations `alcove init INPUT_FILE` wrote hold the built-in rule set's
+// lists at the 95% floor, narrowed to that file and citing the set. Two such
+// configurations exchange, as written and with the 95% keys deleted to run
+// only the 99% rules, and verify-receipt given the configuration re-derives
+// the terms the run agreed, so the record verifies.
 //
 // filedrop only, like verifyReceiptDefaultExchange.test.ts beside it.
 
 const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const PEER_TIMEOUT_SECONDS = 30;
 
-const CSV_FIELDS = ["ssn", "last_name", "first_name", "date_of_birth"];
-const CSV_HEADER = CSV_FIELDS.join(",");
+const CSV_HEADER = "ssn,last_name,first_name,date_of_birth";
 const PARTY_A_CSV =
   `${CSV_HEADER}\n` +
   "123456789,SMITH,JOHN,19900115\n" +
@@ -39,13 +36,6 @@ const PARTY_B_CSV =
   "123456789,SMITH,JOHN,19900115\n" +
   "234567890,JONES,MARY,19850623\n" +
   "456789012,WHITE,JAMES,19880520\n";
-// The same people with no SSN column: under a header-narrowed configuration
-// it selects other keys, so it is not the input the record's run read.
-const OTHER_INPUT_CSV =
-  "last_name,first_name,date_of_birth\n" +
-  "SMITH,JOHN,19900115\n" +
-  "JONES,MARY,19850623\n" +
-  "BROWN,ROBERT,19920815\n";
 
 let work: string;
 let originalCwd: string;
@@ -103,60 +93,75 @@ async function verify(
   }
 }
 
-/** A configuration naming the built-in set at `floor`, writing no rules. */
-function writeRuleSetConfig(
-  configPath: string,
-  identity: string,
-  dropDir: string,
-  floor: 95 | 99,
-  withMetadata: boolean,
-): void {
-  const {
-    linkageFields: _fields,
-    linkageKeys: _keys,
-    linkageRuleSet: _ruleSet,
-    ...rest
-  } = getDefaultLinkageTerms(identity);
-  fs.writeFileSync(
-    configPath,
-    YAML.stringify({
-      connection: {
-        channel: "filedrop",
-        path: dropDir,
-        options: { poll_interval_ms: 1 },
-      },
-      linkage_terms: {
-        ...rest,
-        linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
-        precision_floor: floor,
-      },
-      ...(withMetadata ? { metadata: inferMetadata(CSV_FIELDS, []) } : {}),
-    }),
+/** The names of the shipped keys in the 95% band. */
+function keysAt95(): Set<string> {
+  return new Set(
+    (DEFAULT_LINKAGE_RULE_SET.ruleBands ?? [])
+      .filter((band) => band.band === 95)
+      .map((band) => band.rule),
   );
 }
 
-describe("verify-receipt of a run from a configuration naming the rule set", () => {
-  test.each([
-    { floor: 95, withMetadata: false },
-    { floor: 99, withMetadata: false },
-    { floor: 95, withMetadata: true },
-    { floor: 99, withMetadata: true },
-  ] as const)(
-    "at the $floor% floor, metadata block $withMetadata",
-    async ({ floor, withMetadata }) => {
+/**
+ * Write the configuration `alcove init` writes for `input` at `configPath`,
+ * then poll fast, and with `only99` delete its 95% keys as the template's
+ * help says. Returns the key names the file holds.
+ */
+async function initConfig(
+  configPath: string,
+  identity: string,
+  dropDir: string,
+  input: string,
+  only99: boolean,
+): Promise<string[]> {
+  await runCli([
+    "init",
+    pathToFileURL(dropDir).href,
+    input,
+    "--identity",
+    identity,
+    "--config-file",
+    configPath,
+    "--log-level",
+    "silent",
+  ]);
+  const doc = YAML.parseDocument(fs.readFileSync(configPath, "utf8"));
+  doc.setIn(["connection", "options", "poll_interval_ms"], 1);
+  const keys = doc.getIn(["linkage_terms", "linkage_keys"]) as YAML.YAMLSeq<
+    YAML.YAMLMap<string, unknown>
+  >;
+  if (only99) {
+    const at95 = keysAt95();
+    keys.items = keys.items.filter((key) => !at95.has(String(key.get("name"))));
+  }
+  fs.writeFileSync(configPath, doc.toString());
+  return keys.items.map((key) => String(key.get("name")));
+}
+
+describe("verify-receipt of a run from configurations alcove init wrote", () => {
+  test.each([{ only99: false }, { only99: true }] as const)(
+    "with only the 99% rules $only99",
+    async ({ only99 }) => {
       const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
       const inputA = path.join(work, "a-input.csv");
       fs.writeFileSync(inputA, PARTY_A_CSV);
       const inputB = path.join(work, "b-input.csv");
       fs.writeFileSync(inputB, PARTY_B_CSV);
-      const otherInput = path.join(work, "other-input.csv");
-      fs.writeFileSync(otherInput, OTHER_INPUT_CSV);
       const outA = path.join(work, "a-out");
       const outB = path.join(work, "b-out");
       const configA = path.join(work, "a.yaml");
       const configB = path.join(work, "b.yaml");
-      writeRuleSetConfig(configA, "party-a", dropDir, floor, withMetadata);
-      writeRuleSetConfig(configB, "party-b", dropDir, floor, withMetadata);
+      const keyNames = await initConfig(
+        configA,
+        "party-a",
+        dropDir,
+        inputA,
+        only99,
+      );
+      await initConfig(configB, "party-b", dropDir, inputB, only99);
+      const at95 = keysAt95();
+      expect(keyNames.some((name) => at95.has(name))).toBe(!only99);
+      expect(keyNames).toContain("SSN + LN + DOB");
       const keyA = path.join(work, "a.key");
       const keyB = path.join(work, "b.key");
       saveKeyFile(keyA, { sharedSecret: INITIAL_SECRET });
@@ -204,6 +209,10 @@ describe("verify-receipt of a run from a configuration naming the rule set", () 
           .replace(`${DEFAULT_RECORD_BASENAME}-`, `${DEFAULT_RESULT_BASENAME}-`)
           .replace(/\.json$/, ".csv"),
       );
+      // A subset of the set's keys still cites it, into the record.
+      expect(fs.readFileSync(record, "utf8")).toContain(
+        `"${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}"`,
+      );
 
       const own = await verify([
         record,
@@ -215,20 +224,6 @@ describe("verify-receipt of a run from a configuration naming the rule set", () 
       expect(own.stdout).toMatch(/^VERIFIED/);
       expect(own.stdout).toContain("agreed-terms hash: re-derives and matches");
       expect(own.exitCode).toBe(0);
-
-      // Only a header-narrowed configuration derives its keys from the input,
-      // so only there does another header re-derive other terms.
-      if (withMetadata) return;
-      const other = await verify([
-        record,
-        otherInput,
-        result,
-        "--config-file",
-        configA,
-      ]);
-      expect(other.stdout).not.toMatch(/^VERIFIED/);
-      expect(other.stdout).toContain("agreed-terms hash: DOES NOT MATCH");
-      expect(other.exitCode).not.toBe(0);
     },
     120_000,
   );

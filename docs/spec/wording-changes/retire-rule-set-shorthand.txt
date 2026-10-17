@@ -1,0 +1,3 @@
+- Terms that take their keys from the built-in rules hold the keys a precision floor selects that the party's own input supplies, so each party narrows its own before the two are compared. -> The terms a quick exchange takes from the built-in rules hold the keys a precision floor selects that the party's own input supplies, so each party narrows its own before the two are compared.
+- Where an input supplies none of the selected keys, the terms are left whole, and the exchange refuses before it starts. -> -
+- - -> `alcove init INPUT_FILE` writes the keys it narrows the same way into a configuration, which runs the lists it holds as written.

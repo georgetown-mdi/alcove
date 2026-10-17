@@ -8,9 +8,7 @@ import { z } from "zod";
 
 import {
   ALLOWED_OMISSIONS,
-  READ_BEFORE_SCHEMA,
   compareKeyPaths,
-  renderTemplates,
   schemaKeyPaths,
   templateKeyPaths,
 } from "./check-init-template-coverage.mjs";
@@ -150,28 +148,12 @@ describe("compareKeyPaths", () => {
     });
     expect(result.staleAllowances).toEqual(["a.c", "gone"]);
   });
-
-  it("accepts a key the reader takes out before the schema", () => {
-    const result = compareKeyPaths({
-      schema,
-      documented: new Set(["a", "a.b", "a.floor", "r", "x"]),
-      allowed: new Map([["a.c", "reason"]]),
-      readBeforeSchema: new Map([["a.floor", "reason"]]),
-    });
-    expect(result.unknown).toEqual([]);
-  });
 });
 
 describe("the repository", () => {
   it("gives every allowance a reason", () => {
     for (const [path, reason] of ALLOWED_OMISSIONS)
       expect(reason.length, path).toBeGreaterThan(0);
-  });
-
-  it("documents every key the reader takes out before the schema", async () => {
-    const { templates } = await renderTemplates();
-    for (const path of READ_BEFORE_SCHEMA.keys())
-      expect(templateKeyPaths(templates[0], YAML), path).toContain(path);
   });
 
   it("is on the check:all list", () => {

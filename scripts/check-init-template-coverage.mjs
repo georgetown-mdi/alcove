@@ -84,22 +84,6 @@ export const ALLOWED_OMISSIONS = new Map([
   ],
 ]);
 
-/**
- * Keys the configuration reader takes out of a file before the schema reads
- * it, each with the reason: a template key the schema lacks, documented all
- * the same.
- */
-export const READ_BEFORE_SCHEMA = new Map([
-  [
-    "linkage_terms.precision_floor",
-    "Selects the named rule set's keys; apps/cli/src/config/ruleSetCitation.ts reads it.",
-  ],
-  [
-    "linkage_terms.one_state_or_metro_area",
-    "Selects the named rule set's keys; apps/cli/src/config/ruleSetCitation.ts reads it.",
-  ],
-]);
-
 /** camelCase schema key -> the snake_case key an operator writes. */
 export function snakeKey(key) {
   return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -393,15 +377,13 @@ function strictlyUnder(path, prefixes) {
 /**
  * The comparison the check reports: `omitted` (schema paths no template
  * documents and no ALLOWED_OMISSIONS entry covers), `unknown` (template paths
- * the schema does not define and READ_BEFORE_SCHEMA does not list), and
- * `staleAllowances` (entries the template documents, at or under the entry,
- * or the schema does not define).
+ * the schema does not define), and `staleAllowances` (entries the template
+ * documents, at or under the entry, or the schema does not define).
  */
 export function compareKeyPaths({
   schema,
   documented,
   allowed = ALLOWED_OMISSIONS,
-  readBeforeSchema = READ_BEFORE_SCHEMA,
 }) {
   const allowedPaths = [...allowed.keys()];
   const omitted = [...schema.paths]
@@ -414,10 +396,7 @@ export function compareKeyPaths({
     .sort();
   const unknown = [...documented]
     .filter(
-      (path) =>
-        !schema.paths.has(path) &&
-        !strictlyUnder(path, schema.records) &&
-        !readBeforeSchema.has(path),
+      (path) => !schema.paths.has(path) && !strictlyUnder(path, schema.records),
     )
     .sort();
   const staleAllowances = allowedPaths

@@ -247,6 +247,30 @@ test("renderConfigTemplate: every FIELD_DOCS entry lands a comment in the docume
   }
 });
 
+test("the rule-set help names the keys each narrower choice deletes", () => {
+  const help = FIELD_DOCS.find(
+    ({ path: docPath }) =>
+      docPath.join(".") === "linkage_terms.linkage_rule_set",
+  )!.lines.join(" ");
+  const bands = new Map(
+    (DEFAULT_LINKAGE_RULE_SET.ruleBands ?? []).map((band) => [band.rule, band]),
+  );
+  const shippedAt95 = DEFAULT_LINKAGE_RULE_SET.linkageKeys
+    .map((key) => bands.get(key.name)!)
+    .filter((band) => band.band === 95);
+  const listed = (names: string[]) =>
+    `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const oneArea = shippedAt95
+    .filter((band) => band.coverage === "one_state_or_metro_area")
+    .map((band) => band.rule);
+  const anyArea = shippedAt95
+    .filter((band) => band.coverage === "any")
+    .map((band) => band.rule);
+  expect(oneArea).toHaveLength(3);
+  expect(help).toContain(`alone: ${listed(oneArea)}.`);
+  expect(help).toContain(`delete those three and ${listed(anyArea)}.`);
+});
+
 test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {
   const template = renderConfigTemplate(
     { linkageTerms: getDefaultLinkageTerms("Org") },

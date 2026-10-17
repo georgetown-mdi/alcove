@@ -81,11 +81,7 @@ import {
   validateInvite,
   webAppAcceptLink,
 } from "../../../src/commands/invite";
-import {
-  linkageTermsNarrowedToInput,
-  loadConfigLinkageSource,
-  saveConfig,
-} from "../../../src/config";
+import { loadConfigLinkageSource, saveConfig } from "../../../src/config";
 import { DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS } from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
@@ -1621,10 +1617,9 @@ test("validateInvite: derives terms from a config when no input file is given", 
   }
 });
 
-test("validateInvite: an invitation declares the rule set the config names", async () => {
-  // The config names its rule set instead of writing the rules out, so what
-  // the partner is offered is the set's own fields and keys under the citation
-  // the file wrote -- the same declaration a config holding those rules mints.
+test("validateInvite: a config naming a rule set and writing no rules is refused", async () => {
+  // A configuration's rules are the lists it writes, so one that writes none
+  // mints nothing, input file or not.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-named-"));
   const configPath = path.join(dir, "alcove.yaml");
   const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
@@ -1647,59 +1642,29 @@ test("validateInvite: an invitation declares the rule set the config names", asy
     }),
   );
   const input = path.join(dir, "input.csv");
-  const header = ["first_name", "last_name", "dob", "ssn"];
   fs.writeFileSync(
     input,
-    `${header.join(",")}\nAda,Lovelace,1815-12-10,123456789\n`,
+    "first_name,last_name,dob,ssn\nAda,Lovelace,1815-12-10,123456789\n",
   );
   try {
-    const ready = await validateInvite({
-      resolved: { mode: "offline", input },
-      options: testOptions({
-        configFile: configPath,
-        keyFile: path.join(dir, ".alcove.key"),
-      }),
-      acceptTimeout: 900,
-      log: silentLog,
-    });
-    expect(ready.mode).toBe("offlineFromConfig");
-    const token = await decodeInvitation(ready.invitation);
-    expect(token.linkageTerms.linkageRuleSet).toEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
-    // With no metadata block, the keys are the set's that the header supplies,
-    // as the exchange narrows them.
-    const narrowed = linkageTermsNarrowedToInput(
-      {
-        ...token.linkageTerms,
-        linkageFields: [...DEFAULT_LINKAGE_RULE_SET.linkageFields],
-        linkageKeys: [...DEFAULT_LINKAGE_RULE_SET.linkageKeys],
-      },
-      header,
-      undefined,
-      undefined,
-    );
-    expect(token.linkageTerms.linkageKeys).toEqual(narrowed.linkageKeys);
-    expect(token.linkageTerms.linkageFields).toEqual(narrowed.linkageFields);
-    expect(token.linkageTerms.linkageKeys.length).toBeLessThan(
-      DEFAULT_LINKAGE_RULE_SET.linkageKeys.length,
-    );
-
-    // Given no input file, the mint cannot derive those keys and refuses.
-    fs.rmSync(path.join(dir, ".alcove.key"), { force: true });
-    await expect(
-      validateInvite({
-        resolved: { mode: "offline" },
-        options: testOptions({
-          configFile: configPath,
-          keyFile: path.join(dir, ".alcove.key"),
+    for (const resolved of [
+      { mode: "offline" as const, input },
+      { mode: "offline" as const },
+    ])
+      await expect(
+        validateInvite({
+          resolved,
+          options: testOptions({
+            configFile: configPath,
+            keyFile: path.join(dir, ".alcove.key"),
+          }),
+          acceptTimeout: 900,
+          log: silentLog,
         }),
-        acceptTimeout: 900,
-        log: silentLog,
-      }),
-    ).rejects.toThrow(
-      /writes no linkage_fields, linkage_keys or metadata block.*alcove invite was given no input file.*Pass your input file as INPUT_FILE/,
-    );
+      ).rejects.toThrow(
+        "names a rule set in linkage_terms.linkage_rule_set but writes no " +
+          "linkage_fields or linkage_keys. Run 'alcove init'",
+      );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
