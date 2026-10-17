@@ -240,6 +240,44 @@ describe("block-worktree-deletions hook", () => {
     ]);
   });
 
+  it("names the unlock step for a locked tree and allows `git worktree unlock`", () => {
+    const refusal = verdict(`git worktree remove -f -f ${SIBLING}`);
+    expect(refusal.status).toBe(2);
+    expect(refusal.stderr).toContain(
+      "run `git worktree unlock <literal path>` and then `git worktree remove <literal path>`",
+    );
+    expect(refusal.stderr).toContain(
+      "every commit on its branch is on a remote or merged",
+    );
+    expectAllowed([
+      `git worktree unlock ${SIBLING}`,
+      `git -C /repo worktree unlock ${SIBLING}`,
+    ]);
+
+    const { dir, tree, precious } = makeRepoWithWorktree();
+    execFileSync("git", ["worktree", "lock", tree], { cwd: dir });
+    const locked = spawnSync("git", ["worktree", "remove", tree], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(locked.status).not.toBe(0);
+    expect(locked.stderr).toContain("cannot remove a locked working tree");
+    expect(locked.stderr).toContain("unlock first");
+    execFileSync("git", ["worktree", "unlock", tree], { cwd: dir });
+    const unlocked = spawnSync("git", ["worktree", "remove", tree], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(unlocked.status).not.toBe(0);
+    expect(existsSync(precious)).toBe(true);
+    const options = { cwd: dir, projectDir: dir };
+    expectAllowed(
+      [`git worktree unlock ${tree}`, `git worktree remove ${tree}`],
+      options,
+    );
+    expectBlocked([`git worktree remove -f -f ${tree}`], options);
+  });
+
   it("reads a GIT_WORK_TREE redirect an export stage sets, not a bare one", () => {
     expectBlocked([
       `export GIT_WORK_TREE=${SIBLING}; git clean -fd`,
