@@ -2035,7 +2035,7 @@ export function InviterScreen() {
                 });
               }}
               onUseBuiltInRules={() => {
-                const guided = editorWithBuiltInKeys(editor);
+                const guided = editorWithBuiltInKeys(editor, acquired);
                 if (guided === editor) return;
                 dispatch({
                   type: "editor-replaced",

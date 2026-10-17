@@ -412,20 +412,22 @@ describe("KeysTab: the precision floor and the coverage question", () => {
    * session model the inviter screen applies it through. */
   function Harness({
     initial,
+    file = csv,
     keysFromOpenedConfiguration = false,
   }: {
     initial: InviterEditor;
+    file?: AcquiredCsv;
     keysFromOpenedConfiguration?: boolean;
   }) {
     const [editor, setEditor] = useState(initial);
     return createElement(KeysTab, {
       editor,
-      csv,
+      csv: file,
       expertMode: false,
       onExpertMode: () => undefined,
       onPrecisionFloorSelection: (selection) =>
         setEditor(editorWithPrecisionFloorSelection(editor, selection)),
-      onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor)),
+      onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, file)),
       keysFromOpenedConfiguration,
       onKeyEnabled: (index, enabled) =>
         setEditor(editorWithKeyEnabled(editor, index, enabled)),
@@ -642,6 +644,37 @@ describe("KeysTab: the precision floor and the coverage question", () => {
     ).toBeNull();
     expect(
       page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }).query(),
+    ).toBeNull();
+  });
+
+  test("withholds the built-in rules on a file they supply no key for, keeping the note", async () => {
+    const uncovered: AcquiredCsv = {
+      fileName: "contacts.csv",
+      sizeBytes: 64,
+      rawRows: [
+        { client_id: "1", email: "ann@example.org", phone: "555-123-4567" },
+      ],
+      columns: ["client_id", "email", "phone"],
+      rowCount: 1,
+    };
+    const seeded = editorFromCsv("Dana Okafor", uncovered);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithAuthoredDraft(
+          seeded,
+          addKey(seeded.draft, "email_address"),
+        ),
+        file: uncovered,
+      }),
+    );
+
+    await expect
+      .element(
+        page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
     ).toBeNull();
   });
 

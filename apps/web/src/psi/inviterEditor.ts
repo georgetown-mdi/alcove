@@ -21,6 +21,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 import {
   draftFromTerms,
   draftHasOfferedKeys,
+  draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
@@ -233,15 +234,32 @@ export function editorWithPrecisionFloorSelection(
   };
 }
 
-/** Replace keys written in the expert editor or loaded from a document with
- * the built-in rules the file supplies at the default selection
- * ({@link draftWithBuiltInKeys}), returning the session to the guided list:
- * the precision floor and coverage controls apply again, and a later column
- * edit reconciles the keys. */
-export function editorWithBuiltInKeys(editor: InviterEditor): InviterEditor {
-  if (editor.sealed === true) return editor;
+/** Whether Matching keys offers {@link editorWithBuiltInKeys}: a new
+ * invitation for the session's columns would start with a built-in key. */
+export function editorOffersBuiltInKeys(editor: InviterEditor): boolean {
+  return draftOffersBuiltInKeys(editor.draft);
+}
+
+/** Replace keys written in the expert editor or loaded from a document, with
+ * their fields and cleaning, by those a new invitation starts with for the
+ * session's columns ({@link draftWithBuiltInKeys}), returning the session to
+ * the guided list: the precision floor and coverage controls apply again, and
+ * a later column edit reconciles the keys. Returns the session unchanged
+ * where the columns supply no built-in key ({@link editorOffersBuiltInKeys}). */
+export function editorWithBuiltInKeys(
+  editor: InviterEditor,
+  csv: AcquiredCsv,
+): InviterEditor {
+  if (editor.sealed === true || !editorOffersBuiltInKeys(editor)) return editor;
   const { keysAuthored: _keysAuthored, ...guided } = editor;
-  return { ...guided, draft: draftWithBuiltInKeys(editor.draft) };
+  return {
+    ...guided,
+    draft: draftWithBuiltInKeys(
+      editor.draft,
+      seedRows(csv),
+      csv.dateInputFormats,
+    ),
+  };
 }
 
 /** What Matching keys shows in place of the precision floor and coverage
@@ -254,11 +272,11 @@ export const AUTHORED_KEYS_FLOOR_NOTE =
 
 /** What the confirm before {@link editorWithBuiltInKeys} states. */
 export const USE_BUILT_IN_RULES_STATEMENT =
-  "This replaces these keys with " +
+  "This replaces the keys, fields and cleaning with the ones a new " +
+  "invitation starts with for your file: " +
   `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
-  "all turned on. The fields and their cleaning are reset to the built-in " +
-  "ones for your file, and the invitation will cite the built-in rules. " +
-  "Your columns and other settings stay. This cannot be undone.";
+  "all turned on. The invitation will cite the built-in rules. Your " +
+  "columns and other settings stay. This cannot be undone.";
 
 /** What Matching keys shows in place of the precision floor and coverage
  * controls on the console, for keys a run of an opened configuration

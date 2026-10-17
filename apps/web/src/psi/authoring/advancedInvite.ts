@@ -42,6 +42,7 @@ export {
   draftFromTerms,
   draftHasOfferedKeys,
   draftKeysAreBuiltIn,
+  draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,

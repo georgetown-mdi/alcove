@@ -16,6 +16,7 @@ import {
   citationDropFor,
   draftFromTerms,
   draftHasOfferedKeys,
+  draftWithBuiltInKeys,
   removeKey,
   seededCitationDropNotice,
   validateAdvancedInvite,
@@ -23,13 +24,16 @@ import {
 import {
   USE_BUILT_IN_RULES_STATEMENT,
   editorFromCsv,
+  editorOffersBuiltInKeys,
   editorWithAuthoredDraft,
   editorWithBuiltInKeys,
   editorWithColumnDisclosure,
   editorWithColumnType,
+  editorWithFieldSteps,
   editorWithImportedTerms,
   editorWithKeyEnabled,
   editorWithKeyMoved,
+  editorWithPastedConfiguration,
   editorWithPrecisionFloorSelection,
   emptyGuidedKeysNotice,
   enabledKeys,
@@ -39,7 +43,8 @@ import {
 import { answersRows } from "@psi/inviterModel";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
-import type { PrecisionFloorSelection } from "@alcove/core";
+import type { PrecisionFloorSelection, Standardization } from "@alcove/core";
+import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 
 function csvOf(row: Record<string, string>): AcquiredCsv {
   return {
@@ -274,7 +279,7 @@ describe("replacing authored keys with the built-in rules", () => {
       at99,
       addKey(at99.draft, "first_name"),
     );
-    const guided = editorWithBuiltInKeys(authored);
+    const guided = editorWithBuiltInKeys(authored, withSsn);
     expect(guided.keysAuthored).toBeUndefined();
     expect(guided.draft.precisionFloorSelection).toStrictEqual(
       DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -290,7 +295,7 @@ describe("replacing authored keys with the built-in rules", () => {
     ).toStrictEqual(AT_99_YES);
   });
 
-  test("replaces only the keys, keeping a column edit and the other settings", () => {
+  test("keeps the columns, their sharing and every setting outside the keys, fields and cleaning", () => {
     const edited = editorWithColumnDisclosure(
       seeded,
       withSsn,
@@ -299,12 +304,26 @@ describe("replacing authored keys with the built-in rules", () => {
     ).editor;
     const authored = editorWithAuthoredDraft(edited, {
       ...addKey(edited.draft, "first_name"),
+      lifetimeSeconds: 3 * 24 * 60 * 60,
+      outputDirection: "inviter",
       algorithm: "psi-c",
+      deduplicate: true,
+      linkageStrategy: "single-pass",
+      legalAgreement: {
+        reference: "DUA-7",
+        purpose: "Program evaluation",
+        expirationDate: "2099-01-01",
+      },
+      includeOwnColumns: "all",
+      includeMatchingKey: true,
     });
-    const guided = editorWithBuiltInKeys(authored);
+    const guided = editorWithBuiltInKeys(authored, withSsn);
+    expect(withoutKeysFieldsAndCleaning(guided.draft)).toStrictEqual(
+      withoutKeysFieldsAndCleaning(authored.draft),
+    );
     expect(guided.draft.metadata).toStrictEqual(edited.draft.metadata);
-    expect(guided.draft.algorithm).toBe("psi-c");
     expect(guided.seed).toBe(authored.seed);
+    expect(guided.transport).toBe(authored.transport);
   });
 
   test("takes an imported document's citation and fields with its keys", () => {
@@ -314,7 +333,7 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(citationDropFor(imported.draft, imported.seed)?.title).toBe(
       IMPORTED_CITATION_DROP_TITLE,
     );
-    const guided = editorWithBuiltInKeys(imported);
+    const guided = editorWithBuiltInKeys(imported, withSsn);
     expect(guided.draft.importedRuleSetCitation).toBeUndefined();
     expect(guided.draft.importedLinkageFields).toBeUndefined();
     expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
@@ -345,6 +364,7 @@ describe("replacing authored keys with the built-in rules", () => {
     };
     const guided = editorWithBuiltInKeys(
       editorWithImportedTerms(seeded, withSsn, renamed),
+      withSsn,
     );
     expect(validateAdvancedInvite(guided.draft, guided.seed).canGenerate).toBe(
       true,
@@ -356,13 +376,187 @@ describe("replacing authored keys with the built-in rules", () => {
 
   test("states in its confirm what replaces the keys", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
-      "This replaces these keys with the built-in rules at 95% precision and " +
-        "above that your file supplies, for two files that both draw their " +
-        "members from one state or one metropolitan area, all turned on. " +
-        "The fields and their cleaning are reset to the built-in ones for " +
-        "your file, and the invitation will cite the built-in rules. " +
-        "Your columns and other settings stay. This cannot be undone.",
+      "This replaces the keys, fields and cleaning with the ones a new " +
+        "invitation starts with for your file: the built-in rules at 95% " +
+        "precision and above that your file supplies, for two files that " +
+        "both draw their members from one state or one metropolitan area, " +
+        "all turned on. The invitation will cite the built-in rules. Your " +
+        "columns and other settings stay. This cannot be undone.",
     );
+  });
+});
+
+/** `draft` less what the built-in rules replace. */
+function withoutKeysFieldsAndCleaning(draft: AdvancedInviteDraft) {
+  const {
+    keys: _keys,
+    standardization: _standardization,
+    precisionFloorSelection: _selection,
+    importedLinkageFields: _fields,
+    importedRuleSetCitation: _citation,
+    ...rest
+  } = draft;
+  return rest;
+}
+
+/** `standardization` with the steps of the transformation for `output`
+ * rewritten by `steps`. */
+function withSteps(
+  standardization: Standardization,
+  output: string,
+  steps: (
+    current: NonNullable<Standardization[number]["steps"]>,
+  ) => NonNullable<Standardization[number]["steps"]>,
+): Standardization {
+  return standardization.map((transformation) =>
+    transformation.output === output
+      ? { ...transformation, steps: steps(transformation.steps ?? []) }
+      : transformation,
+  );
+}
+
+describe("the built-in rules as a reset to a new invitation's keys, fields and cleaning", () => {
+  // Every key-gated type beside the backbone, so the reset has phone, email
+  // and ZIP cleaning to drop or keep.
+  const everyType = csvOf({
+    client_id: "1",
+    ssn: "123-45-6789",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "1990-01-02",
+    phone: "555-123-4567",
+    email: "ann@example.org",
+    zip: "20001",
+  });
+  const fresh = editorFromCsv("Dana", everyType);
+
+  function expectFreshSeed(guided: InviterEditor) {
+    expect(guided.keysAuthored).toBeUndefined();
+    expect(guided.draft.keys).toStrictEqual(fresh.draft.keys);
+    expect(guided.draft.standardization).toStrictEqual(
+      fresh.draft.standardization,
+    );
+    expect(guided.draft.precisionFloorSelection).toStrictEqual(
+      fresh.draft.precisionFloorSelection,
+    );
+    expect(guided.draft.importedLinkageFields).toBeUndefined();
+    expect(guided.draft.importedRuleSetCitation).toBeUndefined();
+    const terms = buildAdvancedTerms(guided.draft);
+    expect(terms).toStrictEqual(buildAdvancedTerms(fresh.draft));
+    expect(terms.linkageRuleSet).toStrictEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+  }
+
+  test("restores edited first_name cleaning on an authored draft", () => {
+    const firstNameSteps =
+      fresh.draft.standardization.find(
+        (transformation) => transformation.output === "first_name",
+      )?.steps ?? [];
+    const authored = editorWithFieldSteps(
+      editorWithAuthoredDraft(fresh, addKey(fresh.draft, "first_name")),
+      "first_name",
+      [...firstNameSteps, ...firstNameSteps.slice(0, 1)],
+    );
+    expect(authored.draft.standardization).not.toStrictEqual(
+      fresh.draft.standardization,
+    );
+    expectFreshSeed(editorWithBuiltInKeys(authored, everyType));
+  });
+
+  test("restores a cut-down phone pipeline on an authored draft", () => {
+    const keyed = editorWithAuthoredDraft(
+      fresh,
+      addKey(fresh.draft, "phone_number"),
+    );
+    const phoneSteps = keyed.draft.standardization.find(
+      (transformation) => transformation.output === "phone_number",
+    )?.steps;
+    expect(phoneSteps?.length).toBeGreaterThan(1);
+    const authored = editorWithFieldSteps(
+      keyed,
+      "phone_number",
+      (phoneSteps ?? []).slice(0, 1),
+    );
+    expectFreshSeed(editorWithBuiltInKeys(authored, everyType));
+  });
+
+  test("replaces a loaded document's own cleaning and citation", () => {
+    const cited = buildAdvancedTerms(fresh.draft);
+    expect(cited.linkageRuleSet).toBeDefined();
+    const loaded = editorWithPastedConfiguration(
+      fresh,
+      everyType,
+      cited,
+      withSteps(fresh.draft.standardization, "first_name", (steps) =>
+        steps.slice(1),
+      ),
+    ).editor;
+    expect(loaded.draft.importedRuleSetCitation?.kind).toBe("cited");
+    expect(loaded.draft.standardization).not.toStrictEqual(
+      fresh.draft.standardization,
+    );
+    expectFreshSeed(editorWithBuiltInKeys(loaded, everyType));
+  });
+
+  test("replaces a loaded document that cites no rules", () => {
+    const { linkageRuleSet: _citation, ...uncited } = buildAdvancedTerms(
+      fresh.draft,
+    );
+    const loaded = editorWithPastedConfiguration(
+      fresh,
+      everyType,
+      uncited,
+      withSteps(fresh.draft.standardization, "last_name", () => []),
+    ).editor;
+    expect(loaded.draft.importedRuleSetCitation).toStrictEqual({
+      kind: "uncited",
+    });
+    expect(buildAdvancedTerms(loaded.draft).linkageRuleSet).toBeUndefined();
+    expectFreshSeed(editorWithBuiltInKeys(loaded, everyType));
+  });
+
+  test("infers the date-of-birth format from the file as a new invitation does", () => {
+    const authored = editorWithAuthoredDraft(
+      fresh,
+      addKey(fresh.draft, "first_name"),
+    );
+    const dobSteps = (editor: InviterEditor) =>
+      editor.draft.standardization.find(
+        (transformation) => transformation.output === "date_of_birth",
+      )?.steps;
+    expect(dobSteps(editorWithBuiltInKeys(authored, everyType))).toStrictEqual(
+      dobSteps(fresh),
+    );
+    expect(
+      dobSteps(editorWithBuiltInKeys(authored, everyType)),
+    ).not.toStrictEqual(
+      dobSteps(editorFromCsv("Dana", { ...everyType, rawRows: [] })),
+    );
+  });
+
+  describe("on a file the built-in rules supply no key for", () => {
+    const uncovered = csvOf({
+      client_id: "1",
+      email: "ann@example.org",
+      phone: "555-123-4567",
+    });
+    const seeded = editorFromCsv("Dana", uncovered);
+    const authored = editorWithAuthoredDraft(
+      seeded,
+      addKey(seeded.draft, "email_address"),
+    );
+
+    test("is not offered", () => {
+      expect(seeded.draft.keys).toStrictEqual([]);
+      expect(editorOffersBuiltInKeys(authored)).toBe(false);
+      expect(editorOffersBuiltInKeys(fresh)).toBe(true);
+    });
+
+    test("leaves the session unchanged if called anyway", () => {
+      expect(editorWithBuiltInKeys(authored, uncovered)).toBe(authored);
+      expect(draftWithBuiltInKeys(authored.draft)).toBe(authored.draft);
+    });
   });
 });
 

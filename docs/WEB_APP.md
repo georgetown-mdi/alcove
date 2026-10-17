@@ -51,7 +51,7 @@ The invitation starts with the built-in rules your file supplies at 95% precisio
 
 Changing either lists the rules it selects that your file supplies, in the built-in order. A key you turned off stays off while the choice keeps it, and a key the choice adds is turned on; you can then turn keys off or reorder them. Neither choice is sent to your partner: the terms hold the keys, and **Review & create** names the choices they were selected with. The bands and the rules are described in [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor).
 
-Keys you write in **Expert authoring**, or load from a document, were selected by neither choice, so the two controls are not shown for them. **Use the built-in rules** in their place replaces those keys with the built-in rules at 95% precision and above, after you confirm, resets the fields and their cleaning to the built-in ones for your file, and makes the terms cite the built-in rules; the rest of the settings stay as they are.
+Keys you write in **Expert authoring**, or load from a document, were selected by neither choice, so the two controls are not shown for them. **Use the built-in rules** in their place replaces the keys, fields and cleaning, after you confirm, with the ones a new invitation starts with for your file, and makes the terms cite the built-in rules; it is not offered where the built-in rules cover no column of your file.
 
 Terms drawn from the built-in rules cite them. Moving a key out of the built-in order, or adding or changing a key in Expert authoring, leaves the terms without that citation, and both steps say so; turning some keys off does not.
 

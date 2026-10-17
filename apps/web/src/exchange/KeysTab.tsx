@@ -45,6 +45,7 @@ import {
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
+  editorOffersBuiltInKeys,
   emptyGuidedKeysNotice,
   keyOrderHelp,
   keySatisfiabilityFor,
@@ -96,8 +97,9 @@ const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
  * The list holds the built-in keys the chosen floor and answer select for
  * these columns, each with a checkbox and the reorder pair. Both choices are
  * withheld once the keys were written in Expert authoring or loaded from a
- * document, with a note saying so and an action that replaces those keys with
- * the built-in rules: no floor selected them. On the console, keys a run of
+ * document, with a note saying so and, where the file supplies a built-in
+ * rule, an action that replaces those keys, fields and cleaning with a new
+ * invitation's: no floor selected them. On the console, keys a run of
  * an opened configuration continues under get a note naming the file and the
  * command that change them instead, and no action.
  *
@@ -131,8 +133,9 @@ export function KeysTab({
   onExpertMode: (on: boolean) => void;
   /** Reseed the guided keys at a precision floor and coverage answer. */
   onPrecisionFloorSelection: (selection: PrecisionFloorSelection) => void;
-  /** Replace keys written in Expert authoring or loaded from a document with
-   * the built-in rules, once the operator confirms. */
+  /** Replace keys written in Expert authoring or loaded from a document, with
+   * their fields and cleaning, by a new invitation's, once the operator
+   * confirms. */
   onUseBuiltInRules: () => void;
   /** Whether the keys are an opened configuration's that a run on the console
    * continues under, which the partner agreed to: no action here replaces
@@ -174,6 +177,10 @@ export function KeysTab({
     [editor],
   );
   const keysAuthored = editor.keysAuthored === true;
+  const offersBuiltInKeys = useMemo(
+    () => editorOffersBuiltInKeys(editor),
+    [editor],
+  );
   const selection =
     editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;
   const asksCoverage = precisionFloorAsksCoverage(selection.floor);
@@ -206,12 +213,14 @@ export function KeysTab({
       {keysAuthored && !keysFromOpenedConfiguration && (
         <Alert variant="light" color="gray" role="note" my="sm">
           <p>{AUTHORED_KEYS_FLOOR_NOTE}</p>
-          <ConfirmedActionButton
-            label={USE_BUILT_IN_RULES_LABEL}
-            variant="default"
-            statement={USE_BUILT_IN_RULES_STATEMENT}
-            onConfirm={onUseBuiltInRules}
-          />
+          {offersBuiltInKeys && (
+            <ConfirmedActionButton
+              label={USE_BUILT_IN_RULES_LABEL}
+              variant="default"
+              statement={USE_BUILT_IN_RULES_STATEMENT}
+              onConfirm={onUseBuiltInRules}
+            />
+          )}
         </Alert>
       )}
       {!keysAuthored && (
