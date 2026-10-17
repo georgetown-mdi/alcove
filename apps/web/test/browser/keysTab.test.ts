@@ -14,8 +14,6 @@ import {
 
 import { CONTACT_AND_LOCATION_FIELD_TYPES } from "@alcove/core";
 
-import { UNSUPPLYABLE_KEY_MESSAGE } from "@psi/authoring/advancedInviteValidation";
-
 import {
   buildAdvancedTerms,
   draftFromTerms,
@@ -330,58 +328,6 @@ describe("KeysTab: the shared-value caveat follows the enabled keys", () => {
     await expect
       .element(page.getByRole("note").filter({ hasText: caveat }))
       .toBeInTheDocument();
-  });
-});
-
-describe("KeysTab: a key this file cannot supply, with expert authoring off", () => {
-  const withZip: AcquiredCsv = {
-    ...csv,
-    rawRows: [{ ...csv.rawRows[0], zip: "60614" }],
-    columns: [...csv.columns, "zip"],
-  };
-
-  function renderEditor(editor: ReturnType<typeof editorFromCsv>) {
-    app.render(
-      createElement(KeysTab, {
-        editor,
-        csv,
-        expertMode: false,
-        onExpertMode: () => undefined,
-        onKeyEnabled: () => undefined,
-        onKeyMoved: () => undefined,
-        onAuthoredDraft: () => undefined,
-        onStrategy: () => undefined,
-        onAlgorithm: () => undefined,
-        onDeduplicate: () => undefined,
-        onImport: () => [],
-        keysError: undefined,
-        announce: () => undefined,
-        onBack: () => undefined,
-      }),
-    );
-  }
-
-  test("states the unsupplyable-key line above the guided list", async () => {
-    // Keys authored against a file with a ZIP column, imported over a file
-    // without one: the ZIP keys stay enabled and this file cannot supply them.
-    const base = editorFromCsv("Dana Okafor", csv);
-    const zipKeys = editorFromCsv("Dana Okafor", withZip).draft.keys;
-    renderEditor(
-      editorWithAuthoredDraft(base, { ...base.draft, keys: zipKeys }),
-    );
-
-    await expect
-      .element(page.getByText(UNSUPPLYABLE_KEY_MESSAGE))
-      .toBeInTheDocument();
-  });
-
-  test("states no such line for a seeded draft", async () => {
-    renderEditor(editorFromCsv("Dana Okafor", csv));
-
-    await expect
-      .element(page.getByRole("heading", { name: "Matching keys" }))
-      .toBeInTheDocument();
-    expect(document.body.textContent).not.toContain(UNSUPPLYABLE_KEY_MESSAGE);
   });
 });
 

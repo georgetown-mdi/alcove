@@ -28,7 +28,6 @@ import {
   buildAdvancedTerms,
   importedCitationDropNotice,
 } from "@psi/authoring/advancedInvite";
-import { UNSUPPLYABLE_KEY_MESSAGE } from "@psi/authoring/advancedInviteValidation";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 import { TermsImportExport } from "@components/TermsImportExport";
@@ -148,12 +147,6 @@ export function KeysTab({
         }),
     );
   }, [editor.draft.keys, declaredFields]);
-  const showsUnsupplyableKey =
-    !expertMode &&
-    editor.draft.keys.some(
-      (entry, index) =>
-        entry.enabled && keyVerdict(index).fitness === "unsatisfiable",
-    );
   return (
     <>
       <button type="button" className={styles.backlink} onClick={onBack}>
@@ -166,13 +159,6 @@ export function KeysTab({
         match first. The built-in keys come with the rules at 99% precision
         first, then the rules at 95%.
       </p>
-      {showsUnsupplyableKey && (
-        <p
-          className={`${styles.small} ${styles.statusLine} ${styles.statusLineDanger}`}
-        >
-          {UNSUPPLYABLE_KEY_MESSAGE}
-        </p>
-      )}
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
