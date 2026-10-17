@@ -149,6 +149,18 @@ export function psiSetPartPayloadBytes(conn: MessageConnection): number {
 }
 
 /**
+ * The per-frame bound the connection states: the data-channel bound on WebRTC,
+ * the message-file bound on file sync, the lesser where it states both, and
+ * {@link MAX_FRAME_SIZE_BYTES} where it states neither.
+ */
+export function statedFrameBound(conn: MessageConnection): number {
+  return Math.min(
+    conn.outboundWebRtcFrameBound?.() ?? MAX_FRAME_SIZE_BYTES,
+    conn.outboundFileSyncFrameBound?.() ?? MAX_FRAME_SIZE_BYTES,
+  );
+}
+
+/**
  * The frames that send `set` in parts of at most `payloadBytes` set bytes
  * each, in order, built one at a time. An empty set is one part with no set
  * bytes.

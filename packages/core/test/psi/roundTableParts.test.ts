@@ -4,6 +4,8 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
+import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
 import { ConnectionError } from "../../src/errors";
@@ -238,9 +240,9 @@ test("a grouping part over the bytes the round admits is refused as an index lis
   // Two run lengths of at most 1: at most 16 + 2 + 2 * 2 bytes, the index
   // list's bound above for two entries below 10.
   const runs = { maxPositionsPerRecord: 1, partnerRecordCount: 2 };
-  expect(roundGroupingBound(2, { ...runs, ownerLists: false }).listBytes).toBe(
-    4,
-  );
+  expect(
+    roundGroupingBound(2, { ...runs, ownerLists: false }, 1_000).listBytes,
+  ).toBe(4);
   const first = await deliver([partFrame([10_000, 1], { entries: 2 })]);
   const err = await refusal(
     receiveRoundGrouping(first, "server", "grouping", 2, {
@@ -260,9 +262,9 @@ test("a grouping part over the bytes the round admits is refused as an index lis
   // Three owner lists of ordinals below 3, each on one list: 2 * 3 + 3 * 2
   // bytes in all, so a later part is held to what the earlier ones left.
   const owners = { maxPositionsPerRecord: 1, partnerRecordCount: 3 };
-  expect(roundGroupingBound(3, { ...owners, ownerLists: true }).listBytes).toBe(
-    12,
-  );
+  expect(
+    roundGroupingBound(3, { ...owners, ownerLists: true }, 1_000).listBytes,
+  ).toBe(12);
   const later = await deliver([
     partFrame([[0]], { index: 0, count: 2, entries: 3 }),
     partFrame([[1, 1, 1, 1, 1, 1, 1], [2]], { index: 1, count: 2, entries: 3 }),
@@ -277,6 +279,141 @@ test("a grouping part over the bytes the round admits is refused as an index lis
       )
     ).message,
   ).toMatch(/part 1 is over the 27 bytes this party admits/);
+});
+
+// The grouping a connection stating `frameBound` receives, in parts of the
+// stated numbers of run lengths of 1, the first entry of the first part
+// written `first` instead.
+async function groupingParts(
+  frameBound: number,
+  sizes: Array<number>,
+  first = 1,
+): Promise<MessageConnection> {
+  const [a, b] = createMessagePipe();
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  for (const [index, size] of sizes.entries()) {
+    const body = Array.from({ length: size }, () => 1);
+    if (index === 0) body[0] = first;
+    await a.send(
+      partFrame(body, { index, count: sizes.length, entries: total }),
+    );
+  }
+  return {
+    send: (data) => b.send(data),
+    receive: (timeoutMs?: number) => b.receive(timeoutMs),
+    close: () => b.close(),
+    outboundWebRtcFrameBound: () => frameBound,
+  };
+}
+
+test("a grouping's budget is the connection's frame bound at the largest declared counts", () => {
+  const largest = {
+    maxPositionsPerRecord: 1,
+    partnerRecordCount: 10 ** 12,
+    ownerLists: true,
+  };
+  for (const frameBound of [MAX_WEBRTC_FRAME_BYTES, MAX_FRAME_SIZE_BYTES])
+    expect(roundGroupingBound(2 ** 24, largest, frameBound).listBytes).toBe(
+      frameBound,
+    );
+  expect(
+    roundGroupingBound(2 ** 24, largest, MAX_WEBRTC_FRAME_BYTES).entries,
+  ).toBe(2 ** 24);
+  expect(
+    roundGroupingBound(3, { ...largest, partnerRecordCount: 1 }, 1_000)
+      .listBytes,
+  ).toBeLessThan(1_000);
+});
+
+test("a grouping over the frame bound in all its parts is refused, one just under it accepted", async () => {
+  // Run lengths of 1 take 2 bytes with their separator, less 1 for the last
+  // entry's: 34 of them in four parts hold 64 bytes in all.
+  const bound = 64;
+  const fit = await groupingParts(bound, [9, 9, 8, 8]);
+  expect(
+    (
+      await receiveRoundGrouping(
+        fit,
+        "server",
+        "grouping",
+        1_000,
+        WIDE_GROUPING,
+      )
+    )?.length,
+  ).toBe(34);
+
+  const over = await groupingParts(bound, [9, 9, 8, 8], 10);
+  expect(
+    (
+      await refusal(
+        receiveRoundGrouping(over, "server", "grouping", 1_000, WIDE_GROUPING),
+      )
+    ).message,
+  ).toMatch(/part 3 is over the \d+ bytes this party admits/);
+
+  const under = await groupingParts(bound, [9, 8, 8, 8]);
+  expect(
+    (
+      await receiveRoundGrouping(
+        under,
+        "server",
+        "grouping",
+        1_000,
+        WIDE_GROUPING,
+      )
+    )?.length,
+  ).toBe(33);
+});
+
+test("parts totalling the derived budget are accepted and one byte over it refused", async () => {
+  // Two runs of at most 1 take 4 bytes in all, whatever the parts hold.
+  const bounds = {
+    maxPositionsPerRecord: 1,
+    partnerRecordCount: 2,
+    ownerLists: false,
+  };
+  const exact = await deliver([
+    partFrame([10], { index: 0, count: 2, entries: 2 }),
+    partFrame([10], { index: 1, count: 2, entries: 2 }),
+  ]);
+  expect(
+    await receiveRoundGrouping(exact, "server", "grouping", 2, bounds),
+  ).toStrictEqual([10, 10]);
+
+  const over = await deliver([
+    partFrame([100], { index: 0, count: 2, entries: 2 }),
+    partFrame([10], { index: 1, count: 2, entries: 2 }),
+  ]);
+  expect(
+    (await refusal(receiveRoundGrouping(over, "server", "grouping", 2, bounds)))
+      .message,
+  ).toMatch(/part 1 is over the 19 bytes this party admits/);
+});
+
+test("a grouping of more runs than records, inside its byte budget, is refused by the reader", async () => {
+  // Two records' runs of at most 12 positions are 2 * 3 bytes of entries,
+  // which three runs of 1 fit.
+  const bounds = {
+    maxPositionsPerRecord: 20,
+    partnerRecordCount: 2,
+    ownerLists: false,
+  };
+  const conn = await deliver([partFrame([1, 1, 1])]);
+  const grouping = await receiveRoundGrouping(
+    conn,
+    "server",
+    "grouping",
+    12,
+    bounds,
+  );
+  expect(grouping).toStrictEqual([1, 1, 1]);
+  expect(() =>
+    readPartnerRoundGrouping(
+      grouping ?? [],
+      Array.from({ length: 12 }, (_, k) => k),
+      { participantId: "server", ...bounds },
+    ),
+  ).toThrow(/more runs than the 2 record\(s\) the partner/);
 });
 
 test("a null part in a grouping that declares entries is refused", async () => {

@@ -292,6 +292,8 @@ A part of a round's grouping is held to a byte bound over the whole list instead
 
 The total is at least 2 bytes, the bytes by which an omitted grouping's `null` is longer than `[]`.
 
+A round's grouping, in all its parts together, is held to the transport's frame bound (`statedFrameBound`, `packages/core/src/psi/psiSetParts.ts`: `MAX_WEBRTC_FRAME_BYTES` on WebRTC, `MAX_FRAME_SIZE_BYTES` on SFTP or a synced folder), as it was when it travelled in one frame, so a round whose grouping would exceed that bound is refused: the total above is the lesser of the figures above and that bound.
+
 A payload's part has no byte bound of this kind: its rows hold the partner's column values, which no agreed term bounds.
 
 **What the receiver refuses, from the headers.** Each refusal is a `protocol` `ConnectionError` naming the list and the condition, raised before the refused part's body is parsed:

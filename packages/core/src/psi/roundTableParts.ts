@@ -14,6 +14,7 @@ import {
   sendMatchedList,
   utf8Length,
 } from "./matchedListParts";
+import { statedFrameBound } from "./psiSetParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
 import type { MatchedListBound, MatchedListSource } from "./matchedListParts";
@@ -123,14 +124,17 @@ export type RoundGroupingSizeBounds = Pick<
  * at most `min(matchedPositions, partnerRecordCount)`, each at most
  * `min(maxPositionsPerRecord, matchedPositions)`. Owner lists: one per
  * position, holding ordinals below `partnerRecordCount`, each ordinal on at
- * most `maxPositionsPerRecord` lists and on each list once. Never below the 2
- * bytes by which an omitted grouping's `null` is longer than `[]`.
+ * most `maxPositionsPerRecord` lists and on each list once. The bytes of all
+ * its parts together are held to `frameBound`, the bound a grouping rode in
+ * one frame under, and are never below the 2 bytes by which an omitted
+ * grouping's `null` is longer than `[]`.
  *
  * @internal
  */
 export function roundGroupingBound(
   matchedPositions: number,
   bounds: RoundGroupingSizeBounds,
+  frameBound: number,
 ): MatchedListBound {
   const { maxPositionsPerRecord, partnerRecordCount } = bounds;
   let listBytes: number;
@@ -147,15 +151,18 @@ export function roundGroupingBound(
     const longestRun = Math.min(maxPositionsPerRecord, matchedPositions);
     listBytes = runs * (roundIndexEntryBytes(longestRun + 1) ?? 0);
   }
-  return { entries: matchedPositions, listBytes: Math.max(2, listBytes) };
+  return {
+    entries: matchedPositions,
+    listBytes: Math.max(2, Math.min(listBytes, frameBound)),
+  };
 }
 
 /**
  * Receives a grouping sent by {@link sendRoundGrouping}: `undefined` where
  * the sender omitted it, else its entries joined in order. A list declaring
  * more entries than `matchedPositions` is refused at its first part, and a
- * part past the bytes {@link roundGroupingBound} admits before its body is
- * parsed.
+ * part past the bytes {@link roundGroupingBound} admits, at most the
+ * connection's stated frame bound in all, before its body is parsed.
  */
 export async function receiveRoundGrouping(
   conn: MessageConnection,
@@ -168,7 +175,7 @@ export async function receiveRoundGrouping(
     conn,
     participantId,
     what,
-    roundGroupingBound(matchedPositions, bounds),
+    roundGroupingBound(matchedPositions, bounds, statedFrameBound(conn)),
     (value) => {
       if (value === null) return { part: null, entries: 0 };
       const part = parseOrProtocolError(roundGroupingElement, value);
