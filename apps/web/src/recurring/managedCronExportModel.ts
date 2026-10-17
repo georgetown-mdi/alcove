@@ -69,14 +69,36 @@ import type { RunSchedule } from "./scheduleTemplates";
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
 /**
- * Whether a command-line run of `connection`, the connection the export
- * writes, uses a TURN relay: one of its own `turn` entries or the invitation's,
- * after `allowedRelays`. Such a run asks no STUN server unless it lists a
- * `stun` url, so it neither uses the built-in default nor warns about it.
+ * Which ICE servers a command-line run of an exported connection asks, which
+ * decides the panel's STUN line: it lists a STUN url (`stunUrls`, each escaped
+ * for display, since the invitation's relay can name them), it lists a TURN url
+ * and no STUN url (`relay`), or it lists neither and uses the built-in default
+ * (`default`).
  */
-export function exportedRunUsesRelay(connection: ConnectionConfig): boolean {
-  if (connection.channel !== "webrtc") return false;
-  return (selectRunRelay(connection).turn ?? []).length > 0;
+export type ExportedRunIceServers =
+  | { kind: "stun"; stunUrls: Array<string> }
+  | { kind: "relay" }
+  | { kind: "default" };
+
+/**
+ * The ICE servers a command-line run of `connection`, the connection the export
+ * writes, asks: its own `stun` entries and the invitation's, else its `turn`
+ * entries and the invitation's after `allowedRelays`, else the built-in
+ * default. A run listing a TURN url and no STUN url asks no STUN server. A
+ * connection on another channel gets the default case.
+ */
+export function exportedRunIceServers(
+  connection: ConnectionConfig,
+): ExportedRunIceServers {
+  if (connection.channel !== "webrtc") return { kind: "default" };
+  const { stun, turn } = selectRunRelay(connection);
+  if ((stun ?? []).length > 0)
+    return {
+      kind: "stun",
+      stunUrls: (stun ?? []).map((url) => sanitizeForDisplay(url)),
+    };
+  if ((turn ?? []).length > 0) return { kind: "relay" };
+  return { kind: "default" };
 }
 
 /**

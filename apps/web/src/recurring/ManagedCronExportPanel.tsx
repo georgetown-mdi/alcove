@@ -21,7 +21,7 @@ import styles from "@styles/app.module.css";
 import {
   CLI_BUILT_IN_STUN_URI,
   exportRun,
-  exportedRunUsesRelay,
+  exportedRunIceServers,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
@@ -117,6 +117,10 @@ export function ManagedCronExportPanel({
   const invitationRegistrarLine =
     state.kind === "exportable"
       ? invitationRegistrarExportLine(state.composed.connection)
+      : undefined;
+  const iceServers =
+    state.kind === "exportable"
+      ? exportedRunIceServers(state.composed.connection)
       : undefined;
 
   // A run holds the hand-off back: the polled reading, or the spend's own refusal
@@ -286,7 +290,11 @@ export function ManagedCronExportPanel({
             </ol>
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
             <ul className={styles.small}>
-              {exportedRunUsesRelay(state.composed.connection) ? (
+              {iceServers?.kind === "stun" ? (
+                <li>
+                  {`A scheduled run asks the STUN server this exchange names (${iceServers.stunUrls.join(", ")}) for that machine's public address. The address, and the fact that a session is happening, are disclosed to that server; no exchange content is.`}
+                </li>
+              ) : iceServers?.kind === "relay" ? (
                 <li>
                   This exchange names no STUN server and lists a relay, so a
                   scheduled run asks no STUN server: it reaches your partner

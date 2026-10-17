@@ -21,7 +21,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   exportRun,
-  exportedRunUsesRelay,
+  exportedRunIceServers,
   invitationRegistrarExportLine,
   managedConfigurationExportState,
   managedCronExportPanelState,
@@ -341,7 +341,7 @@ describe("the line naming the invitation relay's registrar", () => {
   });
 });
 
-describe("whether a command-line run of the export uses a relay", () => {
+describe("which ICE servers a command-line run of the export asks", () => {
   function connectionOf(
     record: RunnableManagedExchangeRecord,
     readOwn: () => OwnRelayRead,
@@ -354,30 +354,33 @@ describe("whether a command-line run of the export uses a relay", () => {
     return state.composed.connection;
   }
 
-  test("is false where the export lists no turn url", () => {
+  function webrtcConnection() {
+    const connection = managedRecord().exchangeFile.connection;
+    if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+    return connection;
+  }
+
+  test("is the built-in default where the export lists no ICE server", () => {
     expect(
-      exportedRunUsesRelay(
+      exportedRunIceServers(
         connectionOf(managedRecord(), () => ({
           kind: "set",
           relay: { turn: [], stun: [] },
         })),
       ),
-    ).toBe(false);
+    ).toEqual({ kind: "default" });
   });
 
-  test("is true where the invitation's relay names a turn url", () => {
-    const record = managedRecord();
-    const connection = record.exchangeFile.connection;
-    if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+  test("is the relay where the invitation's relay names a turn url alone", () => {
     expect(
-      exportedRunUsesRelay({
-        ...connection,
+      exportedRunIceServers({
+        ...webrtcConnection(),
         invitationRelay: { turn: ["turns:relay.partner.example.org:443"] },
       }),
-    ).toBe(true);
+    ).toEqual({ kind: "relay" });
   });
 
-  test("is true where the export writes this party's own turn entries", () => {
+  test("is the relay where the export writes this party's own turn entries", () => {
     const record = {
       ...managedRecord(),
       relayRegistrar: {
@@ -386,7 +389,7 @@ describe("whether a command-line run of the export uses a relay", () => {
       },
     };
     expect(
-      exportedRunUsesRelay(
+      exportedRunIceServers(
         connectionOf(record, () => ({
           kind: "set",
           relay: {
@@ -395,7 +398,80 @@ describe("whether a command-line run of the export uses a relay", () => {
           },
         })),
       ),
-    ).toBe(true);
+    ).toEqual({ kind: "relay" });
+  });
+
+  test("is the STUN server the invitation's relay names beside its turn url", () => {
+    expect(
+      exportedRunIceServers({
+        ...webrtcConnection(),
+        invitationRelay: {
+          turn: ["turns:relay.partner.example.org:443"],
+          stun: ["stun:stun.partner.example.org:3478"],
+        },
+      }),
+    ).toEqual({
+      kind: "stun",
+      stunUrls: ["stun:stun.partner.example.org:3478"],
+    });
+  });
+
+  test("is the STUN server the connection lists itself, beside a turn url", () => {
+    expect(
+      exportedRunIceServers({
+        ...webrtcConnection(),
+        stun: ["stun:stun.example.org:3478"],
+        turn: [{ url: "turns:relay.example.org:443" }],
+      }),
+    ).toEqual({ kind: "stun", stunUrls: ["stun:stun.example.org:3478"] });
+  });
+
+  test("is the default where allowed relays leave out the only turn url and no STUN url is listed", () => {
+    expect(
+      exportedRunIceServers({
+        ...webrtcConnection(),
+        invitationRelay: { turn: ["turns:relay.partner.example.org:443"] },
+        allowedRelays: ["relay.example.org"],
+      }),
+    ).toEqual({ kind: "default" });
+  });
+
+  test("keeps a STUN url that allowed relays do not touch", () => {
+    expect(
+      exportedRunIceServers({
+        ...webrtcConnection(),
+        invitationRelay: {
+          turn: ["turns:relay.partner.example.org:443"],
+          stun: ["stun:stun.partner.example.org:3478"],
+        },
+        allowedRelays: ["relay.example.org"],
+      }),
+    ).toEqual({
+      kind: "stun",
+      stunUrls: ["stun:stun.partner.example.org:3478"],
+    });
+  });
+
+  test("escapes the characters a STUN url holds that the display changes", () => {
+    const url = "stun:stun.example.org\u001b[2J\r\n\u202e:3478";
+    const derived = exportedRunIceServers({
+      ...webrtcConnection(),
+      invitationRelay: { stun: [url] },
+    });
+    expect(derived).toEqual({
+      kind: "stun",
+      stunUrls: [sanitizeForDisplay(url)],
+    });
+    expect(sanitizeForDisplay(url)).not.toBe(url);
+    expect(JSON.stringify(derived)).not.toMatch(/[\p{Cc}\u202e]/u);
+  });
+
+  test("is the default on a channel this app does not run", () => {
+    expect(
+      exportedRunIceServers(
+        connectionFromLocator({ channel: "filedrop", path: "/srv/exchange" }),
+      ),
+    ).toEqual({ kind: "default" });
   });
 });
 
