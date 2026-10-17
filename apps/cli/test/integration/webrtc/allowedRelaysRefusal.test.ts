@@ -4,7 +4,6 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { RTCPeerConnection } from "werift";
 import { afterEach, beforeEach, expect, test } from "vitest";
 
 import {
@@ -17,30 +16,16 @@ import { StandardizedDataset } from "@alcove/core/testing";
 
 import { loadConfigWebRTCConnection } from "../../../src/config/loaders";
 import { persistInvitationRelay } from "../../../src/config/persist";
-import { WERIFT_BUILT_IN_STUN_URI } from "../../../src/connection/webrtc/weriftPeer";
 import { saveKeyFile } from "../../../src/keyFile";
 import { runProtocol } from "../../../src/protocol";
 
 import type { PreparedExchange, WebRTCConnectionConfig } from "@alcove/core";
-import type { RTCIceCandidate } from "werift";
 
 /**
- * The two runs `connection.allowed_relays` can leave with no TURN url that a
- * CLI run refuses (`webRtcDialFrom`), and the werift behavior behind each.
- * A relay-only policy is applied only where a TURN server reaches werift
- * (webrtcIceTransportPolicy.test.ts), and a peer given no STUN url it can
- * parse gathers against werift's built-in default, which the first test
- * measures for every server list such a run could pass.
+ * The run `connection.allowed_relays` can leave with no TURN url that a CLI
+ * run refuses (`webRtcDialFrom`): a relay-only policy is applied only where a
+ * TURN server reaches werift (webrtcIceTransportPolicy.test.ts).
  */
-
-const BUILT_IN_STUN_HOST = (() => {
-  const match = /^stun:([^:]+):\d+$/.exec(WERIFT_BUILT_IN_STUN_URI);
-  if (match?.[1] === undefined)
-    throw new Error(`not a stun:host:port uri: ${WERIFT_BUILT_IN_STUN_URI}`);
-  return match[1];
-})();
-
-const GATHERING_TIMEOUT_MS = 30_000;
 
 /**
  * Run `body` with every DNS lookup failed at once and recorded, so nothing
@@ -77,46 +62,6 @@ async function withLookupsRecorded<T>(
     (dns as { lookup: unknown }).lookup = realCallbackLookup;
   }
 }
-
-async function gatheredCandidates(
-  configuration: ConstructorParameters<typeof RTCPeerConnection>[0],
-): Promise<Array<string>> {
-  const peer = new RTCPeerConnection(configuration);
-  const candidates: Array<string> = [];
-  peer.onicecandidate = ({ candidate }: { candidate?: RTCIceCandidate }) => {
-    if (candidate !== undefined) candidates.push(candidate.candidate);
-  };
-  try {
-    const gatheringComplete = peer.iceGatheringStateChange.watch(
-      (state) => state === "complete",
-      GATHERING_TIMEOUT_MS,
-    );
-    peer.createDataChannel("allowed-relays-probe");
-    await peer.setLocalDescription(await peer.createOffer());
-    await gatheringComplete;
-    return candidates;
-  } finally {
-    await peer.close();
-  }
-}
-
-test.each([
-  ["no server list", {}],
-  ["an empty server list", { iceServers: [] }],
-  ["a server naming no url", { iceServers: [{ urls: [] }] }],
-])(
-  "a peer given %s gathers host candidates and looks up werift's built-in STUN server",
-  { timeout: GATHERING_TIMEOUT_MS + 10_000 },
-  async (_shape, configuration) => {
-    const { result, lookedUp } = await withLookupsRecorded(() =>
-      gatheredCandidates(configuration),
-    );
-    expect(result.some((candidate) => candidate.includes("typ host"))).toBe(
-      true,
-    );
-    expect([...lookedUp]).toContain(BUILT_IN_STUN_HOST);
-  },
-);
 
 let tmpDir: string;
 

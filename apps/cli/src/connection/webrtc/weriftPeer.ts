@@ -16,7 +16,6 @@ import {
   mintRunRelayCredential,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   redactAndSanitizeForDisplay,
-  relaysLeftOutForDisplay,
   sanitizeErrorForDisplay,
   selectRunRelay,
 } from "@alcove/core";
@@ -226,21 +225,15 @@ export const NO_ICE_SERVERS_WARNING =
   "five seconds of gathering and works only where both parties share a network.";
 
 /**
- * The refusal of a run whose every TURN url `allowed_relays` leaves out and
- * that lists no STUN url. Given no STUN server it can parse, werift gathers
- * against {@link WERIFT_BUILT_IN_STUN_URI}, an empty server list included,
- * and nothing in its configuration stops that while host candidates are
- * still gathered (allowedRelaysRefusal.test.ts). Raw, escaped where shown.
+ * The warning line for a run whose TURN list `allowed_relays` emptied, in
+ * place of {@link NO_ICE_SERVERS_WARNING}, whose advice to set `turn` the
+ * operator already followed. Escaped by the caller, which holds the urls.
  */
-export function relaysLeftOutNoStunMessage(
-  leftOut: ReadonlyArray<string>,
-): string {
+export function relaysLeftOutWarning(leftOut: ReadonlyArray<string>): string {
   return (
-    "connection.allowed_relays leaves out every TURN url this connection " +
-    `lists (${relaysLeftOutForDisplay(leftOut)}), and no STUN url is ` +
-    "listed, so the run would use the built-in default " +
-    `(${WERIFT_BUILT_IN_STUN_URI}) to discover this host's public address. ` +
-    "Set connection.stun, add the host of a relay to " +
+    "connection.allowed_relays left out every TURN url this connection " +
+    `lists (${redactAndSanitizeForDisplay(leftOut.join(", "))}), so the run ` +
+    "continues without a relay. Add the host of a relay to " +
     "connection.allowed_relays, or remove the setting."
   );
 }
@@ -844,10 +837,15 @@ export function buildPeerConfiguration(
   iceServers: Array<RTCIceServer> | undefined,
   iceTransportPolicy?: IceTransportPolicy,
   warn: (message: string) => void = (message) => log.warn(message),
+  relaysLeftOut: ReadonlyArray<string> = [],
 ): WeriftPeerConfiguration {
   const policy = iceTransportPolicy === undefined ? {} : { iceTransportPolicy };
   if (iceServers === undefined || iceServers.length === 0) {
-    warn(NO_ICE_SERVERS_WARNING);
+    warn(
+      relaysLeftOut.length === 0
+        ? NO_ICE_SERVERS_WARNING
+        : relaysLeftOutWarning(relaysLeftOut),
+    );
     return policy;
   }
   return { iceServers, ...policy };
@@ -1098,6 +1096,7 @@ export async function openWebRtcPeerSession(
       servers,
       iceTransportPolicy,
       warn,
+      relaysLeftOut,
     );
     return peerConnectionFactory === undefined
       ? await defaultPeerConnection(configuration)

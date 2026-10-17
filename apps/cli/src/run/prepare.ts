@@ -33,7 +33,6 @@ import {
   relayCredentialForRun,
   relayCredentialNotice,
   relayCredentialPerAttempt,
-  relaysLeftOutNoStunMessage,
 } from "../connection/webrtc/weriftPeer";
 import { assertFirstRoundFits } from "../firstRoundFits";
 import { preflightKeyFilePath } from "../keyFilePreflight";
@@ -127,7 +126,7 @@ interface WebRtcDial {
  *   names no role, when the server block cannot be resolved to a broker, or
  *   when the connection sets `ice_provision` (via `iceServersFromConnection`),
  *   and when `allowed_relays` leaves out every TURN url the run lists under
- *   a relay-only policy, or on a run that lists no STUN url.
+ *   a relay-only policy.
  * @internal exported for testing
  */
 export function webRtcDialFrom(
@@ -141,16 +140,17 @@ export function webRtcDialFrom(
   if (role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
   const location = brokerLocationFromConnection(connection.server);
   const iceServers = iceServersFromConnection(connection, runRelayCredential);
-  const { stun, turn, turnLeftOut } = selectRunRelay(connection);
+  const { turn, turnLeftOut } = selectRunRelay(connection);
   // Checked on the list this run uses, however the connection was built: the
   // schema refuses the relay-only case only for a parsed configuration.
-  if (turnLeftOut !== undefined && (turn ?? []).length === 0) {
-    const leftOut = turnLeftOut.map((server) => server.url);
-    if (connection.iceTransportPolicy === "relay")
-      throw new UsageError(relayOnlyRelaysLeftOutMessage(leftOut));
-    if ((stun ?? []).length === 0)
-      throw new UsageError(relaysLeftOutNoStunMessage(leftOut));
-  }
+  if (
+    turnLeftOut !== undefined &&
+    (turn ?? []).length === 0 &&
+    connection.iceTransportPolicy === "relay"
+  )
+    throw new UsageError(
+      relayOnlyRelaysLeftOutMessage(turnLeftOut.map((server) => server.url)),
+    );
   // peer_timeout_ms bounds the partner's arrival (the rendezvous) and
   // inactivity_timeout_ms a present partner's silence on the open channel.
   // Neither reaches the channel open between them: once both descriptions are

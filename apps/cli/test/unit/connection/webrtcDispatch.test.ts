@@ -155,11 +155,9 @@ const { BROKER_ADDRESS_REFUSED, ID_TAKEN_MESSAGE } =
 const { exitCodeForError } = await import("../../../src/util/exit");
 const {
   FINAL_ATTEMPT_STRETCH,
-  relaysLeftOutNoStunMessage,
   WEBRTC_ATTEMPT_MS,
   WEBRTC_BROKER_HOST_REFUSED,
   WEBRTC_BROKER_PATH_REFUSED,
-  WERIFT_BUILT_IN_STUN_URI,
 } = await import("../../../src/connection/webrtc/weriftPeer");
 const { saveKeyFile } = await import("../../../src/keyFile");
 const {
@@ -747,13 +745,11 @@ test("each refusal survives the display boundary whole", () => {
     { length: 40 },
     (_unused, i) => `turns:relay-${i}.example.org:443?transport=tcp`,
   );
-  for (const message of [
-    relayOnlyRelaysLeftOutMessage(urls),
-    relaysLeftOutNoStunMessage(urls),
-  ])
-    expect(sanitizeErrorForDisplay(new UsageError(message))).toMatch(
-      /or remove the setting\.$/,
-    );
+  expect(
+    sanitizeErrorForDisplay(
+      new UsageError(relayOnlyRelaysLeftOutMessage(urls)),
+    ),
+  ).toMatch(/or remove the setting\.$/);
 });
 
 // --- the resolver -----------------------------------------------------------
@@ -846,7 +842,7 @@ test("a relay-only run whose every TURN url allowed_relays leaves out is refused
   expect(mockState.dials).toHaveLength(0);
 });
 
-test("a run whose every TURN url allowed_relays leaves out runs only on a STUN url it lists", () => {
+test("a run whose every TURN url allowed_relays leaves out continues, naming them, unless it is relay-only", () => {
   const credential = {
     username: "1:alcove",
     credential: "placeholder-not-a-secret",
@@ -860,12 +856,9 @@ test("a run whose every TURN url allowed_relays leaves out runs only on a STUN u
     turn,
     allowedRelays: ["other.example.org"],
   };
-  expect(() => webRtcDialFrom(base, SECRET, credential)).toThrow(
-    new UsageError(relaysLeftOutNoStunMessage([turn[0].url])),
-  );
-  expect(relaysLeftOutNoStunMessage([turn[0].url])).toContain(
-    WERIFT_BUILT_IN_STUN_URI,
-  );
+  const emptied = webRtcDialFrom(base, SECRET, credential).options;
+  expect(emptied.iceServers ?? []).toEqual([]);
+  expect(emptied.relaysLeftOut).toEqual([turn[0].url]);
   expect(() =>
     webRtcDialFrom(
       { ...base, iceTransportPolicy: "relay" as const },
@@ -882,43 +875,6 @@ test("a run whose every TURN url allowed_relays leaves out runs only on a STUN u
     { urls: ["stun:stun.example.org:3478"] },
   ]);
   expect(withStun.relaysLeftOut).toEqual([turn[0].url]);
-});
-
-test("a TURN list allowed_relays empties never reaches the peer as no ICE servers", () => {
-  // NO_ICE_SERVERS_WARNING names no setting, so a run the filter left with no
-  // server must be refused rather than reach buildPeerConfiguration empty.
-  const credential = {
-    username: "1:alcove",
-    credential: "placeholder-not-a-secret",
-    expiresAt: new Date(1000),
-  };
-  for (const iceTransportPolicy of [undefined, "all", "relay"] as const)
-    for (const stun of [undefined, [], ["stun:stun.example.org:3478"]])
-      for (const allowedRelays of [[], ["other.example.org"]]) {
-        const connection = {
-          channel: "webrtc" as const,
-          server: { host: "peers.example.org" },
-          role: "acceptor" as const,
-          turn: [{ url: "turn:relay.example.org" }],
-          invitationRelay: { turn: ["turn:partner.example.net"] },
-          allowedRelays,
-          ...(stun !== undefined && { stun }),
-          ...(iceTransportPolicy !== undefined && { iceTransportPolicy }),
-        };
-        let iceServers: ReadonlyArray<unknown> | undefined;
-        try {
-          iceServers = webRtcDialFrom(connection, SECRET, credential).options
-            .iceServers;
-        } catch (err) {
-          expect(err).toBeInstanceOf(UsageError);
-          expect((err as Error).message).toContain(
-            "connection.allowed_relays leaves out every TURN url",
-          );
-          continue;
-        }
-        expect(iceTransportPolicy).not.toBe("relay");
-        expect(iceServers?.length).toBeGreaterThan(0);
-      }
 });
 
 test("a plaintext broker resolves to the plaintext default port", () => {
