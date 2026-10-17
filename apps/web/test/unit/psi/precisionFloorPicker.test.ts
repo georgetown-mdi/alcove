@@ -359,7 +359,9 @@ describe("replacing authored keys with the built-in rules", () => {
       "This replaces these keys with the built-in rules at 95% precision and " +
         "above that your file supplies, for two files that both draw their " +
         "members from one state or one metropolitan area, all turned on. " +
-        "Your columns and other settings stay. This cannot be undone.",
+        "The cleaning of any phone, email or ZIP field the new keys do not " +
+        "use is removed with them. Your columns and other settings stay. " +
+        "This cannot be undone.",
     );
   });
 });

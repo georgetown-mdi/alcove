@@ -256,7 +256,9 @@ export const AUTHORED_KEYS_FLOOR_NOTE =
 export const USE_BUILT_IN_RULES_STATEMENT =
   "This replaces these keys with " +
   `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
-  "all turned on. Your columns and other settings stay. This cannot be undone.";
+  "all turned on. The cleaning of any phone, email or ZIP field the new " +
+  "keys do not use is removed with them. Your columns and other settings " +
+  "stay. This cannot be undone.";
 
 /** What Matching keys shows in place of the precision floor and coverage
  * controls on the console, for keys a run of an opened configuration
