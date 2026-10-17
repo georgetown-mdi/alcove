@@ -10,9 +10,15 @@ import {
   annotate,
   annotationKey,
   annotationOf,
+  redactAndSanitizeForDisplay,
+  referencedLinkageFieldNames,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
-import type { TermsDifferenceRefusedBy } from "@alcove/core";
+import type {
+  LinkageTerms,
+  Metadata,
+  TermsDifferenceRefusedBy,
+} from "@alcove/core";
 
 /**
  * The kind of run a terms refusal ended: `configured` for a run holding a
@@ -33,7 +39,10 @@ const CONFIGURATION_UNWRITTEN_NEXT_STEP =
 
 const QUICK_EXCHANGE_NEXT_STEP =
   "Agree with your partner on the columns your input files share and " +
-  "the --linkage-strategy you both pass, then run again.";
+  "the --linkage-strategy you both pass, then run again. A phone, email or " +
+  "ZIP column in only one of the two files makes the terms differ: the " +
+  "party whose file has it removes that column, or you agree the terms " +
+  "through an invitation (alcove invite, then alcove accept).";
 
 /**
  * The next step for each run and each party that refused.
@@ -84,14 +93,99 @@ export function markTermsRefusalRun<E>(err: E, run: TermsRefusalRun): E {
   return err;
 }
 
+const QUICK_EXCHANGE_CONTACT_COLUMNS = annotationKey<string>(
+  "quick exchange contact columns",
+);
+
+/** What each contact or address type is called in the line naming a column. */
+const CONTACT_TYPE_LABELS: { readonly [T in ContactType]: string } = {
+  phone_number: "phone number",
+  email_address: "email address",
+  zip_code: "ZIP code",
+};
+
+type ContactType = "phone_number" | "email_address" | "zip_code";
+
+const isContactType = (type: string): type is ContactType =>
+  Object.hasOwn(CONTACT_TYPE_LABELS, type);
+
+/**
+ * The line naming this party's own phone, email and ZIP columns that its
+ * quick-exchange terms match on, each header escaped for display, or
+ * `undefined` where the terms match on none.
+ *
+ * @internal exported for testing
+ */
+export function quickExchangeContactColumnsLine(
+  metadata: Metadata,
+  terms: LinkageTerms,
+): string | undefined {
+  const referenced = referencedLinkageFieldNames(terms.linkageKeys);
+  const types = new Set(
+    terms.linkageFields
+      .filter((field) => referenced.has(field.name))
+      .map((field) => field.type)
+      .filter(isContactType),
+  );
+  const columns = metadata.flatMap((column) =>
+    column.role === "linkage" &&
+    isContactType(column.type) &&
+    types.has(column.type)
+      ? [
+          `"${redactAndSanitizeForDisplay(column.name)}" ` +
+            `(${CONTACT_TYPE_LABELS[column.type]})`,
+        ]
+      : [],
+  );
+  if (columns.length === 0) return undefined;
+  const one = columns.length === 1;
+  const list = one
+    ? columns[0]
+    : `${columns.slice(0, -1).join(", ")} and ${columns.at(-1)}`;
+  return (
+    `Your file's ${one ? "column" : "columns"} ${list} ` +
+    `${one ? "is" : "are"} matched on. Where your partner's file has no ` +
+    `such column, remove ${one ? "it" : "that column"} from your file and ` +
+    "run again, or agree the terms through an invitation (alcove invite, " +
+    "then alcove accept)."
+  );
+}
+
+/**
+ * Record on `err`, a quick exchange's failure, the line naming this party's
+ * own phone, email and ZIP columns ({@link quickExchangeContactColumnsLine}),
+ * stated beneath a terms refusal. Any other error is returned unchanged.
+ */
+export function markQuickExchangeContactColumns<E>(
+  err: E,
+  metadata: Metadata,
+  terms: LinkageTerms,
+): E {
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    termsDifferenceRefusedBy(err) === undefined
+  )
+    return err;
+  const line = quickExchangeContactColumnsLine(metadata, terms);
+  if (line !== undefined) annotate(err, QUICK_EXCHANGE_CONTACT_COLUMNS, line);
+  return err;
+}
+
 /**
  * The next step beneath `err` when it is a refusal over a difference in the
  * linkage terms, else `undefined`. A refusal no run recorded itself on is
- * taken as a configured run's.
+ * taken as a configured run's. A quick exchange's step is followed by the
+ * line {@link markQuickExchangeContactColumns} recorded, where it did.
  */
 export function termsRefusalNextStep(err: unknown): string | undefined {
   const refusedBy = termsDifferenceRefusedBy(err);
   if (refusedBy === undefined) return undefined;
   const run = annotationOf(err, TERMS_REFUSAL_RUN) ?? "configured";
-  return TERMS_REFUSAL_NEXT_STEPS[run][refusedBy];
+  const step = TERMS_REFUSAL_NEXT_STEPS[run][refusedBy];
+  const columns =
+    run === "quick-exchange"
+      ? annotationOf(err, QUICK_EXCHANGE_CONTACT_COLUMNS)
+      : undefined;
+  return columns === undefined ? step : `${step}\n${columns}`;
 }

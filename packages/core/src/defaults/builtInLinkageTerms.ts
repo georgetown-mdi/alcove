@@ -257,7 +257,7 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   { name: "SSN + DOB", elements: [SSN, DOB] },
   { name: "SSN + FN + LN", elements: [SSN, FN, LN] },
   {
-    name: "SSN + phonetic(FN) + phonetic(LN)",
+    name: "SSN + soundex(FN) + soundex(LN)",
     elements: [SSN, SDX_FN, SDX_LN],
   },
   { name: "SSN + LN + FN1", elements: [SSN, LN, FN1] },
@@ -290,7 +290,7 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   { name: "FN + DOB + PHONE", elements: [FN, DOB, PHONE] },
   { name: "SSN + FN", elements: [SSN, FN] },
   { name: "SSN4 + LN4 + YOB + MOB", elements: [SSN4, LN4, YOB_MOB] },
-  { name: "ZIP5 + SDX(LN) + FN + DOB", elements: [ZIP5, SDX_LN, FN, DOB] },
+  { name: "ZIP5 + soundex(LN) + FN + DOB", elements: [ZIP5, SDX_LN, FN, DOB] },
   {
     name: "ZIP5 + LN + FN + DOB +/-1 year",
     elements: [ZIP5, LN, FN, DOB_ONE_YEAR],
@@ -320,7 +320,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   { rule: "SSN + FN3 + DOB", band: 99, coverage: "any" },
   { rule: "SSN + DOB", band: 99, coverage: "any" },
   { rule: "SSN + FN + LN", band: 99, coverage: "any" },
-  { rule: "SSN + phonetic(FN) + phonetic(LN)", band: 99, coverage: "any" },
+  { rule: "SSN + soundex(FN) + soundex(LN)", band: 99, coverage: "any" },
   { rule: "SSN + LN + FN1", band: 99, coverage: "any" },
   { rule: "SSN + LN3 + FN1", band: 99, coverage: "any" },
   { rule: "SSN + FN + YOB + MOB", band: 99, coverage: "any" },
@@ -354,7 +354,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
     coverage: "any",
     needs: "three-digit ZIP",
   },
-  { rule: "ZIP5 + SDX(LN) + FN + DOB", band: 95, coverage: "any" },
+  { rule: "ZIP5 + soundex(LN) + FN + DOB", band: 95, coverage: "any" },
   { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95, coverage: "any" },
   {
     rule: "LN + FN + DOB + STATE or COUNTY",
@@ -377,7 +377,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
     needs: "name suffix",
   },
   {
-    rule: "PHONE + SDX(LN) + FN + SFX",
+    rule: "PHONE + soundex(LN) + FN + SFX",
     band: 95,
     coverage: "any",
     needs: "name suffix",
@@ -396,7 +396,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
     needs: "name suffix",
   },
   {
-    rule: "EMAIL + SDX(LN) + FN + SFX",
+    rule: "EMAIL + soundex(LN) + FN + SFX",
     band: 95,
     coverage: "any",
     needs: "name suffix",

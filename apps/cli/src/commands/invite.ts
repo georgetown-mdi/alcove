@@ -46,6 +46,7 @@ import type {
 
 import {
   csvDelimiterForRun,
+  linkageTermsNarrowedToInput,
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
@@ -882,7 +883,7 @@ export async function validateInvite(params: {
   const configSource = loadConfigLinkageSource(options.configFile);
 
   if (configSource !== undefined) {
-    const configTerms = configSource.linkageTerms;
+    let configTerms = configSource.linkageTerms;
     // The config is the source of the terms this mint uses, so a citation its
     // rules no longer support is reported before the token is built rather than
     // after it has left for the partner.
@@ -959,18 +960,30 @@ export async function validateInvite(params: {
         csvDelimiter: runCsvDelimiter,
         allowMemoryShortfall: options.allowMemoryShortfall,
       });
-      // The input only validated compatibility; the invitation's terms come from
-      // the config, not the input. Say so ahead of the check below, so a user who
-      // passed an input expecting it to define the terms reads the refusal it can
-      // raise against the right source.
+      // The invitation's terms come from the config, and the input only checks
+      // them -- or, for keys the config takes from a named set with no metadata
+      // block, narrows them as the exchange will. Said ahead of the check below,
+      // so a user who passed an input expecting it to define the terms reads the
+      // refusal it can raise against the right source.
+      if (configSource.linkageKeysFollowInputHeader === true)
+        configTerms = linkageTermsNarrowedToInput(
+          configTerms,
+          rows.columns,
+          configSource.standardization,
+          configSource.metadata,
+        );
       log.info(
         `a configuration file at ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(options.configFile),
         )} is present; deriving ` +
           "the invitation's linkage terms from it and checking the input file " +
-          "against those terms (the input does not redefine them). Pass " +
-          "--config-file pointing at a new path to infer terms from the input " +
-          "instead.",
+          "against those terms " +
+          (configSource.linkageKeysFollowInputHeader === true
+            ? "(the keys are the named rule set's keys the input file " +
+              "supplies). "
+            : "(the input does not redefine them). ") +
+          "Pass --config-file pointing at a new path to infer terms from the " +
+          "input instead.",
       );
       // Reconcile the input against the config on the same verdict the run
       // boundary enforces, rather than on column coverage alone: an invitation

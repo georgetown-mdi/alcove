@@ -39,6 +39,7 @@ import {
 import {
   type LinkageTermsStanding,
   linkageTermsWithNamedRuleSetRules,
+  namedRuleSetKeysFollowInputHeader,
 } from "./ruleSetCitation";
 
 // --- Config reader -----------------------------------------------------------
@@ -88,6 +89,12 @@ export interface ConfigLinkageSource {
    * top-level key rather than through the spec schema.
    */
   linkageTermsStanding: LinkageTermsStanding;
+  /**
+   * Whether the linkage keys follow the input file's header
+   * ({@link namedRuleSetKeysFollowInputHeader}): `true` only where the read
+   * took them from a named set.
+   */
+  linkageKeysFollowInputHeader?: boolean;
 }
 
 /**
@@ -368,6 +375,10 @@ export function readConfigLinkageSource(
       csvDelimiter: readCsvDelimiterDeclaration(obj, configPath),
       retainsFiles: readRetainFilesDeclaration(obj),
       linkageTermsStanding: readLinkageTermsStanding(obj),
+      ...(rules === "from-the-named-set" &&
+        namedRuleSetKeysFollowInputHeader(obj) && {
+          linkageKeysFollowInputHeader: true,
+        }),
     },
   };
 }

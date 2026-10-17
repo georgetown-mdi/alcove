@@ -85,9 +85,9 @@ const OPT_IN_TYPES: ReadonlySet<string> = new Set(OPT_IN_LINKAGE_FIELD_TYPES);
  * that declare it once the key is on, and the two parties match almost
  * nothing.
  *
- * Gated on the ENABLED keys, not column presence, so a guided draft with no
- * opt-in key enabled builds byte-identical terms and the guided path's
- * cross-party hash does not move; what guarantees a PERSISTED artifact's
+ * Gated on the ENABLED keys, not column presence, so a field no enabled key
+ * references gets no cleaning and the guided path's cross-party hash does
+ * not move; what guarantees a PERSISTED artifact's
  * cleaning matches its terms is the mint chokepoint (`generateInvitation`),
  * not this function.
  */
@@ -173,9 +173,8 @@ export function dateInputFormatsForColumns(
  * Seed an editor session from the inviter's identity, CSV columns, and parsed
  * rows. Terms are the metadata-aware defaults (`getDefaultLinkageTerms` over
  * {@link inferMetadataForEveryColumn}), so only keys the columns can satisfy are
- * present; the built-in set's unused keys are offered beside them, off
- * ({@link offerableDraftKeys}). Calling this again is the "Reset to
- * defaults" action. `rawRows` defaults to empty (yielding the `MM/DD/YYYY`
+ * present, all on ({@link offerableDraftKeys}). Calling this again is the
+ * "Reset to defaults" action. `rawRows` defaults to empty (yielding the `MM/DD/YYYY`
  * date default); profiled `dateInputFormats`
  * ({@link dateInputFormatsForColumns}) stand in for the rows.
  */
@@ -213,7 +212,7 @@ export function seedAdvancedInvite(
       // The recommended per-type cleaning for these columns, with the dob format
       // inferred from the rows. authoredLinkageFields over this reproduces the
       // one-field-per-type set, and the built terms filter it to the fields the
-      // enabled keys reference -- which, with every offer arriving off, is exactly
+      // enabled keys reference -- which is exactly
       // getDefaultLinkageTerms' field set. So the editor opens on a known-good
       // valid state, byte-identical to the quick path's (the inferred format lives
       // only in the local steps, which the terms do not hold).
@@ -329,11 +328,10 @@ export function setDraftMetadata(
 
 /**
  * Turn the key at `index` on or off and bring the cleaning an opt-in type
- * holds with it: a guided key may reference the
- * type-named field `authoredLinkageFields` synthesizes, which holds its
- * recommended pipeline exactly while an enabled key references it. Turning
- * an offer on creates its cleaning (the data-prep workbench's card appears
- * with the key); turning it off withdraws it.
+ * holds with it: a guided key over a phone, email or ZIP field has that
+ * field's recommended pipeline exactly while an enabled key references it.
+ * Turning the key on creates its cleaning (the data-prep workbench's card
+ * appears with the key); turning it off withdraws it.
  *
  * Only the offer's own cleaning moves -- a transformation an imported
  * document's field name owns is never withdrawn this way -- and a built-in
@@ -516,7 +514,9 @@ function reconcileStandardization(
 /** Reconcile the draft's keys against a freshly-derived offer
  * ({@link offerableDraftKeys}): keys that remain offered keep their order
  * and enabled flag (replaced with the fresh template); a newly-offered key
- * appends at its offered flag.
+ * arrives at its offered flag, placed above the first kept key the offer
+ * lists after it, so the list keeps the catalog's cascade order and its
+ * citation.
  *
  * A draft key is matched to an offer by the canonical encoding
  * ({@link encodeKeyForComparison}), not by NAME, so a key that merely
@@ -556,23 +556,33 @@ function reconcileKeys(
       )
       .map((entry) => [entry.key.name, entry] as const),
   );
-  const kept: Array<DraftKey> = [];
+  const offerRank = new Map(offerable.map((entry, at) => [entry, at]));
+  const placed: Array<{ entry: DraftKey; rank: number }> = [];
   const reoffered = new Set<DraftKey>();
   prevKeys.forEach((entry, at) => {
     const offer = offerFor[at];
     if (offer !== undefined) {
-      kept.push({ key: offer.key, enabled: entry.enabled });
+      placed.push({
+        entry: { key: offer.key, enabled: entry.enabled },
+        rank: offerRank.get(offer) ?? offerable.length,
+      });
       return;
     }
     const reoffer = reofferByName.get(entry.key.name);
     if (reoffer === undefined || reoffered.has(reoffer)) return;
     reoffered.add(reoffer);
-    kept.push({ key: reoffer.key, enabled: false });
+    placed.push({
+      entry: { key: reoffer.key, enabled: false },
+      rank: offerRank.get(reoffer) ?? offerable.length,
+    });
   });
-  const fresh = offerable.filter(
-    (entry) => !matched.has(entry) && !reoffered.has(entry),
-  );
-  return [...kept, ...fresh];
+  offerable.forEach((entry, rank) => {
+    if (matched.has(entry) || reoffered.has(entry)) return;
+    const above = placed.findIndex((kept) => kept.rank > rank);
+    if (above === -1) placed.push({ entry, rank });
+    else placed.splice(above, 0, { entry, rank });
+  });
+  return placed.map(({ entry }) => entry);
 }
 
 /** The field names a metadata/standardization pair can declare -- the universe

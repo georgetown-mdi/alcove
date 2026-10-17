@@ -22,6 +22,7 @@ import {
   getLogger,
   prepareForExchange,
   sanitizeErrorForDisplay,
+  snakeizeKeys,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
 import { computeTermsHash } from "@alcove/core/testing";
@@ -427,6 +428,37 @@ test.each([
     );
   },
 );
+
+test("loadConfig marks keys a named set fills in, with no metadata block, to follow the header", () => {
+  const named = {
+    ...minimalFiledropConfig,
+    linkageTerms: {
+      version: "1.0.0",
+      date: "2025-01-01",
+      algorithm: "psi",
+      output: { expectsOutput: true, shareWithPartner: false },
+      deduplicate: false,
+      linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
+    },
+  };
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  fs.writeFileSync(configFile, YAML.stringify(snakeizeKeys(named)));
+  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(true);
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify(
+      snakeizeKeys({
+        ...named,
+        metadata: [
+          { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+        ],
+      }),
+    ),
+  );
+  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(false);
+  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+  expect(loadConfig(baseOptions()).linkageKeysFollowInputHeader).toBe(false);
+});
 
 test("loadConfig runs a placeholder username that --server-username replaces", () => {
   fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig));
@@ -3943,6 +3975,55 @@ test("prepareDataset: refuses when only some of the committed keys are satisfiab
   );
   expect(rendered).toContain("linkage key the CSV cannot produce: SSN");
   expect(mockState.warnings).toHaveLength(0);
+});
+
+test("prepareDataset: keys taken from a named set follow the input's header", async () => {
+  // The named set's keys over this header are the ones the file supplies; the
+  // flag off, the same terms are held whole and refused.
+  const input = writeInput(
+    "ssn,last_name,dob\n123456789,Lovelace,1815-12-10\n",
+  );
+  const terms: LinkageTerms = {
+    ...ssnAndNameDobTerms,
+    linkageKeys: [
+      ...ssnAndNameDobTerms.linkageKeys,
+      {
+        name: "SSN + FN",
+        elements: [{ field: "ssn" }, { field: "first_name" }],
+      },
+    ],
+    linkageFields: [
+      ...ssnAndNameDobTerms.linkageFields,
+      { name: "first_name", type: "first_name" },
+    ],
+  };
+  await expect(
+    prepareDataset(
+      { linkageTerms: terms },
+      "Test Party",
+      input,
+      undefined,
+      TEST_CONNECTION,
+    ),
+  ).rejects.toBeInstanceOf(UsageError);
+  vi.mocked(prepareForExchange).mockClear();
+  await prepareDataset(
+    { linkageTerms: terms },
+    "Test Party",
+    input,
+    undefined,
+    TEST_CONNECTION,
+    undefined,
+    false,
+    true,
+  );
+  const prepared = vi.mocked(prepareForExchange).mock.calls[0][0];
+  expect(prepared.linkageTerms?.linkageKeys).toEqual(
+    ssnAndNameDobTerms.linkageKeys,
+  );
+  expect(
+    prepared.linkageTerms?.linkageFields.map((field) => field.name),
+  ).toEqual(["ssn", "last_name", "dob"]);
 });
 
 test("prepareDataset: an explicit standardization remap satisfies a field the column type alone would not", async () => {

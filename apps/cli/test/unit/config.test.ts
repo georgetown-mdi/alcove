@@ -10,7 +10,9 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
+  inferMetadata,
   linkageKeysAtPrecisionFloor,
+  linkageTermsFromRuleSet,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
@@ -40,6 +42,7 @@ import {
   configWithNamedRuleSetRules,
   describeConfigSchemaError,
   diffLinkageTerms,
+  linkageTermsNarrowedToInput,
   linkageTermsWithNamedRuleSetRules,
   formatReconcileDiffs,
   linkageTermsStandingOf,
@@ -5182,7 +5185,24 @@ test("a config's floor selection is refused where it cannot select", () => {
   };
   const catalog = namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference);
   expect(refusal({ ...catalog, precision_floor: 90 })).toContain(
-    "precision_floor as a value other than 99 or 95",
+    "precision_floor as 90, which is not a floor. Write 99 or 95 as a " +
+      "number without quotes (precision_floor: 95)",
+  );
+  expect(refusal({ ...catalog, precision_floor: "99" })).toContain(
+    'precision_floor as "99", which is not a floor',
+  );
+  expect(refusal({ ...catalog, precision_floor: null })).toContain(
+    "precision_floor as null, which is not a floor",
+  );
+  expect(
+    refusal({
+      ...catalog,
+      linkage_rule_set: undefined,
+      precision_floor: 99,
+    }),
+  ).toContain(
+    'Add a linkage_rule_set block naming "precision-ranked-rules" 2.0.0 ' +
+      'over "baseline-pii" 1.1.0',
   );
   expect(refusal({ ...catalog, one_state_or_metro_area: "yes" })).toContain(
     "one_state_or_metro_area as a value other than true or false",
@@ -5204,6 +5224,55 @@ test("a config's floor selection is refused where it cannot select", () => {
       precision_floor: 99,
     }),
   ).toContain("has no precision bands to select by");
+});
+
+test("a config's floor selection keeps only the keys its input supplies", () => {
+  const columns = ["ssn", "first_name", "last_name", "dob"];
+  const metadata = inferMetadata(columns, []);
+  const suppliedAt = (floor: 99 | 95) =>
+    linkageTermsFromRuleSet(DEFAULT_LINKAGE_RULE_SET, undefined, metadata, {
+      floor,
+      oneStateOrMetroArea: true,
+    });
+  for (const floor of [99, 95] as const) {
+    const source = loadConfigLinkageSource(
+      writeNamedRuleSetConfig(
+        {
+          ...namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+          precision_floor: floor,
+        },
+        { metadata: snakeizeKeys(metadata) },
+      ),
+    )!;
+    expect(source.linkageTerms.linkageKeys).toEqual(
+      suppliedAt(floor).linkageKeys,
+    );
+    expect(source.linkageTerms.linkageKeys.length).toBeGreaterThan(0);
+    const fields = source.linkageTerms.linkageFields.map((field) => field.name);
+    expect(fields).not.toContain("zip_code");
+    expect(fields).not.toContain("phone_number");
+    expect(source.linkageTerms.linkageRuleSet).toEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+    expect(source.linkageKeysFollowInputHeader).toBeUndefined();
+  }
+
+  // With no metadata block the read keeps the whole selection for the command
+  // that reads the input, which narrows it by the header to the same keys.
+  const unread = loadConfigLinkageSource(
+    writeNamedRuleSetConfig(
+      namedRuleSetTerms(DEFAULT_LINKAGE_RULE_SET.reference),
+    ),
+  )!;
+  expect(unread.linkageKeysFollowInputHeader).toBe(true);
+  expect(
+    linkageTermsNarrowedToInput(
+      unread.linkageTerms,
+      columns,
+      undefined,
+      undefined,
+    ).linkageKeys,
+  ).toEqual(suppliedAt(95).linkageKeys);
 });
 
 test("a config naming the catalog's earlier version runs on its rules", () => {

@@ -4,22 +4,27 @@ import type {
   LinkageRuleSetReference,
   LinkageSetIdentity,
   LinkageTerms,
+  Metadata,
   PrecisionFloor,
   PrecisionFloorSelection,
+  Standardization,
 } from "@alcove/core";
 import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  decideLinkageTermsVerdict,
   findBuiltInLinkageRuleSet,
   isDrawnFromLinkageRuleSet,
-  linkageKeysAtPrecisionFloor,
+  linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   resolveLinkageRuleSetCitation,
   ruleSetCitation,
+  safeParseMetadataTheReaderWrote,
+  safeParseStandardizationTheReaderWrote,
 } from "@alcove/core";
 
 import { configFileRefusal } from "./persist";
@@ -159,9 +164,12 @@ function shippedRuleSets(
  * - Neither list written, and the citation names a shipped set: both lists
  *   come from that set, and the citation stands as the file wrote it. The keys
  *   are those the block's `precision_floor` and `one_state_or_metro_area`
- *   select ({@link linkageKeysAtPrecisionFloor}), the 95% floor with the answer
+ *   select (`linkageKeysAtPrecisionFloor`), the 95% floor with the answer
  *   yes where it writes neither; a selection is refused beside written lists,
- *   with no citation, or over a set with no bands.
+ *   with no citation, or over a set with no bands. Where the document writes
+ *   a `metadata` block, only the keys its columns supply are kept; where it
+ *   writes none, the command reading the input narrows them by its header
+ *   ({@link namedRuleSetKeysFollowInputHeader}).
  * - Neither list written, and the citation names a set this build does not
  *   ship: refused, naming what was cited and what this build ships. Nothing
  *   here guesses at a name it does not ship, and the file writes no rules to
@@ -180,8 +188,8 @@ function shippedRuleSets(
  * @param ruleSets the sets a citation is looked up in, this build's own
  * ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
  * @param enclosingDocument the raw document the block was read out of, where
- * the caller holds it, for the misplacement check above. Omitting it checks
- * the block alone.
+ * the caller holds it, for the misplacement check above and the narrowing by
+ * its `metadata` block. Omitting it checks the block alone.
  */
 export function linkageTermsWithNamedRuleSetRules(
   rawTerms: unknown,
@@ -206,8 +214,9 @@ export function linkageTermsWithNamedRuleSetRules(
         configPath,
         "selects rules by linkage_terms.precision_floor or " +
           "one_state_or_metro_area but names no linkage_rule_set to select " +
-          "them from. Add the linkage_rule_set block naming the built-in " +
-          "rules, or remove the selection.",
+          "them from. Add a linkage_rule_set block naming " +
+          `${ruleSetCitationClause(DEFAULT_LINKAGE_RULE_SET.reference, refusalRuleSetHalf)}, ` +
+          "or remove the selection.",
       );
     return rawTerms;
   }
@@ -278,17 +287,112 @@ export function linkageTermsWithNamedRuleSetRules(
         "or remove the selection.",
     );
 
+  const selected = linkageTermsFromRuleSet(
+    ruleSet,
+    undefined,
+    undefined,
+    selection,
+  );
+  const declared = declaredColumns(enclosingDocument);
+  const rules =
+    declared === undefined
+      ? selected
+      : linkageTermsNarrowedToInput(
+          selected,
+          declared.metadata.map((column) => column.name),
+          declared.standardization,
+          declared.metadata,
+        );
   // Cloned rather than aliased: a built-in set is frozen through every level,
   // and what this returns is a document later passes rewrite.
-  const linkageKeys = linkageKeysAtPrecisionFloor(ruleSet, selection);
+  return {
+    ...terms,
+    linkageFields: structuredClone(rules.linkageFields),
+    linkageKeys: structuredClone(rules.linkageKeys),
+  };
+}
+
+/**
+ * The `metadata` block `document` writes, with its `standardization` block,
+ * or `undefined` where it writes no metadata block or either block fails its
+ * schema, which the schema reports when the file is read.
+ */
+function declaredColumns(
+  document: unknown,
+): { metadata: Metadata; standardization?: Standardization } | undefined {
+  if (
+    document === null ||
+    typeof document !== "object" ||
+    Array.isArray(document)
+  )
+    return undefined;
+  const top = document as Record<string, unknown>;
+  if (top["metadata"] === undefined) return undefined;
+  const metadata = safeParseMetadataTheReaderWrote(top["metadata"]);
+  if (!metadata.success) return undefined;
+  if (top["standardization"] === undefined) return { metadata: metadata.data };
+  const standardization = safeParseStandardizationTheReaderWrote(
+    top["standardization"],
+  );
+  if (!standardization.success) return undefined;
+  return { metadata: metadata.data, standardization: standardization.data };
+}
+
+/**
+ * `terms` less the keys `columns` cannot supply, and the fields only those
+ * keys read: the narrowing a derivation from the built-in rules makes
+ * (`linkageTermsFromRuleSet`), for rules a configuration takes from a named
+ * set. Graded as the exchange grades its input
+ * ({@link decideLinkageTermsVerdict}). Where no key is left, `terms` is
+ * returned whole, so the exchange's refusal names the keys and their fields.
+ */
+export function linkageTermsNarrowedToInput(
+  terms: LinkageTerms,
+  columns: string[],
+  standardization: Standardization | undefined,
+  metadata: Metadata | undefined,
+): LinkageTerms {
+  const unsupplied = new Set(
+    decideLinkageTermsVerdict(columns, terms, standardization, metadata)
+      .unsatisfiableKeys,
+  );
+  const linkageKeys = terms.linkageKeys.filter((key) => !unsupplied.has(key));
+  if (linkageKeys.length === 0 || unsupplied.size === 0) return terms;
   const referenced = referencedLinkageFieldNames(linkageKeys);
   return {
     ...terms,
-    linkageFields: structuredClone(
-      ruleSet.linkageFields.filter((field) => referenced.has(field.name)),
+    linkageFields: terms.linkageFields.filter((field) =>
+      referenced.has(field.name),
     ),
-    linkageKeys: structuredClone(linkageKeys),
+    linkageKeys,
   };
+}
+
+/**
+ * Whether the keys `rawConfig` runs follow its input file's header: its
+ * `linkage_terms` names a rule set and writes neither rule list, and the file
+ * writes no `metadata` block to narrow them by when it is read. The command
+ * that reads the input then narrows them ({@link linkageTermsNarrowedToInput}).
+ */
+export function namedRuleSetKeysFollowInputHeader(rawConfig: unknown): boolean {
+  if (
+    rawConfig === null ||
+    typeof rawConfig !== "object" ||
+    Array.isArray(rawConfig)
+  )
+    return false;
+  const config = rawConfig as Record<string, unknown>;
+  if (Object.hasOwn(config, "metadata")) return false;
+  const terms = config["linkage_terms"] ?? config["linkageTerms"];
+  if (terms === null || typeof terms !== "object" || Array.isArray(terms))
+    return false;
+  const block = terms as Record<string, unknown>;
+  return (
+    declaresKey(block, "linkage_rule_set", "linkageRuleSet") &&
+    !RULE_LIST_SPELLINGS.some(([written, camelized]) =>
+      declaresKey(block, written, camelized),
+    )
+  );
 }
 
 /** The floors a configuration may select, as it writes them. */
@@ -311,7 +415,7 @@ function withoutPrecisionFloorSelection(
 } {
   const terms = { ...block };
   const take = (written: string, camelized: string): unknown => {
-    const value = terms[written] ?? terms[camelized];
+    const value = written in terms ? terms[written] : terms[camelized];
     delete terms[written];
     delete terms[camelized];
     return value;
@@ -324,9 +428,11 @@ function withoutPrecisionFloorSelection(
   )
     throw configFileRefusal(
       configPath,
-      `writes linkage_terms.precision_floor as a value other than ` +
-        `${PRECISION_FLOORS.join(" or ")}. Write one of those, or remove it ` +
-        `to run the ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}% floor.`,
+      `writes linkage_terms.precision_floor as ` +
+        `${JSON.stringify(floor) ?? String(floor)}, which is not a floor. ` +
+        `Write ${PRECISION_FLOORS.join(" or ")} as a number without quotes ` +
+        `(precision_floor: ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}), or ` +
+        `remove it to run the ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}% floor.`,
     );
   if (oneArea !== undefined && typeof oneArea !== "boolean")
     throw configFileRefusal(

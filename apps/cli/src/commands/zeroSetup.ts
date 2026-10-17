@@ -60,6 +60,7 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
+import { markQuickExchangeContactColumns } from "../termsRefusalRemedy";
 import { runOrExit } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -1048,6 +1049,12 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           },
         },
+      }).catch((err: unknown) => {
+        throw markQuickExchangeContactColumns(
+          err,
+          prepared.metadata,
+          prepared.linkageTerms,
+        );
       });
     });
   } finally {

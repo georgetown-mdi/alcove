@@ -6,9 +6,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 
 _Status: built.
 Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.0.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
-The set's name is proposed, for the maintainer to choose before it ships.
 A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
-The per-entry markers below (shipped, opt-in, new) record where each rule stood before the catalog was built.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 
@@ -35,8 +33,7 @@ A rule matches two records only when every element agrees exactly.
   `STATE` and `COUNTY` are the state and county of the person's address.
 - `PHONE` is a ten-digit phone number.
   `EMAIL` is an email address, trimmed and lowercased.
-- `SDX(LN)` is the Soundex code of the last name.
-  `phonetic(FN)` and `phonetic(LN)` are a phonetic code of each name (rule 8 names which code).
+- `soundex(LN)` and `soundex(FN)` are the Soundex code of the last and the first name.
 - `swap(LN, FN)` matches the two names in either order.
 - `split(LN)` matches on the whole last name or on any one hyphen- or space-separated part of it.
 - `DOB +/-1 year` matches a date with the same month and day and a year one higher or lower.
@@ -123,17 +120,15 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-A rule marked opt-in ships today only as a guided opt-in key, outside the built-in key set, and the guided opt-in offers are to be retired when rules are selected by precision floor.
-Each entry says whether the rule is shipped (in the built-in key set today), opt-in, new (not built, and needing no feature Alcove lacks), or needs a named feature:
+Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
 
-- `adjacent_days`, a date one day either side: rule 18.
 - `street_number`, the number of a street address: rule 21.
 - A three-digit ZIP: rule 27.
 - State and county types: rule 30.
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
 - The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 
-Eleven of the fourteen shipped rules are in the 99% band; rules 26, 31 and 32 are in the 95% band.
+Eleven of the fourteen rules of `hmis-keys` 1.0.0 are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
 ## The 99% band
 
@@ -152,39 +147,39 @@ Their cost is rounds, not precision.
 
 #### 1. `SSN + LN + DOB`
 
-99%. Any coverage. Refinement of rule 6. Shipped.
+99%. Any coverage. Refinement of rule 6.
 
 The strictest rule: a full SSN with the last name and the full date of birth.
 
 #### 2. `SSN + LN4 + DOB`
 
-99%. Any coverage. Refinement of rule 6. Shipped.
+99%. Any coverage. Refinement of rule 6.
 
 Catches a last name written differently after its fourth letter.
 
 #### 3. `SSN + LN3 + DOB`
 
-99%. Any coverage. Refinement of rule 6. Shipped.
+99%. Any coverage. Refinement of rule 6.
 
 As rule 2, with a three-letter prefix.
 
 #### 4. `SSN + DOB + FN`
 
-99%. Any coverage. Refinement of rule 6. Shipped.
+99%. Any coverage. Refinement of rule 6.
 
 Catches a changed last name when the full SSN agrees.
 Bernstam et al. (2022) measured SSN + first name at 247 true pairs and 1 false, by manual review of candidate pairs blocked within one data warehouse; the authors include Datavant staff.
 
 #### 5. `SSN + FN3 + DOB`
 
-99%. Any coverage. Refinement of rule 6. Shipped.
+99%. Any coverage. Refinement of rule 6.
 
 Catches a changed last name together with a first name spelled differently after its third letter.
 The N3C linkage configuration (Regenstrief Institute 2021) ships a token with the same three-letter first name.
 
 #### 6. `SSN + DOB`
 
-99%. Any coverage. Measured. New.
+99%. Any coverage. Measured.
 
 Grannis et al. (2002) found SSN + full date of birth made 2 wrong links of 4,559 at one hospital and 2 of 5,218 at the other.
 That bounds its false share under 0.14% (computed here), the one measurement in this catalog that would support a band above 99.5%.
@@ -193,15 +188,15 @@ Its floor is the spousal mix-up above, where the spouses share a birth date.
 
 #### 7. `SSN + FN + LN`
 
-99%. Any coverage. Measured. New.
+99%. Any coverage. Measured.
 
 Catches any date-of-birth error when the SSN and both names agree.
 In Grannis et al. (2002), SSN + last name + first name made 7 wrong links of 4,548 and 2 of 5,159.
 A full first name separates spouses who share a surname and an SSN.
 
-#### 8. `SSN + phonetic(FN) + phonetic(LN)`
+#### 8. `SSN + soundex(FN) + soundex(LN)`
 
-99%. Any coverage. Measured with a different phonetic code. New.
+99%. Any coverage. Measured with a different phonetic code.
 
 Catches names spelled differently that keep their phonetic code; it runs after rule 7, a refinement of it.
 In Grannis et al. (2002), SSN + NYSIIS-coded names found 234 and 90 more correct links than rule 7 (4,775 and 5,247), at the same count of wrong links (7 and 2).
@@ -210,21 +205,21 @@ Three sources compare the two codes (Sun and Golden 2019; Bailey et al. 2020; Ch
 
 #### 9. `SSN + LN + FN1`
 
-99%. Any coverage. Relative of rule 7. Shipped.
+99%. Any coverage. Relative of rule 7.
 
 Catches a first name recorded differently, when the full SSN and last name agree; it runs after rule 7, a refinement of it.
 It differs from rule 7 by a first initial, which lets through spouses who share one (reasoning; no source gives that rate).
 
 #### 10. `SSN + LN3 + FN1`
 
-99%. Any coverage. Relative of rule 7. Shipped.
+99%. Any coverage. Relative of rule 7.
 
 As rule 9, with a three-letter last name.
 A three-letter last name adds little, because the spousal errors already share the whole surname (reasoning).
 
 #### 11. `SSN + FN + YOB + MOB`
 
-99%. Any coverage. Relative. Shipped.
+99%. Any coverage. Relative.
 
 Catches a changed last name and a wrong day of birth together.
 In Grannis et al. (2002), SSN + first name + birth year + gender made no wrong links at either hospital (4,350 and 4,997 correct), and SSN + phonetic first name + birth month + gender made none either.
@@ -233,13 +228,13 @@ In Mirel et al. (2022), links on which only the SSN + first name token agreed we
 
 #### 12. `SSN + FN3 + YOB + MOB`
 
-99%. Any coverage. Relative of rule 11. Shipped.
+99%. Any coverage. Relative of rule 11.
 
 As rule 11, with a three-letter first name; it runs after rule 11, a refinement of it.
 
 #### 13. `SSN + LN4 + YOB + MOB`
 
-99%. Any coverage. Extrapolation from rule 6. Shipped.
+99%. Any coverage. Extrapolation from rule 6.
 
 Catches a wrong day of birth when the full SSN agrees.
 No measured relative drops the day.
@@ -253,7 +248,7 @@ In Hillestad et al.'s (2008) collision counts, removing them from a name + DOB +
 
 #### 14. `SSN4 + LN + DOB`
 
-99%. Any coverage. Relative. Shipped.
+99%. Any coverage. Relative.
 
 Catches records holding only the last four SSN digits.
 Naessens et al. (2015) found last four SSN + DOB + sex at 99.9% positive predictive value, with 3 false positives.
@@ -262,14 +257,14 @@ Naessens linked one health system's discharges to each other, in one region, and
 
 #### 15. `SSN4 + split(LN) + FN + DOB`
 
-99%. Any coverage. Refinement of rule 16. New.
+99%. Any coverage. Refinement of rule 16.
 
 Catches one part of a compound last name dropped or the parts reversed, beside the last four SSN digits.
 Cook County added a two-last-names step after its validation that found 1,988 more matches, unvalidated (Trick et al. 2019).
 
 #### 16. `SSN4 + FN + DOB`
 
-99%. Any coverage. Relative of rule 14. New.
+99%. Any coverage. Relative of rule 14.
 
 Catches a changed last name when only the last four SSN digits are held.
 A last-name change was behind 44% of the 379 classified false-negative queries in UCLA's reviewed sample of links its EHR module missed, some queries having several errors (Ross et al. 2020).
@@ -278,7 +273,7 @@ Naessens et al. (2015) found last four SSN + DOB + sex at 99.9%; this rule repla
 
 #### 17. `SSN4 + LN + FN + DOB +/-1 year`
 
-99%. Any coverage. Relative. New.
+99%. Any coverage. Relative.
 
 Catches a birth year off by one.
 The year differed in 40.0% of confirmed duplicate pairs with a date-of-birth discrepancy, by an amount Just et al. (2016) do not give.
@@ -290,7 +285,7 @@ With the last four SSN digits dividing chance agreement by about 10,000 (compute
 
 #### 18. `SSN4 + LN + FN + DOB +/-1 day`
 
-99%. Any coverage. Relative, as rule 17. Needs `adjacent_days`.
+99%. Any coverage. Relative, as rule 17.
 
 Catches a birth day off by one.
 The day is the most frequent date-of-birth discrepancy, differing in 48.3% of pairs with one, by an amount Just et al. (2016) do not give, and Cook County's largest spike in date differences was at 1 day.
@@ -299,7 +294,7 @@ Cook County's rule of the same shape found 371 matches its EHR process missed (T
 
 #### 19. `SSN4 + LN + FN + DOB day/month exchanged`
 
-99%. Any coverage. Relative, as rule 17. New.
+99%. Any coverage. Relative, as rule 17.
 
 Catches a day and month recorded in the wrong order, only 2.6% of date discrepancies (Just et al. 2016).
 linkja emits this hash (MRAIA 2020); Cook County's rule of this shape, without the last four SSN digits, found 454 matches its EHR process missed (Trick et al. 2019).
@@ -308,7 +303,7 @@ This rule covers the error the not-offered `LN + FN + DOB` with day and month ex
 
 #### 20. `SSN4 + swap(LN, FN) + DOB`
 
-99%. Any coverage. Relative, as rule 17. New.
+99%. Any coverage. Relative, as rule 17.
 
 Catches a first and last name recorded in the wrong fields, beside the last four SSN digits.
 Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
@@ -325,10 +320,10 @@ Ansolabehere and Hersh (2016) report 97.5% for a voter-file match, but that is a
 
 #### 22. `LN + FN + DOB + ZIP5`
 
-99%. Any coverage. Extrapolation. Opt-in.
+99%. Any coverage. Extrapolation.
 
 Catches records with no SSN where the person's ZIP agrees.
-It ships today as the guided opt-in for a ZIP column, named `LN + FN + DOB + ZIP`, outside the built-in set; its default cleaning keeps the first five digits, so it is this rule, and it is to be retired as an opt-in with the others.
+The ZIP field's default cleaning keeps the first five digits, so a ZIP column supplies `ZIP5`.
 It is exactly a token the N3C linkage configuration ships (Regenstrief Institute 2021).
 The 99% is the maintainer's judgment on the following reasoning, not a measurement:
 
@@ -350,9 +345,7 @@ It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rul
 
 #### 23. `LN + FN + DOB + PHONE`
 
-99%. Any coverage. Relative: a subset of `LN + FN + PHONE`. Opt-in.
-
-It ships today as the guided opt-in for a phone column, outside the built-in set, and is to be retired as an opt-in with the others.
+99%. Any coverage. Relative: a subset of `LN + FN + PHONE`.
 
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0% at two sites, and this rule adds the date of birth, so its false pairs are a subset (reasoning).
 That measurement is one setting, its truth is mother-child relationships only, and its phone cleaning is not described.
@@ -361,7 +354,7 @@ It is a refinement of rule 31: the pairs it accepts beyond rule 31 are those rul
 
 #### 24. `FN + DOB + PHONE`
 
-99%. Any coverage. Extrapolation. New.
+99%. Any coverage. Extrapolation.
 
 Catches a changed last name with no SSN.
 The reasoning:
@@ -379,7 +372,7 @@ The shared-contact screen (rule 36a) shrinks this rule's floor too.
 
 #### 25. `SSN + FN`
 
-95%. Any coverage. Measured. New.
+95%. Any coverage. Measured.
 
 Catches any date-of-birth error and a changed last name when the full SSN agrees.
 Bernstam et al. (2022) measured it at 247 true pairs and 1 false, on blocked candidate pairs from one data warehouse, with Datavant co-authors.
@@ -387,7 +380,7 @@ Its floor is a junior recorded under his father's SSN as guarantor, sharing his 
 
 #### 26. `SSN4 + LN4 + YOB + MOB`
 
-95%. Any coverage. Extrapolation. Shipped.
+95%. Any coverage. Extrapolation.
 
 The thinnest shipped rule: two loosenings, a four-letter last name and no day of birth, beside the last four SSN digits.
 In a national file it leaves about one chance partner per 190 records (reasoning).
@@ -404,9 +397,9 @@ Against email-based and phone-based labels, on records with no valid SSN, the ZI
 A three-digit ZIP covers a hundred thousand to a million people, so it stays at 95% where rule 22 reaches 99%.
 A ZIP costs matches where a person moves or gives another address: ZIP mismatches caused the largest share of one emergency medical service's failed record lookups (Park and Finnell 2012).
 
-#### 28. `ZIP5 + SDX(LN) + FN + DOB`
+#### 28. `ZIP5 + soundex(LN) + FN + DOB`
 
-95%. Any coverage. One loosening on rule 22. New.
+95%. Any coverage. One loosening on rule 22.
 
 Catches a misspelled last name that keeps its Soundex code, with no SSN.
 Beside the ZIP, a Soundex surname admits about 2.9 times the false agreements of the exact surname (Randall et al. 2013), far inside the band.
@@ -415,7 +408,7 @@ It is one of the three least supported rules in the catalog: [The Soundex-surnam
 
 #### 29. `ZIP5 + LN + FN + DOB +/-1 year`
 
-95%. Any coverage. One loosening on rule 22. New.
+95%. Any coverage. One loosening on rule 22.
 
 Catches a birth year off by one with no SSN, as rule 17 does with it.
 Three candidate years roughly triple rule 22's chance agreement (reasoning).
@@ -430,7 +423,7 @@ Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechut
 
 #### 31. `LN + FN + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Measured relatives. Shipped.
+95%. Offered only when both files draw from one state or one metropolitan area. Measured relatives.
 
 A rule with no SSN evidence, catching records whose SSN is missing or wrong.
 The evidence spans a range, and both ends are stated.
@@ -461,7 +454,7 @@ An age-cohort file behaves like a far larger file ([Coverage](#coverage)).
 
 #### 32. `swap(LN, FN) + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31. Shipped.
+95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31.
 
 Catches a first and last name recorded in the wrong fields.
 Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
@@ -471,7 +464,7 @@ linkja (MRAIA 2020) and Cook County use the same device.
 
 #### 33. `split(LN) + FN + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31. New.
+95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31.
 
 Catches one part of a compound last name dropped or the parts reversed.
 Barrat and Berliner (2013), matching California's foster-care records to its K-12 records, found two steps splitting names added 9.1% of the final matches (memorandum Table 4); the 9.1% is an upper bound, since the steps also cut compound first names.
@@ -482,7 +475,7 @@ linkja's overview describes hashing each part of a compound surname, but the shi
 
 #### 34. `LN + FN + YOB + MOB + ZIP5`
 
-95%. Any coverage. Relative. New.
+95%. Any coverage. Relative.
 
 Catches a wrong day of birth with no SSN.
 It is a token the N3C configuration ships, without gender (Regenstrief Institute 2021).
@@ -502,7 +495,7 @@ The band does not rise: Goel et al.'s (2020) Figure A.3 shows requiring the suff
 Where one party's file has no suffix at all, the rule runs without the element rather than being dropped, since otherwise every junior recorded in the other file would fail it.
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
-#### 36. `PHONE + SDX(LN) + FN + SFX`
+#### 36. `PHONE + soundex(LN) + FN + SFX`
 
 95%. Any coverage. One loosening on rule 35. Needs `name_suffix`.
 
@@ -521,7 +514,7 @@ The same screen shrinks the sharing floor of every phone and email rule.
 
 #### 37. `FN + DOB + EMAIL`
 
-95%. Any coverage. The maintainer's judgment, pending evidence. New.
+95%. Any coverage. The maintainer's judgment, pending evidence.
 
 The email counterpart of rule 24.
 See [The email rules](#the-email-rules).
@@ -534,7 +527,7 @@ Catches any date-of-birth error with no SSN, for records with an email address.
 Kim et al. (2019) is its nearest measurement.
 It is stricter than first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
 
-#### 39. `EMAIL + SDX(LN) + FN + SFX`
+#### 39. `EMAIL + soundex(LN) + FN + SFX`
 
 95%. Any coverage. One loosening on rule 38. Needs `name_suffix`.
 
@@ -573,16 +566,16 @@ It needs a per-side missing-field condition, which Alcove lacks, and has no band
 ## Not offered
 
 These rules have no evidence placing them at 95% or above.
-An operator reaches them by authoring them in the expert key editor, except `FN + EMAIL`, which is also offered as a guided opt-in.
+An operator reaches them by authoring them in the expert key editor.
 
 | Rule | Why it has no band |
 | --- | --- |
 | `LN + FN + DOB` with day and month exchanged | Its precision runs from 99% to under 50% as file size grows ([linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)). Rule 19, with the last four SSN digits, covers the error |
 | `LN + FN + DOB`, its swap and split forms, where the files cover more than one state or metropolitan area | Goel et al. (2020) confirmed only about three-quarters of cross-state name + date pairings as duplicates. Grannis (2005) measured a no-SSN name + date + gender rule at 89.1% and 89.5% specificity against the national Death Master File |
-| `FN3 + LN + DOB` and `FN1 + LN + DOB` without an SSN; `SDX(FN) + SDX(LN) + DOB` without an SSN, geography or a contact field | In Mirel et al. (2022), links on which only these tokens agreed were 53.8% (first initial and three-letter first name), 95.7% (first initial) and 81.4% (Soundex names) false. Cook County's one confirmed false match came from its three-letter first-name rule (Trick et al. 2019) |
+| `FN3 + LN + DOB` and `FN1 + LN + DOB` without an SSN; `soundex(FN) + soundex(LN) + DOB` without an SSN, geography or a contact field | In Mirel et al. (2022), links on which only these tokens agreed were 53.8% (first initial and three-letter first name), 95.7% (first initial) and 81.4% (Soundex names) false. Cook County's one confirmed false match came from its three-letter first-name rule (Trick et al. 2019) |
 | `FN3 + LN + DOB` for uncommon names | Parked. A general tool cannot define a common name except relative to a particular population, so the name-frequency condition it needs is not built. Cook County's rule of this shape found 7,623 matches, the most of any rule (Trick et al. 2019) |
 | Any contact field alone, or with only a date | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)). Bernstam et al. (2022) measured a phone alone at 95.6%, and remark that infant twins share a birth date and phone |
-| `FN + EMAIL` | No source measures a first name with an email. The email rules offered (37 to 39) add a date or a surname. It ships today as the guided opt-in for an email column, outside any built-in set and with no precision evidence; the guided opt-in offers are to be retired when rules are selected by precision floor |
+| `FN + EMAIL` | No source measures a first name with an email. The email rules offered (37 to 39) add a date or a surname |
 
 ## Sources
 

@@ -40,10 +40,10 @@ describe("the catalog's bands", () => {
       "LN + FN + DOB + ZIP3",
       "LN + FN + DOB + STATE or COUNTY",
       "LN + FN + SFX + PHONE",
-      "PHONE + SDX(LN) + FN + SFX",
+      "PHONE + soundex(LN) + FN + SFX",
       "FN + SFX + PHONE",
       "LN + FN + SFX + EMAIL",
-      "EMAIL + SDX(LN) + FN + SFX",
+      "EMAIL + soundex(LN) + FN + SFX",
     ]);
     for (const band of unbuilt)
       expect(names(catalog.linkageKeys)).not.toContain(band.rule);
