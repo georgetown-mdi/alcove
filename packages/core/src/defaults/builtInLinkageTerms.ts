@@ -5,6 +5,7 @@ import type {
   LinkageTerms,
   LinkageField,
   LinkageKey,
+  LinkageKeyElement,
 } from "../config/linkageTermsSchema";
 import type { Metadata } from "../config/metadata";
 import { canonicalString } from "../utils/canonical";
@@ -57,7 +58,7 @@ export const DEFAULT_LINKAGE_FIELD_SET_NAME = "baseline-pii";
  * sets version independently, so an edit to the keys bumps
  * {@link DEFAULT_LINKAGE_KEY_SET_VERSION} and leaves this one alone.
  */
-export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.0.0";
+export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.1.0";
 
 /**
  * The linkage fields of the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} field set:
@@ -89,71 +90,331 @@ const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
     constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
   },
   { name: "date_of_birth", type: "date_of_birth" },
+  { name: "phone_number", type: "phone_number" },
+  { name: "email_address", type: "email_address" },
+  { name: "zip_code", type: "zip_code" },
+];
+
+/** The fields of {@link DEFAULT_LINKAGE_FIELD_SET_NAME} 1.0.0, kept so a citation
+ * of that version still resolves ({@link EARLIER_LINKAGE_RULE_SET}). */
+const BASELINE_PII_1_0_0_FIELDS: ReadonlyArray<LinkageField> = [
+  {
+    name: "ssn",
+    type: "ssn",
+    constraints: {
+      exclude: ["111111111", "123456789"],
+      validOnly: true,
+    },
+  },
+  {
+    name: "ssn4",
+    type: "ssn4",
+    constraints: { validOnly: true },
+  },
+  {
+    name: "first_name",
+    type: "first_name",
+    constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+  },
+  {
+    name: "last_name",
+    type: "last_name",
+    constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+  },
+  { name: "date_of_birth", type: "date_of_birth" },
 ];
 
 /**
- * Neutral, stable identifier of the built-in linkage KEY set: the key
- * combinations ({@link DEFAULT_LINKAGE_KEYS}) that
- * {@link getDefaultLinkageTerms} emits when a party does not author its own.
- * Every key is built from the fields of
- * {@link DEFAULT_LINKAGE_FIELD_SET_NAME}, so a citation of this set is a
- * citation of that one too; what this name adds is the specific part -- which
- * combinations of that substrate count as a match, and in what cascade order.
- *
- * Names the class of system the keys were settled for rather than the
- * engagement that settled them: the repository is public, and an attribution is
- * not the product's to publish. The validation lineage and the criticisms on
- * record attach to THIS set, not to the fields, and are recorded in
- * `docs/notes/default-linkage-rule-set.md` rather than in the identifier.
+ * Neutral, stable identifier of the built-in linkage KEY set: the catalog of
+ * rules in `docs/notes/linkage-rule-catalog.md`, as the key combinations
+ * ({@link DEFAULT_LINKAGE_KEYS}) a precision floor selects from. Every key is
+ * built from the fields of {@link DEFAULT_LINKAGE_FIELD_SET_NAME}, so a
+ * citation of this set is a citation of that one too; what this name adds is
+ * which combinations of that substrate count as a match, and in what cascade
+ * order. Its version 1.0.0 was published under the name `hmis-keys`
+ * ({@link EARLIER_LINKAGE_RULE_SET}).
  */
-export const DEFAULT_LINKAGE_KEY_SET_NAME = "hmis-keys";
+export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
 
 /**
  * Version of the key set named by {@link DEFAULT_LINKAGE_KEY_SET_NAME}.
  *
  * Distinct from `LinkageTerms.version`, which versions the terms schema and
  * is cross-checked between the parties at exchange time. This one versions
- * the content of the built-in key set -- which key combinations it
- * declares and in what order -- and is not on the wire. Neither it nor
- * {@link DEFAULT_LINKAGE_FIELD_SET_VERSION} may ever be assigned to a terms
- * document's `version`.
+ * the content of the built-in key set -- which key combinations it declares,
+ * in what order, and each one's precision band and coverage condition -- and
+ * is not on the wire. Neither it nor {@link DEFAULT_LINKAGE_FIELD_SET_VERSION}
+ * may ever be assigned to a terms document's `version`.
  *
- * Bump it in the same change that edits {@link DEFAULT_LINKAGE_KEYS}: a key
- * added or removed, an element or transform changed, or the keys
- * reordered -- order is cascade order, so a reorder changes which key
- * claims a record that more than one would match. The recorded validation
- * attaches to the name and version together, so an edited set holding the
- * old version makes that record describe rules nobody ran.
+ * Bump it in the same change that edits {@link DEFAULT_LINKAGE_KEYS} or
+ * {@link DEFAULT_LINKAGE_RULE_BANDS}: a key added or removed, an element or
+ * transform changed, the keys reordered, or a band or coverage condition
+ * moved. The recorded evidence attaches to the name and version together, so
+ * an edited set holding the old version makes that record describe rules
+ * nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "1.0.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.0.0";
+
+/** A precision band of the catalog: the share, in percent, of the pairs a rule
+ * accepts at its position in the order that are the same person, at least. */
+export type PrecisionBand = 99 | 95;
+
+/**
+ * Which pairs of files a rule's band holds for: `any`, or only files that both
+ * draw their members from one state or one metropolitan area.
+ */
+export type RuleCoverage = "any" | "one_state_or_metro_area";
+
+/** One rule of the catalog: its band, its coverage condition, and, for a rule
+ * Alcove cannot build yet, the element it needs. */
+export interface LinkageRuleBand {
+  /** The rule's key name, or its catalog notation where it has no key. */
+  rule: string;
+  /** The band the catalog places the rule in. */
+  band: PrecisionBand;
+  /** The files the band holds for. */
+  coverage: RuleCoverage;
+  /** The element the rule needs that no field supplies yet; such a rule has
+   * no key and is never selected. */
+  needs?: string;
+}
+
+// The elements the catalog's keys are built from, in the catalog's notation.
+const SSN: LinkageKeyElement = { field: "ssn" };
+const SSN4: LinkageKeyElement = { field: "ssn4" };
+const LN: LinkageKeyElement = { field: "last_name" };
+const FN: LinkageKeyElement = { field: "first_name" };
+const DOB: LinkageKeyElement = { field: "date_of_birth" };
+const PHONE: LinkageKeyElement = { field: "phone_number" };
+const EMAIL: LinkageKeyElement = { field: "email_address" };
+const ZIP5: LinkageKeyElement = { field: "zip_code" };
+const LN3: LinkageKeyElement = {
+  field: "last_name",
+  transform: [{ function: "substring", params: { start: 1, length: 3 } }],
+};
+const LN4: LinkageKeyElement = {
+  field: "last_name",
+  transform: [{ function: "substring", params: { start: 1, length: 4 } }],
+};
+const FN1: LinkageKeyElement = {
+  field: "first_name",
+  transform: [{ function: "substring", params: { start: 1, length: 1 } }],
+};
+const FN3: LinkageKeyElement = {
+  field: "first_name",
+  transform: [{ function: "substring", params: { start: 1, length: 3 } }],
+};
+const YOB_MOB: LinkageKeyElement = {
+  field: "date_of_birth",
+  transform: [{ function: "substring", params: { start: 1, length: 6 } }],
+};
+const SDX_LN: LinkageKeyElement = {
+  field: "last_name",
+  transform: [{ function: "phonetic", params: { algorithm: "soundex" } }],
+};
+const SDX_FN: LinkageKeyElement = {
+  field: "first_name",
+  transform: [{ function: "phonetic", params: { algorithm: "soundex" } }],
+};
+// The whole last name and each space-separated part of it: the name cleaning
+// turns a hyphen into a space.
+const SPLIT_LN: LinkageKeyElement = {
+  field: "last_name",
+  transform: [
+    { function: "split_on", params: { delimiter: " ", includeOriginal: true } },
+  ],
+};
+const DOB_ONE_YEAR: LinkageKeyElement = {
+  field: "date_of_birth",
+  generateFuzzyComparisons: "adjacent_years",
+};
+const DOB_ONE_DAY: LinkageKeyElement = {
+  field: "date_of_birth",
+  generateFuzzyComparisons: "adjacent_days",
+};
+const DOB_DAY_MONTH: LinkageKeyElement = {
+  field: "date_of_birth",
+  generateFuzzyComparisons: "day_month_swaps",
+};
 
 /**
  * The linkage key combinations of the {@link DEFAULT_LINKAGE_KEY_SET_NAME}
- * key set, in the set's cascade order: an earlier key claims a record
- * first, and a record it claims is withheld from every later round.
+ * key set, in the catalog's cascade order: an earlier key claims a record
+ * first, and a record it claims is withheld from every later round. The order
+ * is the catalog's precision order, the 99% band before the 95% band
+ * ({@link DEFAULT_LINKAGE_RULE_BANDS}).
  *
- * The order is not a ranking by precision or by strength of evidence, and
- * reading it as one misdescribes the set: keys holding no SSN evidence sit
- * above SSN-bearing ones, and a key holding an SSN but no last name sits
- * above both. What the published cascades order on instead, and what the
- * per-key measurements say about either arrangement, is set out in
- * `docs/notes/linkage-rule-grounding.md` and
- * `docs/notes/linkage-rule-catalog.md`.
- *
- * The ordering the set does hold to is over the date of birth: coarsening
- * it to a year and month is a fallback for a key's own full-date form
- * rather than a competitor to it, so wherever the set declares both, the
- * full-date key precedes the coarsened key built from the same other
- * elements.
- *
- * Both statements are asserted over this array in
- * `test/builtInLinkageKeyOrder.test.ts` -- an ordering claim made only in
- * prose has nothing to fail when an edit breaks it.
- *
- * {@link linkageTermsFromRuleSet} emits a subset of these: a key whose
- * elements the input's columns cannot satisfy is dropped.
+ * {@link linkageTermsFromRuleSet} emits a subset of these: the keys a
+ * precision floor selects, less any key whose elements the input's columns
+ * cannot satisfy.
  */
 const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
+  { name: "SSN + LN + DOB", elements: [SSN, LN, DOB] },
+  { name: "SSN + LN4 + DOB", elements: [SSN, LN4, DOB] },
+  { name: "SSN + LN3 + DOB", elements: [SSN, LN3, DOB] },
+  { name: "SSN + DOB + FN", elements: [SSN, DOB, FN] },
+  { name: "SSN + FN3 + DOB", elements: [SSN, FN3, DOB] },
+  { name: "SSN + DOB", elements: [SSN, DOB] },
+  { name: "SSN + FN + LN", elements: [SSN, FN, LN] },
+  {
+    name: "SSN + phonetic(FN) + phonetic(LN)",
+    elements: [SSN, SDX_FN, SDX_LN],
+  },
+  { name: "SSN + LN + FN1", elements: [SSN, LN, FN1] },
+  { name: "SSN + LN3 + FN1", elements: [SSN, LN3, FN1] },
+  { name: "SSN + FN + YOB + MOB", elements: [SSN, FN, YOB_MOB] },
+  { name: "SSN + FN3 + YOB + MOB", elements: [SSN, FN3, YOB_MOB] },
+  { name: "SSN + LN4 + YOB + MOB", elements: [SSN, LN4, YOB_MOB] },
+  { name: "SSN4 + LN + DOB", elements: [SSN4, LN, DOB] },
+  { name: "SSN4 + split(LN) + FN + DOB", elements: [SSN4, SPLIT_LN, FN, DOB] },
+  { name: "SSN4 + FN + DOB", elements: [SSN4, FN, DOB] },
+  {
+    name: "SSN4 + LN + FN + DOB +/-1 year",
+    elements: [SSN4, LN, FN, DOB_ONE_YEAR],
+  },
+  {
+    name: "SSN4 + LN + FN + DOB +/-1 day",
+    elements: [SSN4, LN, FN, DOB_ONE_DAY],
+  },
+  {
+    name: "SSN4 + LN + FN + DOB day/month exchanged",
+    elements: [SSN4, LN, FN, DOB_DAY_MONTH],
+  },
+  {
+    name: "SSN4 + swap(LN, FN) + DOB",
+    elements: [SSN4, LN, FN, DOB],
+    swap: ["last_name", "first_name"],
+  },
+  { name: "LN + FN + DOB + ZIP5", elements: [LN, FN, DOB, ZIP5] },
+  { name: "LN + FN + DOB + PHONE", elements: [LN, FN, DOB, PHONE] },
+  { name: "FN + DOB + PHONE", elements: [FN, DOB, PHONE] },
+  { name: "SSN + FN", elements: [SSN, FN] },
+  { name: "SSN4 + LN4 + YOB + MOB", elements: [SSN4, LN4, YOB_MOB] },
+  { name: "ZIP5 + SDX(LN) + FN + DOB", elements: [ZIP5, SDX_LN, FN, DOB] },
+  {
+    name: "ZIP5 + LN + FN + DOB +/-1 year",
+    elements: [ZIP5, LN, FN, DOB_ONE_YEAR],
+  },
+  { name: "LN + FN + DOB", elements: [LN, FN, DOB] },
+  {
+    name: "swap(LN, FN) + DOB",
+    elements: [LN, FN, DOB],
+    swap: ["last_name", "first_name"],
+  },
+  { name: "split(LN) + FN + DOB", elements: [SPLIT_LN, FN, DOB] },
+  { name: "LN + FN + YOB + MOB + ZIP5", elements: [LN, FN, YOB_MOB, ZIP5] },
+  { name: "FN + DOB + EMAIL", elements: [FN, DOB, EMAIL] },
+];
+
+/**
+ * Every rule of the catalog in its order, each with its band and coverage
+ * condition ({@link LinkageRuleBand}), including the rules that need an
+ * element Alcove does not build yet. Bands do not travel: a terms document
+ * holds the keys a floor selected, never the floor or a band.
+ */
+const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
+  { rule: "SSN + LN + DOB", band: 99, coverage: "any" },
+  { rule: "SSN + LN4 + DOB", band: 99, coverage: "any" },
+  { rule: "SSN + LN3 + DOB", band: 99, coverage: "any" },
+  { rule: "SSN + DOB + FN", band: 99, coverage: "any" },
+  { rule: "SSN + FN3 + DOB", band: 99, coverage: "any" },
+  { rule: "SSN + DOB", band: 99, coverage: "any" },
+  { rule: "SSN + FN + LN", band: 99, coverage: "any" },
+  { rule: "SSN + phonetic(FN) + phonetic(LN)", band: 99, coverage: "any" },
+  { rule: "SSN + LN + FN1", band: 99, coverage: "any" },
+  { rule: "SSN + LN3 + FN1", band: 99, coverage: "any" },
+  { rule: "SSN + FN + YOB + MOB", band: 99, coverage: "any" },
+  { rule: "SSN + FN3 + YOB + MOB", band: 99, coverage: "any" },
+  { rule: "SSN + LN4 + YOB + MOB", band: 99, coverage: "any" },
+  { rule: "SSN4 + LN + DOB", band: 99, coverage: "any" },
+  { rule: "SSN4 + split(LN) + FN + DOB", band: 99, coverage: "any" },
+  { rule: "SSN4 + FN + DOB", band: 99, coverage: "any" },
+  { rule: "SSN4 + LN + FN + DOB +/-1 year", band: 99, coverage: "any" },
+  { rule: "SSN4 + LN + FN + DOB +/-1 day", band: 99, coverage: "any" },
+  {
+    rule: "SSN4 + LN + FN + DOB day/month exchanged",
+    band: 99,
+    coverage: "any",
+  },
+  { rule: "SSN4 + swap(LN, FN) + DOB", band: 99, coverage: "any" },
+  {
+    rule: "LN + FN + DOB + street number + ZIP5",
+    band: 99,
+    coverage: "any",
+    needs: "street number",
+  },
+  { rule: "LN + FN + DOB + ZIP5", band: 99, coverage: "any" },
+  { rule: "LN + FN + DOB + PHONE", band: 99, coverage: "any" },
+  { rule: "FN + DOB + PHONE", band: 99, coverage: "any" },
+  { rule: "SSN + FN", band: 95, coverage: "any" },
+  { rule: "SSN4 + LN4 + YOB + MOB", band: 95, coverage: "any" },
+  {
+    rule: "LN + FN + DOB + ZIP3",
+    band: 95,
+    coverage: "any",
+    needs: "three-digit ZIP",
+  },
+  { rule: "ZIP5 + SDX(LN) + FN + DOB", band: 95, coverage: "any" },
+  { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95, coverage: "any" },
+  {
+    rule: "LN + FN + DOB + STATE or COUNTY",
+    band: 95,
+    coverage: "any",
+    needs: "state or county",
+  },
+  { rule: "LN + FN + DOB", band: 95, coverage: "one_state_or_metro_area" },
+  { rule: "swap(LN, FN) + DOB", band: 95, coverage: "one_state_or_metro_area" },
+  {
+    rule: "split(LN) + FN + DOB",
+    band: 95,
+    coverage: "one_state_or_metro_area",
+  },
+  { rule: "LN + FN + YOB + MOB + ZIP5", band: 95, coverage: "any" },
+  {
+    rule: "LN + FN + SFX + PHONE",
+    band: 95,
+    coverage: "any",
+    needs: "name suffix",
+  },
+  {
+    rule: "PHONE + SDX(LN) + FN + SFX",
+    band: 95,
+    coverage: "any",
+    needs: "name suffix",
+  },
+  {
+    rule: "FN + SFX + PHONE",
+    band: 95,
+    coverage: "any",
+    needs: "name suffix and the shared-contact screen",
+  },
+  { rule: "FN + DOB + EMAIL", band: 95, coverage: "any" },
+  {
+    rule: "LN + FN + SFX + EMAIL",
+    band: 95,
+    coverage: "any",
+    needs: "name suffix",
+  },
+  {
+    rule: "EMAIL + SDX(LN) + FN + SFX",
+    band: 95,
+    coverage: "any",
+    needs: "name suffix",
+  },
+];
+
+/** The name of the key set {@link DEFAULT_LINKAGE_KEY_SET_NAME} 1.0.0 was
+ * published under. */
+const EARLIER_KEY_SET_NAME = "hmis-keys";
+
+/** The version of {@link EARLIER_KEY_SET_NAME} and of its field set. */
+const EARLIER_SET_VERSION = "1.0.0";
+
+/**
+ * The keys of {@link EARLIER_KEY_SET_NAME} 1.0.0, kept so a citation of that
+ * version still resolves and verifies ({@link EARLIER_LINKAGE_RULE_SET}).
+ */
+const CATALOG_1_0_0_KEYS: ReadonlyArray<LinkageKey> = [
   {
     name: "SSN + LN + DOB",
     elements: [
@@ -326,6 +587,9 @@ export interface BuiltInLinkageRuleSet {
   linkageFields: ReadonlyArray<LinkageField>;
   /** The set's linkage keys, in the cascade order the set declares. */
   linkageKeys: ReadonlyArray<LinkageKey>;
+  /** Each rule's precision band and coverage condition, for a set a
+   * precision floor selects from; absent on a set with no bands. */
+  ruleBands?: ReadonlyArray<LinkageRuleBand>;
 }
 
 /**
@@ -340,13 +604,14 @@ function frozenThroughContents<T>(value: T): T {
 }
 
 /**
- * The one built-in rule set: the {@link DEFAULT_LINKAGE_KEY_SET_NAME} keys
- * over the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} fields, at the version
- * each declares. It is the set every path that authors nothing selects, so
- * a zero-setup exchange, the `alcove init` template, and the web invite
- * editors' starting point all cite the same rules.
+ * The built-in catalog: the {@link DEFAULT_LINKAGE_KEY_SET_NAME} keys and
+ * their bands over the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} fields, at the
+ * version each declares. It is the set every path that authors nothing
+ * selects from, at {@link DEFAULT_PRECISION_FLOOR_SELECTION}, so a zero-setup
+ * exchange, the `alcove init` template, and the web invite editors' starting
+ * point all cite the same rules.
  *
- * Composed from the six declarations above rather than replacing them: the
+ * Composed from the declarations above rather than replacing them: the
  * built-in sets' drift and zero-setup checks read those declarations out
  * of this file by name and require each to be a literal
  * (`scripts/lib/builtInRuleSets.mjs`).
@@ -377,7 +642,68 @@ export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
   }),
   linkageFields: frozenThroughContents(DEFAULT_LINKAGE_FIELDS),
   linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
+  ruleBands: frozenThroughContents(DEFAULT_LINKAGE_RULE_BANDS),
 });
+
+/**
+ * The catalog's version 1.0.0, published as `hmis-keys` over `baseline-pii`
+ * 1.0.0: in the registry so a document or record citing it still resolves and
+ * verifies, never selected by a path that authors nothing. It has no bands.
+ */
+export const EARLIER_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
+  reference: Object.freeze({
+    fieldSet: Object.freeze({
+      name: DEFAULT_LINKAGE_FIELD_SET_NAME,
+      version: EARLIER_SET_VERSION,
+    }),
+    keySet: Object.freeze({
+      name: EARLIER_KEY_SET_NAME,
+      version: EARLIER_SET_VERSION,
+    }),
+  }),
+  linkageFields: frozenThroughContents(BASELINE_PII_1_0_0_FIELDS),
+  linkageKeys: frozenThroughContents(CATALOG_1_0_0_KEYS),
+});
+
+/** A precision floor: the lowest band whose rules are selected. */
+export type PrecisionFloor = PrecisionBand;
+
+/**
+ * What an author chooses the catalog's rules by: the floor, and the answer to
+ * whether both files draw their members from one state or one metropolitan
+ * area, which admits the rules with that coverage condition.
+ */
+export interface PrecisionFloorSelection {
+  floor: PrecisionFloor;
+  oneStateOrMetroArea: boolean;
+}
+
+/** The selection every path that authors nothing runs: the 95% floor, with
+ * the coverage question answered yes. */
+export const DEFAULT_PRECISION_FLOOR_SELECTION: PrecisionFloorSelection =
+  Object.freeze({ floor: 95, oneStateOrMetroArea: true });
+
+/**
+ * The keys of `ruleSet` that `selection` selects, in the set's cascade order:
+ * each key whose band is at or above the floor, less a key with the
+ * `one_state_or_metro_area` coverage condition where the answer is no. A set
+ * with no bands has nothing to select by, and answers all of its keys.
+ */
+export function linkageKeysAtPrecisionFloor(
+  ruleSet: BuiltInLinkageRuleSet,
+  selection: PrecisionFloorSelection,
+): Array<LinkageKey> {
+  if (ruleSet.ruleBands === undefined) return [...ruleSet.linkageKeys];
+  const bandByRule = new Map(ruleSet.ruleBands.map((b) => [b.rule, b]));
+  return ruleSet.linkageKeys.filter((key) => {
+    const band = bandByRule.get(key.name);
+    return (
+      band !== undefined &&
+      band.band >= selection.floor &&
+      (band.coverage === "any" || selection.oneStateOrMetroArea)
+    );
+  });
+}
 
 /**
  * Every rule set this build ships, in the order a citation is resolved
@@ -395,7 +721,7 @@ export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
  * so a replaced entry would decide later derivations and verdicts alike.
  */
 export const BUILT_IN_LINKAGE_RULE_SETS: ReadonlyArray<BuiltInLinkageRuleSet> =
-  Object.freeze([DEFAULT_LINKAGE_RULE_SET]);
+  Object.freeze([DEFAULT_LINKAGE_RULE_SET, EARLIER_LINKAGE_RULE_SET]);
 
 /**
  * Whether `rules` were drawn from `ruleSet`: every key byte-identical to a
@@ -439,9 +765,9 @@ export function isDrawnFromLinkageRuleSet(
  * are compared under, or `null` when it holds a value outside the
  * canonical domain (a transform param beyond the safe integer range) and
  * so cannot be compared. Every comparison here reads `null` as no match
- * rather than throwing, the answer {@link isDrawnFromLinkageRuleSet} and
- * {@link isOptInLinkageKey} give such rules: the built-in and offered sets
- * hold no such value, so nothing incomparable is one of them.
+ * rather than throwing, the answer {@link isDrawnFromLinkageRuleSet} gives
+ * such rules: the built-in sets hold no such value, so nothing incomparable
+ * is one of them.
  *
  * @internal exported for the web editor's key reconciliation, which
  * matches a draft key to an offer under this same equality.
@@ -713,10 +1039,10 @@ export function linkageRuleSetReferenceFor(
  * Returns a {@link LinkageTerms} drawn from `ruleSet`, citing it: the terms
  * a party runs when it authors none of its own.
  *
- * When metadata are provided, only linkage key templates whose elements
- * can be satisfied by the present columns are included; metadata declaring
- * no column satisfies none. If no metadata is provided, all templates are
- * included as a fallback. Either way the
+ * The keys are those `selection` selects ({@link linkageKeysAtPrecisionFloor}).
+ * When metadata are provided, only those whose elements can be satisfied by
+ * the present columns are included; metadata declaring no column satisfies
+ * none. Either way the
  * emitted keys are a subset of the set, never an addition to it: what the
  * input supports narrows the set, and nothing widens it -- which is what
  * makes the emitted citation accurate, an upper bound on what was tried
@@ -731,18 +1057,17 @@ export function linkageTermsFromRuleSet(
   ruleSet: BuiltInLinkageRuleSet,
   identity: string | undefined,
   metadata?: Metadata,
+  selection: PrecisionFloorSelection = DEFAULT_PRECISION_FLOOR_SELECTION,
 ): LinkageTerms {
-  let linkageKeys: LinkageKey[];
+  let linkageKeys = linkageKeysAtPrecisionFloor(ruleSet, selection);
   if (metadata !== undefined) {
     // The types resolveFieldColumns binds with no authored standardization: a
     // key resting on any other type would bind nothing at exchange time, so it
     // is dropped here instead of built unusable.
     const availableTypes = fieldTypesSuppliedByDefault(metadata);
-    linkageKeys = ruleSet.linkageKeys.filter((key) =>
+    linkageKeys = linkageKeys.filter((key) =>
       key.elements.every((el) => availableTypes.has(el.field as SemanticType)),
     );
-  } else {
-    linkageKeys = [...ruleSet.linkageKeys];
   }
 
   const referencedFields = referencedLinkageFieldNames(linkageKeys);
@@ -772,8 +1097,8 @@ export function linkageTermsFromRuleSet(
 /**
  * Returns a default {@link LinkageTerms} suitable for quick exchanges when no
  * linkage terms are specified explicitly: {@link linkageTermsFromRuleSet} over
- * {@link DEFAULT_LINKAGE_RULE_SET}, the built-in set every path that authors
- * nothing selects.
+ * {@link DEFAULT_LINKAGE_RULE_SET} at {@link DEFAULT_PRECISION_FLOOR_SELECTION},
+ * what every path that authors nothing runs.
  */
 export function getDefaultLinkageTerms(
   identity: string | undefined,
@@ -783,153 +1108,17 @@ export function getDefaultLinkageTerms(
 }
 
 /**
- * The matchable semantic types no key of {@link DEFAULT_LINKAGE_KEY_SET_NAME}
- * references, so a party whose file holds one of these columns gets no
- * matching value from the built-in rules.
- *
- * They are offered as an addition a party opts in to
- * ({@link optInLinkageKeys}), never folded into the built-in set: that set
- * is frozen, and its recorded validation covers the keys it declares,
- * which say nothing about how these types match. Their standardization
- * pipelines are settled ({@link getDefaultStandardization}) even though no
- * built-in key uses them, so opting one in cleans the column exactly as a
- * partner cleans its own.
- *
- * Written out rather than derived from the difference between the
- * semantic types and the built-in fields', so each type is offered
- * because it was decided on rather than because it arrived in the enum.
- * The difference is asserted equal to this list by test, so a matchable
- * type added without that decision fails there instead of going silently
- * unoffered.
+ * The contact and address types: phone, email and ZIP. The catalog matches on
+ * each only beside a name and a date, so a file can hold one of these columns
+ * while the terms derived from it declare no field for it; the web inviter's
+ * recommended cleaning covers such a field wherever an enabled key references
+ * it.
  */
 export const OPT_IN_LINKAGE_FIELD_TYPES = [
   "phone_number",
   "email_address",
   "zip_code",
 ] as const satisfies ReadonlyArray<LinkageField["type"]>;
-
-/** A semantic type {@link OPT_IN_LINKAGE_FIELD_TYPES} offers. */
-type OptInLinkageFieldType = (typeof OPT_IN_LINKAGE_FIELD_TYPES)[number];
-
-/**
- * The one linkage key each {@link OPT_IN_LINKAGE_FIELD_TYPES} type is
- * offered as: the type's own field together with the backbone the
- * published evidence pairs it with, each element naming a field
- * {@link authoredLinkageFields} declares for a column of that type. The
- * evidence for the shapes is in `docs/notes/linkage-rule-catalog.md`, and
- * their cascade placement is derived in
- * `docs/notes/linkage-rule-grounding.md`.
- *
- * Compound and never the type alone, for two reasons that point the same
- * way. A key built from a single identifier is a membership oracle: a
- * party holding a candidate value learns from the result whether its
- * holder is in the other party's file, which is the differencing exposure
- * `docs/SECURITY_DESIGN.md` scopes the privacy guarantee against. And a
- * contact value is a shared value in program-application data -- one
- * phone number or one email address spans a household and the people an
- * organization files for -- so a key over one alone reports different
- * people as the same person.
- *
- * One key per type is the whole offer. Any other combination is a rule
- * with precision and recall consequences nothing here has settled, which
- * is what the expert key editor is for.
- *
- * Frozen through every level, for the reason
- * {@link DEFAULT_LINKAGE_RULE_SET} is: {@link optInLinkageKeys} hands
- * these objects out by reference, into an editor draft and from there
- * into the terms a party generates, so a single in-place edit of a name
- * or an element would redefine what is offered for the rest of the
- * process. It would also desync {@link OPT_IN_LINKAGE_KEY_ENCODINGS},
- * encoded once at load: {@link isOptInLinkageKey} would then answer
- * `false` for the very key the editor is holding, dropping the
- * outside-the-default-set badge and the departure guidance from a key
- * that is still an addition to the built-in set.
- */
-const OPT_IN_LINKAGE_KEYS: Record<OptInLinkageFieldType, LinkageKey> =
-  frozenThroughContents({
-    phone_number: {
-      name: "LN + FN + DOB + PHONE",
-      elements: [
-        { field: "last_name" },
-        { field: "first_name" },
-        { field: "date_of_birth" },
-        { field: "phone_number" },
-      ],
-    },
-    email_address: {
-      name: "FN + EMAIL",
-      elements: [{ field: "first_name" }, { field: "email_address" }],
-    },
-    zip_code: {
-      name: "LN + FN + DOB + ZIP",
-      elements: [
-        { field: "last_name" },
-        { field: "first_name" },
-        { field: "date_of_birth" },
-        { field: "zip_code" },
-      ],
-    },
-  });
-
-/**
- * The opt-in keys `metadata` can supply, in
- * {@link OPT_IN_LINKAGE_FIELD_TYPES} order -- one per type whose key every
- * element the columns supply, and none for a key any element goes
- * unsupplied for. Declaration order rather than column order, so what an
- * operator is offered does not shuffle with how their file happens to be
- * laid out.
- *
- * The same satisfiability rule {@link linkageTermsFromRuleSet} narrows the
- * built-in keys by, over the whole compound for the same reason it runs
- * over the whole of a built-in key: only a `role: linkage` column
- * supplies a matchable type, so an element resting on an identifier,
- * payload, ignored, or absent column would bind nothing at exchange time.
- * A file holding a phone number but no date of birth is therefore offered
- * no phone key rather than a thinner one.
- *
- * These are offers, not terms: nothing here enables one, and enabling
- * none leaves emitted terms unchanged. Enabling one takes the emitted
- * rules out of {@link DEFAULT_LINKAGE_RULE_SET} -- they are no longer
- * drawn from it -- so the terms hold no citation of the built-in set,
- * which is the accurate reading of what a party that added a key of its
- * own is running.
- */
-export function optInLinkageKeys(metadata: Metadata): Array<LinkageKey> {
-  const available = fieldTypesSuppliedByDefault(metadata);
-  return OPT_IN_LINKAGE_FIELD_TYPES.map(
-    (type) => OPT_IN_LINKAGE_KEYS[type],
-  ).filter((key) =>
-    key.elements.every((element) =>
-      available.has(element.field as SemanticType),
-    ),
-  );
-}
-
-/** The offered keys in the byte form {@link isOptInLinkageKey} compares against,
- * encoded once: the answer is asked per list row per render, and these are fixed
- * for the process. */
-const OPT_IN_LINKAGE_KEY_ENCODINGS: ReadonlySet<string> = new Set(
-  Object.values(OPT_IN_LINKAGE_KEYS)
-    .map(encodeForComparison)
-    .filter((encoded) => encoded !== null),
-);
-
-/**
- * Whether `key` is one of the keys {@link optInLinkageKeys} offers, so a
- * surface can tell an offered addition apart from a built-in key beside
- * it in the same list without holding a flag of its own.
- *
- * Compared through the canonical encoding, the equality the two parties'
- * terms are compared under, so a key that merely borrows an offered key's
- * name -- one an expert editor renamed, or an imported document declares
- * -- is not mistaken for the offer. A value outside the canonical domain
- * cannot be compared and answers `false` rather than throwing: the
- * offered keys hold no such value.
- */
-export function isOptInLinkageKey(key: LinkageKey): boolean {
-  const encoded = encodeForComparison(key);
-  return encoded !== null && OPT_IN_LINKAGE_KEY_ENCODINGS.has(encoded);
-}
 
 /**
  * Whether a semantic type can be a linkage field's type. `identifier` and `other`
@@ -987,8 +1176,8 @@ function explicitFieldType(
  *   field ({@link DEFAULT_LINKAGE_FIELDS}) when it has one, else a
  *   synthetic default named for the type (`name` and `type` both the
  *   semantic type, no constraints). The synthetic case is what lets a
- *   column of a matchable type the default keys do not use (`zip_code`,
- *   `phone_number`, `email_address`) be referenced as a linkage field
+ *   column of a matchable type the built-in fields do not declare be
+ *   referenced as a linkage field
  *   with no authored cleaning -- it resolves to that column by type at
  *   exchange time. A metadata-only pair (no `standardization`) thus
  *   yields exactly one field per present matchable type, and for the
@@ -1003,8 +1192,8 @@ function explicitFieldType(
  *
  * Field order follows {@link DEFAULT_LINKAGE_FIELDS}, with a default
  * type's explicit fields emitted in `standardization` order at that
- * type's position; any explicit-only type (one with no default field,
- * e.g. `phone_number`) follows in `standardization` order, then any
+ * type's position; any explicit-only type (one with no default field)
+ * follows in `standardization` order, then any
  * present matchable type with no field yet (the synthetic case) in
  * metadata order. The returned set is the candidate fields keys may
  * reference; a caller that emits final terms filters it to the fields
@@ -1061,8 +1250,8 @@ export function authoredLinkageFields(
         ...(def.constraints !== undefined && { constraints: def.constraints }),
       });
   }
-  // Explicit fields for a present type with no default field (e.g. phone_number,
-  // email_address, zip_code): there are no default constraints to inherit.
+  // Explicit fields for a present type with no default field: there are no
+  // default constraints to inherit.
   for (const [type, transformations] of explicitByType) {
     if (emittedTypes.has(type)) continue;
     emittedTypes.add(type);
@@ -1071,9 +1260,8 @@ export function authoredLinkageFields(
   }
   // A present matchable type with neither a default field nor any authored
   // transformation still declares one field: a synthetic default named for the
-  // type, in metadata order. DEFAULT_LINKAGE_FIELDS covers only the types the
-  // default keys use, so without this a column of another matchable type
-  // (`zip_code`, `phone_number`, `email_address`) roled `linkage` would be invisible
+  // type, in metadata order. Without this a column of a matchable type
+  // DEFAULT_LINKAGE_FIELDS does not declare, roled `linkage`, would be invisible
   // to the key editor and unmatchable -- even though resolveFieldColumns binds such
   // a field to that column (identity transform) at exchange time. One field per type
   // (deduped via emittedTypes); a second column of the type is matched by authoring a

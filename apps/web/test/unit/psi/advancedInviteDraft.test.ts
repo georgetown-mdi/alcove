@@ -75,14 +75,14 @@ describe("setDraftMetadataKeepingKeys", () => {
 
 describe("draftWithFieldAdded", () => {
   // Two columns of one opt-in type, so the type's FIRST field and its second are
-  // both reachable, and a guided draft has cleaning for neither (the offers
-  // arrive off).
-  const ZIP_COLUMNS = ["first_name", "last_name", "dob", "zip", "zipcode"];
+  // both reachable, and a guided draft has cleaning for neither (with no date of
+  // birth, no built-in key over these columns reads a ZIP).
+  const ZIP_COLUMNS = ["ssn", "first_name", "last_name", "zip", "zipcode"];
   const ZIP_ROWS: Array<CSVRow> = [
     {
+      ssn: "501-22-3344",
       first_name: "Ada",
       last_name: "Lovelace",
-      dob: "12/10/1985",
       zip: "20001-1234",
       zipcode: "20002-5678",
     },

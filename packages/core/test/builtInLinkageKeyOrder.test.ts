@@ -24,12 +24,6 @@ function fieldNamesOfType(
 }
 
 const dateFields = fieldNamesOfType("date_of_birth");
-const ssnFields = fieldNamesOfType("ssn", "ssn4");
-const lastNameFields = fieldNamesOfType("last_name");
-
-function references(key: LinkageKey, fields: ReadonlySet<string>): boolean {
-  return key.elements.some((element) => fields.has(element.field));
-}
 
 /**
  * How a key treats the date of birth: `full` where every date element it
@@ -98,27 +92,5 @@ describe("the built-in key set's cascade order", () => {
     // assertion above while holding none of the property, so the pairs the set
     // does declare are counted rather than assumed.
     expect(pairsCompared).toBeGreaterThan(0);
-  });
-
-  test("is not a ranking by strength of evidence", () => {
-    // The two arrangements DEFAULT_LINKAGE_KEYS documents as the reason its
-    // order must not be read as a precision ranking. A reorder to
-    // strongest-evidence-first would leave that statement describing a set
-    // nobody ships, so it fails here rather than going unnoticed.
-    const firstWithoutSsn = linkageKeys.findIndex(
-      (key) => !references(key, ssnFields),
-    );
-    let lastWithSsn = -1;
-    linkageKeys.forEach((key, index) => {
-      if (references(key, ssnFields)) lastWithSsn = index;
-    });
-    expect(firstWithoutSsn).toBeGreaterThanOrEqual(0);
-    expect(firstWithoutSsn).toBeLessThan(lastWithSsn);
-
-    const firstSsnWithoutLastName = linkageKeys.findIndex(
-      (key) => references(key, ssnFields) && !references(key, lastNameFields),
-    );
-    expect(firstSsnWithoutLastName).toBeGreaterThanOrEqual(0);
-    expect(firstSsnWithoutLastName).toBeLessThan(firstWithoutSsn);
   });
 });

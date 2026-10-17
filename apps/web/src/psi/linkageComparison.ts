@@ -1,7 +1,6 @@
 import {
   encodeForComparison,
   isDrawnFromLinkageRuleSet,
-  isOptInLinkageKey,
   linkageRuleSetReferenceFor,
 } from "@alcove/core";
 
@@ -14,18 +13,18 @@ import type {
 
 /**
  * The rule-set membership questions the inviter's editor asks about DRAFT-side
- * values -- is this key an opt-in offer, are these rules drawn from the set they
+ * values -- does this key match an offered one, are these rules drawn from the set they
  * cite, which citation are they entitled to -- each taken over the value with its
  * explicitly-`undefined` optional properties dropped.
  *
- * Core answers all three by byte equality under the canonical encoding, which the
+ * Core answers each by byte equality under the canonical encoding, which the
  * signed document format depends on and which rejects an explicit `undefined`
  * where it accepts an absent property. The values these compares take are
  * DRAFT-side: live JavaScript objects the editor holds and rebuilds, not the
  * parsed documents the predicates are otherwise handed, so both spellings of "not
- * set" are representable. A key spelling it the second way states what the offer
- * states, so an unpruned compare would answer `false` for it and drop the key's
- * opt-in badge on the console and the built terms' rule-set citation.
+ * set" are representable. A key spelling it the second way states what the set
+ * states, so an unpruned compare would answer `false` for it and drop the built
+ * terms' rule-set citation.
  *
  * The prune closes that by making the difference unrepresentable at the compare.
  * No draft-editing helper and no import builds terms holding an explicit
@@ -36,7 +35,7 @@ import type {
  *
  * A `no-restricted-imports` ban in `apps/web/eslint.config.js` routes the
  * editor's membership compares through this module rather than core's predicate
- * directly, refusing an import of `encodeForComparison`, `isOptInLinkageKey`,
+ * directly, refusing an import of `encodeForComparison`,
  * `isDrawnFromLinkageRuleSet`, or `linkageRuleSetReferenceFor` from
  * `@alcove/core` anywhere under `apps/web/src` but this module. It reads static
  * import and re-export specifiers -- a named import, a rename, a namespace
@@ -47,7 +46,7 @@ import type {
  * The prune returns a value it drops nothing from by reference, so a parsed
  * document asked through these wrappers is the same value core would have been
  * handed directly: they are the whole import surface the ban leaves, and the
- * `advancedInvite` barrel the console imports re-exports all four.
+ * `advancedInvite` barrel the console imports re-exports all three.
  */
 
 /**
@@ -123,13 +122,6 @@ function comparableRules(
  * when the key cannot be canonically encoded at all. */
 export function encodeKeyForComparison(key: LinkageKey): string | null {
   return encodeForComparison(comparableForm(key));
-}
-
-/** Whether `key` is one of the opt-in offers rather than a key the built-in rule
- * set declares -- what the guided list's marker and the guidance beside it are
- * about. */
-export function isOptInDraftKey(key: LinkageKey): boolean {
-  return isOptInLinkageKey(comparableForm(key));
 }
 
 /** Whether the draft-built `rules` were drawn from `ruleSet`, the predicate that

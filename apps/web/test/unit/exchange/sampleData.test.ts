@@ -2,7 +2,7 @@ import { Readable } from "node:stream";
 
 import { describe, expect, test } from "vitest";
 
-import { inferMetadata, isOptInLinkageKey, loadCSVFile } from "@alcove/core";
+import { inferMetadata, loadCSVFile } from "@alcove/core";
 
 import {
   buildKeyStrings,
@@ -121,22 +121,14 @@ describe("sample data", () => {
     const inviter = await acquire(SAMPLE_INVITER_CSV, SAMPLE_INVITER_FILE_NAME);
     const editor = editorFromCsv("Sample Org", inviter);
     // The seed enables every derived key, and several keys are derivable from
-    // these columns, so the file is matchable straight out of read.
-    const derived = editor.draft.keys.filter(
-      (entry) => !isOptInLinkageKey(entry.key),
-    );
+    // these columns, so the file is matchable straight out of read. The ZIP
+    // column brings in the built-in ZIP keys, on like the rest.
+    const derived = editor.draft.keys;
     expect(derived.length).toBeGreaterThan(1);
     expect(derived.every((entry) => entry.enabled)).toBe(true);
-    // The ZIP column makes the offered ZIP key visible, and it arrives off: the
-    // walkthrough runs the default set, and adding to it is a choice a visitor
-    // makes rather than one the sample makes for them.
-    const offered = editor.draft.keys.filter((entry) =>
-      isOptInLinkageKey(entry.key),
+    expect(derived.map((entry) => entry.key.name)).toContain(
+      "LN + FN + DOB + ZIP5",
     );
-    expect(offered.map((entry) => entry.key.name)).toEqual([
-      "LN + FN + DOB + ZIP",
-    ]);
-    expect(offered.every((entry) => entry.enabled)).toBe(false);
   });
 
   test("the six engineered pairs standardize equal under default cleaning", async () => {

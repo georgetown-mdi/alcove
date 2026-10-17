@@ -4,11 +4,17 @@ import type {
   LinkageRuleSetReference,
   LinkageSetIdentity,
   LinkageTerms,
+  PrecisionFloor,
+  PrecisionFloorSelection,
 } from "@alcove/core";
 import {
   BUILT_IN_LINKAGE_RULE_SETS,
+  DEFAULT_LINKAGE_RULE_SET,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   findBuiltInLinkageRuleSet,
   isDrawnFromLinkageRuleSet,
+  linkageKeysAtPrecisionFloor,
+  referencedLinkageFieldNames,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
@@ -151,7 +157,11 @@ function shippedRuleSets(
  *   are the rules, untouched here. The citation beside them stays the claim
  *   {@link warnOnLinkageRuleSetCitationDrift} judges.
  * - Neither list written, and the citation names a shipped set: both lists
- *   come from that set, and the citation stands as the file wrote it.
+ *   come from that set, and the citation stands as the file wrote it. The keys
+ *   are those the block's `precision_floor` and `one_state_or_metro_area`
+ *   select ({@link linkageKeysAtPrecisionFloor}), the 95% floor with the answer
+ *   yes where it writes neither; a selection is refused beside written lists,
+ *   with no citation, or over a set with no bands.
  * - Neither list written, and the citation names a set this build does not
  *   ship: refused, naming what was cited and what this build ships. Nothing
  *   here guesses at a name it does not ship, and the file writes no rules to
@@ -185,13 +195,37 @@ export function linkageTermsWithNamedRuleSetRules(
     Array.isArray(rawTerms)
   )
     return rawTerms;
-  const terms = rawTerms as Record<string, unknown>;
+  const { terms, selection, selects } = withoutPrecisionFloorSelection(
+    rawTerms as Record<string, unknown>,
+    configPath,
+  );
   const citation = terms["linkage_rule_set"] ?? terms["linkageRuleSet"];
-  if (citation === undefined) return rawTerms;
+  if (citation === undefined) {
+    if (selects)
+      throw configFileRefusal(
+        configPath,
+        "selects rules by linkage_terms.precision_floor or " +
+          "one_state_or_metro_area but names no linkage_rule_set to select " +
+          "them from. Add the linkage_rule_set block naming the built-in " +
+          "rules, or remove the selection.",
+      );
+    return rawTerms;
+  }
 
   const writesFields = declaresKey(terms, "linkage_fields", "linkageFields");
   const writesKeys = declaresKey(terms, "linkage_keys", "linkageKeys");
-  if (writesFields && writesKeys) return rawTerms;
+  if (writesFields && writesKeys) {
+    if (selects)
+      throw configFileRefusal(
+        configPath,
+        "selects rules by linkage_terms.precision_floor or " +
+          "one_state_or_metro_area and also writes linkage_fields and " +
+          "linkage_keys. The selection picks the named set's rules for you: " +
+          "delete both lists to run it, or remove the selection to run the " +
+          "lists as written.",
+      );
+    return rawTerms;
+  }
 
   const reference = citedRuleSetReference(citation);
   if (reference === undefined) return rawTerms;
@@ -234,12 +268,83 @@ export function linkageTermsWithNamedRuleSetRules(
         "in the file.",
     );
 
+  if (selects && ruleSet.ruleBands === undefined)
+    throw configFileRefusal(
+      configPath,
+      `selects rules by linkage_terms.precision_floor or ` +
+        `one_state_or_metro_area, but the rule set ${cited} it names has no ` +
+        `precision bands to select by. Name ` +
+        `${ruleSetCitationClause(DEFAULT_LINKAGE_RULE_SET.reference, refusalRuleSetHalf)}, ` +
+        "or remove the selection.",
+    );
+
   // Cloned rather than aliased: a built-in set is frozen through every level,
   // and what this returns is a document later passes rewrite.
+  const linkageKeys = linkageKeysAtPrecisionFloor(ruleSet, selection);
+  const referenced = referencedLinkageFieldNames(linkageKeys);
   return {
     ...terms,
-    linkageFields: structuredClone(ruleSet.linkageFields),
-    linkageKeys: structuredClone(ruleSet.linkageKeys),
+    linkageFields: structuredClone(
+      ruleSet.linkageFields.filter((field) => referenced.has(field.name)),
+    ),
+    linkageKeys: structuredClone(linkageKeys),
+  };
+}
+
+/** The floors a configuration may select, as it writes them. */
+const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = [99, 95];
+
+/**
+ * `terms` with its precision-floor selection taken out, and the selection it
+ * wrote, defaulted where it wrote none ({@link DEFAULT_PRECISION_FLOOR_SELECTION}).
+ * Both spellings of each key are read, as every raw read here is. `selects` is
+ * whether the block wrote either key. A value of the wrong shape is refused
+ * here, since the schema never sees these keys.
+ */
+function withoutPrecisionFloorSelection(
+  block: Record<string, unknown>,
+  configPath: string,
+): {
+  terms: Record<string, unknown>;
+  selection: PrecisionFloorSelection;
+  selects: boolean;
+} {
+  const terms = { ...block };
+  const take = (written: string, camelized: string): unknown => {
+    const value = terms[written] ?? terms[camelized];
+    delete terms[written];
+    delete terms[camelized];
+    return value;
+  };
+  const floor = take("precision_floor", "precisionFloor");
+  const oneArea = take("one_state_or_metro_area", "oneStateOrMetroArea");
+  if (
+    floor !== undefined &&
+    !PRECISION_FLOORS.includes(floor as PrecisionFloor)
+  )
+    throw configFileRefusal(
+      configPath,
+      `writes linkage_terms.precision_floor as a value other than ` +
+        `${PRECISION_FLOORS.join(" or ")}. Write one of those, or remove it ` +
+        `to run the ${DEFAULT_PRECISION_FLOOR_SELECTION.floor}% floor.`,
+    );
+  if (oneArea !== undefined && typeof oneArea !== "boolean")
+    throw configFileRefusal(
+      configPath,
+      "writes linkage_terms.one_state_or_metro_area as a value other than " +
+        "true or false. Write true if both files draw their members from one " +
+        "state or one metropolitan area, and false otherwise.",
+    );
+  return {
+    terms,
+    selection: {
+      floor:
+        (floor as PrecisionFloor | undefined) ??
+        DEFAULT_PRECISION_FLOOR_SELECTION.floor,
+      oneStateOrMetroArea:
+        oneArea ?? DEFAULT_PRECISION_FLOOR_SELECTION.oneStateOrMetroArea,
+    },
+    selects: floor !== undefined || oneArea !== undefined,
   };
 }
 

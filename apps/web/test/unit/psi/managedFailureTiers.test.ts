@@ -519,7 +519,16 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   // exchange cannot send past (the most values the partner can receive).
   // Reconnecting sends the same set, so it tiers apart from the retryable
   // transport drop, and its copy names splitting the input.
-  const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];
+  const columns = [
+    "ssn",
+    "ssn4",
+    "first_name",
+    "last_name",
+    "date_of_birth",
+    "phone",
+    "email",
+    "zip",
+  ];
   const rows: Array<CSVRow> = [
     {
       ssn: "234-56-7890",
@@ -527,6 +536,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       first_name: "Ada",
       last_name: "Lovelace",
       date_of_birth: "12/10/1915",
+      phone: "3125550142",
+      email: "ada@example.org",
+      zip: "20001",
     },
     {
       ssn: "345-67-8901",
@@ -534,6 +546,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       first_name: "Alan",
       last_name: "Turing",
       date_of_birth: "06/23/1912",
+      phone: "3125550143",
+      email: "alan@example.org",
+      zip: "20002",
     },
   ];
 

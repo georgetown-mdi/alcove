@@ -1,10 +1,14 @@
 {
   "pins": {
     "baseline-pii": {
-      "1.0.0": "sha256:9aed0ced1287e7c6ddba25b5ffae15a6b3f611e00d9b101ac324b1f8263acee0"
+      "1.0.0": "sha256:9aed0ced1287e7c6ddba25b5ffae15a6b3f611e00d9b101ac324b1f8263acee0",
+      "1.1.0": "sha256:51c383bcc2328effe4ca28da7033bab82c250839540bc427fab192c2f0cd37ca"
     },
     "hmis-keys": {
       "1.0.0": "sha256:a2518295ec241f22c749ac1be12e7da2bc7231fcf64f3bd6c7f0df3e4ca255de"
+    },
+    "precision-ranked-rules": {
+      "2.0.0": "sha256:c5a2ce7b4addee8e3f9c7ce2a413266e6dd618b1ae394d66a53cf65ee0e36168"
     }
   }
 }

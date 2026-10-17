@@ -308,6 +308,9 @@ function propertyAt(properties, key, where) {
 /** Which content declaration each half of a rule set takes its rules from. */
 const HALF_CONTENT = { fieldSet: "linkageFields", keySet: "linkageKeys" };
 
+/** The entry property holding a key set's precision bands, where it has any. */
+const BANDS_KEY = "ruleBands";
+
 /** One registry entry: its two halves, each with its content and the
  * declarations the entry composed it from. */
 function readRuleSet(element, index, constants, read) {
@@ -343,6 +346,13 @@ function readRuleSet(element, index, constants, read) {
         content: declarationName(contentNode) ?? `${declaration}.${contentKey}`,
       },
     };
+  }
+  // A key set's bands and coverage conditions are part of what its version
+  // names, so they are read with it where the entry declares them.
+  const bandsNode = entry.get(BANDS_KEY);
+  if (bandsNode !== undefined) {
+    halves.keySet.bands = literalValue(bandsNode, read);
+    halves.keySet.declarations.content += ` and ${declarationName(bandsNode) ?? `${declaration}.${BANDS_KEY}`}`;
   }
   return { declaration, index, ...halves };
 }
@@ -485,11 +495,16 @@ export function contentDigest(content) {
  */
 export function declaredSets(ruleSets) {
   return ruleSets.flatMap((ruleSet) =>
-    Object.keys(HALF_CONTENT).map((role) => ({
-      ...ruleSet[role],
-      entry: ruleSet.declaration,
-      digest: contentDigest(ruleSet[role].content),
-    })),
+    Object.keys(HALF_CONTENT).map((role) => {
+      const { content, bands } = ruleSet[role];
+      return {
+        ...ruleSet[role],
+        entry: ruleSet.declaration,
+        digest: contentDigest(
+          bands === undefined ? content : { keys: content, bands },
+        ),
+      };
+    }),
   );
 }
 

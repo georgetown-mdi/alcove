@@ -16,7 +16,15 @@ so the citation goes with the exchange and is written into each party's record;
 what a citation does and does not assert is that field's to state. This note
 records what the two sets are, why they are named apart, what the key set's
 validation rests on, the criticisms on record against it, and why both names
-are neutral. See [docs/notes/README.md](README.md)._
+are neutral. See [docs/notes/README.md](README.md).
+
+The key set it describes is `hmis-keys` 1.0.0 over `baseline-pii` 1.0.0, which
+stays in the registry so a citation of it resolves. The built-in key set is
+the catalog of [linkage-rule-catalog.md](linkage-rule-catalog.md), published as
+`precision-ranked-rules` 2.0.0 over `baseline-pii` 1.1.0, which adds
+`phone_number`, `email_address` and `zip_code`. The name
+`precision-ranked-rules` is proposed, for the maintainer to choose before it
+ships._
 
 This is design rationale. Nothing here binds an implementation.
 

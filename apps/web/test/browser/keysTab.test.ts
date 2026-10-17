@@ -175,9 +175,9 @@ describe("KeysTab: the dropped-citation notice", () => {
   });
 });
 
-describe("KeysTab: the keys offered outside the default set", () => {
-  // The same minimal file with a ZIP column, so the guided list includes the one
-  // offered key that column supplies alongside the built-in keys.
+describe("KeysTab: a file with a ZIP column", () => {
+  // The same minimal file with a ZIP column, so the guided list includes the
+  // built-in keys that read it.
   const withZip: AcquiredCsv = {
     ...csv,
     rawRows: [{ ...csv.rawRows[0], zip: "60614" }],
@@ -205,44 +205,15 @@ describe("KeysTab: the keys offered outside the default set", () => {
     );
   }
 
-  test("renders the offer as an unchecked compound key, marked, with the guidance beside it", async () => {
+  test("lists the built-in ZIP keys on, with no offer marked apart", async () => {
     renderFor(withZip);
 
-    // Offered through the list's own control, so adding a key is done the way a
-    // default key is turned off -- and it arrives off, holding its type inside a
-    // compound key rather than standing alone.
-    const offered = page.getByRole("checkbox", {
-      name: /LN \+ FN \+ DOB \+ ZIP/,
+    const zipKey = page.getByRole("checkbox", {
+      name: /LN \+ FN \+ DOB \+ ZIP5/,
     });
-    await expect.element(offered).toBeInTheDocument();
-    await expect.element(offered).not.toBeChecked();
+    await expect.element(zipKey).toBeInTheDocument();
+    await expect.element(zipKey).toBeChecked();
 
-    const marked = page.getByText("outside the default set", { exact: false });
-    await expect.element(marked.first()).toBeInTheDocument();
-
-    // The copy points: the departure from the validated set, why the offer is
-    // compound, and the shared-contact hazard behind that.
-    const body = document.body.textContent;
-    expect(body).toContain("no longer matches on the default set alone");
-    expect(body).toContain("offered only inside a compound key");
-    expect(body).toContain("over-matches");
-    expect(body).toContain("whether its holder is in the other file");
-    expect(body).toContain("often shared");
-    // All three named, so none is offered on quieter terms than the others.
-    expect(body).toContain("Phone number, email address and ZIP code");
-    // And that the cleaning goes with the key: an operator who edited an offered
-    // type's steps loses them to a column edit that drops its key, and gets the
-    // recommended steps back rather than their own.
-    expect(body).toContain("Cleaning follows the key");
-    expect(body).toContain("restores the recommended steps");
-  });
-
-  test("says nothing when the file supplies no column for one", async () => {
-    renderFor(csv);
-
-    await expect
-      .element(page.getByRole("heading", { name: "Matching keys" }))
-      .toBeInTheDocument();
     const body = document.body.textContent;
     expect(body).not.toContain("outside the default set");
     expect(body).not.toContain("Phone number, email address and ZIP code");

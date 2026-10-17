@@ -77,6 +77,5 @@ export {
 export {
   encodeKeyForComparison,
   isDraftDrawnFromLinkageRuleSet,
-  isOptInDraftKey,
   linkageRuleSetReferenceForDraft,
 } from "../linkageComparison";

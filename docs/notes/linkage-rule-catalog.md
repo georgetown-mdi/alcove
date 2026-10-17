@@ -4,10 +4,11 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 
 # Linkage rule catalog: rules and their precision bands
 
-_Status: proposed.
-The rules marked shipped are in the built-in key set today, described in [default-linkage-rule-set.md](default-linkage-rule-set.md), and this catalog gives them bands.
-Rules 22 and 23 ship only as guided opt-in keys, outside the built-in set.
-The other rules are not built, and an entry names the feature a rule needs where Alcove lacks one.
+_Status: built.
+Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.0.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+The set's name is proposed, for the maintainer to choose before it ships.
+A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
+The per-entry markers below (shipped, opt-in, new) record where each rule stood before the catalog was built.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 

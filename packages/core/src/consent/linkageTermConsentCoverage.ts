@@ -305,8 +305,8 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
     },
   ],
   // A citation of its own rather than the built-in set's: the probe's fields and
-  // keys are not the built-in ones, so citing `hmis-keys` here would make the
-  // document claim rules it does not have.
+  // keys are not the built-in ones, so citing the built-in key set here would
+  // make the document claim rules it does not have.
   linkageRuleSet: {
     fieldSet: { name: "probe-pii", version: "1.0.0" },
     keySet: { name: "probe-keys", version: "1.0.0" },

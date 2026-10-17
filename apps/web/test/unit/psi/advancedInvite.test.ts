@@ -985,14 +985,20 @@ describe("controls the editor does not expose stay at their safe defaults", () =
   });
 
   test("(e) algorithm stays psi, deduplicate stays off, no fuzzy is added", () => {
+    const builtInKeys = new Set(
+      DEFAULT_LINKAGE_RULE_SET.linkageKeys.map((key) => canonicalString(key)),
+    );
     for (const draft of variants()) {
       const built = buildAdvancedTerms(draft);
       expect(built.algorithm).toBe("psi");
       expect(built.deduplicate).toBe(false);
+      // A fuzzy comparison is one a built-in key declares, never one added.
       expect(
-        built.linkageKeys.every((k) =>
-          k.elements.every((e) => e.generateFuzzyComparisons === undefined),
-        ),
+        built.linkageKeys
+          .filter((k) =>
+            k.elements.some((e) => e.generateFuzzyComparisons !== undefined),
+          )
+          .every((k) => builtInKeys.has(canonicalString(k))),
       ).toBe(true);
       // No payload is authored either.
       expect(built.payload).toBeUndefined();

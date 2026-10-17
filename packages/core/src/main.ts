@@ -369,20 +369,25 @@ export type { ServerProvisionMode } from "./config/connection";
 export {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   OPT_IN_LINKAGE_FIELD_TYPES,
   authoredLinkageFields,
   encodeForComparison,
   findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
   isDrawnFromLinkageRuleSet,
-  isOptInLinkageKey,
+  linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
-  optInLinkageKeys,
   resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {
   BuiltInLinkageRuleSet,
+  LinkageRuleBand,
+  PrecisionBand,
+  PrecisionFloor,
+  PrecisionFloorSelection,
+  RuleCoverage,
   LinkageRuleSetCitationVerdict,
 } from "./defaults/builtInLinkageTerms";
 export { getDefaultStandardization } from "./defaults/builtInStandardization";

@@ -4,7 +4,6 @@ import {
   ActionIcon,
   Alert,
   Checkbox,
-  List,
   NativeSelect,
   Radio,
   Switch,
@@ -27,7 +26,6 @@ import {
 import {
   buildAdvancedTerms,
   importedCitationDropNotice,
-  isOptInDraftKey,
 } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
@@ -85,42 +83,6 @@ const KEY_VERDICT_BADGES: Record<
   },
 };
 
-/** The heading of {@link OPT_IN_KEYS_GUIDANCE_LEAD}, and the marker on each guided-list
- * entry the guidance is about, so the two read as one statement. */
-const OPT_IN_BADGE_LABEL = "outside the default set";
-
-/**
- * What turning on an offered key the built-in set does not declare costs the
- * operator, stated where the offer is. Rendered whenever the list holds one, so
- * the three types it names are offered on identical terms -- none is offered
- * with a caveat the others are spared, and none is offered silently.
- */
-const OPT_IN_KEYS_GUIDANCE_LEAD =
-  "Phone number, email address and ZIP code are not part of the default set, " +
-  "so the testing behind the defaults says nothing about how well these " +
-  "match. Turning one on means this exchange no longer matches on the default " +
-  "set alone.";
-
-/**
- * The points under {@link OPT_IN_KEYS_GUIDANCE_LEAD}. Each type is offered only
- * inside a compound key, never on its own. The last two points cover behavior
- * not otherwise visible: a metadata edit can leave a badge on an offer the file
- * no longer supplies a column for, and turning a lost key back on restores the
- * recommended cleaning steps rather than an operator's own edits.
- */
-const OPT_IN_KEYS_GUIDANCE_POINTS = [
-  "Each is offered only inside a compound key, never on its own: a single " +
-    "identifier both over-matches and tells anyone holding a value whether its " +
-    "holder is in the other file.",
-  "A phone number or an email address is often shared, covering a household " +
-    "or the organization that helped with an application.",
-  "Offers appear for the keys your file can supply; one marked not satisfiable " +
-    "lost its column to a later edit.",
-  "Cleaning follows the key: turning an offer off, or losing a column its key " +
-    "needs, withdraws the cleaning that came with it, and turning it back on " +
-    "restores the recommended steps rather than any you had changed.",
-];
-
 /**
  * The Matching keys tab: the guided ordered key list (enable + reorder, with
  * satisfiability badges), the expert switch that opens element-by-element
@@ -128,11 +90,8 @@ const OPT_IN_KEYS_GUIDANCE_POINTS = [
  * strategy, matching method, and deduplication controls, each live while the
  * exchange applies what it writes.
  *
- * The list holds the built-in keys for these columns and, turned off and in the
- * cascade position each belongs at, any `optInLinkageKeys` offers for matchable
- * types the built-in set uses in none of its keys. Both use the same control --
- * a checkbox and the reorder pair -- with an opt-in entry marked and its cost
- * stated in the guidance below the list ({@link OPT_IN_KEYS_GUIDANCE_LEAD}).
+ * The list holds the built-in keys for these columns, each with a checkbox and
+ * the reorder pair.
  *
  * Also renders {@link importedCitationDropNotice} live from the draft, so a
  * rule-set citation the rebuild drops is flagged as soon as the import lands
@@ -191,9 +150,6 @@ export function KeysTab({
     [editor.draft, currentTerms],
   );
   const keyCount = editor.draft.keys.length;
-  const offersOptInKey = editor.draft.keys.some((entry) =>
-    isOptInDraftKey(entry.key),
-  );
   return (
     <>
       <button type="button" className={styles.backlink} onClick={onBack}>
@@ -228,13 +184,6 @@ export function KeysTab({
                     >
                       {badge.label}
                     </span>
-                    {isOptInDraftKey(entry.key) && (
-                      <span
-                        className={`${styles.keyBadge} ${styles.keyBadgeOptIn}`}
-                      >
-                        {OPT_IN_BADGE_LABEL}
-                      </span>
-                    )}
                   </>
                 }
               />
@@ -260,21 +209,6 @@ export function KeysTab({
           );
         })}
       </ol>
-      {offersOptInKey && (
-        <Alert
-          variant="light"
-          color="yellow"
-          title={`Some keys are ${OPT_IN_BADGE_LABEL}`}
-          my="md"
-        >
-          {OPT_IN_KEYS_GUIDANCE_LEAD}
-          <List size="sm" mt="xs">
-            {OPT_IN_KEYS_GUIDANCE_POINTS.map((point) => (
-              <List.Item key={point}>{point}</List.Item>
-            ))}
-          </List>
-        </Alert>
-      )}
       {keysError !== undefined && (
         <p
           role="alert"

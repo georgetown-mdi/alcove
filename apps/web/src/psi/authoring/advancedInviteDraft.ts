@@ -2,7 +2,6 @@ import {
   INVITATION_LIFETIME_SECONDS,
   OPT_IN_LINKAGE_FIELD_TYPES,
   authoredLinkageFields,
-  canonicalString,
   columnValues,
   fieldSourceColumnTypes,
   getDefaultLinkageTerms,
@@ -10,11 +9,10 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
-  optInLinkageKeys,
   referencedLinkageFieldNames,
 } from "@alcove/core";
 
-import { encodeKeyForComparison, isOptInDraftKey } from "../linkageComparison";
+import { encodeKeyForComparison } from "../linkageComparison";
 import { normalizeForEditor } from "../metadataEditing";
 
 import { buildAdvancedTerms } from "./advancedInviteTerms";
@@ -82,7 +80,7 @@ const OPT_IN_TYPES: ReadonlySet<string> = new Set(OPT_IN_LINKAGE_FIELD_TYPES);
  * widened past the fields `terms` declare to the
  * {@link OPT_IN_LINKAGE_FIELD_TYPES} fields that `enabledKeys` reference.
  *
- * Without the widening, an opt-in key ({@link optInLinkageKeys}) matches its
+ * Without the widening, a key over one of those fields matches its
  * column RAW while the accepting party cleans the same field from the terms
  * that declare it once the key is on, and the two parties match almost
  * nothing.
@@ -234,63 +232,18 @@ export function seedAdvancedInvite(
 
 /**
  * What the guided key list offers for `metadata`: the built-in keys the
- * columns can supply, ON, with the opt-in keys the columns can supply placed
- * among them ({@link placeOfferedKeys}) and OFF -- so a fresh draft authors
- * exactly the built-in set and the additions wait to be chosen.
- *
- * Each entry's `enabled` is the flag a key arrives with when first offered;
- * {@link reconcileKeys} keeps the operator's own flag for a key already in
- * the draft, so a metadata edit never silently re-enables an opt-in key that
- * was turned off, nor turns off one that was turned on.
+ * columns can supply, ON. Each entry's `enabled` is the flag a key arrives
+ * with when first offered; {@link reconcileKeys} keeps the operator's own
+ * flag for a key already in the draft.
  */
 function offerableDraftKeys(
   identity: string,
   metadata: Metadata,
 ): Array<DraftKey> {
-  return placeOfferedKeys(
-    getDefaultLinkageTerms(identity, metadata).linkageKeys.map((key) => ({
-      key,
-      enabled: true,
-    })),
-    optInLinkageKeys(metadata).map((key) => ({ key, enabled: false })),
-  );
-}
-
-/**
- * `keys` with each entry of `offers` inserted immediately above the first key
- * it REFINES -- holding that key's elements and at least one more -- and at
- * the end when it refines none of them.
- *
- * List order is cascade order: a round claims the records it matches, so a
- * refinement placed below the key it refines is left only what the looser
- * key could not claim, some of it claimed wrongly. Above it, the refinement
- * claims what both would match and the looser key still catches the rest.
- * An offer refining nothing goes last.
- */
-function placeOfferedKeys(
-  keys: ReadonlyArray<DraftKey>,
-  offers: ReadonlyArray<DraftKey>,
-): Array<DraftKey> {
-  const placed = [...keys];
-  for (const offer of offers) {
-    const at = placed.findIndex((entry) => refines(offer.key, entry.key));
-    if (at === -1) placed.push(offer);
-    else placed.splice(at, 0, offer);
-  }
-  return placed;
-}
-
-/** Whether `key` holds every element of `coarser` and at least one more, the
- * relation that makes `key` match a subset of what `coarser` matches.
- * Elements are compared through the canonical encoding, so a transform on one
- * of them is part of the element rather than ignored; a `swap` key states a
- * matching rule its elements do not hold, so neither side of the relation may
- * have one. */
-function refines(key: LinkageKey, coarser: LinkageKey): boolean {
-  if (key.swap !== undefined || coarser.swap !== undefined) return false;
-  if (coarser.elements.length >= key.elements.length) return false;
-  const elements = new Set(key.elements.map((el) => canonicalString(el)));
-  return coarser.elements.every((el) => elements.has(canonicalString(el)));
+  return getDefaultLinkageTerms(identity, metadata).linkageKeys.map((key) => ({
+    key,
+    enabled: true,
+  }));
 }
 
 /**
@@ -376,7 +329,7 @@ export function setDraftMetadata(
 
 /**
  * Turn the key at `index` on or off and bring the cleaning an opt-in type
- * holds with it: {@link optInLinkageKeys} offers a key referencing the
+ * holds with it: a guided key may reference the
  * type-named field `authoredLinkageFields` synthesizes, which holds its
  * recommended pipeline exactly while an enabled key references it. Turning
  * an offer on creates its cleaning (the data-prep workbench's card appears
@@ -412,7 +365,7 @@ export function draftWithKeyEnabled(
   };
 }
 
-/** Whether `transformation` is the cleaning an {@link optInLinkageKeys} offer
+/** Whether `transformation` is the cleaning an enabled opt-in-type key
  * mints: bound to a `role: linkage` column of an {@link OPT_IN_LINKAGE_FIELD_TYPES}
  * type and named for that type, which is the field name the offered key
  * references. Read from the input column rather than the output name alone, so a
@@ -562,10 +515,8 @@ function reconcileStandardization(
 
 /** Reconcile the draft's keys against a freshly-derived offer
  * ({@link offerableDraftKeys}): keys that remain offered keep their order
- * and enabled flag (replaced with the fresh template); a newly-offered
- * built-in key appends at its offered flag, and a newly-offered opt-in key
- * is placed where the offer places it ({@link placeOfferedKeys}), above
- * whichever key it refines.
+ * and enabled flag (replaced with the fresh template); a newly-offered key
+ * appends at its offered flag.
  *
  * A draft key is matched to an offer by the canonical encoding
  * ({@link encodeKeyForComparison}), not by NAME, so a key that merely
@@ -578,12 +529,7 @@ function reconcileStandardization(
  * operator saw beside the checkbox, so a shape mismatch under it is treated
  * as a departure from the offer, not a fresh one, and must not silently turn
  * a key the operator disabled back on. An offer no dropped entry named is
- * new and arrives at the offer's own flag and place.
- *
- * The dropped entry's place is what an opt-in re-offer inherits too, since
- * position is decided by whether the list already held a key of that name:
- * a re-added opt-in offer stays where the operator put it rather than
- * jumping up the cascade on an edit that changed nothing about it. */
+ * new and arrives at the offer's own flag and place. */
 function reconcileKeys(
   prevKeys: Array<DraftKey>,
   offerable: Array<DraftKey>,
@@ -626,11 +572,7 @@ function reconcileKeys(
   const fresh = offerable.filter(
     (entry) => !matched.has(entry) && !reoffered.has(entry),
   );
-  for (const entry of fresh) if (!isOptInDraftKey(entry.key)) kept.push(entry);
-  return placeOfferedKeys(
-    kept,
-    fresh.filter((entry) => isOptInDraftKey(entry.key)),
-  );
+  return [...kept, ...fresh];
 }
 
 /** The field names a metadata/standardization pair can declare -- the universe

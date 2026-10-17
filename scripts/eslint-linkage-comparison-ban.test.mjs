@@ -16,8 +16,8 @@ import {
 // optional properties before handing the value to core's strict canonical
 // compare, and nowhere else under apps/web/src. A direct import of core's
 // predicate skips the prune, and skips it silently -- the compare answers
-// `false` for a draft key that says exactly what the offer says, dropping the
-// key's opt-in badge and the terms' rule-set citation rather than failing.
+// `false` for draft rules that say exactly what the set says, dropping the
+// terms' rule-set citation rather than failing.
 //
 // The ban itself fails silently in the other direction: an import specifier or
 // import-name that stops matching keeps reporting zero problems, which reads the
@@ -67,14 +67,13 @@ const WEB_SRC = resolve(
 );
 const WEB_TEST = resolve(
   repoRoot,
-  "apps/web/test/unit/psi/guidedOptInKeys.test.ts",
+  "apps/web/test/unit/psi/guidedCatalogKeys.test.ts",
 );
 
 /** The core predicates the wrappers in linkageComparison.ts stand in front of. */
 const BANNED_NAMES = [
   "encodeForComparison",
   "isDrawnFromLinkageRuleSet",
-  "isOptInLinkageKey",
   "linkageRuleSetReferenceFor",
 ];
 
@@ -160,9 +159,12 @@ describe("the linkage-compare chokepoint ban", { timeout: 60_000 }, () => {
   for (const [shape, source] of [
     [
       "a renamed import",
-      'import { isOptInLinkageKey as p } from "@alcove/core";',
+      'import { linkageRuleSetReferenceFor as p } from "@alcove/core";',
     ],
-    ["a re-export", 'export { isOptInLinkageKey } from "@alcove/core";'],
+    [
+      "a re-export",
+      'export { linkageRuleSetReferenceFor } from "@alcove/core";',
+    ],
     ["a namespace import", 'import * as core from "@alcove/core";'],
     ["a blanket re-export", 'export * from "@alcove/core";'],
   ]) {
@@ -184,7 +186,7 @@ describe("the linkage-compare chokepoint ban", { timeout: 60_000 }, () => {
     expect(
       await importHits(
         WEB_SRC,
-        'import { isOptInDraftKey } from "@psi/authoring/advancedInvite";\n',
+        'import { encodeKeyForComparison } from "@psi/authoring/advancedInvite";\n',
       ),
     ).toHaveLength(0);
   });
