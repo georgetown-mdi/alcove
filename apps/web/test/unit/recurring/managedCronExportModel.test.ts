@@ -21,6 +21,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   exportRun,
+  exportedRunUsesRelay,
   invitationRegistrarExportLine,
   managedConfigurationExportState,
   managedCronExportPanelState,
@@ -337,6 +338,64 @@ describe("the line naming the invitation relay's registrar", () => {
     expect(
       invitationRegistrarExportLine(managedRecord().exchangeFile.connection),
     ).toBeUndefined();
+  });
+});
+
+describe("whether a command-line run of the export uses a relay", () => {
+  function connectionOf(
+    record: RunnableManagedExchangeRecord,
+    readOwn: () => OwnRelayRead,
+  ) {
+    const state = managedCronExportPanelState(record, readOwn, IMAGE);
+    if (state.kind !== "exportable")
+      throw new Error(
+        `the model refused an exportable record: ${state.reason}`,
+      );
+    return state.composed.connection;
+  }
+
+  test("is false where the export lists no turn url", () => {
+    expect(
+      exportedRunUsesRelay(
+        connectionOf(managedRecord(), () => ({
+          kind: "set",
+          relay: { turn: [], stun: [] },
+        })),
+      ),
+    ).toBe(false);
+  });
+
+  test("is true where the invitation's relay names a turn url", () => {
+    const record = managedRecord();
+    const connection = record.exchangeFile.connection;
+    if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+    expect(
+      exportedRunUsesRelay({
+        ...connection,
+        invitationRelay: { turn: ["turns:relay.partner.example.org:443"] },
+      }),
+    ).toBe(true);
+  });
+
+  test("is true where the export writes this party's own turn entries", () => {
+    const record = {
+      ...managedRecord(),
+      relayRegistrar: {
+        url: "https://relay.example.org:8443",
+        exchangeId: "riverbend-q3",
+      },
+    };
+    expect(
+      exportedRunUsesRelay(
+        connectionOf(record, () => ({
+          kind: "set",
+          relay: {
+            turn: ["turns:relay.example.org:443?transport=tcp"],
+            stun: [],
+          },
+        })),
+      ),
+    ).toBe(true);
   });
 });
 

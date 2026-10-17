@@ -22,6 +22,7 @@ import {
   runEnrollsAtInvitationRegistrar,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  selectRunRelay,
 } from "@alcove/core";
 
 import {
@@ -66,6 +67,17 @@ import type { RunSchedule } from "./scheduleTemplates";
  * itself.
  */
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
+
+/**
+ * Whether a command-line run of `connection`, the connection the export
+ * writes, uses a TURN relay: one of its own `turn` entries or the invitation's,
+ * after `allowedRelays`. Such a run asks no STUN server unless it lists a
+ * `stun` url, so it neither uses the built-in default nor warns about it.
+ */
+export function exportedRunUsesRelay(connection: ConnectionConfig): boolean {
+  if (connection.channel !== "webrtc") return false;
+  return (selectRunRelay(connection).turn ?? []).length > 0;
+}
 
 /**
  * The line an export shows where `connection`, the connection the export

@@ -270,6 +270,61 @@ describe("the registrar the invitation's relay names", () => {
   });
 });
 
+describe("the STUN line of the panel", () => {
+  test("says the run asks no STUN server where the export lists a relay", async () => {
+    const created = await createManagedExchange(
+      newExchange({
+        side: "acceptor",
+        exchangeFile: composeManagedExchangeFile({
+          connection: {
+            channel: "webrtc",
+            host: "signaling.example.org",
+            relay: {
+              turn: ["turns:relay.partner.example.org:443?transport=tcp"],
+            },
+          },
+          linkageTerms,
+        }),
+      }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect
+      .element(
+        page.getByText(
+          "This exchange names no STUN server and lists a relay, so a " +
+            "scheduled run asks no STUN server",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("Add a stun entry to the connection in alcove.yaml", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(CLI_BUILT_IN_STUN_URI);
+  });
+
+  test("names the built-in default where the export lists no relay", async () => {
+    const created = await createManagedExchange(newExchange());
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect
+      .element(
+        page.getByText("every scheduled run uses the built-in default", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("lists a relay");
+  });
+});
+
 describe("a panel whose lines are withheld", () => {
   afterEach(() => {
     withheldLines.notice = undefined;

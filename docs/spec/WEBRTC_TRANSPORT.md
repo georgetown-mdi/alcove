@@ -931,8 +931,11 @@ list naming no `stun` url, such as one naming only TURN urls. A run that lists a
 never contacted, and how that is measured, is in
 [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions).
 
-Every run gathers host, server-reflexive and relay candidates, so ICE can pair
-a direct or server-reflexive path and falls back to a relay where none works.
+Every run gathers host candidates, and relay candidates where a `turn` entry is
+kept. A run gathers server-reflexive candidates only from a `stun` url it lists,
+or from the built-in default when it lists no server at all; a run listing
+`turn` alone gathers none, so ICE pairs a direct host path or falls back to the
+relay.
 
 A `turn` entry gives relay candidates only where the transport keeps it, and
 the connection schema accepts no url the transport would drop, and refuses a

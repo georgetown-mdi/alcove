@@ -21,6 +21,7 @@ import styles from "@styles/app.module.css";
 import {
   CLI_BUILT_IN_STUN_URI,
   exportRun,
+  exportedRunUsesRelay,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
@@ -285,15 +286,27 @@ export function ManagedCronExportPanel({
             </ol>
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
             <ul className={styles.small}>
-              <li>
-                This exchange names no STUN server, so every scheduled run uses
-                the built-in default ({CLI_BUILT_IN_STUN_URI}) to discover that
-                machine&apos;s public address. The address, and the fact that a
-                session is happening, are disclosed to that server; no exchange
-                content is. Each run warns about it. Add a stun entry to the
-                connection in {state.composed.config.fileName} to use your own
-                server instead.
-              </li>
+              {exportedRunUsesRelay(state.composed.connection) ? (
+                <li>
+                  This exchange names no STUN server and lists a relay, so a
+                  scheduled run asks no STUN server: it reaches your partner
+                  directly where both machines share a network, and through the
+                  relay otherwise. Add a stun entry to the connection in{" "}
+                  {state.composed.config.fileName} to also discover that
+                  machine&apos;s public address.
+                </li>
+              ) : (
+                <li>
+                  This exchange names no STUN server, so every scheduled run
+                  uses the built-in default ({CLI_BUILT_IN_STUN_URI}) to
+                  discover that machine&apos;s public address. The address, and
+                  the fact that a session is happening, are disclosed to that
+                  server; no exchange content is. Each run warns about it. Add a
+                  stun entry to the connection in{" "}
+                  {state.composed.config.fileName} to use your own server
+                  instead.
+                </li>
+              )}
               {invitationRegistrarLine !== undefined && (
                 <li>{invitationRegistrarLine}</li>
               )}
