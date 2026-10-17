@@ -21,6 +21,7 @@ import {
 
 import {
   ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_UNSET,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "./allowedRelays";
@@ -119,15 +120,16 @@ export function marked(
 /**
  * The line the acceptance review shows under a relay whose invitation names a
  * registrar, `registrar` escaped in the summary: a run enrolls there before it
- * connects only when that relay is the one it uses
+ * connects only when it allocates on that relay itself, not when traffic
+ * reaches the relay only through the partner's relayed candidates
  * (`invitationRelayEnrollment.ts`), and then its operator sees this party's
  * address.
  */
 export function invitationRelayRegistrarLine(registrar: Displayable): string {
   return (
     `A run registers this exchange at ${registrar} before it connects ` +
-    "only when this relay is the one the run uses, and whoever runs that " +
-    "registrar then learns your network address."
+    "only when your side sets up its own connection on this relay, and " +
+    "whoever runs that registrar then learns your network address."
   );
 }
 
@@ -787,7 +789,8 @@ export function logDecisionFacts(
  *
  * `allowedRelays` is the `allowed_relays` of the configuration the acceptance
  * keeps, which governs every later run: each of the invitation's TURN urls is
- * marked kept or left out by it. Absent, no url is marked.
+ * marked kept or left out by it. Absent, no url is marked, and an acceptance
+ * says how to set it.
  */
 export function displayInvitation(params: {
   token: Parameters<typeof summarizeInvitation>[0];
@@ -842,7 +845,10 @@ export function displayInvitation(params: {
     if (summary.relay.registrar !== undefined)
       emit(`    ${invitationRelayRegistrarLine(summary.relay.registrar)}`);
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);
+    // The shared note says nothing of a setting, since a browser party has
+    // none; the CLI's own setting is named here.
     if (allowedRelays !== undefined) emit(`    ${ALLOWED_RELAYS_SCOPE}`);
+    else if (surface === "invitation") emit(`    ${ALLOWED_RELAYS_UNSET}`);
   }
   // The linkage strategy is a mandatory-consistency term like the
   // algorithm, and single-pass is disclosure-affecting -- the critical

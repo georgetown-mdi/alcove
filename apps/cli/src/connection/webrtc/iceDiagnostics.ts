@@ -271,13 +271,24 @@ export function iceFailureDetails(
     ),
     fittedCauseLink(REMOTE_CANDIDATES_LABEL, describeTally(report.remote)),
     fittedCauseLink(CANDIDATE_PAIRS_LABEL, pairs),
-    ...(relaysLeftOut.length === 0
-      ? []
-      : [
-          fittedCauseLink(RELAYS_LEFT_OUT_LABEL, relaysLeftOut.join(", ")),
-          ALLOWED_RELAYS_REMEDY,
-        ]),
+    ...relaysLeftOutDetails(relaysLeftOut),
   ];
+}
+
+/**
+ * The cause links naming the TURN urls `allowed_relays` left out of a failed
+ * run, then the remedy; none when it left none out. A failure whose stats
+ * could not be read reports these alone.
+ */
+export function relaysLeftOutDetails(
+  relaysLeftOut: ReadonlyArray<string>,
+): string[] {
+  return relaysLeftOut.length === 0
+    ? []
+    : [
+        fittedCauseLink(RELAYS_LEFT_OUT_LABEL, relaysLeftOut.join(", ")),
+        ALLOWED_RELAYS_REMEDY,
+      ];
 }
 
 /**

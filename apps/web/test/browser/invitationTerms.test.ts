@@ -1057,6 +1057,9 @@ describe("InvitationTerms: the relay a webrtc invitation names", () => {
     expect(text).toContain("TURN turns:relay.example.org:443?transport=tcp");
     expect(text).toContain("STUN stun:relay.example.org:3478");
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+    // A browser party has no setting deciding whether it contacts the
+    // relay, so nothing before consent says one does.
+    expect(text).not.toMatch(/relay settings?|allowed_relays/i);
   });
 
   test("nothing is said for a webrtc endpoint naming no relay", async () => {

@@ -21,6 +21,14 @@ export const ALLOWED_RELAYS_SCOPE =
   "your network address off such a relay, also set ice_transport_policy: " +
   "relay.";
 
+/**
+ * The acceptance review's line under the invitation's relay when the
+ * configuration it keeps or writes sets no `allowed_relays`.
+ */
+export const ALLOWED_RELAYS_UNSET =
+  "A run may connect through this relay. To leave it out, set " +
+  "connection.allowed_relays.";
+
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
   "to let a run try a relay left out, add its host to " +

@@ -33,6 +33,7 @@ import {
   describeSelectedCandidatePair,
   iceFailureDetails,
   readIceStats,
+  relaysLeftOutDetails,
 } from "./iceDiagnostics";
 
 import type {
@@ -1551,7 +1552,8 @@ class Negotiation {
 
   /**
    * Latch a failure of the network path, with what ICE gathered, received and
-   * tried attached as labelled cause links.
+   * tried attached as labelled cause links, and the TURN urls `allowed_relays`
+   * left out with the remedy whether or not the stats could be read.
    *
    * The failures that reach here -- the peer connection reporting `failed`,
    * and the channel-open deadline -- are all "both parties are present and no
@@ -1567,20 +1569,21 @@ class Negotiation {
 
   private async iceDiagnosis(summary: string): Promise<ConnectionError> {
     const report = await readIceStats(this.peer, this.options.signal);
+    const relaysLeftOut = this.options.relaysLeftOut ?? [];
+    const details =
+      report === undefined
+        ? relaysLeftOutDetails(relaysLeftOut)
+        : iceFailureDetails(
+            report,
+            this.options.iceTransportPolicy,
+            relaysLeftOut,
+          );
     return new ConnectionError(
       summary,
       "transport",
-      report === undefined
+      details.length === 0
         ? undefined
-        : {
-            cause: chainDetailCauses(
-              iceFailureDetails(
-                report,
-                this.options.iceTransportPolicy,
-                this.options.relaysLeftOut,
-              ),
-            ),
-          },
+        : { cause: chainDetailCauses(details, undefined) },
     );
   }
 
