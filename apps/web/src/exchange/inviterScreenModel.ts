@@ -1,6 +1,8 @@
 import {
   editorWithIdentity,
+  editorWithKeysFromOpenedConfiguration,
   editorWithTransport,
+  editorWithoutKeysFromOpenedConfiguration,
   sealEditor,
   unsealEditor,
 } from "@psi/inviterEditor";
@@ -15,6 +17,7 @@ import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
   opensInPlace,
+  runsOpenedConfiguration,
   withConversion,
   withNewInvitation,
   withTermsNotApplied,
@@ -458,6 +461,17 @@ export type InviterScreenAction =
    * inference, absent where the file step holds no file to infer from. */
   | { type: "loaded-configuration-discarded"; editor?: InviterEditor };
 
+/** The screen's session, its keys no longer marked as an opened
+ * configuration's that a run continues under: the configuration is being
+ * re-read, closed, or taken as a new invitation's settings. */
+function withoutOpenedConfigurationKeys(
+  editor: InviterEditor | undefined,
+): InviterEditor | undefined {
+  return editor === undefined
+    ? undefined
+    : editorWithoutKeysFromOpenedConfiguration(editor);
+}
+
 /** The state a discarded or cleared read leaves: no file, no profile, no draft,
  * and no sample marker, so nothing downstream vouches for a file that is gone. */
 const NO_FILE = {
@@ -750,6 +764,7 @@ function applyAction(
       if (state.editor?.sealed === true) return state;
       return {
         ...state,
+        editor: withoutOpenedConfigurationKeys(state.editor),
         mountedConfiguration: { status: "reading" },
         createAlert: undefined,
       };
@@ -764,7 +779,11 @@ function applyAction(
       const read = mountedConfigurationRead(action.answer);
       const loaded = read.loaded;
       if (loaded === undefined)
-        return { ...state, mountedConfiguration: read.state };
+        return {
+          ...state,
+          editor: withoutOpenedConfigurationKeys(state.editor),
+          mountedConfiguration: read.state,
+        };
       // The file's own channel against the console's transport matrix -- the
       // build this offer is rendered on (`InviterScreen`). An unresolved mount
       // reads as no mount, the same conservative reading the chooser itself
@@ -834,10 +853,13 @@ function applyAction(
       // seat -- the next file carries the terms instead.
       if (action.file !== state.acquired) return state;
       const transport = state.loadedConfiguration?.transport;
-      const seated =
+      const withTransport =
         transport === undefined
           ? action.editor
           : editorWithTransport(action.editor, transport);
+      const seated = runsOpenedConfiguration(state.mountedConfiguration)
+        ? editorWithKeysFromOpenedConfiguration(withTransport)
+        : withTransport;
       return {
         ...state,
         editor: seated,
@@ -865,6 +887,7 @@ function applyAction(
       if (state.editor?.sealed === true) return state;
       return {
         ...state,
+        editor: withoutOpenedConfigurationKeys(state.editor),
         mountedConfiguration: withNewInvitation(state.mountedConfiguration),
       };
     case "loaded-configuration-discarded":
@@ -897,7 +920,7 @@ function applyAction(
           state.consoleSource === undefined
             ? INITIAL_CSV_DELIMITER_CHOICE
             : state.delimiterChoice,
-        ...(action.editor !== undefined ? { editor: action.editor } : {}),
+        editor: action.editor ?? withoutOpenedConfigurationKeys(state.editor),
         editorAnnouncement:
           "Closed the configuration. These terms come from your own file's columns.",
       };

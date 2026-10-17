@@ -1072,6 +1072,10 @@ const SEEDED_CITATION_DROP_NOTICES = {
     "longer drawn from the built-in rule set, and " +
     `${SEEDED_CITATION_DROP_CONSEQUENCE}. The built-in rules supply no key ` +
     "for this file's columns as they are now.",
+  editedNotOffered:
+    "A key was added or changed in Expert authoring, so these keys are no " +
+    "longer drawn from the built-in rule set, and " +
+    `${SEEDED_CITATION_DROP_CONSEQUENCE}.`,
 } as const;
 
 /**
@@ -1083,10 +1087,15 @@ const SEEDED_CITATION_DROP_NOTICES = {
  * ({@link importedCitationDropNotice} speaks for it), and for an empty key
  * list, which the empty-list note and the key error speak for. Blocks nothing,
  * for the reason the imported notice blocks nothing.
+ *
+ * `useBuiltInRulesOffered` is whether Matching keys shows
+ * {@link USE_BUILT_IN_RULES_LABEL} for the session, which only the session
+ * knows: the notice names that action only then.
  */
 export function seededCitationDropNotice(
   draft: AdvancedInviteDraft,
   seed: Pick<AdvancedInviteSeed, "terms">,
+  useBuiltInRulesOffered: boolean,
   builtTerms?: Pick<
     LinkageTerms,
     "linkageFields" | "linkageKeys" | "linkageRuleSet"
@@ -1105,8 +1114,9 @@ export function seededCitationDropNotice(
   if (terms.linkageKeys.length === 0)
     return SEEDED_CITATION_DROP_NOTICES.noKeys;
   if (draftKeysAreBuiltIn(draft)) return SEEDED_CITATION_DROP_NOTICES.reordered;
+  if (useBuiltInRulesOffered) return SEEDED_CITATION_DROP_NOTICES.edited;
   return draftOffersBuiltInKeys(draft)
-    ? SEEDED_CITATION_DROP_NOTICES.edited
+    ? SEEDED_CITATION_DROP_NOTICES.editedNotOffered
     : SEEDED_CITATION_DROP_NOTICES.editedNoBuiltInKeys;
 }
 
@@ -1128,18 +1138,26 @@ export interface CitationDrop {
  * The dropped-citation notice for `draft`, imported or seeded, or `undefined`
  * where its terms keep the citation they started with: the one read the
  * Matching keys tab and Review & create both make, so no path that drops a
- * citation drops it unnoticed.
+ * citation drops it unnoticed. `useBuiltInRulesOffered` is as
+ * {@link seededCitationDropNotice} takes it; the session-level read that
+ * supplies it is `editorCitationDrop`.
  */
 export function citationDropFor(
   draft: AdvancedInviteDraft,
   seed: Pick<AdvancedInviteSeed, "terms">,
+  useBuiltInRulesOffered: boolean,
   builtTerms?: LinkageTerms,
 ): CitationDrop | undefined {
   const terms = builtTerms ?? buildAdvancedTerms(draft);
   const imported = importedCitationDropNotice(draft, terms);
   if (imported !== undefined)
     return { title: IMPORTED_CITATION_DROP_TITLE, notice: imported };
-  const seeded = seededCitationDropNotice(draft, seed, terms);
+  const seeded = seededCitationDropNotice(
+    draft,
+    seed,
+    useBuiltInRulesOffered,
+    terms,
+  );
   if (seeded !== undefined)
     return { title: SEEDED_CITATION_DROP_TITLE, notice: seeded };
   return undefined;

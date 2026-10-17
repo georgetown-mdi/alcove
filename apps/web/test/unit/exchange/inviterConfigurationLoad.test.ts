@@ -39,12 +39,19 @@ import {
   termsSettingsWithNoControl,
 } from "@console/loadedConfig";
 import {
+  editorCitationDrop,
   editorFromCsv,
+  editorKeysFromOpenedConfiguration,
+  editorOffersUseBuiltInRules,
+  editorWithAuthoredDraft,
+  editorWithBuiltInKeys,
   editorWithColumnDisclosure,
   editorWithImportedTerms,
   editorWithIncludeMatchingKey,
   editorWithIncludeOwnColumns,
   editorWithOutputDirection,
+  editorWithPastedConfiguration,
+  resetToRecommended,
 } from "@psi/inviterEditor";
 import {
   inviterCreateStatus,
@@ -54,7 +61,13 @@ import {
 import { EMPTY_SFTP_FORM } from "@console/sftpConnectionForm";
 import { configurationHandBack } from "@console/configurationHandBack";
 
-import { buildAdvancedTerms } from "@psi/authoring/advancedInvite";
+import {
+  SEEDED_CITATION_DROP_TITLE,
+  USE_BUILT_IN_RULES_LABEL,
+  addKey,
+  buildAdvancedTerms,
+  draftOffersBuiltInKeys,
+} from "@psi/authoring/advancedInvite";
 
 import {
   INVITER_SCREEN_INITIAL,
@@ -76,12 +89,12 @@ import {
 } from "../../utils/referenceFanOutConfiguration";
 import { testSftpServerEntry } from "../../utils/jobFixtures";
 
+import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { ColumnMetadata, LinkageTerms, Metadata } from "@alcove/core";
 import type {
   JobInputSource,
   ServerJobExchangeTransport,
 } from "@psi/jobClient/serverJobExchangeDriver";
-import type { AcquiredCsv } from "@psi/inviterEditor";
 import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
 import type { InviterScreenState } from "@exchange/inviterScreenModel";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
@@ -2116,5 +2129,242 @@ describe("the reference's fan-out configuration", () => {
     expect(() =>
       assertFanOutImplemented(spec.linkageTerms, specStandardization),
     ).not.toThrow();
+  });
+});
+
+// Matching keys states that the keys are the opened configuration's, and
+// withholds Use the built-in rules, only while the session's keys are the ones
+// the configuration loaded; the dropped-citation notice names that action only
+// where Matching keys shows it.
+describe("keys from an opened configuration", () => {
+  /** What Matching keys and the dropped-citation notice show for the screen's
+   * session, read through the functions KeysTab reads. */
+  function keysView(state: InviterScreenState) {
+    const editor = state.editor;
+    if (editor === undefined) throw new Error("expected a seated editor");
+    const drop = editorCitationDrop(editor);
+    return {
+      openedConfigurationNote: editorKeysFromOpenedConfiguration(editor),
+      guidedControls: editor.keysAuthored !== true,
+      useBuiltInRulesOffered: editorOffersUseBuiltInRules(editor),
+      noticeNamesAction:
+        drop?.notice.includes(USE_BUILT_IN_RULES_LABEL) === true,
+    };
+  }
+
+  function seatedEditor(state: InviterScreenState) {
+    if (state.editor === undefined || state.acquired === undefined)
+      throw new Error("expected an editor over a committed file");
+    return { editor: state.editor, csv: state.acquired };
+  }
+
+  function replaced(
+    state: InviterScreenState,
+    editor: (seated: ReturnType<typeof seatedEditor>) => InviterEditor,
+  ): InviterScreenState {
+    return inviterScreenReducer(state, {
+      type: "editor-replaced",
+      editor: editor(seatedEditor(state)),
+      announcement: "",
+    });
+  }
+
+  /** An Expert authoring edit that adds a key, as KeysTab applies it. */
+  function authored(state: InviterScreenState): InviterScreenState {
+    const { editor } = seatedEditor(state);
+    return inviterScreenReducer(state, {
+      type: "editor-applied",
+      editor: editorWithAuthoredDraft(
+        editor,
+        addKey(editor.draft, "first_name"),
+      ),
+    });
+  }
+
+  /** Review & create's Reset to defaults, as InviterScreen applies it. */
+  function reset(state: InviterScreenState): InviterScreenState {
+    return replaced(state, ({ editor, csv }) =>
+      resetToRecommended(editor, csv),
+    );
+  }
+
+  const opened = () =>
+    withFileRead(loadedInto(INVITER_SCREEN_INITIAL, sftpDocument()));
+  const seeded = () => withFileCommitted(INVITER_SCREEN_INITIAL, acquired());
+
+  /** A pasted terms document whose keys are reordered under the citation it
+   * states, so the imported notice speaks for it. */
+  function loadedDocument(): InviterScreenState {
+    const state = seeded();
+    return replaced(state, ({ editor, csv }) => {
+      const terms = buildAdvancedTerms(editor.draft);
+      return editorWithPastedConfiguration(
+        editor,
+        csv,
+        { ...terms, linkageKeys: [...terms.linkageKeys].reverse() },
+        undefined,
+      ).editor;
+    });
+  }
+
+  const rows: Array<{
+    state: string;
+    build: () => InviterScreenState;
+    expected: ReturnType<typeof keysView>;
+  }> = [
+    {
+      state: "seeded",
+      build: seeded,
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: true,
+        useBuiltInRulesOffered: false,
+        noticeNamesAction: false,
+      },
+    },
+    {
+      state: "authored",
+      build: () => authored(seeded()),
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: false,
+        useBuiltInRulesOffered: true,
+        noticeNamesAction: true,
+      },
+    },
+    {
+      state: "loaded document",
+      build: loadedDocument,
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: false,
+        useBuiltInRulesOffered: true,
+        noticeNamesAction: false,
+      },
+    },
+    {
+      state: "opened configuration",
+      build: opened,
+      expected: {
+        openedConfigurationNote: true,
+        guidedControls: false,
+        useBuiltInRulesOffered: false,
+        noticeNamesAction: false,
+      },
+    },
+    {
+      state: "opened then reset",
+      build: () => reset(opened()),
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: true,
+        useBuiltInRulesOffered: false,
+        noticeNamesAction: false,
+      },
+    },
+    {
+      state: "opened then reset then authored",
+      build: () => authored(reset(opened())),
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: false,
+        useBuiltInRulesOffered: true,
+        noticeNamesAction: true,
+      },
+    },
+    {
+      state: "opened then authored",
+      build: () => authored(opened()),
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: false,
+        useBuiltInRulesOffered: true,
+        noticeNamesAction: false,
+      },
+    },
+    {
+      state: "opened then taken as a new invitation",
+      build: () =>
+        inviterScreenReducer(opened(), {
+          type: "mounted-configuration-new-invitation",
+        }),
+      expected: {
+        openedConfigurationNote: false,
+        guidedControls: false,
+        useBuiltInRulesOffered: true,
+        noticeNamesAction: false,
+      },
+    },
+  ];
+
+  test.each(rows)(
+    "$state: the note, the offer and the notice agree",
+    ({ build, expected }) => {
+      const view = keysView(build());
+      expect(view).toEqual(expected);
+      if (view.noticeNamesAction)
+        expect(view.useBuiltInRulesOffered).toBe(true);
+      if (view.openedConfigurationNote) {
+        expect(view.useBuiltInRulesOffered).toBe(false);
+        expect(view.guidedControls).toBe(false);
+      }
+    },
+  );
+
+  test("open, reset and an Expert edit: the action is offered where the notice names it", () => {
+    const afterReset = reset(opened());
+    expect(afterReset.loadedTermsFile).toBe(afterReset.acquired);
+    expect(keysView(afterReset)).toMatchObject({
+      openedConfigurationNote: false,
+      guidedControls: true,
+    });
+
+    const edited = authored(afterReset);
+    const { editor } = seatedEditor(edited);
+    expect(draftOffersBuiltInKeys(editor.draft)).toBe(true);
+    expect(editorCitationDrop(editor)?.title).toBe(SEEDED_CITATION_DROP_TITLE);
+    expect(keysView(edited)).toEqual({
+      openedConfigurationNote: false,
+      guidedControls: false,
+      useBuiltInRulesOffered: true,
+      noticeNamesAction: true,
+    });
+  });
+
+  test("Use the built-in rules is withheld on an opened configuration and returns a loaded document to the guided list", () => {
+    expect(editorOffersUseBuiltInRules(seatedEditor(opened()).editor)).toBe(
+      false,
+    );
+
+    const document = loadedDocument();
+    const guided = replaced(document, ({ editor, csv }) =>
+      editorWithBuiltInKeys(editor, csv),
+    );
+    const { editor } = seatedEditor(guided);
+    expect(editor.keysAuthored).toBeUndefined();
+    expect(editor.draft.importedRuleSetCitation).toBeUndefined();
+    expect(editor.draft.importedLinkageFields).toBeUndefined();
+    expect(keysView(guided)).toEqual({
+      openedConfigurationNote: false,
+      guidedControls: true,
+      useBuiltInRulesOffered: false,
+      noticeNamesAction: false,
+    });
+  });
+
+  test("reading the configuration again drops the note until its terms reach the file", () => {
+    const reading = inviterScreenReducer(opened(), {
+      type: "mounted-configuration-reading",
+    });
+    expect(keysView(reading).openedConfigurationNote).toBe(false);
+    const reread = withLoadedTermsDerived(loadedInto(reading, sftpDocument()));
+    expect(keysView(reread).openedConfigurationNote).toBe(true);
+  });
+
+  test("closing the configuration drops the note", () => {
+    const closed = inviterScreenReducer(opened(), {
+      type: "loaded-configuration-discarded",
+    });
+    expect(keysView(closed).openedConfigurationNote).toBe(false);
   });
 });

@@ -2043,11 +2043,6 @@ export function InviterScreen() {
                   announcement: guidedKeysAnnouncement(guided),
                 });
               }}
-              keysFromOpenedConfiguration={
-                runsOpenedConfiguration(mountedConfiguration) &&
-                loadedTermsFile !== undefined &&
-                loadedTermsFile === acquired
-              }
               onKeyEnabled={(index, enabled) =>
                 applyEditor(editorWithKeyEnabled(editor, index, enabled))
               }

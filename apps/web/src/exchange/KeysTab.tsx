@@ -34,7 +34,6 @@ import {
 import {
   USE_BUILT_IN_RULES_LABEL,
   buildAdvancedTerms,
-  citationDropFor,
 } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
@@ -45,7 +44,9 @@ import {
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
-  editorOffersBuiltInKeys,
+  editorCitationDrop,
+  editorKeysFromOpenedConfiguration,
+  editorOffersUseBuiltInRules,
   emptyGuidedKeysNotice,
   keyOrderHelp,
   keySatisfiabilityFor,
@@ -100,10 +101,11 @@ const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
  * document, with a note saying so and, where the file supplies a built-in
  * rule, an action that replaces those keys, fields and cleaning with a new
  * invitation's: no floor selected them. On the console, keys a run of
- * an opened configuration continues under get a note naming the file and the
- * command that change them instead, and no action.
+ * an opened configuration continues under
+ * ({@link editorKeysFromOpenedConfiguration}) get a note naming the file and
+ * the command that change them instead, and no action.
  *
- * Also renders {@link citationDropFor} live from the draft, so a rule-set
+ * Also renders {@link editorCitationDrop} live from the draft, so a rule-set
  * citation the rebuild drops is flagged as soon as the import lands or an
  * edit costs it. Review & create restates the same notice, for an operator
  * who edits here and leaves without reading it.
@@ -115,7 +117,6 @@ export function KeysTab({
   onExpertMode,
   onPrecisionFloorSelection,
   onUseBuiltInRules,
-  keysFromOpenedConfiguration = false,
   onKeyEnabled,
   onKeyMoved,
   onAuthoredDraft,
@@ -137,10 +138,6 @@ export function KeysTab({
    * their fields and cleaning, by a new invitation's, once the operator
    * confirms. */
   onUseBuiltInRules: () => void;
-  /** Whether the keys are an opened configuration's that a run on the console
-   * continues under, which the partner agreed to: no action here replaces
-   * them. */
-  keysFromOpenedConfiguration?: boolean;
   onKeyEnabled: (index: number, enabled: boolean) => void;
   onKeyMoved: (index: number, offset: -1 | 1) => void;
   onAuthoredDraft: (draft: AdvancedInviteDraft) => void;
@@ -169,16 +166,17 @@ export function KeysTab({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => citationDropFor(editor.draft, editor.seed, currentTerms),
-    [editor.draft, editor.seed, currentTerms],
+    () => editorCitationDrop(editor, currentTerms),
+    [editor, currentTerms],
   );
   const emptyGuidedKeys = useMemo(
     () => emptyGuidedKeysNotice(editor),
     [editor],
   );
   const keysAuthored = editor.keysAuthored === true;
-  const offersBuiltInKeys = useMemo(
-    () => editorOffersBuiltInKeys(editor),
+  const keysFromOpenedConfiguration = editorKeysFromOpenedConfiguration(editor);
+  const offersUseBuiltInRules = useMemo(
+    () => editorOffersUseBuiltInRules(editor),
     [editor],
   );
   const selection =
@@ -213,7 +211,7 @@ export function KeysTab({
       {keysAuthored && !keysFromOpenedConfiguration && (
         <Alert variant="light" color="gray" role="note" my="sm">
           <p>{AUTHORED_KEYS_FLOOR_NOTE}</p>
-          {offersBuiltInKeys && (
+          {offersUseBuiltInRules && (
             <ConfirmedActionButton
               label={USE_BUILT_IN_RULES_LABEL}
               variant="default"

@@ -8,7 +8,16 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { getDefaultLinkageTerms } from "@alcove/core";
+import { getDefaultLinkageTerms, precisionFloorStatement } from "@alcove/core";
+
+import {
+  AUTHORED_KEYS_FLOOR_NOTE,
+  OPENED_CONFIGURATION_KEYS_NOTE,
+} from "@psi/inviterEditor";
+import {
+  SEEDED_CITATION_DROP_TITLE,
+  USE_BUILT_IN_RULES_LABEL,
+} from "@psi/authoring/advancedInvite";
 
 import {
   CLOSE_CONFIGURATION_LABEL,
@@ -1030,5 +1039,50 @@ describe("the review step of an opened configuration's run", () => {
     await expect
       .element(page.getByText(/alcove update/).first())
       .not.toBeInTheDocument();
+  });
+
+  test("Matching keys names the configuration only for its own keys, and the notice only an action it shows", async () => {
+    await goToReview();
+    const openedNote = page
+      .getByRole("note")
+      .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE });
+    const useBuiltInRules = page.getByRole("button", {
+      name: USE_BUILT_IN_RULES_LABEL,
+    });
+
+    await page.getByRole("button", { name: /Matching on/ }).click();
+    await expect.element(openedNote).toBeInTheDocument();
+    expect(useBuiltInRules.query()).toBeNull();
+
+    await page.getByRole("button", { name: /Back to Review & create/ }).click();
+    await page.getByRole("button", { name: "Reset to defaults" }).click();
+    await page
+      .getByRole("dialog", { name: "Reset to defaults?" })
+      .getByRole("button", { name: "Reset to defaults" })
+      .click();
+    await expect
+      .element(page.getByText("Reset to the default settings."))
+      .toBeInTheDocument();
+
+    await page.getByRole("button", { name: /Matching on/ }).click();
+    await expect
+      .element(
+        page.getByRole("radio", { name: precisionFloorStatement(95).label }),
+      )
+      .toBeChecked();
+    expect(openedNote.query()).toBeNull();
+
+    await page.getByRole("switch", { name: "Expert authoring" }).click();
+    await page.getByRole("button", { name: "Add a key" }).click();
+    await expect
+      .element(
+        page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(openedNote.query()).toBeNull();
+    await expect.element(useBuiltInRules).toBeInTheDocument();
+    await expect
+      .element(page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }))
+      .toMatchTextContent(USE_BUILT_IN_RULES_LABEL);
   });
 });

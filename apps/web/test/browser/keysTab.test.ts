@@ -17,6 +17,7 @@ import {
   editorWithImportedTerms,
   editorWithKeyEnabled,
   editorWithKeyMoved,
+  editorWithKeysFromOpenedConfiguration,
   editorWithPrecisionFloorSelection,
   keyOrderHelp,
 } from "@psi/inviterEditor";
@@ -413,11 +414,9 @@ describe("KeysTab: the precision floor and the coverage question", () => {
   function Harness({
     initial,
     file = csv,
-    keysFromOpenedConfiguration = false,
   }: {
     initial: InviterEditor;
     file?: AcquiredCsv;
-    keysFromOpenedConfiguration?: boolean;
   }) {
     const [editor, setEditor] = useState(initial);
     return createElement(KeysTab, {
@@ -428,7 +427,6 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       onPrecisionFloorSelection: (selection) =>
         setEditor(editorWithPrecisionFloorSelection(editor, selection)),
       onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, file)),
-      keysFromOpenedConfiguration,
       onKeyEnabled: (index, enabled) =>
         setEditor(editorWithKeyEnabled(editor, index, enabled)),
       onKeyMoved: (index, offset) =>
@@ -682,12 +680,13 @@ describe("KeysTab: the precision floor and the coverage question", () => {
     const seeded = editorFromCsv("Dana Okafor", csv);
     app.render(
       createElement(Harness, {
-        initial: editorWithImportedTerms(
-          seeded,
-          csv,
-          buildAdvancedTerms(seeded.draft),
+        initial: editorWithKeysFromOpenedConfiguration(
+          editorWithImportedTerms(
+            seeded,
+            csv,
+            buildAdvancedTerms(seeded.draft),
+          ),
         ),
-        keysFromOpenedConfiguration: true,
       }),
     );
 

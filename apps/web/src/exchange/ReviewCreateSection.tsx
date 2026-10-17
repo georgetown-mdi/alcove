@@ -14,9 +14,9 @@ import { sanitizeForDisplay } from "@alcove/core";
 
 import {
   buildAdvancedTerms,
-  citationDropFor,
   inertCoalesceNotice,
 } from "@psi/authoring/advancedInvite";
+import { editorCitationDrop } from "@psi/inviterEditor";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
@@ -279,8 +279,8 @@ export function ReviewCreateSection({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => citationDropFor(editor.draft, editor.seed, currentTerms),
-    [editor.draft, editor.seed, currentTerms],
+    () => editorCitationDrop(editor, currentTerms),
+    [editor, currentTerms],
   );
   const inertCoalesce = useMemo(
     () => inertCoalesceNotice(editor.draft, currentTerms),
