@@ -441,6 +441,36 @@ describe("dialAsAcceptor with a relay configured", () => {
     );
   });
 
+  test.each([
+    { restriction: "no relays left out", relaysLeftOut: [], note: "" },
+    {
+      restriction: "relays left out",
+      relaysLeftOut: ["turn:partner.example.net:3478"],
+      note:
+        ". Your allowed relays left out turn:partner.example.net:3478. " +
+        ALLOWED_RELAYS_REMEDY,
+    },
+  ])(
+    "a peer error after a relay error keeps its own error and class, with $restriction",
+    async ({ relaysLeftOut, note }) => {
+      const error = await dialFailure(
+        (pc, peer) => {
+          pc.fail(RELAY_URL, 701, "TURN host lookup failed");
+          peer.emit(
+            "error",
+            new FakePeerError("network", "Lost connection to server"),
+          );
+        },
+        { openTimeoutMs: 1000 },
+        relaysLeftOut,
+      );
+      expect(error).toBeInstanceOf(FakePeerError);
+      expect(error).not.toBeInstanceOf(ConnectionError);
+      expect((error as FakePeerError).type).toBe("network");
+      expect((error as Error).message).toBe(`Lost connection to server${note}`);
+    },
+  );
+
   test("a peer error while the dial waits to retry adds the relays left out", async () => {
     const leftOut = "turn:partner.example.net:3478";
     const error = await dialFailure(

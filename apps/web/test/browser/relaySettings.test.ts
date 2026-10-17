@@ -18,6 +18,7 @@ import {
   RELAY_KEY_NOTICE,
   RELAY_ONLY_DESCRIPTION,
   RELAY_OPERATOR_DISCLOSURE,
+  REMOVED_RESTRICTION_UNREADABLE,
   RESTRICTION_SAVED_RELAY_NOT_SAVED,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
@@ -195,6 +196,11 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
 
     await expect.element(page.getByText(ALLOWED_RELAYS_SCOPE)).toBeVisible();
     await expect.element(page.getByText(RELAY_ONLY_DESCRIPTION)).toBeVisible();
+    await expect
+      .element(allowedField())
+      .toHaveAccessibleDescription(
+        /covers relay servers only: a run still contacts the STUN servers an invitation names\./,
+      );
     expect(document.body.textContent).not.toContain("in their place");
   });
 
@@ -363,6 +369,43 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       kind: "set",
       restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
     });
+
+    await userEvent.fill(allowedField(), "backup.example.org");
+    await expect.poll(() => statusLine().element().textContent).toBe("");
+    expect(notice().query()).toBeNull();
+  });
+
+  test("removing the relay while the stored value cannot be read says every exchange is still refused", async () => {
+    window.localStorage.setItem(
+      "alcove-relay-restriction",
+      JSON.stringify({
+        version: 1,
+        allowedRelays: ["Not Normal"],
+        relayOnly: false,
+      }),
+    );
+    await mountScreen();
+
+    await userEvent.click(removeButton());
+
+    await expect
+      .element(page.getByText(REMOVED_RESTRICTION_UNREADABLE))
+      .toBeVisible();
+    expect(REMOVED_RESTRICTION_UNREADABLE).toBe(
+      "The relay was removed. Every exchange in this browser is still " +
+        "refused because the saved allowed relays could not be read. Save " +
+        "the relay settings to replace them.",
+    );
+    expect(document.body.textContent).not.toContain("Saved.");
+    await expect
+      .element(
+        page.getByText("The saved allowed relays could not be read", {
+          exact: true,
+        }),
+      )
+      .toBeVisible();
+    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+    expect(readRelayRestriction().kind).toBe("unreadable");
   });
 });
 

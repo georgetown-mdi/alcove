@@ -556,7 +556,7 @@ async function dialInviterWithRetry(
         });
       onFatal = (err) =>
         settle(() => {
-          const failure = withIceServerFailure(conn, asError(err), false);
+          const failure = withPeerRelaysLeftOut(peer, asError(err));
           conn.close();
           reject(failure);
         });
