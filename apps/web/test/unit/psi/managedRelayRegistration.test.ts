@@ -207,6 +207,26 @@ describe("which runs register", () => {
     ).toEqual(REGISTRAR);
   });
 
+  test("a run registers only where the allowed relays keep a TURN url of this browser's own relay", () => {
+    const enrolled = record({ relayRegistrar: REGISTRAR });
+    const own = ownRelay([
+      "turns:relay.example.org:443",
+      "turn:backup.example.org:3478",
+    ]);
+    expect(
+      managedRelayRegistrarForRun(enrolled, own, () => ({
+        allowedRelays: ["elsewhere.example.org"],
+        relayOnly: false,
+      })),
+    ).toBeUndefined();
+    expect(
+      managedRelayRegistrarForRun(enrolled, own, () => ({
+        allowedRelays: ["backup.example.org"],
+        relayOnly: true,
+      })),
+    ).toEqual(REGISTRAR);
+  });
+
   test("a browser with no relay of its own, or an exchange not enrolled, registers nothing", () => {
     expect(
       managedRelayRegistrarForRun(

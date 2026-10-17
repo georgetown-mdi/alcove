@@ -226,8 +226,7 @@ export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 /** What the setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =
   "Your allowed relays decide which relays this browser connects through, " +
-  "enrolls at and names in the invitations it creates; a saved exchange " +
-  "enrolled at your relay's registrar still registers each new key there. " +
+  "enrolls at, registers keys at and names in the invitations it creates. " +
   "Your partner's side can still connect through a relay they leave out; " +
   "to keep your network address off such a relay, also turn on Relay only " +
   "on the Relay server page.";
@@ -263,6 +262,15 @@ export const RELAY_ONLY_RELAYS_LEFT_OUT =
 export const RELAY_ONLY_NO_RELAY =
   "Relay only requires a relay, and no relay is set for this run. Set a " +
   "relay on the Relay server page, or turn off Relay only.";
+
+/**
+ * The refusal of a relay-only run whose only TURN url was the build's default
+ * relay, when its enrollment there failed, before it dials.
+ */
+export const RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED =
+  "Relay only requires a relay, and the site's relay server could not be " +
+  "set up for this exchange. Try again later, set a relay of your own on " +
+  "the Relay server page, or turn off Relay only.";
 
 /**
  * The refusal of a run when this browser's stored relay restriction cannot

@@ -3,6 +3,7 @@ import { OperatorConfigError, turnUrlIsAllowed } from "@alcove/core";
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import {
+  RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
   RELAY_ONLY_NO_RELAY,
   RELAY_ONLY_RELAYS_LEFT_OUT,
   RELAY_RESTRICTION_UNREADABLE,
@@ -115,26 +116,42 @@ export function assertRunRelayPlanPossible(
  * TURN url or every one is left out. Where the allowed relays are set, the
  * urls kept and left out are shown through `onRunNotice`. The default relay
  * is then enrolled at and added as {@link relayWithDefaultForRun} does, if it
- * is kept.
+ * is kept. Under Relay only, a run whose only TURN url was the default
+ * relay's, and whose enrollment there failed, is refused before it dials.
  *
  * @throws {OperatorConfigError} with {@link RELAY_RESTRICTION_UNREADABLE},
- *   {@link RELAY_ONLY_NO_RELAY} or {@link RELAY_ONLY_RELAYS_LEFT_OUT}.
+ *   {@link RELAY_ONLY_NO_RELAY}, {@link RELAY_ONLY_RELAYS_LEFT_OUT} or
+ *   {@link RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED}.
  */
 export async function relayPlanForRun(
   sharedSecret: string,
   invitationRelay: RelayUrls | undefined,
   dependencies: RunRelayPlanDependencies = {},
 ): Promise<RunRelayPlan> {
-  const { readOwn, restriction, ...defaultRelay } = dependencies;
+  const { readOwn, restriction, onRunNotice, ...defaultRelay } = dependencies;
   const { allowedRelays, relayOnly, own, listed, kept, relaysLeftOut } =
     runRelayList(invitationRelay, dependencies);
   if (allowedRelays !== undefined && listed.length > 0)
-    defaultRelay.onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
+    onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
+  // Shown only once the run is known to dial: that notice says the run
+  // connects without the default relay, which a refused run does not.
+  const enrollmentNotices: Array<string> = [];
   const relay = await relayWithDefaultForRun(
     sharedSecret,
     relayForRun(invitationRelay, () => own, allowedRelays),
-    { ...defaultRelay, allowedRelays: () => allowedRelays },
+    {
+      ...defaultRelay,
+      onRunNotice: (message) => enrollmentNotices.push(message),
+      allowedRelays: () => allowedRelays,
+    },
   );
+  if (
+    relayOnly &&
+    (relay?.turn ?? []).length === 0 &&
+    defaultRelay.signal?.aborted !== true
+  )
+    throw new OperatorConfigError(RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED);
+  for (const message of enrollmentNotices) onRunNotice?.(message);
   return {
     ...(relay !== undefined && { relay }),
     iceTransportPolicy: relayOnly ? "relay" : "all",

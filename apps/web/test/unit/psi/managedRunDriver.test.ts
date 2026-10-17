@@ -48,6 +48,7 @@ import {
 } from "../../../src/recurring/managedRunLaunchModel.js";
 import {
   managedRelayRegistrarForRun,
+  registerRotatedManagedRelayKey,
   retryPendingManagedRelayRegistration,
 } from "../../../src/psi/managed/managedRelayRegistration.js";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
@@ -157,6 +158,9 @@ vi.mock(
       managedRelayRegistrarForRun: vi.fn(actual.managedRelayRegistrarForRun),
       retryPendingManagedRelayRegistration: vi.fn(
         actual.retryPendingManagedRelayRegistration,
+      ),
+      registerRotatedManagedRelayKey: vi.fn(
+        actual.registerRotatedManagedRelayKey,
       ),
     };
   },
@@ -1934,5 +1938,79 @@ describe("a saved signaling address the rendezvous refuses", () => {
     expect(rejection).toBe(refusal);
     expect(managedRelayRegistrarForRun).not.toHaveBeenCalled();
     expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
+  });
+});
+
+describe("the relay registrations of a run under this browser's allowed relays", () => {
+  const OWN_URL = "turns:own.example.org:443?transport=tcp";
+  const REGISTRAR = {
+    url: "https://own.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const ENROLLED = {
+    ...RECORD,
+    relayRegistrar: REGISTRAR,
+    relayRegistrationPendingSince: "2026-09-29T12:00:00.000Z",
+  } as RunnableManagedExchangeRecord;
+
+  /** This browser's stored own relay and allowed relays, as a run reads them. */
+  function storeRelaySettings(allowedRelays: Array<string>) {
+    const values = new Map([
+      [
+        "alcove-own-relay",
+        JSON.stringify({ version: 1, turn: [OWN_URL], stun: [] }),
+      ],
+      [
+        "alcove-relay-restriction",
+        JSON.stringify({ version: 1, allowedRelays, relayOnly: false }),
+      ],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("an own relay the allowed relays leave out gets neither the pending retry nor the rotated key's registration", async () => {
+    storeRelaySettings(["elsewhere.example.org"]);
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal, undefined, ENROLLED);
+
+    expect(mockedAuthenticate).toHaveBeenCalled();
+    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
+    expect(registerRotatedManagedRelayKey).not.toHaveBeenCalled();
+  });
+
+  test("an own relay the allowed relays keep gets the pending retry and the rotated key's registration", async () => {
+    storeRelaySettings(["own.example.org"]);
+    vi.mocked(retryPendingManagedRelayRegistration).mockResolvedValueOnce();
+    vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
+      kind: "registered",
+    });
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal, undefined, ENROLLED);
+
+    expect(retryPendingManagedRelayRegistration).toHaveBeenCalledWith(
+      ENROLLED,
+      REGISTRAR,
+      expect.anything(),
+    );
+    expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrar: REGISTRAR,
+        preRotationSecret: RECORD.sharedSecret,
+        rotatedSecret: "next",
+      }),
+      expect.anything(),
+    );
   });
 });

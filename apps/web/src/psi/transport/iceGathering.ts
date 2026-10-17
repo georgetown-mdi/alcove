@@ -102,15 +102,12 @@ export function watchIceGathering(conn: DataConnection): void {
   // PeerJS types the field as always present, but its cleanup nulls it.
   const pc = conn.peerConnection as RTCPeerConnection | null | undefined;
   if (pc === null || pc === undefined) return;
-  // PeerJS types the provider as always present; a test double may lack it.
-  const provider = conn.provider as object | undefined;
   const record: IceGatheringRecord = {
     turnUrls: configuredTurnUrls(pc),
     relayGathered: false,
     gatheringComplete: pc.iceGatheringState === "complete",
     turnErrors: [],
-    relaysLeftOut:
-      provider === undefined ? [] : (relaysLeftOutByPeer.get(provider) ?? []),
+    relaysLeftOut: relaysLeftOutOf(conn),
   };
   records.set(conn, record);
   pc.addEventListener("icecandidate", (event) => {
@@ -205,18 +202,29 @@ export function relayFailureMessage(
   timedOut: boolean,
 ): string | undefined {
   const relayFailure = gatheringFailureMessage(record, timedOut);
-  const leftOut = relaysLeftOutNote(record);
+  const leftOut = relaysLeftOutNote(record.relaysLeftOut);
   return relayFailure === undefined || leftOut === undefined
     ? relayFailure
     : `${relayFailure} ${leftOut}`;
 }
 
-function relaysLeftOutNote(record: IceGatheringRecord): string | undefined {
-  if (record.relaysLeftOut.length === 0) return undefined;
+function relaysLeftOutNote(
+  relaysLeftOut: ReadonlyArray<string>,
+): string | undefined {
+  if (relaysLeftOut.length === 0) return undefined;
   return (
-    `Your allowed relays left out ${listNamed([...new Set(record.relaysLeftOut)])}. ` +
+    `Your allowed relays left out ${listNamed([...new Set(relaysLeftOut)])}. ` +
     ALLOWED_RELAYS_REMEDY
   );
+}
+
+/** The TURN urls the allowed relays left out of the run `conn` belongs to. */
+function relaysLeftOutOf(conn: DataConnection): ReadonlyArray<string> {
+  // PeerJS types the provider as always present; a test double may lack it.
+  const provider = conn.provider as object | undefined;
+  return provider === undefined
+    ? []
+    : (relaysLeftOutByPeer.get(provider) ?? []);
 }
 
 // The note is added to `failure` itself, so it keeps its class and kind and
@@ -267,7 +275,8 @@ function gatheringFailureMessage(
  * {@link ConnectionError} naming the failed relay where
  * {@link relayFailureMessage} finds one; else `failure` with the relays the
  * allowed relays left out and {@link ALLOWED_RELAYS_REMEDY} added to its
- * message where the run left any out; else `failure` unchanged.
+ * message where the run left any out, whether or not `conn` was watched;
+ * else `failure` unchanged.
  * `timedOut` says the open ran out its time rather than failing early.
  * `failure` is not kept as a cause: a PeerJS negotiation error names the
  * remote rendezvous id, and the callers redact only the error they throw.
@@ -278,9 +287,30 @@ export function withIceServerFailure(
   timedOut: boolean,
 ): Error {
   const record = records.get(conn);
-  if (record === undefined) return failure;
-  const message = relayFailureMessage(record, timedOut);
-  if (message !== undefined) return new ConnectionError(message, "transport");
-  const leftOut = relaysLeftOutNote(record);
-  return leftOut === undefined ? failure : withNoteAdded(failure, leftOut);
+  if (record !== undefined) {
+    const message = relayFailureMessage(record, timedOut);
+    if (message !== undefined) return new ConnectionError(message, "transport");
+  }
+  return withRelaysLeftOut(
+    record?.relaysLeftOut ?? relaysLeftOutOf(conn),
+    failure,
+  );
+}
+
+/**
+ * `failure`, from the run `peer` serves when no connection of it is open,
+ * with the relays the allowed relays left out and
+ * {@link ALLOWED_RELAYS_REMEDY} added to its message where the run left any
+ * out; else `failure` unchanged. Its class and kind are kept.
+ */
+export function withPeerRelaysLeftOut(peer: object, failure: Error): Error {
+  return withRelaysLeftOut(relaysLeftOutByPeer.get(peer) ?? [], failure);
+}
+
+function withRelaysLeftOut(
+  relaysLeftOut: ReadonlyArray<string>,
+  failure: Error,
+): Error {
+  const note = relaysLeftOutNote(relaysLeftOut);
+  return note === undefined ? failure : withNoteAdded(failure, note);
 }

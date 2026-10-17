@@ -3,7 +3,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { OperatorConfigError, generateSharedSecret } from "@alcove/core";
 
 import {
+  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+  invitationRelayWithDefault,
+  relayWithDefaultForRun,
+} from "@psi/transport/defaultRelay";
+import {
   MAX_ALLOWED_RELAYS,
+  RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
   RELAY_ONLY_NO_RELAY,
   RELAY_ONLY_RELAYS_LEFT_OUT,
   RELAY_RESTRICTION_UNREADABLE,
@@ -17,10 +23,6 @@ import {
   assertRunRelayPlanPossible,
   relayPlanForRun,
 } from "@psi/transport/runRelayPlan";
-import {
-  invitationRelayWithDefault,
-  relayWithDefaultForRun,
-} from "@psi/transport/defaultRelay";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 import { relayTestTargets } from "@psi/transport/relayTest";
 
@@ -356,5 +358,69 @@ describe("relayPlanForRun", () => {
       stun: ["stun:own.example.org:3478"],
     });
     expect(plan.relaysLeftOut).toEqual([OWN_URL]);
+  });
+
+  test("under Relay only, refuses before dialing when the default relay was the only one kept and its enrollment failed", async () => {
+    const onRunNotice = vi.fn();
+    const enroll = vi.fn(() =>
+      Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+    );
+    const planning = relayPlanForRun(
+      generateSharedSecret(),
+      { turn: [PARTNER_URL] },
+      {
+        readOwn,
+        setting: () => SITE,
+        enroll,
+        onRunNotice,
+        restriction: () => ({
+          allowedRelays: ["site.example.com"],
+          relayOnly: true,
+        }),
+      },
+    );
+    await expect(planning).rejects.toThrow(OperatorConfigError);
+    await expect(planning).rejects.toThrow(
+      RELAY_ONLY_DEFAULT_RELAY_NOT_ENROLLED,
+    );
+    expect(enroll).toHaveBeenCalledOnce();
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+      allowedRelaysRunNotice([SITE.turnUrl], [OWN_URL, PARTNER_URL]),
+    );
+    expect(onRunNotice).not.toHaveBeenCalledWith(
+      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+    );
+  });
+
+  test("under Relay only, a run cancelled during the default relay's enrollment is not refused", async () => {
+    const cancel = new AbortController();
+    const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
+      readOwn: () => ({ kind: "none" }),
+      setting: () => SITE,
+      signal: cancel.signal,
+      enroll: vi.fn(() => {
+        cancel.abort();
+        return Promise.resolve({ kind: "cancelled" as const });
+      }),
+      restriction: () => ({ relayOnly: true }),
+    });
+    expect(plan).toEqual({ iceTransportPolicy: "relay", relaysLeftOut: [] });
+  });
+
+  test("not relay-only, a failed default relay enrollment says so and the run continues", async () => {
+    const onRunNotice = vi.fn();
+    const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
+      readOwn: () => ({ kind: "none" }),
+      setting: () => SITE,
+      enroll: vi.fn(() =>
+        Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+      ),
+      onRunNotice,
+      restriction: () => ({ relayOnly: false }),
+    });
+    expect(plan).toEqual({ iceTransportPolicy: "all", relaysLeftOut: [] });
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+    );
   });
 });

@@ -13,9 +13,12 @@ import {
   readRelayRestriction,
 } from "@psi/transport/relayRestriction";
 import {
+  CONSOLE_RELAY_RESTRICTION_LINE,
+  NOTHING_SAVED,
   RELAY_KEY_NOTICE,
   RELAY_ONLY_DESCRIPTION,
   RELAY_OPERATOR_DISCLOSURE,
+  RESTRICTION_SAVED_RELAY_NOT_SAVED,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
 import {
@@ -41,6 +44,27 @@ import type {
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
 );
+
+// Each test picks the build: the screen reads isConsoleBuild() as it renders.
+const build = vi.hoisted(() => ({ console: false }));
+vi.mock("@utils/clientConfig", async (importOriginal) => {
+  const { clientConfigMock, consoleClientConfigMock } =
+    await import("../utils/clientConfigMock");
+  const hosted = await clientConfigMock(importOriginal);
+  const consoleBuild = await consoleClientConfigMock(importOriginal);
+  return Object.fromEntries(
+    Object.keys(hosted).map((name) => [
+      name,
+      (...args: Array<unknown>) =>
+        (
+          (build.console ? consoleBuild : hosted) as unknown as Record<
+            string,
+            (...a: Array<unknown>) => unknown
+          >
+        )[name](...args),
+    ]),
+  );
+});
 
 const TURN_URL = "turns:relay.example.org:443?transport=tcp";
 const STUN_URL = "stun:stun.example.org:3478";
@@ -68,6 +92,7 @@ afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
   window.localStorage.clear();
+  build.console = false;
 });
 
 describe("RelaySettingsScreen", () => {
@@ -251,10 +276,12 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
 
     await expect
       .element(statusLine())
-      .toHaveTextContent(
-        "This browser did not save the setting. Check that site storage is " +
-          "allowed for this site, then save again.",
-      );
+      .toHaveTextContent(RESTRICTION_SAVED_RELAY_NOT_SAVED);
+    expect(RESTRICTION_SAVED_RELAY_NOT_SAVED).toBe(
+      "Your allowed relays and Relay only were saved, and the relay server " +
+        "addresses were not. Check that site storage is allowed for this " +
+        "site, then save again.",
+    );
     expect(readRelayRestriction()).toEqual({
       kind: "set",
       restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
@@ -272,6 +299,38 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     expect(page.getByText(RELAY_TEST_SAVED_ONLY).query()).toBeNull();
   });
 
+  test("a save that stores neither says so, and leaves both as they were", async () => {
+    writeOwnRelaySetting({ turn: [TURN_URL], stun: [] });
+    await mountScreen();
+    const refused = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+    try {
+      await userEvent.fill(allowedField(), "relay.example.org");
+      await userEvent.fill(turnField(), "turn:backup.example.org:3478");
+      await userEvent.click(saveButton());
+    } finally {
+      refused.mockRestore();
+    }
+
+    await expect.element(statusLine()).toHaveTextContent(NOTHING_SAVED);
+    expect(NOTHING_SAVED).toBe(
+      "This browser did not save the relay server addresses, the allowed " +
+        "relays or Relay only. Check that site storage is allowed for this " +
+        "site, then save again.",
+    );
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: { relayOnly: false },
+    });
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { turn: [TURN_URL], stun: [] },
+    });
+  });
+
   test("a stored value this build cannot read is reported until it is saved again", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
@@ -286,6 +345,15 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
     const notice = () =>
       page.getByText("The saved allowed relays could not be read");
     await expect.element(notice()).toBeVisible();
+    await expect
+      .element(
+        page.getByText(
+          "Every exchange in this browser is refused until the relay " +
+            "settings are saved again. Enter your allowed relays, choose " +
+            "Relay only if you want it, and save.",
+        ),
+      )
+      .toBeVisible();
 
     await userEvent.fill(allowedField(), "relay.example.org");
     await userEvent.click(saveButton());
@@ -295,6 +363,73 @@ describe("RelaySettingsScreen: allowed relays and Relay only", () => {
       kind: "set",
       restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
     });
+  });
+});
+
+describe("RelaySettingsScreen: the relays a run may use on each build", () => {
+  test("the hosted build shows Allowed relays and Relay only", async () => {
+    await mountScreen();
+
+    await expect
+      .element(page.getByRole("textbox", { name: "Allowed relays" }))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("checkbox", { name: "Relay only" }))
+      .toBeVisible();
+    expect(page.getByText(CONSOLE_RELAY_RESTRICTION_LINE).query()).toBeNull();
+    expect(document.body.textContent).toContain(
+      "unless your allowed relays below leave it out",
+    );
+  });
+
+  test("the console build withholds them, names the configuration keys that decide, and saves the relay alone", async () => {
+    build.console = true;
+    window.localStorage.setItem(
+      "alcove-relay-restriction",
+      JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
+    );
+    await mountScreen();
+
+    await expect
+      .element(page.getByText(CONSOLE_RELAY_RESTRICTION_LINE))
+      .toBeVisible();
+    expect(CONSOLE_RELAY_RESTRICTION_LINE).toBe(
+      "Exchanges run from this console follow the command-line " +
+        "configuration: its connection.allowed_relays and " +
+        "connection.ice_transport_policy keys decide which relays an " +
+        "exchange may use and whether it connects through a relay only.",
+    );
+    expect(
+      page.getByRole("textbox", { name: "Allowed relays" }).query(),
+    ).toBeNull();
+    expect(
+      page.getByRole("checkbox", { name: "Relay only" }).query(),
+    ).toBeNull();
+    expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
+    expect(
+      page.getByText("The saved allowed relays could not be read").query(),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("allowed relays below");
+    await expect.element(turnField()).toBeVisible();
+    await expect
+      .element(page.getByText(RELAY_OPERATOR_DISCLOSURE))
+      .toBeVisible();
+
+    await userEvent.fill(turnField(), TURN_URL);
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent(
+        "Saved. Exchanges started from now on use this relay.",
+      );
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { turn: [TURN_URL], stun: [] },
+    });
+    expect(window.localStorage.getItem("alcove-relay-restriction")).toBe(
+      JSON.stringify({ version: 1, allowedRelays: ["Not Normal"] }),
+    );
   });
 });
 

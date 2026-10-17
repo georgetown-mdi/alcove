@@ -31,6 +31,7 @@ import {
   recordRelaysLeftOut,
   watchIceGathering,
   withIceServerFailure,
+  withPeerRelaysLeftOut,
 } from "./iceGathering";
 import { boundPeerSignaling } from "./signalingBounds";
 
@@ -555,8 +556,9 @@ async function dialInviterWithRetry(
         });
       onFatal = (err) =>
         settle(() => {
+          const failure = withIceServerFailure(conn, asError(err), false);
           conn.close();
-          reject(asError(err));
+          reject(failure);
         });
       conn.once("open", onOpen);
       conn.once("error", onConnError);
@@ -570,7 +572,8 @@ async function dialInviterWithRetry(
   try {
     for (;;) {
       if (signal?.aborted) throw new Error("dialing the inviter was aborted");
-      if (fatalError !== undefined) throw asError(fatalError);
+      if (fatalError !== undefined)
+        throw withPeerRelaysLeftOut(peer, asError(fatalError));
       const remaining = deadline - Date.now();
       if (remaining <= 0)
         throw new PartnerNoShowError(

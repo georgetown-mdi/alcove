@@ -17,12 +17,12 @@ import {
   readRelayRestriction,
   writeRelayRestriction,
 } from "@psi/transport/relayRestriction";
+import { defaultRelaySetting, isConsoleBuild } from "@utils/clientConfig";
 import {
   parseRelayUrlLines,
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
-import { defaultRelaySetting } from "@utils/clientConfig";
 import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
@@ -63,6 +63,30 @@ export const RELAY_ONLY_DESCRIPTION =
   "Your browser offers your partner only addresses on a relay, never its " +
   "own network address. A run with no relay to use does not connect.";
 
+/**
+ * What a console shows in place of Allowed relays and Relay only: its
+ * exchanges run the command line, which reads its configuration, not this
+ * browser's setting.
+ */
+export const CONSOLE_RELAY_RESTRICTION_LINE =
+  "Exchanges run from this console follow the command-line configuration: " +
+  "its connection.allowed_relays and connection.ice_transport_policy keys " +
+  "decide which relays an exchange may use and whether it connects through " +
+  "a relay only.";
+
+/** The status after a save stored the allowed relays and Relay only, and
+ * not the relay server addresses. */
+export const RESTRICTION_SAVED_RELAY_NOT_SAVED =
+  "Your allowed relays and Relay only were saved, and the relay server " +
+  "addresses were not. Check that site storage is allowed for this site, " +
+  "then save again.";
+
+/** The status after a save stored nothing. */
+export const NOTHING_SAVED =
+  "This browser did not save the relay server addresses, the allowed relays " +
+  "or Relay only. Check that site storage is allowed for this site, then " +
+  "save again.";
+
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(
   lines: RelayUrlLines | AllowedRelayLines,
@@ -77,19 +101,82 @@ function fieldError(
     .join("; ");
 }
 
+/**
+ * The relays a run may use and Relay only, with the notice of a stored value
+ * this build cannot read while `unreadable`.
+ */
+function AllowedRelaysControls({
+  unreadable,
+  allowedText,
+  allowedError,
+  relayOnly,
+  onAllowedText,
+  onRelayOnly,
+}: {
+  unreadable: boolean;
+  allowedText: string;
+  allowedError: string | undefined;
+  relayOnly: boolean;
+  onAllowedText: (text: string) => void;
+  onRelayOnly: (checked: boolean) => void;
+}) {
+  return (
+    <>
+      <p>{ALLOWED_RELAYS_SCOPE}</p>
+
+      {unreadable && (
+        <Alert
+          color="yellow"
+          title="The saved allowed relays could not be read"
+        >
+          Every exchange in this browser is refused until the relay settings are
+          saved again. Enter your allowed relays, choose Relay only if you want
+          it, and save.
+        </Alert>
+      )}
+
+      <Stack gap="md" mt="md">
+        <Textarea
+          label="Allowed relays"
+          description="One host per line, with a port where needed, for example relay.example.org or relay.example.org:443. Each run uses only the relays listed here, yours, the invitation's or this site's. Leave it empty to use every relay a run lists."
+          autosize
+          minRows={2}
+          value={allowedText}
+          error={allowedError}
+          errorProps={{ role: "alert" }}
+          onChange={(event) => onAllowedText(event.currentTarget.value)}
+        />
+        <Checkbox
+          label="Relay only"
+          description={RELAY_ONLY_DESCRIPTION}
+          checked={relayOnly}
+          onChange={(event) => onRelayOnly(event.currentTarget.checked)}
+        />
+      </Stack>
+    </>
+  );
+}
+
 type SaveStatus =
   | { kind: "idle" }
   | { kind: "saved" }
   | { kind: "savedWithoutRelay" }
   | { kind: "removed" }
-  | { kind: "failed" };
+  /** The relay server addresses were not stored; nothing else was written. */
+  | { kind: "failed" }
+  /** The restriction was stored, and the relay server addresses were not. */
+  | { kind: "restrictionSavedOnly" }
+  /** Neither the restriction nor the relay server addresses were stored. */
+  | { kind: "nothingSaved" };
 
 /**
  * The relay settings page: this browser's own TURN and STUN urls and the
  * relays a run may use, with whether it connects through a relay only, kept
  * in browser storage for this site, with what the relay's operator learns
  * stated beside them, and a test of the relays a browser run lists that the
- * user starts. The hosted app and a console each hold their own.
+ * user starts. The hosted app and a console each hold their own. A console
+ * withholds the relays a run may use and Relay only, which its exchanges do
+ * not read, and states what decides them instead.
  */
 export function RelaySettingsScreen({
   defaultRelay = defaultRelaySetting,
@@ -97,6 +184,7 @@ export function RelaySettingsScreen({
   /** The build's default relay; {@link defaultRelaySetting} when unset. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
 }) {
+  const consoleBuild = isConsoleBuild();
   const [initial] = useState(readOwnRelaySetting);
   const [turnText, setTurnText] = useState(
     initial.kind === "set" ? initial.relay.turn.join("\n") : "",
@@ -155,31 +243,44 @@ export function RelaySettingsScreen({
       setStatus({ kind: "idle" });
       return;
     }
-    try {
-      writeRelayRestriction({
-        ...(allowedLines.entries !== undefined && {
-          allowedRelays: allowedLines.entries,
-        }),
-        relayOnly,
-      });
-      writeOwnRelaySetting({ turn: turnLines.urls, stun: stunLines.urls });
-      refreshTestTargets(turnLines.urls);
-      const restricted = allowedLines.entries !== undefined || relayOnly;
-      setStatus({
-        kind:
-          turnLines.urls.length + stunLines.urls.length > 0
-            ? "saved"
-            : restricted
-              ? "savedWithoutRelay"
-              : "removed",
-      });
-    } catch {
-      // The restriction may be stored while the own relay is not, so the
-      // saved state and the test are re-read from storage.
+    // Two writes, the restriction first: each outcome is stated, and the
+    // saved state and the test are re-read from storage after a failure.
+    const refreshFromStorage = () => {
       const stored = readOwnRelaySetting();
       refreshTestTargets(stored.kind === "set" ? stored.relay.turn : []);
-      setStatus({ kind: "failed" });
+    };
+    if (!consoleBuild) {
+      try {
+        writeRelayRestriction({
+          ...(allowedLines.entries !== undefined && {
+            allowedRelays: allowedLines.entries,
+          }),
+          relayOnly,
+        });
+      } catch {
+        refreshFromStorage();
+        setStatus({ kind: "nothingSaved" });
+        return;
+      }
     }
+    try {
+      writeOwnRelaySetting({ turn: turnLines.urls, stun: stunLines.urls });
+    } catch {
+      refreshFromStorage();
+      setStatus({ kind: consoleBuild ? "failed" : "restrictionSavedOnly" });
+      return;
+    }
+    refreshTestTargets(turnLines.urls);
+    const restricted =
+      !consoleBuild && (allowedLines.entries !== undefined || relayOnly);
+    setStatus({
+      kind:
+        turnLines.urls.length + stunLines.urls.length > 0
+          ? "saved"
+          : restricted
+            ? "savedWithoutRelay"
+            : "removed",
+    });
   }
 
   function remove() {
@@ -192,9 +293,10 @@ export function RelaySettingsScreen({
       const stored = readRelayRestriction();
       setStatus({
         kind:
-          stored.kind === "set" &&
-          stored.restriction.allowedRelays === undefined &&
-          !stored.restriction.relayOnly
+          consoleBuild ||
+          (stored.kind === "set" &&
+            stored.restriction.allowedRelays === undefined &&
+            !stored.restriction.relayOnly)
             ? "removed"
             : "savedWithoutRelay",
       });
@@ -212,8 +314,11 @@ export function RelaySettingsScreen({
         addresses here. They are kept in this browser for this site only. An
         invitation you send names these addresses so your partner connects
         through the same relay. A run also lists the relay named by an
-        invitation you accept, after yours, unless your allowed relays below
-        leave it out. {RELAY_KEY_NOTICE}
+        invitation you accept, after yours
+        {consoleBuild
+          ? "."
+          : ", unless your allowed relays below leave it out."}{" "}
+        {RELAY_KEY_NOTICE}
       </p>
 
       <h2>What the relay&apos;s operator learns</h2>
@@ -256,43 +361,26 @@ export function RelaySettingsScreen({
       </Stack>
 
       <h2>Which relays an exchange may use</h2>
-      <p>{ALLOWED_RELAYS_SCOPE}</p>
-
-      {initialRestriction.kind === "unreadable" && status.kind === "idle" && (
-        <Alert
-          color="yellow"
-          title="The saved allowed relays could not be read"
-        >
-          Exchanges in this browser use no relay and connect through a relay
-          only until they are saved again. Enter your allowed relays, choose
-          Relay only if you want it, and save.
-        </Alert>
+      {consoleBuild ? (
+        <p>{CONSOLE_RELAY_RESTRICTION_LINE}</p>
+      ) : (
+        <AllowedRelaysControls
+          unreadable={
+            initialRestriction.kind === "unreadable" && status.kind === "idle"
+          }
+          allowedText={allowedText}
+          allowedError={allowedError}
+          relayOnly={relayOnly}
+          onAllowedText={(text) => {
+            setAllowedText(text);
+            setStatus({ kind: "idle" });
+          }}
+          onRelayOnly={(checked) => {
+            setRelayOnly(checked);
+            setStatus({ kind: "idle" });
+          }}
+        />
       )}
-
-      <Stack gap="md" mt="md">
-        <Textarea
-          label="Allowed relays"
-          description="One host per line, with a port where needed, for example relay.example.org or relay.example.org:443. Each run uses only the relays listed here, yours, the invitation's or this site's. Leave it empty to use every relay a run lists."
-          autosize
-          minRows={2}
-          value={allowedText}
-          error={allowedError}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => {
-            setAllowedText(event.currentTarget.value);
-            setStatus({ kind: "idle" });
-          }}
-        />
-        <Checkbox
-          label="Relay only"
-          description={RELAY_ONLY_DESCRIPTION}
-          checked={relayOnly}
-          onChange={(event) => {
-            setRelayOnly(event.currentTarget.checked);
-            setStatus({ kind: "idle" });
-          }}
-        />
-      </Stack>
 
       <div className={styles.workFoot}>
         <Group>
@@ -310,6 +398,9 @@ export function RelaySettingsScreen({
             "No relay is set. Exchanges connect without one."}
           {status.kind === "failed" &&
             "This browser did not save the setting. Check that site storage is allowed for this site, then save again."}
+          {status.kind === "restrictionSavedOnly" &&
+            RESTRICTION_SAVED_RELAY_NOT_SAVED}
+          {status.kind === "nothingSaved" && NOTHING_SAVED}
         </p>
       </div>
 
