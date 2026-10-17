@@ -326,7 +326,13 @@ export function createSftpSessionControls(): SftpSessionControlHub {
       session.idleTimer = undefined;
       return;
     }
-    session.idleTimer = setTimeout(() => dropNow(conn), idleMs);
+    session.idleTimer = setTimeout(() => {
+      if (hub.idleCapSparesActiveSession && conn === activeConnection) {
+        armIdleTimer(conn, session, hub.maxIdleMs);
+        return;
+      }
+      dropNow(conn);
+    }, idleMs);
     session.idleTimer.unref();
   };
 
@@ -384,6 +390,7 @@ export function createSftpSessionControls(): SftpSessionControlHub {
     maxLifetimeMs: 0,
     maxOps: 0,
     maxIdleMs: 0,
+    idleCapSparesActiveSession: false,
     withholdCloseOnDisconnect: false,
     stallHandshakeOnConnect: false,
     withholdSubsystemOpen: false,

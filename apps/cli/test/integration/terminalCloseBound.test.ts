@@ -188,7 +188,6 @@ for (const [mode, connectionPerPoll] of [
         child.stderr.on("data", (chunk) => {
           out += String(chunk);
         });
-        const started = Date.now();
         const code = await new Promise<number | null>((resolve) => {
           const giveUp = setTimeout(() => {
             child.kill("SIGKILL");
@@ -199,9 +198,9 @@ for (const [mode, connectionPerPoll] of [
             resolve(exitCode);
           });
         });
+        const exitedAt = Date.now();
 
         expect({ code, out }).toEqual({ code: 0, out: expect.any(String) });
-        expect(Date.now() - started).toBeLessThan(BOUNDED_TEARDOWN_MS);
         // The child reports the mode it ran in, so a case that stopped reaching
         // the mode it names fails rather than passing as a duplicate of the other.
         expect(out).toContain(
@@ -211,6 +210,15 @@ for (const [mode, connectionPerPoll] of [
         // dying inside teardown.
         expect(out).toContain("OPENED");
         expect(out).toContain("CLOSED");
+        // Timed from the child's own stamp once its connection is open: the
+        // spawn's tsx startup and dial are not teardown, and took up to 19 s
+        // under eight concurrent CLI suites.
+        const openedAt = Number(/^OPENED (\d+)$/m.exec(out)?.[1]);
+        expect(
+          exitedAt - openedAt,
+          "teardown from OPENED to exit, measured at 5.0-5.7 s under eight " +
+            "concurrent CLI suites",
+        ).toBeLessThan(BOUNDED_TEARDOWN_MS);
         // The operator hears it once, at the CLI's default log level, as
         // information rather than a failure.
         expect(out).toContain("did not close the connection");

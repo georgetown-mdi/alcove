@@ -51,7 +51,9 @@ async function main(): Promise<void> {
       path: required("ALCOVE_TEST_REMOTE_PATH"),
     },
   });
-  process.stdout.write("OPENED\n");
+  // The parent times the teardown from this stamp rather than from the spawn,
+  // whose share of the run is startup and the dial.
+  process.stdout.write(`OPENED ${Date.now()}\n`);
   await conn.close();
   process.stdout.write("CLOSED\n");
 }

@@ -1413,9 +1413,11 @@ inProcessOnly(
           ALCOVE_SFTP_PORT: String(port),
           ALCOVE_SFTP_USER: usera.username,
           ALCOVE_SFTP_PASSWORD: usera.password ?? "",
-          ALCOVE_SFTP_READY_TIMEOUT_MS: String(
-            SUBSYSTEM_PHASE_READY_TIMEOUT_MS,
-          ),
+          // The far deadline, not the subsystem-phase one: what is read here is
+          // what holds the loop once ready has cleared the deadline. The
+          // child's handshake took 174-190 ms under four concurrent CLI suites;
+          // under eight it reached 389 ms and twice outran a 500 ms deadline.
+          ALCOVE_SFTP_READY_TIMEOUT_MS: String(READY_TIMEOUT_MS),
         },
         stdio: ["ignore", "pipe", "ignore"],
       },

@@ -136,6 +136,7 @@ async function connectPartyOnOwnServer(options: {
         // Clear every standing cap before the teardown dials and closes: a cap
         // left armed cuts the pre-drain reconnect instead of the call under test.
         srv.sessionControls.maxIdleMs = 0;
+        srv.sessionControls.idleCapSparesActiveSession = false;
         srv.sessionControls.maxOps = 0;
         srv.sessionControls.maxLifetimeMs = 0;
         srv.sessionControls.dropActiveAfterOps(0);
@@ -255,10 +256,17 @@ for (const [arm, keepsCutting] of [
               maxBytes: READ_CAP_BYTES,
             });
             // Armed AFTER the operation is issued, so both arms take the same
-            // first cut and differ only in what follows it. A session serving a
-            // transfer re-arms this timer on every opcode; one nobody is using
-            // serves none and is dropped.
-            if (keepsCutting) controls.maxIdleMs = 400;
+            // first cut and differ only in what follows it. A session nobody is
+            // using serves no opcode and is dropped. The active one is spared
+            // rather than left to beat the cap: under concurrent suites the
+            // cap's timer fired up to 2.4 s after it was armed, mid-transfer,
+            // and cut the session serving the re-issued read -- a second drop
+            // inside the operation's one recovery round
+            // (docs/spec/SFTP_SESSION_RECOVERY.md).
+            if (keepsCutting) {
+              controls.idleCapSparesActiveSession = true;
+              controls.maxIdleMs = 400;
+            }
             expect(await read).toHaveLength(TRANSFER_BYTES);
           },
           (level) => level === "WARN" || level === "ERROR",

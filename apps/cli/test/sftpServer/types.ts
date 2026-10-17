@@ -322,6 +322,14 @@ export interface SftpSessionControls {
    */
   maxIdleMs: number;
   /**
+   * Spare the active session -- the one most recently established -- from
+   * {@link maxIdleMs}, so the cap drops only sessions the client has moved off.
+   * The cap measures quiet by the wall clock, so a test process descheduled
+   * past it shows the session in use as quiet too while its next request
+   * waits unread. False by default.
+   */
+  idleCapSparesActiveSession: boolean;
+  /**
    * Accept the client's disconnect and then go quiet: while set, each newly
    * accepted connection's socket is stopped from ever closing itself, so a
    * client that disconnects is left in half-close -- no FIN or reset comes
