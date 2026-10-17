@@ -64,6 +64,7 @@ import {
   editorReprofiled,
   editorWithAlgorithm,
   editorWithAuthoredDraft,
+  editorWithBuiltInKeys,
   editorWithColumnDisclosure,
   editorWithColumnType,
   editorWithDeduplicate,
@@ -83,6 +84,7 @@ import {
   editorWithPrecisionFloorSelection,
   editorWithRecommendedCleaning,
   editorWithTransport,
+  guidedKeysAnnouncement,
   resetToRecommended,
 } from "@psi/inviterEditor";
 import { receiptsIntentFields } from "@psi/receiptsModel";
@@ -2026,13 +2028,26 @@ export function InviterScreen() {
                   selection,
                 );
                 if (reseeded === editor) return;
-                const count = reseeded.draft.keys.length;
                 dispatch({
                   type: "editor-replaced",
                   editor: reseeded,
-                  announcement: `The key list holds ${count} built-in ${count === 1 ? "rule" : "rules"} your file supplies, all turned on.`,
+                  announcement: guidedKeysAnnouncement(reseeded),
                 });
               }}
+              onUseBuiltInRules={() => {
+                const guided = editorWithBuiltInKeys(editor);
+                if (guided === editor) return;
+                dispatch({
+                  type: "editor-replaced",
+                  editor: guided,
+                  announcement: guidedKeysAnnouncement(guided),
+                });
+              }}
+              keysFromOpenedConfiguration={
+                runsOpenedConfiguration(mountedConfiguration) &&
+                loadedTermsFile !== undefined &&
+                loadedTermsFile === acquired
+              }
               onKeyEnabled={(index, enabled) =>
                 applyEditor(editorWithKeyEnabled(editor, index, enabled))
               }

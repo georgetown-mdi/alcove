@@ -1,6 +1,4 @@
-import { useState } from "react";
-
-import { Button, Group, Modal } from "@mantine/core";
+import { ConfirmedActionButton } from "./ConfirmedActionButton";
 
 /**
  * "Reset to defaults" beside a step's primary action, behind a confirm naming
@@ -18,42 +16,14 @@ export function ResetToDefaultsButton({
   resets: string;
   onReset: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
   return (
-    <>
-      <Button
-        variant={variant === "subtle" ? "subtle" : "default"}
-        disabled={disabled}
-        aria-haspopup="dialog"
-        onClick={() => setConfirming(true)}
-      >
-        Reset to defaults
-      </Button>
-      <Modal
-        opened={confirming}
-        onClose={() => setConfirming(false)}
-        title="Reset to defaults?"
-        centered
-        transitionProps={{ duration: 0 }}
-      >
-        <p>{resets}</p>
-        <Group mt="md">
-          <Button variant="default" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button
-            color="red"
-            variant="light"
-            onClick={() => {
-              setConfirming(false);
-              onReset();
-            }}
-          >
-            Reset to defaults
-          </Button>
-        </Group>
-      </Modal>
-    </>
+    <ConfirmedActionButton
+      label="Reset to defaults"
+      variant={variant}
+      disabled={disabled}
+      statement={resets}
+      onConfirm={onReset}
+    />
   );
 }
 

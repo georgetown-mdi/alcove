@@ -17,8 +17,10 @@ import {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   LinkageStrategySchema,
   ONE_STATE_OR_METRO_AREA_HELP,
+  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
   ONE_STATE_OR_METRO_AREA_QUESTION,
   PRECISION_FLOORS,
+  precisionFloorAsksCoverage,
   precisionFloorStatement,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -30,6 +32,7 @@ import {
   SINGLE_PASS_DISCLOSURE_TITLE,
 } from "@psi/linkageStrategyChoice";
 import {
+  USE_BUILT_IN_RULES_LABEL,
   buildAdvancedTerms,
   citationDropFor,
 } from "@psi/authoring/advancedInvite";
@@ -39,8 +42,11 @@ import { TermsImportExport } from "@components/TermsImportExport";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  OPENED_CONFIGURATION_KEYS_NOTE,
+  USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
   emptyGuidedKeysNotice,
+  keyOrderHelp,
   keySatisfiabilityFor,
   seedRows,
 } from "@psi/inviterEditor";
@@ -48,6 +54,7 @@ import {
 import styles from "@styles/app.module.css";
 
 import { CitationDropNotice } from "./CitationDropNotice";
+import { ConfirmedActionButton } from "./ConfirmedActionButton";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {
@@ -89,8 +96,10 @@ const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
  * The list holds the built-in keys the chosen floor and answer select for
  * these columns, each with a checkbox and the reorder pair. Both choices are
  * withheld once the keys were written in Expert authoring or loaded from a
- * document, with a note saying so: no floor selected those keys, and
- * reseeding would replace them.
+ * document, with a note saying so and an action that replaces those keys with
+ * the built-in rules: no floor selected them. On the console, keys a run of
+ * an opened configuration continues under get a note naming the file and the
+ * command that change them instead, and no action.
  *
  * Also renders {@link citationDropFor} live from the draft, so a rule-set
  * citation the rebuild drops is flagged as soon as the import lands or an
@@ -103,6 +112,8 @@ export function KeysTab({
   expertMode,
   onExpertMode,
   onPrecisionFloorSelection,
+  onUseBuiltInRules,
+  keysFromOpenedConfiguration = false,
   onKeyEnabled,
   onKeyMoved,
   onAuthoredDraft,
@@ -120,6 +131,13 @@ export function KeysTab({
   onExpertMode: (on: boolean) => void;
   /** Reseed the guided keys at a precision floor and coverage answer. */
   onPrecisionFloorSelection: (selection: PrecisionFloorSelection) => void;
+  /** Replace keys written in Expert authoring or loaded from a document with
+   * the built-in rules, once the operator confirms. */
+  onUseBuiltInRules: () => void;
+  /** Whether the keys are an opened configuration's that a run on the console
+   * continues under, which the partner agreed to: no action here replaces
+   * them. */
+  keysFromOpenedConfiguration?: boolean;
   onKeyEnabled: (index: number, enabled: boolean) => void;
   onKeyMoved: (index: number, offset: -1 | 1) => void;
   onAuthoredDraft: (draft: AdvancedInviteDraft) => void;
@@ -148,8 +166,8 @@ export function KeysTab({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => citationDropFor(editor.draft, currentTerms),
-    [editor.draft, currentTerms],
+    () => citationDropFor(editor.draft, editor.seed, currentTerms),
+    [editor.draft, editor.seed, currentTerms],
   );
   const emptyGuidedKeys = useMemo(
     () => emptyGuidedKeysNotice(editor),
@@ -158,6 +176,7 @@ export function KeysTab({
   const keysAuthored = editor.keysAuthored === true;
   const selection =
     editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;
+  const asksCoverage = precisionFloorAsksCoverage(selection.floor);
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -179,15 +198,27 @@ export function KeysTab({
       </button>
       <p className={styles.eyebrow}>Customize</p>
       <h1 tabIndex={-1}>Matching keys</h1>
-      {keysAuthored ? (
+      {keysAuthored && keysFromOpenedConfiguration && (
         <Alert variant="light" color="gray" role="note" my="sm">
-          {AUTHORED_KEYS_FLOOR_NOTE}
+          {OPENED_CONFIGURATION_KEYS_NOTE}
         </Alert>
-      ) : (
+      )}
+      {keysAuthored && !keysFromOpenedConfiguration && (
+        <Alert variant="light" color="gray" role="note" my="sm">
+          <p>{AUTHORED_KEYS_FLOOR_NOTE}</p>
+          <ConfirmedActionButton
+            label={USE_BUILT_IN_RULES_LABEL}
+            variant="default"
+            statement={USE_BUILT_IN_RULES_STATEMENT}
+            onConfirm={onUseBuiltInRules}
+          />
+        </Alert>
+      )}
+      {!keysAuthored && (
         <>
           <Radio.Group
             label="Built-in rules"
-            description="Changing this or the answer below replaces the keys with the rules it selects that your file supplies, all turned on."
+            description="Changing this or the answer below lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
             value={String(selection.floor)}
             onChange={(value) => {
               const floor = PRECISION_FLOORS.find(
@@ -212,7 +243,12 @@ export function KeysTab({
           </Radio.Group>
           <Radio.Group
             label={ONE_STATE_OR_METRO_AREA_QUESTION}
-            description={ONE_STATE_OR_METRO_AREA_HELP.join(" ")}
+            description={
+              asksCoverage
+                ? ONE_STATE_OR_METRO_AREA_HELP.join(" ")
+                : ONE_STATE_OR_METRO_AREA_NOT_ASKED
+            }
+            disabled={!asksCoverage}
             value={
               selection.oneStateOrMetroArea
                 ? COVERAGE_ANSWER.yes
@@ -236,11 +272,7 @@ export function KeysTab({
           </Radio.Group>
         </>
       )}
-      <p id="key-order-help">
-        Records are matched on these keys, tried in order, and earlier keys
-        match first. The built-in keys come with the rules at 99% precision
-        first, then the rules at 95%.
-      </p>
+      <p id="key-order-help">{keyOrderHelp(editor)}</p>
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
@@ -311,7 +343,7 @@ export function KeysTab({
       </VisuallyHidden>
       <Switch
         label="Expert authoring"
-        description="Build linkage keys element by element, edit transforms and swaps, and import or export the terms as JSON or YAML."
+        description="Build linkage keys element by element, edit transforms and swaps, and import or export the terms as JSON or YAML. Editing keys here replaces the choice of built-in rules above."
         checked={expertMode}
         onChange={(event) => onExpertMode(event.currentTarget.checked)}
         my="md"

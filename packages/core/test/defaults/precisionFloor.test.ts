@@ -5,6 +5,7 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
   PRECISION_FLOORS,
   checkLinkageRuleSetCitation,
   findBuiltInLinkageRuleSet,
@@ -12,6 +13,7 @@ import {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorAsksCoverage,
   precisionFloorSelectionStatement,
   precisionFloorStatement,
   resolveLinkageRuleSetCitation,
@@ -252,13 +254,53 @@ describe("precisionFloorSelectionStatement", () => {
     );
     expect(
       precisionFloorSelectionStatement({
-        floor: 99,
+        floor: 95,
         oneStateOrMetroArea: false,
       }),
     ).toBe(
-      "the built-in rules at 99% precision and above that your file " +
+      "the built-in rules at 95% precision and above that your file " +
         "supplies, leaving out the rules that need both files to draw " +
         "their members from one state or one metropolitan area",
+    );
+  });
+
+  test("names no coverage condition at a floor the answer does not change", () => {
+    for (const oneStateOrMetroArea of [true, false])
+      expect(
+        precisionFloorSelectionStatement({ floor: 99, oneStateOrMetroArea }),
+      ).toBe(
+        "the built-in rules at 99% precision and above that your file " +
+          "supplies",
+      );
+  });
+});
+
+describe("precisionFloorAsksCoverage", () => {
+  test("is true exactly where the coverage answer changes the selection", () => {
+    const metadata = inferMetadata(
+      ["ssn", "first_name", "last_name", "dob", "zip", "phone", "email"],
+      [],
+    );
+    for (const floor of PRECISION_FLOORS) {
+      const keysAnswering = (oneStateOrMetroArea: boolean) =>
+        names(
+          linkageTermsFromRuleSet(catalog, "Party A", metadata, {
+            floor,
+            oneStateOrMetroArea,
+          }).linkageKeys,
+        );
+      expect(precisionFloorAsksCoverage(floor)).toBe(
+        keysAnswering(true).length !== keysAnswering(false).length,
+      );
+    }
+  });
+
+  test("is true only at the 95% floor, the band the not-asked note names", () => {
+    expect(
+      PRECISION_FLOORS.filter((floor) => precisionFloorAsksCoverage(floor)),
+    ).toStrictEqual([95]);
+    expect(ONE_STATE_OR_METRO_AREA_NOT_ASKED).toBe(
+      "Applies only to the 95% rules.",
     );
   });
 });

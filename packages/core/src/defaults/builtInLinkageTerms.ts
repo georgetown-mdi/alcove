@@ -485,9 +485,31 @@ export const ONE_STATE_OR_METRO_AREA_HELP: ReadonlyArray<string> =
     "A file covering one birth year, such as one school class, behaves like " +
       "a far larger file, because more of its members share a name and a " +
       "date of birth.",
+    "If either file covers one age group, such as one school class, answer " +
+      "No.",
     "Each rule's precision comes from studies of similar rules in other " +
       "settings.",
   ]);
+
+/** What an authoring screen shows in place of
+ * {@link ONE_STATE_OR_METRO_AREA_HELP} at a floor whose rules
+ * {@link precisionFloorAsksCoverage} says the answer does not change. */
+export const ONE_STATE_OR_METRO_AREA_NOT_ASKED =
+  "Applies only to the 95% rules.";
+
+/**
+ * Whether the rules `floor` selects include one with the
+ * `one_state_or_metro_area` coverage condition, so that the answer to
+ * {@link ONE_STATE_OR_METRO_AREA_QUESTION} changes what it selects.
+ */
+export function precisionFloorAsksCoverage(floor: PrecisionFloor): boolean {
+  return DEFAULT_LINKAGE_RULE_BANDS.some(
+    (rule) =>
+      rule.band >= floor &&
+      rule.coverage === "one_state_or_metro_area" &&
+      rule.needs === undefined,
+  );
+}
 
 /** The rules a floor selects, as a phrase starting lowercase. */
 function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
@@ -497,8 +519,8 @@ function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
 /**
  * A floor as the control choosing it states it: a label naming the rules it
  * selects, and a description of its band's conditions -- the share of matched
- * pairs that are the same person, and, where the band holds rules with the
- * `one_state_or_metro_area` coverage condition, that condition.
+ * pairs that are the same person, and, where the rules it selects include one
+ * with the `one_state_or_metro_area` coverage condition, that condition.
  */
 export function precisionFloorStatement(floor: PrecisionFloor): {
   label: string;
@@ -508,15 +530,9 @@ export function precisionFloorStatement(floor: PrecisionFloor): {
   const share =
     `Of the pairs each rule matches, at least ${String(floor)} in 100 are ` +
     "the same person.";
-  const bandHoldsCoverageCondition = DEFAULT_LINKAGE_RULE_BANDS.some(
-    (rule) =>
-      rule.band === floor &&
-      rule.coverage === "one_state_or_metro_area" &&
-      rule.needs === undefined,
-  );
   return {
     label: label.charAt(0).toUpperCase() + label.slice(1),
-    description: bandHoldsCoverageCondition
+    description: precisionFloorAsksCoverage(floor)
       ? `${share} The rules that match on a name and a date of birth alone ` +
         "are included only when both files draw their members from one " +
         "state or one metropolitan area."
@@ -528,20 +544,20 @@ export function precisionFloorStatement(floor: PrecisionFloor): {
  * The rules `selection` picks for a file, as every screen that names a
  * selection words it: the console's confirm step, the CLI's display before
  * the run, and the web invitation's review. Starts lowercase, for use after a
- * label.
+ * label. Names no coverage condition at a floor the answer does not change
+ * ({@link precisionFloorAsksCoverage}).
  */
 export function precisionFloorSelectionStatement(
   selection: PrecisionFloorSelection,
 ): string {
+  const rules = `${rulesAtPrecisionFloor(selection.floor)} that your file supplies`;
+  if (!precisionFloorAsksCoverage(selection.floor)) return rules;
   const coverage = selection.oneStateOrMetroArea
     ? "for two files that both draw their members from one state or one " +
       "metropolitan area"
     : "leaving out the rules that need both files to draw their members " +
       "from one state or one metropolitan area";
-  return (
-    `${rulesAtPrecisionFloor(selection.floor)} ` +
-    `that your file supplies, ${coverage}`
-  );
+  return `${rules}, ${coverage}`;
 }
 
 /**

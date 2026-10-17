@@ -12,6 +12,7 @@ import {
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
+  precisionFloorSelectionStatement,
   precisionFloorStatement,
 } from "@alcove/core";
 
@@ -20,6 +21,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 import {
   draftFromTerms,
   draftHasOfferedKeys,
+  draftWithBuiltInKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
@@ -231,14 +233,60 @@ export function editorWithPrecisionFloorSelection(
   };
 }
 
+/** Replace keys written in the expert editor or loaded from a document with
+ * the built-in rules the file supplies at the default selection
+ * ({@link draftWithBuiltInKeys}), returning the session to the guided list:
+ * the precision floor and coverage controls apply again, and a later column
+ * edit reconciles the keys. */
+export function editorWithBuiltInKeys(editor: InviterEditor): InviterEditor {
+  if (editor.sealed === true) return editor;
+  const { keysAuthored: _keysAuthored, ...guided } = editor;
+  return { ...guided, draft: draftWithBuiltInKeys(editor.draft) };
+}
+
 /** What Matching keys shows in place of the precision floor and coverage
  * controls on a session whose keys no floor selected
- * ({@link editorWithPrecisionFloorSelection} refuses there). */
+ * ({@link editorWithPrecisionFloorSelection} refuses there), beside the
+ * action that replaces them ({@link editorWithBuiltInKeys}). */
 export const AUTHORED_KEYS_FLOOR_NOTE =
   "These keys were written in Expert authoring or loaded from a document, so " +
-  "no choice of built-in rules applies to them. To choose the built-in rules " +
-  "again, use Reset to defaults on Review & create, which also resets the " +
-  "other settings.";
+  "no choice of built-in rules applies to them.";
+
+/** What the confirm before {@link editorWithBuiltInKeys} states. */
+export const USE_BUILT_IN_RULES_STATEMENT =
+  "This replaces these keys with " +
+  `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
+  "all turned on. Your columns and other settings stay. This cannot be undone.";
+
+/** What Matching keys shows in place of the precision floor and coverage
+ * controls on the console, for keys a run of an opened configuration
+ * continues under: the partner holds them, so no action here replaces them. */
+export const OPENED_CONFIGURATION_KEYS_NOTE =
+  "These keys come from the configuration you opened, which your partner " +
+  "agreed to. To change them, edit alcove.yaml and run alcove update, then " +
+  "have your partner run alcove apply on what it prints.";
+
+/** What the key list's help says about its order: the bands the floor
+ * selects, in the order the built-in keys list them, or for keys no floor
+ * selected, only that they are tried in the order listed. */
+export function keyOrderHelp(editor: InviterEditor): string {
+  const selection = editor.draft.precisionFloorSelection;
+  if (editor.keysAuthored === true || selection === undefined)
+    return (
+      "Records are matched on these keys, tried in the order listed, and " +
+      "earlier keys match first."
+    );
+  const lead =
+    "Records are matched on these keys, tried in order, and earlier keys " +
+    "match first.";
+  const [highest, ...lower] = PRECISION_FLOORS.filter(
+    (band) => band >= selection.floor,
+  ).map((band) => `${String(band)}%`);
+  return lower.length === 0
+    ? `${lead} The built-in keys are only the rules at ${highest} precision.`
+    : `${lead} The built-in keys come with the rules at ${highest} ` +
+        `precision first, then the rules at ${lower.join(", ")}.`;
+}
 
 /** The note for a guided key list the precision floor and coverage answer
  * leave empty while a wider choice would not, or `undefined` otherwise. */
@@ -259,6 +307,24 @@ export function emptyGuidedKeysNotice(
     "Your file's columns supply none of the built-in rules these choices " +
     `select. ${precisionFloorStatement(widest.floor).label}, with the ` +
     "question above answered Yes, include rules your file supplies."
+  );
+}
+
+/** What a screen reader hears after a precision floor or coverage choice
+ * reseeds the guided keys: how many the list shows and how many are on, or,
+ * for an empty list, the note beside it ({@link emptyGuidedKeysNotice}). */
+export function guidedKeysAnnouncement(editor: InviterEditor): string {
+  const count = editor.draft.keys.length;
+  if (count === 0)
+    return (
+      emptyGuidedKeysNotice(editor) ??
+      "Your file's columns supply none of the built-in rules."
+    );
+  const on = enabledKeys(editor.draft).length;
+  return (
+    `The key list shows ${String(count)} built-in ` +
+    `${count === 1 ? "rule" : "rules"} your file supplies, ` +
+    `${on === count ? "all" : String(on)} turned on.`
   );
 }
 

@@ -45,6 +45,7 @@ import {
   declarableFieldNames,
   draftFromTerms,
   draftHasOfferedKeys,
+  draftKeysAreBuiltIn,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
 import { outputForDirection } from "./advancedInviteTypes";
@@ -1038,45 +1039,67 @@ export function importedCitationDropNotice(
   return CITATION_DROP_NOTICES[cause];
 }
 
-/** What each cause tells the author of a draft seeded from the built-in rules
- * whose terms no longer cite them. */
-const SEEDED_CITATION_DROP_NOTICES: Record<
-  Exclude<ImportedCitationDropCause, "shipped-set-unmet">,
-  string
-> = {
-  "no-keys":
+/** The label of the Matching keys action that replaces keys written in Expert
+ * authoring or loaded from a document with the built-in rules. */
+export const USE_BUILT_IN_RULES_LABEL = "Use the built-in rules";
+
+/** What losing the built-in citation costs, in one clause. */
+const SEEDED_CITATION_DROP_CONSEQUENCE =
+  "the terms you create will not cite it, so they will not tell your partner " +
+  "that these keys are the built-in rules";
+
+/** What each way of losing the built-in citation tells the author. */
+const SEEDED_CITATION_DROP_NOTICES = {
+  noKeys:
     "A rule-set citation says which set the linkage keys came from, and these " +
     "terms enable none, so the built-in rule set is not cited in the terms you " +
     "create. Turn a linkage key back on to keep the citation.",
-  "rules-not-drawn":
-    "A key was added, changed or moved out of the built-in order, so these keys " +
-    "are no longer drawn from the built-in rule set, and the terms you create " +
-    "will not cite it. Undo the key edits to keep the citation, or create the " +
-    "invitation without it.",
-};
+  reordered:
+    "A key was moved out of the built-in order, so these keys are no longer " +
+    `drawn from the built-in rule set, and ${SEEDED_CITATION_DROP_CONSEQUENCE}. ` +
+    "Move the keys back into their built-in order to keep the citation, or " +
+    "create the invitation without it.",
+  edited:
+    "A key was added or changed in Expert authoring, so these keys are no " +
+    "longer drawn from the built-in rule set, and " +
+    `${SEEDED_CITATION_DROP_CONSEQUENCE}. To keep the citation, choose ` +
+    `${USE_BUILT_IN_RULES_LABEL} on Matching keys, which replaces these keys, ` +
+    "or create the invitation without it.",
+} as const;
 
 /**
  * The notice for a draft seeded from the built-in rules whose terms will not
- * cite them, or `undefined` where they will -- and for an imported draft
- * ({@link importedCitationDropNotice} speaks for it), and for a draft whose
- * columns supply none of the keys its precision floor selects, which never had
- * a citation to lose. Blocks nothing, for the reason the imported notice
- * blocks nothing.
+ * cite them, or `undefined` where they will. Read from the terms the draft
+ * would emit against what it started from: a draft whose file the built-in
+ * rules supplied at its seed, or whose columns the catalog offers keys at its
+ * selection, had a citation to lose. Silent for an imported draft
+ * ({@link importedCitationDropNotice} speaks for it), and for an empty key
+ * list, which the empty-list note and the key error speak for. Blocks nothing,
+ * for the reason the imported notice blocks nothing.
  */
 export function seededCitationDropNotice(
   draft: AdvancedInviteDraft,
+  seed: Pick<AdvancedInviteSeed, "terms">,
   builtTerms?: Pick<
     LinkageTerms,
     "linkageFields" | "linkageKeys" | "linkageRuleSet"
   >,
 ): string | undefined {
-  if (draft.importedRuleSetCitation !== undefined) return undefined;
-  if (!draftHasOfferedKeys(draft)) return undefined;
+  if (
+    draft.importedRuleSetCitation !== undefined ||
+    draft.precisionFloorSelection === undefined
+  )
+    return undefined;
+  if (seed.terms.linkageRuleSet === undefined && !draftHasOfferedKeys(draft))
+    return undefined;
   const terms = builtTerms ?? buildAdvancedTerms(draft);
-  if (terms.linkageRuleSet !== undefined) return undefined;
-  return SEEDED_CITATION_DROP_NOTICES[
-    terms.linkageKeys.length === 0 ? "no-keys" : "rules-not-drawn"
-  ];
+  if (terms.linkageRuleSet !== undefined || draft.keys.length === 0)
+    return undefined;
+  if (terms.linkageKeys.length === 0)
+    return SEEDED_CITATION_DROP_NOTICES.noKeys;
+  return draftKeysAreBuiltIn(draft)
+    ? SEEDED_CITATION_DROP_NOTICES.reordered
+    : SEEDED_CITATION_DROP_NOTICES.edited;
 }
 
 /** The title of the notice {@link importedCitationDropNotice} words. */
@@ -1101,13 +1124,14 @@ export interface CitationDrop {
  */
 export function citationDropFor(
   draft: AdvancedInviteDraft,
+  seed: Pick<AdvancedInviteSeed, "terms">,
   builtTerms?: LinkageTerms,
 ): CitationDrop | undefined {
   const terms = builtTerms ?? buildAdvancedTerms(draft);
   const imported = importedCitationDropNotice(draft, terms);
   if (imported !== undefined)
     return { title: IMPORTED_CITATION_DROP_TITLE, notice: imported };
-  const seeded = seededCitationDropNotice(draft, terms);
+  const seeded = seededCitationDropNotice(draft, seed, terms);
   if (seeded !== undefined)
     return { title: SEEDED_CITATION_DROP_TITLE, notice: seeded };
   return undefined;

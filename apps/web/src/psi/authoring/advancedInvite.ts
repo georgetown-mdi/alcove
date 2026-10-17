@@ -41,6 +41,8 @@ export {
   defaultStandardizationForRows,
   draftFromTerms,
   draftHasOfferedKeys,
+  draftKeysAreBuiltIn,
+  draftWithBuiltInKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
@@ -74,6 +76,7 @@ export type { CitationDrop } from "./advancedInviteValidation";
 export {
   IMPORTED_CITATION_DROP_TITLE,
   SEEDED_CITATION_DROP_TITLE,
+  USE_BUILT_IN_RULES_LABEL,
   citationDropFor,
   importedCitationDropNotice,
   importedConstraintDivergenceMessage,

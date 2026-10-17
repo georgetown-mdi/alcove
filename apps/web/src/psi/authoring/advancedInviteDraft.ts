@@ -279,22 +279,33 @@ export function draftHasOfferedKeys(draft: AdvancedInviteDraft): boolean {
   );
 }
 
-/**
- * Reseed the guided keys from the built-in catalog at `selection`: every key
- * it picks that these columns supply, ON, in the catalog's order, replacing
- * the draft's keys and the enabled flags set on them. The cleaning a phone,
- * email or ZIP key holds follows the new keys, as it follows a key turned on or
- * off by hand ({@link draftWithKeyEnabled}).
- *
- * For the guided list only: the inviter session refuses it on a key set
- * written in the expert editor or loaded from a terms document
- * (`editorWithPrecisionFloorSelection`).
- */
-export function draftWithPrecisionFloorSelection(
+/** `offered` in its own order, each key `prevKeys` already lists keeping the
+ * enabled flag set on it there. Matched by the canonical encoding, as
+ * {@link reconcileKeys} matches. */
+function offeredKeysKeepingFlags(
+  prevKeys: ReadonlyArray<DraftKey>,
+  offered: Array<DraftKey>,
+): Array<DraftKey> {
+  const flagByEncoding = new Map<string, boolean>();
+  for (const entry of prevKeys) {
+    const encoded = encodeKeyForComparison(entry.key);
+    if (encoded !== null) flagByEncoding.set(encoded, entry.enabled);
+  }
+  return offered.map((entry) => {
+    const encoded = encodeKeyForComparison(entry.key);
+    const enabled = encoded === null ? undefined : flagByEncoding.get(encoded);
+    return enabled === undefined ? entry : { ...entry, enabled };
+  });
+}
+
+/** `draft` with `keys` in place of its own, and the cleaning a phone, email or
+ * ZIP key holds following them, as it follows a key turned on or off by hand
+ * ({@link draftWithKeyEnabled}). */
+function draftWithGuidedKeys(
   draft: AdvancedInviteDraft,
+  keys: Array<DraftKey>,
   selection: PrecisionFloorSelection,
 ): AdvancedInviteDraft {
-  const keys = offerableDraftKeys(draft.identity, draft.metadata, selection);
   return {
     ...draft,
     keys,
@@ -306,6 +317,72 @@ export function draftWithPrecisionFloorSelection(
       enabledLinkageKeys(keys),
     ),
   };
+}
+
+/**
+ * Reseed the guided keys from the built-in catalog at `selection`: every key
+ * it picks that these columns supply, in the catalog's order. A key the list
+ * already shows keeps the enabled flag set on it, and a key the selection adds
+ * arrives ON.
+ *
+ * For the guided list only: the inviter session refuses it on a key set
+ * written in the expert editor or loaded from a terms document
+ * (`editorWithPrecisionFloorSelection`).
+ */
+export function draftWithPrecisionFloorSelection(
+  draft: AdvancedInviteDraft,
+  selection: PrecisionFloorSelection,
+): AdvancedInviteDraft {
+  return draftWithGuidedKeys(
+    draft,
+    offeredKeysKeepingFlags(
+      draft.keys,
+      offerableDraftKeys(draft.identity, draft.metadata, selection),
+    ),
+    selection,
+  );
+}
+
+/**
+ * Replace the draft's keys with the built-in rules these columns supply at
+ * {@link DEFAULT_PRECISION_FLOOR_SELECTION}, every one ON, in the catalog's
+ * order: the way back to the guided list from keys written in the expert
+ * editor or loaded from a terms document. An imported document's field
+ * declarations and citation go with its keys; the columns and the rest of the
+ * settings stay.
+ */
+export function draftWithBuiltInKeys(
+  draft: AdvancedInviteDraft,
+): AdvancedInviteDraft {
+  const {
+    importedLinkageFields: _importedLinkageFields,
+    importedRuleSetCitation: _importedRuleSetCitation,
+    ...kept
+  } = draft;
+  return draftWithGuidedKeys(
+    kept,
+    offerableDraftKeys(
+      draft.identity,
+      draft.metadata,
+      DEFAULT_PRECISION_FLOOR_SELECTION,
+    ),
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+  );
+}
+
+/** Whether every key `draft` lists is one the built-in catalog declares,
+ * whatever its order: true of a guided list, reordered or not, and false once
+ * a key was added or changed in the expert editor. */
+export function draftKeysAreBuiltIn(draft: AdvancedInviteDraft): boolean {
+  const catalog = new Set(
+    DEFAULT_LINKAGE_RULE_SET.linkageKeys.map((key) =>
+      encodeKeyForComparison(key),
+    ),
+  );
+  return draft.keys.every((entry) => {
+    const encoded = encodeKeyForComparison(entry.key);
+    return encoded !== null && catalog.has(encoded);
+  });
 }
 
 /**

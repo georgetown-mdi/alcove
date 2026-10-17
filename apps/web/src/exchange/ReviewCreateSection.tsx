@@ -279,8 +279,8 @@ export function ReviewCreateSection({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => citationDropFor(editor.draft, currentTerms),
-    [editor.draft, currentTerms],
+    () => citationDropFor(editor.draft, editor.seed, currentTerms),
+    [editor.draft, editor.seed, currentTerms],
   );
   const inertCoalesce = useMemo(
     () => inertCoalesceNotice(editor.draft, currentTerms),
