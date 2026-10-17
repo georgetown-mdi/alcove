@@ -362,6 +362,24 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     role: "linkage",
     isPayload: false,
   },
+  // Number-named columns only: an address-line column (`address`,
+  // `street_address`) is typed `street_number` explicitly by the operator.
+  {
+    type: "street_number",
+    aliases: [
+      "streetnumber",
+      "street_no",
+      "street_num",
+      "house_number",
+      "housenumber",
+      "house_no",
+      "house_num",
+      "address_number",
+      "addressnumber",
+    ],
+    role: "linkage",
+    isPayload: false,
+  },
   {
     type: "zip_code",
     aliases: ["zipcode", "zip", "zip5", "zip_5"],

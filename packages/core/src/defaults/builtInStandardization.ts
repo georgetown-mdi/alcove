@@ -131,6 +131,15 @@ const EMAIL_ADDRESS_STEPS: StandardizationStep[] = [
   },
 ];
 
+// The house number an address value starts with: its leading run of digits,
+// leading zeros removed, so `0042 Elm` and `42 Elm` agree. A unit letter, a
+// range's second number or a fraction after it is not kept, and a value that
+// starts with no digit, or whose number is all zeros, is dropped.
+const STREET_NUMBER_STEPS: StandardizationStep[] = [
+  { function: "trim_whitespace" },
+  { function: "extract_regex", params: { pattern: "^0*([1-9][0-9]*)" } },
+];
+
 // US 5-digit ZIP. Strip every non-digit (subsuming a leading trim and
 // non-ASCII removal), keep the first 5 digits so a ZIP+4 collapses to its
 // 5-digit prefix, then zero-pad a short value to 5 (a New England ZIP
@@ -224,6 +233,8 @@ function stepsForType(
       return PHONE_NUMBER_STEPS;
     case "email_address":
       return EMAIL_ADDRESS_STEPS;
+    case "street_number":
+      return STREET_NUMBER_STEPS;
     case "zip_code":
       return ZIP_CODE_STEPS;
     case "state":

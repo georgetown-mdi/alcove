@@ -2164,6 +2164,41 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines[keyIndex + 2]).toBe("      elements:");
   });
 
+  test("displayInvitation: names a street number field in plain words", () => {
+    const log = getLogger("accept-display-street-number-test");
+    log.setLevel("silent");
+    const token = sampleToken(FUTURE());
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          ...token.linkageTerms.linkageFields,
+          { name: "address_line", type: "street_number" },
+        ],
+        linkageKeys: [
+          {
+            name: "name, date of birth and street number",
+            elements: [
+              { field: "last_name" },
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "address_line" },
+            ],
+          },
+        ],
+      },
+    }).split("\n");
+
+    expect(lines).toContain("    - Street number");
+    expect(
+      lines.some((line) =>
+        /^ {2}matched on \(.*\): .*, street number$/.test(line),
+      ),
+    ).toBe(true);
+    expect(lines.join("\n")).not.toContain("address_line");
+  });
+
   test("displayInvitation: the operator's own outbound heading sits level with the other payload headings", () => {
     // Indentation shows hierarchy in this outline, so the operator's own outbound
     // disclosure must not be the one heading a level below its two counterparts, at

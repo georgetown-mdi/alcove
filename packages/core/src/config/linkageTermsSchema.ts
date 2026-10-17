@@ -447,6 +447,12 @@ interface EmailAddressField {
   type: "email_address";
   constraints?: AnyConstraints;
 }
+/** The house number of a street address, without the street. */
+interface StreetNumberField {
+  name: string;
+  type: "street_number";
+  constraints?: AnyConstraints;
+}
 interface ZipCodeField {
   name: string;
   type: "zip_code";
@@ -481,6 +487,7 @@ export type LinkageField =
   | Ssn4Field
   | PhoneNumberField
   | EmailAddressField
+  | StreetNumberField
   | ZipCodeField
   | StateField
   | CountyField;
@@ -514,6 +521,10 @@ const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
     }),
     z.object({
       type: z.literal("email_address"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("street_number"),
       ...linkageFieldBase(AnyConstraintsSchema),
     }),
     z.object({

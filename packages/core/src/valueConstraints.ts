@@ -294,6 +294,7 @@ export function checkValueConstraints(
       break;
     case "phone_number":
     case "email_address":
+    case "street_number":
     case "zip_code":
     case "state":
     case "county":

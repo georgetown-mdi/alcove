@@ -782,6 +782,63 @@ already stored in an ASCII form.
 | `"a@b.c"` | `"a@b.c"` |
 | `"not-an-email"` | `null` |
 
+### `street_number`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: extract_regex
+    params:
+      pattern: "^0*([1-9][0-9]*)"
+```
+
+Result: the house number the value starts with, as ASCII digits with no
+leading zero. The column can hold the number alone or a whole address line.
+Either way the number is the run of digits at the start of the trimmed value,
+and it ends at the first character that is not a digit. A value that does not
+start with a digit is dropped, which drops a PO box, a rural route, and a
+number written after a sign, such as `#12`. A digit outside ASCII `0`-`9`,
+such as a fullwidth digit, is not read as one.
+
+The rules for the number:
+
+- Leading zeros are removed, so `0042 Elm` and `42 Elm` agree. A house number
+  is a count, not a fixed-width code like a ZIP, and a file that pads it to a
+  fixed width would otherwise match no party that does not.
+- A number made only of zeros is dropped, as a placeholder rather than a house
+  number.
+- A unit or letter after the number is not part of it: `123-B Main St`,
+  `123B Main St` and `123 Main St Apt 4` all clean to `123`.
+- A range keeps its first number: `123-125 Main` cleans to `123`, so a party
+  recording the range agrees with one recording the building's first number.
+- A fraction is dropped: `123 1/2 Main` cleans to `123`, so it agrees with a
+  party that leaves the fraction out, and `123` and `123 1/2` are not told
+  apart.
+- A hyphenated house number, such as `37-12 75th St` in Queens, follows the
+  range rule and cleans to `37`. It agrees with a party writing `37-12` but not
+  with one writing `3712`.
+- A grid address that starts with a letter, such as `N6W23001`, is dropped.
+
+The type is inferred only from a number-named column
+([Type inference from column names](#type-inference-from-column-names)). An
+address-line column such as `address`, `street_address` or `address1` infers
+nothing; typing it `street_number` in its metadata matches on the number it
+starts with.
+
+| Input | Result |
+| ----- | ------ |
+| `"123"` | `"123"` |
+| `"123 Main St Apt 4"` | `"123"` |
+| `"123-B Main St"` | `"123"` |
+| `"  0042 Elm"` | `"42"` |
+| `"100 Elm"` | `"100"` |
+| `"123-125 Main"` | `"123"` |
+| `"123 1/2 Main"` | `"123"` |
+| `"0"` | `null` |
+| `"PO Box 12"` | `null` |
+| `"Main St"` | `null` |
+| `""` | `null` |
+
 ### `zip_code`
 
 ```yaml
@@ -1139,6 +1196,7 @@ whitespace.
 | `identifier` | `identifier`, `id` | `identifier` | `true` |
 | `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
+| `street_number` | `street_number`, `streetnumber`, `street_no`, `street_num`, `house_number`, `housenumber`, `house_no`, `house_num`, `address_number`, `addressnumber` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
 | `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false` |
 | `county` | `county`, `county_name`, `countyname` | `linkage` | `false` |
