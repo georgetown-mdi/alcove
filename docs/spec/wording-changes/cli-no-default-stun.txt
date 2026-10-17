@@ -19,3 +19,4 @@
 - - -> Why the entry is never contacted, and how that is measured, is in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions).
 - Every run gathers host, server-reflexive and relay candidates, so ICE can pair a direct or server-reflexive path and falls back to a relay where none works. -> Every run gathers host candidates, and relay candidates where a `turn` entry is kept.
 - - -> A run gathers server-reflexive candidates only from a `stun` url it lists, or from the built-in default when it lists no server at all; a run listing `turn` alone gathers none, so ICE pairs a direct host path or falls back to the relay.
+- - -> A run asks only the first `stun` url werift can query from an IPv4 socket, but the cron export panel names every `stun` url the exported connection lists, so it can name a server a run never asks; it never omits one a run asks.

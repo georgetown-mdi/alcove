@@ -935,7 +935,10 @@ Every run gathers host candidates, and relay candidates where a `turn` entry is
 kept. A run gathers server-reflexive candidates only from a `stun` url it lists,
 or from the built-in default when it lists no server at all; a run listing
 `turn` alone gathers none, so ICE pairs a direct host path or falls back to the
-relay.
+relay. A run asks only the first `stun` url werift can query from an IPv4
+socket, but the cron export panel names every `stun` url the exported
+connection lists, so it can name a server a run never asks; it never omits one
+a run asks.
 
 A `turn` entry gives relay candidates only where the transport keeps it, and
 the connection schema accepts no url the transport would drop, and refuses a
