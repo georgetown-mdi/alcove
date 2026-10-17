@@ -243,9 +243,7 @@ class of system or a use case. That is by design, for three reasons.
    program: `baseline` says what they are -- the built-in substrate everything
    else starts from -- with no use case attached. The keys are named for their
    structure, not for a kind of system or program, so the name implies no
-   applicability they have not been shown to have. An earlier key set, named for
-   the kind of system it served, has been retired; the current names say what
-   the set is, not who uses it.
+   applicability they have not been shown to have.
 3. **A name should not make a claim the repository cannot substantiate.**
    Calling either set "validated" or "certified" in its own identifier would put
    a claim into every citation of it that this repository holds no evidence for

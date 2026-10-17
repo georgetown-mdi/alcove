@@ -630,6 +630,7 @@ A future obligation written as prose fails silently when it is forgotten; the ch
 - The digest is over the evaluated declarations rather than the file text, so a cosmetic edit leaves a version alone, the case the note names.
 - Unlike the protocol-version pin, this rule binds from the outset rather than from a first publication, so the ledger ships populated.
 - The ledger is keyed by set name and then version, and is append-only: a bump adds an entry, so a legitimate bump and an in-place rewrite of a recorded pin are different diffs.
+  Retiring a set from the registry removes its entries, since the check fails an entry under a name the registry no longer declares.
   The check cannot tell a legitimate re-pin from a rewrite that dodges the bump, the same limit the pull-request checklist's security-review sha has, so an edit to a recorded entry is a reviewer's call.
 - One name and version identify one content, which the ledger's keying takes for granted.
   A shared set is one declaration read twice, but two different contents under one name and version fail rather than being pinned to whichever entry comes first.
