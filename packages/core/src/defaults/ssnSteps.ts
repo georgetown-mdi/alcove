@@ -10,8 +10,8 @@ import type { StandardizationStep } from "../config/standardizationSchema.js";
 const DASHES = "\\-\\x{2010}-\\x{2014}\\x{2212}";
 
 // Each value of one digit repeated `length` times, for the placeholder lists.
-// All ten are listed even where a structural screen already drops one, so an
-// operator who edits that screen still drops the value.
+// All ten are listed even where a structural screen already drops one, so a
+// pipeline authored with the list but without that screen still drops it.
 function repeatedDigits(length: number): string[] {
   return Array.from({ length: 10 }, (_, digit) => String(digit).repeat(length));
 }

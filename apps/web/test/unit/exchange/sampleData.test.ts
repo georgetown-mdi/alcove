@@ -2,13 +2,7 @@ import { Readable } from "node:stream";
 
 import { describe, expect, test } from "vitest";
 
-import {
-  getDefaultStandardization,
-  inferMetadata,
-  isOptInLinkageKey,
-  loadCSVFile,
-  runPipeline,
-} from "@alcove/core";
+import { inferMetadata, isOptInLinkageKey, loadCSVFile } from "@alcove/core";
 
 import {
   buildKeyStrings,
@@ -21,19 +15,13 @@ import {
   SAMPLE_PARTNER_CSV,
   SAMPLE_PARTNER_FILE_NAME,
 } from "@psi/sampleData";
+import { computeFieldCoverage } from "@psi/workers/nonEmptyAggregate";
 import { editorFromCsv } from "@psi/inviterEditor";
+import { inviterCleaningAttention } from "@psi/inviterModel";
 
 import type { AcquiredCsv } from "@psi/inviterEditor";
-import type { CSVRow } from "@alcove/core";
 
-const EXPECTED_COLUMNS = [
-  "first_name",
-  "last_name",
-  "dob",
-  "ssn",
-  "zip",
-  "member_id",
-];
+const EXPECTED_COLUMNS = ["first_name", "last_name", "dob", "zip", "member_id"];
 
 async function acquire(
   csvText: string,
@@ -97,33 +85,29 @@ describe("sample data", () => {
 
     expect(inviter.columns).toEqual(EXPECTED_COLUMNS);
     expect(partner.columns).toEqual(EXPECTED_COLUMNS);
-    expect(inviter.rawRows).toHaveLength(12);
-    expect(partner.rawRows).toHaveLength(12);
+    expect(inviter.rawRows).toHaveLength(11);
+    expect(partner.rawRows).toHaveLength(11);
   });
 
-  test("every SSN is a never-issued 900-area value the default cleaning drops", async () => {
-    const [ssnCleaning] = getDefaultStandardization(
-      [{ name: "ssn", type: "ssn", role: "linkage", isPayload: false }],
-      {
-        version: "1.0.0",
-        date: "2025-01-01",
-        algorithm: "psi",
-        linkageStrategy: "cascade",
-        output: { expectsOutput: true, shareWithPartner: false },
-        deduplicate: false,
-        linkageFields: [{ name: "ssn", type: "ssn" }],
-        linkageKeys: [{ name: "ssn", elements: [{ field: "ssn" }] }],
-      },
-    );
-    for (const csvText of [SAMPLE_INVITER_CSV, SAMPLE_PARTNER_CSV]) {
-      const result = await loadCSVFile(Readable.from(csvText));
-      for (const row of result.data as ReadonlyArray<CSVRow>) {
-        const ssn = row.ssn ?? "";
-        expect(ssn.replace(/\D/g, "")).toMatch(/^900\d{6}$/);
-        expect(runPipeline(ssn, ssnCleaning.steps!)).toBeNull();
-      }
-    }
-  });
+  test.each([
+    [SAMPLE_INVITER_FILE_NAME, SAMPLE_INVITER_CSV],
+    [SAMPLE_PARTNER_FILE_NAME, SAMPLE_PARTNER_CSV],
+  ])(
+    "default cleaning of %s shows no failing field",
+    async (fileName, csvText) => {
+      const csv = await acquire(csvText, fileName);
+      const editor = editorFromCsv("Sample Org", csv);
+      expect(editor.draft.standardization.length).toBeGreaterThan(0);
+      const rates = new Map(
+        computeFieldCoverage(csv.rawRows, editor.draft.standardization).map(
+          (coverage) => [coverage.output, coverage],
+        ),
+      );
+      const attention = inviterCleaningAttention(editor, rates, false);
+      expect(attention.failingFieldCount).toBe(0);
+      expect(attention.needsAttention).toBe(false);
+    },
+  );
 
   test("the header infers the default matching columns with zero customization", async () => {
     const metadata = inferMetadata(EXPECTED_COLUMNS, []);
@@ -131,7 +115,6 @@ describe("sample data", () => {
     expect(byName.get("first_name")?.type).toBe("first_name");
     expect(byName.get("last_name")?.type).toBe("last_name");
     expect(byName.get("dob")?.type).toBe("date_of_birth");
-    expect(byName.get("ssn")?.type).toBe("ssn");
     expect(byName.get("zip")?.type).toBe("zip_code");
     expect(byName.get("member_id")?.role).toBe("identifier");
 
@@ -156,13 +139,13 @@ describe("sample data", () => {
     expect(offered.every((entry) => entry.enabled)).toBe(false);
   });
 
-  test("the seven engineered pairs standardize equal under default cleaning", async () => {
+  test("the six engineered pairs standardize equal under default cleaning", async () => {
     const inviter = await acquire(SAMPLE_INVITER_CSV, SAMPLE_INVITER_FILE_NAME);
     const partner = await acquire(SAMPLE_PARTNER_CSV, SAMPLE_PARTNER_FILE_NAME);
 
-    // Rows 1-7 (0-based 0-6) are the matching pairs, in the same order on both
+    // Rows 1-6 (0-based 0-5) are the matching pairs, in the same order on both
     // sides. Each holds a distinct near-miss the default pipeline resolves.
-    for (let row = 0; row < 7; row += 1) {
+    for (let row = 0; row < 6; row += 1) {
       expect(rowsIntersect(inviter, row, partner, row)).toBe(true);
     }
   });
@@ -171,14 +154,14 @@ describe("sample data", () => {
     const inviter = await acquire(SAMPLE_INVITER_CSV, SAMPLE_INVITER_FILE_NAME);
     const partner = await acquire(SAMPLE_PARTNER_CSV, SAMPLE_PARTNER_FILE_NAME);
 
-    // Rows 8-9 (0-based 7-8) look close to their same-index partner row but
+    // Rows 7-8 (0-based 6-7) look close to their same-index partner row but
     // differ on a key element (a misspelled surname, a different birth year),
     // so no default key intersects.
+    expect(rowsIntersect(inviter, 6, partner, 6)).toBe(false);
     expect(rowsIntersect(inviter, 7, partner, 7)).toBe(false);
-    expect(rowsIntersect(inviter, 8, partner, 8)).toBe(false);
   });
 
-  test("the matching pairs are exactly seven across the whole cross-product", async () => {
+  test("the matching pairs are exactly six across the whole cross-product", async () => {
     const inviter = await acquire(SAMPLE_INVITER_CSV, SAMPLE_INVITER_FILE_NAME);
     const partner = await acquire(SAMPLE_PARTNER_CSV, SAMPLE_PARTNER_FILE_NAME);
 
@@ -188,6 +171,6 @@ describe("sample data", () => {
         if (rowsIntersect(inviter, i, partner, p)) matches += 1;
       }
     }
-    expect(matches).toBe(7);
+    expect(matches).toBe(6);
   });
 });

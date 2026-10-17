@@ -78,10 +78,11 @@ party's own, and it is never sent. It changes no value the pipeline keeps, so it
 cannot make two different values equal: a value one party's list drops and the
 other's keeps is absent from the first party's keys and matches nothing there.
 
-The other screens are fixed parts of their pipelines: the single-letter name
-screen, the date-of-birth screen for a year before 1900, and the `ssn` and
-`ssn4` structural and placeholder screens. Editing them is editing the pipeline,
-as for any other step.
+The other screens are fixed parts of their default pipelines, not per-party
+parameters: the single-letter `last_name` screen, the date-of-birth screen for
+a year before 1900, and the `ssn` and `ssn4` structural and placeholder
+screens. An operator who authors their own pipeline can change any step in it,
+these screens included, as for any field.
 
 ## When the defaults apply
 
@@ -209,8 +210,8 @@ matching on fewer digits than the field states:
 
 The empty-value drop precedes `pad_left` by design: a blank cell padded to
 `"000000000"` would be dropped only as a side effect of a later step, the
-area-number rule or the placeholder list, so an operator who edited either for
-their own data would silently reintroduce the blank-cell match.
+area-number rule or the placeholder list, so a pipeline an operator authors
+without either step would silently reintroduce the blank-cell match.
 
 The other area, group and serial rules are the rest of the SSA structural
 rules: the SSA issues no number in area `666` or `900` to `999`, with group
@@ -222,8 +223,11 @@ same rules as a data-quality signal reported against the cleaned dataset (see
 
 The placeholder list names every repeated-digit value, including the three
 (`000000000`, `666666666`, `999999999`) a structural rule already drops, so a
-value of one repeated digit is dropped even where an operator edits a
-structural rule for their own data.
+pipeline an operator authors with the list but without a structural rule still
+drops a value of one repeated digit. These screens are fixed parts of the
+default pipeline, not per-party parameters (see
+[Per-party placeholder lists](#per-party-placeholder-lists)); an operator who
+authors their own pipeline can change any step in it, as for any field.
 
 | Input | Result |
 | ----- | ------ |
@@ -283,7 +287,9 @@ column holding whole SSNs and one holding only the last four standardize to the
 same value once both are declared `ssn4`. A cleaned-empty cell is dropped before
 padding, a short value is zero-padded to four, and a value of one digit
 repeated four times is dropped: the all-zero serial, which the SSA never
-issues, and the nine placeholders beside it.
+issues, and the nine placeholders beside it. A real SSN whose serial is one
+repeated digit, such as `123-45-7777`, therefore loses its `ssn4` value while
+its `ssn` value is kept.
 
 After surrounding whitespace is trimmed, and before any character is removed, a
 value is kept only in one of two forms:
@@ -371,9 +377,6 @@ steps:
   - function: null_if
     params:
       values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
-  - function: filter_regex
-    params:
-      pattern: "^.{2,}$"
   - function: null_if
     params:
       values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
@@ -409,9 +412,6 @@ Order determines the meaning here:
   a title alone reaches this step intact. Its values are every word in the
   Titles list under [affix removal](#affix-removal), upper-cased, and none of
   them is a name on its own.
-- The `filter_regex` on `^.{2,}$` drops a value of one character. Every such
-  value left at this point is a letter, so this drops an initial written in
-  place of a name (`"J"`, `"J."`).
 - The closing `null_if` is the placeholder list: it drops a value that is
   exactly one of its `values`, words that stand in for a name nobody recorded.
   It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are
@@ -423,6 +423,14 @@ edit either one for their own data (see
 [Per-party placeholder lists](#per-party-placeholder-lists)). A value is
 written in the cleaned form, upper-case ASCII letters and spaces, since that is
 the form the list is compared with.
+
+A one-letter first name is kept, unlike a one-letter last name (see
+[`last_name`](#last_name)). The built-in keys `SSN + LN + FN1` and
+`SSN + LN3 + FN1` match on the first initial beside a full SSN, so a record
+holding only an initial matches through them. The limit is that a one-letter
+first name also takes part in the keys on the whole first name and a date of
+birth, such as `LN + FN + DOB`, where an initial written in place of a name
+agrees with any record holding the same initial, surname and date.
 
 Digits are not punctuation and are not removed: a value containing one keeps
 it.
@@ -443,7 +451,7 @@ it.
 | `"Jo"` | `"JO"` |
 | `"Jane Doe"` | `"JANE DOE"` |
 | `"Doering"` | `"DOERING"` |
-| `"J."` | `null` |
+| `"J."` | `"J"` |
 | `"Unknown"` | `null` |
 | `"baby"` | `null` |
 | `"5"` | `null` |
@@ -524,10 +532,14 @@ steps:
       values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
 ```
 
-The `last_name` and `first_name` sequences are identical, step for step and
-parameter for parameter; the notes under [`first_name`](#first_name) apply
-unchanged. They are listed separately because they are two independent
-defaults: a change to one is not automatically a change to the other.
+The `last_name` sequence is the `first_name` sequence with one step added, the
+`filter_regex` on `^.{2,}$` before the placeholder list; the notes under
+[`first_name`](#first_name) on the steps they share apply unchanged. That step
+drops a value of one
+character. Every such value left at this point is a letter, so it drops an
+initial written in place of a surname (`"Q"`, `"Q."`). The two are listed
+separately because they are two independent defaults: a change to one is not
+automatically a change to the other.
 
 | Input | Result |
 | ----- | ------ |

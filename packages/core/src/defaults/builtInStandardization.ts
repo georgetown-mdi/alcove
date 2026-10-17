@@ -10,9 +10,10 @@ import { SSN4_STEPS, SSN_STEPS } from "./ssnSteps.js";
 
 // --- Step arrays -------------------------------------------------------------
 
-// Shared pipeline for first and last names. Produces uppercase letters and
-// spaces only, with affixes (Dr., Jr., etc.) removed, matching the
-// `allowedCharacters: "A-Z "` constraint on the default linkage fields.
+// Shared pipeline for first and last names, before their screens. Produces
+// uppercase letters and spaces only, with affixes (Dr., Jr., etc.) removed,
+// matching the `allowedCharacters: "A-Z "` constraint on the default linkage
+// fields.
 const NAME_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   // The three steps before remove_non_ascii turn non-ASCII characters into
@@ -35,29 +36,42 @@ const NAME_STEPS: StandardizationStep[] = [
   // word, none of which is a name alone, as the SSN pipelines drop their
   // placeholders.
   { function: "null_if", params: { values: [...cleanedTitles] } },
+];
+
+const NAME_PLACEHOLDER_STEP: StandardizationStep = {
+  function: "null_if",
+  params: {
+    values: [
+      "UNKNOWN",
+      "UNK",
+      "DOE",
+      "BABY",
+      "BOY",
+      "GIRL",
+      "TWIN",
+      "MALE",
+      "FEMALE",
+      "TRAUMA",
+      "REFUSED",
+      "ANONYMOUS",
+      "NONE",
+      "TEST",
+    ],
+  },
+};
+
+// A one-letter first name is kept: the built-in keys beside a full SSN match
+// on the first initial alone.
+const FIRST_NAME_STEPS: StandardizationStep[] = [
+  ...NAME_STEPS,
+  NAME_PLACEHOLDER_STEP,
+];
+
+const LAST_NAME_STEPS: StandardizationStep[] = [
+  ...NAME_STEPS,
   // Every one-character value is a letter here, so this drops an initial.
   { function: "filter_regex", params: { pattern: "^.{2,}$" } },
-  {
-    function: "null_if",
-    params: {
-      values: [
-        "UNKNOWN",
-        "UNK",
-        "DOE",
-        "BABY",
-        "BOY",
-        "GIRL",
-        "TWIN",
-        "MALE",
-        "FEMALE",
-        "TRAUMA",
-        "REFUSED",
-        "ANONYMOUS",
-        "NONE",
-        "TEST",
-      ],
-    },
-  },
+  NAME_PLACEHOLDER_STEP,
 ];
 
 /** The `date_of_birth` input format used when none is supplied or inferred. */
@@ -143,9 +157,9 @@ function stepsForType(
     case "ssn4":
       return SSN4_STEPS;
     case "first_name":
-      return NAME_STEPS;
+      return FIRST_NAME_STEPS;
     case "last_name":
-      return NAME_STEPS;
+      return LAST_NAME_STEPS;
     case "date_of_birth":
       return dateOfBirthSteps(
         opts.dateInputFormat ?? DEFAULT_DATE_INPUT_FORMAT,

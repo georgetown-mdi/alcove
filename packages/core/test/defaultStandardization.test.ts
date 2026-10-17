@@ -4,6 +4,7 @@ import {
   dateOfBirthSteps,
   getDefaultStandardization,
 } from "../src/defaults/builtInStandardization";
+import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
 import {
   createDateFormatInferrer,
   inferDateFormat,
@@ -181,6 +182,7 @@ describe("getDefaultStandardization — structure", () => {
     const first = getDefaultStandardization(fullMetadata, minimalTerms);
     const steps = (output: string) =>
       first.find((t) => t.output === output)?.steps ?? [];
+    const firstNameBefore = structuredClone(steps("first_name"));
     const lastNameBefore = structuredClone(steps("last_name"));
     steps("first_name").push({ function: "to_lower_case" });
     steps("first_name")[0].function = "remove_dashes";
@@ -188,7 +190,7 @@ describe("getDefaultStandardization — structure", () => {
 
     const second = getDefaultStandardization(fullMetadata, minimalTerms);
     expect(second.find((t) => t.output === "first_name")?.steps).toEqual(
-      lastNameBefore,
+      firstNameBefore,
     );
   });
 
@@ -893,7 +895,7 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(runFirst("Dr.")).toBeNull();
   });
 
-  test("first_name and last_name use the same pipeline", () => {
+  test("first_name and last_name clean a name of two or more letters alike", () => {
     expect(runFirst("O'Brien-Smith")).toBe(runLast("O'Brien-Smith"));
   });
 
@@ -918,13 +920,31 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(runLast(input)).toBeNull();
   });
 
-  test.each(["J", "j.", " Q ", "Dr. J"])(
-    "drops %j, one letter after cleaning",
-    (input) => {
-      expect(runFirst(input)).toBeNull();
+  test.each([
+    ["J", "J"],
+    ["j.", "J"],
+    [" Q ", "Q"],
+    ["Dr. J", "J"],
+  ])(
+    "keeps %j as the one-letter first name %j and drops it as a last name",
+    (input, initial) => {
+      expect(runFirst(input)).toBe(initial);
       expect(runLast(input)).toBeNull();
     },
   );
+
+  test("a one-letter first name reaches the built-in first-initial keys", () => {
+    const keys = getDefaultLinkageTerms("test").linkageKeys.filter((key) =>
+      ["SSN + LN + FN1", "SSN + LN3 + FN1"].includes(key.name),
+    );
+    expect(keys).toHaveLength(2);
+    for (const key of keys) {
+      const initial = key.elements.find((e) => e.field === "first_name")!;
+      const firstName = runFirst("J.");
+      expect(firstName).toBe("J");
+      expect(runPipeline(firstName as string, initial.transform!)).toBe("J");
+    }
+  });
 
   test.each([
     ["Jo", "JO"],
