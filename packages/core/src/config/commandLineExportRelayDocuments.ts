@@ -73,7 +73,7 @@ export const COMMAND_LINE_EXPORT_INVITATION_RELAY: RelayLocator = {
 /** @internal */
 export const COMMAND_LINE_EXPORT_LINKAGE_TERMS: LinkageTerms = {
   version: "1.0.0",
-  identity: "County Health Dept",
+  identity: "County Services Agency",
   date: "2025-01-01",
   algorithm: "psi",
   linkageStrategy: "cascade",
@@ -110,7 +110,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "    exchange_id: riverbend-q3",
       "linkage_terms:",
       "  version: 1.0.0",
-      "  identity: County Health Dept",
+      "  identity: County Services Agency",
       "  date: 2025-01-01",
       "  algorithm: psi",
       "  linkage_strategy: cascade",
@@ -156,7 +156,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "    registrar: https://default-relay.example.org",
       "linkage_terms:",
       "  version: 1.0.0",
-      "  identity: County Health Dept",
+      "  identity: County Services Agency",
       "  date: 2025-01-01",
       "  algorithm: psi",
       "  linkage_strategy: cascade",

@@ -244,7 +244,7 @@ function fieldOfType<T extends LinkageField["type"]>(
  */
 export const CONSENT_PROBE_TERMS: LinkageTerms = {
   version: "1.0.0",
-  identity: "Probe County Health Department",
+  identity: "Probe County Agency",
   date: "2026-01-15",
   algorithm: "psi",
   linkageStrategy: "cascade",

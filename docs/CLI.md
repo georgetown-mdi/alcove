@@ -291,7 +291,7 @@ For SFTP, SSH credentials must be supplied in the URL or as command-line argumen
 
 ```sh
 # SFTP example
-alcove --identity "Jane Doe, County Health" sftp://user@sftp.example.org/exchanges/drop input.csv ./results
+alcove --identity "Jane Doe, County Services" sftp://user@sftp.example.org/exchanges/drop input.csv ./results
 
 # Shared folder example, running unnamed (network-mounted folder)
 alcove file:///mnt/sftp-share/drop input.csv ./results

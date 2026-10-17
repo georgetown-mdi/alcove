@@ -1130,7 +1130,7 @@ describe("inviter screen", () => {
         .toBeInTheDocument();
       await expect
         .element(page.getByLabelText("Your name"))
-        .toHaveValue("Sample County Health Dept");
+        .toHaveValue("Sample County Agency");
       await expect
         .element(page.getByText("Using defaults", { exact: false }))
         .toBeInTheDocument();
