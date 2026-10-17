@@ -1311,8 +1311,8 @@ describe("Dockerfile.fips Node runtime pins", () => {
   // The sha256 of each architecture's official nodejs.org tarball, keyed by the
   // node_arch the `case` selects beside it.
   const EXPECTED_TARBALL_SHA256 = {
-    x64: "982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee",
-    arm64: "afc7a004018485092ac8985b817b0d5684472bd9472e0b57d2ab88737e50090d",
+    x64: "ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022",
+    arm64: "7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5",
   };
 
   const nodeFetch = image.instructions.find(

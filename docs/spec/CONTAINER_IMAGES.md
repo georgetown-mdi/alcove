@@ -215,8 +215,8 @@ it pins beyond that, and the second OS-package inventory that comes with it.
 | Provider package and version | `openssl-fips-provider-certified` at `3.2.2-1.amzn2023` | `rpm -qf` on the installed `fips.so`, asserted in the build |
 | Module version string | `3.2.2-799901ad7ab41d45` | `openssl list -providers` read back, asserted in the build |
 | Base image | `amazonlinux:2023@sha256:8ed3c0a996841537f75607e7d1de2114d8150391f75792e8da9268738547e73f`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `x64` | `982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `arm64` | `afc7a004018485092ac8985b817b0d5684472bd9472e0b57d2ab88737e50090d` | as above |
+| Node runtime tarball, `x64` | `ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Node runtime tarball, `arm64` | `7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5` | as above |
 
 All three certificate pins are build `ARG`s, so what the assertions catch is a
 package layer that drifts under the committed values rather than an operator who
@@ -368,7 +368,10 @@ Ed25519, and that Node's key generation for them throws
 (package `3.2.2-1.amzn2023`). In that build Node's linked OpenSSL is 3.5.7
 (`process.versions.openssl`) and the image's own `openssl` library and command
 are 3.5.8, two components that are both right for what each names. The
-`x86_64` build was not measured.
+`x86_64` build was not measured. That build ran Node v26.7.0; the
+v26.10.0 the image pins links OpenSSL 3.5.8 (nodejs.org release index), so
+the 3.5.7 and the two-component split above describe the earlier build, and
+the reading has not been re-taken on the current one.
 
 ## What certificate 5438 attests
 

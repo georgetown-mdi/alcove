@@ -615,9 +615,20 @@ share this gap either way: `dnf` verifies the vendor's RPM signatures against th
 key the base image holds.
 
 **The provenance act behind those two hashes.** A committed hash holds whatever
-trust was placed in the bytes at pin time, so the signature was checked once,
-by hand, when the values were resolved on 2026-08-06. No build runs any of this.
-The v26.7.0 `SHASUMS256.txt.sig` is an EdDSA signature made 2026-08-05 by
+trust was placed in the bytes at pin time, so the signature is checked by hand
+when the values are resolved. No build runs any of this.
+
+The committed pair is v26.10.0, checked on 2026-10-17. Its
+`SHASUMS256.txt.sig` is an EdDSA signature made 2026-09-22 by the same key as
+below, `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` (Antoine du Hamel). The key
+came from the `nodejs/release-keys` repository on GitHub and the signature
+verified as `Good signature` in a throwaway `GNUPGHOME`; both hashes also match
+`sha256sum` over the downloaded tarballs. `keys.openpgp.org` was not reachable
+from where the check ran, so this record has one channel rather than the two
+described next.
+
+The earlier pair, v26.7.0, was resolved on 2026-08-06. Its
+`SHASUMS256.txt.sig` is an EdDSA signature made 2026-08-05 by
 
     5BE8A3F6C8A5C01D106C0AD820B1A390B168D356   Antoine du Hamel
     ed25519 [SC], created 2025-06-28
@@ -643,7 +654,7 @@ a Node runtime, so this is the correct shape of answer rather than a weak one
 -- but it is a provenance record, not a runtime claim, and nothing re-checks it
 on a rebuild.
 
-Both committed hashes were confirmed a second time on 2026-08-06, from a
+Both v26.7.0 hashes were confirmed a second time on 2026-08-06, from a
 different machine than the one that resolved them, against the same signed
 manifest and a key fetched from `nodejs/release-keys`: the manifest verified
 `Good signature` and both literals matched it. Two environments agreeing rules

@@ -219,7 +219,7 @@ The file is worth binding at all because the release and smoke builds export eve
 
 The builder's floor is nonetheless 11.17 in intent, for two reasons that are not "anything lower is inert": 11.17 is the npm every matching rule in this section was measured against (re-driven 2026-10-01 on 11.17.0 and 11.19.1), and 11.17.0 is the first release to run the same preflight from `npm exec`. Nothing in this repo enforces that floor, in the image or outside it. `engines.node` constrains node, not the npm shipped beside it, so an install driven by npm 11.15.0 or earlier runs with the policy silently off wherever that npm comes from -- including a builder whose base digest is re-pinned onto an older node. Which npm the pinned digest bundles is therefore a property of the base image: the one pinned here bundles 11.19.1, measured by running the pinned digest. The digest itself is held as a literal in `scripts/dockerfile-freeze.test.mjs`, once per stage, so moving it is an edit to that literal in the same diff rather than a silent re-pin -- what no check reads is which npm the digest moved to bundles.
 
-The measured bundled-npm claim is about the default `Dockerfile` only (the digest-literal freeze covers both images). The FIPS variant's builder installs no distribution node package: its npm arrives inside the `nodejs.org` tarball named by `ARG NODE_VERSION`, whose bundled npm the build prints (`npm --version`) without asserting. So the npm that variant installs under is a property of that tarball, and nothing checks which version of npm is inside it. Moving `ARG NODE_VERSION` alone does not silently move it, though: no hash is committed for the release an override names, and the bytes it fetches will not match the hash committed for `v26.7.0`, so the override fails the build rather than installing under an unnoticed npm. The floor is unenforced in both builders; what differs is only which artifact decides it.
+The measured bundled-npm claim is about the default `Dockerfile` only (the digest-literal freeze covers both images). The FIPS variant's builder installs no distribution node package: its npm arrives inside the `nodejs.org` tarball named by `ARG NODE_VERSION`, whose bundled npm the build prints (`npm --version`) without asserting. So the npm that variant installs under is a property of that tarball, and nothing checks which version of npm is inside it. Moving `ARG NODE_VERSION` alone does not silently move it, though: no hash is committed for the release an override names, and the bytes it fetches will not match the hash committed for the pinned release, so the override fails the build rather than installing under an unnoticed npm. The floor is unenforced in both builders; what differs is only which artifact decides it.
 
 **The key forms npm matches.** Measured 2026-10-01 on npm 11.17.0 and 11.19.1 against `core-js@3.38.1`:
 
@@ -845,6 +845,16 @@ Read the release out of the new rootfs to learn what to write in (3):
 `rpm -q --qf '%{VERSION}' system-release` inside it, or `docker create` plus
 `docker cp` of `/etc/os-release` to read the other architecture's rootfs without
 emulating or executing it.
+
+**The Node runtime moves in the same diff.** Move `ARG NODE_VERSION` in
+`Dockerfile.fips` to the current Node 26 release, together
+with both per-architecture tarball hashes and the matching literals in
+`scripts/dockerfile-freeze.test.mjs` and
+[CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins).
+Take each hash from that release's `SHASUMS256.txt` and confirm it by running
+`sha256sum` over the downloaded tarball. No Dependabot entry tracks the tarball,
+so a Node security release between base bumps is caught only by a dependency
+survey.
 
 **The re-measurement obligation.** The variant's published FIPS claims rest on
 measurements of one base rootfs and one provider build. Those taken by hand are
