@@ -283,7 +283,7 @@ rather than a path set one short, because a path missing from the set is a path 
 ### Limits
 
 Beyond the non-executable-delta verifier's: markdown content wholesale, including a conflict resolved inside a governing document,
-and every path outside the branch's own diff, which is the unread content the path in Step 4 admits.
+every path outside the branch's own diff, and, in a source file the staging range also changed, every line past three lines of a branch hunk -- the unread content the path in Step 4 admits.
 The spec wording-change lists, the `.txt` files under `docs/spec/wording-changes/`, are exempt in both verifiers and their content is not compared: only the sentence check in CI reads them, and they cannot be parsed as source. The legacy single list, `docs/spec/wording-changes.txt`, is exempt in both verifiers too, and no check reads it.
 
 ## Scratch-symlink write guard

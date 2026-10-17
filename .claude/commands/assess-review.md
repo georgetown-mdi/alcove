@@ -354,19 +354,23 @@ Each path is recorded on the checklist line naming both shas:
   leaves the attested head no ancestor of the new one -- is re-attested by
   verifying that the move changed nothing the branch itself authored: the
   branch's diff against its base holds the same paths, and each holds the same
-  program at both ends, once comments are removed and markdown and the spec
-  wording-change lists (the `.txt` files under `docs/spec/wording-changes/` and
-  the legacy `docs/spec/wording-changes.txt`) are excluded.
+  program at both ends -- or, in a TypeScript/JavaScript file the staging range
+  also changed, the same hunks -- once comments are removed and markdown and the
+  spec wording-change lists (the `.txt` files under `docs/spec/wording-changes/`
+  and the legacy `docs/spec/wording-changes.txt`) are excluded.
   Verified mechanically or not at all, by `node
   .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
-  <pre-rebase-head> <post-rebase-base> <post-rebase-head>`, which runs the
-  comparison above twice over exactly those paths -- once between the two bases,
-  once between the two heads -- and fails closed on a path it cannot read.
+  <pre-rebase-head> <post-rebase-base> <post-rebase-head> --ledger
+  PRIMARY/scratch/review-rounds/<key>.jsonl`, which runs the comparison above
+  twice over exactly those paths -- once between the two bases, once between
+  the two heads -- compares the branch's own hunks to a source file the staging
+  range changed, and fails closed on a path it cannot read.
   Recorded as a rebase-invariance verification naming both heads. An executable
-  line a conflict resolution invented, a staging range that changed a file the
-  branch also changed, and a path the comparison cannot read each void it and
-  take a full round; so does a head of any other shape, which the verifier
-  refuses rather than answering about.
+  line a conflict resolution invented or changed in a branch hunk, a staging
+  change inside a branch hunk or its three lines of context, a shared file a
+  claim in the ledger names, a shared YAML file, and a path the comparison
+  cannot read each void it and take a full round; so does a head of any other
+  shape, which the verifier refuses rather than answering about.
 
 The rebase path composes the branch with staging content no round has read,
 which is the same objection that keeps a base sync out, and it answers it rather
@@ -374,12 +378,14 @@ than routing around it: a rebase leaves the branch's own effective diff as an
 object that can be compared across the move, and a merge does not. Where that
 diff is identical at both ends, the round that read it still stands. What the
 path does not attest is the content the branch now sits on -- paths outside its
-own diff are not compared -- and what covers that is mechanical rather than
+own diff, and the rest of a shared file outside the branch's hunks, are not
+compared -- and what covers that is mechanical rather than
 read: the gates re-run at the new head, and a pull-request gate runs against the
 head merged with the base tip, so a composition that fails to build, typecheck,
 lint, or test is caught there. The residual is an interaction that compiles and
-passes, which is why a single executable line inside the branch's own diff sends
-the head to a full round. The whole argument, the markdown exclusion it inherits
+passes, which is why a single executable line inside the branch's own hunks
+sends the head to a full round, and why a shared file a review claim names does
+too. The whole argument, the hunk comparison, the markdown exclusion it inherits
 and the `docs/spec/` conflict that exclusion leaves unread:
 [`docs/notes/rebase-reattestation.md`](../../docs/notes/rebase-reattestation.md).
 
