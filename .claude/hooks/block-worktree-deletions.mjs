@@ -26,6 +26,16 @@
 // without a deletion: `git -C <tree> stash push -u -- <path>`, after which the
 // plain `git worktree remove` succeeds.
 //
+// A tree whose agent stopped mid-run on background work stays locked (`git
+// worktree list` shows "locked", reason "claude agent <id> (pid <session>)"),
+// and git refuses the plain remove: "cannot remove a locked working tree ...
+// use 'remove -f -f' to override or unlock first". The doubled force is
+// refused here like any other; the way through is `git worktree unlock <literal
+// path>` and then the plain remove, once the tree is clean, every commit on its
+// branch is on a remote or merged, and no process runs in it. `git worktree
+// unlock` is allowed: it deletes nothing, and git's own guard on uncommitted
+// work stands once the lock is gone.
+//
 // Deletions read: rm, rmdir, unlink, shred, mv, find with a deleting action,
 // those through xargs, and the git spellings above; only the words a command
 // removes are targets. It reads a plain command line, so composition, runtime
@@ -141,7 +151,10 @@ function block(reason) {
       "be retired -- an untracked leftover is cleared without a deletion: " +
       "`git -C <tree> stash push -u -- <path>` takes that path off disk, keeps its " +
       "content in the repository's stash, and leaves the tree retirable by that plain " +
-      "remove. A tree another session is working in gets no cleanup of any kind: a stash " +
+      "remove. A tree git reports as locked (an agent stopped mid-run) is not forced " +
+      "either: once it is clean, every commit on its branch is on a remote or merged, " +
+      "and no process runs in it, run `git worktree unlock <literal path>` and then " +
+      "`git worktree remove <literal path>`. A tree another session is working in gets no cleanup of any kind: a stash " +
       "there rips files out from under it mid-run. If the path is not a registered " +
       "worktree at all, say so to the maintainer rather than deleting it some other " +
       "way. This hook reads a plain command " +
