@@ -10,6 +10,7 @@ import {
   relayFailureMessage,
   watchIceGathering,
 } from "../../../src/psi/transport/iceGathering.js";
+import { ALLOWED_RELAYS_REMEDY } from "../../../src/psi/transport/relayRestriction.js";
 import { dialAsAcceptor } from "../../../src/psi/transport/rendezvous.js";
 import { waitForConnectionOpen } from "../../../src/psi/transport/waitForOpen.js";
 
@@ -52,7 +53,10 @@ class FakePeerConnection extends EventTarget {
 class FakeConn extends EventEmitter {
   open = false;
   close = vi.fn();
-  constructor(readonly peerConnection: FakePeerConnection) {
+  constructor(
+    readonly peerConnection: FakePeerConnection,
+    readonly provider?: object,
+  ) {
     super();
   }
 }
@@ -243,15 +247,16 @@ describe("dialAsAcceptor with a relay configured", () => {
   class FakePeer extends EventEmitter {
     destroy = vi.fn();
     disconnect = vi.fn();
-    constructor(private readonly gather: (pc: FakePeerConnection) => void) {
+    constructor(
+      private readonly gather: (pc: FakePeerConnection) => void,
+      private readonly iceServers: Array<RTCIceServer>,
+    ) {
       super();
     }
     connect = vi.fn(() => {
-      const pc = new FakePeerConnection([
-        { urls: [RELAY_URL], username: "u", credential: "c" },
-      ]);
+      const pc = new FakePeerConnection(this.iceServers);
       queueMicrotask(() => this.gather(pc));
-      return new FakeConn(pc) as unknown as DataConnection;
+      return new FakeConn(pc, this) as unknown as DataConnection;
     });
   }
 
@@ -260,13 +265,18 @@ describe("dialAsAcceptor with a relay configured", () => {
     timeouts: { openTimeoutMs: number; totalTimeoutMs?: number } = {
       openTimeoutMs: 20,
     },
+    relaysLeftOut: ReadonlyArray<string> = [],
+    iceServers: Array<RTCIceServer> = [
+      { urls: [RELAY_URL], username: "u", credential: "c" },
+    ],
   ): Promise<unknown> {
-    const fake = new FakePeer(gather);
+    const fake = new FakePeer(gather, iceServers);
     const dialing = dialAsAcceptor(
       generateSharedSecret(),
       { channel: "webrtc", host: "127.0.0.1", port: 3000, path: "/api/" },
       {
         peerFactory: () => fake as unknown as Peer,
+        relaysLeftOut,
         ...timeouts,
       },
     ).catch((err: unknown) => err);
@@ -310,6 +320,34 @@ describe("dialAsAcceptor with a relay configured", () => {
     expect(error).toBeInstanceOf(ConnectionError);
     expect((error as Error).message).toContain(
       `Relay server ${RELAY_URL} did not give a relay address.`,
+    );
+  });
+
+  test("a failed open names the relays the allowed relays left out, and the remedy, after any relay failure", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(() => undefined, undefined, [leftOut]);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toBe(
+      `The connection did not open: no relay candidate was gathered. ` +
+        `Relay server ${RELAY_URL} did not give a relay address. Check that ` +
+        "the relay address is correct and that this network allows " +
+        "connections to it, then try again. Your allowed relays left out " +
+        `${leftOut}. ${ALLOWED_RELAYS_REMEDY}`,
+    );
+  });
+
+  test("a failed open with no relay kept names the relays left out alone", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const error = await dialFailure(
+      (pc) => pc.gather("host"),
+      undefined,
+      [leftOut],
+      [{ urls: ["stun:stun.example.org:3478"] }],
+    );
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toBe(
+      `The connection did not open. Your allowed relays left out ${leftOut}. ` +
+        ALLOWED_RELAYS_REMEDY,
     );
   });
 });

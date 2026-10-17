@@ -1252,7 +1252,8 @@ export interface RelayHostAndPort {
 const TURN_DEFAULT_PORT = 3478;
 const TURNS_DEFAULT_PORT = 5349;
 
-const ALLOWED_RELAY_FORM =
+/** The form of an allowed-relays entry, as a refusal of one states it. */
+export const ALLOWED_RELAY_FORM =
   "a host and an optional port from 1 to 65535, for example " +
   "relay.example.org or relay.example.org:443";
 
@@ -1342,22 +1343,29 @@ export function relayOnlyRelaysLeftOutMessage(
   );
 }
 
-const AllowedRelaySchema = z
-  .string()
-  .trim()
-  .transform((entry, ctx) => {
-    const relay = parseRelayHostAndPort(entry);
-    if (relay === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        message: `each allowed_relays entry must be ${ALLOWED_RELAY_FORM}, with no turn: or turns: scheme`,
-      });
-      return z.NEVER;
-    }
-    return relay.port === undefined
-      ? relay.host
-      : `${relay.host}:${relay.port}`;
-  });
+/**
+ * An allowed-relays entry as the setting holds it: trimmed, its host
+ * lowercase with no trailing dot, and its port when it names one.
+ * `undefined` for text not of {@link ALLOWED_RELAY_FORM}, a url with a
+ * scheme included.
+ */
+export function normalizeAllowedRelay(text: string): string | undefined {
+  const relay = parseRelayHostAndPort(text.trim());
+  if (relay === undefined) return undefined;
+  return relay.port === undefined ? relay.host : `${relay.host}:${relay.port}`;
+}
+
+const AllowedRelaySchema = z.string().transform((entry, ctx) => {
+  const normalized = normalizeAllowedRelay(entry);
+  if (normalized === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: `each allowed_relays entry must be ${ALLOWED_RELAY_FORM}, with no turn: or turns: scheme`,
+    });
+    return z.NEVER;
+  }
+  return normalized;
+});
 
 // --- Relay registrar ---------------------------------------------------------
 

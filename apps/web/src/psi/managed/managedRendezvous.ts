@@ -35,9 +35,7 @@ import {
   listenAsInviter,
 } from "../transport/rendezvous";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
-import { relayForRun } from "../transport/ownRelaySetting";
-
-import { relayWithDefaultForRun } from "../transport/defaultRelay";
+import { relayPlanForRun } from "../transport/runRelayPlan";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 
@@ -199,12 +197,13 @@ type ManagedRendezvousAcquisition =
  * scheduled attempt near its window's close cannot sit on a silent signaling
  * server past that close. Absent, both flows keep their shared defaults.
  *
- * Both flows gather against the relays {@link relayForRun} lists from this
+ * Both flows gather against the relays `relayPlanForRun` lists from this
  * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
- * enrolled there, right before it connects (`relayWithDefaultForRun`). A
- * failed enrollment is reported through `onRunNotice` as it happens, and the
- * flow starts without the default relay.
+ * enrolled there, right before it connects, each only where this browser's
+ * allowed relays keep it, and under its Relay only setting. A failed
+ * enrollment is reported through `onRunNotice` as it happens, and the flow
+ * starts without the default relay.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -223,11 +222,9 @@ export async function beginManagedRendezvous(
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
   const connection = exchangeFile.connection;
-  const relay = await relayWithDefaultForRun(
+  const relayPlan = await relayPlanForRun(
     sharedSecret,
-    relayForRun(
-      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
-    ),
+    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
     {
       ...options.defaultRelay,
       ...(signal !== undefined ? { signal } : {}),
@@ -249,14 +246,14 @@ export async function beginManagedRendezvous(
   if (endpoint === undefined) {
     const peer = await flows.listenAsInviter(sharedSecret, {
       signal,
-      relay,
+      ...relayPlan,
       ...registrationBound,
     });
     return { side: "inviter", peer };
   }
   const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
     signal,
-    relay,
+    ...relayPlan,
     ...registrationBound,
     ...(peerWaitTimeoutMs !== undefined
       ? { totalTimeoutMs: peerWaitTimeoutMs }

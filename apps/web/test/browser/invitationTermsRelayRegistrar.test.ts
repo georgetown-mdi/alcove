@@ -12,6 +12,13 @@ import {
   generateSharedSecret,
 } from "@alcove/core";
 
+import {
+  ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_UNSET,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+  writeRelayRestriction,
+} from "@psi/transport/relayRestriction";
 import { InvitationTerms } from "@components/InvitationTerms";
 
 import { createAppMount } from "./renderApp";
@@ -19,9 +26,10 @@ import { readyDisclosures } from "./collapsePanels";
 
 import type { ConnectionEndpoint, LinkageTerms } from "@alcove/core";
 
-// The registrar an invitation's relay names, on the accept screen of each
-// build. A console run is the CLI's and enrolls there before it connects; a
-// browser run does not, so the hosted line only names it.
+// The registrar an invitation's relay names, and the marks this browser's
+// allowed relays put on its TURN urls, on the accept screen of each build. A
+// console run is the CLI's and enrolls there before it connects; a browser run
+// does not, so the hosted line only names it.
 
 // Each test picks the build: the terms read isConsoleBuild() as they render.
 const build = vi.hoisted(() => ({ console: false }));
@@ -66,8 +74,8 @@ const REGISTRAR = "https://default-relay.example.net";
 
 const CONSOLE_LINE =
   `A run registers this exchange at ${REGISTRAR} before it connects ` +
-  "only when that relay is the one it allocates on, and whoever runs " +
-  "that registrar then learns this machine's network address.";
+  "only when your side sets up its own connection on this relay, and " +
+  "whoever runs that registrar then learns this machine's network address.";
 const HOSTED_LINE = `The invitation also names this relay's registrar: ${REGISTRAR}`;
 
 const app = createAppMount();
@@ -158,6 +166,58 @@ async function decodedFromTypedRegistrar(
   if (connectionEndpoint === undefined) throw new Error("no endpoint decoded");
   return connectionEndpoint;
 }
+
+describe("InvitationTerms: the invitation's relays under this browser's allowed relays", () => {
+  const KEPT_URL = "turn:Partner.Example.net:3478?transport=udp";
+  const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
+  const relayEndpoint: ConnectionEndpoint = {
+    channel: "webrtc",
+    host: "peer.example.org",
+    relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+  };
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  test("the hosted build marks each TURN url kept or left out, and says what the setting decides", async () => {
+    writeRelayRestriction({
+      allowedRelays: ["partner.example.net"],
+      relayOnly: false,
+    });
+    const text = await producesText(relayEndpoint);
+    expect(text).toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
+    expect(text).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(text).toContain(ALLOWED_RELAYS_SCOPE);
+    expect(text).not.toContain(ALLOWED_RELAYS_UNSET);
+    expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+  });
+
+  test("the hosted build with the setting unset marks nothing and says a run contacts the relay", async () => {
+    const text = await producesText(relayEndpoint);
+    expect(text).toContain(ALLOWED_RELAYS_UNSET);
+    expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
+  });
+
+  test("the console build, whose run is the CLI's, marks nothing whatever the browser holds", async () => {
+    build.console = true;
+    writeRelayRestriction({
+      allowedRelays: ["partner.example.net"],
+      relayOnly: true,
+    });
+    const text = await producesText(relayEndpoint);
+    expect(text).toContain(`TURN ${KEPT_URL}`);
+    expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
+    expect(text).not.toContain(ALLOWED_RELAYS_UNSET);
+    expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+  });
+});
 
 describe("InvitationTerms: a registrar written in a typed form", () => {
   test.each([

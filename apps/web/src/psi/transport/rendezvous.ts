@@ -27,7 +27,11 @@ import {
   redactErrorIds,
   resolvePeerDebugLevel,
 } from "./peerLogging";
-import { watchIceGathering, withIceServerFailure } from "./iceGathering";
+import {
+  recordRelaysLeftOut,
+  watchIceGathering,
+  withIceServerFailure,
+} from "./iceGathering";
 import { boundPeerSignaling } from "./signalingBounds";
 
 import type { DataConnection, PeerOptions } from "peerjs";
@@ -178,6 +182,7 @@ function buildPeerOptions(
   loc: SignalingLocation,
   redactableIds: ReadonlyArray<string>,
   iceServers: Array<RTCIceServer>,
+  iceTransportPolicy: RTCIceTransportPolicy = "all",
 ): PeerOptions {
   return {
     host: loc.host,
@@ -190,7 +195,7 @@ function buildPeerOptions(
     config: {
       iceServers,
       sdpSemantics: "unified-plan",
-      iceTransportPolicy: "all",
+      iceTransportPolicy,
     },
   };
 }
@@ -352,9 +357,11 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      from it.
  * @param options       `signal` cancels the listen before or during broker
  *                      registration; `relay` is the relay this run gathers
- *                      against, none when absent; `peerFactory` injects the
- *                      {@link Peer} constructor for testing;
- *                      `registrationTimeoutMs` overrides
+ *                      against, none when absent, under `iceTransportPolicy`,
+ *                      `all` when absent; `relaysLeftOut` are the TURN urls
+ *                      the allowed relays left out, named by a failed open;
+ *                      `peerFactory` injects the {@link Peer} constructor for
+ *                      testing; `registrationTimeoutMs` overrides
  *                      {@link BROKER_REGISTRATION_TIMEOUT_MS}.
  */
 export async function listenAsInviter(
@@ -362,6 +369,8 @@ export async function listenAsInviter(
   options?: {
     signal?: AbortSignal;
     relay?: RelayLocator;
+    iceTransportPolicy?: RTCIceTransportPolicy;
+    relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
   },
@@ -384,8 +393,14 @@ export async function listenAsInviter(
   log.debug(`derived inviter peer id ${inviterId}`);
   const peer = makePeer(
     inviterId,
-    buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
+    buildPeerOptions(
+      loc,
+      [inviterId, acceptorId],
+      iceServers,
+      options?.iceTransportPolicy,
+    ),
   );
+  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
   try {
     await waitForPeerOpen(peer, {
       signal,
@@ -592,10 +607,11 @@ async function dialInviterWithRetry(
  *                      from it.
  * @param endpoint      The invitation's WebRTC signaling endpoint.
  * @param options       `signal` cancels the dial (and its retry loop) on unmount;
- *                      `relay` is the relay this run gathers against, none when
- *                      absent; `peerFactory` injects the {@link Peer}
- *                      constructor for testing; the `*Ms` overrides tune the
- *                      registration bound and the retry timing.
+ *                      `relay`, `iceTransportPolicy` and `relaysLeftOut` are
+ *                      as {@link listenAsInviter} takes them; `peerFactory`
+ *                      injects the {@link Peer} constructor for testing; the
+ *                      `*Ms` overrides tune the registration bound and the
+ *                      retry timing.
  */
 export async function dialAsAcceptor(
   sharedSecret: string,
@@ -603,6 +619,8 @@ export async function dialAsAcceptor(
   options?: {
     signal?: AbortSignal;
     relay?: RelayLocator;
+    iceTransportPolicy?: RTCIceTransportPolicy;
+    relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
     retryDelayMs?: number;
@@ -631,8 +649,14 @@ export async function dialAsAcceptor(
   log.debug(`derived peer ids: inviter ${inviterId}, acceptor ${acceptorId}`);
   const peer = makePeer(
     acceptorId,
-    buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
+    buildPeerOptions(
+      loc,
+      [inviterId, acceptorId],
+      iceServers,
+      options?.iceTransportPolicy,
+    ),
   );
+  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
   try {
     await waitForPeerOpen(peer, {
       signal,

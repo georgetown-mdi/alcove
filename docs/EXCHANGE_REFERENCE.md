@@ -872,7 +872,7 @@ The TURN relays this party may use, among your own [`turn`](#connectionturn) ent
 - **What it reports.** Each run states the TURN urls it keeps and the ones it leaves out. The review before you accept an invitation into a configuration that sets it marks each of the invitation's TURN urls `kept by connection.allowed_relays` or `left out by connection.allowed_relays`. [`alcove doctor relay`](CLI.md#checking-the-relay-of-a-webrtc-exchange) contacts no relay it leaves out, and names each as left out.
 - **When a run does not connect.** The failure names the TURN urls the setting left out after what ICE found, and the remedy: add a host both sides can reach, or remove the setting ([CLI.md](CLI.md#when-a-webrtc-exchange-does-not-connect)).
 
-> **Honored by the CLI only**, like `turn`. An acceptance never writes or changes it.
+> **The browser holds its own.** The web app ignores this field and reads the Allowed relays on its Relay server page (`/relay`), kept in browser storage, with the same entry form and matching. They also leave out the site's default relay ([DEPLOYMENT.md](DEPLOYMENT.md#the-default-relay)), whose registrar a run then does not contact. The review before accepting an invitation in the browser marks its TURN urls `kept by your allowed relays` or `left out by your allowed relays`, a run says which it kept and left out, and a run that does not connect names those left out. Relay only on the same page is the browser's `ice_transport_policy: relay`, with the same refusal. An acceptance never writes or changes either app's setting.
 
 ```yaml
 connection:
@@ -922,7 +922,7 @@ Every WebRTC run states the policy it applied as it opens the rendezvous -- the 
 
 It holds for a `turn` entry the ICE layer keeps. An entry whose `url` sets a `transport` the layer cannot use is dropped there, which would leave a relay-only run gathering host candidates, so the accepted `transport` values ([`connection.turn`](#connectionturn)) are the ones it keeps and any other is refused at parse.
 
-> **Honored by the CLI only**, like `stun` and `turn` (see [`connection.stun`](#connectionstun)). It is each party's own setting rather than a term of the exchange: it constrains only the candidates this party gathers, an invitation cannot include it, and the partner is unaffected. What it is for, and what a run configured with it reports, are in [CLI.md](CLI.md#turn).
+> **Honored by the CLI only**, like `stun` and `turn` (see [`connection.stun`](#connectionstun)); the browser's counterpart is Relay only on its Relay server page (`/relay`), which offers the partner relay candidates alone ([`allowed_relays`](#connectionallowed_relays)). It is each party's own setting rather than a term of the exchange: it constrains only the candidates this party gathers, an invitation cannot include it, and the partner is unaffected. What it is for, and what a run configured with it reports, are in [CLI.md](CLI.md#turn).
 
 ```yaml
 connection:

@@ -9,7 +9,12 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  ALLOWED_RELAYS_SCOPE,
+  readRelayRestriction,
+} from "@psi/transport/relayRestriction";
+import {
   RELAY_KEY_NOTICE,
+  RELAY_ONLY_DESCRIPTION,
   RELAY_OPERATOR_DISCLOSURE,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
@@ -152,6 +157,103 @@ describe("RelaySettingsScreen", () => {
     await mountScreen();
     await expect.element(turnField()).toHaveValue("");
     await expect.element(stunField()).toHaveValue("");
+  });
+});
+
+describe("RelaySettingsScreen: allowed relays and Relay only", () => {
+  const allowedField = () =>
+    page.getByRole("textbox", { name: "Allowed relays" });
+  const relayOnlyBox = () => page.getByRole("checkbox", { name: "Relay only" });
+
+  test("states what the setting decides, and that an accepted invitation's relay is listed beside this browser's", async () => {
+    await mountScreen();
+
+    await expect.element(page.getByText(ALLOWED_RELAYS_SCOPE)).toBeVisible();
+    await expect.element(page.getByText(RELAY_ONLY_DESCRIPTION)).toBeVisible();
+    expect(document.body.textContent).not.toContain("in their place");
+  });
+
+  test("a save keeps the entries normalized and Relay only across a reload, and clearing both removes them", async () => {
+    await mountScreen();
+
+    await userEvent.fill(
+      allowedField(),
+      " Relay.Example.ORG. \nbackup.example.org:443",
+    );
+    await userEvent.click(relayOnlyBox());
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent("Saved. No relay of your own is set.");
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: {
+        allowedRelays: ["relay.example.org", "backup.example.org:443"],
+        relayOnly: true,
+      },
+    });
+
+    await mountScreen();
+    await expect
+      .element(allowedField())
+      .toHaveValue("relay.example.org\nbackup.example.org:443");
+    await expect.element(relayOnlyBox()).toBeChecked();
+
+    await userEvent.fill(allowedField(), "");
+    await userEvent.click(relayOnlyBox());
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent("No relay is set. Exchanges connect without one.");
+    expect(window.localStorage.getItem("alcove-relay-restriction")).toBeNull();
+  });
+
+  test("an entry naming a scheme is reported on the field alone and nothing is saved", async () => {
+    await mountScreen();
+
+    await userEvent.fill(turnField(), TURN_URL);
+    await userEvent.fill(allowedField(), "turns:relay.example.org:443");
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(allowedField())
+      .toHaveAccessibleDescription(/Line 1: enter a host and an optional port/);
+    await expect
+      .element(allowedField())
+      .toHaveAttribute("aria-invalid", "true");
+    expect(page.getByRole("alert").all()).toHaveLength(1);
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: { relayOnly: false },
+    });
+    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+  });
+
+  test("a stored value this build cannot read is reported until it is saved again", async () => {
+    window.localStorage.setItem(
+      "alcove-relay-restriction",
+      JSON.stringify({
+        version: 1,
+        allowedRelays: ["Not Normal"],
+        relayOnly: false,
+      }),
+    );
+    await mountScreen();
+
+    const notice = () =>
+      page.getByText("The saved allowed relays could not be read");
+    await expect.element(notice()).toBeVisible();
+
+    await userEvent.fill(allowedField(), "relay.example.org");
+    await userEvent.click(saveButton());
+
+    await expect.element(notice()).not.toBeInTheDocument();
+    expect(readRelayRestriction()).toEqual({
+      kind: "set",
+      restriction: { allowedRelays: ["relay.example.org"], relayOnly: false },
+    });
   });
 });
 

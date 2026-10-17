@@ -1,8 +1,22 @@
 import { useState } from "react";
 
-import { Alert, Anchor, Button, Group, Stack, Textarea } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Button,
+  Checkbox,
+  Group,
+  Stack,
+  Textarea,
+} from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
+import {
+  ALLOWED_RELAYS_SCOPE,
+  parseAllowedRelayLines,
+  readRelayRestriction,
+  writeRelayRestriction,
+} from "@psi/transport/relayRestriction";
 import {
   parseRelayUrlLines,
   readOwnRelaySetting,
@@ -15,6 +29,7 @@ import styles from "@styles/app.module.css";
 import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
+import type { AllowedRelayLines } from "@psi/transport/relayRestriction";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
@@ -43,8 +58,15 @@ export const RELAY_KEY_NOTICE =
   "exchange through your relay needs its key registered with the relay again " +
   "after each run.";
 
+/** What Relay only does, shown beside the setting. */
+export const RELAY_ONLY_DESCRIPTION =
+  "Your browser offers your partner only addresses on a relay, never its " +
+  "own network address. A run with no relay to use does not connect.";
+
 /** The field error for one list's parse, or `undefined` when it parsed. */
-function fieldError(lines: RelayUrlLines): string | undefined {
+function fieldError(
+  lines: RelayUrlLines | AllowedRelayLines,
+): string | undefined {
   if (lines.ok) return undefined;
   return lines.problems
     .map((problem) =>
@@ -58,14 +80,16 @@ function fieldError(lines: RelayUrlLines): string | undefined {
 type SaveStatus =
   | { kind: "idle" }
   | { kind: "saved" }
+  | { kind: "savedWithoutRelay" }
   | { kind: "removed" }
   | { kind: "failed" };
 
 /**
- * The relay settings page: this browser's own TURN and STUN urls, kept in
- * browser storage for this site, with what the relay's operator learns stated
- * beside them, and a test of the relays a browser run lists that the user
- * starts. The hosted app and a console each hold their own.
+ * The relay settings page: this browser's own TURN and STUN urls and the
+ * relays a run may use, with whether it connects through a relay only, kept
+ * in browser storage for this site, with what the relay's operator learns
+ * stated beside them, and a test of the relays a browser run lists that the
+ * user starts. The hosted app and a console each hold their own.
  */
 export function RelaySettingsScreen({
   defaultRelay = defaultRelaySetting,
@@ -80,6 +104,16 @@ export function RelaySettingsScreen({
   const [stunText, setStunText] = useState(
     initial.kind === "set" ? initial.relay.stun.join("\n") : "",
   );
+  const [initialRestriction] = useState(readRelayRestriction);
+  const [allowedText, setAllowedText] = useState(
+    initialRestriction.kind === "set"
+      ? (initialRestriction.restriction.allowedRelays ?? []).join("\n")
+      : "",
+  );
+  const [relayOnly, setRelayOnly] = useState(
+    initialRestriction.kind === "set" &&
+      initialRestriction.restriction.relayOnly,
+  );
   const [attempted, setAttempted] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
   const [testTargets, setTestTargets] = useState(() =>
@@ -88,33 +122,56 @@ export function RelaySettingsScreen({
   const [savedTurn, setSavedTurn] = useState<ReadonlyArray<string>>(
     initial.kind === "set" ? initial.relay.turn : [],
   );
+  const [savedAllowed, setSavedAllowed] = useState<ReadonlyArray<string>>(
+    initialRestriction.kind === "set"
+      ? (initialRestriction.restriction.allowedRelays ?? [])
+      : [],
+  );
 
   const turnLines = parseRelayUrlLines(turnText, "turn");
   const stunLines = parseRelayUrlLines(stunText, "stun");
+  const allowedLines = parseAllowedRelayLines(allowedText);
   const turnError = attempted ? fieldError(turnLines) : undefined;
   const stunError = attempted ? fieldError(stunLines) : undefined;
+  const allowedError = attempted ? fieldError(allowedLines) : undefined;
   const unsavedTurnChanges =
     !turnLines.ok || turnLines.urls.join("\n") !== savedTurn.join("\n");
+  const unsavedAllowedChanges =
+    !allowedLines.ok ||
+    (allowedLines.entries ?? []).join("\n") !== savedAllowed.join("\n");
 
   function refreshTestTargets(turn: ReadonlyArray<string>) {
     setSavedTurn(turn);
+    const stored = readRelayRestriction();
+    setSavedAllowed(
+      stored.kind === "set" ? (stored.restriction.allowedRelays ?? []) : [],
+    );
     setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
   }
 
   function save() {
     setAttempted(true);
-    if (!turnLines.ok || !stunLines.ok) {
+    if (!turnLines.ok || !stunLines.ok || !allowedLines.ok) {
       setStatus({ kind: "idle" });
       return;
     }
     try {
+      writeRelayRestriction({
+        ...(allowedLines.entries !== undefined && {
+          allowedRelays: allowedLines.entries,
+        }),
+        relayOnly,
+      });
       writeOwnRelaySetting({ turn: turnLines.urls, stun: stunLines.urls });
       refreshTestTargets(turnLines.urls);
+      const restricted = allowedLines.entries !== undefined || relayOnly;
       setStatus({
         kind:
           turnLines.urls.length + stunLines.urls.length > 0
             ? "saved"
-            : "removed",
+            : restricted
+              ? "savedWithoutRelay"
+              : "removed",
       });
     } catch {
       setStatus({ kind: "failed" });
@@ -128,7 +185,15 @@ export function RelaySettingsScreen({
       setTurnText("");
       setStunText("");
       setAttempted(false);
-      setStatus({ kind: "removed" });
+      const stored = readRelayRestriction();
+      setStatus({
+        kind:
+          stored.kind === "set" &&
+          stored.restriction.allowedRelays === undefined &&
+          !stored.restriction.relayOnly
+            ? "removed"
+            : "savedWithoutRelay",
+      });
     } catch {
       setStatus({ kind: "failed" });
     }
@@ -142,8 +207,9 @@ export function RelaySettingsScreen({
         can connect through a TURN relay your side runs. Enter the relay&apos;s
         addresses here. They are kept in this browser for this site only. An
         invitation you send names these addresses so your partner connects
-        through the same relay, and an invitation you accept that names a relay
-        is used in their place. {RELAY_KEY_NOTICE}
+        through the same relay. A run also lists the relay named by an
+        invitation you accept, after yours, unless your allowed relays below
+        leave it out. {RELAY_KEY_NOTICE}
       </p>
 
       <h2>What the relay&apos;s operator learns</h2>
@@ -185,6 +251,45 @@ export function RelaySettingsScreen({
         />
       </Stack>
 
+      <h2>Which relays an exchange may use</h2>
+      <p>{ALLOWED_RELAYS_SCOPE}</p>
+
+      {initialRestriction.kind === "unreadable" && status.kind === "idle" && (
+        <Alert
+          color="yellow"
+          title="The saved allowed relays could not be read"
+        >
+          Exchanges in this browser use no relay and connect through a relay
+          only until they are saved again. Enter your allowed relays, choose
+          Relay only if you want it, and save.
+        </Alert>
+      )}
+
+      <Stack gap="md" mt="md">
+        <Textarea
+          label="Allowed relays"
+          description="One host per line, with a port where needed, for example relay.example.org or relay.example.org:443. Each run uses only the relays listed here, yours, the invitation's or this site's. Leave it empty to use every relay a run lists."
+          autosize
+          minRows={2}
+          value={allowedText}
+          error={allowedError}
+          errorProps={{ role: "alert" }}
+          onChange={(event) => {
+            setAllowedText(event.currentTarget.value);
+            setStatus({ kind: "idle" });
+          }}
+        />
+        <Checkbox
+          label="Relay only"
+          description={RELAY_ONLY_DESCRIPTION}
+          checked={relayOnly}
+          onChange={(event) => {
+            setRelayOnly(event.currentTarget.checked);
+            setStatus({ kind: "idle" });
+          }}
+        />
+      </Stack>
+
       <div className={styles.workFoot}>
         <Group>
           <Button onClick={save}>Save</Button>
@@ -195,6 +300,8 @@ export function RelaySettingsScreen({
         <p className={styles.statusLine} role="status">
           {status.kind === "saved" &&
             "Saved. Exchanges started from now on use this relay."}
+          {status.kind === "savedWithoutRelay" &&
+            "Saved. No relay of your own is set."}
           {status.kind === "removed" &&
             "No relay is set. Exchanges connect without one."}
           {status.kind === "failed" &&
@@ -205,7 +312,7 @@ export function RelaySettingsScreen({
       <RelayTestSection
         key={testTargets.map((target) => target.url).join("\n")}
         targets={testTargets}
-        unsavedChanges={unsavedTurnChanges}
+        unsavedChanges={unsavedTurnChanges || unsavedAllowedChanges}
       />
 
       <p className={`${styles.small} ${styles.sub}`}>

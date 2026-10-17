@@ -1,5 +1,7 @@
 import { ConnectionError } from "@alcove/core";
 
+import { ALLOWED_RELAYS_REMEDY } from "./relayRestriction";
+
 import type { DataConnection } from "peerjs";
 
 /**
@@ -31,6 +33,8 @@ export interface IceGatheringRecord {
   gatheringComplete: boolean;
   /** Distinct url and code errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
   turnErrors: Array<IceServerError>;
+  /** The TURN urls the allowed relays left out of the run. */
+  relaysLeftOut: ReadonlyArray<string>;
 }
 
 /** How many relay errors one record keeps; a relay entry holds a few urls. */
@@ -43,6 +47,19 @@ const MAX_NAMED_SERVERS = 3;
 const MAX_ERROR_TEXT_LENGTH = 200;
 
 const records = new WeakMap<DataConnection, IceGatheringRecord>();
+
+const relaysLeftOutByPeer = new WeakMap<object, ReadonlyArray<string>>();
+
+/**
+ * Record the TURN urls the allowed relays left out of the run `peer` serves,
+ * so a connection of it that does not open names them.
+ */
+export function recordRelaysLeftOut(
+  peer: object,
+  relaysLeftOut: ReadonlyArray<string>,
+): void {
+  relaysLeftOutByPeer.set(peer, relaysLeftOut);
+}
 
 function isTurnUrl(url: string): boolean {
   return /^turns?:/i.test(url);
@@ -85,11 +102,15 @@ export function watchIceGathering(conn: DataConnection): void {
   // PeerJS types the field as always present, but its cleanup nulls it.
   const pc = conn.peerConnection as RTCPeerConnection | null | undefined;
   if (pc === null || pc === undefined) return;
+  // PeerJS types the provider as always present; a test double may lack it.
+  const provider = conn.provider as object | undefined;
   const record: IceGatheringRecord = {
     turnUrls: configuredTurnUrls(pc),
     relayGathered: false,
     gatheringComplete: pc.iceGatheringState === "complete",
     turnErrors: [],
+    relaysLeftOut:
+      provider === undefined ? [] : (relaysLeftOutByPeer.get(provider) ?? []),
   };
   records.set(conn, record);
   pc.addEventListener("icecandidate", (event) => {
@@ -172,11 +193,27 @@ const RELAY_REMEDY =
  * end before a working relay has answered. Chromium was measured taking about
  * 40 seconds to report an unanswered UDP relay, past the open timeout.
  *
+ * Where the allowed relays left TURN urls out of the run, the message names
+ * them and {@link ALLOWED_RELAYS_REMEDY} after any relay failure, and is
+ * never `undefined`.
+ *
  * The url and error text are raw here and escaped where the failure is shown.
  *
  * @internal
  */
 export function relayFailureMessage(
+  record: IceGatheringRecord,
+  timedOut: boolean,
+): string | undefined {
+  const relayFailure = gatheringFailureMessage(record, timedOut);
+  if (record.relaysLeftOut.length === 0) return relayFailure;
+  const leftOut =
+    `Your allowed relays left out ${listNamed([...new Set(record.relaysLeftOut)])}. ` +
+    ALLOWED_RELAYS_REMEDY;
+  return `${relayFailure ?? "The connection did not open."} ${leftOut}`;
+}
+
+function gatheringFailureMessage(
   record: IceGatheringRecord,
   timedOut: boolean,
 ): string | undefined {
@@ -203,8 +240,8 @@ export function relayFailureMessage(
 
 /**
  * `failure` as the error an unopened `conn` rejects with: a `transport`
- * {@link ConnectionError} naming the failed relay where
- * {@link relayFailureMessage} finds one, and `failure` unchanged otherwise.
+ * {@link ConnectionError} naming the failed relay or the relays left out where
+ * {@link relayFailureMessage} finds either, and `failure` unchanged otherwise.
  * `timedOut` says the open ran out its time rather than failing early.
  * `failure` is not kept as a cause: a PeerJS negotiation error names the
  * remote rendezvous id, and the callers redact only the error they throw.

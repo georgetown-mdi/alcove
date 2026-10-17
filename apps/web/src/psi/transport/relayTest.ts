@@ -6,11 +6,12 @@
  * relays.
  */
 
-import { sanitizeForDisplay } from "@alcove/core";
+import { sanitizeForDisplay, turnUrlIsAllowed } from "@alcove/core";
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import { readOwnRelaySetting } from "./ownRelaySetting";
+import { runRelayRestriction } from "./relayRestriction";
 
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { OwnRelayRead } from "./ownRelaySetting";
@@ -99,19 +100,24 @@ export function turnUrlTransport(url: string): RelayTransport {
 /**
  * The TURN urls the test contacts: those a browser run lists from this
  * browser's saved relay and the build's default relay, in a run's order, each
- * once. The invitation's relay is not known here, so it is not listed.
+ * once, less those `allowedRelays` leaves out. The invitation's relay is not
+ * known here, so it is not listed.
  */
 export function relayTestTargets(
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
   defaultRelay: () => DefaultRelaySetting | undefined = defaultRelaySetting,
+  allowedRelays: ReadonlyArray<string> | undefined = runRelayRestriction()
+    .allowedRelays,
 ): Array<RelayTestTarget> {
   const own = readOwn();
   const site = defaultRelay();
   const ownTurn = own.kind === "set" ? own.relay.turn : [];
   const targets: Array<RelayTestTarget> = [...new Set(ownTurn)]
-    .filter((url) => url !== site?.turnUrl)
+    .filter(
+      (url) => url !== site?.turnUrl && turnUrlIsAllowed(url, allowedRelays),
+    )
     .map((url) => ({ url, source: "own", transport: turnUrlTransport(url) }));
-  if (site !== undefined)
+  if (site !== undefined && turnUrlIsAllowed(site.turnUrl, allowedRelays))
     targets.push({
       url: site.turnUrl,
       source: "site",
