@@ -52,6 +52,7 @@ The relay checks a hello in this order, refusing at the first check it fails wit
 2. **The key.** The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)). No key is refused as not enrolled (4003). A hello the relay could not check is refused with 1011: its key table could not be read, the enrolled key is not 64 lowercase hex characters, or the check failed in some other way.
 3. **The proof.** The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock. A proof for the other role, or whose tag is not the proof key's, does not verify (4004). A proof whose expiry has passed is expired (4005), and the close reason is the relay's current Unix second in decimal, so a party whose clock has drifted can make another.
 4. **The role.** A socket already holding the claimed role under that relay key refuses this one as role taken (4006), the broker's `ID-TAKEN` for this path.
+5. **The cap.** A hello under a relay key that holds no pairing yet, while the relay holds as many pairings as its cap ([Quotas](#quotas)), is refused as full (4008).
 
 **Replay.** The hello does not bind the proof to its connection, since the proof's message holds only the role and the expiry.
 A captured hello replayed before its expiry, at most 300 seconds after it was made, can take the role under the key first, and the party it was captured from is then refused as role taken.
@@ -80,6 +81,18 @@ It exposes no data: the key exchange inside the relayed channel still needs the 
 - **Unread.** Once both parties have started, the relay forwards each binary message to the partner as one binary message, unread. A text message is then refused (4002).
 - **The per-message cap.** 16,384 bytes (`RELAY_MAX_MESSAGE_BYTES`): the 16,300-byte chunk the framing splits a frame at and the 58 bytes its widest chunk envelope adds, rounded up to 16 KiB. A message above it, a hello included, is refused with 1009 before its payload is read, so the relay holds one chunk a socket and never a frame.
 - **Backpressure.** While the partner's send buffer is above 1 MiB (`RELAY_SEND_BUFFER_HIGH_BYTES`) the relay reads nothing from the source, and it reads again once that buffer is at or below 256 KiB (`RELAY_SEND_BUFFER_LOW_BYTES`): the window the CLI's own send path uses ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#outbound-pacing)). The few messages already read when reading stops are forwarded. A source held this way waits on its own TCP window and is not disconnected.
+
+## Quotas
+
+The relay bounds what one exchange can use, as coturn's `user-quota`, `total-quota` and `max-bps` bound its allocations ([webrtc-relay-deployment.md](../notes/webrtc-relay-deployment.md#quotas-against-one-exchange)).
+The quotas key on the exchange's relay key, not on a client's address: behind the reference deployment's front every connection arrives from `127.0.0.1`.
+
+| Quota | Value | What it bounds |
+| --- | --- | --- |
+| Pairings a key | 1 | Each of a key's two roles holds one socket, so a further socket under a held role is refused (4006) |
+| Concurrent pairings | 20 (`RELAY_MAX_PAIRINGS`) | The pairings the relay holds at once, each counted from its first verified hello until it ends. A hello that would start one more is refused (4008); one joining a pairing already held is not. coturn's 40 concurrent allocations at two an exchange |
+| Byte rate | 2,000,000 bytes a second from each party of a pairing (`RELAY_PAIRING_BYTES_PER_SECOND`), after a burst of 2,000,000 bytes (`RELAY_PAIRING_BURST_BYTES`) | A party that sends faster is not read again until the rate has paid back the excess, as backpressure holds a source, so it is paced and not disconnected. coturn's `max-bps` |
+| Idle bound | 65 minutes (`RELAY_IDLE_TIMEOUT_MS`) | A pairing no message has crossed either way for that long, a party still waiting for its partner included, is closed with 4009 on each socket. A ping or a pong is not a message here. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The one-hour parked-receive budget plus the five-minute close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), so a party's own budget expires first |
 
 ## Keepalive
 
@@ -111,3 +124,5 @@ Every close reason is empty except 4005's.
 | 4005 | the sender | The proof has expired; the reason is the relay's current Unix second |
 | 4006 | the sender | Another socket holds the claimed role under the exchange's relay key |
 | 4007 | the sender | No hello within 10 seconds of the upgrade |
+| 4008 | the sender of a hello | The relay holds as many pairings as its cap |
+| 4009 | both parties | No message crossed the pairing within the idle bound |

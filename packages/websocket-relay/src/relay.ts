@@ -12,8 +12,12 @@ import {
   RELAY_CLOSE_WAIT_MS,
   RELAY_FAULT_REPORT_WINDOW_MS,
   RELAY_HELLO_TIMEOUT_MS,
+  RELAY_IDLE_TIMEOUT_MS,
   RELAY_MAX_MESSAGE_BYTES,
+  RELAY_MAX_PAIRINGS,
   RELAY_MAX_UNVERIFIED_SOCKETS,
+  RELAY_PAIRING_BURST_BYTES,
+  RELAY_PAIRING_BYTES_PER_SECOND,
   RELAY_PATH,
   RELAY_PING_INTERVAL_MS,
   RELAY_REFUSAL_CLOSE_WAIT_MS,
@@ -33,8 +37,9 @@ import type { WebSocket } from "ws";
 import type { RelayKeyTable } from "./keyTable.ts";
 import type { RelayHello } from "./protocol.ts";
 
-/** Why the relay has stopped reading from a party's socket. */
-export type RelayHoldReason = "backpressure";
+/** Why the relay has stopped reading from a party's socket: its partner's
+ * send buffer is full, or it has sent above the pairing's byte rate. */
+export type RelayHoldReason = "backpressure" | "rate";
 
 /** @internal */
 export interface RelayObserver {
@@ -64,6 +69,10 @@ export interface WebSocketRelayOptions {
     sendBufferLowBytes?: number;
     closeWaitMs?: number;
     refusalCloseWaitMs?: number;
+    maxPairings?: number;
+    bytesPerSecond?: number;
+    burstBytes?: number;
+    idleTimeoutMs?: number;
     observer?: RelayObserver;
   };
 }
@@ -84,12 +93,18 @@ interface Party {
   pairing: Pairing | undefined;
   started: boolean;
   holds: Set<RelayHoldReason>;
+  /** The bytes this party may still send at once, as of `tokensAt`. */
+  tokens: number;
+  tokensAt: number;
+  rateTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 interface Pairing {
   key: string;
   parties: Partial<Record<RendezvousRole, Party>>;
   forwarding: boolean;
+  /** When a message last crossed the pairing either way. */
+  activeAt: number;
 }
 
 const OTHER_ROLE: Record<RendezvousRole, RendezvousRole> = {
@@ -145,6 +160,11 @@ export function attachWebSocketRelay(
   const closeWaitMs = testing.closeWaitMs ?? RELAY_CLOSE_WAIT_MS;
   const refusalCloseWaitMs =
     testing.refusalCloseWaitMs ?? RELAY_REFUSAL_CLOSE_WAIT_MS;
+  const maxPairings = testing.maxPairings ?? RELAY_MAX_PAIRINGS;
+  const bytesPerSecond =
+    testing.bytesPerSecond ?? RELAY_PAIRING_BYTES_PER_SECOND;
+  const burstBytes = testing.burstBytes ?? RELAY_PAIRING_BURST_BYTES;
+  const idleTimeoutMs = testing.idleTimeoutMs ?? RELAY_IDLE_TIMEOUT_MS;
   const observer = testing.observer ?? {};
 
   // `closeTimeout` is read by the pinned `ws` but missing from @types/ws, so
@@ -195,6 +215,7 @@ export function attachWebSocketRelay(
     if (party.state === "ended") return;
     party.state = "ended";
     clearTimeout(party.helloTimer);
+    clearTimeout(party.rateTimer);
     // A held socket reads nothing, the answer to its close included.
     for (const reason of [...party.holds]) release(party, reason);
     parties.delete(party);
@@ -278,9 +299,18 @@ export function attachWebSocketRelay(
       return refuse(party, RelayCloseCode.roleTaken);
     }
     if (pairing === undefined) {
-      pairing = { key, parties: {}, forwarding: false };
+      if (pairings.size >= maxPairings) {
+        return refuse(party, RelayCloseCode.relayFull);
+      }
+      pairing = {
+        key,
+        parties: {},
+        forwarding: false,
+        activeAt: performance.now(),
+      };
       pairings.set(key, pairing);
     }
+    pairing.activeAt = performance.now();
     pairing.parties[role] = party;
     party.pairing = pairing;
     party.role = role;
@@ -298,6 +328,39 @@ export function attachWebSocketRelay(
       onVerifiedMessage(party, pending.data, pending.isBinary);
   }
 
+  function refill(party: Party): void {
+    const now = performance.now();
+    party.tokens = Math.min(
+      burstBytes,
+      party.tokens + ((now - party.tokensAt) * bytesPerSecond) / 1000,
+    );
+    party.tokensAt = now;
+  }
+
+  function scheduleRepayment(party: Party): void {
+    party.rateTimer = setTimeout(
+      () => {
+        party.rateTimer = undefined;
+        refill(party);
+        if (party.tokens < 0) return scheduleRepayment(party);
+        release(party, "rate");
+      },
+      Math.ceil((-party.tokens * 1000) / bytesPerSecond),
+    );
+  }
+
+  // A token bucket per party: a message is forwarded as it arrives, and a
+  // party that has sent past its bucket is not read again until the rate has
+  // paid the excess back.
+  function charge(party: Party, bytes: number): void {
+    refill(party);
+    party.tokens -= bytes;
+    if (party.tokens < 0 && party.rateTimer === undefined) {
+      hold(party, "rate");
+      scheduleRepayment(party);
+    }
+  }
+
   function forward(source: Party, destination: Party, data: Buffer): void {
     destination.socket.send(data, { binary: true }, () => {
       if (destination.socket.bufferedAmount <= lowBytes) {
@@ -306,6 +369,19 @@ export function attachWebSocketRelay(
     });
     if (destination.socket.bufferedAmount > highBytes) {
       hold(source, "backpressure");
+    }
+    charge(source, data.length);
+  }
+
+  function closeIdlePairings(): void {
+    const now = performance.now();
+    for (const pairing of [...pairings.values()]) {
+      if (now - pairing.activeAt < idleTimeoutMs) continue;
+      for (const party of Object.values(pairing.parties)) {
+        if (party === undefined || party.state === "ended") continue;
+        end(party, undefined);
+        closeWithin(party, RelayCloseCode.idle);
+      }
     }
   }
 
@@ -316,6 +392,7 @@ export function attachWebSocketRelay(
   ): void {
     const pairing = party.pairing;
     if (pairing === undefined) return;
+    pairing.activeAt = performance.now();
     const partner = partnerOf(party);
     if (pairing.forwarding && partner !== undefined) {
       if (!isBinary) return refuse(party, RelayCloseCode.unexpectedMessage);
@@ -389,6 +466,9 @@ export function attachWebSocketRelay(
       pairing: undefined,
       started: false,
       holds: new Set(),
+      tokens: burstBytes,
+      tokensAt: performance.now(),
+      rateTimer: undefined,
     };
     parties.add(party);
     unverified.add(party);
@@ -440,7 +520,10 @@ export function attachWebSocketRelay(
   };
   server.on("upgrade", onUpgrade);
 
+  // The idle bound is checked at each ping, so it closes a pairing up to one
+  // ping interval late.
   const pingTimer = setInterval(() => {
+    closeIdlePairings();
     for (const party of parties) party.socket.ping();
   }, pingIntervalMs);
   pingTimer.unref();
