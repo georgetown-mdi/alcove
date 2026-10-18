@@ -394,7 +394,7 @@ async function attemptUpgrade(
 }
 
 describe("sockets awaiting a hello", () => {
-  it("answers an upgrade 503 at the cap and takes one again once a socket verifies or ends", async () => {
+  it("answers an upgrade 503 at the cap and takes one again once a socket verifies or closes", async () => {
     const { url } = await relay({ testing: { maxUnverifiedSockets: 2 } });
     const first = await connect(url);
     const second = await connect(url);
@@ -414,6 +414,34 @@ describe("sockets awaiting a hello", () => {
     await eventually(async () => "party" in (await attemptUpgrade(url)));
     expect(first.socket.readyState).toBe(WebSocket.OPEN);
     expect(third?.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("counts a refused socket that never answers the close until the relay drops it", async () => {
+    const refusalCloseWaitMs = 2000;
+    const { url, connections } = await relay({
+      testing: { maxUnverifiedSockets: 2, refusalCloseWaitMs },
+    });
+    const refused = [await connect(url), await connect(url)];
+    for (const party of refused) {
+      // A paused client reads nothing, so it never answers the relay's close.
+      party.socket.pause();
+      party.send("not a hello");
+    }
+    const sentAt = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await connections()).toBe(2);
+    expect(await attemptUpgrade(url)).toEqual({ status: 503 });
+
+    await eventually(async () => (await connections()) === 0, 5000);
+    expect(Date.now() - sentAt).toBeGreaterThanOrEqual(refusalCloseWaitMs - 50);
+    await eventually(async () => "party" in (await attemptUpgrade(url)));
+    expect("party" in (await attemptUpgrade(url))).toBe(true);
+    expect(await attemptUpgrade(url)).toEqual({ status: 503 });
+
+    for (const party of refused) {
+      party.socket.resume();
+      expect((await party.closed).code).toBe(RelayCloseCode.helloMalformed);
+    }
   });
 
   it("holds to the cap across upgrades arriving together", async () => {

@@ -29,12 +29,12 @@
 - - -> **Before the upgrade.**
 - - -> The relay applies the signaling broker's pre-upgrade bounds: a 10-second header timeout, a 15-second request timeout, and a 10-second idle bound on a socket that has not completed its request ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds); `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
 - - -> **Sockets awaiting a hello.**
-- - -> The relay holds at most 80 sockets whose hello has not verified (`RELAY_MAX_UNVERIFIED_SOCKETS`), each counted from its upgrade until its hello verifies or it ends.
+- - -> The relay holds at most 80 sockets whose hello has not verified (`RELAY_MAX_UNVERIFIED_SOCKETS`), each counted from its upgrade until its hello verifies or its socket closes.
 - - -> An upgrade above that is answered `503` and closed before the WebSocket opens.
 - - -> The value is four times the 20 exchanges coturn's 40 concurrent allocations admit at two an exchange ([webrtc-relay-deployment.md](../notes/webrtc-relay-deployment.md#quotas-against-one-exchange)): two hellos an exchange, twice over.
 - - -> **No quota for each address.**
 - - -> The relay counts nothing by client address, since behind the reference deployment's front every connection arrives from `127.0.0.1`.
-- - -> So one client can hold every socket the cap above allows and keep other parties out for as long as it keeps opening sockets, each of which the relay closes after the 10-second hello window.
+- - -> So one client can hold every socket the cap above allows and keep other parties out for as long as it keeps opening sockets, each of which the relay refuses after the 10-second hello window and closes at most 10 seconds later.
 - - -> **No TLS.**
 - - -> The relay terminates none, so a deployment reachable off its host puts it behind a front that does.
 - - -> **No outbound connection.**

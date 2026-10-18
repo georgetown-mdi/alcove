@@ -159,6 +159,8 @@ export function attachWebSocketRelay(
   };
   const socketServer = new WebSocketServer(serverOptions);
   const parties = new Set<Party>();
+  // Each socket from its upgrade until it joins a pairing or its socket
+  // closes: a refused socket counts while the relay waits on its close.
   const unverified = new Set<Party>();
   const pairings = new Map<string, Pairing>();
   let keyTableFailing = false;
@@ -196,7 +198,6 @@ export function attachWebSocketRelay(
     // A held socket reads nothing, the answer to its close included.
     for (const reason of [...party.holds]) release(party, reason);
     parties.delete(party);
-    unverified.delete(party);
     const pairing = party.pairing;
     if (pairing === undefined) return;
     if (pairings.get(pairing.key) === pairing) pairings.delete(pairing.key);
@@ -410,6 +411,7 @@ export function attachWebSocketRelay(
       end(party, RelayCloseCode.partnerEnded);
     });
     socket.on("close", (code) => {
+      unverified.delete(party);
       end(
         party,
         NORMAL_CLOSE_CODES.has(code)

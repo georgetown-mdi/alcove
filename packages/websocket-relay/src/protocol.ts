@@ -36,9 +36,10 @@ export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 
 /**
  * The most sockets the relay holds whose hello has not verified, each counted
- * from its upgrade until its hello verifies or it ends; an upgrade above it is
- * refused with 503. Four times the 20 exchanges coturn's 40 concurrent
- * allocations admit at two an exchange: two hellos an exchange, twice over.
+ * from its upgrade until its hello verifies or its socket closes; an upgrade
+ * above it is refused with 503. Four times the 20 exchanges coturn's 40
+ * concurrent allocations admit at two an exchange: two hellos an exchange,
+ * twice over.
  */
 export const RELAY_MAX_UNVERIFIED_SOCKETS = 80;
 
