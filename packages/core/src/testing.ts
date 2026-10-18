@@ -216,6 +216,7 @@ export {
   buildKeyStrings,
   buildStandardizedDataset,
 } from "./standardization.js";
+export { personColumns } from "./personColumns.js";
 export {
   pipelineAlwaysDrops,
   validateStandardizationAgainstTerms,

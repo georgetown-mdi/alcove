@@ -267,6 +267,13 @@ const defaultMaxPeoplePerValue = new Map<string, number | undefined>(
   ]),
 );
 
+const defaultNullIfLastName = new Map(
+  defaultTransformations.map((transformation) => [
+    transformation.output,
+    transformation.nullIfLastName,
+  ]),
+);
+
 // --- Assertions --------------------------------------------------------------
 
 describe("DEFAULT_STANDARDIZATION.md pipelines", () => {
@@ -297,6 +304,18 @@ describe("DEFAULT_STANDARDIZATION.md pipelines", () => {
       };
       expect(documented.max_people_per_value).toEqual(
         defaultMaxPeoplePerValue.get(type),
+      );
+    },
+  );
+
+  test.each([...typeSections.keys()])(
+    "%s rule for a listed last name matches the registry",
+    (type) => {
+      const documented = parseYaml(typeSections.get(type)!.stepsYaml) as {
+        null_if_last_name?: unknown;
+      };
+      expect(documented.null_if_last_name).toEqual(
+        snakeizeKeys(defaultNullIfLastName.get(type)),
       );
     },
   );

@@ -7,6 +7,7 @@ import { inferMetadata, loadCSVFile } from "@alcove/core";
 import {
   buildKeyStrings,
   buildStandardizedDataset,
+  personColumns,
 } from "@alcove/core/testing";
 
 import {
@@ -54,6 +55,7 @@ function keyStringsForRow(
     csv.rawRows,
     metadata,
     terms,
+    personColumns(editor.draft.standardization, metadata, terms, csv.rawRows),
   );
   const strings = new Set<string>();
   for (const key of terms.linkageKeys) {

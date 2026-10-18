@@ -29,6 +29,7 @@ import type { TransformParamType } from "./config/transformParamTypes.js";
 import { usStateCode } from "./usStateCodes.js";
 import type { ScanBudget } from "./utils/linearRegex.js";
 import type {
+  NullIfLastName,
   Standardization,
   StandardizationStep,
   StandardizationTransformation,
@@ -1887,6 +1888,13 @@ interface SharedValueScreen {
   readonly personFields: ReadonlyArray<StandardizedField>;
 }
 
+// Both lists NFC-normalized, as a null_if step normalizes its values.
+interface LastNameRule {
+  readonly values: ReadonlySet<string>;
+  readonly lastNames: ReadonlySet<string>;
+  readonly lastNameField: StandardizedField;
+}
+
 /**
  * A lazily-evaluated, cached mapping from a raw dataset row index to the set
  * of standardized string values for one linkage field.
@@ -1918,6 +1926,7 @@ export class StandardizedField {
   private readonly cache: Array<RealizedFieldValues | undefined> = [];
   private sharedValueScreen: SharedValueScreen | undefined;
   private sharedValuesDropped: DroppedSharedValues | undefined;
+  private lastNameRule: LastNameRule | undefined;
 
   constructor(
     name: string,
@@ -1955,10 +1964,14 @@ export class StandardizedField {
    * The result is computed on first access and cached for subsequent calls.
    * An empty array signals that the record has no valid value for this field.
    * A value the field's shared-value screen drops ({@link screenSharedValues})
-   * is left out; {@link evaluateRow} reads one row and applies no such screen.
+   * or its last-name rule drops ({@link dropBesideLastNames}) is left out;
+   * {@link evaluateRow} reads one row and applies neither.
    */
   get(index: number): string[] {
-    const values = this.realize(index).values;
+    const values = this.withoutLastNameRuleValues(
+      index,
+      this.realize(index).values,
+    );
     const screen = this.sharedValueScreen;
     if (screen === undefined || values.length === 0) return values;
     const dropped = this.screenedValues(screen);
@@ -1980,6 +1993,36 @@ export class StandardizedField {
   ): void {
     this.sharedValueScreen = { maxPeople, personFields };
     this.sharedValuesDropped = undefined;
+  }
+
+  /**
+   * Drop a value of this field listed in `rule.values` from every row whose
+   * value of `lastNameField` is listed in `rule.lastNames`
+   * (docs/spec/DEFAULT_STANDARDIZATION.md, First name beside a listed last
+   * name).
+   */
+  dropBesideLastNames(
+    rule: NullIfLastName,
+    lastNameField: StandardizedField,
+  ): void {
+    this.lastNameRule = {
+      values: new Set(rule.values.map((value) => value.normalize("NFC"))),
+      lastNames: new Set(rule.lastNames.map((name) => name.normalize("NFC"))),
+      lastNameField,
+    };
+  }
+
+  private withoutLastNameRuleValues(index: number, values: string[]): string[] {
+    const rule = this.lastNameRule;
+    if (rule === undefined) return values;
+    const listed = (value: string) => rule.values.has(value.normalize("NFC"));
+    if (!values.some(listed)) return values;
+    const besideListedLastName = rule.lastNameField
+      .realize(index)
+      .values.some((name) => rule.lastNames.has(name.normalize("NFC")));
+    return besideListedLastName
+      ? values.filter((value) => !listed(value))
+      : values;
   }
 
   private screenedValues({
@@ -2396,7 +2439,10 @@ export interface PersonColumn {
  * referencing those fields are excluded from the corresponding linkage keys.
  * A transformation stating `maxPeoplePerValue` screens its field's values over
  * the whole of `rawRows` ({@link StandardizedField.screenSharedValues}),
- * counting people from `personColumns`, which such a screen requires.
+ * counting people from `personColumns`, which such a screen requires. One
+ * stating `nullIfLastName` reads the last name from the `last_name` entry of
+ * `personColumns` ({@link StandardizedField.dropBesideLastNames}), and requires
+ * them too; with no such entry it drops nothing.
  */
 export function buildStandardizedDataset(
   standardization: Standardization | undefined,
@@ -2408,6 +2454,10 @@ export function buildStandardizedDataset(
   const resolution = resolveFieldColumns(terms, standardization, metadata);
   const fields: StandardizedField[] = [];
   const screens: Array<{ field: StandardizedField; maxPeople: number }> = [];
+  const lastNameRules: Array<{
+    field: StandardizedField;
+    rule: NullIfLastName;
+  }> = [];
   const builtFields: Array<{
     resolved: FieldColumnResolution;
     standardized: StandardizedField;
@@ -2428,14 +2478,16 @@ export function buildStandardizedDataset(
     const maxPeople = resolved.transform?.maxPeoplePerValue;
     if (maxPeople !== undefined)
       screens.push({ field: standardized, maxPeople });
+    const rule = resolved.transform?.nullIfLastName;
+    if (rule !== undefined) lastNameRules.push({ field: standardized, rule });
     builtFields.push({ resolved, standardized });
   }
 
-  if (screens.length === 0)
+  if (screens.length === 0 && lastNameRules.length === 0)
     return new StandardizedDataset(fields, terms.linkageKeys);
   if (personColumns === undefined)
     throw new Error(
-      "buildStandardizedDataset: a shared-value screen needs the party's person columns",
+      "buildStandardizedDataset: a shared-value screen or a last-name rule needs the party's person columns",
     );
   // A person column cleaned as a linkage field shares that field's cache.
   const personFields = personColumns.map(
@@ -2447,6 +2499,12 @@ export function buildStandardizedDataset(
   );
   for (const { field, maxPeople } of screens)
     field.screenSharedValues(maxPeople, personFields);
+  const lastNameAt = personColumns.findIndex(
+    ({ type }) => type === "last_name",
+  );
+  if (lastNameAt !== -1)
+    for (const { field, rule } of lastNameRules)
+      field.dropBesideLastNames(rule, personFields[lastNameAt]);
 
   return new StandardizedDataset(fields, terms.linkageKeys);
 }
