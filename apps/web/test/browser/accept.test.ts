@@ -41,7 +41,6 @@ import { STEP_STATE_KEY } from "@exchange/stepHistory";
 
 import {
   ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
-  ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
   EXCHANGE_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
@@ -3346,35 +3345,41 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     expect(launchHarness.last?.allowedRelays).toEqual(["other.example.net"]);
   });
 
-  test("Start after an edit since Continue returns to the review with a notice Continue clears", async () => {
+  const nextPopState = () =>
+    new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
+
+  test("Back from the started exchange shows the field fixed on the launched list", async () => {
     expectConsole(
       "error",
       "Error: standardization output name contradicts the terms",
     );
     await openRelayInvitation();
-    await userEvent.fill(allowedField(), "partner.example.net");
+    await userEvent.fill(allowedField(), "Partner.Example.net");
     await userEvent.click(continueButton());
     await acceptAndStart();
 
-    // Back from the run to the review, edit the field there, then jump to the
-    // run's entry, whose launch the edit leaves standing.
-    const nextPopState = () =>
-      new Promise<void>((resolve) => {
-        window.addEventListener("popstate", () => resolve(), { once: true });
-      });
     let landed = nextPopState();
     window.history.go(-3);
     await landed;
+    await expect.element(allowedField()).toBeDisabled();
     await expect.element(allowedField()).toHaveValue("partner.example.net");
-    await userEvent.fill(allowedField(), "other.example.net");
+    expect(pageText()).toContain(
+      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
+    // A recovery that discards the launch frees the field again.
     landed = nextPopState();
     window.history.go(3);
     await landed;
     await expect
       .element(page.getByRole("heading", { name: "Exchange in progress" }))
       .toBeInTheDocument();
-
-    // A config failure's recovery reaches the columns step, and Start there.
     lifecycleCall(0).onError({
       category: "config",
       error: new Error("standardization output name contradicts the terms"),
@@ -3383,29 +3388,25 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     await expect
       .element(page.getByRole("heading", { name: "Confirm your columns" }))
       .toBeInTheDocument();
-    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
-    await userEvent.click(
-      page.getByRole("button", { name: "Start the exchange" }),
-    );
+    landed = nextPopState();
+    window.history.go(-4);
+    await landed;
+    await expect.element(allowedField()).toBeEnabled();
+    await expect.element(allowedField()).toHaveValue("Partner.Example.net");
+  });
 
-    await expect.element(allowedField()).toHaveValue("other.example.net");
-    await expect
-      .element(page.getByText(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE))
-      .toBeInTheDocument();
-    await vi.waitFor(() => {
-      expect(document.activeElement?.textContent).toContain(
-        ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
-      );
-    });
-    expect(lifecycleCalls).toHaveLength(1);
-
+  test("Back from an exchange started with no list shows the field empty and fixed", async () => {
+    await openRelayInvitation();
     await userEvent.click(continueButton());
-    await expect
-      .element(page.getByRole("heading", { level: 1 }))
-      .toMatchTextContent("Consent & your file");
-    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
-    window.history.back();
-    await expect.element(allowedField()).toHaveValue("other.example.net");
-    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
+    await acceptAndStart();
+
+    const landed = nextPopState();
+    window.history.go(-3);
+    await landed;
+    await expect.element(allowedField()).toBeDisabled();
+    await expect.element(allowedField()).toHaveValue("");
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 });

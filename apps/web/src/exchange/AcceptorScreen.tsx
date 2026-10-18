@@ -70,6 +70,7 @@ import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 import {
   ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
   allowedRelayLinesError,
+  allowedRelaysText,
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
 import {
@@ -321,13 +322,27 @@ function AcceptorInvitationScreen({
   const csvDelimiter = delimiterResolution.ok
     ? delimiterResolution.delimiter
     : undefined;
-  // The review step's Allowed relays as typed: while the text parses the terms
-  // mark the invitation's TURN urls by it, and while it does not the field
-  // shows its error and the terms mark nothing.
+  // The review step's Allowed relays. Before a launch they follow the typed
+  // text: while it parses the terms mark the invitation's TURN urls by it, and
+  // while it does not the field shows its error and the terms mark nothing.
+  // Once a launch exists the field is fixed on the list that launch took, the
+  // list the run and a later save as recurring both keep, and the marks follow
+  // it.
   const allowedRelayLines = parseExchangeAllowedRelayLines(
     acceptorAllowedRelays,
   );
-  const allowedRelaysError = allowedRelayLinesError(allowedRelayLines);
+  const allowedRelaysFixed = launched !== undefined;
+  const allowedRelaysError = allowedRelaysFixed
+    ? undefined
+    : allowedRelayLinesError(allowedRelayLines);
+  const allowedRelaysFieldText = allowedRelaysFixed
+    ? allowedRelaysText(launched.allowedRelays)
+    : acceptorAllowedRelays;
+  const markedAllowedRelays = allowedRelaysFixed
+    ? launched.allowedRelays
+    : allowedRelayLines.ok
+      ? allowedRelayLines.entries
+      : undefined;
 
   // Decode the token once, failing closed: an empty fragment, a bad
   // checksum/schema, an expired token, or an endpoint this build cannot drive
@@ -1197,9 +1212,9 @@ function AcceptorInvitationScreen({
     // the committed value, so it starts only while the terms step shows that
     // same value.
     if (deduplicateChangedAfterConsent) return;
-    // And for Allowed relays edited since the review step's Continue, reached
-    // by a back-to-columns recovery after that edit: the field is on the review
-    // step, which commits it again.
+    // And for Allowed relays with no commit behind them, as an edit since the
+    // review step's Continue leaves them: the field is on the review step,
+    // which commits it again.
     if (committedAllowedRelays === undefined) {
       dispatch({ type: "start-held-for-allowed-relays" });
       goToStep("review");
@@ -1360,9 +1375,7 @@ function AcceptorInvitationScreen({
               perspective="review"
               headingOrder={1}
               headingRef={termsHeadingRef}
-              allowedRelays={
-                allowedRelayLines.ok ? allowedRelayLines.entries : undefined
-              }
+              allowedRelays={markedAllowedRelays}
             />
             {acceptSignaling !== undefined && (
               <AcceptorSignalingServerNotice accepted={acceptSignaling} />
@@ -1372,8 +1385,9 @@ function AcceptorInvitationScreen({
                 <>
                   <DefaultRelayNotice />
                   <AllowedRelaysField
-                    value={acceptorAllowedRelays}
+                    value={allowedRelaysFieldText}
                     error={allowedRelaysError}
+                    disabled={allowedRelaysFixed}
                     liveError
                     onChange={(value) =>
                       dispatch({ type: "allowed-relays-changed", value })
