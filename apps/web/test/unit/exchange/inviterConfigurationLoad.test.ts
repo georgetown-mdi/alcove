@@ -2148,9 +2148,8 @@ describe("keys from an opened configuration", () => {
     const fromConfiguration = keysFromOpenedConfiguration(state);
     const drop = editorCitationDrop(editor, fromConfiguration);
     return {
-      openedConfigurationNote:
-        editor.keysAuthored === true && fromConfiguration,
-      guidedControls: editor.keysAuthored !== true,
+      openedConfigurationNote: fromConfiguration,
+      guidedControls: editor.keysAuthored !== true && !fromConfiguration,
       useBuiltInRulesOffered: editorOffersUseBuiltInRules(
         editor,
         fromConfiguration,
@@ -2271,6 +2270,23 @@ describe("keys from an opened configuration", () => {
     withFileRead(loadedInto(INVITER_SCREEN_INITIAL, sftpDocument()));
   const seeded = () => withFileCommitted(INVITER_SCREEN_INITIAL, acquired());
 
+  /** A configuration whose keys are in another order than the ones a Reset to
+   * defaults seeds for the file, which {@link opened}'s are. */
+  const openedOnOtherKeys = () => {
+    const terms = getDefaultLinkageTerms("County Health");
+    return withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          linkageTerms: {
+            ...terms,
+            linkageKeys: [...terms.linkageKeys].reverse(),
+          },
+        }),
+      ),
+    );
+  };
+
   /** A pasted terms document whose keys are reordered under the citation it
    * states, so the imported notice speaks for it. */
   function loadedDocument(): InviterScreenState {
@@ -2336,8 +2352,13 @@ describe("keys from an opened configuration", () => {
       expected: OPENED_VIEW,
     },
     {
-      state: "opened then reset",
+      state: "opened then reset, keys equal to the configuration's",
       build: () => reset(opened()),
+      expected: OPENED_VIEW,
+    },
+    {
+      state: "opened then reset, keys other than the configuration's",
+      build: () => reset(openedOnOtherKeys()),
       expected: {
         openedConfigurationNote: false,
         guidedControls: true,
@@ -2536,10 +2557,8 @@ describe("keys from an opened configuration", () => {
   test("open, reset and an Expert edit: the action is offered where the notice names it", () => {
     const afterReset = reset(opened());
     expect(afterReset.loadedTermsFile).toBe(afterReset.acquired);
-    expect(keysView(afterReset)).toMatchObject({
-      openedConfigurationNote: false,
-      guidedControls: true,
-    });
+    expect(afterReset.editor?.keysAuthored).toBeUndefined();
+    expect(keysView(afterReset)).toEqual(OPENED_VIEW);
 
     const edited = authored(afterReset);
     const { editor } = seatedEditor(edited);

@@ -103,8 +103,8 @@ const SHARED_VALUE_CAVEAT =
  * rule, an action that replaces those keys, fields and cleaning with a new
  * invitation's: no floor selected them. On the console, keys an opened
  * configuration states (`keysFromOpenedConfiguration`,
- * `@exchange/inviterScreenModel`) get a note naming the file and the command
- * that change them instead, and no action.
+ * `@exchange/inviterScreenModel`), authored or guided, get a note naming the
+ * file and the command that change them in place of the floor, and no action.
  *
  * Also renders {@link editorCitationDrop} live from the draft, so a rule-set
  * citation the rebuild drops is flagged as soon as the import lands or an
@@ -221,7 +221,7 @@ export function KeysTab({
       </button>
       <p className={styles.eyebrow}>Customize</p>
       <h1 tabIndex={-1}>Matching keys</h1>
-      {keysAuthored && keysFromOpenedConfiguration && (
+      {keysFromOpenedConfiguration && (
         <Alert variant="light" color="gray" role="note" my="sm">
           {OPENED_CONFIGURATION_KEYS_NOTE}
         </Alert>
@@ -239,7 +239,7 @@ export function KeysTab({
           )}
         </Alert>
       )}
-      {!keysAuthored && (
+      {!keysAuthored && !keysFromOpenedConfiguration && (
         <>
           <Radio.Group
             label="Built-in rules"
@@ -294,7 +294,7 @@ export function KeysTab({
                 <LessCertainInfo
                   keyName={displayName}
                   remedy={
-                    keysAuthored && keysFromOpenedConfiguration
+                    keysFromOpenedConfiguration
                       ? MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration
                       : MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox
                   }

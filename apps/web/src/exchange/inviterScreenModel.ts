@@ -473,10 +473,11 @@ export type InviterScreenAction =
 /**
  * Whether the session's keys are an opened configuration's, which the partner
  * agreed to: Matching keys then names the file in place of the authored-keys
- * note and withholds Use the built-in rules, and the dropped-citation notices
- * name no such action. Decided from content: the session's keys and fields
- * equal those of {@link InviterScreenState.openedConfigurationKeys}, whatever
- * edits led there.
+ * note or the precision floor control and withholds Use the built-in rules,
+ * and the dropped-citation notices name no such action. Decided from content:
+ * the session's keys and fields equal those of
+ * {@link InviterScreenState.openedConfigurationKeys}, whatever edits led
+ * there, authored keys or the guided list a Reset to defaults seeds alike.
  *
  * While the configuration is read again, or after a read that failed, the
  * last configuration's keys still count, so the action is never offered on
@@ -490,7 +491,7 @@ export function keysFromOpenedConfiguration(
   >,
 ): boolean {
   const { editor, mountedConfiguration, openedConfigurationKeys } = state;
-  if (editor?.keysAuthored !== true || openedConfigurationKeys === undefined)
+  if (editor === undefined || openedConfigurationKeys === undefined)
     return false;
   if (
     mountedConfiguration.status === "opened" &&

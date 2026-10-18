@@ -1065,12 +1065,13 @@ describe("the review step of an opened configuration's run", () => {
       .toBeInTheDocument();
 
     await page.getByRole("button", { name: /Matching on/ }).click();
-    await expect
-      .element(
-        page.getByRole("radio", { name: precisionFloorStatement(95).label }),
-      )
-      .toBeChecked();
-    expect(openedNote.query()).toBeNull();
+    await expect.element(openedNote).toBeInTheDocument();
+    expect(
+      page
+        .getByRole("radio", { name: precisionFloorStatement(95).label })
+        .query(),
+    ).toBeNull();
+    expect(useBuiltInRules.query()).toBeNull();
 
     await page.getByRole("switch", { name: "Expert authoring" }).click();
     await page.getByRole("button", { name: "Add a key" }).click();
