@@ -9,7 +9,7 @@ The wire -- the hello, the start, the close codes and the bounds -- is specified
 and the design and the rulings behind it are in [docs/notes/web-websocket-transport.md](../../docs/notes/web-websocket-transport.md).
 
 The package ships TypeScript source with no build step of its own.
-It reads `@alcove/core` from that workspace's `dist/`, so build core (`npm run build -w packages/core`) before running or testing it,
+It reads `@alcove/core/websocket-relay`, the whole of its reach into core, from that workspace's `dist/`, so build core (`npm run build -w packages/core`) before running or testing it,
 and it takes its pre-upgrade bounds from the signaling broker's `standaloneUpgradeBounds.ts`.
 
 ## Running it standalone
@@ -31,7 +31,7 @@ An unknown, repeated, valueless or empty flag, or a port that is not a whole num
 A bind the operating system refuses exits 69.
 
 The key table is the SQLite file coturn reads its per-exchange secrets from ([infra/relay/README.md, Per-exchange keys](../../infra/relay/README.md#per-exchange-keys)), read with Node's built-in `node:sqlite`.
-The relay opens it read-only for each hello and writes nothing.
+The relay keeps one read-only handle on it, opened again after a failed read or when another file replaces it, and writes nothing.
 A table it cannot read is a warning at start, since coturn creates the file at its own first start, and each hello is then refused until a read succeeds.
 
 The relay terminates no TLS, so a deployment reachable off the host puts it behind a front that does.

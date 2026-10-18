@@ -1,7 +1,13 @@
-import { parseWebSocketRelayProof } from "@alcove/core";
-import { parseBoundedJson } from "@alcove/core/untrusted-text";
+import {
+  parseBoundedJson,
+  parseWebSocketRelayProof,
+  RENDEZVOUS_ROLES,
+} from "@alcove/core/websocket-relay";
 
-import type { RendezvousRole, WebSocketRelayProof } from "@alcove/core";
+import type {
+  RendezvousRole,
+  WebSocketRelayProof,
+} from "@alcove/core/websocket-relay";
 
 // The relay's wire: the request path, the frames a party and the relay send
 // each other, the close codes, and the bounds, each stated in
@@ -28,6 +34,20 @@ export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 /** How long (ms) a socket may stay open before its hello arrives. */
 export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 
+/**
+ * The most sockets the relay holds whose hello has not verified, each counted
+ * from its upgrade until its hello verifies or it ends; an upgrade above it is
+ * refused with 503. Four times the 20 exchanges coturn's 40 concurrent
+ * allocations admit at two an exchange: two hellos an exchange, twice over.
+ */
+export const RELAY_MAX_UNVERIFIED_SOCKETS = 80;
+
+/**
+ * The window (ms) in which the relay reports a fault a hello met at most once:
+ * the signaling broker's diagnostics window (`DIAGNOSTIC_RATE_LIMIT_WINDOW_MS`).
+ */
+export const RELAY_FAULT_REPORT_WINDOW_MS = 60_000;
+
 /** How often (ms) the relay pings each socket it holds. */
 export const RELAY_PING_INTERVAL_MS = 30_000;
 
@@ -47,7 +67,11 @@ export const RelayCloseCode = Object.freeze({
   goingAway: 1001,
   /** A message above {@link RELAY_MAX_MESSAGE_BYTES}. */
   messageTooBig: 1009,
-  /** The relay could not read its key table. */
+  /**
+   * The relay could not check the hello: its key table could not be read, the
+   * key enrolled under the exchange id is not 64 lowercase hex characters, or
+   * the check failed in some other way.
+   */
   internalError: 1011,
   /** The partner's socket ended without a normal close. */
   partnerEnded: 4000,
@@ -96,10 +120,6 @@ export class RelayFrameError extends Error {
   }
 }
 
-// Typed against core's role union, so a role core adds or drops fails the
-// build here.
-const ROLES: Record<RendezvousRole, true> = { inviter: true, acceptor: true };
-
 // The registrar's exchange id alphabet (infra/relay/README.md, Per-exchange
 // keys).
 const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
@@ -109,7 +129,7 @@ const HELLO_KEYS = ["type", "exchangeId", "role", "proof", "tag"];
 const encoder = new TextEncoder();
 
 function isRole(value: unknown): value is RendezvousRole {
-  return typeof value === "string" && Object.hasOwn(ROLES, value);
+  return (RENDEZVOUS_ROLES as ReadonlyArray<unknown>).includes(value);
 }
 
 function hasExactKeys(value: object, keys: ReadonlyArray<string>): boolean {

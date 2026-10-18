@@ -291,6 +291,9 @@ const coreYamlRawParserImportBan = {
     "Parse operator/credential files through packages/core/src/sensitiveFile.ts; do not import yaml's raw parsers directly.",
 };
 
+const RELAY_CORE_SUBPATH_MESSAGE =
+  "Import what this workspace uses from @alcove/core/websocket-relay; the package root pulls core's whole dependency set into a network-facing process's runtime closure. A name the subpath lacks is added to packages/core/src/websocketRelay.ts.";
+
 const BINARYPACK_LIBRARY_IMPORT_MESSAGE =
   "Do not import peerjs-js-binarypack here: Alcove's encoder and the structural pre-scan implement the wire format themselves, and the library is only the oracle their differential suites compare against (docs/spec/DEPENDENCY_PINS.md).";
 
@@ -686,6 +689,12 @@ export default tseslint.config(
     // before the proof is checked, and a parser abort there ends every pairing
     // the process holds. It reaches the chokepoints through its `@alcove/core`
     // dependency and owns none.
+    //
+    // The `@alcove/core` entries hold this workspace to the
+    // `./websocket-relay` subpath, as the broker is held to its own: the
+    // package root reaches every dependency core declares, the subpath none of
+    // them. The measured closure, and the scan of the relay's source behind
+    // the ban: packages/websocket-relay/test/coreReach.test.ts.
     files: ["packages/websocket-relay/src/**/*.ts"],
     linterOptions: { reportUnusedDisableDirectives: "error" },
     rules: {
@@ -710,8 +719,18 @@ export default tseslint.config(
               message:
                 "Parse operator/credential files through @alcove/core; do not import yaml's raw parsers directly.",
             },
+            {
+              name: "@alcove/core",
+              message: RELAY_CORE_SUBPATH_MESSAGE,
+            },
           ],
-          patterns: crossWorkspaceImportBans.packages,
+          patterns: [
+            ...crossWorkspaceImportBans.packages,
+            {
+              group: ["@alcove/core/*", "!@alcove/core/websocket-relay"],
+              message: RELAY_CORE_SUBPATH_MESSAGE,
+            },
+          ],
         },
       ],
       "no-restricted-properties": [
@@ -720,7 +739,7 @@ export default tseslint.config(
           object: "JSON",
           property: "parse",
           message:
-            "Parse a party's relay frame through @alcove/core's parseBoundedJson; it structurally bounds the body before JSON.parse so a pathological object/array cannot abort the relay every pairing shares. A trusted parse: eslint-disable-next-line with a one-line justification.",
+            "Parse a party's relay frame through @alcove/core/websocket-relay's parseBoundedJson; it structurally bounds the body before JSON.parse so a pathological object/array cannot abort the relay every pairing shares. A trusted parse: eslint-disable-next-line with a one-line justification.",
         },
       ],
     },

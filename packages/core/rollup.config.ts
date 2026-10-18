@@ -31,14 +31,16 @@ export default defineConfig([
   // The published entry points build TOGETHER, with code splitting, so a module
   // more than one of them reaches exists once at run time. Built separately they
   // would each hold their own copy of every class they share: the testing entry
-  // publishes CsvRowParseError and the untrusted-text entry JsonStructureBoundError,
-  // and a second copy of either would fail an `instanceof` against a refusal the
-  // main entry threw.
+  // publishes CsvRowParseError, the untrusted-text entry JsonStructureBoundError
+  // and the websocket-relay entry WebSocketRelayProofRefusedError, and a second
+  // copy of any of them would fail an `instanceof` against a refusal the main
+  // entry threw.
   {
     input: {
       core: "src/main.ts",
       testing: "src/testing.ts",
       "untrusted-text": "src/untrustedText.ts",
+      "websocket-relay": "src/websocketRelay.ts",
     },
     external: makeExternal(ALWAYS_BUNDLED),
     // resolve() lets rollup inline the ALWAYS_BUNDLED packages (currently
@@ -47,11 +49,12 @@ export default defineConfig([
     // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
     plugins: [resolve(), typescript({ tsconfig: "./tsconfig.rollup.json" })],
     // `[name]` is the input key above, so the entry names have to stay `core`,
-    // `testing` and `untrusted-text`: package.json points main, module, and
-    // every `exports` condition at dist/core.*, dist/testing.* and
-    // dist/untrusted-text.*. A manifest rename that left these alone is caught
-    // by the dist freshness guard, which derives the files it looks for from
-    // that exports map (scripts/lib/distFreshness.mjs). The chunk name is
+    // `testing`, `untrusted-text` and `websocket-relay`: package.json points
+    // main, module, and every `exports` condition at dist/core.*,
+    // dist/testing.*, dist/untrusted-text.* and dist/websocket-relay.*. A
+    // manifest rename that left these alone is caught by the dist freshness
+    // guard, which derives the files it looks for from that exports map
+    // (scripts/lib/distFreshness.mjs). The chunk name is
     // fixed rather than hashed so a rebuild overwrites the shared chunk instead
     // of leaving the previous one behind in a published dist.
     output: [
@@ -77,9 +80,9 @@ export default defineConfig([
   // own private-field-bearing copy of that class, and TypeScript treats two such
   // copies as different types even though the source is identical: a testing.ts
   // fixture typed against one copy would not assign to a main-entry parameter
-  // typed against the other. untrusted-text.ts stays a separate pass: its public
-  // surface (JsonStructureBoundError and the display/JSON chokepoints) shares no
-  // class with main.ts's.
+  // typed against the other. untrusted-text.ts and websocketRelay.ts stay
+  // separate passes: neither public surface shares a class with a private
+  // member with main.ts's.
   {
     input: {
       index: "src/main.ts",
@@ -96,6 +99,11 @@ export default defineConfig([
   {
     input: "src/untrustedText.ts",
     output: { file: "dist/untrusted-text.d.ts", format: "es" },
+    plugins: [dts()],
+  },
+  {
+    input: "src/websocketRelay.ts",
+    output: { file: "dist/websocket-relay.d.ts", format: "es" },
     plugins: [dts()],
   },
 ]);

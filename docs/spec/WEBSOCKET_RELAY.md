@@ -18,6 +18,8 @@ Each is a working value, raised or lowered on request.
 - **The path.** A party opens a WebSocket at `/relay` (`RELAY_PATH`); a query string is ignored. An upgrade on any other path is answered `404` and closed, and so is a plain HTTP request.
 - **No extension.** The relay negotiates no per-message compression.
 - **Before the upgrade.** The relay applies the signaling broker's pre-upgrade bounds: a 10-second header timeout, a 15-second request timeout, and a 10-second idle bound on a socket that has not completed its request ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds); `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
+- **Sockets awaiting a hello.** The relay holds at most 80 sockets whose hello has not verified (`RELAY_MAX_UNVERIFIED_SOCKETS`), each counted from its upgrade until its hello verifies or it ends. An upgrade above that is answered `503` and closed before the WebSocket opens. The value is four times the 20 exchanges coturn's 40 concurrent allocations admit at two an exchange ([webrtc-relay-deployment.md](../notes/webrtc-relay-deployment.md#quotas-against-one-exchange)): two hellos an exchange, twice over.
+- **No quota for each address.** The relay counts nothing by client address, since behind the reference deployment's front every connection arrives from `127.0.0.1`. So one client can hold every socket the cap above allows and keep other parties out for as long as it keeps opening sockets, each of which the relay closes after the 10-second hello window.
 - **No TLS.** The relay terminates none, so a deployment reachable off its host puts it behind a front that does.
 - **No outbound connection.** The relay opens no connection of its own, and no frame names a target. A check holds the relay's source to the modules and names that accept a socket and never dial one (`packages/websocket-relay/test/noOutboundConnection.test.ts`); it reads what the source spells, so it is a safety check, not a proof.
 
@@ -47,7 +49,7 @@ It may send its start directly behind the hello; a second message before the rel
 The relay checks a hello in this order, refusing at the first check it fails with the code in brackets:
 
 1. **Its form.** Any other first message, a hello with another key or a value outside the forms above, and a hello whose proof does not parse ([What a check refuses](PROTOCOL.md#the-websocket-relay-proof)) are refused as malformed (4001).
-2. **The key.** The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)). No key is refused as not enrolled (4003); a table it cannot read, with 1011.
+2. **The key.** The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)). No key is refused as not enrolled (4003). A hello the relay could not check is refused with 1011: its key table could not be read, the enrolled key is not 64 lowercase hex characters, or the check failed in some other way.
 3. **The proof.** The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock. A proof for the other role, or whose tag is not the proof key's, does not verify (4004). A proof whose expiry has passed is expired (4005), and the close reason is the relay's current Unix second in decimal, so a party whose clock has drifted can make another.
 4. **The role.** A socket already holding the claimed role under that relay key refuses this one as role taken (4006), the broker's `ID-TAKEN` for this path.
 
@@ -59,9 +61,11 @@ It exposes no data: the key exchange inside the relayed channel still needs the 
 
 - **Where.** The relay reads the per-exchange keys from the SQLite file coturn reads its secrets from ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)): the runner's `--key-table`, else `ALCOVE_RELAY_TURNDB`, else `/var/lib/alcove-relay/turndb`.
 - **Which key.** The key the `alcove_exchange` table maps the exchange id to, while coturn's `turn_secret` table still holds that key, so the relay admits the keys coturn admits. A file with no `alcove_exchange` table enrolls no exchange.
-- **How.** The relay opens the file read-only for each hello and writes nothing. A lookup waits at most 1 second for a writer holding the table's lock (`KEY_TABLE_BUSY_TIMEOUT_MS` in `packages/websocket-relay/src/keyTable.ts`).
+- **How.** The relay reads the file through one read-only handle, opened at the first hello and kept, and writes nothing. It opens the file again after a read that failed, and when the file at the path is no longer the one the handle holds, as when another file replaces it.
+- **What a hello costs.** Each hello the relay checks costs a `stat` of the file and two reads through the handle, and an open when one is due. They run synchronously, so a hello that meets a writer holding the table's lock holds up forwarding for every pairing for at most 100 milliseconds (`KEY_TABLE_BUSY_TIMEOUT_MS` in `packages/websocket-relay/src/keyTable.ts`), and is then refused with 1011.
 - **A lapsed or revoked key.** A lapsed row is admitted until the sweep removes it, as coturn admits it. Removing a key refuses each later hello under it and ends no pairing already formed, as coturn ends no open allocation.
 - **A table it cannot read.** Every hello is refused with 1011. The relay reports it on its diagnostic stream when reads start failing, and again only after one has succeeded.
+- **A malformed key, or another failure.** A hello under a key that is not 64 lowercase hex characters is refused with 1011, and the relay reports it at most once a minute for each exchange id (`RELAY_FAULT_REPORT_WINDOW_MS`), the signaling broker's diagnostics window. Any other failure to check a hello is refused with 1011 and reported at most once a minute for the whole relay, since the sender chooses the exchange id.
 
 ## Pairing and the start
 
@@ -98,7 +102,7 @@ Every close reason is empty except 4005's.
 | 1000 | the partner | The other party closed normally |
 | 1001 | every socket | The relay is shutting down |
 | 1009 | the sender | A message above the per-message cap |
-| 1011 | the sender of a hello | The relay could not read its key table |
+| 1011 | the sender of a hello | The relay could not check the hello: its key table could not be read, the enrolled key is malformed, or the check failed |
 | 4000 | the partner | The other party's socket ended without a normal close, or the relay refused it |
 | 4001 | the sender | The first message was not a well-formed hello |
 | 4002 | the sender | A message the relay does not take at that point |

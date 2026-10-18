@@ -1,7 +1,9 @@
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { connect as connectTcp } from "node:net";
 
 import { afterEach, describe, expect, it } from "vitest";
+import WebSocket, { WebSocketServer } from "ws";
 
 import {
   PAIRED_FRAME,
@@ -13,6 +15,7 @@ import {
 import {
   EXCHANGE_ID,
   OTHER_RELAY_KEY,
+  Party,
   RELAY_KEY,
   connect,
   eventually,
@@ -23,6 +26,8 @@ import {
   receivedInOrder,
   startRelay,
 } from "./harness.ts";
+
+import type { AddressInfo } from "node:net";
 
 import type { RunningRelay } from "./harness.ts";
 
@@ -342,6 +347,21 @@ describe("refusals", () => {
     expect(inviter.received).toEqual([{ text: PAIRED_FRAME }]);
   });
 
+  it("refuses with 1011 and reports a malformed enrolled key once for each exchange id", async () => {
+    const { url, faults } = await relay({
+      keyTable: keyTableOf({ "exchange-1": "not hex", "exchange-2": "zz" }),
+    });
+    for (const exchangeId of ["exchange-1", "exchange-1", "exchange-2"]) {
+      const party = await connect(url);
+      party.send(await helloFrame({ role: "inviter", exchangeId }));
+      expect((await party.closed).code).toBe(RelayCloseCode.internalError);
+    }
+    expect(faults).toEqual([
+      "the relay key enrolled under exchange id exchange-1 is not 64 lowercase hex characters",
+      "the relay key enrolled under exchange id exchange-2 is not 64 lowercase hex characters",
+    ]);
+  });
+
   it("answers an upgrade on any other path with 404", async () => {
     const { url } = await relay();
     const { port } = new URL(url);
@@ -354,6 +374,90 @@ describe("refusals", () => {
     const [answer] = (await once(socket, "data")) as [Buffer];
     expect(answer.toString()).toMatch(/^HTTP\/1\.1 404 /);
     socket.destroy();
+  });
+});
+
+/** Open a socket to the relay: the open party, or the status of the answer
+ * that refused the upgrade. */
+async function attemptUpgrade(
+  url: string,
+): Promise<{ party: Party } | { status: number }> {
+  const socket = new WebSocket(url);
+  socket.on("error", () => {});
+  return new Promise((resolve) => {
+    socket.once("open", () => resolve({ party: new Party(socket) }));
+    socket.once("unexpected-response", (request, response) => {
+      resolve({ status: response.statusCode ?? 0 });
+      request.destroy();
+    });
+  });
+}
+
+describe("sockets awaiting a hello", () => {
+  it("answers an upgrade 503 at the cap and takes one again once a socket verifies or ends", async () => {
+    const { url } = await relay({ testing: { maxUnverifiedSockets: 2 } });
+    const first = await connect(url);
+    const second = await connect(url);
+    expect(await attemptUpgrade(url)).toEqual({ status: 503 });
+
+    first.send(await helloFrame({ role: "inviter" }));
+    let third: Party | undefined;
+    await eventually(async () => {
+      const attempt = await attemptUpgrade(url);
+      if ("party" in attempt) third = attempt.party;
+      return third !== undefined;
+    });
+    expect(await attemptUpgrade(url)).toEqual({ status: 503 });
+
+    second.socket.close();
+    await second.closed;
+    await eventually(async () => "party" in (await attemptUpgrade(url)));
+    expect(first.socket.readyState).toBe(WebSocket.OPEN);
+    expect(third?.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("holds to the cap across upgrades arriving together", async () => {
+    const { url } = await relay({ testing: { maxUnverifiedSockets: 3 } });
+    const attempts = await Promise.all(
+      Array.from({ length: 6 }, () => attemptUpgrade(url)),
+    );
+    expect(attempts.filter((attempt) => "party" in attempt)).toHaveLength(3);
+    expect(attempts.filter((attempt) => "status" in attempt)).toEqual([
+      { status: 503 },
+      { status: 503 },
+      { status: 503 },
+    ]);
+  });
+
+  it("relies on the pinned ws answering an upgrade before handleUpgrade returns", async () => {
+    const server = createServer();
+    const socketServer = new WebSocketServer({
+      noServer: true,
+      clientTracking: false,
+      perMessageDeflate: false,
+    });
+    const answeredBeforeReturn = new Promise<boolean>((resolve) => {
+      server.on("upgrade", (request, socket, head) => {
+        let answered = false;
+        socketServer.handleUpgrade(request, socket, head, (webSocket) => {
+          answered = true;
+          webSocket.terminate();
+        });
+        resolve(answered);
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    const client = new WebSocket(`ws://127.0.0.1:${port}/`);
+    client.on("error", () => {});
+    try {
+      expect(await answeredBeforeReturn).toBe(true);
+    } finally {
+      client.terminate();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 

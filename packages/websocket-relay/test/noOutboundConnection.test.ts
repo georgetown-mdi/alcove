@@ -16,20 +16,20 @@ const sourceDirectory = join(dirname(fileURLToPath(import.meta.url)), "../src");
 /** Each module the source may import, and the value names it may take from
  * it; a type-only import is admitted from any of them. */
 const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
+  "node:fs": ["statSync"],
   "node:http": ["createServer"],
   "node:net": [],
   "node:stream": [],
   "node:sqlite": ["DatabaseSync"],
   ws: ["WebSocketServer"],
-  "@alcove/core": [
+  "@alcove/core/websocket-relay": [
     "checkWebSocketRelayProof",
     "deriveWebSocketRelayProofKey",
-    "parseWebSocketRelayProof",
-    "WebSocketRelayProofRefusedError",
-  ],
-  "@alcove/core/untrusted-text": [
     "parseBoundedJson",
+    "parseWebSocketRelayProof",
     "redactAndSanitizeForDisplay",
+    "RENDEZVOUS_ROLES",
+    "WebSocketRelayProofRefusedError",
   ],
   "@alcove/peerjs-broker/standaloneUpgradeBounds": [
     "applyStandaloneUpgradeBounds",

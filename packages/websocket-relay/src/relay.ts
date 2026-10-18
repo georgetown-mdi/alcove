@@ -4,13 +4,16 @@ import {
   checkWebSocketRelayProof,
   deriveWebSocketRelayProofKey,
   WebSocketRelayProofRefusedError,
-} from "@alcove/core";
+} from "@alcove/core/websocket-relay";
 
+import { createFaultLatch } from "./faultLatch.ts";
 import {
   PAIRED_FRAME,
   RELAY_CLOSE_WAIT_MS,
+  RELAY_FAULT_REPORT_WINDOW_MS,
   RELAY_HELLO_TIMEOUT_MS,
   RELAY_MAX_MESSAGE_BYTES,
+  RELAY_MAX_UNVERIFIED_SOCKETS,
   RELAY_PATH,
   RELAY_PING_INTERVAL_MS,
   RELAY_REFUSAL_CLOSE_WAIT_MS,
@@ -22,7 +25,7 @@ import {
   readClientFrame,
 } from "./protocol.ts";
 
-import type { RendezvousRole } from "@alcove/core";
+import type { RendezvousRole } from "@alcove/core/websocket-relay";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
@@ -44,14 +47,18 @@ export interface WebSocketRelayOptions {
   /** Where the relay looks up each hello's relay key. */
   keyTable: RelayKeyTable;
   /**
-   * Where the relay reports a key table it cannot read: once when lookups
-   * start failing, and again only after one has succeeded. The text is raw,
-   * for the sink to escape.
+   * Where the relay reports a fault a hello met: a key table it cannot read,
+   * once when lookups start failing and again only after one has succeeded; a
+   * malformed enrolled key, once a window for each exchange id; any other
+   * failure to check a hello, once a window. The text is raw, for the sink to
+   * escape.
    */
   reportFault: (message: string) => void;
   /** @internal */
   testing?: {
     helloTimeoutMs?: number;
+    maxUnverifiedSockets?: number;
+    faultReportWindowMs?: number;
     pingIntervalMs?: number;
     sendBufferHighBytes?: number;
     sendBufferLowBytes?: number;
@@ -100,12 +107,18 @@ function requestPath(url: string | undefined): string {
   return queryAt === -1 ? url : url.slice(0, queryAt);
 }
 
-function rejectUpgrade(socket: Duplex): void {
+function refuseUpgrade(
+  socket: Duplex,
+  status: "404 Not Found" | "503 Service Unavailable",
+): void {
   // The HTTP server detaches its own listeners from an upgrade's socket, so
   // an error here would otherwise be thrown.
   socket.on("error", () => socket.destroy());
+  // Destroyed once the answer has flushed, so a client that never closes its
+  // side cannot hold the socket half-open.
   socket.end(
-    "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+    () => socket.destroy(),
   );
 }
 
@@ -122,6 +135,10 @@ export function attachWebSocketRelay(
 ): WebSocketRelay {
   const { keyTable, reportFault, testing = {} } = options;
   const helloTimeoutMs = testing.helloTimeoutMs ?? RELAY_HELLO_TIMEOUT_MS;
+  const maxUnverifiedSockets =
+    testing.maxUnverifiedSockets ?? RELAY_MAX_UNVERIFIED_SOCKETS;
+  const faultReportWindowMs =
+    testing.faultReportWindowMs ?? RELAY_FAULT_REPORT_WINDOW_MS;
   const pingIntervalMs = testing.pingIntervalMs ?? RELAY_PING_INTERVAL_MS;
   const highBytes = testing.sendBufferHighBytes ?? RELAY_SEND_BUFFER_HIGH_BYTES;
   const lowBytes = testing.sendBufferLowBytes ?? RELAY_SEND_BUFFER_LOW_BYTES;
@@ -142,8 +159,14 @@ export function attachWebSocketRelay(
   };
   const socketServer = new WebSocketServer(serverOptions);
   const parties = new Set<Party>();
+  const unverified = new Set<Party>();
   const pairings = new Map<string, Pairing>();
   let keyTableFailing = false;
+  // Only the operator's table can hold a malformed key, so its report is kept
+  // to one a window for each exchange id; any other failure is kept to one a
+  // window for the relay, since the sender chooses the exchange id.
+  const malformedKeyReports = createFaultLatch(faultReportWindowMs);
+  const checkFailureReports = createFaultLatch(faultReportWindowMs);
 
   function hold(party: Party, reason: RelayHoldReason): void {
     if (party.holds.has(reason)) return;
@@ -173,6 +196,7 @@ export function attachWebSocketRelay(
     // A held socket reads nothing, the answer to its close included.
     for (const reason of [...party.holds]) release(party, reason);
     parties.delete(party);
+    unverified.delete(party);
     const pairing = party.pairing;
     if (pairing === undefined) return;
     if (pairings.get(pairing.key) === pairing) pairings.delete(pairing.key);
@@ -230,9 +254,11 @@ export function attachWebSocketRelay(
       });
     } catch (error) {
       if (!(error instanceof WebSocketRelayProofRefusedError)) {
-        reportFault(
-          `the relay key enrolled under exchange id ${hello.exchangeId} is not 64 lowercase hex characters`,
-        );
+        if (malformedKeyReports.admit(hello.exchangeId)) {
+          reportFault(
+            `the relay key enrolled under exchange id ${hello.exchangeId} is not 64 lowercase hex characters`,
+          );
+        }
         return refuse(party, RelayCloseCode.internalError);
       }
       if (error.reason === "expired") {
@@ -258,6 +284,7 @@ export function attachWebSocketRelay(
     party.pairing = pairing;
     party.role = role;
     party.state = "verified";
+    unverified.delete(party);
     const partner = partnerOf(party);
     if (partner !== undefined) {
       partner.socket.send(PAIRED_FRAME);
@@ -329,9 +356,11 @@ export function attachWebSocketRelay(
         }
         party.state = "verifying";
         verify(party, frame.hello).catch((error: unknown) => {
-          reportFault(
-            `a hello could not be checked: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          if (checkFailureReports.admit("")) {
+            reportFault(
+              `a hello could not be checked: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
           refuse(party, RelayCloseCode.internalError);
         });
         return;
@@ -361,6 +390,7 @@ export function attachWebSocketRelay(
       holds: new Set(),
     };
     parties.add(party);
+    unverified.add(party);
     party.helloTimer = setTimeout(
       () => refuse(party, RelayCloseCode.helloTimeout),
       helloTimeoutMs,
@@ -395,7 +425,15 @@ export function attachWebSocketRelay(
     head: Buffer,
   ): void => {
     if (socket.destroyed) return;
-    if (requestPath(request.url) !== RELAY_PATH) return rejectUpgrade(socket);
+    if (requestPath(request.url) !== RELAY_PATH) {
+      return refuseUpgrade(socket, "404 Not Found");
+    }
+    // The pinned `ws` calls `onConnection` before `handleUpgrade` returns (the
+    // relay's tests hold it to that), so the count holds every upgrade already
+    // answered.
+    if (unverified.size >= maxUnverifiedSockets) {
+      return refuseUpgrade(socket, "503 Service Unavailable");
+    }
     socketServer.handleUpgrade(request, socket, head, onConnection);
   };
   server.on("upgrade", onUpgrade);

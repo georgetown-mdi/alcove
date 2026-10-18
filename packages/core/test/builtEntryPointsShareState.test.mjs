@@ -1,6 +1,7 @@
 // The published entry points, driven as a consumer gets them: the built
-// `@alcove/core`, `@alcove/core/testing` and `@alcove/core/untrusted-text`, not
-// this source tree. Plain JavaScript because that is what the artifacts are.
+// `@alcove/core`, `@alcove/core/testing`, `@alcove/core/untrusted-text` and
+// `@alcove/core/websocket-relay`, not this source tree. Plain JavaScript
+// because that is what the artifacts are.
 //
 // A refusal class one entry publishes is matched by `instanceof` against an error
 // another entry's code threw, so it only works while every entry reaches ONE copy
@@ -16,9 +17,14 @@ import {
   requireFreshDists,
 } from "../../../scripts/lib/distFreshness.mjs";
 
-import { loadCSVFile, parseBoundedJson } from "@alcove/core";
+import {
+  loadCSVFile,
+  parseBoundedJson,
+  parseWebSocketRelayProof,
+} from "@alcove/core";
 import { CsvRowParseError } from "@alcove/core/testing";
 import { JsonStructureBoundError } from "@alcove/core/untrusted-text";
+import { WebSocketRelayProofRefusedError } from "@alcove/core/websocket-relay";
 
 beforeAll(() => {
   requireFreshDists({ packages: [CORE_PACKAGE], allowOptOut: false });
@@ -37,4 +43,10 @@ test("a refusal the main entry throws is the class the untrusted-text entry publ
   const tooDeep = "[".repeat(5000) + "]".repeat(5000);
 
   expect(() => parseBoundedJson(tooDeep)).toThrow(JsonStructureBoundError);
+});
+
+test("a refusal the main entry throws is the class the websocket-relay entry publishes", () => {
+  expect(() =>
+    parseWebSocketRelayProof(new Uint8Array(1), new Uint8Array(1)),
+  ).toThrow(WebSocketRelayProofRefusedError);
 });

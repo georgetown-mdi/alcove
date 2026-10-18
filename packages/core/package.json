@@ -23,6 +23,11 @@
       "import": "./dist/untrusted-text.esm.js",
       "require": "./dist/untrusted-text.cjs",
       "types": "./dist/untrusted-text.d.ts"
+    },
+    "./websocket-relay": {
+      "import": "./dist/websocket-relay.esm.js",
+      "require": "./dist/websocket-relay.cjs",
+      "types": "./dist/websocket-relay.d.ts"
     }
   },
   "scripts": {

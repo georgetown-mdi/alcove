@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { redactAndSanitizeForDisplay } from "@alcove/core/untrusted-text";
+import { redactAndSanitizeForDisplay } from "@alcove/core/websocket-relay";
 import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { openRelayKeyTable } from "./keyTable.ts";
