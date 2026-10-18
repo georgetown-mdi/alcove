@@ -1,0 +1,31 @@
+{
+  "name": "@alcove/websocket-relay",
+  "version": "0.1.0",
+  "description": "Alcove's WebSocket relay: pairs the two parties of one exchange by a per-exchange proof and forwards their frames unread",
+  "license": "Apache-2.0",
+  "author": "Vincent Dorie <vdorie@gmail.com>",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/relay.ts",
+    "./keyTable": "./src/keyTable.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "scripts": {
+    "start": "tsx src/standalone.ts",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@alcove/core": "file:../../packages/core",
+    "@alcove/peerjs-broker": "file:../../packages/peerjs-broker",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15"
+  }
+}

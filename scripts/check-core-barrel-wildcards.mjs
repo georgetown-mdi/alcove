@@ -26,9 +26,10 @@
 //   - Whether a NAMED export belongs on the main entry at all. That is the
 //     curation decision itself, which review makes; this check holds only that
 //     the list stays a list.
-//   - The other published entries, packages/core/src/testing.ts and
-//     packages/core/src/untrustedText.ts. They publish test material and one
-//     parser, and neither is the curated product surface this holds.
+//   - The other published entries, packages/core/src/testing.ts,
+//     packages/core/src/untrustedText.ts and packages/core/src/websocketRelay.ts.
+//     They publish test material, one parser and the WebSocket relay's share
+//     of core, and none is the curated product surface this holds.
 //   - A wildcard reached indirectly: `export { x } from "./m"` where `./m`
 //     itself re-exports another module with a wildcard. The barrel still names
 //     what it publishes, which is what this check is about.

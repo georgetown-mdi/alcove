@@ -5,6 +5,7 @@
     { "path": "apps/cli" },
     { "path": "packages/core" },
     { "path": "packages/peerjs-broker" },
+    { "path": "packages/websocket-relay" },
     { "path": "packages/testkit" },
     { "path": "packages/cli-contract" },
   ],

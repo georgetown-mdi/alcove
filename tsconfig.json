@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/peerjs-broker" },
+    { "path": "packages/websocket-relay" },
     { "path": "packages/cli-contract" },
     { "path": "apps/web" },
     { "path": "apps/cli" }

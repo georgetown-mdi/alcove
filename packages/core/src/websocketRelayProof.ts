@@ -1,8 +1,8 @@
 import { bytesEqual, enc, hkdfDerive, hmacSha256 } from "./utils/crypto.js";
 import { InternalConsistencyError } from "./errors.js";
 import { relayKeyBytes } from "./relayRegistrarProof.js";
-import { RENDEZVOUS_ROLES } from "./rendezvous.js";
-import type { RendezvousRole } from "./rendezvous.js";
+import { RENDEZVOUS_ROLES } from "./rendezvousRoles.js";
+import type { RendezvousRole } from "./rendezvousRoles.js";
 
 const PROOF_KEY_INFO = "alcove-relay-websocket-v2:proof-key";
 const PROOF_MESSAGE_LABEL = "alcove-relay-websocket-v2:hello";

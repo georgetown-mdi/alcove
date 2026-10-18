@@ -1,17 +1,12 @@
 import { hkdfDerive, fromBase64Url, toHex } from "./utils/crypto.js";
 import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
+import { RENDEZVOUS_ROLES } from "./rendezvousRoles.js";
+import type { RendezvousRole } from "./rendezvousRoles.js";
 import type { HandshakeRole } from "./types.js";
 
-/**
- * The two roles in a WebRTC rendezvous, each the suffix of one derived peer id
- * ({@link deriveRendezvousPeerId}). Frozen so a plain-JS caller cannot widen the
- * set that function's runtime guard checks.
- */
-export const RENDEZVOUS_ROLES = Object.freeze(["inviter", "acceptor"] as const);
-
-/** A rendezvous role; one of the fixed {@link RENDEZVOUS_ROLES}. */
-export type RendezvousRole = (typeof RENDEZVOUS_ROLES)[number];
+export { RENDEZVOUS_ROLES };
+export type { RendezvousRole };
 
 /**
  * The handshake role a rendezvous side takes: the acceptor dials and sends
