@@ -17,12 +17,9 @@ import {
   SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
-import {
-  WorkingFolderFilesRefusedError,
-  invitationIdOf,
-} from "@jobs/workingFolderExchangeFiles";
 import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
+import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { partnerCertificatePinnedNotice } from "@jobs/partnerPinNotice";
 import { signingIdentityPath } from "@jobs/signingIdentity";
 
@@ -307,29 +304,6 @@ describe("the run's allowed relays", () => {
     ).connection.allowed_relays;
   }
 
-  test("are reported for the held pair's invitation only", async () => {
-    const { manager, dataRoot } = await afterRunWithAllowedRelays([
-      "relay.example.org",
-    ]);
-    expect(
-      manager.workingFolderPairFor(invitationIdOf(VALID_SHARED_SECRET)),
-    ).toEqual({ held: true, allowedRelays: ["relay.example.org"] });
-    expect(manager.workingFolderPairFor(invitationIdOf(OTHER_SECRET))).toEqual({
-      held: false,
-    });
-    fs.appendFileSync(configPathIn(dataRoot), "# the operator's note\n");
-    expect(
-      manager.workingFolderPairFor(invitationIdOf(VALID_SHARED_SECRET)),
-    ).toEqual({ held: false });
-  });
-
-  test("a held pair stating none reports none", async () => {
-    const { manager } = await afterRunWithAllowedRelays(undefined);
-    expect(
-      manager.workingFolderPairFor(invitationIdOf(VALID_SHARED_SECRET)),
-    ).toEqual({ held: true });
-  });
-
   test("a retry with a changed list writes it into the held alcove.yaml before its run, every other line kept", async () => {
     const { manager, dataRoot } = await afterRunWithAllowedRelays([
       "relay.example.org",
@@ -346,9 +320,6 @@ describe("the run's allowed relays", () => {
       before.replace("- relay.example.org\n", "- other.example.org:443\n"),
     );
     expect(fs.statSync(configPathIn(dataRoot)).mode & 0o777).toBe(0o600);
-    expect(
-      manager.workingFolderPairFor(invitationIdOf(VALID_SHARED_SECRET)),
-    ).toEqual({ held: true, allowedRelays: ["other.example.org:443"] });
     await exited(manager, retry);
     await discard(manager, retry);
 
@@ -378,6 +349,29 @@ describe("the run's allowed relays", () => {
     expect(fs.readFileSync(configPathIn(dataRoot)).equals(before)).toBe(true);
     expect(fs.statSync(configPathIn(dataRoot)).ino).toBe(inode);
     await exited(manager, retry);
+  });
+
+  test("a retry that fails before its run leaves the rewritten alcove.yaml held for the next retry", async () => {
+    const { manager, dataRoot } = await afterRunWithAllowedRelays([
+      "relay.example.org",
+    ]);
+    // No child runs, so only the write itself records the new bytes.
+    vi.spyOn(
+      manager as unknown as { startJobInWorkdir: () => Promise<string> },
+      "startJobInWorkdir",
+    ).mockRejectedValueOnce(new Error("the run did not start"));
+    const changed = validWebrtcIntent({
+      side: "acceptor",
+      allowedRelays: ["other.example.org:443"],
+    });
+    await expect(manager.createJob(changed)).rejects.toThrow(
+      "the run did not start",
+    );
+    expect(allowedRelaysIn(dataRoot)).toEqual(["other.example.org:443"]);
+
+    const retry = await manager.createJob(changed);
+    await exited(manager, retry);
+    expect(exchangeFilesIn(dataRoot)).toEqual(BOTH_FILES);
   });
 });
 

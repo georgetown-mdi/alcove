@@ -73,18 +73,3 @@ export interface SignalingServerProjection {
   /** Advisories about the address, each shown to the operator as written. */
   warnings: Array<string>;
 }
-
-/** An invitation as `GET /api/jobs/webrtc/working-folder` names it: the
- * lowercase hex sha256 digest of its original shared secret. */
-export const INVITATION_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
-
-/**
- * What `GET /api/jobs/webrtc/working-folder` reports for one invitation:
- * `held` where a webrtc create of that invitation runs over the pair in the
- * working folder, with the `connection.allowed_relays` its `alcove.yaml`
- * states, absent where it states none. Contract:
- * docs/spec/SERVER_JOB_API.md, "The working folder's configuration and key
- * file".
- */
-export type WorkingFolderPairProjection =
-  { held: false } | { held: true; allowedRelays?: Array<string> };

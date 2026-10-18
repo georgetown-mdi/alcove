@@ -19,14 +19,12 @@ import {
   webrtcEndpointForSignalingServer,
 } from "@console/signalingServerModel";
 import {
-  fetchHeldAllowedRelays,
   fetchSignalingServer,
   putSignalingServer,
   signalingServerProjectionOf,
 } from "@psi/jobClient/signalingServerClient";
 import { ENROLL_RELAY_TOKEN_STEP } from "@console/mountedConfiguration";
 import { acceptorWebrtcTransport } from "@exchange/useAcceptorExchange";
-import { invitationIdOf } from "@jobs/workingFolderExchangeFiles";
 
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
 import type { WebRTCEndpoint } from "@alcove/core";
@@ -109,41 +107,6 @@ describe("the coordination server client", () => {
     expect(
       await putSignalingServer("wss://x", answering(500, undefined)),
     ).toEqual({ kind: "error" });
-  });
-
-  test("asks for the held pair by the digest the console records the invitation under", async () => {
-    const secret = "A".repeat(43);
-    const requested: Array<string> = [];
-    const allowedRelays = await fetchHeldAllowedRelays(secret, (input) => {
-      requested.push(String(input));
-      return answering(200, { held: true, allowedRelays: ["relay.test"] })(
-        input,
-      );
-    });
-    expect(requested).toEqual([
-      `/api/jobs/webrtc/working-folder?invitation=${invitationIdOf(secret)}`,
-    ]);
-    expect(allowedRelays).toEqual(["relay.test"]);
-  });
-
-  test.each([
-    ["none held", 200, { held: false }],
-    ["a held pair stating none", 200, { held: true }],
-    [
-      "an entry not in its normalized form",
-      200,
-      {
-        held: true,
-        allowedRelays: ["Relay.Test"],
-      },
-    ],
-    ["an entry that is not a string", 200, { held: true, allowedRelays: [1] }],
-    ["a refusal", 400, undefined],
-    ["no console", 404, undefined],
-  ])("reads no held allowed relays from %s", async (_, status, body) => {
-    expect(
-      await fetchHeldAllowedRelays("A".repeat(43), answering(status, body)),
-    ).toBeUndefined();
   });
 });
 

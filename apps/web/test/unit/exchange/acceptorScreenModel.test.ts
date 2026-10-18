@@ -590,32 +590,10 @@ describe("the review step's allowed relays", () => {
       edits: { metadata: [], standardization: [] },
     });
 
-  test("start empty and uncommitted", () => {
+  test("start empty and uncommitted for every invitation", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.acceptorAllowedRelays).toBe("");
     expect(ACCEPTOR_SCREEN_INITIAL.committedAllowedRelays).toBeUndefined();
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
-    const decoded = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
-      type: "invitation-decoded",
-      invitation,
-      rendezvous: { configured: false },
-    });
-    expect(decoded.acceptorAllowedRelays).toBe("");
-  });
-
-  test("start from the held files' list, one entry per line, uncommitted", () => {
-    const decoded = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
-      type: "invitation-decoded",
-      invitation,
-      rendezvous: { configured: false },
-      heldAllowedRelays: ["relay.example.org", "backup.example.org:443"],
-    });
-    expect(decoded.acceptorAllowedRelays).toBe(
-      "relay.example.org\nbackup.example.org:443",
-    );
-    expect(decoded.committedAllowedRelays).toBeUndefined();
-    expect(continued(decoded).committedAllowedRelays).toEqual({
-      allowedRelays: ["relay.example.org", "backup.example.org:443"],
-    });
   });
 
   test("are offered on a WebRTC accept, and on the console only where the invitation names a relay", () => {

@@ -99,14 +99,11 @@ const inviterTerms: LinkageTerms = {
   ],
 };
 
-async function encodeToken(
-  endpoint: ConnectionEndpoint,
-  sharedSecret = generateSharedSecret(),
-): Promise<string> {
+async function encodeToken(endpoint: ConnectionEndpoint): Promise<string> {
   const token: InvitationToken = {
     version: "1",
     linkageTerms: inviterTerms,
-    sharedSecret,
+    sharedSecret: generateSharedSecret(),
     expires: new Date(Date.now() + 3600 * 1000).toISOString(),
     connectionEndpoint: endpoint,
     // Core's mint requires the retain declaration beside an endpoint whose shape
@@ -459,53 +456,6 @@ describe("console acceptor of a webrtc invitation", () => {
     await expect.element(allowedField()).toHaveValue("partner.example.net");
   });
 
-  test("on a reload while the console holds the invitation's files, the review's Allowed relays start from their list, which the run's create keeps", async () => {
-    const KEPT_URL = "turn:partner.example.net:3478";
-    const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
-    const sharedSecret = generateSharedSecret();
-    const api = stubServerJobAccept({
-      heldPair: { sharedSecret, allowedRelays: ["partner.example.net"] },
-    });
-    window.location.hash = await encodeToken(
-      { ...WEBRTC_ENDPOINT, relay: { turn: [KEPT_URL, LEFT_OUT_URL] } },
-      sharedSecret,
-    );
-    app.render(createElement(AcceptorScreen));
-    await expect.element(allowedField()).toHaveValue("partner.example.net");
-    await expect
-      .poll(pageText)
-      .toContain(`TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`);
-    expect(pageText()).toContain(
-      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
-    );
-
-    await reachAcceptStart();
-    await expect
-      .element(page.getByRole("heading", { level: 1 }))
-      .toMatchTextContent("Exchange in progress");
-    const create = api.captured.find(
-      (request) => request.url === "/api/jobs" && request.method === "POST",
-    );
-    expect(JSON.parse(String(create?.body))).toMatchObject({
-      allowedRelays: ["partner.example.net"],
-    });
-  });
-
-  test("the review's Allowed relays start empty where the console holds another invitation's files", async () => {
-    stubServerJobAccept({
-      heldPair: {
-        sharedSecret: generateSharedSecret(),
-        allowedRelays: ["partner.example.net"],
-      },
-    });
-    window.location.hash = await encodeToken({
-      ...WEBRTC_ENDPOINT,
-      relay: { turn: ["turn:partner.example.net:3478"] },
-    });
-    app.render(createElement(AcceptorScreen));
-    await expect.element(allowedField()).toHaveValue("");
-  });
-
   test("stops before any run is created when the console refuses the server, asking for another invitation", async () => {
     expectConsole(
       "error",
@@ -823,20 +773,6 @@ interface AcceptStubOptions {
   /** When set, the first `POST /api/jobs` is a 400 refusal with this reason;
    * later ones create the run. */
   createRefusalOnce?: string;
-  /** The working folder's pair `GET /api/jobs/webrtc/working-folder` reports
-   * held for the invitation with `sharedSecret`, stating `allowedRelays`; it
-   * reports none held for any other. */
-  heldPair?: { sharedSecret: string; allowedRelays?: Array<string> };
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 }
 
 // The full same-origin job API a console server-job accept drives: a mounted
@@ -932,28 +868,6 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
                 secure: true,
                 warnings: [],
               }),
-        );
-      }
-      if (url.startsWith("/api/jobs/webrtc/working-folder?")) {
-        const held = options.heldPair;
-        const invitation = new URLSearchParams(url.split("?")[1]).get(
-          "invitation",
-        );
-        return (
-          held === undefined
-            ? Promise.resolve(undefined)
-            : sha256Hex(held.sharedSecret)
-        ).then((digest) =>
-          jsonResponse(
-            held !== undefined && digest === invitation
-              ? {
-                  held: true,
-                  ...(held.allowedRelays !== undefined
-                    ? { allowedRelays: held.allowedRelays }
-                    : {}),
-                }
-              : { held: false },
-          ),
         );
       }
       if (url === "/api/jobs") {

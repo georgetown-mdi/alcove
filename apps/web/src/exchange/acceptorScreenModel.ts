@@ -4,11 +4,8 @@ import {
   RUN_DIAGNOSTICS_DEFAULT,
   runDiagnosticsAfterRetarget,
 } from "@psi/runDiagnosticsModel";
-import {
-  allowedRelaysText,
-  parseExchangeAllowedRelayLines,
-} from "@psi/transport/relayRestriction";
 import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
+import { parseExchangeAllowedRelayLines } from "@psi/transport/relayRestriction";
 
 import { CONNECTION_TUNING_DEFAULT } from "@console/connectionTuningModel";
 import { EXCHANGE_FILES_DEFAULT } from "@console/exchangeFilesModel";
@@ -142,9 +139,8 @@ export interface AcceptorScreenState {
    * two disagree). */
   committedDeduplicate: boolean;
   /** The Allowed relays field on the terms review step of a WebRTC accept,
-   * as typed, one entry per line. It starts empty, except on a console
-   * holding the working folder's files a retry of this invitation runs over,
-   * where it starts from the allowed relays their alcove.yaml states. */
+   * as typed, one entry per line. It starts empty for every invitation:
+   * nothing pre-fills it. */
   acceptorAllowedRelays: string;
   /** Whether Start met Allowed relays edited since the review step's Continue
    * and returned to that step, which then says to continue again. Cleared by
@@ -278,9 +274,6 @@ export type AcceptorScreenAction =
       invitation: AcceptableInvitation;
       rendezvous: JobRendezvousConfig;
       heldSignalingServer?: SignalingServerProjection | null;
-      /** The allowed relays of the files a retry of this invitation runs
-       * over, which the review's field starts from. */
-      heldAllowedRelays?: ReadonlyArray<string>;
     }
   /** The work column shows a step and, on the columns step, its sub-section. The
    * browser's own history push is the screen's. */
@@ -429,13 +422,6 @@ export function acceptorScreenReducer(
         ...state,
         rendezvous: action.rendezvous,
         heldSignalingServer: action.heldSignalingServer ?? null,
-        ...(action.heldAllowedRelays !== undefined
-          ? {
-              acceptorAllowedRelays: allowedRelaysText(
-                action.heldAllowedRelays,
-              ),
-            }
-          : {}),
         decode: { status: "ready", invitation: action.invitation },
       };
     case "step-shown":

@@ -285,20 +285,6 @@ function sameAllowedRelays(
 }
 
 /**
- * The `connection.allowed_relays` the working folder's `alcove.yaml` states
- * ({@link statedAllowedRelays}); null where no configuration can be read
- * there.
- */
-export function workingFolderAllowedRelays(
-  dataRoot: string,
-): Array<string> | undefined | null {
-  const config = readConfigBytes(
-    workingFolderExchangeFilePaths(dataRoot).configPath,
-  );
-  return config === undefined ? null : statedAllowedRelays(config);
-}
-
-/**
  * Set the working folder's `alcove.yaml`, whose bytes have the digest
  * `expectedConfig`, to state `allowedRelays` as its
  * `connection.allowed_relays`, removing the key where that is undefined. A

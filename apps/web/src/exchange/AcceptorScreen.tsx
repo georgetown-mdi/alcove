@@ -38,15 +38,12 @@ import {
   savedExchangeColumnRefusalAlert,
   unnameableColumnsAlert,
 } from "@psi/columnNames";
-import {
-  fetchHeldAllowedRelays,
-  fetchSignalingServer,
-} from "@psi/jobClient/signalingServerClient";
 import { cleaningFanOutRefusedUnder } from "@psi/standardizationAuthoring";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
+import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import {
@@ -380,20 +377,12 @@ function AcceptorInvitationScreen({
           consoleBuild && invitation.endpoint.channel === "webrtc"
             ? await fetchSignalingServer()
             : null;
-        // And the allowed relays of the files a retry of this invitation runs
-        // over, which its review's field starts from, so the run keeps them
-        // unless the operator changes them.
-        const heldAllowedRelays =
-          consoleBuild && acceptOffersAllowedRelays(invitation.endpoint, true)
-            ? await fetchHeldAllowedRelays(invitation.token.sharedSecret)
-            : undefined;
         if (!controller.signal.aborted)
           dispatch({
             type: "invitation-decoded",
             invitation,
             rendezvous: rvz,
             heldSignalingServer: held,
-            ...(heldAllowedRelays !== undefined ? { heldAllowedRelays } : {}),
           });
       } catch (error) {
         if (controller.signal.aborted) return;

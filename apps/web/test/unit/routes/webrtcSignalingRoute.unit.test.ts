@@ -17,12 +17,10 @@ import {
 } from "@jobs/signalingServer";
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
-import { invitationIdOf } from "@jobs/workingFolderExchangeFiles";
 
 import { route as CreateRoute } from "../../../server/console/routes/index";
 import { route as JobRoute } from "../../../server/console/routes/$jobId/index";
 import { route as WebrtcRoute } from "../../../server/console/routes/webrtc";
-import { route as WorkingFolderRoute } from "../../../server/console/routes/webrtc/working-folder";
 
 import {
   STUB_CLI_PATH,
@@ -982,75 +980,6 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     expect(fs.readdirSync(root).sort()).toEqual(
       [JOB_FILE_NAMES.config, JOB_FILE_NAMES.key, retryId].sort(),
     );
-  });
-});
-
-describe("GET /api/jobs/webrtc/working-folder", () => {
-  async function getWorkingFolder(query: string): Promise<Response> {
-    return (await handler(
-      WorkingFolderRoute,
-      "GET",
-    )({
-      request: request(
-        `http://localhost/api/jobs/webrtc/working-folder${query}`,
-      ),
-      params: {},
-    })) as Response;
-  }
-
-  test("is 404 when the API is disabled", async () => {
-    vi.stubEnv("JOB_DATA_ROOT", "");
-    const digest = invitationIdOf(VALID_SHARED_SECRET);
-    expect((await getWorkingFolder(`?invitation=${digest}`)).status).toBe(404);
-  });
-
-  test.each([
-    "",
-    "?invitation=",
-    `?invitation=${invitationIdOf(VALID_SHARED_SECRET).toUpperCase()}`,
-    `?invitation=${VALID_SHARED_SECRET}`,
-    `?invitation=${invitationIdOf(VALID_SHARED_SECRET)}&invitation=${invitationIdOf(VALID_SHARED_SECRET)}`,
-  ])("refuses the query %j with an empty 400", async (query) => {
-    seedManager();
-    const response = await getWorkingFolder(query);
-    expect(response.status).toBe(400);
-    expect(await response.text()).toBe("");
-  });
-
-  test("reports the allowed relays of the files a retry of that invitation runs over, and none held for another", async () => {
-    const { manager } = seedManager({
-      STUB_KEY_FILE: JSON.stringify({ sharedSecret: "C".repeat(42) + "A" }),
-      STUB_FD3_EVENTS: JSON.stringify([
-        { v: 1, type: "stage", id: "confirming protocol", label: "Confirming" },
-        { v: 1, type: "error", category: "exchange", message: "dropped" },
-      ]),
-      STUB_EXIT_CODE: "69",
-    });
-    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
-    const digest = invitationIdOf(VALID_SHARED_SECRET);
-    expect(
-      await (await getWorkingFolder(`?invitation=${digest}`)).json(),
-    ).toEqual({ held: false });
-
-    const first = await postJob(
-      validWebrtcIntent({ side: "acceptor", allowedRelays: ["Relay.Test"] }),
-    );
-    const { id } = (await first.json()) as { id: string };
-    await vi.waitFor(() => expect(manager.getJob(id)?.terminal).not.toBeNull());
-    await manager.deleteJob(id);
-    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
-
-    const held = await getWorkingFolder(`?invitation=${digest}`);
-    expect(held.status).toBe(200);
-    expect(held.headers.get("cache-control")).toBe("no-store");
-    expect(await held.json()).toEqual({
-      held: true,
-      allowedRelays: ["relay.test"],
-    });
-    const other = invitationIdOf("B".repeat(42) + "A");
-    expect(
-      await (await getWorkingFolder(`?invitation=${other}`)).json(),
-    ).toEqual({ held: false });
   });
 });
 
