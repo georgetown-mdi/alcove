@@ -254,21 +254,20 @@ describe("getDefaultStandardization — structure", () => {
     const ours = stepsByField(fullMetadata);
     const theirs = stepsByField(partnerMetadata);
     expect(ours.size).toBe(minimalTerms.linkageFields.length);
-    // The derived ssn4 adds only the SSN placeholder screen, which drops
-    // values and changes none it keeps.
+    // The derived ssn4 adds only the SSN placeholder and filler screens: a pad
+    // to nine and three steps that drop values and change none they keep.
     const derivedSsn4 = theirs.get("ssn4") ?? [];
+    const padAt = derivedSsn4.findIndex(
+      (step) => step.function === "pad_left" && step.params?.length === 9,
+    );
+    expect(padAt).toBeGreaterThan(0);
     expect(
-      derivedSsn4.filter(
-        (step) =>
-          !(step.function === "pad_left" && step.params?.length === 9) &&
-          !(
-            step.function === "null_if" &&
-            Array.isArray(step.params?.values) &&
-            step.params.values.includes("078051120")
-          ),
-      ),
+      derivedSsn4.filter((_, index) => index < padAt || index > padAt + 3),
     ).toEqual(ours.get("ssn4"));
-    expect(derivedSsn4).toHaveLength((ours.get("ssn4") ?? []).length + 2);
+    expect(
+      derivedSsn4.slice(padAt + 1, padAt + 4).map((s) => s.function),
+    ).toEqual(["null_if", "replace_regex", "null_if"]);
+    expect(derivedSsn4).toHaveLength((ours.get("ssn4") ?? []).length + 4);
     const withoutSsn4 = (steps: typeof ours) =>
       new Map([...steps].filter(([field]) => field !== "ssn4"));
     expect(withoutSsn4(theirs)).toEqual(withoutSsn4(ours));
@@ -619,6 +618,20 @@ describe("default SSN pipeline", () => {
   test("keeps a value of one digit but for one place", () => {
     expect(run("222-22-2223")).toBe("222222223");
   });
+
+  test.each([
+    "129-99-9999",
+    "199-99-9990",
+    "299-99-9999",
+    "100-00-0000",
+    "120-00-0000",
+  ])("drops %j, holding seven or more 9s or 0s in a row", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test("keeps a value with six 9s in a row", () => {
+    expect(run("123-99-9999")).toBe("123999999");
+  });
 });
 
 // --- ssn4 derived from a full SSN column -------------------------------------
@@ -687,6 +700,31 @@ describe("default ssn4 derived from a full SSN column", () => {
       ssn4: "8924",
     });
   });
+
+  test.each(["129-99-9999", "999-99-9912", "100-00-0001", "120-00-0000"])(
+    "a filler run in %j supplies neither ssn nor ssn4",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: null });
+    },
+  );
+
+  test("a run of six 9s or six 0s keeps its last four", () => {
+    expect(cleaned(ssnOnly, "123-99-9998")).toEqual({
+      ssn: "123999998",
+      ssn4: "9998",
+    });
+    expect(cleaned(ssnOnly, "100-00-0012")).toEqual({
+      ssn: null,
+      ssn4: "0012",
+    });
+  });
+
+  test.each(["***-**-0001", "000-00-0001", "***-**-0012", "000-00-0012"])(
+    "a value masked with zeros (%j) keeps its last four",
+    (input) => {
+      expect(cleaned(ssnOnly, input).ssn4).toBe(input.slice(-4));
+    },
+  );
 
   test("a never-issued value is dropped from ssn and kept as ssn4", () => {
     expect(cleaned(ssnOnly, "900-12-3456")).toEqual({

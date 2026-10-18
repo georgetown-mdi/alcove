@@ -82,8 +82,8 @@ other's keeps is absent from the first party's keys and matches nothing there.
 
 The other screens are fixed parts of their default pipelines, not per-party
 parameters: the single-letter `last_name` screen, the date-of-birth screen for
-a year before 1900, the `ssn` and `ssn4` structural and placeholder
-screens, and the `phone_number` and `zip_code` filler screens. An operator who authors their own pipeline can change any step in it,
+a year before 1900, the `ssn` and `ssn4` structural, placeholder and
+filler-run screens, and the `phone_number` and `zip_code` filler screens. An operator who authors their own pipeline can change any step in it,
 these screens included, as for any field.
 
 ## When the defaults apply
@@ -180,6 +180,13 @@ steps:
         "012345678", "123456789", "234567890", "345678901", "456789012", "567890123", "678901234", "789012345", "890123456", "901234567",
         "876543210", "987654321", "098765432", "109876543", "210987654", "321098765", "432109876", "543210987", "654321098", "765432109",
         "078051120", "219099999", "111223333"]
+  - function: replace_regex
+    params:
+      pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
 ```
 
 Result: exactly nine digits.
@@ -207,6 +214,9 @@ Result: exactly nine digits.
 - **Placeholders.** A value of one digit repeated nine times is dropped, and
   so is each listed run of consecutive digits and each listed value known to
   be shared by many people.
+- **Filler runs.** A value holding seven or more 9s in a row, or seven or more
+  0s in a row after the area number, is dropped. The `replace_regex` empties
+  such a value and the `null_if` drops the empty result; six in a row are kept.
 - **Shared within the file.** A value more than one person in the party's own
   file holds is dropped from every record holding it (see
   [Shared-value screens](#shared-value-screens)).
@@ -284,6 +294,8 @@ authors their own pipeline can change any step in it, as for any field.
 | `"078-05-1120"` | `null` |
 | `"219-09-9999"` | `null` |
 | `"111-22-3333"` | `null` |
+| `"129-99-9999"` | `null` |
+| `"123-99-9999"` | `"123999999"` |
 | `"abc"` | `null` |
 
 ### `ssn4`
@@ -363,9 +375,9 @@ the SSN.
 When the input has no `role: linkage` column of type `ssn4`, the defaults bind
 the `ssn4` field to the first `role: linkage` column of type `ssn` and run the
 pipeline below over it, beside the `ssn` pipeline over the same column. It is
-the `ssn4` pipeline with two steps added after the empty-value drop: the
-digits are padded to nine, and a value the `ssn` placeholder list names is
-dropped.
+the `ssn4` pipeline with four steps added after the empty-value drop: the
+digits are padded to nine, a value the `ssn` placeholder list names is dropped,
+and a value with a filler run is emptied and then dropped.
 
 ```yaml
 steps:
@@ -389,6 +401,13 @@ steps:
         "012345678", "123456789", "234567890", "345678901", "456789012", "567890123", "678901234", "789012345", "890123456", "901234567",
         "876543210", "987654321", "098765432", "109876543", "210987654", "321098765", "432109876", "543210987", "654321098", "765432109",
         "078051120", "219099999", "111223333"]
+  - function: replace_regex
+    params:
+      pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
   - function: pad_left
     params:
       length: 4
@@ -413,6 +432,11 @@ padding, as in the `ssn` pipeline, so `12345678` is dropped as `012345678` is.
 A masked value keeps its last four: the digits of `***-**-8924` pad to
 `000008924`, which the list does not name.
 
+The `ssn` filler runs reach it too: `129-99-9999` and `100-00-0001` are `null`
+as `ssn` and as `ssn4`. A run of zeros starting inside the area number is not a
+filler here, since it is the padding of a masked value: `***-**-0001` pads to
+`000000001` and keeps `"0001"`.
+
 The other `ssn` screens do not reach it, since the pipeline reads the cell as
 written, not the `ssn` result. The `ssn` character screen does not: `***-**-8924`
 is `null` as `ssn` and `"8924"` as `ssn4`. Nor does the `ssn` area-number rule:
@@ -432,6 +456,9 @@ as `ssn` and `"3456"` as `ssn4`.
 | `"078-05-1120"` | `null` |
 | `"111-22-3333"` | `null` |
 | `"219-09-9999"` | `null` |
+| `"129-99-9999"` | `null` |
+| `"100-00-0001"` | `null` |
+| `"***-**-0001"` | `"0001"` |
 
 A file with its own `role: linkage` column of type `ssn4` keeps using it, and
 nothing is derived. That column runs the `ssn4` pipeline, without the `ssn`

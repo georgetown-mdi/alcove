@@ -1,4 +1,4 @@
-- The other screens are fixed parts of their default pipelines, not per-party parameters: the single-letter `last_name` screen, the date-of-birth screen for a year before 1900, and the `ssn` and `ssn4` structural and placeholder screens. -> The other screens are fixed parts of their default pipelines, not per-party parameters: the single-letter `last_name` screen, the date-of-birth screen for a year before 1900, the `ssn` and `ssn4` structural and placeholder screens, and the `phone_number` and `zip_code` filler screens.
+- The other screens are fixed parts of their default pipelines, not per-party parameters: the single-letter `last_name` screen, the date-of-birth screen for a year before 1900, and the `ssn` and `ssn4` structural and placeholder screens. -> The other screens are fixed parts of their default pipelines, not per-party parameters: the single-letter `last_name` screen, the date-of-birth screen for a year before 1900, the `ssn` and `ssn4` structural, placeholder and filler-run screens, and the `phone_number` and `zip_code` filler screens.
 - values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999", "123456789"] -> values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999",
 - A value of one digit repeated nine times is dropped, and so is `123456789`. -> A value of one digit repeated nine times is dropped, and so is each listed run of consecutive digits and each listed value known to be shared by many people.
 - `"078-05-1120"` | `"078051120"` -> `"078-05-1121"` | `"078051121"`
@@ -77,7 +77,7 @@
 - - -> pattern: "^\\d{4}$"
 - - -> values: ["0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"]
 - - -> `"***-**-8924"` | `"8924"`
-- - -> It is the `ssn4` pipeline with two steps added after the empty-value drop: the digits are padded to nine, and a value the `ssn` placeholder list names is dropped.
+- - -> It is the `ssn4` pipeline with four steps added after the empty-value drop: the digits are padded to nine, a value the `ssn` placeholder list names is dropped, and a value with a filler run is emptied and then dropped.
 - - -> Each value it keeps equals the one a partner holding only the last four derives, since the added steps drop values and change none they keep.
 - - -> The `ssn` placeholder list reaches the derived value: `123-45-6789` and `078-05-1120` are `null` as `ssn` and as `ssn4`.
 - - -> The list is compared after padding, as in the `ssn` pipeline, so `12345678` is dropped as `012345678` is.
@@ -108,3 +108,27 @@
 - - -> `"99999"` | `null`
 - - -> `"88888"` | `null`
 - - -> [linkage-rule-grounding.md](../notes/linkage-rule-grounding.md#fillers-the-default-cleaning-drops) - the sources for the SSN placeholders and the ZIP and phone fillers the pipelines drop
+- - -> **Filler runs.**
+- - -> A value holding seven or more 9s in a row, or seven or more 0s in a row after the area number, is dropped.
+- - -> The `replace_regex` empties such a value and the `null_if` drops the empty result; six in a row are kept.
+- - -> The `ssn` filler runs reach it too: `129-99-9999` and `100-00-0001` are `null` as `ssn` and as `ssn4`.
+- - -> A run of zeros starting inside the area number is not a filler here, since it is the padding of a masked value: `***-**-0001` pads to `000000001` and keeps `"0001"`.
+- - -> `"129-99-9999"` | `null`
+- - -> `"123-99-9999"` | `"123999999"`
+- - -> `"129-99-9999"` | `null`
+- - -> `"100-00-0001"` | `null`
+- - -> `"***-**-0001"` | `"0001"`
+- - -> - function: replace_regex
+- - -> - function: null_if
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+- - -> pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+- - -> replacement: ""
+- - -> replacement: ""
+- - -> value: ""
+- - -> value: ""
+- - -> - function: replace_regex
+- - -> - function: null_if

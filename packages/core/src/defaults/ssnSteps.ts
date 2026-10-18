@@ -37,6 +37,21 @@ const SSN_PLACEHOLDERS: readonly string[] = [
   "111223333",
 ];
 
+// Seven or more 9s in a row, or seven or more 0s in a row after the area
+// number, is filler such as 129-99-9999. A zero run starting inside the first
+// three digits is exempt: it is area 000, the padding of a masked value such as
+// ***-**-0012, whose last four the derived `ssn4` keeps.
+const SSN_FILLER_STEPS: StandardizationStep[] = [
+  {
+    function: "replace_regex",
+    params: {
+      pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$",
+      replacement: "",
+    },
+  },
+  { function: "null_if", params: { value: "" } },
+];
+
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
@@ -71,6 +86,7 @@ export const SSN_STEPS: StandardizationStep[] = [
   },
   { function: "filter_regex", params: { pattern: "[1-9]\\d{0,3}$" } },
   { function: "null_if", params: { values: [...SSN_PLACEHOLDERS] } },
+  ...SSN_FILLER_STEPS,
 ];
 
 // The `ssn4` steps up to and including the empty-value drop.
@@ -110,12 +126,14 @@ export const SSN4_STEPS: StandardizationStep[] = [
 /**
  * The default steps that derive `ssn4` from an `ssn` column:
  * {@link SSN4_STEPS} with the digits padded to nine and screened against the
- * `ssn` placeholders. A value masked in its first five digits pads to area
- * 000, where the only placeholder is 000000000, so its last four are kept.
+ * `ssn` placeholders and filler runs. A value masked in its first five digits
+ * pads to area 000, where the only placeholder is 000000000 and a run of zeros
+ * is exempt, so its last four are kept.
  */
 export const SSN4_FROM_SSN_STEPS: StandardizationStep[] = [
   ...SSN4_DIGIT_STEPS,
   { function: "pad_left", params: { length: 9 } },
   { function: "null_if", params: { values: [...SSN_PLACEHOLDERS] } },
+  ...SSN_FILLER_STEPS,
   ...SSN4_LAST_FOUR_STEPS,
 ];
