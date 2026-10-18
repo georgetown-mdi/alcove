@@ -228,17 +228,17 @@ describe("the next step beneath a terms refusal", () => {
     expect(marked(lacksGeography).endsWith(`\n${QUICK}`)).toBe(true);
   });
 
-  test("a street number key only one party's terms hold names that party's street number column", async () => {
+  test("a street number key only one party's terms hold names only that party's street number column", async () => {
     const shared = ["ssn", "first_name", "last_name", "dob", "zip"];
     const [hasStreetNumber, lacksStreetNumber] = await quickExchangeRefusals(
       [...shared, "House Number"],
       shared,
     );
     expect(marked(hasStreetNumber).split("\n").at(-1)).toBe(
-      `Your file's columns "zip" (ZIP code) and "House Number" (street ` +
-        "number) are matched on. Where your partner's file has no such " +
-        "column, remove that column from your file and run again, or agree " +
-        "the terms through an invitation (alcove invite, then alcove accept).",
+      `Your file's column "House Number" (street number) is matched on. ` +
+        "Where your partner's file has no such column, remove it from your " +
+        "file and run again, or agree the terms through an invitation " +
+        "(alcove invite, then alcove accept).",
     );
     expect(marked(lacksStreetNumber).endsWith(`\n${QUICK}`)).toBe(true);
   });

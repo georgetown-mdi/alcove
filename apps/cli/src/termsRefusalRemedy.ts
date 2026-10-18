@@ -130,7 +130,9 @@ const isContactType = (type: string): type is ContactType =>
  * county columns that the keys named `differingKeys` of its quick-exchange
  * terms match on, each header escaped for display, or `undefined` where those
  * keys match on none. Only the column each such field is bound to is named: a
- * second column of the same type is held back, not matched on.
+ * second column of the same type is held back, not matched on. A column a key
+ * that does not differ also reads is left out, as removing it would lose
+ * those keys too.
  *
  * @internal exported for testing
  */
@@ -144,6 +146,13 @@ export function quickExchangeContactColumnsLine(
     ...terms,
     linkageKeys: terms.linkageKeys.filter((key) => named.has(key.name)),
   };
+  const shared: LinkageTerms = {
+    ...terms,
+    linkageKeys: terms.linkageKeys.filter((key) => !named.has(key.name)),
+  };
+  const sharedColumns = new Set(
+    matchedFieldColumns(metadata, shared, undefined).values(),
+  );
   const contactTypeOf = new Map(
     terms.linkageFields.flatMap((field) =>
       isContactType(field.type) ? [[field.name, field.type] as const] : [],
@@ -156,7 +165,8 @@ export function quickExchangeContactColumnsLine(
     undefined,
   )) {
     const type = contactTypeOf.get(field);
-    if (type !== undefined) boundTypeByColumn.set(column, type);
+    if (type !== undefined && !sharedColumns.has(column))
+      boundTypeByColumn.set(column, type);
   }
   const columns = metadata.flatMap((column) => {
     const type = boundTypeByColumn.get(column.name);
