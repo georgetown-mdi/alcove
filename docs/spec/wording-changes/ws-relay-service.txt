@@ -1,0 +1,135 @@
+# PROTOCOL.md's WebSocket relay proof points at the relay's own
+# specification, which this branch adds.
+- The proof is the message and the tag below; how a relay's hello encodes them is specified with the relay service, apart from the key lookup below. -> The proof is the message and the tag below; how a relay's hello encodes them is specified in [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-hello), apart from the key lookup below.
+- What the relay answers to a stale proof, a server time to sign again as the registrar gives or nothing, is specified with the relay service and not here. -> The relay answers a stale proof with its current Unix second, so a party can sign again ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-hello)).
+- The relay service's hello may bind the proof to its connection, a point left to that service's specification. -> The relay's hello does not bind the proof to its connection ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-hello)).
+- - -> **Its form.**
+- - -> **The key.**
+- - -> **Replay.**
+- - -> [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md) | The WebSocket relay's wire: its endpoint, the hello and start frames, the key table it checks a hello against, pairing by role, forwarding, keepalive, close ordering, the close codes, and the relay's bounds. | Implementors of a relay client, whoever deploys the relay, security auditors | The proof a hello presents (see [PROTOCOL.md](PROTOCOL.md#the-websocket-relay-proof)); the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)); the design and the rulings behind it (see [web-websocket-transport.md](../notes/web-websocket-transport.md))
+- - -> **The WebSocket relay's hello, start, pairing, forwarding, close ordering, close codes, or bounds** -> [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md).
+- - -> title: "WebSocket Relay"
+- - -> WebSocket relay
+- - -> This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, and its bounds.
+- - -> It is the implementation-level complement to [WebSocket relay](../DESIGN.md#websocket-relay) in DESIGN.md, which says what the relay is for and what its operator is in a position to see.
+- - -> It does not cover the proof a hello presents (see [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)) or the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)).
+- - -> The design and the rulings behind it are in [web-websocket-transport.md](../notes/web-websocket-transport.md).
+- - -> Intended readers are implementors of a relay client, whoever deploys the relay, and security auditors.
+- - -> Every constant below is in `packages/websocket-relay/src/protocol.ts` unless another file is named.
+- - -> Each is a working value, raised or lowered on request.
+- - -> The endpoint
+- - -> **The path.**
+- - -> A party opens a WebSocket at `/relay` (`RELAY_PATH`); a query string is ignored.
+- - -> An upgrade on any other path is answered `404` and closed, and so is a plain HTTP request.
+- - -> **No extension.**
+- - -> The relay negotiates no per-message compression.
+- - -> **Before the upgrade.**
+- - -> The relay applies the signaling broker's pre-upgrade bounds: a 10-second header timeout, a 15-second request timeout, and a 10-second idle bound on a socket that has not completed its request ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds); `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
+- - -> **No TLS.**
+- - -> The relay terminates none, so a deployment reachable off its host puts it behind a front that does.
+- - -> **No outbound connection.**
+- - -> The relay opens no connection of its own, and no frame names a target.
+- - -> A check holds the relay's source to the modules and names that accept a socket and never dial one (`packages/websocket-relay/test/noOutboundConnection.test.ts`); it reads what the source spells, so it is a safety check, not a proof.
+- - -> Frames
+- - -> A control frame is a WebSocket text message holding one JSON object, read through the bounded JSON parse of [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
+- - -> It holds exactly the keys shown, in any order.
+- - -> The exchange's own messages are binary messages.
+- - -> Frame | Sent by | Text
+- - -> hello | a party, as its first message | `{"type":"hello","exchangeId":<id>,"role":<role>,"proof":<message>,"tag":<hex>}`
+- - -> start | a party, once, after its hello | `{"type":"start"}`
+- - -> paired | the relay, to both parties, once both hellos have verified | `{"type":"paired"}`
+- - -> start | the relay, to a party whose partner has sent its start | `{"type":"start"}`
+- - -> The hello
+- - -> **`exchangeId`.**
+- - -> The id the exchange's relay key is enrolled under, 1 to 128 of `[A-Za-z0-9._-]`, not starting with `-`: the key lookup of [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof).
+- - -> **`role`.**
+- - -> The role the party claims, `inviter` or `acceptor`.
+- - -> **`proof`.**
+- - -> The proof's signed message as a string: its three fields joined by LF, which JSON writes as `\n`.
+- - -> **`tag`.**
+- - -> The proof's 32-byte tag as 64 lowercase hex characters.
+- - -> A party sends its hello as its first message, within 10 seconds of the upgrade (`RELAY_HELLO_TIMEOUT_MS`).
+- - -> It may send its start directly behind the hello; a second message before the relay has checked the hello is refused (4002).
+- - -> The relay checks a hello in this order, refusing at the first check it fails with the code in brackets:
+- - -> Any other first message, a hello with another key or a value outside the forms above, and a hello whose proof does not parse ([What a check refuses](PROTOCOL.md#the-websocket-relay-proof)) are refused as malformed (4001).
+- - -> The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)).
+- - -> No key is refused as not enrolled (4003); a table it cannot read, with 1011.
+- - -> **The proof.**
+- - -> The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock.
+- - -> A proof for the other role, or whose tag is not the proof key's, does not verify (4004).
+- - -> A proof whose expiry has passed is expired (4005), and the close reason is the relay's current Unix second in decimal, so a party whose clock has drifted can make another.
+- - -> **The role.**
+- - -> A socket already holding the claimed role under that relay key refuses this one as role taken (4006), the broker's `ID-TAKEN` for this path.
+- - -> The hello does not bind the proof to its connection, since the proof's message holds only the role and the expiry.
+- - -> A captured hello replayed before its expiry, at most 300 seconds after it was made, can take the role under the key first, and the party it was captured from is then refused as role taken.
+- - -> It exposes no data: the key exchange inside the relayed channel still needs the shared secret.
+- - -> The key table
+- - -> **Where.**
+- - -> The relay reads the per-exchange keys from the SQLite file coturn reads its secrets from ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)): the runner's `--key-table`, else `ALCOVE_RELAY_TURNDB`, else `/var/lib/alcove-relay/turndb`.
+- - -> **Which key.**
+- - -> The key the `alcove_exchange` table maps the exchange id to, while coturn's `turn_secret` table still holds that key, so the relay admits the keys coturn admits.
+- - -> A file with no `alcove_exchange` table enrolls no exchange.
+- - -> **How.**
+- - -> The relay opens the file read-only for each hello and writes nothing.
+- - -> A lookup waits at most 1 second for a writer holding the table's lock (`KEY_TABLE_BUSY_TIMEOUT_MS` in `packages/websocket-relay/src/keyTable.ts`).
+- - -> **A lapsed or revoked key.**
+- - -> A lapsed row is admitted until the sweep removes it, as coturn admits it.
+- - -> Removing a key refuses each later hello under it and ends no pairing already formed, as coturn ends no open allocation.
+- - -> **A table it cannot read.**
+- - -> Every hello is refused with 1011.
+- - -> The relay reports it on its diagnostic stream when reads start failing, and again only after one has succeeded.
+- - -> Pairing and the start
+- - -> **Pairing.**
+- - -> The relay pairs the two sockets whose hellos verified under one relay key with opposite roles, and sends each `paired`.
+- - -> **The start.**
+- - -> Each party sends `start` once.
+- - -> The relay sends a party its partner's start as it arrives, or directly behind `paired` when the partner sent it first.
+- - -> **Nothing before both starts.**
+- - -> The relay forwards nothing until both parties have sent their start.
+- - -> A binary message before then, a second start, a second hello, and any other text frame are refused (4002).
+- - -> **The first binary message.**
+- - -> A party sends it only once it has sent its own start and received its partner's.
+- - -> **The end of a pairing.**
+- - -> A pairing ends at the first close of either socket, and the key may then pair again.
+- - -> Forwarding
+- - -> **Unread.**
+- - -> Once both parties have started, the relay forwards each binary message to the partner as one binary message, unread.
+- - -> A text message is then refused (4002).
+- - -> **The per-message cap.**
+- - -> 16,384 bytes (`RELAY_MAX_MESSAGE_BYTES`): the 16,300-byte chunk the framing splits a frame at and the 58 bytes its widest chunk envelope adds, rounded up to 16 KiB.
+- - -> A message above it, a hello included, is refused with 1009 before its payload is read, so the relay holds one chunk a socket and never a frame.
+- - -> **Backpressure.**
+- - -> While the partner's send buffer is above 1 MiB (`RELAY_SEND_BUFFER_HIGH_BYTES`) the relay reads nothing from the source, and it reads again once that buffer is at or below 256 KiB (`RELAY_SEND_BUFFER_LOW_BYTES`): the window the CLI's own send path uses ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#outbound-pacing)).
+- - -> The few messages already read when reading stops are forwarded.
+- - -> A source held this way waits on its own TCP window and is not disconnected.
+- - -> Keepalive
+- - -> **A party's ping.**
+- - -> The relay answers it with a pong and forwards nothing.
+- - -> **The relay's ping.**
+- - -> The relay pings every socket it holds every 30 seconds (`RELAY_PING_INTERVAL_MS`), a tenth of the 300-second idle timeout of the reference deployment's front, since a browser's `WebSocket` cannot send a ping but answers one.
+- - -> Close
+- - -> **Order.**
+- - -> One party's close closes its partner behind every message already queued for the partner.
+- - -> **The code.**
+- - -> A close with code 1000, or with no code, closes the partner with 1000.
+- - -> Any other end of a party's socket, a refusal included, closes the partner with 4000.
+- - -> **The wait.**
+- - -> A partner closed this way has 300 seconds, the close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), to read what is queued for it and answer the close, and is then dropped (`RELAY_CLOSE_WAIT_MS`).
+- - -> A socket the relay refuses has 10 seconds (`RELAY_REFUSAL_CLOSE_WAIT_MS`).
+- - -> **Delivery.**
+- - -> TCP acknowledges a message to the relay, not to the partner, so a party knows its last message reached the partner only when the partner's close reaches it through the relay ([COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown)).
+- - -> Close codes
+- - -> Every close reason is empty except 4005's.
+- - -> Code | Sent to | Meaning
+- - -> 1000 | the partner | The other party closed normally
+- - -> 1001 | every socket | The relay is shutting down
+- - -> 1009 | the sender | A message above the per-message cap
+- - -> 1011 | the sender of a hello | The relay could not read its key table
+- - -> 4000 | the partner | The other party's socket ended without a normal close, or the relay refused it
+- - -> 4001 | the sender | The first message was not a well-formed hello
+- - -> 4002 | the sender | A message the relay does not take at that point
+- - -> 4003 | the sender | No relay key is enrolled under the hello's exchange id
+- - -> 4004 | the sender | The proof does not verify under the exchange's relay key for the claimed role
+- - -> 4005 | the sender | The proof has expired; the reason is the relay's current Unix second
+- - -> 4006 | the sender | Another socket holds the claimed role under the exchange's relay key
+- - -> 4007 | the sender | No hello within 10 seconds of the upgrade

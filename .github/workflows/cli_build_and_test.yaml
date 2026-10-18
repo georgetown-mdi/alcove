@@ -55,12 +55,14 @@ jobs:
           # fixtures packages/testkit holds (docs/TESTING.md, Shared test
           # material), so a change confined to them re-runs the suites too, and
           # the CLI depends on packages/cli-contract, whose own unit suite runs
-          # beside the CLI's.
+          # beside the CLI's. The WebSocket relay's suite runs on this gate
+          # too (its leg below says why), so its workspace is in scope.
           paths: |
             apps/cli/**
             packages/core/**
             lib/**
             packages/peerjs-broker/**
+            packages/websocket-relay/**
             packages/testkit/**
             packages/cli-contract/**
             package-lock.json
@@ -70,7 +72,7 @@ jobs:
             .github/actions/test-durations/**
             .github/workflows/cli_build_and_test.yaml
 
-  # The six suites this gate runs share no mutable state, so they run as
+  # The seven suites this gate runs share no mutable state, so they run as
   # parallel legs of one matrix rather than as serial steps of one job, and the
   # gate's wall time is its slowest suite rather than their sum. Each leg is a
   # runner of its own, and within a leg each suite stands up everything it
@@ -142,6 +144,14 @@ jobs:
           - suite: cross-runtime interop
             command: npm run test:interop -w apps/web
             build-cli: "true"
+          # The WebSocket relay (packages/websocket-relay), a service of its own
+          # that the CLI's WebSocket transport will dial. Its suite stands up
+          # its relays on loopback ephemeral ports and spawns its runner in a
+          # fresh mkdtemp directory. It runs on this gate because the gate runs
+          # on every pull request and every push to staging, and the relay
+          # checks each proof with core's code, which this gate's scope covers.
+          - suite: websocket relay
+            command: npm run test:unit -w packages/websocket-relay
           # A second run of the same suite against a native OpenSSH sshd, so the
           # adapter is also exercised against a real server.
           - suite: native sshd

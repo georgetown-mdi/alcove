@@ -45,7 +45,7 @@ A literal nothing could dereference can still fail the build; the author rewrite
 ### What is scanned, and why
 
 The scanned roots are source that ships or runs, not all TypeScript.
-They include `apps/web/server`, the console server the image runs, and the signaling broker's whole `src`, whose standalone entry runs as a service of its own.
+They include `apps/web/server`, the console server the image runs, and the whole `src` of the signaling broker and of the WebSocket relay, whose standalone entries each run as a service of their own.
 The scanned files outside those trees are the shipped ones for both images:
 the two entrypoints, which run inside the container the "no other network connection" claim is about;
 the two `support/fips-probe/` files the FIPS image copies in and runs at every container start;

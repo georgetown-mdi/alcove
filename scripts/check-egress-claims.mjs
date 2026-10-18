@@ -29,6 +29,7 @@ export const SCANNED_ROOTS = [
   "packages/core/src",
   "packages/cli-contract/src",
   "packages/peerjs-broker/src",
+  "packages/websocket-relay/src",
   "apps/web/public",
   "apps/web/server",
 ];

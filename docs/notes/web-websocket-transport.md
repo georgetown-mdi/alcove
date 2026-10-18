@@ -4,7 +4,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; of it, only the relay proof derivation is built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
+_Status: design only; of it, the relay proof derivation and the relay service, less its quotas, are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2, S4 and S6 to S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3 and S5 passed with Node and Chromium parties on 2026-10-18 (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
@@ -120,6 +120,7 @@ The relay below is that shape with binary frames, pause-and-resume forwarding, p
   The derivation and the proof are specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
 - The relay looks up the one key the hello names by exchange id, and verifies the proof against it -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
   A second socket with a role already held under that key is refused, which is the broker's `ID-TAKEN` for this path.
+  The hello, the start and the close codes are specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
 - A run with no shared secret cannot mint the proof and refuses the relay before dialing, as it refuses a `turn` entry with no static credential today ([CLI.md](../CLI.md#turn)).
 
 **What crosses it.** Binary WebSocket messages, each one chunk envelope of the framing the CLI already writes and both implementations already read: BinaryPack frames split at the chunk size, with the close sentinel behind the last frame ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#framing)).
@@ -445,6 +446,7 @@ Relay path, in order:
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
   Built: `packages/core/src/websocketRelayProof.ts`, specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
+  Built, less the quotas: `packages/websocket-relay`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.

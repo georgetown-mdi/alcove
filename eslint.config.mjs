@@ -680,5 +680,50 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The WebSocket relay's share of the same bans, for the same reason as the
+    // broker's: its hello handler parses text any internet client can send
+    // before the proof is checked, and a parser abort there ends every pairing
+    // the process holds. It reaches the chokepoints through its `@alcove/core`
+    // dependency and owns none.
+    files: ["packages/websocket-relay/src/**/*.ts"],
+    linterOptions: { reportUnusedDisableDirectives: "error" },
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.object.name='YAML'][callee.property.name=/^(parse|parseDocument|parseAllDocuments)$/]",
+          message:
+            "Parse operator/credential files through @alcove/core (parseSensitiveYaml / editSensitiveYamlDocument); raw YAML.parse leaks source into errors and the warning channel. Non-sensitive parse: eslint-disable-next-line with a one-line justification.",
+        },
+        ...noRawErrorAtDisplaySink,
+        ...noDisplayableAsErrorArgument,
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "yaml",
+              importNames: ["parse", "parseDocument", "parseAllDocuments"],
+              message:
+                "Parse operator/credential files through @alcove/core; do not import yaml's raw parsers directly.",
+            },
+          ],
+          patterns: crossWorkspaceImportBans.packages,
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "JSON",
+          property: "parse",
+          message:
+            "Parse a party's relay frame through @alcove/core's parseBoundedJson; it structurally bounds the body before JSON.parse so a pathological object/array cannot abort the relay every pairing shares. A trusted parse: eslint-disable-next-line with a one-line justification.",
+        },
+      ],
+    },
+  },
   ...scopeToDir("apps/web", webConfig),
 );

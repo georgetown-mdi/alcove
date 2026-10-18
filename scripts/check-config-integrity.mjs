@@ -62,6 +62,11 @@ export const GUARDED_TSCONFIGS = [
     sourceDirectory: "packages/peerjs-broker/src",
     options: { strict: true },
   },
+  {
+    tsconfig: "packages/websocket-relay/tsconfig.json",
+    sourceDirectory: "packages/websocket-relay/src",
+    options: { strict: true },
+  },
 ];
 
 /**
@@ -79,6 +84,7 @@ export const GUARDED_VITEST_CONFIGS = [
     projects: [
       "@alcove/core (unit)",
       "@alcove/cli-contract (unit)",
+      "@alcove/websocket-relay (unit)",
       "alcove (unit)",
       "alcove-web (unit)",
       "harness",
@@ -89,6 +95,7 @@ export const GUARDED_VITEST_CONFIGS = [
   },
   { directory: "packages/core", projects: ["unit", "stress"] },
   { directory: "packages/cli-contract", projects: ["unit"] },
+  { directory: "packages/websocket-relay", projects: ["unit"] },
   {
     directory: "apps/cli",
     projects: ["unit", "integration", "webrtc", "backend-agnostic", "stress"],
