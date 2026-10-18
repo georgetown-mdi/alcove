@@ -126,6 +126,7 @@ const DIRECTION_CHOICES: ReadonlyArray<{
  */
 export function ReviewCreateSection({
   editor,
+  keysFromOpenedConfiguration = false,
   csv,
   problems,
   minting,
@@ -168,6 +169,10 @@ export function ReviewCreateSection({
   conversion,
 }: {
   editor: InviterEditor;
+  /** Whether the keys are an opened configuration's, as Matching keys is told
+   * (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`), so the
+   * dropped-citation notice here names only an action that tab shows. */
+  keysFromOpenedConfiguration?: boolean;
   csv: AcquiredCsv;
   problems: ReadonlyArray<SpineProblem>;
   minting: boolean;
@@ -279,8 +284,8 @@ export function ReviewCreateSection({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => editorCitationDrop(editor, currentTerms),
-    [editor, currentTerms],
+    () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
+    [editor, keysFromOpenedConfiguration, currentTerms],
   );
   const inertCoalesce = useMemo(
     () => inertCoalesceNotice(editor.draft, currentTerms),

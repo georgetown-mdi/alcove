@@ -161,7 +161,7 @@ describe("choosing a precision floor", () => {
       expect(buildAdvancedTerms(chosen.draft).linkageRuleSet).toStrictEqual(
         DEFAULT_LINKAGE_RULE_SET.reference,
       );
-      expect(editorCitationDrop(chosen)).toBeUndefined();
+      expect(editorCitationDrop(chosen, false)).toBeUndefined();
     }
   });
 
@@ -290,7 +290,7 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
-    expect(editorCitationDrop(guided)).toBeUndefined();
+    expect(editorCitationDrop(guided, false)).toBeUndefined();
     expect(
       editorWithPrecisionFloorSelection(guided, AT_99_YES).draft
         .precisionFloorSelection,
@@ -332,7 +332,7 @@ describe("replacing authored keys with the built-in rules", () => {
     const misdescribed = buildAdvancedTerms(seeded.draft);
     misdescribed.linkageKeys = [...misdescribed.linkageKeys].reverse();
     const imported = editorWithImportedTerms(seeded, withSsn, misdescribed);
-    expect(editorCitationDrop(imported)?.title).toBe(
+    expect(editorCitationDrop(imported, false)?.title).toBe(
       IMPORTED_CITATION_DROP_TITLE,
     );
     const guided = editorWithBuiltInKeys(imported, withSsn);
@@ -661,13 +661,13 @@ describe("a seeded draft's dropped citation", () => {
   test("is not dropped by turning one key off", () => {
     const narrowed = editorWithKeyEnabled(seeded, 0, false);
     expect(buildAdvancedTerms(narrowed.draft).linkageRuleSet).toBeDefined();
-    expect(editorCitationDrop(narrowed)).toBeUndefined();
+    expect(editorCitationDrop(narrowed, false)).toBeUndefined();
   });
 
   test("is noticed when a key moves out of order, and restored by moving it back", () => {
     const moved = editorWithKeyMoved(seeded, 0, 1);
     expect(buildAdvancedTerms(moved.draft).linkageRuleSet).toBeUndefined();
-    const drop = editorCitationDrop(moved);
+    const drop = editorCitationDrop(moved, false);
     expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
     expect(drop?.notice).toBe(
       "A key was moved out of the built-in order, so these keys are no " +
@@ -677,7 +677,7 @@ describe("a seeded draft's dropped citation", () => {
         "order to keep the citation, or create the invitation without it.",
     );
     const restored = editorWithKeyMoved(moved, 1, -1);
-    expect(editorCitationDrop(restored)).toBeUndefined();
+    expect(editorCitationDrop(restored, false)).toBeUndefined();
   });
 
   test("is noticed when a key is added in Expert authoring, naming the way back", () => {
@@ -690,7 +690,7 @@ describe("a seeded draft's dropped citation", () => {
       seededCitationDropNotice(
         authored.draft,
         authored.seed,
-        editorOffersUseBuiltInRules(authored),
+        editorOffersUseBuiltInRules(authored, false),
       ),
     ).toBe(
       "A key was added or changed in Expert authoring, so these keys are no " +
@@ -741,7 +741,7 @@ describe("a seeded draft's dropped citation", () => {
     const notice = seededCitationDropNotice(
       authored.draft,
       authored.seed,
-      editorOffersUseBuiltInRules(authored),
+      editorOffersUseBuiltInRules(authored, false),
     );
     expect(notice).toBe(
       "A key was added or changed in Expert authoring, so these keys are no " +
@@ -761,7 +761,7 @@ describe("a seeded draft's dropped citation", () => {
       seededCitationDropNotice(
         allOff.draft,
         allOff.seed,
-        editorOffersUseBuiltInRules(allOff),
+        editorOffersUseBuiltInRules(allOff, false),
       ),
     ).toContain("Turn a linkage key back on to keep the citation");
   });
@@ -772,12 +772,12 @@ describe("a seeded draft's dropped citation", () => {
       AT_99_YES,
     );
     expect(at99.draft.keys).toHaveLength(0);
-    expect(editorCitationDrop(at99)).toBeUndefined();
+    expect(editorCitationDrop(at99, false)).toBeUndefined();
     const authored = editorWithAuthoredDraft(
       at99,
       addKey(at99.draft, "first_name"),
     );
-    expect(editorCitationDrop(authored)?.notice).toContain(
+    expect(editorCitationDrop(authored, false)?.notice).toContain(
       USE_BUILT_IN_RULES_LABEL,
     );
   });
@@ -794,7 +794,7 @@ describe("a seeded draft's dropped citation", () => {
       seededBare,
       addKey(seededBare.draft, "first_name"),
     );
-    expect(editorCitationDrop(authored)).toBeUndefined();
+    expect(editorCitationDrop(authored, false)).toBeUndefined();
   });
 
   test("leaves an imported draft's drop to the imported notice", () => {
@@ -808,10 +808,10 @@ describe("a seeded draft's dropped citation", () => {
       seededCitationDropNotice(
         imported.draft,
         imported.seed,
-        editorOffersUseBuiltInRules(imported),
+        editorOffersUseBuiltInRules(imported, false),
       ),
     ).toBeUndefined();
-    expect(editorCitationDrop(imported)?.title).toBe(
+    expect(editorCitationDrop(imported, false)?.title).toBe(
       IMPORTED_CITATION_DROP_TITLE,
     );
   });
@@ -847,7 +847,7 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
       validateAdvancedInvite(rewritten.draft, rewritten.seed).canGenerate,
     ).toBe(true);
     expect(buildAdvancedTerms(rewritten.draft).linkageRuleSet).toBeUndefined();
-    const drop = editorCitationDrop(rewritten);
+    const drop = editorCitationDrop(rewritten, false);
     expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
     expect(drop?.notice).toContain(USE_BUILT_IN_RULES_LABEL);
   });

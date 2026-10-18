@@ -119,12 +119,6 @@ export interface InviterEditor {
   seed: AdvancedInviteSeed;
   sealed?: boolean;
   keysAuthored?: boolean;
-  /** Marks the keys as the opened configuration's that a console run
-   * continues under, which the partner agreed to
-   * ({@link editorWithKeysFromOpenedConfiguration}). Every mutator that
-   * replaces the keys returns a session without it; read it through
-   * {@link editorKeysFromOpenedConfiguration}. */
-  keysFromOpenedConfiguration?: true;
   /** The transport chosen at Review & create ({@link Transport}); defaults to
    * `browser` until the chooser sets it. Survives a trip into a Customize tab
    * and reflects into the ledger and the review answers. */
@@ -200,51 +194,15 @@ export function editorWithTransport(
   return { ...editor, transport };
 }
 
-/** Mark the session's keys as the opened configuration's that a console run
- * continues under ({@link InviterEditor.keysFromOpenedConfiguration}), for a
- * session whose keys were just loaded from that configuration. */
-export function editorWithKeysFromOpenedConfiguration(
-  editor: InviterEditor,
-): InviterEditor {
-  if (editor.sealed === true || editor.keysAuthored !== true) return editor;
-  return { ...editor, keysFromOpenedConfiguration: true };
-}
-
-/** The session with its keys no longer marked as the opened configuration's
- * ({@link InviterEditor.keysFromOpenedConfiguration}). */
-export function editorWithoutKeysFromOpenedConfiguration(
-  editor: InviterEditor,
-): InviterEditor {
-  if (editor.keysFromOpenedConfiguration === undefined) return editor;
-  const { keysFromOpenedConfiguration: _dropped, ...rest } = editor;
-  return rest;
-}
-
-/** Whether the session's keys are the opened configuration's that a console
- * run continues under: Matching keys then states where they come from and
- * offers no control that replaces them. */
-export function editorKeysFromOpenedConfiguration(
-  editor: InviterEditor,
-): boolean {
-  return (
-    editor.keysFromOpenedConfiguration === true && editor.keysAuthored === true
-  );
-}
-
 /** Replace the whole draft -- the expert key editor's change channel. Marks
  * the key set author-controlled, so later column edits stop reconciling it
- * away ({@link InviterEditor.keysAuthored}). A draft whose keys differ from
- * the session's drops the opened-configuration mark. */
+ * away ({@link InviterEditor.keysAuthored}). */
 export function editorWithAuthoredDraft(
   editor: InviterEditor,
   draft: AdvancedInviteDraft,
 ): InviterEditor {
   if (editor.sealed === true) return editor;
-  const kept =
-    draft.keys === editor.draft.keys
-      ? editor
-      : editorWithoutKeysFromOpenedConfiguration(editor);
-  return { ...kept, draft, keysAuthored: true };
+  return { ...editor, draft, keysAuthored: true };
 }
 
 /** Enable or disable the key at `index` in the guided list, keeping a phone,
@@ -286,27 +244,33 @@ export function editorOffersBuiltInKeys(editor: InviterEditor): boolean {
 
 /** Whether Matching keys shows the action that runs
  * {@link editorWithBuiltInKeys}: for keys written in Expert authoring or
- * loaded from a document, not an opened configuration's, where the columns
- * supply a built-in key. */
-export function editorOffersUseBuiltInRules(editor: InviterEditor): boolean {
+ * loaded from a document where the columns supply a built-in key, and not
+ * for keys an opened configuration states, which the partner agreed to
+ * (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`). */
+export function editorOffersUseBuiltInRules(
+  editor: InviterEditor,
+  keysFromOpenedConfiguration: boolean,
+): boolean {
   return (
     editor.keysAuthored === true &&
-    !editorKeysFromOpenedConfiguration(editor) &&
+    !keysFromOpenedConfiguration &&
     editorOffersBuiltInKeys(editor)
   );
 }
 
 /** The dropped-citation notice for the session ({@link citationDropFor}),
  * naming the Matching keys action only where
- * {@link editorOffersUseBuiltInRules} shows it. */
+ * {@link editorOffersUseBuiltInRules} shows it for the same
+ * `keysFromOpenedConfiguration`. */
 export function editorCitationDrop(
   editor: InviterEditor,
+  keysFromOpenedConfiguration: boolean,
   builtTerms?: LinkageTerms,
 ): CitationDrop | undefined {
   return citationDropFor(
     editor.draft,
     editor.seed,
-    editorOffersUseBuiltInRules(editor),
+    editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
     builtTerms,
   );
 }
@@ -322,11 +286,7 @@ export function editorWithBuiltInKeys(
   csv: AcquiredCsv,
 ): InviterEditor {
   if (editor.sealed === true || !editorOffersBuiltInKeys(editor)) return editor;
-  const {
-    keysAuthored: _keysAuthored,
-    keysFromOpenedConfiguration: _keysFromOpenedConfiguration,
-    ...guided
-  } = editor;
+  const { keysAuthored: _keysAuthored, ...guided } = editor;
   return {
     ...guided,
     draft: draftWithBuiltInKeys(
@@ -462,8 +422,7 @@ export function editorWithLegalAgreement(
  * per-party and local, so no terms document states them and an import leaves
  * them where the operator set them. An unsupplyable imported key arrives
  * disabled, never dropped ({@link draftFromTerms}). Imported
- * keys are author-controlled, and not an opened configuration's until the
- * caller marks them ({@link editorWithKeysFromOpenedConfiguration}).
+ * keys are author-controlled.
  *
  * `metadata` is the column set the import binds against and the draft opens
  * on, for a caller holding roles the file's headers alone do not give -- a
@@ -477,7 +436,7 @@ export function editorWithImportedTerms(
 ): InviterEditor {
   if (editor.sealed === true) return editor;
   return {
-    ...editorWithoutKeysFromOpenedConfiguration(editor),
+    ...editor,
     draft: draftFromTerms(
       terms,
       { ...editor.seed, metadata },

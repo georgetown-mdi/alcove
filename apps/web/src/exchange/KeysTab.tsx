@@ -45,7 +45,6 @@ import {
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
   editorCitationDrop,
-  editorKeysFromOpenedConfiguration,
   editorOffersUseBuiltInRules,
   emptyGuidedKeysNotice,
   keyOrderHelp,
@@ -100,10 +99,10 @@ const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
  * withheld once the keys were written in Expert authoring or loaded from a
  * document, with a note saying so and, where the file supplies a built-in
  * rule, an action that replaces those keys, fields and cleaning with a new
- * invitation's: no floor selected them. On the console, keys a run of
- * an opened configuration continues under
- * ({@link editorKeysFromOpenedConfiguration}) get a note naming the file and
- * the command that change them instead, and no action.
+ * invitation's: no floor selected them. On the console, keys an opened
+ * configuration states (`keysFromOpenedConfiguration`,
+ * `@exchange/inviterScreenModel`) get a note naming the file and the command
+ * that change them instead, and no action.
  *
  * Also renders {@link editorCitationDrop} live from the draft, so a rule-set
  * citation the rebuild drops is flagged as soon as the import lands or an
@@ -117,6 +116,7 @@ export function KeysTab({
   onExpertMode,
   onPrecisionFloorSelection,
   onUseBuiltInRules,
+  keysFromOpenedConfiguration = false,
   onKeyEnabled,
   onKeyMoved,
   onAuthoredDraft,
@@ -138,6 +138,10 @@ export function KeysTab({
    * their fields and cleaning, by a new invitation's, once the operator
    * confirms. */
   onUseBuiltInRules: () => void;
+  /** Whether the keys are an opened configuration's, which the partner
+   * agreed to (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`):
+   * no action here replaces them. */
+  keysFromOpenedConfiguration?: boolean;
   onKeyEnabled: (index: number, enabled: boolean) => void;
   onKeyMoved: (index: number, offset: -1 | 1) => void;
   onAuthoredDraft: (draft: AdvancedInviteDraft) => void;
@@ -166,18 +170,17 @@ export function KeysTab({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => editorCitationDrop(editor, currentTerms),
-    [editor, currentTerms],
+    () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
+    [editor, keysFromOpenedConfiguration, currentTerms],
   );
   const emptyGuidedKeys = useMemo(
     () => emptyGuidedKeysNotice(editor),
     [editor],
   );
   const keysAuthored = editor.keysAuthored === true;
-  const keysFromOpenedConfiguration = editorKeysFromOpenedConfiguration(editor);
   const offersUseBuiltInRules = useMemo(
-    () => editorOffersUseBuiltInRules(editor),
-    [editor],
+    () => editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
+    [editor, keysFromOpenedConfiguration],
   );
   const selection =
     editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;

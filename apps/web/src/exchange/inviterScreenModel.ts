@@ -1,8 +1,6 @@
 import {
   editorWithIdentity,
-  editorWithKeysFromOpenedConfiguration,
   editorWithTransport,
-  editorWithoutKeysFromOpenedConfiguration,
   sealEditor,
   unsealEditor,
 } from "@psi/inviterEditor";
@@ -31,9 +29,12 @@ import {
   INITIAL_CSV_DELIMITER_CHOICE,
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
+import {
+  canonicalLinkageKeysAndFields,
+  canonicalPartnerBoundTerms,
+} from "@console/loadedConfig";
 import { CONNECTION_TUNING_DEFAULT } from "@console/connectionTuningModel";
 import { EXCHANGE_FILES_DEFAULT } from "@console/exchangeFilesModel";
-import { canonicalPartnerBoundTerms } from "@console/loadedConfig";
 
 import { EMPTY_SAVE_FIELDS } from "./saveExchangeModel";
 import { MANAGE_OFFER_IDLE } from "./manageOfferModel";
@@ -236,6 +237,13 @@ export interface InviterScreenState {
    * it to warn of an edit the partner does not hold. Set with that file and
    * dropped with the configuration. */
   loadedTermsBaseline: string | undefined;
+  /** The linkage keys and fields of the last opened configuration's terms when
+   * they reached the input file, in canonical form
+   * (`canonicalLinkageKeysAndFields`), read by
+   * {@link keysFromOpenedConfiguration}. Unlike {@link loadedTermsBaseline}
+   * it is kept through a read of the configuration until the read's terms
+   * reach the file, and dropped with the configuration. */
+  openedConfigurationKeys: string | undefined;
   /** The enforcement records a loaded configuration states, held so the run's
    * composed configuration states each as the file did
    * (docs/spec/EXCHANGE_FILE.md, "The record that must survive"). Empty where
@@ -305,6 +313,7 @@ export const INVITER_SCREEN_INITIAL: InviterScreenState = {
   loadedConfiguration: undefined,
   loadedTermsFile: undefined,
   loadedTermsBaseline: undefined,
+  openedConfigurationKeys: undefined,
   loadedEnforcementRecords: {},
 };
 
@@ -461,15 +470,34 @@ export type InviterScreenAction =
    * inference, absent where the file step holds no file to infer from. */
   | { type: "loaded-configuration-discarded"; editor?: InviterEditor };
 
-/** The screen's session, its keys no longer marked as an opened
- * configuration's that a run continues under: the configuration is being
- * re-read, closed, or taken as a new invitation's settings. */
-function withoutOpenedConfigurationKeys(
-  editor: InviterEditor | undefined,
-): InviterEditor | undefined {
-  return editor === undefined
-    ? undefined
-    : editorWithoutKeysFromOpenedConfiguration(editor);
+/**
+ * Whether the session's keys are an opened configuration's, which the partner
+ * agreed to: Matching keys then names the file in place of the authored-keys
+ * note and withholds Use the built-in rules, and the dropped-citation notices
+ * name no such action. Decided from content: the session's keys and fields
+ * equal those of {@link InviterScreenState.openedConfigurationKeys}, whatever
+ * edits led there.
+ *
+ * While the configuration is read again, or after a read that failed, the
+ * last configuration's keys still count, so the action is never offered on
+ * them. False once the configuration is taken as a new invitation's settings,
+ * whose run replaces the keys the partner holds.
+ */
+export function keysFromOpenedConfiguration(
+  state: Pick<
+    InviterScreenState,
+    "editor" | "mountedConfiguration" | "openedConfigurationKeys"
+  >,
+): boolean {
+  const { editor, mountedConfiguration, openedConfigurationKeys } = state;
+  if (editor?.keysAuthored !== true || openedConfigurationKeys === undefined)
+    return false;
+  if (
+    mountedConfiguration.status === "opened" &&
+    !runsOpenedConfiguration(mountedConfiguration)
+  )
+    return false;
+  return canonicalLinkageKeysAndFields(editor) === openedConfigurationKeys;
 }
 
 /** The state a discarded or cleared read leaves: no file, no profile, no draft,
@@ -764,7 +792,6 @@ function applyAction(
       if (state.editor?.sealed === true) return state;
       return {
         ...state,
-        editor: withoutOpenedConfigurationKeys(state.editor),
         mountedConfiguration: { status: "reading" },
         createAlert: undefined,
       };
@@ -779,11 +806,7 @@ function applyAction(
       const read = mountedConfigurationRead(action.answer);
       const loaded = read.loaded;
       if (loaded === undefined)
-        return {
-          ...state,
-          editor: withoutOpenedConfigurationKeys(state.editor),
-          mountedConfiguration: read.state,
-        };
+        return { ...state, mountedConfiguration: read.state };
       // The file's own channel against the console's transport matrix -- the
       // build this offer is rendered on (`InviterScreen`). An unresolved mount
       // reads as no mount, the same conservative reading the chooser itself
@@ -853,13 +876,10 @@ function applyAction(
       // seat -- the next file carries the terms instead.
       if (action.file !== state.acquired) return state;
       const transport = state.loadedConfiguration?.transport;
-      const withTransport =
+      const seated =
         transport === undefined
           ? action.editor
           : editorWithTransport(action.editor, transport);
-      const seated = runsOpenedConfiguration(state.mountedConfiguration)
-        ? editorWithKeysFromOpenedConfiguration(withTransport)
-        : withTransport;
       return {
         ...state,
         editor: seated,
@@ -870,6 +890,7 @@ function applyAction(
         ),
         loadedTermsFile: action.file,
         loadedTermsBaseline: canonicalPartnerBoundTerms(seated),
+        openedConfigurationKeys: canonicalLinkageKeysAndFields(seated),
         editorAnnouncement:
           "Loaded the configuration's matching terms. Review them before creating.",
       };
@@ -887,7 +908,6 @@ function applyAction(
       if (state.editor?.sealed === true) return state;
       return {
         ...state,
-        editor: withoutOpenedConfigurationKeys(state.editor),
         mountedConfiguration: withNewInvitation(state.mountedConfiguration),
       };
     case "loaded-configuration-discarded":
@@ -902,6 +922,7 @@ function applyAction(
         loadedConfiguration: undefined,
         loadedTermsFile: undefined,
         loadedTermsBaseline: undefined,
+        openedConfigurationKeys: undefined,
         loadedSftpForm: undefined,
         loadedEnforcementRecords: {},
         connectionTuning: CONNECTION_TUNING_DEFAULT,
@@ -920,7 +941,7 @@ function applyAction(
           state.consoleSource === undefined
             ? INITIAL_CSV_DELIMITER_CHOICE
             : state.delimiterChoice,
-        editor: action.editor ?? withoutOpenedConfigurationKeys(state.editor),
+        ...(action.editor !== undefined ? { editor: action.editor } : {}),
         editorAnnouncement:
           "Closed the configuration. These terms come from your own file's columns.",
       };
