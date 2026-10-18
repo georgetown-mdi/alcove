@@ -19,16 +19,8 @@ export const ALLOWED_RELAYS_SCOPE =
   "through, enrolls at and names in the invitations it creates; your own " +
   "connection.relay_registrar, where set, still receives each rotated " +
   "relay key. Your partner's side can still connect through a relay it " +
-  "leaves out.";
-
-/**
- * The acceptance review's line under the invitation's relay when the
- * configuration it keeps or writes sets no `allowed_relays`.
- */
-export const ALLOWED_RELAYS_UNSET =
-  "A run may connect through this relay. To leave out a TURN server " +
-  "listed here, set connection.allowed_relays. That setting covers " +
-  "relay servers only: the STUN servers listed here are still contacted.";
+  "leaves out. The setting covers relay servers only: the STUN servers " +
+  "a run lists are still contacted.";
 
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =

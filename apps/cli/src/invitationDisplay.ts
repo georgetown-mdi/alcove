@@ -21,7 +21,6 @@ import {
 
 import {
   ALLOWED_RELAYS_SCOPE,
-  ALLOWED_RELAYS_UNSET,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "./allowedRelays";
@@ -789,8 +788,7 @@ export function logDecisionFacts(
  *
  * `allowedRelays` is the `allowed_relays` of the configuration the acceptance
  * keeps, which governs every later run: each of the invitation's TURN urls is
- * marked kept or left out by it. Absent, no url is marked, and an acceptance
- * says how to set it.
+ * marked kept or left out by it. Absent, no url is marked.
  */
 export function displayInvitation(params: {
   token: Parameters<typeof summarizeInvitation>[0];
@@ -847,7 +845,6 @@ export function displayInvitation(params: {
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);
     // The shared note names neither app's setting; the CLI's is named here.
     if (allowedRelays !== undefined) emit(`    ${ALLOWED_RELAYS_SCOPE}`);
-    else if (surface === "invitation") emit(`    ${ALLOWED_RELAYS_UNSET}`);
   }
   // The linkage strategy is a mandatory-consistency term like the
   // algorithm, and single-pass is disclosure-affecting -- the critical

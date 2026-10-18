@@ -43,7 +43,6 @@ import { ColumnName } from "@components/ColumnName";
 
 import {
   ALLOWED_RELAYS_SCOPE,
-  ALLOWED_RELAYS_UNSET,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
   readRelayRestriction,
@@ -1085,12 +1084,8 @@ export function InvitationTerms({
                 {invitationRelayRegistrarLine(summary.relay.registrar)}
               </Text>
             )}
-            {browserRun && (
-              <Text size="sm">
-                {relayRestriction.allowedRelays === undefined
-                  ? ALLOWED_RELAYS_UNSET
-                  : ALLOWED_RELAYS_SCOPE}
-              </Text>
+            {browserRun && relayRestriction.allowedRelays !== undefined && (
+              <Text size="sm">{ALLOWED_RELAYS_SCOPE}</Text>
             )}
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.invitationRelay.note}
