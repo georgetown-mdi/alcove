@@ -673,9 +673,11 @@ not folded, so a fullwidth letter or a Roman-numeral character is dropped.
 
 The empty suffix is a value, not a missing one:
 
-- A blank cell, a cell of whitespace, and a cell of punctuation alone, such as
-  `-`, clean to `""`: once punctuation is removed, such a cell is the same as
-  a blank, so two parties cannot clean it differently. Every other pipeline in
+- A blank cell, a cell of whitespace, and a cell of ASCII punctuation alone,
+  such as `-`, clean to `""`: once punctuation is removed, such a cell is the
+  same as a blank, so two parties cannot clean it differently. A cell of
+  non-ASCII punctuation alone, such as an en dash or a curly quote, is dropped.
+  Every other pipeline in
   this document drops such a cell; this one keeps it, so a record with no
   suffix matches a record with no suffix on a key holding the suffix element.
 - An empty suffix matches only an empty suffix. `JR` does not match `""`, so

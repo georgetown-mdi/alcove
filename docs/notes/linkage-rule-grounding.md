@@ -528,8 +528,8 @@ What a suffix value is, and which spellings count, rests on less:
   each spelling occurs, or covers non-ASCII suffix spellings or a value
   holding several suffixes. The type folds only the spellings of its own list
   (`2`, `2nd`, `Junior`, `Jnr` and the rest), drops a value holding several
-  suffixes whole, and cleans a punctuation-only cell to the empty string
-  because it is then the same as a blank.
+  suffixes whole, and cleans a cell of ASCII punctuation alone to the empty
+  string because it is then the same as a blank.
 
 So the catalog uses the suffix as an element only in the contact rules with no
 date of birth, where the same-name parent and child on a household phone or

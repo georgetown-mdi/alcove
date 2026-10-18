@@ -44,7 +44,8 @@
 - - -> A value holding several suffixes, such as `Jr MD`, is dropped whole, as is `Smith Jr`: the cleaning does not pick one word out of several.
 - - -> Uppercasing maps a dotless i and a long s to `I` and `S`, so `ıı` cleans to `II`; any other letter outside ASCII is not folded, so a fullwidth letter or a Roman-numeral character is dropped.
 - - -> The empty suffix is a value, not a missing one:
-- - -> A blank cell, a cell of whitespace, and a cell of punctuation alone, such as `-`, clean to `""`: once punctuation is removed, such a cell is the same as a blank, so two parties cannot clean it differently.
+- - -> A blank cell, a cell of whitespace, and a cell of ASCII punctuation alone, such as `-`, clean to `""`: once punctuation is removed, such a cell is the same as a blank, so two parties cannot clean it differently.
+- - -> A cell of non-ASCII punctuation alone, such as an en dash or a curly quote, is dropped.
 - - -> Every other pipeline in this document drops such a cell; this one keeps it, so a record with no suffix matches a record with no suffix on a key holding the suffix element.
 - - -> An empty suffix matches only an empty suffix.
 - - -> `JR` does not match `""`, so such a key tells a parent from a child of the same name where both files record the suffix, and misses the pair where only one file does.
