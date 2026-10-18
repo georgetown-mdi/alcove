@@ -189,8 +189,8 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
 });
 
-// The linkage-rule-set citation drift warning is the last call in loadConfig
-// outside a catch that rewraps it, so it is spy-WRAPPED to plant an error the
+// The linkage-rule-set citation drift warning runs in readExchangeConfig
+// outside any inner catch, so it is spy-WRAPPED to plant an error the
 // configuration boundary has to classify on its own. The retain-mode notice is
 // spy-WRAPPED to plant an error at a step no catch of its own surrounds.
 vi.mock("../../../src/config", async (importActual) => {
