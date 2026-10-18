@@ -69,6 +69,7 @@ describe("a managed exchange keeps the choice", () => {
             includeMatchingKey: true,
           },
           connection: webrtcLocatorFromEndpoint(endpoint),
+          allowedRelays: undefined,
           rotatedSecret: generateSharedSecret(),
           choices: { label: "Riverbend quarterly" },
         },

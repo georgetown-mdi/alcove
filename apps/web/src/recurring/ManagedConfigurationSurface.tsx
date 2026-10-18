@@ -273,7 +273,8 @@ function ConfigurationExportPanel({
  * The settings that edit in place: the label this browser shows the exchange
  * under, the max-age policy the exported configuration holds as
  * `authentication.token_max_age_days`, and the document's own-columns choice,
- * separator, and retention note ({@link LocalDocumentFields}). All are written
+ * separator, retention note, and on webrtc its allowed relays
+ * ({@link LocalDocumentFields}). All are written
  * through the store's single local-fields edit, the same one a browser-run
  * exchange takes.
  *

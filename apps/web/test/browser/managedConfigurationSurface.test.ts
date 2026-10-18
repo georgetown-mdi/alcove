@@ -282,6 +282,51 @@ describe("the settings of the imported document", () => {
     expect(downloaded.csvDelimiter).toBe(";");
     expect(downloaded.retentionDisposition).toBe(note);
   });
+
+  test("the allowed relays start on the imported list, and an edit lands in the download", async () => {
+    const created = await createManagedExchange({
+      ...configurationOnly(),
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms,
+        allowedRelays: ["relay.example.org"],
+      }),
+    });
+    const downloads = captureDownloads();
+    try {
+      app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+      const field = page.getByRole("textbox", { name: "Allowed relays" });
+      await expect.element(field).toHaveValue("relay.example.org");
+      await field.fill("relay.example.org\nbackup.example.org:443");
+      await page.getByRole("button", { name: "Save settings" }).click();
+
+      await expect
+        .element(page.getByText("Settings saved", { exact: false }))
+        .toBeInTheDocument();
+      await page
+        .getByRole("button", {
+          name: `Download ${CRON_EXPORT_CONFIG_FILE_NAME}`,
+        })
+        .click();
+      await downloads.settled();
+    } finally {
+      downloads.restore();
+    }
+
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.exchangeFile.connection).toMatchObject({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+    const [file] = downloads.captured;
+    expect(
+      parseExchangeSpec(
+        parseSensitiveYaml(file.text, CRON_EXPORT_CONFIG_FILE_NAME),
+      ).connection,
+    ).toMatchObject({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+  });
 });
 
 describe("the surface of a configuration on a channel this app does not run", () => {
@@ -317,6 +362,9 @@ describe("the surface of a configuration on a channel this app does not run", ()
       )
       .toBeInTheDocument();
     expect(page.getByRole("button", { name: "Run exchange" }).query()).toBe(
+      null,
+    );
+    expect(page.getByRole("textbox", { name: "Allowed relays" }).query()).toBe(
       null,
     );
   });

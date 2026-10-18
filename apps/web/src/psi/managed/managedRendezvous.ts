@@ -17,10 +17,10 @@
  * document's `connection.server` host, port and path -- after the validation a
  * fresh invitation's endpoint gets ({@link managedAcceptorSignalingEndpoint}),
  * so two parties on different deployments keep reaching each other. The stored
- * connection block is read for three things: its `channel` discriminant, to
+ * connection block is read for four things: its `channel` discriminant, to
  * reject a non-webrtc record before any connection, the acceptor's saved
- * signaling server, and the `invitationRelay` an acceptor's record keeps from
- * the invitation it accepted.
+ * signaling server, the `invitationRelay` an acceptor's record keeps from
+ * the invitation it accepted, and the record's own `allowedRelays`.
  *
  * The two rendezvous functions are injected (defaulting to the real
  * {@link listenAsInviter} / {@link dialAsAcceptor}) so the dispatch and the
@@ -34,9 +34,10 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
-import { readRelayRestriction } from "../transport/relayRestriction";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayPlanForRun } from "../transport/runRelayPlan";
+
+import { managedAllowedRelays } from "./managedExchangeRecord";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 
@@ -201,8 +202,8 @@ type ManagedRendezvousAcquisition =
  * Both flows gather against the relays `relayPlanForRun` lists from this
  * browser's own setting and the stored connection's `invitationRelay`, read at
  * the start of each run, and the build's default relay once this run's key is
- * enrolled there, right before it connects, each only where this browser's
- * allowed relays keep it. A failed
+ * enrolled there, right before it connects, each only where the stored
+ * connection's `allowedRelays` keep it. A failed
  * enrollment is reported through `onRunNotice` as it happens, and the flow
  * starts without the default relay.
  */
@@ -226,7 +227,7 @@ export async function beginManagedRendezvous(
   const relayPlan = await relayPlanForRun(
     sharedSecret,
     connection.channel === "webrtc" ? connection.invitationRelay : undefined,
-    readRelayRestriction().allowedRelays,
+    managedAllowedRelays(exchangeFile),
     {
       ...options.defaultRelay,
       ...(signal !== undefined ? { signal } : {}),

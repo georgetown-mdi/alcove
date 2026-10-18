@@ -99,7 +99,7 @@ are the standing definition of the managed exchange.
 | `schemaVersion` | string literal | The single recognized literal for v4, `alcove-managed-exchange/v4`; a reader rejects any other value rather than migrating it -- the earlier literals among them, `alcove-managed-exchange/v1` (whose records hold no `standingCondition`) and `alcove-managed-exchange/v2` (whose condition holds no operator response) -- matching the reader-rejects-unknown rule the exchange-record and verification-keys files follow (see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)). |
 | `id` | string (UUID) | A locally-generated identifier for this managed exchange, distinct from any rendezvous id. Used only to name the record in local UI; never sent on the wire. |
 | `label` | string, at most 120 UTF-16 code units (enforced at write; a character outside the Basic Multilingual Plane counts as two) | An operator-supplied display name for the partnership. Local only; never sent -- but disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The length cap is enforced; the content guidance is not and cannot be: keeping agreement numbers, contact details, and other sensitive counterparty detail out of the label is **operator cooperation**, exactly as export-source invalidation is -- the field's only structural protections are the cap and its never-sent locality. |
-| `exchangeFile` | object | This party's exchange-file document, verbatim: the validated `ExchangeSpec` shape both applications share (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md), "The artifact is the CLI config schema") -- the linkage terms both parties validated (column **shape** and disclosed payload column **names**, never a row value), metadata, standardization, the acceptor's `expectedPartnerDeduplicate` -- the cardinality side the accepted invitation declared for the partner, which a re-run holds the partner to (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-binding-consent), "Terms-binding consent") -- this party's own `includeOwnColumns` output-composition choice, a closed two-value enum naming no column, this party's own `includeMatchingKey` choice, a boolean, this party's own `csvDelimiter` -- the field-delimiter choice its input file is read under and its result file written with, naming no column and holding no row value: one character, or the reserved word `detect` where the operator chose to have the delimiter taken from the file itself, a value distinct from the field being absent; an absent field is read and written with a comma, so every record stored without one keeps reading and no migration pass rewrites it -- and the connection block. A record stored before that rule holds no delimiter: it was read by detection and now reads as a comma, with no `schemaVersion` change, so a recurring exchange whose input is not comma-separated fails closed at its next window, with the single-column delimiter remedy stated at launch. It has **no `authentication` block** (the secret lives in `sharedSecret` below) and is composed exactly as the mint layer composes a downloadable file: assembled from a credential-free locator input, validated through the shared schema, with the **parse result** (never the raw input) persisted. The document's operator-authored free-text fields persist verbatim with it: each metadata column's optional `description` (no schema length bound), each standardization step's `params` (an open parameter map -- an authored cleaning step can embed a literal value, a pattern or a replacement string), and `retentionDisposition` (bounded at 1024 characters, the config schema's text bound), plus the terms' own 1024-bounded payload `description` and legal-agreement `purpose` strings. The record stores the document as minted, or as the operator last edited its local settings, so the content guidance for these fields is the same **operator cooperation** the `label` row describes, and no additional bound or strip pass runs at persist time: the document is kept verbatim, and a document the mint layer accepts must remain saveable as managed (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The document's connection is fixed for the partnership, and a re-invite re-issues the document verbatim with only a fresh secret. Its terms change only as a partner's terms change is taken on ([A refused terms change](#a-refused-terms-change)) or through [a terms update](#a-terms-update); exchanging with a different partner is a new exchange. Its four per-party settings -- `includeOwnColumns`, `includeMatchingKey`, `csvDelimiter`, and `retentionDisposition` -- are local fields the operator edits in place (see [Local settings of the document](#local-settings-of-the-document)). |
+| `exchangeFile` | object | This party's exchange-file document, verbatim: the validated `ExchangeSpec` shape both applications share (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md), "The artifact is the CLI config schema") -- the linkage terms both parties validated (column **shape** and disclosed payload column **names**, never a row value), metadata, standardization, the acceptor's `expectedPartnerDeduplicate` -- the cardinality side the accepted invitation declared for the partner, which a re-run holds the partner to (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-binding-consent), "Terms-binding consent") -- this party's own `includeOwnColumns` output-composition choice, a closed two-value enum naming no column, this party's own `includeMatchingKey` choice, a boolean, this party's own `csvDelimiter` -- the field-delimiter choice its input file is read under and its result file written with, naming no column and holding no row value: one character, or the reserved word `detect` where the operator chose to have the delimiter taken from the file itself, a value distinct from the field being absent; an absent field is read and written with a comma, so every record stored without one keeps reading and no migration pass rewrites it -- and the connection block. A record stored before that rule holds no delimiter: it was read by detection and now reads as a comma, with no `schemaVersion` change, so a recurring exchange whose input is not comma-separated fails closed at its next window, with the single-column delimiter remedy stated at launch. It has **no `authentication` block** (the secret lives in `sharedSecret` below) and is composed exactly as the mint layer composes a downloadable file: assembled from a credential-free locator input, validated through the shared schema, with the **parse result** (never the raw input) persisted. The document's operator-authored free-text fields persist verbatim with it: each metadata column's optional `description` (no schema length bound), each standardization step's `params` (an open parameter map -- an authored cleaning step can embed a literal value, a pattern or a replacement string), and `retentionDisposition` (bounded at 1024 characters, the config schema's text bound), plus the terms' own 1024-bounded payload `description` and legal-agreement `purpose` strings. The record stores the document as minted, or as the operator last edited its local settings, so the content guidance for these fields is the same **operator cooperation** the `label` row describes, and no additional bound or strip pass runs at persist time: the document is kept verbatim, and a document the mint layer accepts must remain saveable as managed (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The document's connection is fixed for the partnership but for its `allowedRelays`, and a re-invite re-issues the document verbatim with only a fresh secret. Its terms change only as a partner's terms change is taken on ([A refused terms change](#a-refused-terms-change)) or through [a terms update](#a-terms-update); exchanging with a different partner is a new exchange. Its five per-party settings -- `includeOwnColumns`, `includeMatchingKey`, `csvDelimiter`, `retentionDisposition`, and a webrtc connection's `allowedRelays` -- are local fields the operator edits in place (see [Local settings of the document](#local-settings-of-the-document)). |
 | `side` | enum (`"inviter"` \| `"acceptor"`), or absent | This party's side of the partnership; dispatches a re-run to the matching rendezvous flow (see [Role: a local `side` field](#role-a-local-side-field-not-the-document)). Local-only by design -- not the document's `connection.role`, which no web path reads. Present exactly when the document's connection is `webrtc`, the one channel whose connection names a `role`: a [configuration-only record](#the-configuration-only-record) on `sftp` or `filedrop` holds none, and a reader refuses a record whose `side` and channel disagree. |
 | `workingDirectoryHandle` | `FileSystemDirectoryHandle` or absent | A persisted **pointer** to the exchange's working folder, held where the File System Access API exists (Chromium), in `readwrite` mode: the one grant every run reads its input through and writes its results through, mirroring the single working directory the CLI runs in. **The app reads exactly one conventioned name from the folder and never enumerates it**: each run looks up `input.csv` (`MANAGED_INPUT_FILE_NAME`, the name the command-line export's emitted command also reads) afresh through `getFileHandle` and reads it with `getFile()` at run start; the results write looks up and creates only the results file it names, under the exchange's label and the run's own instant, and removes only an entry its own failed write created. The backup a scheduled run writes after its rotation ([below](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)) looks up and creates only its own backup name, and stops without creating anything where the folder already holds an entry under it. That removal is best-effort, a stated limit rather than a guarantee: it asks again only while the platform refuses it for the write lock the aborted stream still holds, for at most `REMOVAL_LOCK_BUDGET_MS` (200 ms), and leaves the empty file standing on any other refusal or once that budget is spent. No entry is listed, no subfolder is opened, and no other file is read. `apps/web/test/unit/psi/unattendedRuntimeBoundaries.test.ts` holds this as far as its two checks reach: a recorder drives `acquireManagedInput`, `readInputFileModifiedAt`, `writeResultsToWorkingDirectory`, and `writeBackupToWorkingFolder` and fails on any folder access other than `getFileHandle`, `removeEntry`, and `name`; a source scan over `apps/web/src` fails on any `getFileHandle`, `getDirectoryHandle`, or `removeEntry` call beyond the known ones, and on any `for await` loop or `.values(`, `.keys(`, or `.entries(` call whose iterated expression names a handle, a directory, or a folder. An iteration elsewhere, reached through a name that says none of those, passes both. The pointer is a reference, never a copy: no input content or row value derived from it persists, which is where the no-second-copy invariant is enforced. It is live, not a snapshot: a `File` already obtained stops being readable once the file underneath it changes, so neither `File` objects nor file handles are kept across runs, which is what makes putting the current period's extract under that name the data-refresh workflow, by an overwrite in place, a rename over the name, or a delete and a create (see [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run)). A folder holding no file under that name at run start fails the read before any connection, naming the file expected and the folder looked in, recorded as a benign `"input"` failure (see `lastRun`), never routed through desync/attack framing. Successive results accumulate rather than overwrite, and a results name never equals the input's. A scheduled run and an attended run write through one writer, `writeRunResultsToWorkingFolder`, so both leave the same file under the same name; the same test file's call-site scan holds that writer to those two callers and the platform write beneath it to that writer, and holds the backup writer, `writeBackupToWorkingFolder`, to the scheduled runtime's backup step. A scheduled run whose grant is not honoured without a prompt or is revoked, and one whose write fails, parks the results instead (see [The parked results of a scheduled run](#the-parked-results-of-a-scheduled-run)); an attended run in either case reports the write that did not land beside the download it offers either way, and parks nothing. The grant is taken under an operator gesture -- where the exchange is put on a schedule, or on the run surface -- never at run time: the directory picker requires a user gesture, and at run time a scheduled run's permission is **queried and never prompted**. An attended run's input read may prompt, under the gesture that started the run, and asks in `readwrite` once so that the same answer also covers its results write, which only queries; a refused or declined request fails the read naming `readwrite`, with the permission failure copy, whose first remedy, choosing the folder again, needs no prompt. While it stands an in-origin script can read and write everything in that folder, and the folder's own name is disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). A record stored with the earlier separate `inputFileHandle` or `outputDirectoryHandle` reads without either -- the reader drops both keys alike -- so the exchange asks once for its folder and neither old pointer is followed; until a folder is granted, its unattended windows are skipped as `no-working-folder`. Absent on browsers without the API (each attended run re-selects the input file, and no run happens unattended) and never in the export artifact: it is a device- and profile-local platform object stored by structured clone, with no serialization. What an import then holds depends on which import it is: one that installs a fresh record has no handle and re-grants, while a [revive-in-place](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) -- this profile's own spent record, updated rather than duplicated -- keeps the grant that record already held, since the folder was granted to this profile and the handle never left it. |
 | `sharedSecret` | string (base64url, 43 chars / 32 bytes), or absent | The **current** rotated shared secret, matching `SHARED_SECRET_REGEX` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- the `.alcove.key` analog the exchange-file document never holds. This is the one at-rest secret in the record. Rotated after every successful run and re-persisted before the run is treated as succeeded (see [Persist-before-success ordering](#persist-before-success-ordering)). A record saved from a completed one-shot exchange starts at the secret that run's handshake rotated to, which both parties derived; the invitation's secret is never stored. Absent in a [configuration-only record](#the-configuration-only-record), which runs nowhere here; its absence is what withholds the run, and no other field records that. Present only where the document's connection is `webrtc`, the one channel this app runs, and the document states no `signing` block, a part this app cannot run; a reader refuses a record holding one on any other channel or beside that block. |
@@ -343,7 +343,11 @@ url only, see
 `turn`, `ice_provision`, or `provider_options` entries (a TURN entry holds
 relay credentials, and the provider map is opaque and `@`-file-pathed). An
 acceptor's record keeps `invitation_relay`, and each re-run relays through it
-(`beginManagedRendezvous`). This
+(`beginManagedRendezvous`). The one field the block holds beside that subset
+is this party's own `allowed_relays`, where set: a list of relay hosts,
+holding no credential, which the record's runs and re-invites apply
+(`managedAllowedRelays`), and which the operator edits in place ([Local
+settings of the document](#local-settings-of-the-document)). This
 party's side lives in the local `side` field, not the document (see [Role: a
 local `side` field](#role-a-local-side-field-not-the-document)). The full shared schema **can** represent those
 credential-bearing fields, so the guarantee comes from composition, exactly as
@@ -409,9 +413,13 @@ credential among them is held only as an `@path` reference, never as a value:
   any other `provider_options` key included) with a warning that Alcove reads
   that file on the machine that runs the exported document.
 
-The command-line import and export apply one rule, measured off the locator arms
-plus the sftp held set (`apps/web/src/psi/managed/managedCommandLineDocument.ts`),
+The command-line import and export apply one rule, measured off the locator arms,
+the webrtc one as the record composer writes it with `allowed_relays`, plus the
+sftp held set (`apps/web/src/psi/managed/managedCommandLineDocument.ts`),
 so neither leg holds a field the other would refuse.
+A webrtc configuration's `connection.allowed_relays` is held in the stored
+document as the file states it, an empty list included, and both exports
+write it back unchanged, so an unedited import exports the file it read.
 
 Beyond the allowlist, the command-line export writes a webrtc record's relay
 registrar as `connection.relay_registrar`, with the `turn` entries the command
@@ -482,11 +490,13 @@ rather than reading it as unanswered.
 
 #### Local settings of the document
 
-Four settings of the stored document are this party's alone: `includeOwnColumns`
+Five settings of the stored document are this party's alone: `includeOwnColumns`
 (which of its own columns its result file holds), `includeMatchingKey` (whether
 that file ends with the `matched_on_key` column), `csvDelimiter` (how its input
-file is read and its result file written), and `retentionDisposition` (the note
-filed with its exchange record). None is a linkage term -- none is sent,
+file is read and its result file written), `retentionDisposition` (the note
+filed with its exchange record), and a webrtc connection's `allowedRelays` (the
+relays its runs may use, the command line's `connection.allowed_relays`). None
+is a linkage term -- none is sent,
 cross-validated, or folded into the agreed-terms hash (see
 [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#retention_disposition)) -- so
 each is a local field the operator edits in place, on a runnable record and a
@@ -494,26 +504,44 @@ configuration-only one alike, without a re-invite.
 
 - **One write.** The edit goes through the same field-scoped local-fields write
   as `label` and `tokenMaxAgeDays`, and the edited document is re-validated
-  through the shared schema: a delimiter the schema refuses, an own-columns
+  through the shared schema: a delimiter the schema refuses, an allowed relay
+  off core's entry form, an own-columns
   choice on a count-only exchange, or a matched-key choice on terms that leave
   this party no key to name, fails the write and nothing is stored.
 - **Only what changed.** A save writes a setting only where the operator changed
   it, so a document that is not edited keeps each setting as it stated it -- an
   absent `csvDelimiter` stays absent rather than becoming a comma. Clearing the
-  own-columns choice, the matched-key choice, or the retention note drops the
-  field; a changed delimiter is written as the value chosen.
+  own-columns choice, the matched-key choice, the retention note, or the
+  allowed relays drops the field; a changed delimiter is written as the value
+  chosen, and changed allowed relays as the entries typed, each normalized as
+  core normalizes an entry.
+- **Allowed relays.** Core's entry rule is their only bound: the count and
+  length bounds of the browser's stored Allowed relays do not apply to a
+  record. An empty list keeps no TURN url, so the record's runs use no relay;
+  the editor shows it as an empty field with a line stating so, a save leaves
+  it while the field stays empty, and entered relays replace it. While the
+  document holds a list, empty or not, the editor offers a control that
+  removes it: a save with that control set drops the field, so the record's
+  runs use every relay they list.
 - **Offered where it acts.** The own-columns control is offered only where the
   terms give this party a result file (not on a count-only exchange, and not
   where `output` gives it none); elsewhere a save leaves the stored value as it
   is. The matched-key control is shown disabled, with the reason, where core's
   `matchingKeyUnavailableReason` finds the terms leave this party no key to name
   (a count-only exchange, a `single-pass` one, or `output` giving it none); there
-  too a save leaves the stored value as it is.
+  too a save leaves the stored value as it is. The allowed-relays control is
+  offered only on a webrtc connection; elsewhere a save leaves the connection
+  as it is.
 - **What reads them.** The next run takes the edited document: it reads its input
   and writes its result by `csvDelimiter`, composes its result under
   `includeOwnColumns` and `includeMatchingKey`, and writes
   `retentionDisposition` into the exchange record it files. The command-line export and the export artifact hold the edited
   document.
+  Each run, and each re-invite, applies the record's `allowedRelays` in place
+  of the browser's Allowed relays on its Relay server page, as
+  [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) states the
+  setting. A record that holds no `allowedRelays` applies no restriction,
+  whatever the browser's Allowed relays hold.
 - **A changed delimiter re-reads the file.** Before a changed delimiter is saved,
   the input file in the stored `workingDirectoryHandle` is read with it and the
   columns it yields are graded against the agreed terms, as the run-start input
@@ -525,8 +553,9 @@ configuration-only one alike, without a re-invite.
   re-read, and its next run reads the file under the new delimiter.
 
 At setup the offer to save an exchange as recurring authors `retentionDisposition`
-beside the label and the max-age policy; the other three come from the setup's own
-file and columns steps.
+beside the label and the max-age policy; `allowedRelays` starts as the
+browser's Allowed relays on its Relay server page at the save, absent where
+none are set; the other three come from the setup's own file and columns steps.
 
 #### Edit-time re-derivation of `expires`
 

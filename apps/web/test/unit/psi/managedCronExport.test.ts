@@ -49,7 +49,6 @@ import type {
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
-import type { RelayRestriction } from "@psi/transport/relayRestriction";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -601,18 +600,16 @@ describe("an accepted exchange whose invitation named a relay", () => {
   });
 });
 
-describe("this browser's relay restriction", () => {
+describe("the record's own allowed relays", () => {
   const relay = {
     turn: ["turns:relay.example.org:443?transport=tcp"],
     stun: ["stun:relay.example.org:3478"],
   };
   const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
-  const restricted =
-    (restriction: RelayRestriction): (() => RelayRestriction) =>
-    () =>
-      restriction;
 
-  function acceptedRecord(): RunnableManagedExchangeRecord {
+  function acceptedRecord(
+    allowedRelays?: ReadonlyArray<string>,
+  ): RunnableManagedExchangeRecord {
     return managedRecord({
       side: "acceptor",
       exchangeFile: composeManagedDocument(
@@ -622,59 +619,68 @@ describe("this browser's relay restriction", () => {
           host: "signaling.example.org",
           relay,
         }),
+        allowedRelays,
       ),
     });
   }
 
-  test("exports the allowed relays as the CLI's field", () => {
+  function exportedConnection(record: RunnableManagedExchangeRecord) {
+    return parseExchangeSpec(
+      parseSensitiveYaml(
+        composeManagedCronExport(record, noOwnRelay).config.text,
+        "exported alcove.yaml",
+      ),
+    ).connection;
+  }
+
+  test("are exported as the CLI's field", () => {
     const exported = composeManagedCronExport(
-      acceptedRecord(),
+      acceptedRecord(["relay.example.org"]),
       noOwnRelay,
-      restricted({ allowedRelays: ["relay.example.org"] }),
     ).config.text;
 
     expect(exported).toContain("allowed_relays:");
-    expect(
-      parseExchangeSpec(parseSensitiveYaml(exported, "exported alcove.yaml"))
-        .connection,
-    ).toEqual({
+    expect(exportedConnection(acceptedRecord(["relay.example.org"]))).toEqual({
       channel: "webrtc",
       server: { host: "signaling.example.org" },
       invitationRelay: relay,
-      role: "acceptor",
       allowedRelays: ["relay.example.org"],
+      role: "acceptor",
     });
   });
 
-  test("an unset restriction writes no field", () => {
-    const exported = composeManagedCronExport(
-      acceptedRecord(),
-      noOwnRelay,
-      restricted({}),
-    ).config.text;
+  test("a record holding none writes no field", () => {
+    const exported = composeManagedCronExport(acceptedRecord(), noOwnRelay)
+      .config.text;
     expect(exported).not.toContain("allowed_relays");
   });
 
-  test("allowed relays that leave out every relay the configuration names are written as set", () => {
-    const exported = composeManagedCronExport(
-      acceptedRecord(),
-      noOwnRelay,
-      restricted({ allowedRelays: ["other.example.org"] }),
-    ).config.text;
-    expect(exported).toContain("allowed_relays:");
+  test("an empty list is written as one, keeping no TURN url", () => {
+    expect(exportedConnection(acceptedRecord([]))).toMatchObject({
+      allowedRelays: [],
+    });
   });
 
-  test("a stored restriction this build cannot read writes no field", () => {
+  test("allowed relays that leave out every relay the configuration names are written as stored", () => {
+    expect(
+      exportedConnection(acceptedRecord(["other.example.org"])),
+    ).toMatchObject({ allowedRelays: ["other.example.org"] });
+  });
+
+  test("this browser's stored allowed relays do not reach the export", () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-relay-restriction"
-          ? JSON.stringify({ version: 2, allowedRelays: ["relay.example.org"] })
+          ? JSON.stringify({ version: 1, allowedRelays: ["relay.example.org"] })
           : null,
     });
     try {
-      const exported = composeManagedCronExport(acceptedRecord(), noOwnRelay)
-        .config.text;
-      expect(exported).not.toContain("allowed_relays");
+      expect(exportedConnection(acceptedRecord())).not.toHaveProperty(
+        "allowedRelays",
+      );
+      expect(
+        exportedConnection(acceptedRecord(["other.example.org"])),
+      ).toMatchObject({ allowedRelays: ["other.example.org"] });
     } finally {
       vi.unstubAllGlobals();
     }

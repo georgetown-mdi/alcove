@@ -858,6 +858,7 @@ export function InviterScreen() {
               ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
             },
             connection,
+            allowedRelays: readRelayRestriction().allowedRelays,
             rotatedSecret,
             choices,
           },

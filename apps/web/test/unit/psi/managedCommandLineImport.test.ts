@@ -867,6 +867,71 @@ describe("import then export", () => {
   });
 });
 
+describe("a configuration's allowed relays", () => {
+  const keyText = (): string =>
+    JSON.stringify({ sharedSecret: generateSharedSecret() });
+
+  /** A hand-written file whose connection sets `allowedRelays`. */
+  function relaysConfigText(allowedRelays: ReadonlyArray<string>): string {
+    const composed = commandLineDocument();
+    return configText({
+      ...composed,
+      connection: { ...composed.connection, allowedRelays },
+    });
+  }
+
+  function documentOf(text: string, label: string): ExchangeSpec {
+    return parseExchangeSpec(parseSensitiveYaml(text, label));
+  }
+
+  test.each([
+    ["a list", ["relay.example.org", "backup.example.org:443"]],
+    ["an empty list", []],
+  ])(
+    "%s is held on the record and exported back as the file stated it",
+    (_case, allowedRelays) => {
+      const imported = relaysConfigText(allowedRelays);
+      const record = readManagedCommandLineConfiguration(imported);
+
+      expect(record.exchangeFile.connection).toMatchObject({ allowedRelays });
+      const reexported = composeManagedCronExportConfig(record).config.text;
+      expect(reexported).toContain("allowed_relays:");
+      expect(documentOf(reexported, "re-export")).toEqual(
+        documentOf(imported, "import"),
+      );
+    },
+  );
+
+  test("a pair import holds them on the exchange that runs here, and exports them back", () => {
+    const imported = relaysConfigText(["relay.example.org"]);
+    const record = readManagedCommandLinePair(imported, keyText());
+
+    expect(record.exchangeFile.connection).toMatchObject({
+      allowedRelays: ["relay.example.org"],
+    });
+    expect(
+      documentOf(composeManagedCronExport(record).config.text, "re-export"),
+    ).toEqual(documentOf(imported, "import"));
+  });
+
+  test.each([
+    ["a list", ["relay.example.org"]],
+    ["an empty list", []],
+  ])("%s survives a backup and its restore", (_case, allowedRelays) => {
+    const record = readManagedCommandLinePair(
+      relaysConfigText(allowedRelays),
+      keyText(),
+    );
+
+    const restored = importManagedExchangeArtifact(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+    ).record;
+
+    expect(restored.exchangeFile.connection).toMatchObject({ allowedRelays });
+    expect(restored.exchangeFile).toEqual(record.exchangeFile);
+  });
+});
+
 describe("import, edit, and export on every channel", () => {
   /** Every setting a stored document can hold outside the connection, so a
    * round trip that dropped one would show. */

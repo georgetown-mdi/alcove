@@ -9,11 +9,16 @@ import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { resolveCsvDelimiter } from "@components/csvDelimiterChoice";
 
 import {
+  allowedRelaysError,
+  allowedRelaysOffered,
+  allowedRelaysRemovable,
+  allowsNoRelay,
   changedCsvDelimiter,
   localDocumentFieldEdits,
   localDocumentFieldValuesFrom,
   matchingKeyWithheld,
   ownColumnsOffered,
+  removeAllowedRelaysValues,
 } from "./localDocumentFieldsModel";
 import { useDelimiterRecheck } from "./useDelimiterRecheck";
 
@@ -69,6 +74,24 @@ export interface LocalFieldsDraft {
   editRetentionNote: (note: string) => void;
   /** The field error the retention note shows, absent where there is none. */
   retentionError: string | undefined;
+  /** The allowed relays as typed, one per line. */
+  allowedRelays: string;
+  /** Whether the document's connection has relays to allow, webrtc; the
+   * control is shown only where it does. */
+  allowedRelaysOffered: boolean;
+  /** Whether the stored document allows no relay at all, an empty list,
+   * which the empty field would not show. */
+  allowsNoRelay: boolean;
+  editAllowedRelays: (text: string) => void;
+  /** Whether the stored document holds allowed relays, an empty list
+   * included; the control that removes them is shown only where it does. */
+  allowedRelaysRemovable: boolean;
+  /** Whether the save removes the stored allowed relays; the field is
+   * emptied and disabled while it does. */
+  removeAllowedRelays: boolean;
+  editRemoveAllowedRelays: (remove: boolean) => void;
+  /** The field error the allowed relays show, absent where there is none. */
+  allowedRelaysError: string | undefined;
   /** What the save writes for the document's settings: only the ones the
    * operator changed. */
   documentEdits: LocalDocumentFieldEdits;
@@ -99,7 +122,7 @@ export interface LocalFieldsDraft {
 
 /**
  * The local fields every managed exchange has -- the label this browser shows
- * it under, the max-age policy bounding its secret, and the four settings of
+ * it under, the max-age policy bounding its secret, and the five settings of
  * its document that are this party's alone ({@link
  * ./localDocumentFieldsModel.ts}) -- as one editing draft: the state, the
  * validation both surfaces gate their save on, and the save's own reported
@@ -151,9 +174,14 @@ export function useLocalFieldsDraft(
     changedCsvDelimiter(record.exchangeFile, documentFields.delimiter),
   );
   const retentionError = retentionNoteError(documentFields.retentionNote);
+  const relaysOffered = allowedRelaysOffered(record.exchangeFile);
+  const relaysError = relaysOffered
+    ? allowedRelaysError(documentFields.allowedRelays)
+    : undefined;
   const documentFieldsValid =
     resolveCsvDelimiter(documentFields.delimiter).ok &&
     retentionError === undefined &&
+    relaysError === undefined &&
     delimiterRecheck?.kind !== "reading";
 
   function editDocumentFields(edit: Partial<LocalDocumentFieldValues>) {
@@ -189,6 +217,17 @@ export function useLocalFieldsDraft(
     retentionNote: documentFields.retentionNote,
     editRetentionNote: (retentionNote) => editDocumentFields({ retentionNote }),
     retentionError,
+    allowedRelays: documentFields.allowedRelays,
+    allowedRelaysOffered: relaysOffered,
+    allowsNoRelay: allowsNoRelay(record.exchangeFile),
+    editAllowedRelays: (allowedRelays) => editDocumentFields({ allowedRelays }),
+    allowedRelaysRemovable: allowedRelaysRemovable(record.exchangeFile),
+    removeAllowedRelays: documentFields.removeAllowedRelays,
+    editRemoveAllowedRelays: (remove) =>
+      editDocumentFields(
+        removeAllowedRelaysValues(record.exchangeFile, remove),
+      ),
+    allowedRelaysError: relaysError,
     documentEdits: localDocumentFieldEdits(record.exchangeFile, documentFields),
     markEdited: () => setSaved(false),
     maxAgeError,

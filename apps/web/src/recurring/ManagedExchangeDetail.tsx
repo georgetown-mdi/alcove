@@ -24,6 +24,7 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
@@ -474,8 +475,9 @@ function ConfigurationView({
 
 /**
  * The local-fields editor: the label, the agreed run schedule, the
- * max-token-age policy, and the document's own-columns choice, separator, and
- * retention note ({@link LocalDocumentFields}) edit in place, without touching
+ * max-token-age policy, and the document's own-columns choice, separator,
+ * retention note, and allowed relays ({@link LocalDocumentFields}) edit in
+ * place, without touching
  * the partnership (see docs/spec/MANAGED_EXCHANGE_RECORD.md -- none of them is
  * a terms change or a credential). Editing the max-age policy
  * re-derives `expires` conservatively at the store boundary (an edit never
@@ -712,7 +714,10 @@ function LocalFieldsEditor({
           ? `Stored secret lapses ${dateLabel(new Date(record.expires))}.`
           : "No age bound is set; the stored secret does not lapse by age."}
       </p>
-      <LocalDocumentFields draft={draft} />
+      <LocalDocumentFields
+        draft={draft}
+        allowedRelaysScope={EXCHANGE_ALLOWED_RELAYS_SCOPE}
+      />
       {failed && (
         <Alert
           role="alert"

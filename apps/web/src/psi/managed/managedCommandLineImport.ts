@@ -19,10 +19,11 @@
  *
  * Three fields of the document are LOCAL fields of the record rather than
  * document fields, and each is read out of the document and dropped from it --
- * the three the export injects on the way out ({@link ./managedCronExport.ts})
- * besides this browser's allowed relays, whose field the import refuses, so
- * an unedited import and re-export from a browser with no allowed relays set
- * yield the same document:
+ * the three the export injects on the way out ({@link ./managedCronExport.ts}),
+ * so an unedited import and re-export yield the same document. A webrtc
+ * `connection.allowed_relays` is not one of them: it stays in the stored
+ * document, the record's own allowed relays, and the export writes it back as
+ * read, an empty list included.
  *
  * - A webrtc `connection.role` becomes the record's `side`. The document a
  *   stored record holds has none (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a
@@ -57,7 +58,8 @@
  * unknown key is refused by the shared schema's unread-key comparison. The
  * document may hold only what the app itself composes, and the connection what
  * a configuration on its channel holds ({@link ./managedCommandLineDocument.ts}):
- * a credential-free locator on webrtc and filedrop, which keeps a TURN
+ * a credential-free locator on webrtc, with its allowed relays, and on
+ * filedrop, which keeps a TURN
  * credential or an ICE provisioning block from being stored here, and the
  * whole connection on sftp, whose record runs nowhere here. An sftp credential
  * is held as an `@path` reference and refused as a literal value. A shared
