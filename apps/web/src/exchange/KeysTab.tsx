@@ -171,10 +171,12 @@ export function KeysTab({
     () => buildAdvancedTerms(editor.draft),
     [editor.draft],
   );
-  // Types a field as the built terms do, so this list and the partner's
-  // acceptance screen agree. A field the terms omit (a turned-off key's) takes
-  // the columns' type, then the loaded document's, the order the terms' own
-  // reconciliation uses. A later entry wins.
+  // Types a field as the built terms do, so for terms that can be generated
+  // this list and the partner's acceptance screen agree. A field the terms
+  // omit (a turned-off key's, or a turned-on key's the columns cannot supply,
+  // which blocks generation) takes the columns' type, then the loaded
+  // document's, the order the terms' own reconciliation uses. A later entry
+  // wins.
   const keyFields = useMemo(
     () => [
       ...(editor.draft.importedLinkageFields ?? []),
