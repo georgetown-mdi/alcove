@@ -661,8 +661,9 @@ fold to a code:
 A value that is none of the five codes after folding is dropped. This drops
 `V`, a bare digit such as `2`, a professional suffix such as `Esq` or `MD`, a
 filler such as `N/A` or `None`, and a value of more than one word, such as
-`Smith Jr`. A letter outside ASCII is not folded, so a fullwidth letter or a
-Roman-numeral character is dropped.
+`Smith Jr`. Uppercasing maps a dotless i and a long s to `I` and `S`, so
+`ıı` cleans to `II`; any other letter outside ASCII is not folded, so a
+fullwidth letter or a Roman-numeral character is dropped.
 
 The empty suffix is a value, not a missing one:
 
@@ -683,7 +684,10 @@ The type is read from a column of its own, inferred from the names `suffix`,
 ([Type inference from column names](#type-inference-from-column-names)). The
 defaults do not derive it from a name column: the `first_name` and
 `last_name` pipelines remove a trailing suffix
-([Affix removal](#affix-removal)) and keep nothing of it.
+([Affix removal](#affix-removal)) and keep nothing of it. A column named
+`suffix` is read as a name suffix, so a street-suffix column with that name
+has every value dropped as not a name suffix and is not sent as payload; name
+it `street_suffix` to keep it as payload.
 
 | Input | Result |
 | ----- | ------ |

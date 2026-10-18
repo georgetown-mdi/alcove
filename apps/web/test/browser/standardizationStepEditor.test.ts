@@ -136,6 +136,39 @@ describe("StandardizationPreview renders each pipeline outcome distinctly", () =
     expect(page.getByTestId("outcome-dropped").elements()).toHaveLength(0);
   });
 
+  test("an empty cleaned name suffix is shown as no suffix, without the empty-value warning", async () => {
+    app.render(
+      previewElement({
+        field: { name: "sfx", type: "name_suffix" },
+        inputColumn: "n",
+        steps: [{ function: "remove_dashes" }],
+        rawRows: [{ n: "---" }],
+      }),
+    );
+    await expect
+      .element(page.getByTestId("outcome-value"))
+      .toMatchTextContent("no suffix");
+    expect(page.getByText("empty value").elements()).toHaveLength(0);
+    expect(
+      page.getByRole("img", { name: /empty value/i }).elements(),
+    ).toHaveLength(0);
+  });
+
+  test("an empty cleaned value of any other type keeps the empty-value warning", async () => {
+    app.render(
+      previewElement({
+        field: { name: "sn", type: "street_number" },
+        inputColumn: "n",
+        steps: [{ function: "remove_dashes" }],
+        rawRows: [{ n: "---" }],
+      }),
+    );
+    await expect
+      .element(page.getByRole("img", { name: /empty value.*matching/i }))
+      .toBeInTheDocument();
+    expect(page.getByText("no suffix").elements()).toHaveLength(0);
+  });
+
   test("an incomplete step shows guidance instead of crashing the preview", async () => {
     // pad_left with no length yet throws when compiled; the preview must catch it.
     app.render(

@@ -39,7 +39,15 @@ function CleanedValue({
   const violations = checkValueConstraints(field, value);
   return (
     <Group gap={4} wrap="wrap">
-      {value === "" ? (
+      {value === "" && field.type === "name_suffix" ? (
+        <Badge
+          variant="light"
+          color="blue"
+          styles={{ label: { textTransform: "none" } }}
+        >
+          no suffix
+        </Badge>
+      ) : value === "" ? (
         // An empty string is NOT a drop: the pipeline returned a value, so it
         // becomes an (empty) PSI key and participates in matching. Render it
         // distinctly from the grey "dropped" chip so the operator does not read a

@@ -39,7 +39,7 @@
 - - -> `4TH` | `IV`
 - - -> A value that is none of the five codes after folding is dropped.
 - - -> This drops `V`, a bare digit such as `2`, a professional suffix such as `Esq` or `MD`, a filler such as `N/A` or `None`, and a value of more than one word, such as `Smith Jr`.
-- - -> A letter outside ASCII is not folded, so a fullwidth letter or a Roman-numeral character is dropped.
+- - -> Uppercasing maps a dotless i and a long s to `I` and `S`, so `ıı` cleans to `II`; any other letter outside ASCII is not folded, so a fullwidth letter or a Roman-numeral character is dropped.
 - - -> The empty suffix is a value, not a missing one:
 - - -> A blank cell, a cell of whitespace, and a cell of punctuation alone, such as `-`, clean to `""`.
 - - -> Every other pipeline in this document drops such a cell; this one keeps it, so a record with no suffix matches a record with no suffix on a key holding the suffix element.
@@ -49,6 +49,7 @@
 - - -> The other elements of a key keep their own rules, so a record whose name is blank builds no key, whatever its suffix.
 - - -> The type is read from a column of its own, inferred from the names `suffix`, `name_suffix` and `namesuffix` ([Type inference from column names](#type-inference-from-column-names)).
 - - -> The defaults do not derive it from a name column: the `first_name` and `last_name` pipelines remove a trailing suffix ([Affix removal](#affix-removal)) and keep nothing of it.
+- - -> A column named `suffix` is read as a name suffix, so a street-suffix column with that name has every value dropped as not a name suffix and is not sent as payload; name it `street_suffix` to keep it as payload.
 - - -> `"JR"` | `"JR"`
 - - -> `"Jr."` | `"JR"`
 - - -> `"J.R."` | `"JR"`
