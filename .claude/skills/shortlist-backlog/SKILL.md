@@ -35,9 +35,12 @@ candidates with node .claude/scripts/fetch-issues.mjs <board> <itemId>... --
 enough to judge readiness, not the whole board. Weigh: Status (In Progress
 means possibly already underway -- check for an existing branch or PR before
 treating it as free), Epic and Order (lower Order first within an epic),
-dependencies the body names (an unmet "Depends on" disqualifies), and size
-(prefer issues that land as one 150-900 line PR; flag anything projecting
-past ~1,200 lines as needing a split first).
+dependencies the body names (an unmet "Depends on" disqualifies), and value
+(rank by what the item gives users and how much other work it unblocks,
+never by size or difficulty: an item projecting past ~1,200 lines is listed,
+its split the first planning step). An item waiting on a host step (Docker,
+the open internet, a cloud account, another machine, the owner's hands) or on
+a scope or product call only the owner makes is a candidate, never a skip.
 
 Before listing an In Progress item or a candidate (the up-to-10 pool you
 would otherwise list; not every item on the boards), check whether merged work
@@ -72,7 +75,10 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    <board> <itemId> [<status>] [<epic>/<order>] <title> -- <why now, or the
    blocker>
    A candidate a "Part of" PR partly delivered says so: "partly delivered by
-   #N".
+   #N". A candidate waiting on a host step ends "action: handoff -- <the
+   step>", one waiting on the owner's call "action: decision -- <the
+   question>"; when its body cites that brief or Decision item as already
+   written, the line names it instead.
 2. Delivered, owner closes: every item the check above found delivered, one
    line each, never among the candidates:
    <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:
@@ -80,7 +86,8 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    Every line here has a #N; an item with no merged PR to cite stays a
    candidate.
 3. A closing 1-2 line recommendation naming the 2-4 picks for the next
-   session (several small issues batch well together).
+   session by user value and unblocking power; every action line is taken
+   besides them.
 Do not include issue bodies or full board listings in your return.
 ```
 
@@ -90,7 +97,12 @@ network access for the board reads and PR searches (gh).
 ## Afterward
 
 Relay the delivered list to the owner, who confirms and closes each item on
-it. Fetch only the chosen item's body yourself (`node
-.claude/scripts/fetch-issues.mjs <board> <itemId>`) or hand the item id
-straight to /start-issue. Do not re-list the boards in the calling session;
-if the shortlist looks stale or wrong, re-spawn the agent instead.
+it. Take every action line in this session, as
+`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting, sets
+out: a handoff is a brief written from
+`.claude/orchestration/host-handoff-brief.md`, a decision a Decision item
+filed with options and a recommendation, parked for the docket. Fetch only
+the chosen items' bodies yourself (`node .claude/scripts/fetch-issues.mjs
+<board> <itemId>`) or hand an item id straight to /start-issue. Do not
+re-list the boards in the calling session; if the shortlist looks stale or
+wrong, re-spawn the agent instead.

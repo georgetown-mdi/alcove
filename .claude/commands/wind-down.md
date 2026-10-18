@@ -31,10 +31,12 @@ before proceeding -- its Session lifecycle section defines this state.
    it is the run's result. The only thing not started is a new board item.
 3. Keep the continuation brief current as each branch lands.
 4. When everything started has concluded, report in a few lines: each branch
-   and its PR, and what waits on the owner -- a host step, a ruling -- with
-   what it waits on. A branch that cannot reach its conclusion without the
-   owner -- a step-back trigger, a failure nobody can diagnose -- is parked as
-   a Decision item and reported as waiting on that ruling; anything else
-   unfinished is finished first, not reported. Then hold. Start neither the
+   and its PR, what waits on the owner -- a host step, a ruling -- with what
+   it waits on, and each item the session set aside for a host step or a
+   scope or product call that has no handoff brief or Decision item filed,
+   or that none lacks one. A branch that cannot reach its conclusion without
+   the owner -- a step-back trigger, a failure nobody can diagnose -- is
+   parked as a Decision item and reported as waiting on that ruling; anything
+   else unfinished is finished first, not reported. Then hold. Start neither the
    docket nor the filing pass nor a close-out; the owner's next command picks
    the state.
