@@ -16,11 +16,14 @@ import {
   UsageError,
   assertFanOutImplemented,
   coalesceSubstitutesConstant,
+  derivedFieldSteps,
   sanitizeForDisplay,
   stepCanEmptyRealizedValue,
 } from "@alcove/core";
 
 import type {
+  ColumnMetadata,
+  LinkageField,
   LinkageTerms,
   Standardization,
   StandardizationFunctionDescriptor,
@@ -67,24 +70,39 @@ export function applyStepOverrides(
 
 /**
  * Layer per-field input-column overrides onto a derived standardization: rebind
- * a field (`output`) to an operator-chosen input column. The derived steps are
- * kept unchanged -- the host only offers columns of the field's own semantic
- * type, so the recommended cleaning still applies. This is what lets two fields
- * of one semantic type bind to DISTINCT columns, since the default type fallback
- * binds every same-typed field to the FIRST column of the type (see
+ * a field (`output`) to an operator-chosen input column. The steps are kept
+ * unchanged when the column has the field's own semantic type, so the recommended
+ * cleaning still applies. When the field is derived from the column's type (an
+ * `ssn4` field read from an `ssn` column), the steps become
+ * {@link derivedFieldSteps} for that pair, the same as the inviter's rebind, so the
+ * own-type cleaning never runs on a column of the source type. This is what lets
+ * two fields of one semantic type bind to DISTINCT columns, since the default type
+ * fallback binds every same-typed field to the FIRST column of the type (see
  * {@link resolveFieldColumns}). Pure; the host passes only overrides whose
- * column is still a valid same-typed binding, so a remap that invalidates an
+ * column is still a valid binding for the field, so a remap that invalidates an
  * override drops it rather than rebinding a wrong-typed column.
  */
 export function applyInputOverrides(
   base: Standardization,
   overrides: ReadonlyMap<string, string>,
+  linkageFields: ReadonlyArray<LinkageField>,
+  metadata: ReadonlyArray<ColumnMetadata>,
 ): Standardization {
   return base.map((transformation) => {
     const column = overrides.get(transformation.output);
-    return column !== undefined && column !== transformation.input
+    if (column === undefined || column === transformation.input)
+      return transformation;
+    const fieldType = linkageFields.find(
+      (field) => field.name === transformation.output,
+    )?.type;
+    const columnType = metadata.find((c) => c.name === column)?.type;
+    const steps =
+      fieldType === undefined || columnType === undefined
+        ? undefined
+        : derivedFieldSteps(fieldType, columnType);
+    return steps === undefined
       ? { ...transformation, input: column }
-      : transformation;
+      : { ...transformation, input: column, steps };
   });
 }
 

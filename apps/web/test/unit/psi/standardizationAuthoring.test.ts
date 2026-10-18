@@ -33,6 +33,7 @@ import {
 
 import type {
   ColumnMetadata,
+  LinkageField,
   LinkageTerms,
   Standardization,
 } from "@alcove/core";
@@ -638,23 +639,100 @@ describe("applyInputOverrides (per-field input-column rebind)", () => {
     { output: "maiden_name", input: "name_col", steps: [] },
     { output: "current_name", input: "name_col", steps: [] },
   ];
+  const fields: Array<LinkageField> = [
+    { name: "maiden_name", type: "first_name" },
+    { name: "current_name", type: "first_name" },
+  ];
+  const columns: Array<ColumnMetadata> = [
+    { name: "name_col", type: "first_name", role: "linkage", isPayload: false },
+    {
+      name: "other_col",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+  ];
 
   test("rebinds a field to its chosen column, leaving steps and other fields alone", () => {
     const result = applyInputOverrides(
       base,
       new Map([["current_name", "other_col"]]),
+      fields,
+      columns,
     );
     expect(result.map((t) => [t.output, t.input])).toEqual([
       ["maiden_name", "name_col"],
       ["current_name", "other_col"],
     ]);
+    expect(result.map((t) => t.steps)).toEqual([[], []]);
   });
 
   test("a no-op override (same column) and an absent override leave the base unchanged", () => {
     expect(
-      applyInputOverrides(base, new Map([["maiden_name", "name_col"]])),
+      applyInputOverrides(
+        base,
+        new Map([["maiden_name", "name_col"]]),
+        fields,
+        columns,
+      ),
     ).toEqual(base);
-    expect(applyInputOverrides(base, new Map())).toEqual(base);
+    expect(applyInputOverrides(base, new Map(), fields, columns)).toEqual(base);
+  });
+
+  describe("a field rebound to a column of the type it is derived from", () => {
+    const ssn4Fields: Array<LinkageField> = [{ name: "ssn4", type: "ssn4" }];
+    const ssnColumns: Array<ColumnMetadata> = [
+      { name: "last4", type: "ssn4", role: "linkage", isPayload: false },
+      { name: "full_ssn", type: "ssn", role: "linkage", isPayload: false },
+    ];
+    const ssn4Base = getDefaultStandardization(
+      ssnColumns.filter((column) => column.name === "last4"),
+      {
+        version: "1.0.0",
+        identity: "acceptor",
+        date: "2026-01-01",
+        algorithm: "psi",
+        linkageStrategy: "cascade",
+        output: { expectsOutput: true, shareWithPartner: true },
+        deduplicate: false,
+        linkageFields: ssn4Fields,
+        linkageKeys: [{ name: "s4", elements: [{ field: "ssn4" }] }],
+      },
+    );
+    const cleaned = (column: string, value: string) => {
+      const transformation = applyInputOverrides(
+        ssn4Base,
+        new Map([["ssn4", column]]),
+        ssn4Fields,
+        ssnColumns,
+      )[0];
+      expect(transformation.input).toBe(column);
+      return runPipeline(value, transformation.steps ?? []);
+    };
+
+    test("takes the steps derived from the source type, dropping a full number", () => {
+      expect(cleaned("full_ssn", "123-45-6789")).toBeNull();
+      expect(cleaned("full_ssn", "078-05-1120")).toBeNull();
+      expect(cleaned("full_ssn", "***-**-8924")).toBe("8924");
+    });
+
+    test("keeps its steps when the column has the field's own type", () => {
+      const rebound = applyInputOverrides(
+        ssn4Base,
+        new Map([["ssn4", "last4_copy"]]),
+        ssn4Fields,
+        [
+          ...ssnColumns,
+          {
+            name: "last4_copy",
+            type: "ssn4",
+            role: "linkage",
+            isPayload: false,
+          },
+        ],
+      );
+      expect(rebound[0]?.steps).toEqual(ssn4Base[0]?.steps);
+    });
   });
 });
 
@@ -707,6 +785,8 @@ describe("acceptor per-field column binding (multiple fields of one type)", () =
     const standardization = applyInputOverrides(
       getDefaultStandardization(metadata, terms),
       new Map([["current_name", "current_col"]]),
+      terms.linkageFields,
+      metadata,
     );
     expect(standardization.map((t) => [t.output, t.input])).toEqual([
       ["maiden_name", "maiden_col"],

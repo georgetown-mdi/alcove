@@ -534,8 +534,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   ];
   const rows: Array<CSVRow> = [
     {
-      ssn: "234-56-7890",
-      ssn4: "7890",
+      ssn: "234-56-7891",
+      ssn4: "7891",
       first_name: "Ada",
       last_name: "Lovelace",
       date_of_birth: "12/10/1915",
@@ -547,8 +547,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       street_number: "1600",
     },
     {
-      ssn: "345-67-8901",
-      ssn4: "8901",
+      ssn: "345-67-8902",
+      ssn4: "8902",
       first_name: "Alan",
       last_name: "Turing",
       date_of_birth: "06/23/1912",

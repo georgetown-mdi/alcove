@@ -82,8 +82,8 @@ other's keeps is absent from the first party's keys and matches nothing there.
 
 The other screens are fixed parts of their default pipelines, not per-party
 parameters: the single-letter `last_name` screen, the date-of-birth screen for
-a year before 1900, and the `ssn` and `ssn4` structural and placeholder
-screens. An operator who authors their own pipeline can change any step in it,
+a year before 1900, the `ssn` and `ssn4` structural, placeholder and
+filler-run screens, and the `phone_number` and `zip_code` filler screens. An operator who authors their own pipeline can change any step in it,
 these screens included, as for any field.
 
 ## When the defaults apply
@@ -176,7 +176,17 @@ steps:
       pattern: "[1-9]\\d{0,3}$"
   - function: null_if
     params:
-      values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999", "123456789"]
+      values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999",
+        "012345678", "123456789", "234567890", "345678901", "456789012", "567890123", "678901234", "789012345", "890123456", "901234567",
+        "876543210", "987654321", "098765432", "109876543", "210987654", "321098765", "432109876", "543210987", "654321098", "765432109",
+        "078051120", "219099999", "111223333"]
+  - function: replace_regex
+    params:
+      pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
 ```
 
 Result: exactly nine digits.
@@ -202,7 +212,11 @@ Result: exactly nine digits.
   first three digits) is `666` or `900` to `999`, its group number (the next
   two) is `00`, or its serial number (the last four) is `0000`.
 - **Placeholders.** A value of one digit repeated nine times is dropped, and
-  so is `123456789`.
+  so is each listed run of consecutive digits and each listed value known to
+  be shared by many people.
+- **Filler runs.** A value holding seven or more 9s in a row, or seven or more
+  0s in a row (unless the area number is `000`), is dropped. The `replace_regex` empties
+  such a value and the `null_if` drops the empty result; six in a row are kept.
 - **Shared within the file.** A value more than one person in the party's own
   file holds is dropped from every record holding it (see
   [Shared-value screens](#shared-value-screens)).
@@ -234,17 +248,32 @@ same rules as a data-quality signal reported against the cleaned dataset (see
 The placeholder list names every repeated-digit value, including the three
 (`000000000`, `666666666`, `999999999`) a structural rule already drops, so a
 pipeline an operator authors with the list but without a structural rule still
-drops a value of one repeated digit. These screens are fixed parts of the
+drops a value of one repeated digit. The other values on the list:
+
+- **Runs of consecutive digits**: the first nine digits of each rotation of
+  `0123456789`, from `012345678` to `901234567`, and each of those reversed,
+  from `876543210` to `765432109`. Several break a structural rule too and are
+  listed for the same reason.
+- **`078051120`**, the number printed on the sample card sold in wallets from
+  1938 and reported as their own by thousands of people.
+- **`219099999`**, another published number.
+- **`111223333`**, a number entered by people who do not want to give their
+  own.
+
+The `ssn4` derived from an `ssn` column drops a value whose digits are on this
+list too (see
+[Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)).
+These screens are fixed parts of the
 default pipeline, not per-party parameters (see
 [Per-party placeholder lists](#per-party-placeholder-lists)); an operator who
 authors their own pipeline can change any step in it, as for any field.
 
 | Input | Result |
 | ----- | ------ |
-| `"078-05-1120"` | `"078051120"` |
-| `"  078 05 1120  "` | `"078051120"` |
-| `"078\u201305\u20131120"` | `"078051120"` |
-| `"12345678"` | `"012345678"` |
+| `"078-05-1121"` | `"078051121"` |
+| `"  078 05 1121  "` | `"078051121"` |
+| `"078\u201305\u20131121"` | `"078051121"` |
+| `"23456789"` | `"023456789"` |
 | `"1234567"` | `"001234567"` |
 | `"123456"` | `null` |
 | `"***-**-8924"` | `null` |
@@ -260,6 +289,13 @@ authors their own pipeline can change any step in it, as for any field.
 | `"222-22-2222"` | `null` |
 | `"1234567890"` | `null` |
 | `"123-45-6789"` | `null` |
+| `"12345678"` | `null` |
+| `"876-54-3210"` | `null` |
+| `"078-05-1120"` | `null` |
+| `"219-09-9999"` | `null` |
+| `"111-22-3333"` | `null` |
+| `"129-99-9999"` | `null` |
+| `"123-99-9999"` | `"123999999"` |
 | `"abc"` | `null` |
 
 ### `ssn4`
@@ -337,21 +373,97 @@ the SSN.
 #### Last four derived from a full SSN
 
 When the input has no `role: linkage` column of type `ssn4`, the defaults bind
-the `ssn4` field to the first `role: linkage` column of type `ssn` and run this
-pipeline over it, beside the `ssn` pipeline over the same column. A file holding
-full SSNs and no last-four column therefore supplies `ssn4`, and its values
-equal those a partner holding only the last four derives, since both run this
-one pipeline.
+the `ssn4` field to the first `role: linkage` column of type `ssn` and run the
+pipeline below over it, beside the `ssn` pipeline over the same column. It is
+the `ssn4` pipeline with four steps added after the empty-value drop: the
+digits are padded to nine, a value the `ssn` placeholder list names is dropped,
+and a value with a filler run is emptied and then dropped.
 
-The pipeline reads the cell as written, not the `ssn` result, so the `ssn`
-character screen does not reach it: `***-**-8924` is `null` as `ssn` and
-`"8924"` as `ssn4`. Nor does the `ssn` area-number rule: `000-00-8924` is
-likewise `null` as `ssn` and `"8924"` as `ssn4`. The `ssn` rules for numbers
-never issued do not reach it either: `900-12-3456` is `null` as `ssn` and
-`"3456"` as `ssn4`.
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: filter_regex
+    params:
+      pattern: "^[0-9 \\-\\x{2010}-\\x{2014}\\x{2212}]*$|(?:[0-9][ \\-\\x{2010}-\\x{2014}\\x{2212}]*){4}$"
+  - function: replace_regex
+    params:
+      pattern: "[^0-9]"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
+  - function: pad_left
+    params:
+      length: 9
+  - function: null_if
+    params:
+      values: ["000000000", "111111111", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777", "888888888", "999999999",
+        "012345678", "123456789", "234567890", "345678901", "456789012", "567890123", "678901234", "789012345", "890123456", "901234567",
+        "876543210", "987654321", "098765432", "109876543", "210987654", "321098765", "432109876", "543210987", "654321098", "765432109",
+        "078051120", "219099999", "111223333"]
+  - function: replace_regex
+    params:
+      pattern: "^(?:\\d*9{7}|0{0,2}[1-9]\\d*0{7})\\d*$"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
+  - function: pad_left
+    params:
+      length: 4
+  - function: extract_regex
+    params:
+      pattern: "(\\d{4})$"
+  - function: filter_regex
+    params:
+      pattern: "^\\d{4}$"
+  - function: null_if
+    params:
+      values: ["0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"]
+```
+
+A file holding full SSNs and no last-four column therefore supplies `ssn4`.
+Each value it keeps equals the one a partner holding only the last four
+derives, since the added steps drop values and change none they keep.
+
+The `ssn` placeholder list reaches the derived value: `123-45-6789` and
+`078-05-1120` are `null` as `ssn` and as `ssn4`. The list is compared after
+padding, as in the `ssn` pipeline, so `12345678` is dropped as `012345678` is.
+A masked value keeps its last four: the digits of `***-**-8924` pad to
+`000008924`, which the list does not name.
+
+The `ssn` filler runs reach it too: `129-99-9999` and `100-00-0001` are `null`
+as `ssn` and as `ssn4`. A run of zeros in an area number of `000` is not a
+filler here, since it is the padding of a masked value: `***-**-0001` pads to
+`000000001` and keeps `"0001"`.
+
+The other `ssn` screens do not reach it, since the pipeline reads the cell as
+written, not the `ssn` result. The `ssn` character screen does not: `***-**-8924`
+is `null` as `ssn` and `"8924"` as `ssn4`. Nor does the `ssn` area-number rule:
+`000-00-8924` is likewise `null` as `ssn` and `"8924"` as `ssn4`. The `ssn`
+rules for numbers never issued do not reach it either: `900-12-3456` is `null`
+as `ssn` and `"3456"` as `ssn4`.
+
+| Input | Result |
+| ----- | ------ |
+| `"287-65-4321"` | `"4321"` |
+| `"***-**-8924"` | `"8924"` |
+| `"000-00-8924"` | `"8924"` |
+| `"900-12-3456"` | `"3456"` |
+| `"1234567"` | `"4567"` |
+| `"123-45-6789"` | `null` |
+| `"12345678"` | `null` |
+| `"078-05-1120"` | `null` |
+| `"111-22-3333"` | `null` |
+| `"219-09-9999"` | `null` |
+| `"129-99-9999"` | `null` |
+| `"100-00-0001"` | `null` |
+| `"***-**-0001"` | `"0001"` |
 
 A file with its own `role: linkage` column of type `ssn4` keeps using it, and
-nothing is derived. An `ssn4` column with any other role does not stop the
+nothing is derived. That column runs the `ssn4` pipeline, without the `ssn`
+placeholder list, so a full SSN written there keeps its last four, as
+`123-45-6789` does in the [`ssn4` table](#ssn4). An `ssn4` column with any other role does not stop the
 derivation, so a file that keeps its `ssn4` column out of matching still
 supplies `ssn4` keys derived from a matched `ssn` column.
 
@@ -361,7 +473,8 @@ SSN column would hash the whole SSN as its last four. An authored
 transformation that binds `ssn4` to an `ssn` column runs the steps the operator
 wrote: steps that do not reduce the value to its last four hash more of the
 SSN. Rebinding the web inviter's `ssn4` cleaning card to an `ssn` column
-replaces the card's steps with this pipeline's. A configuration loaded into the
+replaces the card's steps with this pipeline's, and so does a web acceptor's
+rebinding of its `ssn4` field to an `ssn` column. A configuration loaded into the
 web inviter or the console keeps its own steps, as the command line runs them.
 A second card for an `ssn4`-typed field, named other than `ssn4`, that is
 rebound to an `ssn` column is declared with type `ssn` and keeps the steps it
@@ -732,15 +845,27 @@ steps:
   - function: filter_regex
     params:
       pattern: "^\\d{10}$"
+  - function: replace_regex
+    params:
+      pattern: "^\\d*(?:9{7}|0{7})\\d*$"
+      replacement: ""
+  - function: null_if
+    params:
+      value: ""
 ```
 
 Result: exactly ten digits. Formatting characters are removed, a leading US
 country code on an eleven-digit number is stripped, and anything that is not
 ten digits afterwards is dropped. The pipeline assumes the North American
 ten-digit form: an international number of another length is dropped rather
-than normalized, and no country other than `1` is recognized. A number more
-than five people in the party's own file hold is dropped from every record
-holding it (see [Shared-value screens](#shared-value-screens)).
+than normalized, and no country other than `1` is recognized.
+
+A ten-digit value holding seven or more 9s in a row, or seven or more 0s in a
+row, is dropped as a filler such as `999-999-9999`. The `replace_regex` empties
+such a value and the `null_if` drops the empty result; six in a row are kept.
+
+A number more than five people in the party's own file hold is dropped from
+every record holding it (see [Shared-value screens](#shared-value-screens)).
 
 | Input | Result |
 | ----- | ------ |
@@ -748,6 +873,11 @@ holding it (see [Shared-value screens](#shared-value-screens)).
 | `"+1 202 555 0123"` | `"2025550123"` |
 | `"12025550123"` | `"2025550123"` |
 | `"555-0123"` | `null` |
+| `"999-999-9999"` | `null` |
+| `"000-000-0000"` | `null` |
+| `"202-999-9999"` | `null` |
+| `"202-000-0000"` | `null` |
+| `"202-099-9999"` | `"2020999999"` |
 
 ### `email_address`
 
@@ -857,18 +987,31 @@ steps:
   - function: pad_left
     params:
       length: 5
+  - function: filter_regex
+    params:
+      pattern: "^0{0,2}[1-9]"
+  - function: null_if
+    params:
+      values: ["00000", "99999", "88888"]
 ```
 
 Result: exactly five digits. Stripping every non-digit subsumes a leading trim
 and a non-ASCII removal, so neither appears as its own step; keeping the first
-five digits collapses a ZIP+4 to its five-digit prefix; and the closing pad
-restores the leading zero on a New England ZIP stored as a number. The
-empty-value drop before `pad_left` mirrors the `ssn` pipeline -- `substring`
-already yields `null` for an empty slice, so it adds no coverage on its own and
-is retained as the explicit statement of the rule.
+five digits collapses a ZIP+4 to its five-digit prefix; and the pad restores
+the leading zero on a New England ZIP stored as a number. The empty-value drop
+before `pad_left` mirrors the `ssn` pipeline -- `substring` already yields
+`null` for an empty slice, so it adds no coverage on its own and is retained as
+the explicit statement of the rule.
 
-Unlike `ssn` there is no placeholder drop: `00000` is a real ZIP (USPS
-bulk/dummy addresses, and the floor of the zero-padding above), not a sentinel.
+Two filler screens follow the pad:
+
+- **Starting `000`.** A value whose first three digits are `000` after padding
+  is dropped: `00000`, and a fragment of two digits or fewer padded to five.
+- **Unknown and foreign codes.** `99999`, written for an unknown ZIP, and
+  `88888`, written for a resident of another country, are dropped.
+
+The list names `00000` as well, so a pipeline an operator authors with the list
+but without the `000` screen still drops it.
 
 Note the width: a value of more than five digits keeps its first five rather
 than being dropped, which is the one default pipeline that truncates instead of
@@ -880,7 +1023,11 @@ standardizes to the same value as the five-digit form.
 | `"20057"` | `"20057"` |
 | `"20057-1234"` | `"20057"` |
 | `"  2057  "` | `"02057"` |
-| `"00000"` | `"00000"` |
+| `"501"` | `"00501"` |
+| `"00000"` | `null` |
+| `"12"` | `null` |
+| `"99999"` | `null` |
+| `"88888"` | `null` |
 | `"abc"` | `null` |
 
 A linkage key element over a `zip_code` field can match on the three-digit ZIP
@@ -1260,3 +1407,6 @@ role wins over the transform (see
   partner-authored transform patterns
 - [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md) - the bounds on
   partner-authored transform parameters
+- [linkage-rule-grounding.md](../notes/linkage-rule-grounding.md#fillers-the-default-cleaning-drops) -
+  the sources for the SSN placeholders and the ZIP and phone fillers the
+  pipelines drop

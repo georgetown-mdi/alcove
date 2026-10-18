@@ -6,6 +6,7 @@ import {
   assertDisclosedNamesCarriable,
   assertPayloadSendDisclosed,
   deriveAcceptedLinkageTerms,
+  runPipeline,
   safeParseLinkageTerms,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -193,6 +194,45 @@ describe("acceptor columns editor state", () => {
     expect(bound("secondary")).toBe("secondary");
     // A column of a type the field neither has nor derives from is stale.
     expect(bound("given")).toBe("primary");
+  });
+
+  describe("an ssn4 field rebound among the file's own columns", () => {
+    const ssn4Terms: LinkageTerms = {
+      ...nameTerms,
+      linkageFields: [{ name: "ssn4", type: "ssn4" }],
+      linkageKeys: [{ name: "s4", elements: [{ field: "ssn4" }] }],
+    };
+    const columns = ["last4", "full_ssn", "given"];
+    const metadata: Metadata = [
+      { name: "last4", type: "ssn4", role: "linkage", isPayload: false },
+      { name: "full_ssn", type: "ssn", role: "linkage", isPayload: false },
+      { name: "given", type: "first_name", role: "linkage", isPayload: false },
+    ];
+    const cleaned = (column: string, value: string) => {
+      const transformation = editorFor(columns, ssn4Terms, {
+        metadata,
+        inputOverrides: new Map([["ssn4", column]]),
+      }).editorState.standardization.find((t) => t.output === "ssn4");
+      expect(transformation?.input).toBe(column);
+      return runPipeline(value, transformation?.steps ?? []);
+    };
+
+    test("rebound to the ssn column, it drops a full number and keeps the last four of a masked one", () => {
+      expect(cleaned("full_ssn", "123-45-6789")).toBeNull();
+      expect(cleaned("full_ssn", "***-**-8924")).toBe("8924");
+    });
+
+    test("left on its own ssn4 column, it keeps the steps it was derived with", () => {
+      expect(cleaned("last4", "8924")).toBe("8924");
+      expect(
+        editorFor(columns, ssn4Terms, { metadata }).editorState.standardization,
+      ).toEqual(
+        editorFor(columns, ssn4Terms, {
+          metadata,
+          inputOverrides: new Map([["ssn4", "last4"]]),
+        }).editorState.standardization,
+      );
+    });
   });
 });
 

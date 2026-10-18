@@ -96,8 +96,10 @@ function parseDocument() {
   const affixRows: string[][] = [];
   const stateCodeRows: string[][] = [];
   const affixExamples: Array<{ input: string; result: string | null }> = [];
+  const derivedSsn4: TypeSection = { stepsYaml: "", examples: [] };
   let currentType: string | undefined;
   let inAffixSection = false;
+  let inDerivedSsn4Section = false;
   let inFence = false;
   let fenceLanguage = "";
   let fenceBody: string[] = [];
@@ -115,7 +117,7 @@ function parseDocument() {
         continue;
       }
       inFence = false;
-      const section = currentSection();
+      const section = inDerivedSsn4Section ? derivedSsn4 : currentSection();
       if (fenceLanguage === "yaml" && section?.stepsYaml === "")
         section.stepsYaml = fenceBody.join("\n");
       continue;
@@ -130,6 +132,7 @@ function parseDocument() {
       currentType = typeHeading[1];
       typeSections.set(currentType, { stepsYaml: "", examples: [] });
       inAffixSection = false;
+      inDerivedSsn4Section = false;
       continue;
     }
     // Any other heading of the same or a higher level closes the type section.
@@ -138,8 +141,22 @@ function parseDocument() {
     // bucket, not absorbed into whichever type section is still open: the
     // rule it documents applies to first_name and last_name alike.
     if (/^#+ /.test(line)) inAffixSection = /^#### Affix removal$/.test(line);
+    // The derived ssn4 pipeline and its worked examples are a bucket of their
+    // own too, checked against the steps that derive ssn4 from an ssn column.
+    if (/^#+ /.test(line))
+      inDerivedSsn4Section = /^#### Last four derived from a full SSN$/.test(
+        line,
+      );
 
     if (/^\| Input \| Result \|/.test(line)) {
+      if (inDerivedSsn4Section) {
+        for (const row of tableRows(i))
+          derivedSsn4.examples.push({
+            input: jsonScalarCell(row[0]) ?? "",
+            result: jsonScalarCell(row[1]),
+          });
+        continue;
+      }
       if (inAffixSection) {
         for (const row of tableRows(i))
           affixExamples.push({
@@ -174,6 +191,7 @@ function parseDocument() {
     affixRows,
     affixExamples,
     stateCodeRows,
+    derivedSsn4,
   };
 }
 
@@ -184,6 +202,7 @@ const {
   affixRows,
   affixExamples,
   stateCodeRows,
+  derivedSsn4,
 } = parseDocument();
 
 // The Words cell is a plain comma-separated list (unlike the alias table's code
@@ -289,6 +308,29 @@ describe("DEFAULT_STANDARDIZATION.md pipelines", () => {
     for (const { input, result } of examples)
       expect(
         runPipeline(input, steps),
+        `input ${JSON.stringify(input)}`,
+      ).toEqual(result);
+  });
+});
+
+describe("DEFAULT_STANDARDIZATION.md ssn4 derived from a full SSN", () => {
+  const derivedSteps =
+    getDefaultStandardization(
+      metadataFor(["ssn"]),
+      termsFor(["ssn", "ssn4"]),
+    ).find((transformation) => transformation.output === "ssn4")?.steps ?? [];
+
+  test("steps match the derivation", () => {
+    const documented = parseYaml(derivedSsn4.stepsYaml) as { steps: unknown };
+    expect(derivedSteps.length).toBeGreaterThan(0);
+    expect(documented.steps).toEqual(snakeizeKeys(derivedSteps));
+  });
+
+  test("worked examples hold", () => {
+    expect(derivedSsn4.examples.length).toBeGreaterThan(0);
+    for (const { input, result } of derivedSsn4.examples)
+      expect(
+        runPipeline(input, derivedSteps),
         `input ${JSON.stringify(input)}`,
       ).toEqual(result);
   });

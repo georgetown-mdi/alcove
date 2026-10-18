@@ -119,6 +119,12 @@ const PHONE_NUMBER_STEPS: StandardizationStep[] = [
     params: { pattern: "^1(\\d{10})$", replacement: "$1" },
   },
   { function: "filter_regex", params: { pattern: "^\\d{10}$" } },
+  // A run of seven or more 9s or 0s is filler such as 999-999-9999.
+  {
+    function: "replace_regex",
+    params: { pattern: "^\\d*(?:9{7}|0{7})\\d*$", replacement: "" },
+  },
+  { function: "null_if", params: { value: "" } },
 ];
 
 const EMAIL_ADDRESS_STEPS: StandardizationStep[] = [
@@ -146,14 +152,17 @@ const STREET_NUMBER_STEPS: StandardizationStep[] = [
 // stored without its leading zero). The explicit null_if drops a value
 // that cleaned to empty before pad_left can mask it as "00000"; substring
 // already nulls an empty slice, so this mirrors the SSN pipeline's
-// null-before-pad rather than adding new coverage. Unlike SSN there is no
-// placeholder null_if: "00000" is a real ZIP (USPS bulk/dummy and the
-// floor of zero-padding), not a sentinel to drop.
+// null-before-pad rather than adding new coverage. A value starting 000
+// after padding is a fragment or a filler such as 00000, and 99999 and 88888
+// are unknown and foreign-address codes; "00000" is listed too so a
+// pipeline without the 000 screen still drops it.
 const ZIP_CODE_STEPS: StandardizationStep[] = [
   { function: "replace_regex", params: { pattern: "[^0-9]", replacement: "" } },
   { function: "substring", params: { start: 1, length: 5 } },
   { function: "null_if", params: { value: "" } },
   { function: "pad_left", params: { length: 5 } },
+  { function: "filter_regex", params: { pattern: "^0{0,2}[1-9]" } },
+  { function: "null_if", params: { values: ["00000", "99999", "88888"] } },
 ];
 
 // A US state, DC or inhabited territory as its two-letter postal code, from

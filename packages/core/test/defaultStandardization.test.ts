@@ -254,7 +254,23 @@ describe("getDefaultStandardization — structure", () => {
     const ours = stepsByField(fullMetadata);
     const theirs = stepsByField(partnerMetadata);
     expect(ours.size).toBe(minimalTerms.linkageFields.length);
-    expect(theirs).toEqual(ours);
+    // The derived ssn4 adds only the SSN placeholder and filler screens: a pad
+    // to nine and three steps that drop values and change none they keep.
+    const derivedSsn4 = theirs.get("ssn4") ?? [];
+    const padAt = derivedSsn4.findIndex(
+      (step) => step.function === "pad_left" && step.params?.length === 9,
+    );
+    expect(padAt).toBeGreaterThan(0);
+    expect(
+      derivedSsn4.filter((_, index) => index < padAt || index > padAt + 3),
+    ).toEqual(ours.get("ssn4"));
+    expect(
+      derivedSsn4.slice(padAt + 1, padAt + 4).map((s) => s.function),
+    ).toEqual(["null_if", "replace_regex", "null_if"]);
+    expect(derivedSsn4).toHaveLength((ours.get("ssn4") ?? []).length + 4);
+    const withoutSsn4 = (steps: typeof ours) =>
+      new Map([...steps].filter(([field]) => field !== "ssn4"));
+    expect(withoutSsn4(theirs)).toEqual(withoutSsn4(ours));
     const placeholderLists = [...ours.values()].flatMap((steps) =>
       (steps ?? []).filter(
         (step) =>
@@ -570,12 +586,51 @@ describe("default SSN pipeline", () => {
     "888888888",
     "999999999",
     "123456789",
+    "078-05-1120",
+    "219-09-9999",
+    "111-22-3333",
+    "012345678",
+    "12345678",
+    "234567890",
+    "345678901",
+    "456789012",
+    "567890123",
+    "678901234",
+    "789012345",
+    "890123456",
+    "876543210",
+    "098765432",
+    "109876543",
+    "210987654",
+    "321098765",
+    "432109876",
+    "543210987",
+    "654321098",
   ])("drops the placeholder %j", (input) => {
     expect(run(input)).toBeNull();
   });
 
+  test("keeps a value one digit away from a placeholder", () => {
+    expect(run("078-05-1121")).toBe("078051121");
+    expect(run("111-22-3334")).toBe("111223334");
+  });
+
   test("keeps a value of one digit but for one place", () => {
     expect(run("222-22-2223")).toBe("222222223");
+  });
+
+  test.each([
+    "129-99-9999",
+    "199-99-9990",
+    "299-99-9999",
+    "100-00-0000",
+    "120-00-0000",
+  ])("drops %j, holding seven or more 9s or 0s in a row", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test("keeps a value with six 9s in a row", () => {
+    expect(run("123-99-9999")).toBe("123999999");
   });
 });
 
@@ -606,10 +661,30 @@ describe("default ssn4 derived from a full SSN column", () => {
       ["ssn", "SSN"],
       ["ssn4", "SSN"],
     ]);
-    expect(cleaned(ssnOnly, "078-05-1120")).toEqual({
-      ssn: "078051120",
-      ssn4: "1120",
+    expect(cleaned(ssnOnly, "287-65-4321")).toEqual({
+      ssn: "287654321",
+      ssn4: "4321",
     });
+  });
+
+  test.each([
+    "078-05-1120",
+    "111-22-3333",
+    "219-09-9999",
+    "123-45-6789",
+    "333-33-3333",
+    "12345678",
+    "876543210",
+  ])("a placeholder SSN %j supplies neither ssn nor ssn4", (input) => {
+    expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: null });
+  });
+
+  test("an ssn4 column keeps the last four of a placeholder SSN", () => {
+    const ssn4Only: ColumnMetadata[] = [
+      { name: "LAST4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    expect(cleaned(ssn4Only, "123-45-6789")).toEqual({ ssn4: "6789" });
+    expect(cleaned(ssn4Only, "078-05-1120")).toEqual({ ssn4: "1120" });
   });
 
   test.each(["***-**-8924", "XXX-XX-8924", "xxx-xx-8924", "###-##-8924"])(
@@ -625,6 +700,31 @@ describe("default ssn4 derived from a full SSN column", () => {
       ssn4: "8924",
     });
   });
+
+  test.each(["129-99-9999", "999-99-9912", "100-00-0001", "120-00-0000"])(
+    "a filler run in %j supplies neither ssn nor ssn4",
+    (input) => {
+      expect(cleaned(ssnOnly, input)).toEqual({ ssn: null, ssn4: null });
+    },
+  );
+
+  test("a run of six 9s or six 0s keeps its last four", () => {
+    expect(cleaned(ssnOnly, "123-99-9998")).toEqual({
+      ssn: "123999998",
+      ssn4: "9998",
+    });
+    expect(cleaned(ssnOnly, "100-00-0012")).toEqual({
+      ssn: null,
+      ssn4: "0012",
+    });
+  });
+
+  test.each(["***-**-0001", "000-00-0001", "***-**-0012", "000-00-0012"])(
+    "a value masked with zeros (%j) keeps its last four",
+    (input) => {
+      expect(cleaned(ssnOnly, input).ssn4).toBe(input.slice(-4));
+    },
+  );
 
   test("a never-issued value is dropped from ssn and kept as ssn4", () => {
     expect(cleaned(ssnOnly, "900-12-3456")).toEqual({
@@ -654,9 +754,9 @@ describe("default ssn4 derived from a full SSN column", () => {
   test.each(UNICODE_DASHES)(
     "a Unicode dash %j separates the digits as a hyphen does",
     (dash) => {
-      expect(cleaned(ssnOnly, `078${dash}05${dash}1120`)).toEqual({
-        ssn: "078051120",
-        ssn4: "1120",
+      expect(cleaned(ssnOnly, `287${dash}65${dash}4321`)).toEqual({
+        ssn: "287654321",
+        ssn4: "4321",
       });
       expect(cleaned(ssnOnly, `***${dash}**${dash}8924`)).toEqual({
         ssn: null,
@@ -1243,6 +1343,26 @@ describe("default phone_number pipeline", () => {
   test("returns null for alphabetic input", () => {
     expect(run("not-a-phone")).toBeNull();
   });
+
+  test.each([
+    "999-999-9999",
+    "000-000-0000",
+    "+1 999 999 9999",
+    "555-999-9999",
+    "999-999-9123",
+    "312-000-0000",
+    "1000000000",
+  ])("drops %j, holding seven 9s or seven 0s in a row", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each([
+    ["555-099-9999", "5550999999"],
+    ["312-000-0001", "3120000001"],
+    ["999-099-9909", "9990999909"],
+  ])("keeps %j, holding at most six 9s or 0s in a row", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
 });
 
 // --- Email address pipeline --------------------------------------------------
@@ -1429,6 +1549,30 @@ describe("default zip_code pipeline", () => {
 
   test("keeps only the first 5 digits of a 9-digit ZIP+4 run together", () => {
     expect(run("902101234")).toBe("90210");
+  });
+
+  test.each([
+    "00000",
+    "00000-1234",
+    "99999",
+    "99999-0000",
+    "88888",
+    "00012",
+    "000",
+    "12",
+    "0",
+  ])("drops %j, a filler or a value starting 000", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test.each([
+    ["00501", "00501"],
+    ["501", "00501"],
+    ["01001", "01001"],
+    ["99901", "99901"],
+    ["88887", "88887"],
+  ])("keeps %j as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
   });
 
   test('explicit null_if "" precedes pad_left so a cleaned-empty value never pads to 00000', () => {
