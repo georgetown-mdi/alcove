@@ -36,6 +36,8 @@ const ENROLLED: RelayEnrollmentWithinWait = {
 
 const SHORT_WAIT_MS = 50;
 
+const NO_RESTRICTION = undefined;
+
 const WITHOUT_DEFAULT = OWN;
 
 const WITH_DEFAULT = { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] };
@@ -83,7 +85,7 @@ describe("relayWithDefaultForRun", () => {
     const signal = new AbortController().signal;
     const enroll = answering(ENROLLED);
     const onRunNotice = vi.fn();
-    const run = await relayWithDefaultForRun(secret, OWN, {
+    const run = await relayWithDefaultForRun(secret, OWN, NO_RESTRICTION, {
       setting: () => DEFAULT_RELAY,
       enroll,
       signal,
@@ -101,12 +103,12 @@ describe("relayWithDefaultForRun", () => {
     const secret = generateSharedSecret();
     const enroll = answering(ENROLLED);
     const dial = { setting: () => DEFAULT_RELAY, enroll };
-    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
-      WITH_DEFAULT,
-    );
-    expect(await relayWithDefaultForRun(secret, OWN, dial)).toEqual(
-      WITH_DEFAULT,
-    );
+    expect(
+      await relayWithDefaultForRun(secret, OWN, NO_RESTRICTION, dial),
+    ).toEqual(WITH_DEFAULT);
+    expect(
+      await relayWithDefaultForRun(secret, OWN, NO_RESTRICTION, dial),
+    ).toEqual(WITH_DEFAULT);
     expect(enroll).toHaveBeenCalledTimes(2);
   });
 
@@ -114,6 +116,7 @@ describe("relayWithDefaultForRun", () => {
     const run = await relayWithDefaultForRun(
       generateSharedSecret(),
       undefined,
+      NO_RESTRICTION,
       {
         setting: () => DEFAULT_RELAY,
         enroll: answering(ENROLLED),
@@ -127,10 +130,15 @@ describe("relayWithDefaultForRun", () => {
       turn: [DEFAULT_RELAY.turnUrl, ...OWN.turn],
       stun: ["stun:stun.example.org:3478"],
     };
-    const run = await relayWithDefaultForRun(generateSharedSecret(), invited, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering(ENROLLED),
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      invited,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering(ENROLLED),
+      },
+    );
     expect(run).toEqual({
       turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
       stun: invited.stun,
@@ -139,11 +147,16 @@ describe("relayWithDefaultForRun", () => {
 
   test("a failed enrollment says so once and dials with its other relays", async () => {
     const onRunNotice = vi.fn();
-    const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering({ kind: "failed", detail: "HTTP 409: held" }),
-      onRunNotice,
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      OWN,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering({ kind: "failed", detail: "HTTP 409: held" }),
+        onRunNotice,
+      },
+    );
     expect(run).toEqual(WITHOUT_DEFAULT);
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
@@ -152,20 +165,30 @@ describe("relayWithDefaultForRun", () => {
 
   test("leaves out the default relay an invitation names when this run could not enroll", async () => {
     const invited = { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] };
-    const run = await relayWithDefaultForRun(generateSharedSecret(), invited, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering({ kind: "failed", detail: "HTTP 409" }),
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      invited,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering({ kind: "failed", detail: "HTTP 409" }),
+      },
+    );
     expect(run).toEqual(WITHOUT_DEFAULT);
   });
 
   test("a cancelled enrollment leaves the relay out and says nothing", async () => {
     const onRunNotice = vi.fn();
-    const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: answering({ kind: "cancelled" }),
-      onRunNotice,
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      OWN,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: answering({ kind: "cancelled" }),
+        onRunNotice,
+      },
+    );
     expect(run).toEqual(WITHOUT_DEFAULT);
     expect(onRunNotice).not.toHaveBeenCalled();
   });
@@ -174,18 +197,28 @@ describe("relayWithDefaultForRun", () => {
     const enroll = answering(ENROLLED);
     const onRunNotice = vi.fn();
     expect(
-      await relayWithDefaultForRun(generateSharedSecret(), undefined, {
-        setting: () => undefined,
-        enroll,
-        onRunNotice,
-      }),
+      await relayWithDefaultForRun(
+        generateSharedSecret(),
+        undefined,
+        NO_RESTRICTION,
+        {
+          setting: () => undefined,
+          enroll,
+          onRunNotice,
+        },
+      ),
     ).toBeUndefined();
     expect(
-      await relayWithDefaultForRun(generateSharedSecret(), OWN, {
-        setting: () => undefined,
-        enroll,
-        onRunNotice,
-      }),
+      await relayWithDefaultForRun(
+        generateSharedSecret(),
+        OWN,
+        NO_RESTRICTION,
+        {
+          setting: () => undefined,
+          enroll,
+          onRunNotice,
+        },
+      ),
     ).toEqual(OWN);
     expect(enroll).not.toHaveBeenCalled();
     expect(onRunNotice).not.toHaveBeenCalled();
@@ -196,12 +229,17 @@ describe("the dial's wait for the enrollment", () => {
   test("a registrar that never answers costs the dial its wait and one request, and is reported once", async () => {
     const fetch = neverAnsweringFetch();
     const onRunNotice = vi.fn();
-    const run = await relayWithDefaultForRun(generateSharedSecret(), OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: enrollingThrough(fetch),
-      dialWaitMs: SHORT_WAIT_MS,
-      onRunNotice,
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      OWN,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: enrollingThrough(fetch),
+        dialWaitMs: SHORT_WAIT_MS,
+        onRunNotice,
+      },
+    );
     expect(fetch).toHaveBeenCalledOnce();
     expect(run).toEqual(WITHOUT_DEFAULT);
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
@@ -215,11 +253,16 @@ describe("the dial's wait for the enrollment", () => {
     const fetch = neverAnsweringFetch();
     const onRunNotice = vi.fn();
     let settled = false;
-    const pending = relayWithDefaultForRun(generateSharedSecret(), OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: enrollingThrough(fetch),
-      onRunNotice,
-    }).finally(() => {
+    const pending = relayWithDefaultForRun(
+      generateSharedSecret(),
+      OWN,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: enrollingThrough(fetch),
+        onRunNotice,
+      },
+    ).finally(() => {
       settled = true;
     });
     await untilCalled(fetch);
@@ -237,13 +280,18 @@ describe("the dial's wait for the enrollment", () => {
     const cancel = new AbortController();
     const fetch = neverAnsweringFetch();
     const onRunNotice = vi.fn();
-    const pending = relayWithDefaultForRun(generateSharedSecret(), OWN, {
-      setting: () => DEFAULT_RELAY,
-      enroll: enrollingThrough(fetch),
-      signal: cancel.signal,
-      dialWaitMs: 60_000,
-      onRunNotice,
-    });
+    const pending = relayWithDefaultForRun(
+      generateSharedSecret(),
+      OWN,
+      NO_RESTRICTION,
+      {
+        setting: () => DEFAULT_RELAY,
+        enroll: enrollingThrough(fetch),
+        signal: cancel.signal,
+        dialWaitMs: 60_000,
+        onRunNotice,
+      },
+    );
     await untilCalled(fetch);
     cancel.abort();
     await expect(pending).resolves.toEqual(WITHOUT_DEFAULT);
@@ -256,7 +304,7 @@ describe("the dial's wait for the enrollment", () => {
     const fetch = neverAnsweringFetch();
     const onRunNotice = vi.fn();
     await expect(
-      relayWithDefaultForRun(generateSharedSecret(), OWN, {
+      relayWithDefaultForRun(generateSharedSecret(), OWN, NO_RESTRICTION, {
         setting: () => DEFAULT_RELAY,
         enroll: enrollingThrough(fetch),
         signal: cancel.signal,
@@ -270,7 +318,9 @@ describe("the dial's wait for the enrollment", () => {
 
 describe("invitationRelayWithDefault", () => {
   test("names the default relay after the own relay, with its registrar", () => {
-    expect(invitationRelayWithDefault(OWN, DEFAULT_RELAY)).toEqual({
+    expect(
+      invitationRelayWithDefault(OWN, DEFAULT_RELAY, NO_RESTRICTION),
+    ).toEqual({
       turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
       stun: [],
       registrar: DEFAULT_RELAY.registrarUrl,
@@ -278,7 +328,9 @@ describe("invitationRelayWithDefault", () => {
   });
 
   test("names the default relay alone when there is no own relay", () => {
-    expect(invitationRelayWithDefault(undefined, DEFAULT_RELAY)).toEqual({
+    expect(
+      invitationRelayWithDefault(undefined, DEFAULT_RELAY, NO_RESTRICTION),
+    ).toEqual({
       turn: [DEFAULT_RELAY.turnUrl],
       registrar: DEFAULT_RELAY.registrarUrl,
     });
@@ -286,15 +338,21 @@ describe("invitationRelayWithDefault", () => {
 
   test("names it once when the own relay already names it, with its registrar", () => {
     const own = { turn: [DEFAULT_RELAY.turnUrl] };
-    expect(invitationRelayWithDefault(own, DEFAULT_RELAY)).toEqual({
+    expect(
+      invitationRelayWithDefault(own, DEFAULT_RELAY, NO_RESTRICTION),
+    ).toEqual({
       turn: [DEFAULT_RELAY.turnUrl],
       registrar: DEFAULT_RELAY.registrarUrl,
     });
   });
 
   test("names only the own relay, and no registrar, when the build names no default relay", () => {
-    expect(invitationRelayWithDefault(OWN, undefined)).toBe(OWN);
-    expect(invitationRelayWithDefault(undefined, undefined)).toBeUndefined();
+    expect(invitationRelayWithDefault(OWN, undefined, NO_RESTRICTION)).toBe(
+      OWN,
+    );
+    expect(
+      invitationRelayWithDefault(undefined, undefined, NO_RESTRICTION),
+    ).toBeUndefined();
   });
 
   test("withholds it and its registrar when the locator is full", () => {
@@ -304,6 +362,8 @@ describe("invitationRelayWithDefault", () => {
         (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
       ),
     };
-    expect(invitationRelayWithDefault(full, DEFAULT_RELAY)).toBe(full);
+    expect(
+      invitationRelayWithDefault(full, DEFAULT_RELAY, NO_RESTRICTION),
+    ).toBe(full);
   });
 });

@@ -1,0 +1,29 @@
+import { Textarea } from "@mantine/core";
+
+/**
+ * The field that sets the relays an exchange may use, one entry per line. The
+ * caller parses the text (`parseAllowedRelayLines`) and states the field's
+ * scope beside it.
+ */
+export function AllowedRelaysField({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error: string | undefined;
+  onChange: (text: string) => void;
+}) {
+  return (
+    <Textarea
+      label="Allowed relays"
+      description="One host per line, with a port where needed, for example relay.example.org or relay.example.org:443. Each run uses only the relay servers listed here, yours, the invitation's or this site's. The setting covers relay servers only: a run still contacts the STUN servers an invitation names. Leave it empty to use every relay a run lists."
+      autosize
+      minRows={2}
+      value={value}
+      error={error}
+      errorProps={{ role: "alert" }}
+      onChange={(event) => onChange(event.currentTarget.value)}
+    />
+  );
+}

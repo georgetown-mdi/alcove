@@ -16,7 +16,6 @@ import {
   ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
-  writeRelayRestriction,
 } from "@psi/transport/relayRestriction";
 import { InvitationTerms } from "@components/InvitationTerms";
 
@@ -86,9 +85,14 @@ afterEach(() => {
 
 async function producesText(
   connectionEndpoint: ConnectionEndpoint,
+  allowedRelays?: ReadonlyArray<string>,
 ): Promise<string> {
   app.render(
-    createElement(InvitationTerms, { linkageTerms: terms, connectionEndpoint }),
+    createElement(InvitationTerms, {
+      linkageTerms: terms,
+      connectionEndpoint,
+      allowedRelays,
+    }),
   );
   await readyDisclosures(app.container);
   const produces = page.getByRole("group", {
@@ -175,13 +179,8 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
     relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
   };
 
-  afterEach(() => {
-    window.localStorage.clear();
-  });
-
   test("the hosted build marks each TURN url kept or left out, and says what the setting decides", async () => {
-    writeRelayRestriction({ allowedRelays: ["partner.example.net"] });
-    const text = await producesText(relayEndpoint);
+    const text = await producesText(relayEndpoint, ["partner.example.net"]);
     expect(text).toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
     expect(text).toContain(
       `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
@@ -202,8 +201,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
 
   test("the console build, whose run is the CLI's, marks nothing whatever the browser holds", async () => {
     build.console = true;
-    writeRelayRestriction({ allowedRelays: ["partner.example.net"] });
-    const text = await producesText(relayEndpoint);
+    const text = await producesText(relayEndpoint, ["partner.example.net"]);
     expect(text).toContain(`TURN ${KEPT_URL}`);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);

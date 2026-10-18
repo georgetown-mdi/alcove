@@ -18,8 +18,6 @@ import {
   turnUrlIsAllowed,
 } from "@alcove/core";
 
-import { readRelayRestriction } from "./relayRestriction";
-
 import type { RelayLocator } from "./rendezvous";
 
 const log = getLogger("ownRelaySetting");
@@ -179,10 +177,9 @@ export interface RelayUrls {
  * (`selectRunRelay` in core).
  */
 export function relayForRun(
-  invitationRelay?: RelayUrls,
+  invitationRelay: RelayUrls | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  allowedRelays: ReadonlyArray<string> | undefined = readRelayRestriction()
-    .allowedRelays,
 ): RelayLocator | undefined {
   const own = readOwn();
   if (own.kind === "unreadable")

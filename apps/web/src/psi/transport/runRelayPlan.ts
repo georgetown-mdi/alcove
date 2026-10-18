@@ -2,17 +2,13 @@ import { turnUrlIsAllowed } from "@alcove/core";
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
-import {
-  allowedRelaysRunNotice,
-  readRelayRestriction,
-} from "./relayRestriction";
 import { readOwnRelaySetting, relayForRun } from "./ownRelaySetting";
+import { allowedRelaysRunNotice } from "./relayRestriction";
 import { relayWithDefaultForRun } from "./defaultRelay";
 
 import type { OwnRelayRead, RelayUrls } from "./ownRelaySetting";
 import type { DefaultRelayDependencies } from "./defaultRelay";
 import type { RelayLocator } from "./rendezvous";
-import type { RelayRestriction } from "./relayRestriction";
 
 /** The relay a browser run dials with. */
 export interface RunRelayPlan {
@@ -26,29 +22,23 @@ export interface RunRelayPlan {
 export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
   /** This browser's own relay; the stored setting when unset. */
   readOwn?: () => OwnRelayRead;
-  /** This browser's relay restriction; the stored setting when unset. */
-  restriction?: () => RelayRestriction;
 }
 
 /**
  * The relay a browser run dials with. Every TURN url it would list, this
  * browser's own, the invitation's and the build's default relay's, is kept or
- * left out by the allowed relays (`turnUrlIsAllowed` in core). Where the
- * allowed relays are set, the urls kept and left out are shown through
+ * left out by `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every
+ * url). Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept.
  */
 export async function relayPlanForRun(
   sharedSecret: string,
   invitationRelay: RelayUrls | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
   dependencies: RunRelayPlanDependencies = {},
 ): Promise<RunRelayPlan> {
-  const {
-    readOwn = readOwnRelaySetting,
-    restriction = readRelayRestriction,
-    ...defaultRelay
-  } = dependencies;
-  const { allowedRelays } = restriction();
+  const { readOwn = readOwnRelaySetting, ...defaultRelay } = dependencies;
   const own = readOwn();
   const site = (defaultRelay.setting ?? defaultRelaySetting)();
   const listed = [
@@ -66,8 +56,9 @@ export async function relayPlanForRun(
     defaultRelay.onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
   const relay = await relayWithDefaultForRun(
     sharedSecret,
-    relayForRun(invitationRelay, () => own, allowedRelays),
-    { ...defaultRelay, allowedRelays: () => allowedRelays },
+    relayForRun(invitationRelay, allowedRelays, () => own),
+    allowedRelays,
+    defaultRelay,
   );
   return { ...(relay !== undefined && { relay }), relaysLeftOut };
 }

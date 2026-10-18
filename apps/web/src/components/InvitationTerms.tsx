@@ -45,7 +45,6 @@ import {
   ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
-  readRelayRestriction,
 } from "@psi/transport/relayRestriction";
 import {
   DEDUPLICATE_CONTROL_DESCRIPTION,
@@ -463,6 +462,7 @@ export function InvitationTerms({
   headingOrder = 2,
   headingRef,
   framing,
+  allowedRelays,
 }: {
   linkageTerms: LinkageTerms;
   /** The invitation's expiry instant (ISO 8601), if it has one. */
@@ -539,6 +539,10 @@ export function InvitationTerms({
    * renders as the proposing preview does. Fixed, caller-supplied copy, never
    * partner text. */
   framing?: { heading: string; intro: string };
+  /** The relays this exchange may use, marking each TURN url of the
+   * invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
+   * restricts nothing and marks nothing. Applies to a hosted run only. */
+  allowedRelays?: ReadonlyArray<string>;
 }) {
   const summary = summarizeInvitation({
     linkageTerms,
@@ -546,11 +550,10 @@ export function InvitationTerms({
     inviterRetainsFiles,
     connectionEndpoint,
   });
-  // A hosted run is this browser's, under its own relay restriction; a
+  // A hosted run is this browser's, under the allowed relays given; a
   // console run is the CLI's. The summary's TURN urls are the endpoint's,
   // escaped, in its order, so each is matched by its raw url.
   const browserRun = !isConsoleBuild();
-  const [relayRestriction] = useState(readRelayRestriction);
   const rawRelayTurn =
     connectionEndpoint?.channel === "webrtc"
       ? (connectionEndpoint.relay?.turn ?? [])
@@ -1068,10 +1071,7 @@ export function InvitationTerms({
               <Text size="sm" key={`turn-${index}`}>
                 TURN {url}
                 {browserRun &&
-                  allowedRelaysMark(
-                    rawRelayTurn[index] ?? "",
-                    relayRestriction.allowedRelays,
-                  )}
+                  allowedRelaysMark(rawRelayTurn[index] ?? "", allowedRelays)}
               </Text>
             ))}
             {summary.relay.stun.map((url, index) => (
@@ -1084,7 +1084,7 @@ export function InvitationTerms({
                 {invitationRelayRegistrarLine(summary.relay.registrar)}
               </Text>
             )}
-            {browserRun && relayRestriction.allowedRelays !== undefined && (
+            {browserRun && allowedRelays !== undefined && (
               <Text size="sm">{ALLOWED_RELAYS_SCOPE}</Text>
             )}
             <Text size="xs" c="dimmed">

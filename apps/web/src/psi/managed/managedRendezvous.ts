@@ -34,6 +34,7 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
+import { readRelayRestriction } from "../transport/relayRestriction";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayPlanForRun } from "../transport/runRelayPlan";
 
@@ -225,6 +226,7 @@ export async function beginManagedRendezvous(
   const relayPlan = await relayPlanForRun(
     sharedSecret,
     connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    readRelayRestriction().allowedRelays,
     {
       ...options.defaultRelay,
       ...(signal !== undefined ? { signal } : {}),

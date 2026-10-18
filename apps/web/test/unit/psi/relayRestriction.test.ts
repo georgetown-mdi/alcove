@@ -150,12 +150,12 @@ describe("parseAllowedRelayLines", () => {
 describe("the relays a browser run lists under its allowed relays", () => {
   test("own and invitation TURN urls an entry names are kept, and STUN urls untouched", () => {
     expect(
-      relayForRun({ turn: [PARTNER_URL] }, readOwn, ["partner.example.net"]),
+      relayForRun({ turn: [PARTNER_URL] }, ["partner.example.net"], readOwn),
     ).toEqual({
       turn: [PARTNER_URL],
       stun: ["stun:own.example.org:3478"],
     });
-    expect(relayForRun({ turn: [PARTNER_URL] }, readOwn, undefined)).toEqual({
+    expect(relayForRun({ turn: [PARTNER_URL] }, undefined, readOwn)).toEqual({
       turn: [OWN_URL, PARTNER_URL],
       stun: ["stun:own.example.org:3478"],
     });
@@ -179,18 +179,19 @@ describe("the relays a browser run lists under its allowed relays", () => {
     const enroll = vi.fn();
     const relay = { turn: [OWN_URL], stun: [] };
     expect(
-      await relayWithDefaultForRun(generateSharedSecret(), relay, {
-        setting: () => SITE,
-        enroll,
-        allowedRelays: () => ["own.example.org"],
-      }),
+      await relayWithDefaultForRun(
+        generateSharedSecret(),
+        relay,
+        ["own.example.org"],
+        { setting: () => SITE, enroll },
+      ),
     ).toBe(relay);
     expect(enroll).not.toHaveBeenCalled();
   });
 
   test("the relay test contacts only the relays kept", () => {
     expect(
-      relayTestTargets(readOwn, () => SITE, ["site.example.com"]).map(
+      relayTestTargets(["site.example.com"], readOwn, () => SITE).map(
         (target) => target.url,
       ),
     ).toEqual([SITE.turnUrl]);
@@ -211,6 +212,7 @@ describe("relayPlanForRun", () => {
     const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
+      readRelayRestriction().allowedRelays,
       { readOwn, setting: () => SITE, enroll, onRunNotice },
     );
     expect(plan).toEqual({
@@ -229,6 +231,7 @@ describe("relayPlanForRun", () => {
     const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
+      ["own.example.org", "site.example.com:443"],
       {
         readOwn,
         setting: () => SITE,
@@ -236,9 +239,6 @@ describe("relayPlanForRun", () => {
           Promise.resolve({ kind: "enrolled" as const, lapsesAt: "x" }),
         ),
         onRunNotice,
-        restriction: () => ({
-          allowedRelays: ["own.example.org", "site.example.com:443"],
-        }),
       },
     );
     expect(plan).toEqual({
@@ -262,12 +262,8 @@ describe("relayPlanForRun", () => {
     const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
-      {
-        readOwn,
-        setting: () => undefined,
-        onRunNotice,
-        restriction: () => ({}),
-      },
+      undefined,
+      { readOwn, setting: () => undefined, onRunNotice },
     );
     expect(plan).toEqual({
       relay: {
@@ -280,11 +276,12 @@ describe("relayPlanForRun", () => {
   });
 
   test("a run whose every TURN url is left out continues without one", async () => {
-    const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
-      readOwn,
-      setting: () => undefined,
-      restriction: () => ({ allowedRelays: ["other.example"] }),
-    });
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      undefined,
+      ["other.example"],
+      { readOwn, setting: () => undefined },
+    );
     expect(plan.relay).toEqual({
       turn: [],
       stun: ["stun:own.example.org:3478"],
@@ -297,6 +294,7 @@ describe("relayPlanForRun", () => {
     const plan = await relayPlanForRun(
       generateSharedSecret(),
       { turn: [PARTNER_URL] },
+      ["site.example.com"],
       {
         readOwn,
         setting: () => SITE,
@@ -304,7 +302,6 @@ describe("relayPlanForRun", () => {
           Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
         ),
         onRunNotice,
-        restriction: () => ({ allowedRelays: ["site.example.com"] }),
       },
     );
     expect(plan).toEqual({
@@ -319,15 +316,19 @@ describe("relayPlanForRun", () => {
 
   test("with no relay at all, a failed default relay enrollment says so and the run continues", async () => {
     const onRunNotice = vi.fn();
-    const plan = await relayPlanForRun(generateSharedSecret(), undefined, {
-      readOwn: () => ({ kind: "none" }),
-      setting: () => SITE,
-      enroll: vi.fn(() =>
-        Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
-      ),
-      onRunNotice,
-      restriction: () => ({}),
-    });
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      undefined,
+      undefined,
+      {
+        readOwn: () => ({ kind: "none" }),
+        setting: () => SITE,
+        enroll: vi.fn(() =>
+          Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+        ),
+        onRunNotice,
+      },
+    );
     expect(plan).toEqual({ relaysLeftOut: [] });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,

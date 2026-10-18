@@ -101,6 +101,7 @@ import { inviterLedgerRows, ledgerOutcomeOf } from "@psi/ledger";
 import { matchingKeyWithheldReason } from "@psi/matchingKeyModel";
 import { outputForDirection } from "@psi/authoring/advancedInvite";
 import { ownColumnsActionable } from "@psi/ownColumnsModel";
+import { readRelayRestriction } from "@psi/transport/relayRestriction";
 
 import {
   availableTransports,
@@ -1404,6 +1405,7 @@ export function InviterScreen() {
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
         retainsFiles: declaresRetainedFiles,
+        allowedRelays: readRelayRestriction().allowedRelays,
       });
       // The bilateral file-handling choices are captured beside the locator:
       // the lockless rendezvous from the options block the run itself holds
@@ -1510,6 +1512,7 @@ export function InviterScreen() {
         includeMatchingKey: editor.draft.includeMatchingKey === true,
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         connectionEndpoint: endpointRequestFor(cliTransport, saveFields),
+        allowedRelays: readRelayRestriction().allowedRelays,
       });
       // Mint the config from the SAME invitation the code came from; a
       // ZodError here (a malformed locator the endpoint schema also rejects)

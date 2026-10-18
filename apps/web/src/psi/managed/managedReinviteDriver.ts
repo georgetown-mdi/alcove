@@ -20,6 +20,7 @@ import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import { invitationLocation } from "../invitationLocation";
+import { readRelayRestriction } from "../transport/relayRestriction";
 import { relayForRun } from "../transport/ownRelaySetting";
 
 import { composeManagedReinvite } from "./managedReinvite";
@@ -46,10 +47,15 @@ interface ManagedReinviteDriverDeps {
   registerRelayKey: typeof registerReinvitedManagedRelayKey;
   /** The moment the setup lifetime and the record's max-age stamp count from. */
   now: () => number;
-  /** Read this browser's own relay, which the invitation names. */
-  ownRelay: () => RelayUrls | undefined;
+  /** Read this browser's own relay, less the TURN urls `allowedRelays`
+   * leaves out, which the invitation names. */
+  ownRelay: (
+    allowedRelays: ReadonlyArray<string> | undefined,
+  ) => RelayUrls | undefined;
   /** Read the build's default relay, which the invitation also names. */
   defaultRelay: () => DefaultRelaySetting | undefined;
+  /** Read the relays this exchange may use; unset restricts none. */
+  allowedRelays: () => ReadonlyArray<string> | undefined;
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -60,8 +66,9 @@ const defaultDeps: ManagedReinviteDriverDeps = {
   registerRelayKey: (replaced, written) =>
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
-  ownRelay: () => relayForRun(),
+  ownRelay: (allowedRelays) => relayForRun(undefined, allowedRelays),
   defaultRelay: () => defaultRelaySetting(),
+  allowedRelays: () => readRelayRestriction().allowedRelays,
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -96,12 +103,14 @@ export async function reinviteManagedExchange(
   record: RunnableManagedExchangeRecord,
   deps: ManagedReinviteDriverDeps = defaultDeps,
 ): Promise<ManagedReinviteResult> {
+  const allowedRelays = deps.allowedRelays();
   const reinvite = await composeManagedReinvite(record, deps.location(), {
     generateSecret: deps.generateSecret,
     encode: deps.encode,
     now: deps.now,
-    ownRelay: deps.ownRelay(),
+    ownRelay: deps.ownRelay(allowedRelays),
     defaultRelay: deps.defaultRelay(),
+    allowedRelays,
   });
   const persisted = await deps.persistRotation(
     record.id,

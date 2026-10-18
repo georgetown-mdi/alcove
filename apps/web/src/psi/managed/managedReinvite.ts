@@ -166,6 +166,10 @@ interface ManagedReinviteSeams {
   /** The build's default relay, whose TURN url the invitation names after the
    * own relay, with its registrar; `undefined` names none. */
   defaultRelay: DefaultRelaySetting | undefined;
+  /** The relays this exchange may use: the invitation names no TURN url an
+   * entry leaves out (`turnUrlIsAllowed` in core); `undefined` restricts
+   * none. */
+  allowedRelays: ReadonlyArray<string> | undefined;
 }
 
 /**
@@ -208,7 +212,11 @@ export async function composeManagedReinvite(
     location,
     freshSecret,
     tokenExpires,
-    invitationRelayWithDefault(seams.ownRelay, seams.defaultRelay),
+    invitationRelayWithDefault(
+      seams.ownRelay,
+      seams.defaultRelay,
+      seams.allowedRelays,
+    ),
   );
   const encoded = await seams.encode(token);
   return {

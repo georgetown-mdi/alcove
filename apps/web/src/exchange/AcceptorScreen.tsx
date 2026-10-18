@@ -76,6 +76,7 @@ import {
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
 import { byteSizeLabel } from "@psi/formatting";
+import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { seedRows } from "@psi/inviterEditor";
 
 import { ledgerOutcomeOf } from "@psi/ledger";
@@ -312,6 +313,7 @@ function AcceptorInvitationScreen({
   const csvDelimiter = delimiterResolution.ok
     ? delimiterResolution.delimiter
     : undefined;
+  const [allowedRelays] = useState(() => readRelayRestriction().allowedRelays);
 
   // Decode the token once, failing closed: an empty fragment, a bad
   // checksum/schema, an expired token, or an endpoint this build cannot drive
@@ -1319,6 +1321,7 @@ function AcceptorInvitationScreen({
               perspective="review"
               headingOrder={1}
               headingRef={termsHeadingRef}
+              allowedRelays={allowedRelays}
             />
             {acceptSignaling !== undefined && (
               <AcceptorSignalingServerNotice accepted={acceptSignaling} />

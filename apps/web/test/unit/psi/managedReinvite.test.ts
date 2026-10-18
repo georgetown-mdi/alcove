@@ -85,6 +85,7 @@ const seams = {
   now: () => NOW,
   ownRelay: undefined,
   defaultRelay: undefined,
+  allowedRelays: undefined,
 };
 
 const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
@@ -190,6 +191,16 @@ describe("composeManagedReinvite", () => {
         registrar: DEFAULT_RELAY_REGISTRAR_URL,
       },
     });
+  });
+
+  test("leaves the build's default relay out where the allowed relays do", async () => {
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      defaultRelay: DEFAULT_RELAY,
+      allowedRelays: ["relay.example.org"],
+    });
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).not.toHaveProperty("relay");
   });
 
   test("the deep link contains the encoded token in its fragment", async () => {
