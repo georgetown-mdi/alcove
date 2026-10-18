@@ -55,8 +55,8 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 
 The built-in rules are two named artifacts, versioned separately:
 
-- **`baseline-pii`, version `1.1.0`** -- the linkage **fields**: eight PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, and `zip_code`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.0.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. The earlier built-in rules it replaces are retired: a document or record citing them names a set this build does not ship.
+- **`baseline-pii`, version `1.2.0`** -- the linkage **fields**: ten PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, and `county`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
+- **`precision-ranked-rules`, version `2.1.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -71,7 +71,7 @@ Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_ter
 
 #### Choosing rules by precision floor
 
-A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date.
+A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all. Three rules match on a name and a date of birth with nothing else -- as written, with the names swapped, or on one part of a compound last name -- and are selected only when both files draw their members from one state or one metropolitan area, since across a wider population more people share a name and a date. The rule matching on a name, a date of birth and a county is selected on the same answer, since one county name is used in many states. The rules matching on a name and a date of birth with a three-digit ZIP area or a state are selected for any pair of files.
 
 No configuration key sets the floor or that answer; they decide which keys are written into the terms. Neither travels: the terms hold the keys selected, and the citation names the set and its version. Where each path takes them from:
 
@@ -304,9 +304,9 @@ Additional types will be added as their use case arises.
 A `street_number` column is inferred only from a number-named column, `street_number`, `house_number` or `address_number` and their short spellings (complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). An address-line column such as `address`, `street_address` or `address1` is not inferred as one; to match on the number such a column starts with, type it `street_number` in your `metadata`. Either way the value is cleaned to the number it starts with, so `123 Main St Apt 4` and `123` both match as `123`, and a value that does not start with a digit is dropped. It has no built-in linkage key, so it is matched on only where your terms declare a key that uses it; on its own a house number matches everyone at that number on any street, so it does its work beside a ZIP code, a name and a date of birth. The cleaning steps and the rules for leading zeros, ranges and fractions are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#street_number).
 
 A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
-A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`.
+A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`. The built-in rule `LN + FN + DOB + ZIP3` does.
 
-A `state` column is inferred from `state`, `state_code` or `state_name`, and a `county` column from `county` or `county_name` (the no-separator spellings too; complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Neither has a built-in linkage key, so either is matched on only where your terms declare a key that uses it. A state is cleaned to its two-letter code from the full name or the code, and a value that is neither is dropped. A county name is cleaned to uppercase with the word `COUNTY` and punctuation removed. The same county name exists in many states, so a `county` element identifies a place only when both files come from one state or one region; the cleaning steps for both types are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
+A `state` column is inferred from `state`, `state_code` or `state_name`, and a `county` column from `county` or `county_name` (the no-separator spellings too; complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Each has a built-in linkage key beside a name and a date of birth, `LN + FN + DOB + STATE` and `LN + FN + DOB + COUNTY`, so an inferred state or county column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. The county key is selected only when both files draw their members from one state or one metropolitan area ([Choosing rules by precision floor](#choosing-rules-by-precision-floor)). A state is cleaned to its two-letter code from the full name or the code, and a value that is neither is dropped. A county name is cleaned to uppercase with the word `COUNTY` and punctuation removed. The same county name exists in many states, so a `county` element identifies a place only when both files come from one state or one region; the cleaning steps for both types are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
 
 #### Constraints
 
@@ -423,10 +423,10 @@ linkage_terms:
   linkage_rule_set:
     field_set:
       name: "baseline-pii"
-      version: "1.1.0"
+      version: "1.2.0"
     key_set:
       name: "precision-ranked-rules"
-      version: "2.0.0"
+      version: "2.1.0"
 ```
 
 Every path that fills in your fields and keys for you writes this citation: a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, and the console's quick exchange, whose confirm screen shows it in the terms it infers from your file. It travels wherever the terms do -- into the invitation, onto the wire, onto the accepting party's terms review, and into each party's exchange record, which is what lets "which rules did this linkage match on" be answered by a name and a version.

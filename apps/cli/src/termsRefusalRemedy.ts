@@ -41,10 +41,11 @@ const CONFIGURATION_UNWRITTEN_NEXT_STEP =
 
 const QUICK_EXCHANGE_NEXT_STEP =
   "Agree with your partner on the columns your input files share and " +
-  "the --linkage-strategy you both pass, then run again. A phone, email or " +
-  "ZIP column in only one of the two files makes the terms differ: the " +
-  "party whose file has it removes that column, or you agree the terms " +
-  "through an invitation (alcove invite, then alcove accept).";
+  "the --linkage-strategy you both pass, then run again. A phone, email, " +
+  "ZIP, state or county column in only one of the two files makes the " +
+  "terms differ: the party whose file has it removes that column, or you " +
+  "agree the terms through an invitation (alcove invite, then alcove " +
+  "accept).";
 
 /**
  * The next step for each run and each party that refused.
@@ -99,24 +100,35 @@ const QUICK_EXCHANGE_CONTACT_COLUMNS = annotationKey<string>(
   "quick exchange contact columns",
 );
 
-type ContactType = (typeof CONTACT_AND_LOCATION_FIELD_TYPES)[number];
+/** The types whose column the line names: the contact and location types, and
+ * the state and county the built-in keys also match on beside a name and a
+ * date of birth. */
+const NAMED_COLUMN_TYPES = [
+  ...CONTACT_AND_LOCATION_FIELD_TYPES,
+  "state",
+  "county",
+] as const;
+
+type ContactType = (typeof NAMED_COLUMN_TYPES)[number];
 
 /** What each contact or location type is called in the line naming a column. */
 const CONTACT_TYPE_LABELS: { readonly [T in ContactType]: string } = {
   phone_number: "phone number",
   email_address: "email address",
   zip_code: "ZIP code",
+  state: "state",
+  county: "county",
 };
 
 const isContactType = (type: string): type is ContactType =>
-  (CONTACT_AND_LOCATION_FIELD_TYPES as ReadonlyArray<string>).includes(type);
+  (NAMED_COLUMN_TYPES as ReadonlyArray<string>).includes(type);
 
 /**
- * The line naming this party's own phone, email and ZIP columns that the keys
- * named `differingKeys` of its quick-exchange terms match on, each header
- * escaped for display, or `undefined` where those keys match on none. Only
- * the column each such field is bound to is named: a second column of the
- * same type is held back, not matched on.
+ * The line naming this party's own phone, email, ZIP, state and county columns
+ * that the keys named `differingKeys` of its quick-exchange terms match on,
+ * each header escaped for display, or `undefined` where those keys match on
+ * none. Only the column each such field is bound to is named: a second column
+ * of the same type is held back, not matched on.
  *
  * @internal exported for testing
  */
@@ -169,9 +181,10 @@ export function quickExchangeContactColumnsLine(
 
 /**
  * Record on `err`, a quick exchange's failure, the line naming this party's
- * own phone, email and ZIP columns ({@link quickExchangeContactColumnsLine}),
- * stated beneath a terms refusal whose differing keys include one over such a
- * column (`termsDifferenceLocalKeys`). Any other error is returned unchanged.
+ * own phone, email, ZIP, state and county columns
+ * ({@link quickExchangeContactColumnsLine}), stated beneath a terms refusal
+ * whose differing keys include one over such a column
+ * (`termsDifferenceLocalKeys`). Any other error is returned unchanged.
  */
 export function markQuickExchangeContactColumns<E>(
   err: E,

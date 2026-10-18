@@ -97,6 +97,52 @@ describe("previewInferredTerms", () => {
     expect(preview.refusal).toBeUndefined();
   });
 
+  test("a file with ZIP, state and county columns previews the geography rules", () => {
+    // The same keys, fields and citation the CLI's quick exchange runs for this
+    // header (apps/cli/test/unit/commands/zeroSetup.test.ts), so the two
+    // parties of a CLI-to-browser quick exchange present equal terms.
+    const preview = previewInferredTerms(
+      ["first_name", "last_name", "date_of_birth", "zip", "state", "county"],
+      DEFAULT_PREVIEW_IDENTITY,
+      DIRECT_LINKAGE_STRATEGY_DEFAULT,
+      DIRECT_DEDUPLICATE_DEFAULT,
+    );
+    const terms = preview.linkageTerms;
+    expect(terms.linkageKeys.map((key) => key.name)).toStrictEqual([
+      "LN + FN + DOB + ZIP5",
+      "LN + FN + DOB + ZIP3",
+      "ZIP5 + soundex(LN) + FN + DOB",
+      "ZIP5 + LN + FN + DOB +/-1 year",
+      "LN + FN + DOB + STATE",
+      "LN + FN + DOB + COUNTY",
+      "LN + FN + DOB",
+      "swap(LN, FN) + DOB",
+      "split(LN) + FN + DOB",
+      "LN + FN + YOB + MOB + ZIP5",
+    ]);
+    expect(terms.linkageFields).toStrictEqual([
+      {
+        name: "first_name",
+        type: "first_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      { name: "date_of_birth", type: "date_of_birth" },
+      { name: "zip_code", type: "zip_code" },
+      { name: "state", type: "state" },
+      { name: "county", type: "county" },
+    ]);
+    expect(terms.linkageRuleSet).toStrictEqual({
+      fieldSet: { name: "baseline-pii", version: "1.2.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+    });
+    expect(preview.refusal).toBeUndefined();
+  });
+
   test("disclosed columns match core's disclosure predicate and back the display send", () => {
     // Every column that is not a linkage key is sent, each identifier column
     // among them; no linkage-key column is.

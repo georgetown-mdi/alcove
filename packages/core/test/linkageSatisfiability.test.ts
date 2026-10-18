@@ -2745,6 +2745,8 @@ describe("assessLinkageSatisfiability", () => {
       "phone_number",
       "email_address",
       "zip_code",
+      "state",
+      "county",
     ]);
   });
 

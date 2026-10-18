@@ -22,8 +22,11 @@ The key set it describes is the first built-in key set, 1.0.0 over
 `baseline-pii` 1.0.0. Both are retired: a citation of either names a set this
 build does not ship. The built-in key set is the catalog of
 [linkage-rule-catalog.md](linkage-rule-catalog.md), published as
-`precision-ranked-rules` 2.0.0 over `baseline-pii` 1.1.0, which adds
-`phone_number`, `email_address` and `zip_code`._
+`precision-ranked-rules` 2.1.0 over `baseline-pii` 1.2.0, which adds
+`phone_number`, `email_address`, `zip_code`, `state` and `county`. The
+catalog's first versions, 2.0.0 over 1.1.0, are retired the same way; 2.1.0
+adds the ZIP3, state and county rules and 1.2.0 the `state` and `county`
+fields._
 
 This is design rationale. Nothing here binds an implementation.
 
@@ -72,10 +75,10 @@ derives each key from the same field declarations as its partner.
 A built-in key over a field outside that substrate would strand the party whose
 file does not include it, as terms referencing a field they never declare,
 which names no cause to an operator who authored nothing. A key over a field
-inside it that only one party's file supplies -- a phone, email or ZIP column,
-which `baseline-pii` 1.1.0 declares -- stops the exchange at the terms check
-instead, before any data moves, and the party whose file has the column is
-told which column to remove ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules)).
+inside it that only one party's file supplies -- a phone, email, ZIP, state or
+county column, which `baseline-pii` 1.2.0 declares -- stops the exchange at
+the terms check instead, before any data moves, and the party whose file has
+the column is told which column to remove ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules)).
 
 So the property is held by a check rather than by review:
 `npm run check:zero-setup-keys` reads every set the built-in registry declares
@@ -185,10 +188,10 @@ not an oversight to be closed by adding keys casually: rules for those fields wo
 precision/recall consequences and are not covered by the validation these keys
 rest on, so they need their own grounding before they could ship as built-in.
 
-The catalog closes the gap with that grounding. `precision-ranked-rules` 2.0.0
+The catalog closes the gap with that grounding. `precision-ranked-rules` 2.1.0
 matches on each of those types, each rule with the band
 [linkage-rule-catalog.md](linkage-rule-catalog.md) gives it, and `baseline-pii`
-1.1.0 declares the three fields. Where a refinement sits in the order is in
+1.2.0 declares the three fields. Where a refinement sits in the order is in
 [linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
 
 Each such rule is compound -- the type beside a name and a birth date, or its

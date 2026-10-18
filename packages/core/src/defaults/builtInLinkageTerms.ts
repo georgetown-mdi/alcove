@@ -58,7 +58,7 @@ export const DEFAULT_LINKAGE_FIELD_SET_NAME = "baseline-pii";
  * sets version independently, so an edit to the keys bumps
  * {@link DEFAULT_LINKAGE_KEY_SET_VERSION} and leaves this one alone.
  */
-export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.1.0";
+export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.2.0";
 
 /**
  * The linkage fields of the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} field set:
@@ -93,6 +93,8 @@ const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
   { name: "phone_number", type: "phone_number" },
   { name: "email_address", type: "email_address" },
   { name: "zip_code", type: "zip_code" },
+  { name: "state", type: "state" },
+  { name: "county", type: "county" },
 ];
 
 /**
@@ -123,7 +125,7 @@ export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
  * an edited set holding the old version makes that record describe rules
  * nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.0.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.1.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
@@ -158,6 +160,12 @@ const DOB: LinkageKeyElement = { field: "date_of_birth" };
 const PHONE: LinkageKeyElement = { field: "phone_number" };
 const EMAIL: LinkageKeyElement = { field: "email_address" };
 const ZIP5: LinkageKeyElement = { field: "zip_code" };
+const ZIP3: LinkageKeyElement = {
+  field: "zip_code",
+  transform: [{ function: "zip3" }],
+};
+const STATE: LinkageKeyElement = { field: "state" };
+const COUNTY: LinkageKeyElement = { field: "county" };
 const LN3: LinkageKeyElement = {
   field: "last_name",
   transform: [{ function: "substring", params: { start: 1, length: 3 } }],
@@ -260,11 +268,14 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   { name: "FN + DOB + PHONE", elements: [FN, DOB, PHONE] },
   { name: "SSN + FN", elements: [SSN, FN] },
   { name: "SSN4 + LN4 + YOB + MOB", elements: [SSN4, LN4, YOB_MOB] },
+  { name: "LN + FN + DOB + ZIP3", elements: [LN, FN, DOB, ZIP3] },
   { name: "ZIP5 + soundex(LN) + FN + DOB", elements: [ZIP5, SDX_LN, FN, DOB] },
   {
     name: "ZIP5 + LN + FN + DOB +/-1 year",
     elements: [ZIP5, LN, FN, DOB_ONE_YEAR],
   },
+  { name: "LN + FN + DOB + STATE", elements: [LN, FN, DOB, STATE] },
+  { name: "LN + FN + DOB + COUNTY", elements: [LN, FN, DOB, COUNTY] },
   { name: "LN + FN + DOB", elements: [LN, FN, DOB] },
   {
     name: "swap(LN, FN) + DOB",
@@ -318,19 +329,16 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   { rule: "FN + DOB + PHONE", band: 99, coverage: "any" },
   { rule: "SSN + FN", band: 95, coverage: "any" },
   { rule: "SSN4 + LN4 + YOB + MOB", band: 95, coverage: "any" },
-  {
-    rule: "LN + FN + DOB + ZIP3",
-    band: 95,
-    coverage: "any",
-    needs: "three-digit ZIP",
-  },
+  { rule: "LN + FN + DOB + ZIP3", band: 95, coverage: "any" },
   { rule: "ZIP5 + soundex(LN) + FN + DOB", band: 95, coverage: "any" },
   { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95, coverage: "any" },
+  { rule: "LN + FN + DOB + STATE", band: 95, coverage: "any" },
+  // One county name is used in many states, so a county identifies a place
+  // only where both files come from one state or one metropolitan area.
   {
-    rule: "LN + FN + DOB + STATE or COUNTY",
+    rule: "LN + FN + DOB + COUNTY",
     band: 95,
-    coverage: "any",
-    needs: "state or county",
+    coverage: "one_state_or_metro_area",
   },
   { rule: "LN + FN + DOB", band: 95, coverage: "one_state_or_metro_area" },
   { rule: "swap(LN, FN) + DOB", band: 95, coverage: "one_state_or_metro_area" },
@@ -534,8 +542,8 @@ export function precisionFloorStatement(floor: PrecisionFloor): {
     label: label.charAt(0).toUpperCase() + label.slice(1),
     description: precisionFloorAsksCoverage(floor)
       ? `${share} The rules that match on a name and a date of birth alone ` +
-        "are included only when both files draw their members from one " +
-        "state or one metropolitan area."
+        "or with a county are included only when both files draw their " +
+        "members from one state or one metropolitan area."
       : share,
   };
 }

@@ -5,7 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.0.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.1.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -80,6 +80,7 @@ Most rules are offered for any pair of files.
 Rules 31 to 33, name and date with no SSN, contact field or geography, are offered only when both files draw their members from one state or one metropolitan area.
 Chance agreement on a name and a date grows with the number of people the two files cover (Hillestad et al. 2008; Goel et al. 2020), and the measurements that place these rules at 95% are within one state or county.
 Rule 30 puts the same condition into the rule itself, as a `STATE` or `COUNTY` element.
+Its `COUNTY` form is offered under the same condition as rules 31 to 33, since one county name is used in many states.
 
 A file drawn from one age group, such as one school class or one birth cohort, behaves like a far larger file, because its members share birth years.
 In one graduating class of 428,410 students, about 500 combinations of name and date of birth appeared more than once, 0.12% (Fong et al. 2018), so at least about 0.23% of the students shared theirs (computed here).
@@ -123,8 +124,6 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks or a rule not yet added to the set:
 
 - Rule 21: the `street_number` type exists; the rule is not yet in the built-in key set.
-- Rule 27: the `zip3` element exists; the rule is not yet in the built-in key set.
-- Rule 30: the `state` and `county` types exist; the rule is not yet in the built-in key set.
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
 - The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 
@@ -390,7 +389,9 @@ No measured relative exists.
 
 #### 27. `LN + FN + DOB + ZIP3`
 
-95%. Any coverage. Measured. The `zip3` element exists; the rule is not yet in the built-in key set.
+95%. Any coverage. Measured.
+
+Built from the `zip3` element, the first three digits of the cleaned five-digit ZIP.
 
 Cao et al. (2026) measured first + last name + DOB + three-digit ZIP at 0.97 precision against SSN-based labels, with 0.95 for first + last name + gender + DOB; it is the only measurement of a three-digit ZIP rule.
 Against email-based and phone-based labels, on records with no valid SSN, the ZIP token scored 0.76 and 0.74; the authors attribute the drop to noisier labels.
@@ -416,10 +417,15 @@ One loosening on rule 22 stays at 95%, for the reason given under rule 28.
 
 #### 30. `LN + FN + DOB + STATE` or `LN + FN + DOB + COUNTY`
 
-95%. Any coverage. Measured relatives. The `state` and `county` types exist; the rule is not yet in the built-in key set.
+95%. `STATE`: any coverage. `COUNTY`: offered only when both files draw from one state or one metropolitan area. Measured relatives.
 
 Rule 31 with its coverage condition written into the rule.
 Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechuta et al. (2020), and Mirel et al.'s (2022) row with the state token agreeing.
+The two forms are two keys, the `STATE` key first, both a refinement of rule 31 and run before it.
+
+A county name is ambiguous across states: the most common, Washington, names a county in about thirty states.
+Within one state or one metropolitan area a county name almost always names one county, so the `COUNTY` form is offered under rule 31's coverage condition, where it separates the pairs rule 31 ties.
+For a region crossing a state line, such as the District of Columbia, Maryland and Virginia, the `ZIP5`, `ZIP3` and `COUNTY` rules work and a `STATE` element would split the region.
 
 #### 31. `LN + FN + DOB`
 

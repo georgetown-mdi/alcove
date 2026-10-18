@@ -129,6 +129,7 @@ function leadingSubstringLength(
   if (steps === undefined || steps.length === 0) return undefined;
   if (steps.length === 1 && WHOLE_VALUE_TRANSFORMS.has(steps[0].function))
     return undefined;
+  if (steps.length === 1 && steps[0].function === "zip3") return 3;
   const length = steps[0].params?.length;
   if (
     steps.length !== 1 ||
@@ -143,9 +144,9 @@ function leadingSubstringLength(
 }
 
 /**
- * A record's own value for each default field: distinct per party and per
- * record in every field, and in the leading characters of every field a key
- * takes a substring of.
+ * A record's own value for each default field: distinct per party in every
+ * field, per record in every field but the state, which has too few values,
+ * and in the leading characters of every field a key takes a substring of.
  *
  * Written as the raw cell an operator's file holds, which the default
  * standardization then cleans -- MM/DD/YYYY dates (the format the exchange
@@ -184,6 +185,12 @@ function baseValues(party: PartyName, record: number): Record<string, string> {
       case "zip_code":
         values[field.name] =
           `${party === "a" ? 2 : 7}${String(record).padStart(4, "0")}`;
+        break;
+      case "state":
+        values[field.name] = party === "a" ? "Maryland" : "TX";
+        break;
+      case "county":
+        values[field.name] = `${nameCode(party, record)} County`;
         break;
       default:
         throw new Error(
@@ -225,6 +232,16 @@ function agreeingValue(
           `the built-in keys take ${prefix} leading characters of a date, and this file generates a counterpart date for a year-and-month prefix only`,
         );
       return `${anchorValue.slice(0, 3)}${ownValue.slice(3, 5)}${anchorValue.slice(5)}`;
+    case "zip_code": {
+      // Party B's own ZIP differs from the anchor's in its first digit alone,
+      // so the last two digits are moved to keep the two ZIP5s apart.
+      if (prefix !== 3)
+        throw new Error(
+          `the built-in keys take ${prefix} leading digits of a ZIP code, and this file generates a counterpart ZIP for the three-digit ZIP area only`,
+        );
+      const lastTwo = (Number(anchorValue.slice(3)) + 50) % 100;
+      return `${anchorValue.slice(0, 3)}${String(lastTwo).padStart(2, "0")}`;
+    }
     default:
       throw new Error(
         `the built-in keys take a leading substring of a "${field.type}" field, which this file generates no counterpart value for`,

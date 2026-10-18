@@ -266,9 +266,10 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
   const anyArea = shippedAt95
     .filter((band) => band.coverage === "any")
     .map((band) => band.rule);
-  expect(oneArea).toHaveLength(3);
-  expect(help).toContain(`alone: ${listed(oneArea)}.`);
-  expect(help).toContain(`delete those three and ${listed(anyArea)}.`);
+  expect(oneArea).toHaveLength(4);
+  expect(help).toContain(`delete the four keys`);
+  expect(help).toContain(`with a county: ${listed(oneArea)}.`);
+  expect(help).toContain(`delete those four and ${listed(anyArea)}.`);
 });
 
 test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {
