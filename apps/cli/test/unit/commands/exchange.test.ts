@@ -9,6 +9,7 @@ import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
 import type { ProtocolConnectionConfig } from "../../../src/protocol";
 import YAML from "yaml";
 import {
+  InternalConsistencyError,
   RoundSetLimitError,
   UsageError,
   assertFirstRoundWithinSetMaximum,
@@ -31,6 +32,7 @@ import type {
 import {
   announceRetainMode,
   readConfigLinkageSource,
+  warnOnLinkageRuleSetCitationDrift,
 } from "../../../src/config";
 import {
   keyFileFromInvitation,
@@ -187,13 +189,18 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
 });
 
-// The retain-mode notice is spy-WRAPPED to plant an error at a step no catch of
-// its own surrounds.
+// The linkage-rule-set citation drift warning is the last call in loadConfig
+// outside a catch that rewraps it, so it is spy-WRAPPED to plant an error the
+// configuration boundary has to classify on its own. The retain-mode notice is
+// spy-WRAPPED to plant an error at a step no catch of its own surrounds.
 vi.mock("../../../src/config", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/config")>();
   return {
     ...actual,
     announceRetainMode: vi.fn(actual.announceRetainMode),
+    warnOnLinkageRuleSetCitationDrift: vi.fn(
+      actual.warnOnLinkageRuleSetCitationDrift,
+    ),
   };
 });
 
@@ -1463,6 +1470,46 @@ test("handler: an INPUT_FILE that does not exist exits 66, not 69", async () => 
     exitSpy.mockRestore();
   }
 });
+
+test.each([
+  {
+    planted: "a plain Error",
+    code: 64,
+    plant: () => new Error("the configuration could not be read"),
+  },
+  {
+    planted: "an InternalConsistencyError",
+    code: 70,
+    plant: () => new InternalConsistencyError("two derivations disagreed"),
+  },
+])(
+  "handler: a configuration that cannot be loaded exits $code on $planted",
+  async ({ plant, code }) => {
+    // Loading the configuration touches no transport, so nothing it raises is
+    // a transport failure: only a fault in Alcove itself is not the operator's
+    // to fix.
+    fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+    saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+    vi.mocked(warnOnLinkageRuleSetCitationDrift).mockImplementationOnce(() => {
+      throw plant();
+    });
+    const exitSpy = captureProcessExit();
+    try {
+      await expect(
+        handler({
+          _: [],
+          $0: "alcove",
+          input: path.join(dir, "in.csv"),
+          "config-file": configFile,
+          "key-file": keyFile,
+          "log-level": "silent",
+        } as unknown as Arguments),
+      ).rejects.toThrow(`exit:${code}`);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  },
+);
 
 test.each(ERROR_CLASS_EXIT_CODES)(
   "handler: a step outside every named refusal exits $code on $planted",
