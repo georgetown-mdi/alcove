@@ -27,8 +27,10 @@ import {
   IN_PLACE_IDENTITY_FILE_NOTICE,
   IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   NO_CONFIGURATION_IN_FOLDER,
+  OPENED_ALLOWED_RELAYS_ONLY,
   OPENED_EXCHANGE_CONTINUES,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
+  OPENED_NO_ALLOWED_RELAYS,
   OPENED_SIGNALING_SERVER_NOTE,
   OPEN_CONFIGURATION_LABEL,
   RELAY_ENROLLMENT_NOTICE,
@@ -497,10 +499,12 @@ describe("the open configuration over the files it is derived across", () => {
   });
 
   /** The relay an in-place webrtc configuration states: none unless
-   * `relayTurnUrls` names its TURN urls. */
+   * `relayTurnUrls` names its TURN urls, and no `connection.allowed_relays`
+   * unless `allowedRelays` is set. */
   interface InPlaceRelay {
     relayTurnUrls: Array<string>;
     relayRegistrarNamed?: true;
+    allowedRelays?: Array<string>;
   }
 
   /** The body the console answers a read of the in-place webrtc configuration
@@ -518,6 +522,9 @@ describe("the open configuration over the files it is derived across", () => {
         signalingServer: "wss://signal.example.org/api/",
         ...(relay.relayTurnUrls.length > 0
           ? { relayTurnUrls: relay.relayTurnUrls }
+          : {}),
+        ...(relay.allowedRelays !== undefined
+          ? { allowedRelays: relay.allowedRelays }
           : {}),
         linkageTerms: CONFIG_DOCUMENT.linkageTerms,
         metadata: STATED_COLUMNS,
@@ -776,6 +783,54 @@ describe("the open configuration over the files it is derived across", () => {
       channel: "webrtc",
       mountedConfigurationOpened: true,
     });
+  });
+
+  test("a webrtc configuration stating allowed relays shows them beside its relay, not as a field, and its run sends none", async () => {
+    await reviewInPlaceRun({}, undefined, undefined, {
+      relayTurnUrls: ["turns:relay.example.org:443?transport=tcp"],
+      allowedRelays: ["relay.example.org", "other.example.net:443"],
+    });
+    await expect
+      .element(
+        page.getByText("relay.example.org, other.example.net:443", {
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      `Allowed relays: relay.example.org, other.example.net:443. ${OPENED_ALLOWED_RELAYS_ONLY}`,
+    );
+    expect(OPENED_SIGNALING_SERVER_NOTE).toContain("connection.allowed_relays");
+    await expect
+      .element(page.getByText(OPENED_SIGNALING_SERVER_NOTE))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("textbox", { name: "Allowed relays" }).query(),
+    ).toBeNull();
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(createdBodies[0]).not.toHaveProperty("allowedRelays");
+  });
+
+  test("a webrtc configuration whose allowed relays list none says its run uses no relay server", async () => {
+    await reviewInPlaceRun({}, undefined, undefined, {
+      relayTurnUrls: [],
+      allowedRelays: [],
+    });
+    await expect
+      .element(page.getByText(OPENED_NO_ALLOWED_RELAYS))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(OPENED_ALLOWED_RELAYS_ONLY);
+  });
+
+  test("a webrtc configuration stating no allowed relays shows no line for them", async () => {
+    await reviewInPlaceRun();
+    await expect
+      .element(page.getByText(OPENED_SIGNALING_SERVER_NOTE))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("Allowed relays:");
   });
 
   test("a save refused over a changed file starts no run and offers to open it again", async () => {

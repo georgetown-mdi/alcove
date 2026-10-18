@@ -235,7 +235,8 @@ export interface AcceptorLaunch {
   deduplicate: boolean;
   /** The relays this exchange may use, as the terms review step committed
    * them; unset restricts nothing. A browser run lists only the TURN urls they
-   * keep (`relayPlanForRun`). Unused on the server-job path. */
+   * keep (`relayPlanForRun`); a console WebRTC run sends them in its job
+   * request ({@link acceptorWebrtcTransport}). */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** The confirm-columns step's file-handling choices for a server-job accept,
    * already resolved through core's retain-mode implication. Fixed into the launch
@@ -263,12 +264,15 @@ export interface AcceptorLaunch {
 /**
  * Set the console to the coordination server and relay a WebRTC accept dials,
  * and return the transport whose create names them, so the console refuses
- * the run if a later change replaced them.
+ * the run if a later change replaced them. The create also states
+ * `allowedRelays`, the relays the review committed, which the console writes
+ * into the run's `alcove.yaml`; unset restricts nothing.
  *
  * @throws {AcceptedSignalingServerUnsetError} when the console is not set to it.
  */
 export async function acceptorWebrtcTransport(
   accepted: AcceptedSignalingServer,
+  allowedRelays: ReadonlyArray<string> | undefined,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ServerJobExchangeTransport> {
   const { relay } = accepted.signalingServer;
@@ -286,7 +290,11 @@ export async function acceptorWebrtcTransport(
         ? "The coordination server setting changed while it was being set."
         : "The console did not answer when it was set.",
     );
-  return { channel: "webrtc", signalingServer: accepted.signalingServer };
+  return {
+    channel: "webrtc",
+    signalingServer: accepted.signalingServer,
+    ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+  };
 }
 
 /** Resolve an {@link AcceptorLaunchSource} to the driver's {@link JobInputSource}:
@@ -560,7 +568,7 @@ export function useAcceptorExchange({
         : endpoint.channel === "filedrop"
           ? { channel: "filedrop" }
           : undefined;
-    const { signalingServer } = current;
+    const { signalingServer, allowedRelays } = current;
     const serverJobTransport =
       async (): Promise<ServerJobExchangeTransport> => {
         if (fixedTransport !== undefined) return fixedTransport;
@@ -568,7 +576,7 @@ export function useAcceptorExchange({
           throw new Error(
             "a console WebRTC accept was launched without its coordination server",
           );
-        return acceptorWebrtcTransport(signalingServer);
+        return acceptorWebrtcTransport(signalingServer, allowedRelays);
       };
 
     // The console performs the server-job exchange: the driver POSTs the

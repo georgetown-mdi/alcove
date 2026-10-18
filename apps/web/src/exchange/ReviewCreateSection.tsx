@@ -46,8 +46,10 @@ import {
   CONFIGURATION_ALREADY_SAVED,
   CONFIGURATION_SAVED,
   CONVERT_CONFIGURATION_LABEL,
+  OPENED_ALLOWED_RELAYS_ONLY,
   OPENED_EXCHANGE_CONTINUES,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
+  OPENED_NO_ALLOWED_RELAYS,
   OPENED_SIGNALING_SERVER_NOTE,
   OPENED_SIGNALING_SERVER_UNREADABLE,
   REOPEN_CONFIGURATION_LABEL,
@@ -140,6 +142,7 @@ export function ReviewCreateSection({
   openedRunsInPlace = false,
   openedSignalingServer,
   openedRelayTurnUrls = [],
+  openedAllowedRelays,
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
@@ -202,6 +205,9 @@ export function ReviewCreateSection({
   /** The TURN urls that configuration's run relays through, shown beside its
    * coordination server; empty where it names none. */
   openedRelayTurnUrls?: ReadonlyArray<string>;
+  /** That configuration's `connection.allowed_relays`, shown beside its
+   * relays and not edited here; undefined where it states none. */
+  openedAllowedRelays?: ReadonlyArray<string>;
   /** The connection form a configuration opened from the mounted folder seeds,
    * forwarded to the SFTP card for the case where no connection is authored yet. */
   loadedSftpForm?: SftpConnectionFormValues;
@@ -633,6 +639,18 @@ export function ReviewCreateSection({
                     when a direct connection fails.
                   </Text>
                 )}
+                {openedAllowedRelays !== undefined &&
+                  (openedAllowedRelays.length > 0 ? (
+                    <Text size="sm">
+                      Allowed relays:{" "}
+                      <span className={styles.mono}>
+                        {sanitizeForDisplay(openedAllowedRelays.join(", "))}
+                      </span>
+                      . {OPENED_ALLOWED_RELAYS_ONLY}
+                    </Text>
+                  ) : (
+                    <Text size="sm">{OPENED_NO_ALLOWED_RELAYS}</Text>
+                  ))}
                 <Text size="sm" c="dimmed">
                   {OPENED_SIGNALING_SERVER_NOTE}
                 </Text>

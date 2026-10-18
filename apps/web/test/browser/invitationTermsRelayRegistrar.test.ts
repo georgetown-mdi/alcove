@@ -14,6 +14,7 @@ import {
 
 import {
   ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "@psi/transport/relayRestriction";
@@ -24,7 +25,7 @@ import { readyDisclosures } from "./collapsePanels";
 
 import type { ConnectionEndpoint, LinkageTerms } from "@alcove/core";
 
-// The registrar an invitation's relay names, and the marks this browser's
+// The registrar an invitation's relay names, and the marks the exchange's
 // allowed relays put on its TURN urls, on the accept screen of each build. A
 // console run is the CLI's and enrolls there before it connects; a browser run
 // does not, so the hosted line only names it.
@@ -199,14 +200,27 @@ describe("InvitationTerms: the invitation's relays under the exchange's allowed 
     expect(text).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
-  test("the console build, whose run is the CLI's, marks nothing whatever the browser holds", async () => {
+  test("the console build, whose run writes the list into alcove.yaml, marks each TURN url and says so", async () => {
     build.console = true;
     const text = await producesText(relayEndpoint, ["partner.example.net"]);
+    expect(text).toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
+    expect(text).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(text).toContain(CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    expect(text).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+  });
+
+  test("the console build with the list unset marks nothing and says nothing about it", async () => {
+    build.console = true;
+    const text = await producesText(relayEndpoint);
     expect(text).toContain(`TURN ${KEPT_URL}`);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
-    expect(text).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
-    expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+    expect(text).not.toContain(
+      CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+    );
   });
 });
 

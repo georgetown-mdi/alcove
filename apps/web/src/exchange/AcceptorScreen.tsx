@@ -1380,33 +1380,32 @@ function AcceptorInvitationScreen({
             {acceptSignaling !== undefined && (
               <AcceptorSignalingServerNotice accepted={acceptSignaling} />
             )}
-            {!consoleBuild &&
-              decode.invitation.endpoint.channel === "webrtc" && (
-                <>
-                  <DefaultRelayNotice />
-                  <AllowedRelaysField
-                    value={allowedRelaysFieldText}
-                    error={allowedRelaysError}
-                    disabled={allowedRelaysFixed}
-                    liveError
-                    onChange={(value) =>
-                      dispatch({ type: "allowed-relays-changed", value })
-                    }
+            {decode.invitation.endpoint.channel === "webrtc" && (
+              <>
+                {!consoleBuild && <DefaultRelayNotice />}
+                <AllowedRelaysField
+                  value={allowedRelaysFieldText}
+                  error={allowedRelaysError}
+                  disabled={allowedRelaysFixed}
+                  liveError
+                  onChange={(value) =>
+                    dispatch({ type: "allowed-relays-changed", value })
+                  }
+                  mt="md"
+                />
+                {allowedRelaysChangedAtStart && (
+                  <Alert
+                    color="yellow"
+                    icon={<IconAlertCircle aria-hidden />}
+                    ref={allowedRelaysChangedRef}
+                    tabIndex={-1}
                     mt="md"
-                  />
-                  {allowedRelaysChangedAtStart && (
-                    <Alert
-                      color="yellow"
-                      icon={<IconAlertCircle aria-hidden />}
-                      ref={allowedRelaysChangedRef}
-                      tabIndex={-1}
-                      mt="md"
-                    >
-                      {ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE}
-                    </Alert>
-                  )}
-                </>
-              )}
+                  >
+                    {ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE}
+                  </Alert>
+                )}
+              </>
+            )}
             {/* This console cannot run this endpoint's shape, or no acceptance
                 can run these terms: stop here, before consent or intake, with a
                 state naming what the operator can do rather than a doomed

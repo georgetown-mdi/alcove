@@ -138,8 +138,8 @@ export interface AcceptorScreenState {
    * run only by passing it again (the columns step holds the launch while the
    * two disagree). */
   committedDeduplicate: boolean;
-  /** The Allowed relays field on the terms review step of a hosted WebRTC
-   * accept, as typed, one entry per line. It starts empty for every invitation:
+  /** The Allowed relays field on the terms review step of a WebRTC accept,
+   * as typed, one entry per line. It starts empty for every invitation:
    * nothing pre-fills it. */
   acceptorAllowedRelays: string;
   /** Whether Start met Allowed relays edited since the review step's Continue

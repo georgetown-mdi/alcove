@@ -78,11 +78,17 @@ const log = getLogger("serverJobExchangeDriver");
  * and credential reference lives on the console, never in the browser. The
  * webrtc variant likewise dials the coordination server the console holds
  * (`GET /api/jobs/webrtc`), and names the one its invitation sends the
- * partner to, which the console refuses to run unless it is that server. */
+ * partner to, which the console refuses to run unless it is that server.
+ * Its `allowedRelays` are the relays the run may use; absent, the run may use
+ * every relay it lists. */
 export type ServerJobExchangeTransport =
   | { channel: "filedrop" }
   | { channel: "sftp" }
-  | { channel: "webrtc"; signalingServer?: JobSignalingServerEndpoint };
+  | {
+      channel: "webrtc";
+      signalingServer?: JobSignalingServerEndpoint;
+      allowedRelays?: ReadonlyArray<string>;
+    };
 
 /** The channels a zero-setup run takes, which has no webrtc form. */
 type ServerJobZeroSetupTransport = Exclude<
@@ -1297,7 +1303,8 @@ function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
  * `transport` picks the arm (none adds a connection field -- the sftp arm
  * has no `remote`, and the webrtc arm names its server only for the console to
  * check against the one it runs -- the console runs what the operator authored
- * there), and everything after the discriminant is channel-independent.
+ * there; the webrtc arm adds only the relays the run may use), and everything
+ * after the discriminant is channel-independent.
  *
  * @internal
  */
@@ -1359,6 +1366,9 @@ export function intentFor(
         ...shared,
         ...(transport.signalingServer !== undefined
           ? { signalingServer: transport.signalingServer }
+          : {}),
+        ...(transport.allowedRelays !== undefined
+          ? { allowedRelays: [...transport.allowedRelays] }
           : {}),
       };
   }

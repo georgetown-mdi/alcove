@@ -28,8 +28,9 @@
  * its settings, the edits are saved back into the file
  * ({@link ./configHandBack}), and a run here runs that file in place. Its
  * `connection` is not measured, since no run here composes or replaces it,
- * and only its coordination server's address and the TURN urls its run
- * relays through ({@link relayTurnUrls}) are disclosed.
+ * and only its coordination server's address, the TURN urls its run
+ * relays through ({@link relayTurnUrls}) and its allowed relays are
+ * disclosed.
  *
  * A `@path` credential reference is a WARNING and not a refusal: the operator
  * owns this mount and the reference is their own choice, so the load proceeds
@@ -830,6 +831,10 @@ export function disclosedDocument(
       : {}),
     ...(relayTurnUrls(document).length > 0
       ? { relayTurnUrls: relayTurnUrls(document) }
+      : {}),
+    ...(connection.channel === "webrtc" &&
+    connection.allowedRelays !== undefined
+      ? { allowedRelays: connection.allowedRelays }
       : {}),
     ...(mintsOwnRelayCredential(document)
       ? { relayCredentialMinted: true as const }

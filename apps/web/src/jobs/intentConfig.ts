@@ -201,8 +201,10 @@ export function composeSftpConfigSpec(
  * own. An inviter's run states the console's own relay, where one is set, as
  * `turn` entries holding only a url, whose credential the run mints from the
  * shared secret, and its registrar as `relay_registrar`; the invitation names
- * those urls as `alcove invite` names them. Every other block is composed as
- * on the sftp path.
+ * those urls as `alcove invite` names them. The intent's `allowedRelays` are
+ * stated as `allowed_relays`, so a later run of the file in the working
+ * folder lists the same relays. Every other block is composed as on the sftp
+ * path.
  */
 export function composeWebrtcConfigSpec(
   intent: JobWebrtcExchangeIntent,
@@ -232,6 +234,9 @@ export function composeWebrtcConfigSpec(
         : {}),
       ...(inviterRelay?.relayRegistrar !== undefined
         ? { relayRegistrar: inviterRelay.relayRegistrar }
+        : {}),
+      ...(intent.allowedRelays !== undefined
+        ? { allowedRelays: intent.allowedRelays }
         : {}),
       ...(options !== undefined ? { options } : {}),
     },

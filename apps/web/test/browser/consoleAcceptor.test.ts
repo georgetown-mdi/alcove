@@ -16,6 +16,12 @@ import {
 } from "@alcove/core";
 
 import {
+  ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+} from "@psi/transport/relayRestriction";
+import {
   ACCEPT_UNSUPPORTED_TITLE,
   acceptUnsupported,
 } from "@exchange/acceptorModel";
@@ -136,6 +142,10 @@ const WEBRTC_ENDPOINT: ConnectionEndpoint = {
 };
 
 const app = createAppMount();
+
+const allowedField = () =>
+  page.getByRole("textbox", { name: "Allowed relays" });
+const pageText = () => document.body.textContent;
 
 // A relayed internal fault and a tagged transport stall are both `exchange`
 // terminals whose message states its own step; only the CLI's `internalFault`
@@ -269,11 +279,13 @@ describe("console acceptor of a webrtc invitation", () => {
       .toBeInTheDocument();
     expect(page.getByText(ACCEPT_UNSUPPORTED_TITLE).query()).toBeNull();
     expect(page.getByRole("textbox", { name: /server/i }).query()).toBeNull();
-    // The run is the command line's, which reads its own configuration, so the
-    // hosted review's Allowed relays field is not offered here.
+    // The review's own Allowed relays, empty to start and after the notice.
+    await expect.element(allowedField()).toHaveValue("");
+    const legend = page.getByText("How this console connects").element();
     expect(
-      page.getByRole("textbox", { name: "Allowed relays" }).query(),
-    ).toBeNull();
+      legend.compareDocumentPosition(allowedField().element()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await expect
       .element(
         page.getByRole("button", { name: "Continue: consent & your file" }),
@@ -359,6 +371,7 @@ describe("console acceptor of a webrtc invitation", () => {
       relay,
     });
     expect(intent.options).toBeUndefined();
+    expect(intent).not.toHaveProperty("allowedRelays");
 
     // The console keeps the rotated secret in the working folder, so the
     // recurring-save offer, whose /saved link is gated out of the console
@@ -370,6 +383,72 @@ describe("console acceptor of a webrtc invitation", () => {
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange complete");
     expect(page.getByText("Save as a recurring exchange").query()).toBeNull();
+  });
+
+  test("the review's Allowed relays mark the invitation's TURN urls as typed, hold Continue on a refused line, and reach the run's create", async () => {
+    const KEPT_URL = "turn:partner.example.net:3478";
+    const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
+    const api = stubServerJobAccept();
+    window.location.hash = await encodeToken({
+      ...WEBRTC_ENDPOINT,
+      relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+    });
+    app.render(createElement(AcceptorScreen));
+    await expect.element(allowedField()).toHaveValue("");
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(
+      CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+    );
+
+    await userEvent.fill(allowedField(), "turn:partner.example.net");
+    const refusal = page.getByText(/^Line 1: enter /);
+    await expect.element(refusal).toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Continue: consent & your file" })
+      .click();
+    await expect.element(refusal).toBeInTheDocument();
+    expect(
+      page.getByRole("heading", { name: "Consent & your file" }).query(),
+    ).toBeNull();
+
+    await userEvent.fill(allowedField(), "Partner.Example.net");
+    await expect
+      .poll(pageText)
+      .toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
+    expect(pageText()).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(
+      CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+    );
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
+    await reachAcceptStart();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange in progress");
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(String(put?.body))).not.toHaveProperty("allowedRelays");
+    const create = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    expect(JSON.parse(String(create?.body))).toMatchObject({
+      channel: "webrtc",
+      side: "acceptor",
+      allowedRelays: ["partner.example.net"],
+    });
+
+    // Back on the review step, the field is fixed on the list the run took.
+    const landed = new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
+    window.history.go(-3);
+    await landed;
+    await expect.element(allowedField()).toBeDisabled();
+    await expect.element(allowedField()).toHaveValue("partner.example.net");
   });
 
   test("stops before any run is created when the console refuses the server, asking for another invitation", async () => {

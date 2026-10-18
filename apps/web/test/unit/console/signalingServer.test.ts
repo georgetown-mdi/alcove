@@ -472,12 +472,16 @@ describe("the coordination server a console accept dials", () => {
     );
     if (accepted === undefined) throw new Error("no accepted server");
     let sent: unknown;
-    const transport = await acceptorWebrtcTransport(accepted, (_, init) => {
-      sent = JSON.parse(String(init?.body));
-      return answering(200, { configured: true, ...HOSTED })(
-        "/api/jobs/webrtc",
-      );
-    });
+    const transport = await acceptorWebrtcTransport(
+      accepted,
+      undefined,
+      (_, init) => {
+        sent = JSON.parse(String(init?.body));
+        return answering(200, { configured: true, ...HOSTED })(
+          "/api/jobs/webrtc",
+        );
+      },
+    );
     expect(sent).toEqual({
       address: "wss://signal.example.org:8443/api/",
       invitationRelay: RELAY,
@@ -488,12 +492,41 @@ describe("the coordination server a console accept dials", () => {
     });
   });
 
+  test("names the review's allowed relays to the create, and not to the console's server setting", async () => {
+    const accepted = acceptedSignalingServer(
+      { ...ENDPOINT, relay: RELAY },
+      null,
+    );
+    if (accepted === undefined) throw new Error("no accepted server");
+    let sent: unknown;
+    const transport = await acceptorWebrtcTransport(
+      accepted,
+      ["relay.example.org"],
+      (_, init) => {
+        sent = JSON.parse(String(init?.body));
+        return answering(200, { configured: true, ...HOSTED })(
+          "/api/jobs/webrtc",
+        );
+      },
+    );
+    expect(sent).toEqual({
+      address: "wss://signal.example.org:8443/api/",
+      invitationRelay: RELAY,
+    });
+    expect(transport).toEqual({
+      channel: "webrtc",
+      signalingServer: accepted.signalingServer,
+      allowedRelays: ["relay.example.org"],
+    });
+  });
+
   test("stops the run, refused only where the console refuses the address", async () => {
     const accepted = acceptedSignalingServer(ENDPOINT, null);
     if (accepted === undefined) throw new Error("no accepted server");
     await expect(
       acceptorWebrtcTransport(
         accepted,
+        undefined,
         answering(400, { error: "That address is refused. Type another." }),
       ),
     ).rejects.toMatchObject({
@@ -503,7 +536,11 @@ describe("the coordination server a console accept dials", () => {
     });
     for (const status of [409, 500])
       await expect(
-        acceptorWebrtcTransport(accepted, answering(status, undefined)),
+        acceptorWebrtcTransport(
+          accepted,
+          undefined,
+          answering(status, undefined),
+        ),
       ).rejects.toMatchObject({
         name: "AcceptedSignalingServerUnsetError",
         refused: false,

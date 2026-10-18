@@ -246,6 +246,35 @@ describe("before the handshake", () => {
   });
 });
 
+describe("the run's allowed relays", () => {
+  test("are written into the pair's alcove.yaml, which a retry runs over as the run left it", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
+    const { manager, dataRoot } = await managerFor({
+      STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
+      STUB_ARGV_FILE: argvFile,
+      STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+      STUB_EXIT_CODE: "69",
+    });
+    const intent = validWebrtcIntent({
+      side: "acceptor",
+      allowedRelays: ["relay.example.org"],
+    });
+    const first = await manager.createJob(intent);
+    await exited(manager, first);
+    const config = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(
+      (parseYaml(config) as { connection: Record<string, unknown> }).connection
+        .allowed_relays,
+    ).toEqual(["relay.example.org"]);
+    await discard(manager, first);
+
+    const retry = await manager.createJob(intent);
+    await exited(manager, retry);
+    expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(config);
+  });
+});
+
 describe("after the handshake", () => {
   const rotatingRun = {
     STUB_KEY_FILE: ROTATED_KEY,

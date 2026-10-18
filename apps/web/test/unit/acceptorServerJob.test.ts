@@ -3,6 +3,10 @@ import { describe, expect, test } from "vitest";
 import { disclosedColumnNames } from "@alcove/core";
 
 import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
+import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
+import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
+
+import { VALID_SHARED_SECRET } from "../utils/jobFixtures";
 
 import type {
   InvitationToken,
@@ -204,6 +208,34 @@ describe("acceptorServerJobConfig", () => {
 
   test("states the acceptor side", () => {
     expect(configFor().side).toBe("acceptor");
+  });
+
+  test("a webrtc transport's allowed relays reach the intent the console parses", () => {
+    const signalingServer = { host: "peers.test", path: "/psi/" };
+    const intentWith = (allowedRelays?: ReadonlyArray<string>) =>
+      jobExchangeIntentSchema.parse(
+        intentFor(
+          acceptorServerJobConfig({
+            deduplicate: false,
+            token: { ...token, sharedSecret: VALID_SHARED_SECRET },
+            acceptorName: "Accepting Org",
+            edits,
+            inputSource: { kind: "inline", csv: inputCsv },
+            transport: {
+              channel: "webrtc",
+              signalingServer,
+              ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+            },
+          }),
+        ),
+      );
+    expect(intentWith(["relay.example.org"])).toMatchObject({
+      channel: "webrtc",
+      side: "acceptor",
+      signalingServer,
+      allowedRelays: ["relay.example.org"],
+    });
+    expect(intentWith()).not.toHaveProperty("allowedRelays");
   });
 });
 

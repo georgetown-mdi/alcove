@@ -149,6 +149,7 @@ import {
   editedTermsWarning,
   inPlaceSigningIdentityShown,
   inPlaceSigningIdentityWithheldReason,
+  openedAllowedRelays,
   openedRelayTurnUrls,
   openedSignalingServer,
   openedWebrtcEndpoint,
@@ -1892,6 +1893,7 @@ export function InviterScreen() {
                   mountedConfiguration,
                 )}
                 openedRelayTurnUrls={openedRelayTurnUrls(mountedConfiguration)}
+                openedAllowedRelays={openedAllowedRelays(mountedConfiguration)}
                 loadedSftpForm={loadedSftpForm}
                 sftpSaveFilePreferred={sftpSaveFilePreferred}
                 runWithheld={

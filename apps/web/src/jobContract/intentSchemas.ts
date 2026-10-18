@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import {
+  AllowedRelaySchema,
   FINGERPRINT_REGEX,
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
@@ -483,6 +484,13 @@ export interface JobWebrtcExchangeIntent extends JobExchangeIntentBase {
    * none is refused with a reason rather than as a malformed body.
    */
   signalingServer?: JobSignalingServerEndpoint;
+  /**
+   * The relays the run may use, composed as the connection's
+   * `allowed_relays`, each entry normalized by core's rule. Absent restricts
+   * nothing. Refused beside `mountedConfigurationOpened: true`, whose file
+   * states its own.
+   */
+  allowedRelays?: Array<string>;
 }
 
 /** A coordination server as an invitation names it, with no scheme. */
@@ -807,6 +815,7 @@ const jobWebrtcExchangeIntentSchema = z
     ...jobExchangeIntentCommonFields,
     side: z.enum(["inviter", "acceptor"]),
     signalingServer: jobSignalingServerEndpointSchema.optional(),
+    allowedRelays: z.array(AllowedRelaySchema).optional(),
     options: jobWebrtcExchangeOptionsSchema.optional(),
   })
   .strict();
@@ -844,6 +853,28 @@ const SECRET_SOURCE_ISSUE = {
     "exactly one of sharedSecret or mountedConfigurationOpened: true must be " +
     "set: a run of the opened configuration uses the key file beside it",
   path: ["sharedSecret"],
+};
+
+/** Whether a run of the opened configuration names no `allowedRelays`: it
+ * runs that file, whose `connection.allowed_relays` decides. */
+function opensNoAllowedRelaysOverConfiguration(intent: {
+  allowedRelays?: unknown;
+  mountedConfigurationOpened?: unknown;
+}): boolean {
+  return (
+    intent.mountedConfigurationOpened !== true ||
+    intent.allowedRelays === undefined
+  );
+}
+
+/** The {@link opensNoAllowedRelaysOverConfiguration} refusal, shared by both
+ * union levels. */
+const OPENED_CONFIGURATION_ALLOWED_RELAYS_ISSUE = {
+  message:
+    "allowedRelays must not be set with mountedConfigurationOpened: true: a " +
+    "run of the opened configuration uses the connection.allowed_relays it " +
+    "states",
+  path: ["allowedRelays"],
 };
 
 /** Default a plain object's missing `mode` to `"exchange"`: the exchange client
@@ -886,7 +917,8 @@ const UNNAMED_CERTIFICATE_PARTY_ISSUE = {
 /**
  * Zod schema for a {@link JobExchangeIntent}. Both arms are strict, so an
  * unmodeled field fails the parse, and union-level refines require one input
- * source, one secret source, and a named party under certificate signing.
+ * source, one secret source, no allowed relays beside an opened
+ * configuration, and a named party under certificate signing.
  * Contract: docs/spec/SERVER_JOB_API.md, "The exchange intent".
  */
 export const jobExchangeIntentSchema: z.ZodType<JobExchangeIntent> = z
@@ -895,6 +927,10 @@ export const jobExchangeIntentSchema: z.ZodType<JobExchangeIntent> = z
     message: "exactly one of inputCsv or inputFile must be set",
   })
   .refine(hasExactlyOneSecretSource, SECRET_SOURCE_ISSUE)
+  .refine(
+    opensNoAllowedRelaysOverConfiguration,
+    OPENED_CONFIGURATION_ALLOWED_RELAYS_ISSUE,
+  )
   // Matches core's pre-exchange `assertCertificateModeNamesLocalParty`, so the
   // job is refused before this party's payload crosses.
   .refine(certificateModeNamesThisParty, UNNAMED_CERTIFICATE_PARTY_ISSUE);
@@ -981,6 +1017,12 @@ export const jobCreateIntentSchema: z.ZodType<JobCreateIntent> = z
   .refine(
     (intent) => intent.mode !== "exchange" || hasExactlyOneSecretSource(intent),
     SECRET_SOURCE_ISSUE,
+  )
+  .refine(
+    (intent) =>
+      intent.mode !== "exchange" ||
+      opensNoAllowedRelaysOverConfiguration(intent),
+    OPENED_CONFIGURATION_ALLOWED_RELAYS_ISSUE,
   )
   .refine(
     (intent) =>

@@ -130,6 +130,19 @@ export const CREATED_INVITATION_ALLOWED_RELAYS_SCOPE =
   "the list as its own.";
 
 /**
+ * What a console accept's allowed relays decide, and what they do not: the
+ * counterpart of {@link ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE} for a run
+ * the console's command line conducts from the working folder's alcove.yaml.
+ */
+export const CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
+  "This exchange's allowed relays decide which relays its run connects " +
+  "through and enrolls at. Your partner's side can still connect through a " +
+  "relay the list leaves out. The list covers relay servers only: the STUN " +
+  "servers a run lists are still contacted. The console writes the list " +
+  "into alcove.yaml as connection.allowed_relays, so a later run of that " +
+  "file uses it too.";
+
+/**
  * The accepted invitation's review notice after Start met Allowed relays
  * edited since that step's Continue.
  */

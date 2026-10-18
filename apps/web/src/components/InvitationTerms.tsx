@@ -45,6 +45,7 @@ import { LessCertainInfo } from "@components/LessCertainInfo";
 
 import {
   ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "@psi/transport/relayRestriction";
@@ -154,8 +155,7 @@ function invitationRelayRegistrarLine(registrar: Displayable): string {
 
 /**
  * The mark a TURN url of the invitation takes under the exchange's allowed
- * relays: none where they are unset, and none on a console, whose run is the
- * CLI's and follows its own configuration.
+ * relays: none where they are unset.
  */
 function allowedRelaysMark(
   url: string,
@@ -568,9 +568,9 @@ export function InvitationTerms({
   framing?: { heading: string; intro: string };
   /** The relays an accepted invitation's run may use, marking each TURN url of
    * the invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
-   * restricts nothing and marks nothing. Applies to a hosted run only.
-   * Required, so a caller holding a list cannot drop it by leaving the prop
-   * out. */
+   * restricts nothing and marks nothing. A console run lists the same relays
+   * from the configuration it writes. Required, so a caller holding a list
+   * cannot drop it by leaving the prop out. */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** What the reader of this screen does to leave out a key marked less
    * certain, shown after the reason for the mark: by default the accepting
@@ -584,10 +584,11 @@ export function InvitationTerms({
     inviterRetainsFiles,
     connectionEndpoint,
   });
-  // A hosted run is this browser's, under the allowed relays given; a
-  // console run is the CLI's. The summary's TURN urls are the endpoint's,
-  // escaped, in its order, so each is matched by its raw url.
-  const browserRun = !isConsoleBuild();
+  // The summary's TURN urls are the endpoint's, escaped, in its order, so
+  // each is matched by its raw url.
+  const allowedRelaysScope = isConsoleBuild()
+    ? CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE
+    : ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE;
   const rawRelayTurn =
     connectionEndpoint?.channel === "webrtc"
       ? (connectionEndpoint.relay?.turn ?? [])
@@ -1104,8 +1105,7 @@ export function InvitationTerms({
             {summary.relay.turn.map((url, index) => (
               <Text size="sm" key={`turn-${index}`}>
                 TURN {url}
-                {browserRun &&
-                  allowedRelaysMark(rawRelayTurn[index] ?? "", allowedRelays)}
+                {allowedRelaysMark(rawRelayTurn[index] ?? "", allowedRelays)}
               </Text>
             ))}
             {summary.relay.stun.map((url, index) => (
@@ -1118,8 +1118,8 @@ export function InvitationTerms({
                 {invitationRelayRegistrarLine(summary.relay.registrar)}
               </Text>
             )}
-            {browserRun && allowedRelays !== undefined && (
-              <Text size="sm">{ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE}</Text>
+            {allowedRelays !== undefined && (
+              <Text size="sm">{allowedRelaysScope}</Text>
             )}
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.invitationRelay.note}

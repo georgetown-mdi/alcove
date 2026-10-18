@@ -96,6 +96,11 @@ function documentOf(value: unknown): DisclosedExchangeDocument | null {
   )
     return null;
   if (
+    value.allowedRelays !== undefined &&
+    namesOf(value.allowedRelays) === null
+  )
+    return null;
+  if (
     value.relayCredentialMinted !== undefined &&
     value.relayCredentialMinted !== true
   )
