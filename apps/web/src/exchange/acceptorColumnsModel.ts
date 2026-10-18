@@ -179,7 +179,12 @@ export function acceptorColumnsEditorState(
     dateInputFormats,
   );
   const standardization = applyStepOverrides(
-    applyInputOverrides(baseStandardization, effectiveInputOverrides),
+    applyInputOverrides(
+      baseStandardization,
+      effectiveInputOverrides,
+      linkageTerms.linkageFields,
+      metadata,
+    ),
     state.stepOverrides,
   );
   return { metadata, standardization };

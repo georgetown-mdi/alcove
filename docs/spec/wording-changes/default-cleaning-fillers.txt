@@ -87,7 +87,7 @@
 - - -> `"000-00-8924"` | `"8924"`
 - - -> `"900-12-3456"` | `"3456"`
 - - -> `"1234567"` | `"4567"`
-- - -> That column runs the `ssn4` pipeline, without the `ssn` placeholder list, so a full SSN written there keeps its last four, as `123-45-6789` does in the table above.
+- - -> That column runs the `ssn4` pipeline, without the `ssn` placeholder list, so a full SSN written there keeps its last four, as `123-45-6789` does in the [`ssn4` table](#ssn4).
 - - -> pattern: "^\\d*(?:9{7}|0{7})\\d*$"
 - - -> A ten-digit value holding seven or more 9s in a row, or seven or more 0s in a row, is dropped as a filler such as `999-999-9999`.
 - - -> The `replace_regex` empties such a value and the `null_if` drops the empty result; six in a row are kept.
