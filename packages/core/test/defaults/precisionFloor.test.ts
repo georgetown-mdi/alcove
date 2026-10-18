@@ -5,13 +5,17 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
+  PRECISION_FLOORS,
   checkLinkageRuleSetCitation,
   findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorAsksCoverage,
   precisionFloorSelectionStatement,
+  precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
@@ -250,13 +254,92 @@ describe("precisionFloorSelectionStatement", () => {
     );
     expect(
       precisionFloorSelectionStatement({
-        floor: 99,
+        floor: 95,
         oneStateOrMetroArea: false,
       }),
     ).toBe(
-      "the built-in rules at 99% precision and above that your file " +
+      "the built-in rules at 95% precision and above that your file " +
         "supplies, leaving out the rules that need both files to draw " +
         "their members from one state or one metropolitan area",
     );
+  });
+
+  test("names no coverage condition at a floor the answer does not change", () => {
+    for (const oneStateOrMetroArea of [true, false])
+      expect(
+        precisionFloorSelectionStatement({ floor: 99, oneStateOrMetroArea }),
+      ).toBe(
+        "the built-in rules at 99% precision and above that your file " +
+          "supplies",
+      );
+  });
+});
+
+describe("precisionFloorAsksCoverage", () => {
+  test("is true exactly where the coverage answer changes the selection", () => {
+    const metadata = inferMetadata(
+      ["ssn", "first_name", "last_name", "dob", "zip", "phone", "email"],
+      [],
+    );
+    for (const floor of PRECISION_FLOORS) {
+      const keysAnswering = (oneStateOrMetroArea: boolean) =>
+        names(
+          linkageTermsFromRuleSet(catalog, "Party A", metadata, {
+            floor,
+            oneStateOrMetroArea,
+          }).linkageKeys,
+        );
+      expect(precisionFloorAsksCoverage(floor)).toBe(
+        keysAnswering(true).length !== keysAnswering(false).length,
+      );
+    }
+  });
+
+  test("is true only at the 95% floor, the band the not-asked note names", () => {
+    expect(
+      PRECISION_FLOORS.filter((floor) => precisionFloorAsksCoverage(floor)),
+    ).toStrictEqual([95]);
+    expect(ONE_STATE_OR_METRO_AREA_NOT_ASKED).toBe(
+      "Applies only to the 95% rules.",
+    );
+  });
+});
+
+describe("PRECISION_FLOORS", () => {
+  test("names every band the catalog places a rule in, most precise first", () => {
+    const placed = [...new Set(bands.map((band) => band.band))];
+    expect([...PRECISION_FLOORS].sort()).toStrictEqual(placed.sort());
+    expect(PRECISION_FLOORS).toStrictEqual(
+      [...PRECISION_FLOORS].sort((a, b) => b - a),
+    );
+  });
+});
+
+describe("precisionFloorStatement", () => {
+  test("states the 99% floor's share, with no coverage condition", () => {
+    expect(precisionFloorStatement(99)).toStrictEqual({
+      label: "The built-in rules at 99% precision and above",
+      description:
+        "Of the pairs each rule matches, at least 99 in 100 are the same " +
+        "person.",
+    });
+  });
+
+  test("states the 95% floor's share and its coverage condition", () => {
+    expect(precisionFloorStatement(95)).toStrictEqual({
+      label: "The built-in rules at 95% precision and above",
+      description:
+        "Of the pairs each rule matches, at least 95 in 100 are the same " +
+        "person. The rules that match on a name and a date of birth alone " +
+        "are included only when both files draw their members from one " +
+        "state or one metropolitan area.",
+    });
+  });
+
+  test("names the floor in the words the selection statement uses", () => {
+    for (const floor of PRECISION_FLOORS)
+      expect(
+        precisionFloorSelectionStatement({ floor, oneStateOrMetroArea: true }),
+      ).toContain(precisionFloorStatement(floor).label.toLowerCase());
   });
 });

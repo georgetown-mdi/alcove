@@ -14,9 +14,9 @@ import { sanitizeForDisplay } from "@alcove/core";
 
 import {
   buildAdvancedTerms,
-  importedCitationDropNotice,
   inertCoalesceNotice,
 } from "@psi/authoring/advancedInvite";
+import { editorCitationDrop } from "@psi/inviterEditor";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
@@ -112,8 +112,8 @@ const DIRECTION_CHOICES: ReadonlyArray<{
 /**
  * Step 3 of the inviter spine: the review-time decisions (lifetime, result
  * direction, transport), the check-your-answers restatement of the whole
- * proposal, the dropped-citation notice where an imported document's citation
- * will not be included, and the create action -- the point of no return whose copy
+ * proposal, the dropped-citation notice where a rule-set citation will not be
+ * included, and the create action -- the point of no return whose copy
  * says so. The transport chooser offers the live-browser exchange and the two
  * command-line transports (SFTP and a shared directory); its copy comes from
  * {@link transportChooserCopy}, which reflects whether the deployment runs a
@@ -126,6 +126,7 @@ const DIRECTION_CHOICES: ReadonlyArray<{
  */
 export function ReviewCreateSection({
   editor,
+  keysFromOpenedConfiguration = false,
   csv,
   problems,
   minting,
@@ -168,6 +169,10 @@ export function ReviewCreateSection({
   conversion,
 }: {
   editor: InviterEditor;
+  /** Whether the keys are an opened configuration's, as Matching keys is told
+   * (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`), so the
+   * dropped-citation notice here names only an action that tab shows. */
+  keysFromOpenedConfiguration?: boolean;
   csv: AcquiredCsv;
   problems: ReadonlyArray<SpineProblem>;
   minting: boolean;
@@ -279,8 +284,8 @@ export function ReviewCreateSection({
     [editor.draft],
   );
   const citationDrop = useMemo(
-    () => importedCitationDropNotice(editor.draft, currentTerms),
-    [editor.draft, currentTerms],
+    () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
+    [editor, keysFromOpenedConfiguration, currentTerms],
   );
   const inertCoalesce = useMemo(
     () => inertCoalesceNotice(editor.draft, currentTerms),
@@ -648,9 +653,7 @@ export function ReviewCreateSection({
         of what the terms say has nothing to put in the row. It is stated where
         the terms are confirmed as well as in the tab that costs it, since an
         operator can import there and come straight here. */}
-      {citationDrop !== undefined && (
-        <CitationDropNotice notice={citationDrop} />
-      )}
+      {citationDrop !== undefined && <CitationDropNotice drop={citationDrop} />}
       {/* The other fact the restatement below cannot show: a declared default the
         run will not substitute is a term that is treated as widening the match and
         does nothing. Stated where the terms are sealed, since the step editor's

@@ -4,17 +4,35 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { page } from "vitest/browser";
 
-import { createElement } from "react";
+import { createElement, useState } from "react";
 
 import {
+  AUTHORED_KEYS_FLOOR_NOTE,
+  OPENED_CONFIGURATION_KEYS_NOTE,
+  USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
   editorFromCsv,
   editorWithAuthoredDraft,
+  editorWithBuiltInKeys,
+  editorWithImportedTerms,
+  editorWithKeyEnabled,
+  editorWithKeyMoved,
+  editorWithPrecisionFloorSelection,
+  keyOrderHelp,
 } from "@psi/inviterEditor";
 
-import { CONTACT_AND_LOCATION_FIELD_TYPES } from "@alcove/core";
+import {
+  CONTACT_AND_LOCATION_FIELD_TYPES,
+  ONE_STATE_OR_METRO_AREA_HELP,
+  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
+  ONE_STATE_OR_METRO_AREA_QUESTION,
+  precisionFloorStatement,
+} from "@alcove/core";
 
 import {
+  SEEDED_CITATION_DROP_TITLE,
+  USE_BUILT_IN_RULES_LABEL,
+  addKey,
   buildAdvancedTerms,
   draftFromTerms,
 } from "@psi/authoring/advancedInvite";
@@ -24,7 +42,7 @@ import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 
 import { createAppMount } from "./renderApp";
 
-import type { AcquiredCsv } from "@psi/inviterEditor";
+import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 
 // A minimal file with a date_of_birth column, so the seeded default keys
 // include one built from it (the element the dead-key transform below targets).
@@ -68,14 +86,17 @@ function withDeadDobKey(editor: ReturnType<typeof editorFromCsv>) {
 
 const app = createAppMount();
 
-function render(expertMode = false) {
-  const editor = withDeadDobKey(editorFromCsv("Dana Okafor", csv));
+function render(expertMode = false, deadDobKey = true) {
+  const seeded = editorFromCsv("Dana Okafor", csv);
+  const editor = deadDobKey ? withDeadDobKey(seeded) : seeded;
   app.render(
     createElement(KeysTab, {
       editor,
       csv,
       expertMode,
       onExpertMode: () => undefined,
+      onPrecisionFloorSelection: () => undefined,
+      onUseBuiltInRules: () => undefined,
       onKeyEnabled: () => undefined,
       onKeyMoved: () => undefined,
       onAuthoredDraft: () => undefined,
@@ -145,6 +166,8 @@ describe("KeysTab: the dropped-citation notice", () => {
         csv,
         expertMode: false,
         onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
         onKeyEnabled: () => undefined,
         onKeyMoved: () => undefined,
         onAuthoredDraft: () => undefined,
@@ -179,7 +202,7 @@ describe("KeysTab: the dropped-citation notice", () => {
   });
 
   test("is absent -- and its live region silent, not unmounted -- while the citation stands", async () => {
-    render();
+    render(false, false);
 
     await expect
       .element(page.getByRole("heading", { name: "Matching keys" }))
@@ -209,6 +232,8 @@ describe("KeysTab: a file with a ZIP column", () => {
         csv: source,
         expertMode: false,
         onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
         onKeyEnabled: () => undefined,
         onKeyMoved: () => undefined,
         onAuthoredDraft: () => undefined,
@@ -295,6 +320,8 @@ describe("KeysTab: the shared-value caveat follows the enabled keys", () => {
         csv: withContacts,
         expertMode: false,
         onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
         onKeyEnabled: () => undefined,
         onKeyMoved: () => undefined,
         onAuthoredDraft: () => undefined,
@@ -351,6 +378,8 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
         csv: consoleCsv,
         expertMode: true,
         onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
         onKeyEnabled: () => undefined,
         onKeyMoved: () => undefined,
         onAuthoredDraft: () => undefined,
@@ -375,5 +404,315 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
         ),
       )
       .toBeInTheDocument();
+  });
+});
+
+describe("KeysTab: the precision floor and the coverage question", () => {
+  /** The tab over a live session, applying each floor choice through the
+   * session model the inviter screen applies it through. */
+  function Harness({
+    initial,
+    file = csv,
+    keysFromOpenedConfiguration = false,
+  }: {
+    initial: InviterEditor;
+    file?: AcquiredCsv;
+    keysFromOpenedConfiguration?: boolean;
+  }) {
+    const [editor, setEditor] = useState(initial);
+    return createElement(KeysTab, {
+      editor,
+      csv: file,
+      expertMode: false,
+      onExpertMode: () => undefined,
+      onPrecisionFloorSelection: (selection) =>
+        setEditor(editorWithPrecisionFloorSelection(editor, selection)),
+      onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, file)),
+      keysFromOpenedConfiguration,
+      onKeyEnabled: (index, enabled) =>
+        setEditor(editorWithKeyEnabled(editor, index, enabled)),
+      onKeyMoved: (index, offset) =>
+        setEditor(editorWithKeyMoved(editor, index, offset)),
+      onAuthoredDraft: () => undefined,
+      onStrategy: () => undefined,
+      onAlgorithm: () => undefined,
+      onDeduplicate: () => undefined,
+      onImport: () => [],
+      keysError: undefined,
+      announce: () => undefined,
+      onBack: () => undefined,
+    });
+  }
+
+  const at99 = precisionFloorStatement(99);
+  const at95 = precisionFloorStatement(95);
+  const nameAndDateKey = { name: /Key \d+ - LN \+ FN \+ DOB$/ };
+
+  test("offers each floor in core's words, 95% chosen, with the coverage question and its help", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    const floor99 = page.getByRole("radio", { name: at99.label });
+    const floor95 = page.getByRole("radio", { name: at95.label });
+    await expect.element(floor95).toBeChecked();
+    await expect.element(floor99).not.toBeChecked();
+    await expect.element(page.getByText(at99.description)).toBeInTheDocument();
+    await expect.element(page.getByText(at95.description)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/tier/i);
+
+    const question = page.getByRole("radiogroup", {
+      name: ONE_STATE_OR_METRO_AREA_QUESTION,
+    });
+    await expect.element(question).toBeInTheDocument();
+    await expect
+      .element(question.getByRole("radio", { name: "Yes", exact: true }))
+      .toBeChecked();
+    await expect
+      .element(question)
+      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_HELP.join(" "));
+  });
+
+  test("reseeds the key list on a floor choice and on the coverage answer", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    const nameAndDate = page.getByRole("checkbox", nameAndDateKey);
+    await expect.element(nameAndDate).toBeInTheDocument();
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }))
+      .toBeInTheDocument();
+
+    await page.getByRole("radio", { name: at99.label }).click();
+    await expect
+      .element(page.getByRole("radio", { name: at99.label }))
+      .toBeChecked();
+    expect(nameAndDate.query()).toBeNull();
+    expect(
+      page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }).query(),
+    ).toBeNull();
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
+      .toBeChecked();
+
+    await page.getByRole("radio", { name: at95.label }).click();
+    await expect.element(nameAndDate).toBeChecked();
+
+    const answerNo = page
+      .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
+      .getByRole("radio", { name: "No", exact: true });
+    await answerNo.click();
+    await expect.element(answerNo).toBeChecked();
+    expect(nameAndDate.query()).toBeNull();
+  });
+
+  test("states a citation the moved keys drop, and clears it once moved back", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(createElement(Harness, { initial: seeded }));
+
+    const firstName = seeded.draft.keys[0].key.name;
+    await page.getByRole("button", { name: `Move ${firstName} later` }).click();
+
+    const notice = page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE });
+    await expect
+      .element(notice)
+      .toMatchTextContent(
+        "Move the keys back into their built-in order to keep the citation",
+      );
+    await expect
+      .element(page.getByRole("status"))
+      .toMatchTextContent(SEEDED_CITATION_DROP_TITLE);
+
+    await page
+      .getByRole("button", { name: `Move ${firstName} earlier` })
+      .click();
+    await expect.element(notice).not.toBeInTheDocument();
+  });
+
+  test("is withheld on keys written in Expert authoring, with a note saying so", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithAuthoredDraft(
+          seeded,
+          addKey(seeded.draft, "first_name"),
+        ),
+      }),
+    );
+
+    await expect
+      .element(
+        page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(page.getByRole("radio", { name: at99.label }).query()).toBeNull();
+    expect(
+      page
+        .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
+        .query(),
+    ).toBeNull();
+  });
+
+  test("keeps a key turned off across a floor change and back", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    const kept = page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ });
+    await kept.click();
+    await expect.element(kept).not.toBeChecked();
+
+    await page.getByRole("radio", { name: at99.label }).click();
+    await expect.element(kept).not.toBeChecked();
+    await page.getByRole("radio", { name: at95.label }).click();
+    await expect.element(kept).not.toBeChecked();
+    await expect
+      .element(page.getByRole("checkbox", nameAndDateKey))
+      .toBeChecked();
+  });
+
+  test("disables the coverage question at 99%, saying where it applies", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    await page.getByRole("radio", { name: at99.label }).click();
+    const question = page.getByRole("radiogroup", {
+      name: ONE_STATE_OR_METRO_AREA_QUESTION,
+    });
+    await expect
+      .element(question)
+      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_NOT_ASKED);
+    await expect
+      .element(question.getByRole("radio", { name: "Yes", exact: true }))
+      .toBeDisabled();
+    await expect
+      .element(question.getByRole("radio", { name: "No", exact: true }))
+      .toBeDisabled();
+  });
+
+  test("describes the key list with the order the chosen floor gives it", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(createElement(Harness, { initial: seeded }));
+
+    const keyList = page.getByRole("list");
+    await expect
+      .element(keyList)
+      .toHaveAccessibleDescription(keyOrderHelp(seeded));
+    await page.getByRole("radio", { name: at99.label }).click();
+    await expect.element(keyList).toHaveAccessibleDescription(
+      keyOrderHelp(
+        editorWithPrecisionFloorSelection(seeded, {
+          floor: 99,
+          oneStateOrMetroArea: true,
+        }),
+      ),
+    );
+  });
+
+  test("offers the built-in rules in place of authored keys, behind a confirm", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithAuthoredDraft(
+          seeded,
+          addKey(seeded.draft, "first_name"),
+        ),
+      }),
+    );
+
+    await page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).click();
+    const confirm = page.getByRole("dialog", {
+      name: `${USE_BUILT_IN_RULES_LABEL}?`,
+    });
+    await expect
+      .element(confirm)
+      .toMatchTextContent(USE_BUILT_IN_RULES_STATEMENT);
+    await confirm
+      .getByRole("button", { name: USE_BUILT_IN_RULES_LABEL })
+      .click();
+
+    await expect
+      .element(page.getByRole("radio", { name: at95.label }))
+      .toBeChecked();
+    expect(
+      page
+        .getByRole("note")
+        .filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE })
+        .query(),
+    ).toBeNull();
+    expect(
+      page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }).query(),
+    ).toBeNull();
+  });
+
+  test("withholds the built-in rules on a file they supply no key for, keeping the note", async () => {
+    const uncovered: AcquiredCsv = {
+      fileName: "contacts.csv",
+      sizeBytes: 64,
+      rawRows: [
+        { client_id: "1", email: "ann@example.org", phone: "555-123-4567" },
+      ],
+      columns: ["client_id", "email", "phone"],
+      rowCount: 1,
+    };
+    const seeded = editorFromCsv("Dana Okafor", uncovered);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithAuthoredDraft(
+          seeded,
+          addKey(seeded.draft, "email_address"),
+        ),
+        file: uncovered,
+      }),
+    );
+
+    await expect
+      .element(
+        page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
+    ).toBeNull();
+  });
+
+  test("names the file and the command for an opened configuration's keys, with no action", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithImportedTerms(
+          seeded,
+          csv,
+          buildAdvancedTerms(seeded.draft),
+        ),
+        keysFromOpenedConfiguration: true,
+      }),
+    );
+
+    await expect
+      .element(
+        page
+          .getByRole("note")
+          .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("Reset to defaults");
+  });
+
+  test("says on the Expert authoring switch that editing keys there replaces the choice", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    await expect
+      .element(page.getByRole("switch", { name: "Expert authoring" }))
+      .toHaveAccessibleDescription(
+        /Editing keys here replaces the choice of built-in rules above\.$/,
+      );
   });
 });

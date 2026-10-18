@@ -64,6 +64,7 @@ import {
   editorReprofiled,
   editorWithAlgorithm,
   editorWithAuthoredDraft,
+  editorWithBuiltInKeys,
   editorWithColumnDisclosure,
   editorWithColumnType,
   editorWithDeduplicate,
@@ -80,8 +81,10 @@ import {
   editorWithLinkageStrategy,
   editorWithOutputDirection,
   editorWithPastedConfiguration,
+  editorWithPrecisionFloorSelection,
   editorWithRecommendedCleaning,
   editorWithTransport,
+  guidedKeysAnnouncement,
   resetToRecommended,
 } from "@psi/inviterEditor";
 import { receiptsIntentFields } from "@psi/receiptsModel";
@@ -165,6 +168,7 @@ import {
   INVITER_SPINE_ORDER,
   inviterScreenReducer,
   isInviterSpineStep,
+  keysFromOpenedConfiguration,
   sectionToRestore,
   unmatchableFileAlert,
 } from "./inviterScreenModel";
@@ -611,6 +615,9 @@ export function InviterScreen() {
     loadedTermsFile !== undefined &&
     loadedTermsFile === acquired &&
     termsEditedSinceOpened(loadedTermsBaseline, editor);
+  // Read by Matching keys and Review & create alike, so the note, the offer
+  // of Use the built-in rules and the dropped-citation notices agree.
+  const openedConfigurationKeysShown = keysFromOpenedConfiguration(screenState);
   // A signed console run of an opened configuration naming signing paths of
   // its own waits for the operator to convert it to the console's; one run in
   // place whose file signs with another identity than the card's is withheld.
@@ -1847,6 +1854,7 @@ export function InviterScreen() {
             <>
               <ReviewCreateSection
                 editor={editor}
+                keysFromOpenedConfiguration={openedConfigurationKeysShown}
                 csv={acquired}
                 problems={openProblems}
                 minting={minting}
@@ -2014,11 +2022,33 @@ export function InviterScreen() {
           acquired !== undefined && (
             <KeysTab
               editor={editor}
+              keysFromOpenedConfiguration={openedConfigurationKeysShown}
               csv={acquired}
               expertMode={expertMode}
               onExpertMode={(on) =>
                 dispatch({ type: "expert-mode-chosen", expertMode: on })
               }
+              onPrecisionFloorSelection={(selection) => {
+                const reseeded = editorWithPrecisionFloorSelection(
+                  editor,
+                  selection,
+                );
+                if (reseeded === editor) return;
+                dispatch({
+                  type: "editor-replaced",
+                  editor: reseeded,
+                  announcement: guidedKeysAnnouncement(reseeded),
+                });
+              }}
+              onUseBuiltInRules={() => {
+                const guided = editorWithBuiltInKeys(editor, acquired);
+                if (guided === editor) return;
+                dispatch({
+                  type: "editor-replaced",
+                  editor: guided,
+                  announcement: guidedKeysAnnouncement(guided),
+                });
+              }}
               onKeyEnabled={(index, enabled) =>
                 applyEditor(editorWithKeyEnabled(editor, index, enabled))
               }

@@ -1,5 +1,7 @@
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
+  DEFAULT_LINKAGE_RULE_SET,
+  DEFAULT_PRECISION_FLOOR_SELECTION,
   INVITATION_LIFETIME_SECONDS,
   authoredLinkageFields,
   columnValues,
@@ -9,6 +11,7 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
+  linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
 } from "@alcove/core";
 
@@ -26,6 +29,7 @@ import type {
   LinkageTerms,
   Metadata,
   OwnColumnSelection,
+  PrecisionFloorSelection,
   Standardization,
 } from "@alcove/core";
 
@@ -198,7 +202,6 @@ export function seedAdvancedInvite(
   // unchanged by it.
   const metadata = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   const terms = getDefaultLinkageTerms(identity, metadata);
-  const keys = offerableDraftKeys(identity, metadata);
   return {
     draft: {
       identity,
@@ -216,40 +219,206 @@ export function seedAdvancedInvite(
       // existed.
       linkageStrategy: terms.linkageStrategy,
       metadata,
-      // The recommended per-type cleaning for these columns, with the dob format
-      // inferred from the rows. authoredLinkageFields over this reproduces the
-      // one-field-per-type set, and the built terms filter it to the fields the
-      // enabled keys reference -- which is exactly
-      // getDefaultLinkageTerms' field set. So the editor opens on a known-good
-      // valid state, byte-identical to the quick path's (the inferred format lives
-      // only in the local steps, which the terms do not hold).
-      standardization: inviterDefaultStandardization(
-        metadata,
-        terms,
-        enabledLinkageKeys(keys),
-        rawRows,
-        dateInputFormats,
-      ),
-      keys,
+      ...seededKeysAndCleaning(identity, metadata, rawRows, dateInputFormats),
     },
     seed: { terms, metadata, columns },
   };
 }
 
 /**
- * What the guided key list offers for `metadata`: the built-in keys the
- * columns can supply, ON. Each entry's `enabled` is the flag a key arrives
- * with when first offered; {@link reconcileKeys} keeps the operator's own
- * flag for a key already in the draft.
+ * The keys, cleaning and precision floor selection a new invitation's draft
+ * starts with for `metadata` ({@link seedAdvancedInvite}): the built-in keys
+ * these columns supply at {@link DEFAULT_PRECISION_FLOOR_SELECTION}, all on,
+ * and the recommended per-type cleaning, with the date-of-birth format
+ * inferred from the rows. authoredLinkageFields over that cleaning reproduces
+ * the one-field-per-type set, and the built terms filter it to the fields the
+ * enabled keys reference, which is getDefaultLinkageTerms' field set, so the
+ * terms equal the quick path's (the inferred format lives only in the local
+ * steps, which the terms do not hold).
+ */
+function seededKeysAndCleaning(
+  identity: string,
+  metadata: Metadata,
+  rawRows: ReadonlyArray<CSVRow>,
+  dateInputFormats: ProfiledDateInputFormats | undefined,
+): Pick<
+  AdvancedInviteDraft,
+  "keys" | "standardization" | "precisionFloorSelection"
+> {
+  const keys = offerableDraftKeys(
+    identity,
+    metadata,
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+  );
+  return {
+    standardization: inviterDefaultStandardization(
+      metadata,
+      getDefaultLinkageTerms(identity, metadata),
+      enabledLinkageKeys(keys),
+      rawRows,
+      dateInputFormats,
+    ),
+    keys,
+    precisionFloorSelection: DEFAULT_PRECISION_FLOOR_SELECTION,
+  };
+}
+
+/**
+ * What the guided key list offers for `metadata` under `selection`: the
+ * built-in keys that selection picks and the columns can supply, ON. Each
+ * entry's `enabled` is the flag a key arrives with when first offered;
+ * {@link reconcileKeys} keeps the operator's own flag for a key already in the
+ * draft.
  */
 function offerableDraftKeys(
   identity: string,
   metadata: Metadata,
+  selection: PrecisionFloorSelection,
 ): Array<DraftKey> {
-  return getDefaultLinkageTerms(identity, metadata).linkageKeys.map((key) => ({
-    key,
-    enabled: true,
-  }));
+  return linkageTermsFromRuleSet(
+    DEFAULT_LINKAGE_RULE_SET,
+    identity,
+    metadata,
+    selection,
+  ).linkageKeys.map((key) => ({ key, enabled: true }));
+}
+
+/**
+ * Whether the built-in catalog offers `draft` any key at its precision floor
+ * selection: false for a draft whose columns supply none of the keys that
+ * selection picks, and for a draft built from a terms document.
+ */
+export function draftHasOfferedKeys(draft: AdvancedInviteDraft): boolean {
+  return (
+    draft.precisionFloorSelection !== undefined &&
+    offerableDraftKeys(
+      draft.identity,
+      draft.metadata,
+      draft.precisionFloorSelection,
+    ).length > 0
+  );
+}
+
+/** `offered` in its own order, each key `prevKeys` already lists keeping the
+ * enabled flag set on it there. Matched by the canonical encoding, as
+ * {@link reconcileKeys} matches. */
+function offeredKeysKeepingFlags(
+  prevKeys: ReadonlyArray<DraftKey>,
+  offered: Array<DraftKey>,
+): Array<DraftKey> {
+  const flagByEncoding = new Map<string, boolean>();
+  for (const entry of prevKeys) {
+    const encoded = encodeKeyForComparison(entry.key);
+    if (encoded !== null) flagByEncoding.set(encoded, entry.enabled);
+  }
+  return offered.map((entry) => {
+    const encoded = encodeKeyForComparison(entry.key);
+    const enabled = encoded === null ? undefined : flagByEncoding.get(encoded);
+    return enabled === undefined ? entry : { ...entry, enabled };
+  });
+}
+
+/** `draft` with `keys` in place of its own, and the cleaning a phone, email or
+ * ZIP key holds following them, as it follows a key turned on or off by hand
+ * ({@link draftWithKeyEnabled}). */
+function draftWithGuidedKeys(
+  draft: AdvancedInviteDraft,
+  keys: Array<DraftKey>,
+  selection: PrecisionFloorSelection,
+): AdvancedInviteDraft {
+  return {
+    ...draft,
+    keys,
+    precisionFloorSelection: selection,
+    standardization: keyGatedCleaningForKeys(
+      draft.standardization,
+      draft.metadata,
+      draft.identity,
+      enabledLinkageKeys(keys),
+    ),
+  };
+}
+
+/**
+ * Reseed the guided keys from the built-in catalog at `selection`: every key
+ * it picks that these columns supply, in the catalog's order. A key the list
+ * already shows keeps the enabled flag set on it, and a key the selection adds
+ * arrives ON.
+ *
+ * For the guided list only: the inviter session refuses it on a key set
+ * written in the expert editor or loaded from a terms document
+ * (`editorWithPrecisionFloorSelection`).
+ */
+export function draftWithPrecisionFloorSelection(
+  draft: AdvancedInviteDraft,
+  selection: PrecisionFloorSelection,
+): AdvancedInviteDraft {
+  return draftWithGuidedKeys(
+    draft,
+    offeredKeysKeepingFlags(
+      draft.keys,
+      offerableDraftKeys(draft.identity, draft.metadata, selection),
+    ),
+    selection,
+  );
+}
+
+/**
+ * Whether a new invitation for `draft`'s columns would start with any
+ * built-in key: whether {@link draftWithBuiltInKeys} has anything to replace
+ * the keys with.
+ */
+export function draftOffersBuiltInKeys(draft: AdvancedInviteDraft): boolean {
+  return draftHasOfferedKeys({
+    ...draft,
+    precisionFloorSelection: DEFAULT_PRECISION_FLOOR_SELECTION,
+  });
+}
+
+/**
+ * Replace the draft's keys, fields and cleaning with those a new invitation
+ * starts with for its current columns ({@link seededKeysAndCleaning}): the
+ * way back to the guided list from keys written in the expert editor or
+ * loaded from a terms document. An imported document's field declarations
+ * and citation go with its keys; the columns and the rest of the settings
+ * stay. Returns `draft` itself where the columns supply no built-in key
+ * ({@link draftOffersBuiltInKeys}).
+ */
+export function draftWithBuiltInKeys(
+  draft: AdvancedInviteDraft,
+  rawRows: ReadonlyArray<CSVRow> = [],
+  dateInputFormats?: ProfiledDateInputFormats,
+): AdvancedInviteDraft {
+  if (!draftOffersBuiltInKeys(draft)) return draft;
+  const {
+    importedLinkageFields: _importedLinkageFields,
+    importedRuleSetCitation: _importedRuleSetCitation,
+    ...kept
+  } = draft;
+  return {
+    ...kept,
+    ...seededKeysAndCleaning(
+      draft.identity,
+      draft.metadata,
+      rawRows,
+      dateInputFormats,
+    ),
+  };
+}
+
+/** Whether every key `draft` lists is one the built-in catalog declares,
+ * whatever its order: true of a guided list, reordered or not, and false once
+ * a key was added or changed in the expert editor. */
+export function draftKeysAreBuiltIn(draft: AdvancedInviteDraft): boolean {
+  const catalog = new Set(
+    DEFAULT_LINKAGE_RULE_SET.linkageKeys.map((key) =>
+      encodeKeyForComparison(key),
+    ),
+  );
+  return draft.keys.every((entry) => {
+    const encoded = encodeKeyForComparison(entry.key);
+    return encoded !== null && catalog.has(encoded);
+  });
 }
 
 /**
@@ -309,7 +478,11 @@ export function setDraftMetadata(
 ): AdvancedInviteDraft {
   const keys = reconcileKeys(
     draft.keys,
-    offerableDraftKeys(draft.identity, metadata),
+    offerableDraftKeys(
+      draft.identity,
+      metadata,
+      draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION,
+    ),
   );
   const enabledKeys = enabledLinkageKeys(keys);
   return {

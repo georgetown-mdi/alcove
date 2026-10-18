@@ -346,6 +346,24 @@ export function canonicalPartnerBoundTerms(
   }
 }
 
+/** The linkage keys and linkage fields of {@link canonicalPartnerBoundTerms},
+ * in the same canonical form: what Matching keys compares to tell whether the
+ * session's keys are still an opened configuration's, so an edit to another
+ * setting leaves them so. Undefined where the encoding refuses them. */
+export function canonicalLinkageKeysAndFields(
+  editor: InviterEditor,
+): string | undefined {
+  try {
+    const { linkageKeys, linkageFields } = partnerBoundTerms(
+      buildAdvancedTerms(editor.draft),
+    );
+    return canonicalString({ linkageKeys, linkageFields });
+  } catch (err) {
+    if (err instanceof CanonicalEncodingError) return undefined;
+    throw err;
+  }
+}
+
 /** Whether the terms `editor`'s draft builds differ from `baseline`, the terms
  * the opened configuration built the moment they reached the input file, in a
  * field the partner refuses an exchange over, which the party's own name is

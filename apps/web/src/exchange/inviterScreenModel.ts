@@ -15,6 +15,7 @@ import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
   opensInPlace,
+  runsOpenedConfiguration,
   withConversion,
   withNewInvitation,
   withTermsNotApplied,
@@ -28,9 +29,12 @@ import {
   INITIAL_CSV_DELIMITER_CHOICE,
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
+import {
+  canonicalLinkageKeysAndFields,
+  canonicalPartnerBoundTerms,
+} from "@console/loadedConfig";
 import { CONNECTION_TUNING_DEFAULT } from "@console/connectionTuningModel";
 import { EXCHANGE_FILES_DEFAULT } from "@console/exchangeFilesModel";
-import { canonicalPartnerBoundTerms } from "@console/loadedConfig";
 
 import { EMPTY_SAVE_FIELDS } from "./saveExchangeModel";
 import { MANAGE_OFFER_IDLE } from "./manageOfferModel";
@@ -233,6 +237,13 @@ export interface InviterScreenState {
    * it to warn of an edit the partner does not hold. Set with that file and
    * dropped with the configuration. */
   loadedTermsBaseline: string | undefined;
+  /** The linkage keys and fields of the last opened configuration's terms when
+   * they reached the input file, in canonical form
+   * (`canonicalLinkageKeysAndFields`), read by
+   * {@link keysFromOpenedConfiguration}. Unlike {@link loadedTermsBaseline}
+   * it is kept through a read of the configuration until the read's terms
+   * reach the file, and dropped with the configuration. */
+  openedConfigurationKeys: string | undefined;
   /** The enforcement records a loaded configuration states, held so the run's
    * composed configuration states each as the file did
    * (docs/spec/EXCHANGE_FILE.md, "The record that must survive"). Empty where
@@ -302,6 +313,7 @@ export const INVITER_SCREEN_INITIAL: InviterScreenState = {
   loadedConfiguration: undefined,
   loadedTermsFile: undefined,
   loadedTermsBaseline: undefined,
+  openedConfigurationKeys: undefined,
   loadedEnforcementRecords: {},
 };
 
@@ -457,6 +469,36 @@ export type InviterScreenAction =
    * draft falls back to what the file's own headers infer. `editor` is that
    * inference, absent where the file step holds no file to infer from. */
   | { type: "loaded-configuration-discarded"; editor?: InviterEditor };
+
+/**
+ * Whether the session's keys are an opened configuration's, which the partner
+ * agreed to: Matching keys then names the file in place of the authored-keys
+ * note and withholds Use the built-in rules, and the dropped-citation notices
+ * name no such action. Decided from content: the session's keys and fields
+ * equal those of {@link InviterScreenState.openedConfigurationKeys}, whatever
+ * edits led there.
+ *
+ * While the configuration is read again, or after a read that failed, the
+ * last configuration's keys still count, so the action is never offered on
+ * them. False once the configuration is taken as a new invitation's settings,
+ * whose run replaces the keys the partner holds.
+ */
+export function keysFromOpenedConfiguration(
+  state: Pick<
+    InviterScreenState,
+    "editor" | "mountedConfiguration" | "openedConfigurationKeys"
+  >,
+): boolean {
+  const { editor, mountedConfiguration, openedConfigurationKeys } = state;
+  if (editor?.keysAuthored !== true || openedConfigurationKeys === undefined)
+    return false;
+  if (
+    mountedConfiguration.status === "opened" &&
+    !runsOpenedConfiguration(mountedConfiguration)
+  )
+    return false;
+  return canonicalLinkageKeysAndFields(editor) === openedConfigurationKeys;
+}
 
 /** The state a discarded or cleared read leaves: no file, no profile, no draft,
  * and no sample marker, so nothing downstream vouches for a file that is gone. */
@@ -848,6 +890,7 @@ function applyAction(
         ),
         loadedTermsFile: action.file,
         loadedTermsBaseline: canonicalPartnerBoundTerms(seated),
+        openedConfigurationKeys: canonicalLinkageKeysAndFields(seated),
         editorAnnouncement:
           "Loaded the configuration's matching terms. Review them before creating.",
       };
@@ -879,6 +922,7 @@ function applyAction(
         loadedConfiguration: undefined,
         loadedTermsFile: undefined,
         loadedTermsBaseline: undefined,
+        openedConfigurationKeys: undefined,
         loadedSftpForm: undefined,
         loadedEnforcementRecords: {},
         connectionTuning: CONNECTION_TUNING_DEFAULT,

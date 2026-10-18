@@ -8,6 +8,7 @@ import {
   authoredLinkageFields,
   disclosedColumnNames,
   formatCount,
+  precisionFloorSelectionStatement,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -118,6 +119,17 @@ function cleaningFact(draft: AdvancedInviteDraft): string {
  * check-your-answers row. */
 function keysFact(draft: AdvancedInviteDraft): string {
   return plural(enabledKeys(draft).length, "key");
+}
+
+/** What the keys were selected with: the precision floor and coverage answer
+ * in core's words, the ones the quick exchange's confirm step uses, or that no
+ * floor selected keys written in Expert authoring or loaded from a document. */
+function rulesSelectedFact(editor: InviterEditor): string {
+  const selection = editor.draft.precisionFloorSelection;
+  if (editor.keysAuthored === true || selection === undefined)
+    return "Keys written in Expert authoring or loaded from a document";
+  const statement = precisionFloorSelectionStatement(selection);
+  return statement.charAt(0).toUpperCase() + statement.slice(1);
 }
 
 /**
@@ -447,6 +459,11 @@ export function answersRows(
     {
       label: "Matching on",
       value: `${keysFact(editor.draft)}, tried in order`,
+      changeTarget: "keys",
+    },
+    {
+      label: "Rules selected",
+      value: rulesSelectedFact(editor),
       changeTarget: "keys",
     },
     {

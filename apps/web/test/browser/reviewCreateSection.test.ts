@@ -6,9 +6,15 @@ import { page } from "vitest/browser";
 
 import { createElement } from "react";
 
-import { editorFromCsv, editorWithAuthoredDraft } from "@psi/inviterEditor";
+import {
+  editorFromCsv,
+  editorWithAuthoredDraft,
+  editorWithKeyMoved,
+  editorWithPrecisionFloorSelection,
+} from "@psi/inviterEditor";
 
 import {
+  SEEDED_CITATION_DROP_TITLE,
   buildAdvancedTerms,
   draftFromTerms,
 } from "@psi/authoring/advancedInvite";
@@ -170,6 +176,84 @@ describe("ReviewCreateSection: the dropped-citation notice", () => {
     expect(
       page.getByRole("note", { name: CITATION_DROP_NOTICE_NAME }).query(),
     ).toBeNull();
+  });
+});
+
+describe("ReviewCreateSection: the rules the keys were selected with", () => {
+  function rulesSelectedCell() {
+    return page
+      .getByRole("row")
+      .filter({ has: page.getByRole("rowheader", { name: "Rules selected" }) })
+      .getByRole("cell")
+      .first();
+  }
+
+  test("names the default floor and coverage answer", async () => {
+    render(editorFromCsv("Dana Okafor", csv));
+
+    await expect
+      .element(rulesSelectedCell())
+      .toHaveTextContent(
+        "The built-in rules at 95% precision and above that your file " +
+          "supplies, for two files that both draw their members from one " +
+          "state or one metropolitan area",
+      );
+  });
+
+  test("names a no answer at the 95% floor", async () => {
+    render(
+      editorWithPrecisionFloorSelection(editorFromCsv("Dana Okafor", csv), {
+        floor: 95,
+        oneStateOrMetroArea: false,
+      }),
+    );
+
+    await expect
+      .element(rulesSelectedCell())
+      .toHaveTextContent(
+        "The built-in rules at 95% precision and above that your file " +
+          "supplies, leaving out the rules that need both files to draw " +
+          "their members from one state or one metropolitan area",
+      );
+  });
+
+  test("names no coverage condition at the 99% floor", async () => {
+    render(
+      editorWithPrecisionFloorSelection(editorFromCsv("Dana Okafor", csv), {
+        floor: 99,
+        oneStateOrMetroArea: false,
+      }),
+    );
+
+    await expect
+      .element(rulesSelectedCell())
+      .toHaveTextContent(
+        "The built-in rules at 99% precision and above that your file supplies",
+      );
+    await expect
+      .element(rulesSelectedCell())
+      .not.toHaveTextContent("one state or one metropolitan area");
+  });
+
+  test("names no floor for keys loaded from a document", async () => {
+    render(importedWithDroppedCitation());
+
+    await expect
+      .element(rulesSelectedCell())
+      .toHaveTextContent(
+        "Keys written in Expert authoring or loaded from a document",
+      );
+  });
+
+  test("restates a seeded draft's dropped citation, blocking nothing", async () => {
+    render(editorWithKeyMoved(editorFromCsv("Dana Okafor", csv), 0, 1));
+
+    await expect
+      .element(page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }))
+      .toMatchTextContent("no longer drawn from the built-in rule set");
+    await expect
+      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .toBeEnabled();
   });
 });
 

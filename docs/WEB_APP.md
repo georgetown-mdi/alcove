@@ -42,6 +42,19 @@ If the page you created it on runs on your own computer or inside your network, 
 - **If your partner has not connected by then**, the screen says so. Choose **Keep waiting** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired.
 - **If you reload the page**, the first step offers the invitation back while it is still valid: choose the same file again to keep waiting, or discard the invitation. The file must have the same columns, in the same order, and the same number of rows as the one you created the invitation from. Alcove keeps the invitation in this tab's session storage for this, with your file's column names and row count but never its rows, and removes it when the exchange completes, when you discard it or start over, and when the invitation expires: at expiry while this page is open, and otherwise the next time Alcove loads in this tab or you come back to this page. An expired invitation is never offered.
 
+### Choosing the matching keys
+
+The invitation starts with the built-in rules your file supplies at 95% precision and above. To choose others, open **Customize > Matching keys** before you create the invitation. The console's invitation editor offers the same choices.
+
+- **Built-in rules.** The rules at 99% precision and above, or at 95% precision and above. Each choice states the share of the pairs its rules match that are the same person.
+- **Do both files draw their members from one state or one metropolitan area?** With **Yes**, the three rules that match on a name and a date of birth alone are included at 95%; with **No**, they are left out. If either file covers one age group, such as one school class, answer **No**. At 99% the question changes nothing, so it is turned off.
+
+Changing either lists the rules it selects that your file supplies, in the built-in order. A key you turned off stays off while the choice keeps it, and a key the choice adds is turned on; you can then turn keys off or reorder them. Neither choice is sent to your partner: the terms hold the keys, and **Review & create** names the choices they were selected with. The bands and the rules are described in [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor).
+
+Keys you write in **Expert authoring**, or load from a document, were selected by neither choice, so the two controls are not shown for them. **Use the built-in rules** in their place replaces the keys, fields and cleaning, after you confirm, with the ones a new invitation starts with for your file, and makes the terms cite the built-in rules; it is not offered where the built-in rules cover no column of your file.
+
+Terms drawn from the built-in rules cite them. Moving a key out of the built-in order, or adding or changing a key in Expert authoring, leaves the terms without that citation, and both steps say so; turning some keys off does not.
+
 ## Accepting an invitation
 
 You received a link from a partner. Open it in your browser, or paste the whole link or the code under **Accept an invitation you were sent** on the start page and choose **Review invitation**. Your partner's browser must be open on their invitation while you accept.

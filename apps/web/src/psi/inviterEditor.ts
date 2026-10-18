@@ -7,18 +7,27 @@
  */
 
 import {
+  DEFAULT_PRECISION_FLOOR_SELECTION,
+  PRECISION_FLOORS,
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
+  precisionFloorSelectionStatement,
+  precisionFloorStatement,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
 import {
+  citationDropFor,
   draftFromTerms,
+  draftHasOfferedKeys,
+  draftOffersBuiltInKeys,
+  draftWithBuiltInKeys,
   draftWithConfigurationCleaning,
   draftWithFieldAdded,
   draftWithKeyEnabled,
+  draftWithPrecisionFloorSelection,
   gradeAuthoredKeys,
   inviterDefaultStandardization,
   seedAdvancedInvite,
@@ -39,6 +48,7 @@ import type {
   AdvancedInviteDraft,
   AdvancedInviteSeed,
   AuthoredKeyGrade,
+  CitationDrop,
   CleaningNotLoaded,
   DraftLegalAgreement,
   OutputDirection,
@@ -52,6 +62,7 @@ import type {
   LinkageStrategy,
   LinkageTerms,
   Metadata,
+  PrecisionFloorSelection,
   SemanticType,
   Standardization,
 } from "@alcove/core";
@@ -206,6 +217,170 @@ export function editorWithKeyEnabled(
     ...editor,
     draft: draftWithKeyEnabled(editor.draft, index, enabled),
   };
+}
+
+/** Choose the precision floor and coverage answer the guided keys are drawn
+ * with, reseeding them from the built-in catalog
+ * ({@link draftWithPrecisionFloorSelection}). Returns the session unchanged
+ * where its keys were written in the expert editor or loaded from a document
+ * ({@link InviterEditor.keysAuthored}): no floor selected those, and reseeding
+ * would replace them. */
+export function editorWithPrecisionFloorSelection(
+  editor: InviterEditor,
+  selection: PrecisionFloorSelection,
+): InviterEditor {
+  if (editor.sealed === true || editor.keysAuthored === true) return editor;
+  return {
+    ...editor,
+    draft: draftWithPrecisionFloorSelection(editor.draft, selection),
+  };
+}
+
+/** Whether Matching keys offers {@link editorWithBuiltInKeys}: a new
+ * invitation for the session's columns would start with a built-in key. */
+export function editorOffersBuiltInKeys(editor: InviterEditor): boolean {
+  return draftOffersBuiltInKeys(editor.draft);
+}
+
+/** Whether Matching keys shows the action that runs
+ * {@link editorWithBuiltInKeys}: for keys written in Expert authoring or
+ * loaded from a document where the columns supply a built-in key, and not
+ * for keys an opened configuration states, which the partner agreed to
+ * (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`). */
+export function editorOffersUseBuiltInRules(
+  editor: InviterEditor,
+  keysFromOpenedConfiguration: boolean,
+): boolean {
+  return (
+    editor.keysAuthored === true &&
+    !keysFromOpenedConfiguration &&
+    editorOffersBuiltInKeys(editor)
+  );
+}
+
+/** The dropped-citation notice for the session ({@link citationDropFor}),
+ * naming the Matching keys action only where
+ * {@link editorOffersUseBuiltInRules} shows it for the same
+ * `keysFromOpenedConfiguration`. */
+export function editorCitationDrop(
+  editor: InviterEditor,
+  keysFromOpenedConfiguration: boolean,
+  builtTerms?: LinkageTerms,
+): CitationDrop | undefined {
+  return citationDropFor(
+    editor.draft,
+    editor.seed,
+    editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
+    builtTerms,
+  );
+}
+
+/** Replace keys written in the expert editor or loaded from a document, with
+ * their fields and cleaning, by those a new invitation starts with for the
+ * session's columns ({@link draftWithBuiltInKeys}), returning the session to
+ * the guided list: the precision floor and coverage controls apply again, and
+ * a later column edit reconciles the keys. Returns the session unchanged
+ * where the columns supply no built-in key ({@link editorOffersBuiltInKeys}). */
+export function editorWithBuiltInKeys(
+  editor: InviterEditor,
+  csv: AcquiredCsv,
+): InviterEditor {
+  if (editor.sealed === true || !editorOffersBuiltInKeys(editor)) return editor;
+  const { keysAuthored: _keysAuthored, ...guided } = editor;
+  return {
+    ...guided,
+    draft: draftWithBuiltInKeys(
+      editor.draft,
+      seedRows(csv),
+      csv.dateInputFormats,
+    ),
+  };
+}
+
+/** What Matching keys shows in place of the precision floor and coverage
+ * controls on a session whose keys no floor selected
+ * ({@link editorWithPrecisionFloorSelection} refuses there), beside the
+ * action that replaces them ({@link editorWithBuiltInKeys}). */
+export const AUTHORED_KEYS_FLOOR_NOTE =
+  "These keys were written in Expert authoring or loaded from a document, so " +
+  "no choice of built-in rules applies to them.";
+
+/** What the confirm before {@link editorWithBuiltInKeys} states. */
+export const USE_BUILT_IN_RULES_STATEMENT =
+  "This replaces the keys, fields and cleaning with the ones a new " +
+  "invitation starts with for your file: " +
+  `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
+  "all turned on. The invitation will cite the built-in rules. Your " +
+  "columns and other settings stay. This cannot be undone.";
+
+/** What Matching keys shows in place of the precision floor and coverage
+ * controls on the console, for keys a run of an opened configuration
+ * continues under: the partner holds them, so no action here replaces them. */
+export const OPENED_CONFIGURATION_KEYS_NOTE =
+  "These keys come from the configuration you opened, which your partner " +
+  "agreed to. To change them, edit alcove.yaml and run alcove update, then " +
+  "have your partner run alcove apply on what it prints.";
+
+/** What the key list's help says about its order: the bands the floor
+ * selects, in the order the built-in keys list them, or for keys no floor
+ * selected, only that they are tried in the order listed. */
+export function keyOrderHelp(editor: InviterEditor): string {
+  const selection = editor.draft.precisionFloorSelection;
+  if (editor.keysAuthored === true || selection === undefined)
+    return (
+      "Records are matched on these keys, tried in the order listed, and " +
+      "earlier keys match first."
+    );
+  const lead =
+    "Records are matched on these keys, tried in order, and earlier keys " +
+    "match first.";
+  const [highest, ...lower] = PRECISION_FLOORS.filter(
+    (band) => band >= selection.floor,
+  ).map((band) => `${String(band)}%`);
+  return lower.length === 0
+    ? `${lead} The built-in keys are only the rules at ${highest} precision.`
+    : `${lead} The built-in keys come with the rules at ${highest} ` +
+        `precision first, then the rules at ${lower.join(", ")}.`;
+}
+
+/** The note for a guided key list the precision floor and coverage answer
+ * leave empty while a wider choice would not, or `undefined` otherwise. */
+export function emptyGuidedKeysNotice(
+  editor: InviterEditor,
+): string | undefined {
+  if (editor.keysAuthored === true || editor.draft.keys.length > 0)
+    return undefined;
+  const widest: PrecisionFloorSelection = {
+    floor: PRECISION_FLOORS.at(-1) ?? DEFAULT_PRECISION_FLOOR_SELECTION.floor,
+    oneStateOrMetroArea: true,
+  };
+  if (
+    !draftHasOfferedKeys({ ...editor.draft, precisionFloorSelection: widest })
+  )
+    return undefined;
+  return (
+    "Your file's columns supply none of the built-in rules these choices " +
+    `select. ${precisionFloorStatement(widest.floor).label}, with the ` +
+    "question above answered Yes, include rules your file supplies."
+  );
+}
+
+/** What a screen reader hears after a precision floor or coverage choice
+ * reseeds the guided keys: how many the list shows and how many are on, or,
+ * for an empty list, the note beside it ({@link emptyGuidedKeysNotice}). */
+export function guidedKeysAnnouncement(editor: InviterEditor): string {
+  const count = editor.draft.keys.length;
+  if (count === 0)
+    return (
+      emptyGuidedKeysNotice(editor) ??
+      "Your file's columns supply none of the built-in rules."
+    );
+  const on = enabledKeys(editor.draft).length;
+  return (
+    `The key list shows ${String(count)} built-in ` +
+    `${count === 1 ? "rule" : "rules"} your file supplies, ` +
+    `${on === count ? "all" : String(on)} turned on.`
+  );
 }
 
 /** Move the key at `index` one place earlier (`-1`) or later (`+1`); a move
