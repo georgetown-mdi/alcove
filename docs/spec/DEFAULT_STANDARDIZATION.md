@@ -69,9 +69,10 @@ surface rather than a local formatting choice.
 ### Per-party placeholder lists
 
 The `first_name`, `last_name` and `date_of_birth` pipelines each end in a
-placeholder list: a `null_if` whose `values` are dropped. The defaults give both
-name fields one list, and each name field has its own copy of it as that
-field's own step parameter. An operator may edit any of the three lists in their
+placeholder list: a `null_if` whose `values` are dropped. In the defaults the
+`first_name` list is the `last_name` list with nine values added (see
+[`first_name`](#first_name)), and each name field's list is that field's own
+step parameter. An operator may edit any of the three lists in their
 own standardization, to add a filler their system writes or to keep a value the
 list drops.
 
@@ -505,7 +506,7 @@ steps:
       values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
   - function: null_if
     params:
-      values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
+      values: ["UNKNOWN", "UNK", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST", "BABY BOY", "BABY GIRL", "BB", "BG", "FNU", "UNKNOWN MALE", "UNKNOWN FEMALE", "TWIN A", "TWIN B"]
 ```
 
 Result: an uppercase ASCII value whose word separators are single spaces, with
@@ -541,10 +542,16 @@ Order determines the meaning here:
 - The closing `null_if` is the placeholder list: it drops a value that is
   exactly one of its `values`, words that stand in for a name nobody recorded.
   It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are
-  each dropped, while a name holding one of the words beside another
-  (`"Jane Doe"`, `"Baby Boy"`) or inside a longer one (`"Doering"`) is kept.
+  each dropped, and so are `"Baby Boy"` and `"B.B."`.
+  A name containing one of the values beside another word (`"Baby Jane"`) or
+  inside a longer one (`"Boyd"`, `"Babyak"`) is kept.
 
-Each name field has its own copy of the placeholder list, and an operator may
+The `first_name` list is the `last_name` list with nine values added, each a
+whole value a record system writes in place of a first name it does not have:
+`BABY BOY` and `BABY GIRL` and their initials `BB` and `BG`, `UNKNOWN MALE` and
+`UNKNOWN FEMALE`, `TWIN A` and `TWIN B`, and `FNU`, for first name unknown.
+
+Each name field has its own placeholder list, and an operator may
 edit either one for their own data (see
 [Per-party placeholder lists](#per-party-placeholder-lists)). A value is
 written in the cleaned form, upper-case ASCII letters and spaces, since that is
@@ -577,9 +584,18 @@ it.
 | `"Jo"` | `"JO"` |
 | `"Jane Doe"` | `"JANE DOE"` |
 | `"Doering"` | `"DOERING"` |
+| `"Doe"` | `"DOE"` |
+| `"Baby Jane"` | `"BABY JANE"` |
+| `"Boyd"` | `"BOYD"` |
+| `"Babyak"` | `"BABYAK"` |
 | `"J."` | `"J"` |
 | `"Unknown"` | `null` |
 | `"baby"` | `null` |
+| `"Baby Boy"` | `null` |
+| `"B.B."` | `null` |
+| `"Unknown Female"` | `null` |
+| `"Twin A"` | `null` |
+| `"FNU"` | `null` |
 | `"5"` | `null` |
 | `"   "` | `null` |
 
@@ -655,17 +671,21 @@ steps:
       pattern: "^.{2,}$"
   - function: null_if
     params:
-      values: ["UNKNOWN", "UNK", "DOE", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
+      values: ["UNKNOWN", "UNK", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
 ```
 
 The `last_name` sequence is the `first_name` sequence with one step added, the
-`filter_regex` on `^.{2,}$` before the placeholder list; the notes under
-[`first_name`](#first_name) on the steps they share apply unchanged. That step
-drops a value of one
+`filter_regex` on `^.{2,}$` before the placeholder list, and a shorter
+placeholder list (below); the notes under [`first_name`](#first_name) on the
+other steps apply unchanged. The added step drops a value of one
 character. Every such value left at this point is a letter, so it drops an
 initial written in place of a surname (`"Q"`, `"Q."`). The two are listed
 separately because they are two independent defaults: a change to one is not
 automatically a change to the other.
+
+The placeholder list is the `first_name` list without the nine values that
+list adds. Neither list drops `DOE`, which is a surname as well as a
+placeholder.
 
 | Input | Result |
 | ----- | ------ |
@@ -674,7 +694,8 @@ automatically a change to the other.
 | `"Alesund"` | `"ALESUND"` |
 | `"\u00d8stergaard"` | `"OSTERGAARD"` |
 | `"Gro\u00df"` | `"GROSS"` |
-| `"Doe"` | `null` |
+| `"Doe"` | `"DOE"` |
+| `"Baby Boy"` | `"BABY BOY"` |
 | `"Refused"` | `null` |
 | `"Q"` | `null` |
 | `"!!!"` | `null` |
@@ -1303,9 +1324,11 @@ clients. A shared number causes a false match only when two different people
 on it share a first name, which a key on first name and phone number cannot
 separate.
 
-- Household sizes in the US Census run 1 person 28%, 2 at 35%, 3 at 15%, 4 at
-  13%, 5 at 6%, 6 at 2%, and 7 or more about 1.5%, so a limit of five keeps
-  about 96% of households.
+- In the American Community Survey 2024 1-year estimates for the US (tables
+  B11016, households by size, and B25008, population in occupied housing
+  units), about 90% of people live in households of five or fewer, and at
+  least 9.5% in households of six or more, counting a household of seven or
+  more as seven. A limit of five keeps the values of most households.
 - The expected number of same-first-name pairs among h people is about
   h(h-1)/2 times the first-name collision rate, about 1% in general and 3%
   among concentrated names: 0.1 to 0.3 pairs among five people, and 12 to 37
@@ -1313,7 +1336,9 @@ separate.
 
 The cost that remains is a household of six or more, which loses its phone and
 email values, and a household where two members share a first name, which only
-a date of birth separates.
+a date of birth separates. Five is a working value, not set from a measurement
+of where, between a household and an organization's clients, false matches
+start.
 
 ### Per-party limits
 

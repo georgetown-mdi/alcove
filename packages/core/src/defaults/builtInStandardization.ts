@@ -38,40 +38,59 @@ const NAME_STEPS: StandardizationStep[] = [
   { function: "null_if", params: { values: [...cleanedTitles] } },
 ];
 
-const NAME_PLACEHOLDER_STEP: StandardizationStep = {
+// Whole cleaned values only: a name containing one of them beside another
+// word, or inside a longer word, is kept.
+const NAME_PLACEHOLDERS: readonly string[] = [
+  "UNKNOWN",
+  "UNK",
+  "BABY",
+  "BOY",
+  "GIRL",
+  "TWIN",
+  "MALE",
+  "FEMALE",
+  "TRAUMA",
+  "REFUSED",
+  "ANONYMOUS",
+  "NONE",
+  "TEST",
+];
+
+const FIRST_NAME_PLACEHOLDER_STEP: StandardizationStep = {
   function: "null_if",
   params: {
     values: [
-      "UNKNOWN",
-      "UNK",
-      "DOE",
-      "BABY",
-      "BOY",
-      "GIRL",
-      "TWIN",
-      "MALE",
-      "FEMALE",
-      "TRAUMA",
-      "REFUSED",
-      "ANONYMOUS",
-      "NONE",
-      "TEST",
+      ...NAME_PLACEHOLDERS,
+      "BABY BOY",
+      "BABY GIRL",
+      "BB",
+      "BG",
+      "FNU",
+      "UNKNOWN MALE",
+      "UNKNOWN FEMALE",
+      "TWIN A",
+      "TWIN B",
     ],
   },
+};
+
+const LAST_NAME_PLACEHOLDER_STEP: StandardizationStep = {
+  function: "null_if",
+  params: { values: [...NAME_PLACEHOLDERS] },
 };
 
 // A one-letter first name is kept: the built-in keys beside a full SSN match
 // on the first initial alone.
 const FIRST_NAME_STEPS: StandardizationStep[] = [
   ...NAME_STEPS,
-  NAME_PLACEHOLDER_STEP,
+  FIRST_NAME_PLACEHOLDER_STEP,
 ];
 
 const LAST_NAME_STEPS: StandardizationStep[] = [
   ...NAME_STEPS,
   // Every one-character value is a letter here, so this drops an initial.
   { function: "filter_regex", params: { pattern: "^.{2,}$" } },
-  NAME_PLACEHOLDER_STEP,
+  LAST_NAME_PLACEHOLDER_STEP,
 ];
 
 /** The `date_of_birth` input format used when none is supplied or inferred. */
@@ -202,8 +221,10 @@ const COUNTY_STEPS: StandardizationStep[] = [
 ];
 
 // The most distinct people one value may belong to in a party's own file. A
-// household shares a phone or an email, so five keeps most of them, while an
-// organization's number on dozens of clients is dropped.
+// household shares a phone or an email: about 90% of people live in one of
+// five or fewer (ACS 2024 1-year, B11016 and B25008), so five, a working
+// value, keeps most of them, while an organization's number on dozens of
+// clients is dropped.
 const MAX_PEOPLE_PER_VALUE: Readonly<Partial<Record<string, number>>> = {
   ssn: SSN_MAX_PEOPLE_PER_VALUE,
   phone_number: 5,

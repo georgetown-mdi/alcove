@@ -1029,7 +1029,6 @@ describe("default name pipeline (first_name / last_name)", () => {
   test.each([
     "Unknown",
     "UNK",
-    "Doe",
     "baby",
     "Boy",
     "Girl",
@@ -1045,6 +1044,94 @@ describe("default name pipeline (first_name / last_name)", () => {
   ])("drops the placeholder %j in both name fields", (input) => {
     expect(runFirst(input)).toBeNull();
     expect(runLast(input)).toBeNull();
+  });
+
+  test.each([
+    ["Baby Boy", "BABY BOY"],
+    ["baby-girl", "BABY GIRL"],
+    ["B.B.", "BB"],
+    ["BG", "BG"],
+    ["FNU", "FNU"],
+    ["Unknown Male", "UNKNOWN MALE"],
+    ["unknown  female", "UNKNOWN FEMALE"],
+    ["Twin A", "TWIN A"],
+    ["Twin-B", "TWIN B"],
+  ])(
+    "drops %j as a first name and keeps it as the last name %j",
+    (input, cleaned) => {
+      expect(runFirst(input)).toBeNull();
+      expect(runLast(input)).toBe(cleaned);
+    },
+  );
+
+  test.each([
+    ["Baby Jane", "BABY JANE"],
+    ["Boyd", "BOYD"],
+    ["Babyak", "BABYAK"],
+    ["Baby Boy Smith", "BABY BOY SMITH"],
+    ["Twin C", "TWIN C"],
+  ])(
+    "keeps %j, which holds a placeholder but is not one, as %j",
+    (input, expected) => {
+      expect(runFirst(input)).toBe(expected);
+      expect(runLast(input)).toBe(expected);
+    },
+  );
+
+  test("keeps DOE in both name fields", () => {
+    expect(runFirst("Doe")).toBe("DOE");
+    expect(runLast("Doe")).toBe("DOE");
+  });
+
+  test("the last-name list is the first-name list without its compound values and initials", () => {
+    const placeholders = (steps: StandardizationStep[]) =>
+      steps.find(
+        (step) =>
+          step.function === "null_if" &&
+          Array.isArray(step.params?.values) &&
+          step.params.values.includes("UNKNOWN"),
+      )?.params?.values;
+    const lastNames = [
+      "UNKNOWN",
+      "UNK",
+      "BABY",
+      "BOY",
+      "GIRL",
+      "TWIN",
+      "MALE",
+      "FEMALE",
+      "TRAUMA",
+      "REFUSED",
+      "ANONYMOUS",
+      "NONE",
+      "TEST",
+    ];
+    const [first, last] = getDefaultStandardization(
+      [
+        { name: "FN", type: "first_name", role: "linkage", isPayload: false },
+        { name: "LN", type: "last_name", role: "linkage", isPayload: false },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [
+          { name: "first_name", type: "first_name" },
+          { name: "last_name", type: "last_name" },
+        ],
+      },
+    );
+    expect(placeholders(last.steps!)).toEqual(lastNames);
+    expect(placeholders(first.steps!)).toEqual([
+      ...lastNames,
+      "BABY BOY",
+      "BABY GIRL",
+      "BB",
+      "BG",
+      "FNU",
+      "UNKNOWN MALE",
+      "UNKNOWN FEMALE",
+      "TWIN A",
+      "TWIN B",
+    ]);
   });
 
   test.each([
@@ -1078,7 +1165,6 @@ describe("default name pipeline (first_name / last_name)", () => {
     ["J R", "J R"],
     ["Jane Doe", "JANE DOE"],
     ["Doering", "DOERING"],
-    ["Baby Boy", "BABY BOY"],
   ])("keeps %j as %j", (input, expected) => {
     expect(runFirst(input)).toBe(expected);
     expect(runLast(input)).toBe(expected);
@@ -1103,11 +1189,21 @@ describe("default name pipeline (first_name / last_name)", () => {
       "UNKNOWN",
       "NOBODY",
     ]);
-    expect(runPipeline("Doe", lastName)).toBe("DOE");
+    expect(runPipeline("Test", lastName)).toBe("TEST");
     expect(runPipeline("Nobody", lastName)).toBeNull();
     expect(runPipeline("Unknown", lastName)).toBeNull();
-    expect(runPipeline("Doe", steps.get("first_name")!)).toBeNull();
+    expect(runPipeline("Test", steps.get("first_name")!)).toBeNull();
     expect(runPipeline("Nobody", steps.get("first_name")!)).toBe("NOBODY");
+
+    const firstName = withPlaceholders(steps.get("first_name")!, "UNKNOWN", [
+      "UNKNOWN",
+      "NOBODY",
+    ]);
+    expect(runPipeline("Baby Boy", firstName)).toBe("BABY BOY");
+    expect(runPipeline("FNU", firstName)).toBe("FNU");
+    expect(runPipeline("Nobody", firstName)).toBeNull();
+    expect(runPipeline("Baby Boy", steps.get("first_name")!)).toBeNull();
+    expect(runPipeline("Nobody", steps.get("last_name")!)).toBe("NOBODY");
   });
 
   describe("Unicode whitespace folds to one space between words", () => {
