@@ -160,7 +160,12 @@ describe("InvitationTerms: the deduplicate variant's one input", () => {
     ).toBe(true);
 
     forced.acceptorTableWithheld = true;
-    app.render(createElement(InvitationTerms, { linkageTerms: CASCADE_TERMS }));
+    app.render(
+      createElement(InvitationTerms, {
+        linkageTerms: CASCADE_TERMS,
+        allowedRelays: undefined,
+      }),
+    );
     const cascadePanel = await readyOtherDetails();
     expect(cascadePanel.textContent).toContain(
       CONSENT_FACTS.duplicateGroupingWithheld.note,
@@ -172,7 +177,10 @@ describe("InvitationTerms: the deduplicate variant's one input", () => {
     app.unmount();
     forced.acceptorTableWithheld = false;
     app.render(
-      createElement(InvitationTerms, { linkageTerms: WITHHOLDING_TERMS }),
+      createElement(InvitationTerms, {
+        linkageTerms: WITHHOLDING_TERMS,
+        allowedRelays: undefined,
+      }),
     );
     const withholdingPanel = await readyOtherDetails();
     expect(withholdingPanel.textContent).toContain(
@@ -207,7 +215,10 @@ describe("InvitationTerms: the own-membership variant's one input", () => {
 
     forced.inviterTableWithheld = true;
     const cascadeUnderWithheld = await renderedText(
-      createElement(InvitationTerms, { linkageTerms: HELPER_CASCADE_TERMS }),
+      createElement(InvitationTerms, {
+        linkageTerms: HELPER_CASCADE_TERMS,
+        allowedRelays: undefined,
+      }),
     );
     expect(cascadeUnderWithheld).toContain(
       CONSENT_FACTS.partnerOwnMembershipWithheld.note,
@@ -221,6 +232,7 @@ describe("InvitationTerms: the own-membership variant's one input", () => {
     const withholdingUnderDisclosure = await renderedText(
       createElement(InvitationTerms, {
         linkageTerms: HELPER_WITHHOLDING_TERMS,
+        allowedRelays: undefined,
       }),
     );
     expect(withholdingUnderDisclosure).toContain(
@@ -243,6 +255,7 @@ describe("InvitationTerms: the own-membership variant's one input", () => {
       createElement(InvitationTerms, {
         linkageTerms: WITHHOLDING_TERMS,
         perspective: "proposing",
+        allowedRelays: undefined,
       }),
     );
     expect(exchangedHalf).toContain(
@@ -259,6 +272,7 @@ describe("InvitationTerms: the own-membership variant's one input", () => {
       createElement(InvitationTerms, {
         linkageTerms: CASCADE_TERMS,
         perspective: "proposing",
+        allowedRelays: undefined,
       }),
     );
     expect(withheldHalf).toContain(

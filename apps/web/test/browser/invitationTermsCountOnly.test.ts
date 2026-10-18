@@ -35,6 +35,7 @@ function renderCountOnly(overrides?: Partial<LinkageTerms>): void {
   app.render(
     createElement(InvitationTerms, {
       linkageTerms: { ...COUNT_ONLY_PROBE_TERMS, ...overrides },
+      allowedRelays: undefined,
     }),
   );
 }
@@ -81,6 +82,7 @@ function renderCountOnlyUnderBoundary(
       null,
       createElement(InvitationTerms, {
         linkageTerms: COUNT_ONLY_PROBE_TERMS,
+        allowedRelays: undefined,
         ...overrides,
       }),
     ),

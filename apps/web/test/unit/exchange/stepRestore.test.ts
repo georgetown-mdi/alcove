@@ -96,19 +96,44 @@ describe("restorablePosition", () => {
   // and confirmed columns, so a `launched` entry Back lands on clamps to columns
   // rather than a run surface backed by nothing.
   test("clamps launched to columns when the launch is gone", () => {
-    expect(restorablePosition("launched", { hasLaunch: false })).toBe(
-      "columns",
-    );
+    expect(
+      restorablePosition("launched", {
+        hasLaunch: false,
+        reviewCommitted: true,
+      }),
+    ).toBe("columns");
   });
 
   test("keeps launched when the launch is still present", () => {
-    expect(restorablePosition("launched", { hasLaunch: true })).toBe(
-      "launched",
-    );
+    for (const reviewCommitted of [true, false])
+      expect(
+        restorablePosition("launched", { hasLaunch: true, reviewCommitted }),
+      ).toBe("launched");
   });
 
   test("restores a step with intact backing state unchanged", () => {
     for (const token of ["review", "consent", "columns", "columns:cleaning"])
-      expect(restorablePosition(token, { hasLaunch: false })).toBe(token);
+      expect(
+        restorablePosition(token, { hasLaunch: false, reviewCommitted: true }),
+      ).toBe(token);
+  });
+
+  // An edit to the review step's Allowed relays voids its commit, so a Forward
+  // past it lands back on the field rather than on a step that launches the
+  // list the field no longer shows.
+  test("clamps every step before the run to review while the review is uncommitted", () => {
+    for (const token of ["consent", "columns", "columns:cleaning", "launched"])
+      expect(
+        restorablePosition(token, { hasLaunch: false, reviewCommitted: false }),
+      ).toBe("review");
+  });
+
+  test("passes a token naming no step through for the caller to ignore", () => {
+    expect(
+      restorablePosition("retired-step", {
+        hasLaunch: false,
+        reviewCommitted: false,
+      }),
+    ).toBe("retired-step");
   });
 });

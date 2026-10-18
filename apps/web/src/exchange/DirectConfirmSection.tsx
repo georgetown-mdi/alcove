@@ -317,6 +317,7 @@ export function DirectConfirmSection({
         {unlinkable === undefined ? (
           <InvitationTerms
             linkageTerms={preview.linkageTerms}
+            allowedRelays={undefined}
             partnerDeclaresOwnDeduplicate
             perspective="proposing"
             headingOrder={2}

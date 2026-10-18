@@ -69,9 +69,10 @@ creates. With no list set, its runs use every relay they list. The entry
 form, the matching, and what the list does not decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 
-Saving an exchange as recurring starts its list from the Allowed relays the
-Relay server page holds at that moment. The list goes wherever the exchange
-goes: a backup holds it, the command-line export writes it as
+Saving an exchange you accepted as recurring starts its list from the Allowed
+relays set on that invitation's review; saving one you created starts it from
+the Allowed relays the Relay server page holds at that moment. The list goes
+wherever the exchange goes: a backup holds it, the command-line export writes it as
 `connection.allowed_relays`, and an imported configuration that sets that key
 keeps it as written. A configuration whose list is empty allows no relay
 server, so its runs connect without one; the exchange's page says so beside

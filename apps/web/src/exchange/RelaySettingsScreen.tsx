@@ -61,9 +61,11 @@ export const CONSOLE_RELAY_RESTRICTION_LINE =
   "its connection.allowed_relays key decides which relays an exchange may " +
   "use.";
 
-/** Where a saved exchange's allowed relays are set instead of here. */
-export const SAVED_EXCHANGE_ALLOWED_RELAYS_LINE =
-  "A saved exchange uses the Allowed relays on its own page instead.";
+/** Which exchanges the allowed relays set here apply to, and where the others
+ * set their own. */
+export const ALLOWED_RELAYS_APPLY_LINE =
+  "These allowed relays apply to invitations you create; an invitation you " +
+  "accept sets its own on its review, and a saved exchange on its own page.";
 
 /** The status after a save stored the allowed relays, and not the relay
  * server addresses. */
@@ -91,7 +93,7 @@ function fieldError(
     .join("; ");
 }
 
-/** The relays a run may use. */
+/** The relays the run of an invitation this browser creates may use. */
 function AllowedRelaysControls({
   allowedText,
   allowedError,
@@ -104,7 +106,7 @@ function AllowedRelaysControls({
   return (
     <>
       <p>{ALLOWED_RELAYS_SCOPE}</p>
-      <p>{SAVED_EXCHANGE_ALLOWED_RELAYS_LINE}</p>
+      <p>{ALLOWED_RELAYS_APPLY_LINE}</p>
 
       <Stack gap="md" mt="md">
         <AllowedRelaysField
@@ -131,9 +133,9 @@ type SaveStatus =
 
 /**
  * The relay settings page: this browser's own TURN and STUN urls and the
- * relays a run may use, kept in browser storage for this site, with what the
- * relay's operator learns stated beside them, and a test of the relays a
- * browser run lists that the user starts. The hosted app and a console each
+ * relays the run of an invitation it creates may use, kept in browser storage
+ * for this site, with what the relay's operator learns stated beside them, and
+ * a test of the relays a browser run lists that the user starts. The hosted app and a console each
  * hold their own. A console withholds the relays a run may use, which its
  * exchanges do not read, and states what decides them instead.
  */
@@ -266,7 +268,7 @@ export function RelaySettingsScreen({
         invitation you accept, after yours
         {consoleBuild
           ? "."
-          : ", unless your allowed relays below leave it out."}{" "}
+          : ", unless the allowed relays set on its review leave it out."}{" "}
         {RELAY_KEY_NOTICE}
       </p>
 

@@ -13,7 +13,7 @@ import {
 } from "@alcove/core";
 
 import {
-  ALLOWED_RELAYS_SCOPE,
+  EXCHANGE_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "@psi/transport/relayRestriction";
@@ -170,7 +170,7 @@ async function decodedFromTypedRegistrar(
   return connectionEndpoint;
 }
 
-describe("InvitationTerms: the invitation's relays under this browser's allowed relays", () => {
+describe("InvitationTerms: the invitation's relays under the exchange's allowed relays", () => {
   const KEPT_URL = "turn:Partner.Example.net:3478?transport=udp";
   const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
   const relayEndpoint: ConnectionEndpoint = {
@@ -185,7 +185,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
     expect(text).toContain(
       `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
     );
-    expect(text).toContain(ALLOWED_RELAYS_SCOPE);
+    expect(text).toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
   });
 
@@ -196,7 +196,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
     expect(text).not.toMatch(/relay server page|leave out a TURN server/i);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
-    expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
+    expect(text).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
   });
 
   test("the console build, whose run is the CLI's, marks nothing whatever the browser holds", async () => {
@@ -205,7 +205,7 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
     expect(text).toContain(`TURN ${KEPT_URL}`);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
-    expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
+    expect(text).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
   });
 });

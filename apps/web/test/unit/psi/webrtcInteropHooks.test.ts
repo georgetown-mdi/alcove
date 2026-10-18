@@ -294,3 +294,51 @@ describe("the handshake role each one-shot web flow takes", () => {
     );
   });
 });
+
+// The same harness reaches the dial, so the relays the acceptor flow lists are
+// read off it: the launch's allowed relays decide them, not browser storage.
+describe("the relays the acceptor flow dials with", () => {
+  const KEPT_URL = "turn:partner.example.net:3478";
+  const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
+  const relayLaunch = (
+    allowedRelays: ReadonlyArray<string> | undefined,
+  ): AcceptorLaunch => ({
+    ...LAUNCH,
+    invitation: {
+      ...LAUNCH.invitation,
+      endpoint: {
+        ...vectors.signaling.endpoint,
+        relay: { turn: [KEPT_URL, LEFT_OUT_URL], stun: [] },
+      },
+    },
+    allowedRelays,
+  });
+
+  test("lists only the TURN urls the launch's allowed relays keep", async () => {
+    scriptTransport();
+
+    reactHarness.render(() =>
+      useAcceptorExchange({ launch: relayLaunch(["partner.example.net"]) }),
+    );
+
+    await vi.waitFor(() => expect(mockedDial).toHaveBeenCalled());
+    expect(mockedDial.mock.calls[0]?.[2]).toMatchObject({
+      relay: { turn: [KEPT_URL] },
+      relaysLeftOut: [LEFT_OUT_URL],
+    });
+  });
+
+  test("lists every TURN url where the launch sets none", async () => {
+    scriptTransport();
+
+    reactHarness.render(() =>
+      useAcceptorExchange({ launch: relayLaunch(undefined) }),
+    );
+
+    await vi.waitFor(() => expect(mockedDial).toHaveBeenCalled());
+    expect(mockedDial.mock.calls[0]?.[2]).toMatchObject({
+      relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+      relaysLeftOut: [],
+    });
+  });
+});

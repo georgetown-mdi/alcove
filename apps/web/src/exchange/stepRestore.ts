@@ -44,14 +44,28 @@ export function restorableSection(
   return requested;
 }
 
+/** The acceptor's position tokens past its review step. */
+const PAST_ACCEPTOR_REVIEW = new Set([
+  "consent",
+  "columns",
+  "columns:cleaning",
+  "launched",
+]);
+
 /** The position token to restore for `token`: the token itself when its backing
- * state still exists, else `columns` -- the nearest step whose state (the
- * acquired file and confirmed columns) a back-to-columns recovery leaves intact.
- * `launched` reads the run the launch drives, which that recovery clears. */
+ * state still exists. `launched` reads the run the launch drives, which a
+ * back-to-columns recovery clears, so without a launch it settles on `columns`
+ * -- the nearest step whose state (the acquired file and confirmed columns)
+ * that recovery leaves intact. Every step the launch has not yet reached reads
+ * what the review step committed when the operator continued from it, which an
+ * edit there voids, so without that commit it settles on `review`. */
 export function restorablePosition(
   token: string,
-  preconditions: { hasLaunch: boolean },
+  preconditions: { hasLaunch: boolean; reviewCommitted: boolean },
 ): string {
-  if (token === "launched" && !preconditions.hasLaunch) return "columns";
+  if (token === "launched" && preconditions.hasLaunch) return token;
+  if (PAST_ACCEPTOR_REVIEW.has(token) && !preconditions.reviewCommitted)
+    return "review";
+  if (token === "launched") return "columns";
   return token;
 }

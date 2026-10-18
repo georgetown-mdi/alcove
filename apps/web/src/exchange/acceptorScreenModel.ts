@@ -5,6 +5,7 @@ import {
   runDiagnosticsAfterRetarget,
 } from "@psi/runDiagnosticsModel";
 import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
+import { parseExchangeAllowedRelayLines } from "@psi/transport/relayRestriction";
 
 import { CONNECTION_TUNING_DEFAULT } from "@console/connectionTuningModel";
 import { EXCHANGE_FILES_DEFAULT } from "@console/exchangeFilesModel";
@@ -93,10 +94,21 @@ export interface FieldErrors {
  * `deduplicate` is the value the consent gate committed, carried here for the
  * same reason the committed name is: the run presents the terms it holds, and
  * the managed-exchange deposit records them, so neither may drift with a later
- * edit to the control. */
+ * edit to the control.
+ *
+ * `allowedRelays` is the list the review step committed, unset where its field
+ * was empty: the run lists only the relays it keeps, and the deposit records
+ * it as the saved exchange's own. */
 export interface AcceptorLaunched {
   edits: AcceptorDataEdits;
   deduplicate: boolean;
+  allowedRelays: ReadonlyArray<string> | undefined;
+}
+
+/** The allowed relays the review step committed: `allowedRelays` absent where
+ * its field was empty, which restricts nothing. */
+export interface AcceptorCommittedAllowedRelays {
+  allowedRelays?: ReadonlyArray<string>;
 }
 
 /** The acceptor console's whole state. */
@@ -126,6 +138,19 @@ export interface AcceptorScreenState {
    * run only by passing it again (the columns step holds the launch while the
    * two disagree). */
   committedDeduplicate: boolean;
+  /** The Allowed relays field on the terms review step of a hosted WebRTC
+   * accept, as typed, one entry per line. It starts empty for every invitation:
+   * nothing pre-fills it. */
+  acceptorAllowedRelays: string;
+  /** Whether a Continue from the review step met a line the field refuses, so
+   * the field shows its error from then on. */
+  allowedRelaysChecked: boolean;
+  /** The allowed relays the review step's Continue committed, and the only ones
+   * the launch takes. Undefined until that Continue, and again after any edit
+   * to the field, so a later step restored from browser history settles back
+   * on the review step rather than launching a list the field no longer
+   * shows. */
+  committedAllowedRelays: AcceptorCommittedAllowedRelays | undefined;
   /** The field delimiter this party's file was read by when the same gate
    * passed, and the only one the run writes its result with: the consent step's
    * control stays editable after the file is accepted, and a later choice did
@@ -210,6 +235,9 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   acceptorDeduplicate: false,
   committedName: "",
   committedDeduplicate: false,
+  acceptorAllowedRelays: "",
+  allowedRelaysChecked: false,
+  committedAllowedRelays: undefined,
   committedCsvDelimiter: undefined,
   file: undefined,
   acceptedFile: undefined,
@@ -261,6 +289,13 @@ export type AcceptorScreenAction =
   | { type: "name-changed"; name: string }
   /** This party's duplicate-matching control moved. */
   | { type: "deduplicate-chosen"; deduplicate: boolean }
+  /** The Allowed relays field was typed in, which voids what the review step
+   * committed until the operator continues from it again. */
+  | { type: "allowed-relays-changed"; value: string }
+  /** The operator continued from the review step: the Allowed relays field is
+   * committed where every line parses, and shows its error where one does
+   * not. */
+  | { type: "review-continued" }
   /** A file was chosen from the dropzone: the prior read's refusals and stripped
    * positions go with it, since both describe a file this one replaces. */
   | { type: "file-selected"; file: File }
@@ -388,6 +423,21 @@ export function acceptorScreenReducer(
       };
     case "deduplicate-chosen":
       return { ...state, acceptorDeduplicate: action.deduplicate };
+    case "allowed-relays-changed":
+      return {
+        ...state,
+        acceptorAllowedRelays: action.value,
+        committedAllowedRelays: undefined,
+      };
+    case "review-continued": {
+      const lines = parseExchangeAllowedRelayLines(state.acceptorAllowedRelays);
+      if (!lines.ok) return { ...state, allowedRelaysChecked: true };
+      return {
+        ...state,
+        committedAllowedRelays:
+          lines.entries === undefined ? {} : { allowedRelays: lines.entries },
+      };
+    }
     case "file-selected":
       return {
         ...state,
@@ -534,6 +584,7 @@ export function acceptorScreenReducer(
         launched: {
           edits: action.edits,
           deduplicate: state.committedDeduplicate,
+          allowedRelays: state.committedAllowedRelays?.allowedRelays,
         },
       };
     case "launch-discarded":

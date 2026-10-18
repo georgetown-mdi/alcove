@@ -44,14 +44,14 @@ import { ColumnName } from "@components/ColumnName";
 import { LessCertainInfo } from "@components/LessCertainInfo";
 
 import {
-  ALLOWED_RELAYS_SCOPE,
-  KEPT_BY_ALLOWED_RELAYS,
-  LEFT_OUT_BY_ALLOWED_RELAYS,
-} from "@psi/transport/relayRestriction";
-import {
   DEDUPLICATE_CONTROL_DESCRIPTION,
   DEDUPLICATE_CONTROL_LABEL,
 } from "@psi/deduplicateChoice";
+import {
+  EXCHANGE_ALLOWED_RELAYS_SCOPE,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+} from "@psi/transport/relayRestriction";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
 import { isConsoleBuild } from "@utils/clientConfig";
 
@@ -153,7 +153,7 @@ function invitationRelayRegistrarLine(registrar: Displayable): string {
 }
 
 /**
- * The mark a TURN url of the invitation takes under this browser's allowed
+ * The mark a TURN url of the invitation takes under the exchange's allowed
  * relays: none where they are unset, and none on a console, whose run is the
  * CLI's and follows its own configuration.
  */
@@ -568,8 +568,10 @@ export function InvitationTerms({
   framing?: { heading: string; intro: string };
   /** The relays this exchange may use, marking each TURN url of the
    * invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
-   * restricts nothing and marks nothing. Applies to a hosted run only. */
-  allowedRelays?: ReadonlyArray<string>;
+   * restricts nothing and marks nothing. Applies to a hosted run only.
+   * Required, so a caller holding a list cannot drop it by leaving the prop
+   * out. */
+  allowedRelays: ReadonlyArray<string> | undefined;
   /** What the reader of this screen does to leave out a key marked less
    * certain, shown after the reason for the mark: by default the accepting
    * party's, who takes the invitation's keys whole. The console's quick
@@ -1117,7 +1119,7 @@ export function InvitationTerms({
               </Text>
             )}
             {browserRun && allowedRelays !== undefined && (
-              <Text size="sm">{ALLOWED_RELAYS_SCOPE}</Text>
+              <Text size="sm">{EXCHANGE_ALLOWED_RELAYS_SCOPE}</Text>
             )}
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.invitationRelay.note}

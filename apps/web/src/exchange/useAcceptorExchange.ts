@@ -25,7 +25,6 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
-import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -234,6 +233,10 @@ export interface AcceptorLaunch {
    * launch like every other committed choice, so the run cannot be retuned under
    * itself, and carried on both the browser and the server-job path. */
   deduplicate: boolean;
+  /** The relays this exchange may use, as the terms review step committed
+   * them; unset restricts nothing. A browser run lists only the TURN urls they
+   * keep (`relayPlanForRun`). Unused on the server-job path. */
+  allowedRelays: ReadonlyArray<string> | undefined;
   /** The confirm-columns step's file-handling choices for a server-job accept,
    * already resolved through core's retain-mode implication. Fixed into the launch
    * so the run cannot be retuned under itself; absent when the operator changed
@@ -525,7 +528,7 @@ export function useAcceptorExchange({
       const relayPlan = await relayPlanForRun(
         token.sharedSecret,
         endpoint.relay,
-        readRelayRestriction().allowedRelays,
+        current.allowedRelays,
         { signal, onRunNotice },
       );
       const [peer, conn] = await dialAsAcceptor(token.sharedSecret, endpoint, {
