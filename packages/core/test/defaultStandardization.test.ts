@@ -17,6 +17,7 @@ import {
   buildKeyStrings,
   buildStandardizedDataset,
   runPipeline,
+  suffixes,
   titles,
 } from "../src/standardization";
 import {
@@ -1459,6 +1460,7 @@ describe("default name_suffix pipeline", () => {
     ["senior", "SR"],
     ["Snr", "SR"],
     ["ii", "II"],
+    ["2", "II"],
     ["2nd", "II"],
     ["3rd", "III"],
     ["III.", "III"],
@@ -1478,7 +1480,6 @@ describe("default name_suffix pipeline", () => {
   test.each([
     "V",
     "I",
-    "2",
     "3",
     "1st",
     "5th",
@@ -1491,10 +1492,39 @@ describe("default name_suffix pipeline", () => {
     "Jr Sr",
     "Junior High",
     "Smith Jr",
+    "Jr MD",
+    "III, Esq.",
     "Ⅲ",
     "ＪＲ",
   ])("drops %j", (input) => {
     expect(run(input)).toBeNull();
+  });
+
+  // The generational entries of the list remove_affixes strips, each with the
+  // code it cleans to. Every other entry of that list is dropped.
+  const generationalCodes: Record<string, string> = {
+    jr: "JR",
+    jnr: "JR",
+    junior: "JR",
+    sr: "SR",
+    snr: "SR",
+    senior: "SR",
+    "2": "II",
+    "2nd": "II",
+    "3rd": "III",
+    "4th": "IV",
+    ii: "II",
+    iii: "III",
+    iv: "IV",
+  };
+
+  test("agrees with the suffix list the name cleaning strips", () => {
+    for (const code of Object.keys(generationalCodes)) {
+      expect(suffixes).toContain(code);
+    }
+    for (const suffix of suffixes) {
+      expect(run(suffix), suffix).toBe(generationalCodes[suffix] ?? null);
+    }
   });
 
   // Key values on both sides: a suffix element whose value is "" is kept, so

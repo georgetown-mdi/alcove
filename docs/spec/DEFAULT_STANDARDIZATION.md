@@ -629,7 +629,7 @@ steps:
       replacement: "SR"
   - function: replace_regex
     params:
-      pattern: "^2ND$"
+      pattern: "^2(?:ND)?$"
       replacement: "II"
   - function: replace_regex
     params:
@@ -654,23 +654,30 @@ fold to a code:
 | -------- | ---- |
 | `JUNIOR`, `JNR` | `JR` |
 | `SENIOR`, `SNR` | `SR` |
-| `2ND` | `II` |
+| `2`, `2ND` | `II` |
 | `3RD` | `III` |
 | `4TH` | `IV` |
 
-A value that is none of the five codes after folding is dropped. This drops
-`V`, a bare digit such as `2`, a professional suffix such as `Esq` or `MD`, a
-filler such as `N/A` or `None`, and a value of more than one word, such as
-`Smith Jr`. Uppercasing maps a dotless i and a long s to `I` and `S`, so
-`ıı` cleans to `II`; any other letter outside ASCII is not folded, so a
-fullwidth letter or a Roman-numeral character is dropped.
+The kept codes and the folds are the generational entries of the suffix list
+in [Affix removal](#affix-removal), so a party's suffix column and its
+stripped name column agree. A value that is none of the five codes after
+folding is dropped. This drops the professional suffixes of that list, such as
+`Esq`, `MD` and `PhD`, and the single-letter numerals `I` and `V`, which the
+name cleaning leaves on the name; a dropped value cannot make a false match.
+It also drops a filler such as `N/A` or `None`, a digit the list does not
+hold, such as `3`, and a value of more than one word. A value holding several
+suffixes, such as `Jr MD`, is dropped whole, as is `Smith Jr`: the cleaning
+does not pick one word out of several. Uppercasing maps a dotless i and a long
+s to `I` and `S`, so `ıı` cleans to `II`; any other letter outside ASCII is
+not folded, so a fullwidth letter or a Roman-numeral character is dropped.
 
 The empty suffix is a value, not a missing one:
 
 - A blank cell, a cell of whitespace, and a cell of punctuation alone, such as
-  `-`, clean to `""`. Every other pipeline in this document drops such a
-  cell; this one keeps it, so a record with no suffix matches a record with no
-  suffix on a key holding the suffix element.
+  `-`, clean to `""`: once punctuation is removed, such a cell is the same as
+  a blank, so two parties cannot clean it differently. Every other pipeline in
+  this document drops such a cell; this one keeps it, so a record with no
+  suffix matches a record with no suffix on a key holding the suffix element.
 - An empty suffix matches only an empty suffix. `JR` does not match `""`, so
   such a key tells a parent from a child of the same name where both files
   record the suffix, and misses the pair where only one file does.
@@ -697,6 +704,7 @@ it `street_suffix` to keep it as payload.
 | `"Junior"` | `"JR"` |
 | `"Snr"` | `"SR"` |
 | `"iii"` | `"III"` |
+| `"2"` | `"II"` |
 | `"2nd"` | `"II"` |
 | `"4th"` | `"IV"` |
 | `""` | `""` |
@@ -704,6 +712,7 @@ it `street_suffix` to keep it as payload.
 | `"-"` | `""` |
 | `"V"` | `null` |
 | `"Esq"` | `null` |
+| `"Jr MD"` | `null` |
 | `"N/A"` | `null` |
 | `"Smith Jr"` | `null` |
 

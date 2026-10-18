@@ -93,7 +93,7 @@ const NAME_SUFFIX_STEPS: StandardizationStep[] = [
   },
   {
     function: "replace_regex",
-    params: { pattern: "^2ND$", replacement: "II" },
+    params: { pattern: "^2(?:ND)?$", replacement: "II" },
   },
   {
     function: "replace_regex",

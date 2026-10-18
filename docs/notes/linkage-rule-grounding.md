@@ -509,6 +509,28 @@ a father and son make a false match.
   false match, and keeping it risks missing a son's own record that lacks it (Fu
   et al. 2022).
 
+What a suffix value is, and which spellings count, rests on less:
+
+- **The source standards leave the spelling open.** The HMIS data standards
+  record Suffix as free text, "Jr.", "Sr.", etc., exported as `NameSuffix`
+  (HUD 2025a; HUD 2025c). Census PVS and NCHS linkage methods treat Junior
+  and II as suffixes to separate from the name (Wagner and Layne 2014; NCHS
+  2023). None gives a closed list.
+- **One list exists, and the type does not copy it.** The 2014 ONC patient
+  matching report quotes the CAQH CORE 258 normalization list (JR, SR, I, II,
+  III, IV, V, RN, MD, PHD, ESQ) and asks for a null where there is no suffix
+  (Morris et al. 2014). It keeps I, V and professional suffixes, which the
+  `name_suffix` type drops. The type follows the suffix list the default name
+  cleaning already strips instead, so a party's suffix column and its
+  stripped name column agree. That list leaves I and V on the name, and a
+  dropped value cannot make a false match. The list can be widened later.
+- **Stated choices with no source.** No source in the library gives how often
+  each spelling occurs, or covers non-ASCII suffix spellings or a value
+  holding several suffixes. The type folds only the spellings of its own list
+  (`2`, `2nd`, `Junior`, `Jnr` and the rest), drops a value holding several
+  suffixes whole, and cleans a punctuation-only cell to the empty string
+  because it is then the same as a blank.
+
 So the catalog uses the suffix as an element only in the contact rules with no
 date of birth, where the same-name parent and child on a household phone or
 email is the floor (rules 35, 36, 36a, 38 and 39). `SFX` is a code (JR, SR, II,
@@ -687,6 +709,7 @@ Sources cited by both notes are in the catalog's
 - **HUD 2025d.** U.S. Department of Housing and Urban Development. "FY 2026 HMIS Standard Reporting Terminology Glossary." 2025. https://files.hudexchange.info/resources/documents/HMIS-Standard-Reporting-Terminology-Glossary.pdf
 - **Kho et al. 2015.** Kho AN, Cashy JP, Jackson KL, Pah AR, Goel S, Boehnke J, et al. "Design and implementation of a privacy preserving electronic health record linkage tool in Chicago." Journal of the American Medical Informatics Association 22(5):1072-1080, 2015. doi:10.1093/jamia/ocv038
 - **MITRE 2022.** The MITRE Corporation. "HL7 FHIR Implementation Guide: PPRL Release 1 - US Realm, STU1" (CODI). GitHub, 2022. https://github.com/mitre/codi-fhir-pprl-ig
+- **Morris et al. 2014.** Morris G, Farnum G, Afzal S, Robinson C, Greene J, Coughlin C. "Patient Identification and Matching Final Report." Prepared for the Office of the National Coordinator for Health Information Technology, February 7, 2014.
 - **NCHS 2005.** National Center for Health Statistics. "The Third National Health and Nutrition Examination Survey (NHANES III) Linked Mortality File: Matching Methodology." December 2005.
 - **NCHS 2022.** National Center for Health Statistics. "The Linkage of the 2016 National Hospital Care Survey to 2015-2017 Centers for Medicare & Medicaid Services Transformed Medicaid Statistical Information System Claims Data: Matching Methodology and Analytic Considerations." 2022. https://www.cdc.gov/nchs/data/datalinkage/2016-nhcs-cms-medicaid-linkage-methodology.pdf
 - **NCHS 2023.** National Center for Health Statistics. "The Linkage of the National Center for Health Statistics (NCHS) Survey Data to U.S. Department of Housing and Urban Development (HUD) Administrative Data: Linkage Methodology and Analytic Considerations." 2023. https://www.cdc.gov/nchs/data/datalinkage/NCHS-HUD-Linked-Data-Methodology-and-Analytic-Considerations.pdf
@@ -698,5 +721,6 @@ Sources cited by both notes are in the catalog's
 - **SSA 2022.** Social Security Administration. "Beneficiary Earnings and Data Exchange (BENDEX) Handbook for Daily Process." 2022. https://web.archive.org/web/20230605183520id_/https://www.ssa.gov/dataexchange/documents/BENDEXMANUAL2022.pdf
 - **The Sequoia Project 2018.** The Sequoia Project. "A Framework for Cross-Organizational Patient Identity Management." 2018. https://sequoiaproject.org/wp-content/uploads/2018/06/The-Sequoia-Project-Framework-for-Patient-Identity-Management-v31.pdf
 - **Vidanage et al. 2020.** Vidanage A, Ranbaduge T, Christen P, Randall S. "A Privacy Attack on Multiple Dynamic Match-key based Privacy-Preserving Record Linkage." International Journal of Population Data Science 5(1):1345, 2020. doi:10.23889/ijpds.v5i1.1345
+- **Wagner and Layne 2014.** Wagner D, Layne M. "The Person Identification Validation System (PVS): Applying the Center for Administrative Records Research and Applications' (CARRA) Record Linkage Software." CARRA Working Paper #2014-01, U.S. Census Bureau, July 1, 2014.
 - **Westat 2012.** Westat. "Evaluation of the Accuracy of E-Verify Findings." Report to the U.S. Department of Homeland Security, 2012. https://www.e-verify.gov/sites/default/files/everify/data/FindingsEVerifyAccuracyEval2012.pdf
 - **Zech et al. 2016.** Zech J, Husk G, Moore T, Shapiro JS. "Measuring the Degree of Unmatched Patient Records in a Health Information Exchange Using Exact Matching." Applied Clinical Informatics 7(2):330-340, 2016. doi:10.4338/ACI-2015-11-RA-0158
