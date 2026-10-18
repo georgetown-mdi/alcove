@@ -207,7 +207,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     );
   });
 
-  test("the console build shows no Allowed relays and names no configuration key", async () => {
+  test("the console build shows no Allowed relays and names the configuration key that decides them", async () => {
     build.console = true;
     await mountScreen();
 
@@ -215,12 +215,11 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
     ).toBeNull();
     expect(document.body.textContent).not.toContain("allowed relays");
-    expect(document.body.textContent).not.toContain(
-      "connection.allowed_relays",
-    );
     expect(document.body.textContent).toContain(
       "A run also lists the relay named by an invitation you accept, after " +
-        "yours. Each exchange signs in",
+        "yours. Exchanges run from this console follow the command-line " +
+        "configuration: its connection.allowed_relays key decides which relays " +
+        "an exchange may use. Each exchange signs in",
     );
   });
 
