@@ -294,6 +294,28 @@ describe("KeysTab: a file with a ZIP column", () => {
       .toBeInTheDocument();
   });
 
+  test("names the street number in the shared-value caveat beside the street number key", async () => {
+    renderFor({
+      ...csv,
+      rawRows: [{ ...csv.rawRows[0], house_number: "123", zip: "60614" }],
+      columns: [...csv.columns, "house_number", "zip"],
+    });
+
+    const streetNumberKey = page.getByRole("checkbox", {
+      name: /LN \+ FN \+ DOB \+ street number \+ ZIP5/,
+    });
+    await expect.element(streetNumberKey).toBeChecked();
+    await expect
+      .element(
+        page.getByRole("note").filter({
+          hasText:
+            "A street number, ZIP code, state or county column must hold " +
+            "each person's own, never that of a site that serves them.",
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
   test("states no shared-value caveat with no phone, email or ZIP key", async () => {
     renderFor(csv);
 

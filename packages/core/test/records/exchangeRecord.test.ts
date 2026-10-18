@@ -1262,8 +1262,8 @@ describe("serialize / parse", () => {
         localTerms: {
           ...baseInputs.localTerms,
           linkageRuleSet: {
-            fieldSet: { name: "baseline-pii", version: "1.2.0" },
-            keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+            fieldSet: { name: "baseline-pii", version: "1.3.0" },
+            keySet: { name: "precision-ranked-rules", version: "2.2.0" },
           },
         },
       },
@@ -1272,8 +1272,8 @@ describe("serialize / parse", () => {
     // Verbatim: the refuted claim is annotated, never dropped or rewritten, so
     // the record still states what the declaring party claimed.
     expect(record.governance.linkageRuleSet).toEqual({
-      fieldSet: { name: "baseline-pii", version: "1.2.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+      fieldSet: { name: "baseline-pii", version: "1.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.2.0" },
     });
     expect(record.governance.linkageRuleSetVerdict).toEqual({
       fieldSet: "contradicted",
@@ -1338,8 +1338,8 @@ describe("serialize / parse", () => {
     const inviterTerms: LinkageTerms = {
       ...baseInputs.localTerms,
       linkageRuleSet: {
-        fieldSet: { name: "baseline-pii", version: "1.2.0" },
-        keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+        fieldSet: { name: "baseline-pii", version: "1.3.0" },
+        keySet: { name: "precision-ranked-rules", version: "2.2.0" },
       },
     };
     const accepted = deriveAcceptedLinkageTerms(inviterTerms, "Party B");

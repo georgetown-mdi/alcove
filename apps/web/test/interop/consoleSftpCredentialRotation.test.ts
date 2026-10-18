@@ -27,8 +27,8 @@ import type { JobRecord } from "@jobs/jobManager";
 // Satisfies every key of the fixture's default linkage terms, so the CLI's
 // input check passes and the run reaches the connection.
 const INPUT_CSV =
-  "ssn,ssn4,first_name,last_name,date_of_birth,phone,email,zip,state,county\n" +
-  "111223333,3333,bob,smith,1990-01-01,3125550142,bob@example.org,60614,IL,Cook\n";
+  "ssn,ssn4,first_name,last_name,date_of_birth,phone,email,zip,state,county,street_number\n" +
+  "111223333,3333,bob,smith,1990-01-01,3125550142,bob@example.org,60614,IL,Cook,42\n";
 
 const JOB_DEADLINE_MS = 60_000;
 

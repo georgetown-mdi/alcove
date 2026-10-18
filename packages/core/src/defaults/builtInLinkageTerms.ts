@@ -58,7 +58,7 @@ export const DEFAULT_LINKAGE_FIELD_SET_NAME = "baseline-pii";
  * sets version independently, so an edit to the keys bumps
  * {@link DEFAULT_LINKAGE_KEY_SET_VERSION} and leaves this one alone.
  */
-export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.2.0";
+export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.3.0";
 
 /**
  * The linkage fields of the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} field set:
@@ -95,6 +95,7 @@ const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
   { name: "zip_code", type: "zip_code" },
   { name: "state", type: "state" },
   { name: "county", type: "county" },
+  { name: "street_number", type: "street_number" },
 ];
 
 /**
@@ -125,7 +126,7 @@ export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
  * an edited set holding the old version makes that record describe rules
  * nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.1.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.2.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
@@ -160,6 +161,7 @@ const DOB: LinkageKeyElement = { field: "date_of_birth" };
 const PHONE: LinkageKeyElement = { field: "phone_number" };
 const EMAIL: LinkageKeyElement = { field: "email_address" };
 const ZIP5: LinkageKeyElement = { field: "zip_code" };
+const STREET_NUMBER: LinkageKeyElement = { field: "street_number" };
 const ZIP3: LinkageKeyElement = {
   field: "zip_code",
   transform: [{ function: "zip3" }],
@@ -263,6 +265,10 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
     elements: [SSN4, LN, FN, DOB],
     swap: ["last_name", "first_name"],
   },
+  {
+    name: "LN + FN + DOB + street number + ZIP5",
+    elements: [LN, FN, DOB, STREET_NUMBER, ZIP5],
+  },
   { name: "LN + FN + DOB + ZIP5", elements: [LN, FN, DOB, ZIP5] },
   { name: "LN + FN + DOB + PHONE", elements: [LN, FN, DOB, PHONE] },
   { name: "FN + DOB + PHONE", elements: [FN, DOB, PHONE] },
@@ -318,12 +324,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
     coverage: "any",
   },
   { rule: "SSN4 + swap(LN, FN) + DOB", band: 99, coverage: "any" },
-  {
-    rule: "LN + FN + DOB + street number + ZIP5",
-    band: 99,
-    coverage: "any",
-    needs: "street number",
-  },
+  { rule: "LN + FN + DOB + street number + ZIP5", band: 99, coverage: "any" },
   { rule: "LN + FN + DOB + ZIP5", band: 99, coverage: "any" },
   { rule: "LN + FN + DOB + PHONE", band: 99, coverage: "any" },
   { rule: "FN + DOB + PHONE", band: 99, coverage: "any" },

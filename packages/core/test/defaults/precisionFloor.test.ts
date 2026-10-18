@@ -40,7 +40,6 @@ describe("the catalog's bands", () => {
   test("name a rule that needs an element no field supplies, with no key", () => {
     const unbuilt = bands.filter((band) => band.needs !== undefined);
     expect(unbuilt.map((band) => band.rule)).toStrictEqual([
-      "LN + FN + DOB + street number + ZIP5",
       "LN + FN + SFX + PHONE",
       "PHONE + soundex(LN) + FN + SFX",
       "FN + SFX + PHONE",
@@ -328,6 +327,151 @@ describe("the geography rules", () => {
   });
 });
 
+describe("the street number rule", () => {
+  const STREET_NUMBER_RULE = "LN + FN + DOB + street number + ZIP5";
+  const ZIP5_RULE = "LN + FN + DOB + ZIP5";
+  const GEOGRAPHY_KEYS_AT_95 = [
+    ZIP5_RULE,
+    "LN + FN + DOB + ZIP3",
+    "ZIP5 + soundex(LN) + FN + DOB",
+    "ZIP5 + LN + FN + DOB +/-1 year",
+    "LN + FN + DOB + STATE",
+    "LN + FN + DOB + COUNTY",
+    "LN + FN + DOB",
+    "swap(LN, FN) + DOB",
+    "split(LN) + FN + DOB",
+    "LN + FN + YOB + MOB + ZIP5",
+  ];
+
+  const geographyColumns = [
+    "first_name",
+    "last_name",
+    "dob",
+    "zip",
+    "state",
+    "county",
+  ];
+  const withStreetNumber = inferMetadata(
+    [...geographyColumns, "house_number"],
+    [],
+  );
+  const withoutStreetNumber = inferMetadata(geographyColumns, []);
+  const keysFor = (
+    metadata: ReturnType<typeof inferMetadata>,
+    floor: 99 | 95,
+    oneStateOrMetroArea: boolean,
+  ) =>
+    names(
+      linkageTermsFromRuleSet(catalog, "Party A", metadata, {
+        floor,
+        oneStateOrMetroArea,
+      }).linkageKeys,
+    );
+  const everySelection = [
+    [99, true],
+    [99, false],
+    [95, true],
+    [95, false],
+  ] as const;
+
+  test("is built from the street number and ZIP5 elements", () => {
+    expect(
+      catalog.linkageKeys.find((key) => key.name === STREET_NUMBER_RULE)
+        ?.elements,
+    ).toStrictEqual([
+      { field: "last_name" },
+      { field: "first_name" },
+      { field: "date_of_birth" },
+      { field: "street_number" },
+      { field: "zip_code" },
+    ]);
+    expect(
+      catalog.linkageFields.filter((field) => field.name === "street_number"),
+    ).toStrictEqual([{ name: "street_number", type: "street_number" }]);
+  });
+
+  test("sits in the 99% band at any coverage", () => {
+    expect(bandOf(STREET_NUMBER_RULE)).toStrictEqual({
+      rule: STREET_NUMBER_RULE,
+      band: 99,
+      coverage: "any",
+    });
+  });
+
+  test.each(everySelection)(
+    "is selected at the %i%% floor (one area: %s) where the file supplies a street number and a ZIP",
+    (floor, oneStateOrMetroArea) => {
+      expect(keysFor(withStreetNumber, floor, oneStateOrMetroArea)).toContain(
+        STREET_NUMBER_RULE,
+      );
+      const streetNumberOnly = inferMetadata(
+        ["first_name", "last_name", "dob", "house_number"],
+        [],
+      );
+      expect(
+        keysFor(streetNumberOnly, floor, oneStateOrMetroArea),
+      ).not.toContain(STREET_NUMBER_RULE);
+      expect(
+        keysFor(withoutStreetNumber, floor, oneStateOrMetroArea),
+      ).not.toContain(STREET_NUMBER_RULE);
+    },
+  );
+
+  test("runs first among the ZIP rules, before the ZIP5 rule it refines", () => {
+    expect(keysFor(withStreetNumber, 99, false)).toStrictEqual([
+      STREET_NUMBER_RULE,
+      ZIP5_RULE,
+    ]);
+    expect(keysFor(withStreetNumber, 95, true)).toStrictEqual([
+      STREET_NUMBER_RULE,
+      ...GEOGRAPHY_KEYS_AT_95,
+    ]);
+    const all = names(catalog.linkageKeys);
+    expect(all.indexOf(STREET_NUMBER_RULE)).toBe(
+      all.indexOf("SSN4 + swap(LN, FN) + DOB") + 1,
+    );
+    expect(all.indexOf(ZIP5_RULE)).toBe(all.indexOf(STREET_NUMBER_RULE) + 1);
+  });
+
+  test("leaves a file with no street number column the keys and fields it had, under this citation", () => {
+    const terms = linkageTermsFromRuleSet(
+      catalog,
+      "Party A",
+      withoutStreetNumber,
+    );
+    expect(names(terms.linkageKeys)).toStrictEqual(GEOGRAPHY_KEYS_AT_95);
+    expect(terms.linkageFields.map((field) => field.name)).toStrictEqual([
+      "first_name",
+      "last_name",
+      "date_of_birth",
+      "zip_code",
+      "state",
+      "county",
+    ]);
+    expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
+    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
+      { fieldSet: "consistent", keySet: "consistent" },
+    );
+  });
+
+  test("cites the catalog over the subset a file with a street number supplies", () => {
+    const terms = linkageTermsFromRuleSet(catalog, "Party A", withStreetNumber);
+    expect(terms.linkageFields.map((field) => field.name)).toStrictEqual([
+      "first_name",
+      "last_name",
+      "date_of_birth",
+      "zip_code",
+      "state",
+      "county",
+      "street_number",
+    ]);
+    expect(linkageRuleSetReferenceFor(terms)).toStrictEqual(catalog.reference);
+    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
+      { fieldSet: "consistent", keySet: "consistent" },
+    );
+  });
+});
+
 describe("the quick exchange's selection", () => {
   test("is the 95% floor with the coverage question answered yes", () => {
     expect(DEFAULT_PRECISION_FLOOR_SELECTION).toStrictEqual({
@@ -354,31 +498,37 @@ describe("the citation", () => {
     );
     expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
     expect(catalog.reference).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.2.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+      fieldSet: { name: "baseline-pii", version: "1.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.2.0" },
     });
   });
 
-  test("of the previous versions resolves to no set, and is unchecked", () => {
-    const previous = {
-      fieldSet: { name: "baseline-pii", version: "1.1.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.0.0" },
-    };
-    const terms = linkageTermsFromRuleSet(
-      catalog,
-      "Party A",
-      inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
-    );
-    expect(findBuiltInLinkageRuleSet(previous)).toBeUndefined();
-    expect(resolveLinkageRuleSetCitation(previous)).toStrictEqual({
-      linkageFields: undefined,
-      linkageKeys: undefined,
-    });
-    expect(checkLinkageRuleSetCitation(previous, terms)).toStrictEqual({
-      fieldSet: "unchecked",
-      keySet: "unchecked",
-    });
-  });
+  test.each([
+    ["1.2.0", "2.1.0"],
+    ["1.1.0", "2.0.0"],
+  ])(
+    "of the previous versions %s and %s resolves to no set, and is unchecked",
+    (fieldVersion, keyVersion) => {
+      const previous = {
+        fieldSet: { name: "baseline-pii", version: fieldVersion },
+        keySet: { name: "precision-ranked-rules", version: keyVersion },
+      };
+      const terms = linkageTermsFromRuleSet(
+        catalog,
+        "Party A",
+        inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
+      );
+      expect(findBuiltInLinkageRuleSet(previous)).toBeUndefined();
+      expect(resolveLinkageRuleSetCitation(previous)).toStrictEqual({
+        linkageFields: undefined,
+        linkageKeys: undefined,
+      });
+      expect(checkLinkageRuleSetCitation(previous, terms)).toStrictEqual({
+        fieldSet: "unchecked",
+        keySet: "unchecked",
+      });
+    },
+  );
 
   test("is consistent over the subset of a floor's rules a file supplies", () => {
     const metadata = inferMetadata(["first_name", "last_name", "dob"], []);

@@ -2747,6 +2747,7 @@ describe("assessLinkageSatisfiability", () => {
       "zip_code",
       "state",
       "county",
+      "street_number",
     ]);
   });
 

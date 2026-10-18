@@ -4310,10 +4310,6 @@ describe("readConfigLinkageSource", () => {
     const terms: LinkageTerms = {
       ...defaults,
       linkageRuleSet: undefined,
-      linkageFields: [
-        ...defaults.linkageFields,
-        { name: "street_number", type: "street_number" },
-      ],
       linkageKeys: [
         {
           name: "LN+FN+DOB+street number",
