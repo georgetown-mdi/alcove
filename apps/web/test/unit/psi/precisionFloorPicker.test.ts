@@ -270,11 +270,11 @@ describe("the geography rules on the guided list", () => {
     expect(enabledKeys(seeded.draft)).toHaveLength(seeded.draft.keys.length);
   });
 
-  test("keep the ZIP3 and state rules when the coverage answer is no, and drop the county rule", () => {
+  test("keep the ZIP3, state and county rules when the coverage answer is no", () => {
     const answeredNo = editorWithPrecisionFloorSelection(seeded, AT_95_NO);
     expect(keyNames(answeredNo)).toContain(ZIP3_RULE);
     expect(keyNames(answeredNo)).toContain(STATE_RULE);
-    expect(keyNames(answeredNo)).not.toContain(COUNTY_RULE);
+    expect(keyNames(answeredNo)).toContain(COUNTY_RULE);
     expect(keyNames(answeredNo)).toStrictEqual(
       catalogKeyNames(answeredNo, AT_95_NO),
     );

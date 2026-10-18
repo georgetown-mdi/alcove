@@ -80,7 +80,7 @@ Most rules are offered for any pair of files.
 Rules 31 to 33, name and date with no SSN, contact field or geography, are offered only when both files draw their members from one state or one metropolitan area.
 Chance agreement on a name and a date grows with the number of people the two files cover (Hillestad et al. 2008; Goel et al. 2020), and the measurements that place these rules at 95% are within one state or county.
 Rule 30 puts the same condition into the rule itself, as a `STATE` or `COUNTY` element.
-Its `COUNTY` form is offered under the same condition as rules 31 to 33, since one county name is used in many states.
+A county name repeats across states, so the `COUNTY` key narrows less than the `STATE` key across states; the catalog keeps it at any coverage, because it is the element that keeps a metropolitan area crossing a state line whole.
 
 A file drawn from one age group, such as one school class or one birth cohort, behaves like a far larger file, because its members share birth years.
 In one graduating class of 428,410 students, about 500 combinations of name and date of birth appeared more than once, 0.12% (Fong et al. 2018), so at least about 0.23% of the students shared theirs (computed here).
@@ -417,14 +417,14 @@ One loosening on rule 22 stays at 95%, for the reason given under rule 28.
 
 #### 30. `LN + FN + DOB + STATE` or `LN + FN + DOB + COUNTY`
 
-95%. `STATE`: any coverage. `COUNTY`: offered only when both files draw from one state or one metropolitan area. Measured relatives.
+95%. Any coverage, both keys. Measured relatives.
 
 Rule 31 with its coverage condition written into the rule.
 Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechuta et al. (2020), and Mirel et al.'s (2022) row with the state token agreeing.
 The two forms are two keys, the `STATE` key first, both a refinement of rule 31 and run before it.
 
 A county name is ambiguous across states: the most common, Washington, names a county in about thirty states.
-Within one state or one metropolitan area a county name almost always names one county, so the `COUNTY` form is offered under rule 31's coverage condition, where it separates the pairs rule 31 ties.
+Within one state or one metropolitan area a county name almost always names one county, so the `COUNTY` form separates the pairs rule 31 ties there.
 For a region crossing a state line, such as the District of Columbia, Maryland and Virginia, the `ZIP5`, `ZIP3` and `COUNTY` rules work and a `STATE` element would split the region.
 
 #### 31. `LN + FN + DOB`

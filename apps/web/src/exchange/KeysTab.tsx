@@ -276,7 +276,7 @@ export function KeysTab({
             <Radio
               value={COVERAGE_ANSWER.no}
               label="No"
-              description="The rules that match on a name and a date of birth alone or with a county are left out."
+              description="The rules that match on a name and a date of birth alone are left out."
               mt="xs"
             />
           </Radio.Group>

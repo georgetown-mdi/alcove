@@ -333,13 +333,7 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   { rule: "ZIP5 + soundex(LN) + FN + DOB", band: 95, coverage: "any" },
   { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95, coverage: "any" },
   { rule: "LN + FN + DOB + STATE", band: 95, coverage: "any" },
-  // One county name is used in many states, so a county identifies a place
-  // only where both files come from one state or one metropolitan area.
-  {
-    rule: "LN + FN + DOB + COUNTY",
-    band: 95,
-    coverage: "one_state_or_metro_area",
-  },
+  { rule: "LN + FN + DOB + COUNTY", band: 95, coverage: "any" },
   { rule: "LN + FN + DOB", band: 95, coverage: "one_state_or_metro_area" },
   { rule: "swap(LN, FN) + DOB", band: 95, coverage: "one_state_or_metro_area" },
   {
@@ -542,8 +536,8 @@ export function precisionFloorStatement(floor: PrecisionFloor): {
     label: label.charAt(0).toUpperCase() + label.slice(1),
     description: precisionFloorAsksCoverage(floor)
       ? `${share} The rules that match on a name and a date of birth alone ` +
-        "or with a county are included only when both files draw their " +
-        "members from one state or one metropolitan area."
+        "are included only when both files draw their members from one " +
+        "state or one metropolitan area."
       : share,
   };
 }

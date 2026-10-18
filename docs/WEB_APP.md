@@ -47,7 +47,7 @@ If the page you created it on runs on your own computer or inside your network, 
 The invitation starts with the built-in rules your file supplies at 95% precision and above. To choose others, open **Customize > Matching keys** before you create the invitation. The console's invitation editor offers the same choices.
 
 - **Built-in rules.** The rules at 99% precision and above, or at 95% precision and above. Each choice states the share of the pairs its rules match that are the same person.
-- **Do both files draw their members from one state or one metropolitan area?** With **Yes**, the three rules that match on a name and a date of birth alone, and the rule that matches on them with a county, are included at 95%; with **No**, they are left out. If either file covers one age group, such as one school class, answer **No**. At 99% the question changes nothing, so it is turned off.
+- **Do both files draw their members from one state or one metropolitan area?** With **Yes**, the three rules that match on a name and a date of birth alone are included at 95%; with **No**, they are left out. If either file covers one age group, such as one school class, answer **No**. At 99% the question changes nothing, so it is turned off.
 
 Changing either lists the rules it selects that your file supplies, in the built-in order. A key you turned off stays off while the choice keeps it, and a key the choice adds is turned on; you can then turn keys off or reorder them. Neither choice is sent to your partner: the terms hold the keys, and **Review & create** names the choices they were selected with. The bands and the rules are described in [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor).
 

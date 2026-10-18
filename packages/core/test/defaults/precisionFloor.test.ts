@@ -97,13 +97,12 @@ describe("a precision floor", () => {
 
 describe("the coverage answer", () => {
   const sameAreaOnly = [
-    "LN + FN + DOB + COUNTY",
     "LN + FN + DOB",
     "swap(LN, FN) + DOB",
     "split(LN) + FN + DOB",
   ];
 
-  test("admits the name and date rules, and the county rule, where both files share one area", () => {
+  test("admits the name and date rules where both files share one area", () => {
     const keys = names(
       linkageKeysAtPrecisionFloor(catalog, {
         floor: 95,
@@ -187,7 +186,7 @@ describe("the geography rules", () => {
     ]);
   });
 
-  test("sit in the 95% band, the county rule only where both files share one area", () => {
+  test("sit in the 95% band at any coverage", () => {
     expect(bandOf(ZIP3_RULE)).toStrictEqual({
       rule: ZIP3_RULE,
       band: 95,
@@ -201,7 +200,7 @@ describe("the geography rules", () => {
     expect(bandOf(COUNTY_RULE)).toStrictEqual({
       rule: COUNTY_RULE,
       band: 95,
-      coverage: "one_state_or_metro_area",
+      coverage: "any",
     });
   });
 
@@ -210,8 +209,7 @@ describe("the geography rules", () => {
       expect.arrayContaining(GEOGRAPHY_RULES),
     );
     const at95No = keysFor(withGeography, 95, false);
-    expect(at95No).toEqual(expect.arrayContaining([ZIP3_RULE, STATE_RULE]));
-    expect(at95No).not.toContain(COUNTY_RULE);
+    expect(at95No).toEqual(expect.arrayContaining(GEOGRAPHY_RULES));
     for (const oneStateOrMetroArea of [true, false])
       for (const rule of GEOGRAPHY_RULES)
         expect(keysFor(withGeography, 99, oneStateOrMetroArea)).not.toContain(
@@ -546,8 +544,8 @@ describe("precisionFloorStatement", () => {
       description:
         "Of the pairs each rule matches, at least 95 in 100 are the same " +
         "person. The rules that match on a name and a date of birth alone " +
-        "or with a county are included only when both files draw their " +
-        "members from one state or one metropolitan area.",
+        "are included only when both files draw their members from one " +
+        "state or one metropolitan area.",
     });
   });
 
