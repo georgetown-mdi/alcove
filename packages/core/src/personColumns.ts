@@ -30,30 +30,54 @@ export function personColumns(
   terms: LinkageTerms,
   rawRows: ReadonlyArray<CSVRow>,
 ): PersonColumn[] {
+  return PERSON_COLUMN_TYPES.flatMap(
+    (type) => ownColumn(type, standardization, metadata, terms, rawRows) ?? [],
+  );
+}
+
+/**
+ * This party's own last name column with the steps that clean it, from which
+ * a transformation's `nullIfLastName` reads the last name
+ * (docs/spec/DEFAULT_STANDARDIZATION.md, First name beside a listed last
+ * name), chosen and cleaned as {@link personColumns} chooses and cleans a
+ * column. `undefined` when `metadata` has no `role: linkage` last name column.
+ */
+export function lastNameColumn(
+  standardization: Standardization | undefined,
+  metadata: ReadonlyArray<ColumnMetadata>,
+  terms: LinkageTerms,
+  rawRows: ReadonlyArray<CSVRow>,
+): PersonColumn | undefined {
+  return ownColumn("last_name", standardization, metadata, terms, rawRows);
+}
+
+function ownColumn(
+  type: SemanticType,
+  standardization: Standardization | undefined,
+  metadata: ReadonlyArray<ColumnMetadata>,
+  terms: LinkageTerms,
+  rawRows: ReadonlyArray<CSVRow>,
+): PersonColumn | undefined {
+  const column = metadata.find(
+    (candidate) => candidate.type === type && candidate.role === "linkage",
+  )?.name;
+  if (column === undefined) return undefined;
   const fieldTypes = new Map(
     terms.linkageFields.map((field) => [field.name, field.type]),
   );
-  const result: PersonColumn[] = [];
-  for (const type of PERSON_COLUMN_TYPES) {
-    const column = metadata.find(
-      (candidate) => candidate.type === type && candidate.role === "linkage",
-    )?.name;
-    if (column === undefined) continue;
-    const own = standardization?.find(
-      (transformation) =>
-        transformation.input === column &&
-        fieldTypes.get(transformation.output) === type,
-    );
-    const steps =
-      own !== undefined
-        ? (own.steps ?? [])
-        : defaultStepsForType(type, {
-            dateInputFormat:
-              type === "date_of_birth"
-                ? inferDateFormat(columnValues(rawRows, column))
-                : undefined,
-          });
-    if (steps !== undefined) result.push({ type, column, steps });
-  }
-  return result;
+  const own = standardization?.find(
+    (transformation) =>
+      transformation.input === column &&
+      fieldTypes.get(transformation.output) === type,
+  );
+  const steps =
+    own !== undefined
+      ? (own.steps ?? [])
+      : defaultStepsForType(type, {
+          dateInputFormat:
+            type === "date_of_birth"
+              ? inferDateFormat(columnValues(rawRows, column))
+              : undefined,
+        });
+  return steps === undefined ? undefined : { type, column, steps };
 }

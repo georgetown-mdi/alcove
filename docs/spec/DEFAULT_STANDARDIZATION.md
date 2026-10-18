@@ -64,7 +64,10 @@ surface rather than a local formatting choice.
   values are dropped, never the form of a value kept (see
   [Per-party placeholder lists](#per-party-placeholder-lists)). The
   shared-value limit is the third, and it also decides only which values are
-  dropped (see [Shared-value screens](#shared-value-screens)).
+  dropped (see [Shared-value screens](#shared-value-screens)). The
+  `first_name` rule for a listed last name is the fourth, and it too decides
+  only which values are dropped (see
+  [First name beside a listed last name](#first-name-beside-a-listed-last-name)).
 
 ### Per-party placeholder lists
 
@@ -74,7 +77,10 @@ placeholder list: a `null_if` whose `values` are dropped. In the defaults the
 [`first_name`](#first_name)), and each name field's list is that field's own
 step parameter. An operator may edit any of the three lists in their
 own standardization, to add a filler their system writes or to keep a value the
-list drops.
+list drops. The `first_name` transformation also drops `JOHN` or `JANE` beside
+the last name `DOE`, by a rule outside its list that an operator may edit or
+remove in the same way (see
+[First name beside a listed last name](#first-name-beside-a-listed-last-name)).
 
 Both parties still derive the same pipelines from the defaults. An edit is one
 party's own, and it is never sent. It changes no value the pipeline keeps, so it
@@ -119,6 +125,10 @@ terms declare the fields:
 - An `ssn`, `phone_number` or `email_address` field's transformation also
   states its **`max_people_per_value`**, the limit of the
   [shared-value screen](#shared-value-screens) its pipeline block lists.
+- A `first_name` field's transformation also states its
+  **`null_if_last_name`**, the
+  [rule for a listed last name](#first-name-beside-a-listed-last-name) its
+  pipeline block lists.
 
 Two behaviors of the pipelines as a whole are specified elsewhere and apply to
 every sequence below: the input value is normalized to Unicode NFC before the
@@ -132,7 +142,8 @@ linkage key that references the field (see
 
 Each pipeline below is written as the `steps` array of a data standardizing
 transformation, in the on-disk snake_case form, beside the
-`max_people_per_value` of the three types that state one: pasting one under an
+`max_people_per_value` of the three types that state one and the
+`null_if_last_name` of `first_name`: pasting one under an
 authored transformation for a column of that type reproduces the default
 cleaning exactly.
 
@@ -487,6 +498,9 @@ had.
 ### `first_name`
 
 ```yaml
+null_if_last_name:
+  values: ["JOHN", "JANE"]
+  last_names: ["DOE"]
 steps:
   - function: trim_whitespace
   - function: squash_spaces
@@ -598,6 +612,35 @@ it.
 | `"FNU"` | `null` |
 | `"5"` | `null` |
 | `"   "` | `null` |
+
+#### First name beside a listed last name
+
+`null_if_last_name` drops the cleaned first name of a record whose cleaned last
+name is listed: by default the first name `JOHN` or `JANE` beside the last name
+`DOE`. The record keeps its other fields, so it matches only on the keys
+without a first name. The Census Bureau's Person Identification Validation
+System keeps John and Jane Doe as names but sets stricter matching
+requirements for them; this rule makes the matching stricter by dropping the
+first name.
+
+The rule is not a step, because it reads a second field and a step reads one
+value. It compares whole cleaned values, as a `null_if` list does: `JOHN`
+beside `DOE` is dropped, while `JOHNNY` or `JOHN Q` beside `DOE`, and `JOHN`
+beside `DOER` or `DOE SMITH`, are kept.
+
+The last name is read from the party's first `role: linkage` column of type
+`last_name`, whether or not the terms declare a field of that type. It is
+cleaned by the party's own transformation for a `last_name` field reading that
+column where its standardization has one, and otherwise by the default
+[`last_name`](#last_name) pipeline. A file with no such column drops nothing by
+this rule.
+
+Like a placeholder list, the rule is the party's own: an operator may edit
+either list or remove the rule in their own standardization, and it is never
+sent. It drops a value and changes none it keeps, so it cannot make two
+different values equal. The shared-value screens count people by the first
+name before this rule, and a coverage count taken record by record before the
+run does not apply it.
 
 #### Whitespace fold
 

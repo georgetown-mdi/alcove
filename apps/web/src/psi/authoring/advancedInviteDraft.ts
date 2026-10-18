@@ -781,8 +781,8 @@ export function declarableFieldNames(
   );
 }
 
-/** What the recommended per-type cleaning gives a field of `type`: its steps
- * and its shared-value limit. {@link defaultStandardizationForRows} over terms
+/** What the recommended per-type cleaning gives a field of `type` (see
+ * {@link cleaningOf}). {@link defaultStandardizationForRows} over terms
  * declaring that one field, covering a {@link KEY_GATED_CLEANING_TYPES} type
  * as well as a default one. `undefined` when these columns supply no
  * `role: linkage` column of the type. The date-of-birth format is the
@@ -804,25 +804,31 @@ function recommendedCleaningForType(
 }
 
 /** The part of a transformation that is the field's cleaning rather than its
- * binding: the steps and the shared-value limit. */
-type CleaningOf = Pick<Standardization[number], "steps" | "maxPeoplePerValue">;
+ * binding: the steps, the shared-value limit and the last-name rule. */
+type CleaningOf = Pick<
+  Standardization[number],
+  "steps" | "maxPeoplePerValue" | "nullIfLastName"
+>;
 
-/** The cleaning of `transformation`, leaving an absent limit absent. */
+/** The cleaning of `transformation`, leaving an absent limit or rule absent. */
 function cleaningOf(transformation: Standardization[number]): CleaningOf {
   return {
     steps: transformation.steps ?? [],
     ...(transformation.maxPeoplePerValue === undefined
       ? {}
       : { maxPeoplePerValue: transformation.maxPeoplePerValue }),
+    ...(transformation.nullIfLastName === undefined
+      ? {}
+      : { nullIfLastName: transformation.nullIfLastName }),
   };
 }
 
 /**
  * Append a linkage field of `type` bound to its first free `role: linkage`
- * column, holding the type's cleaning: the first field's own steps and
- * shared-value limit (including any the operator edited) when the draft already
- * declares one of that type, else the recommended cleaning
- * ({@link recommendedCleaningForType}).
+ * column, holding the type's cleaning: the first field's own steps,
+ * shared-value limit and last-name rule (including any the operator edited)
+ * when the draft already declares one of that type, else the recommended
+ * cleaning ({@link recommendedCleaningForType}).
  *
  * The name is the type's own, suffixed `_2`, `_3`, ... only to step past a
  * name the draft already produces -- a first field named `_2` would display

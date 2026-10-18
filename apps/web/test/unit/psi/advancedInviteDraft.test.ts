@@ -302,6 +302,42 @@ describe("a same-typed field carries the type's shared-value limit", () => {
   });
 });
 
+describe("a same-typed first name field carries the last-name rule", () => {
+  test("an added second first_name field takes the sibling's rule and the run drops JOHN beside DOE", () => {
+    const columns = ["first_name", "fname", "last_name", "dob"];
+    const rows: Array<CSVRow> = [
+      {
+        first_name: "Ada",
+        fname: "John",
+        last_name: "Doe",
+        dob: "12/10/1985",
+      },
+    ];
+    const { draft } = seedAdvancedInvite("Org", columns, rows);
+    const added = draftWithFieldAdded(draft, "first_name");
+    const second = added.standardization.at(-1);
+    expect(second?.output).toBe("first_name_2");
+    expect(second?.nullIfLastName).toEqual({
+      values: ["JOHN", "JANE"],
+      lastNames: ["DOE"],
+    });
+
+    const keyed = addKey(added, "first_name_2");
+    const prepared = prepareForExchange(
+      {
+        linkageTerms: buildAdvancedTerms(keyed),
+        metadata: keyed.metadata,
+        standardization: keyed.standardization,
+      },
+      "Org",
+      rows,
+      columns,
+    );
+    expect(prepared.dataset.getField("first_name")?.get(0)).toEqual(["ADA"]);
+    expect(prepared.dataset.getField("first_name_2")?.get(0)).toEqual([]);
+  });
+});
+
 describe("the guided draft screens the default fields", () => {
   const COLUMNS = ["first_name", "last_name", "dob", "ssn", "phone", "email"];
 
