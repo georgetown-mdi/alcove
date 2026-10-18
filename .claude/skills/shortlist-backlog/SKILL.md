@@ -77,8 +77,8 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    A candidate a "Part of" PR partly delivered says so: "partly delivered by
    #N". A candidate waiting on a host step ends "action: handoff -- <the
    step>", one waiting on the owner's call "action: decision -- <the
-   question>"; when its body cites that brief or Decision item as already
-   written, the line names it instead.
+   question>". An item whose body already cites its brief or Decision item is
+   listed with that citation and no action tag.
 2. Delivered, owner closes: every item the check above found delivered, one
    line each, never among the candidates:
    <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:
@@ -86,8 +86,7 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    Every line here has a #N; an item with no merged PR to cite stays a
    candidate.
 3. A closing 1-2 line recommendation naming the 2-4 picks for the next
-   session by user value and unblocking power; every action line is taken
-   besides them.
+   session by user value and unblocking power.
 Do not include issue bodies or full board listings in your return.
 ```
 
@@ -97,11 +96,12 @@ network access for the board reads and PR searches (gh).
 ## Afterward
 
 Relay the delivered list to the owner, who confirms and closes each item on
-it. Take every action line in this session, as
-`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting, sets
-out: a handoff is a brief written from
-`.claude/orchestration/host-handoff-brief.md`, a decision a Decision item
-filed with options and a recommendation, parked for the docket. Fetch only
+it. Take every action line in this session: write the handoff brief or file
+the Decision item, as `.claude/orchestration/ruleset.md`, Decisions, briefs
+and reporting, sets out, then record it on the candidate item with
+`.claude/scripts/edit-issue.mjs` -- a dated line, added to the body read in
+full, naming the brief's path or the Decision item's id. The next shortlist
+keys off a body citing it, so it does not emit the action again. Fetch only
 the chosen items' bodies yourself (`node .claude/scripts/fetch-issues.mjs
 <board> <itemId>`) or hand an item id straight to /start-issue. Do not
 re-list the boards in the calling session; if the shortlist looks stale or

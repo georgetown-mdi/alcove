@@ -27,9 +27,7 @@ before proceeding -- its Session lifecycle section defines this state.
 1. Wind down as `.claude/commands/wind-down.md` does, without its final hold.
 2. List every open thread: each confirmed review finding not fixed on a
    branch, each potential follow-up, each parked Decision item, each run still
-   under way, each item set aside for a host step or a scope or product call
-   that has no handoff brief or Decision item filed. None is left in prose
-   alone as something for later.
+   under way. None is left in prose alone as something for later.
 3. Housekeeping: retire each finished worktree and each local branch the
    ruleset lets go, named or `worktree-agent-*`, as its Worktrees and checkouts
    section allows, and stop each watcher or background process the session
@@ -47,8 +45,7 @@ before proceeding -- its Session lifecycle section defines this state.
    session to watch it and act on its result.
 6. Report the final action items: only what the owner alone can take, each
    with the one line the ruleset requires on why the session cannot. With none,
-   say so in one line. Then name each set-aside item from step 2 that lacks a
-   handoff brief or Decision item, or say none does.
+   say so in one line.
 
 The docket runs within a close-out only when the owner triggers it with
 `/docket`; the filing pass, only with `clean` or `/follow-ups`.
