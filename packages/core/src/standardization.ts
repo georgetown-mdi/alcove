@@ -1918,6 +1918,7 @@ export class StandardizedField {
   private readonly cache: Array<RealizedFieldValues | undefined> = [];
   private sharedValueScreen: SharedValueScreen | undefined;
   private sharedValuesDropped: DroppedSharedValues | undefined;
+  private followedScreens: ReadonlyArray<StandardizedField> = [];
 
   constructor(
     name: string,
@@ -1955,17 +1956,45 @@ export class StandardizedField {
    * The result is computed on first access and cached for subsequent calls.
    * An empty array signals that the record has no valid value for this field.
    * A value the field's shared-value screen drops ({@link screenSharedValues})
-   * is left out; {@link evaluateRow} reads one row and applies no such screen.
+   * is left out, and a row whose value a followed screen drops
+   * ({@link followSharedValueScreens}) has none; {@link evaluateRow} reads one
+   * row and applies no such screen.
    */
   get(index: number): string[] {
     const values = this.realize(index).values;
+    if (values.length === 0) return values;
+    if (this.followedScreens.some((source) => source.dropsSharedValueAt(index)))
+      return [];
     const screen = this.sharedValueScreen;
-    if (screen === undefined || values.length === 0) return values;
+    if (screen === undefined) return values;
     const dropped = this.screenedValues(screen);
     if (dropped.none) return values;
     return values.some((value) => dropped.has(value))
       ? values.filter((value) => !dropped.has(value))
       : values;
+  }
+
+  /**
+   * Whether this field's shared-value screen drops a value of the row at
+   * `index`. False for a field with no screen.
+   */
+  dropsSharedValueAt(index: number): boolean {
+    const screen = this.sharedValueScreen;
+    if (screen === undefined) return false;
+    const values = this.realize(index).values;
+    if (values.length === 0) return false;
+    const dropped = this.screenedValues(screen);
+    return !dropped.none && values.some((value) => dropped.has(value));
+  }
+
+  /**
+   * Leave a row no values of this field where the shared-value screen of one
+   * of `sources` drops a value of that row
+   * ({@link dropsSharedValueAt}; docs/spec/DEFAULT_STANDARDIZATION.md,
+   * Shared-value screens).
+   */
+  followSharedValueScreens(sources: ReadonlyArray<StandardizedField>): void {
+    this.followedScreens = sources;
   }
 
   /**
@@ -2397,6 +2426,12 @@ export interface PersonColumn {
  * A transformation stating `maxPeoplePerValue` screens its field's values over
  * the whole of `rawRows` ({@link StandardizedField.screenSharedValues}),
  * counting people from `personColumns`, which such a screen requires.
+ *
+ * `terms` are this party's own. Where they set `deduplicate`, a field of a type
+ * derived from another ({@link fieldSourceColumnTypes}), such as `ssn4`, that
+ * reads the column a screened field of that other type reads has no value in a
+ * row whose value that screen drops
+ * ({@link StandardizedField.followSharedValueScreens}).
  */
 export function buildStandardizedDataset(
   standardization: Standardization | undefined,
@@ -2409,6 +2444,7 @@ export function buildStandardizedDataset(
   const fields: StandardizedField[] = [];
   const screens: Array<{ field: StandardizedField; maxPeople: number }> = [];
   const builtFields: Array<{
+    type: SemanticType;
     resolved: FieldColumnResolution;
     standardized: StandardizedField;
   }> = [];
@@ -2428,7 +2464,7 @@ export function buildStandardizedDataset(
     const maxPeople = resolved.transform?.maxPeoplePerValue;
     if (maxPeople !== undefined)
       screens.push({ field: standardized, maxPeople });
-    builtFields.push({ resolved, standardized });
+    builtFields.push({ type: field.type, resolved, standardized });
   }
 
   if (screens.length === 0)
@@ -2447,6 +2483,21 @@ export function buildStandardizedDataset(
   );
   for (const { field, maxPeople } of screens)
     field.screenSharedValues(maxPeople, personFields);
+
+  if (terms.deduplicate)
+    for (const { type, resolved, standardized } of builtFields) {
+      const sourceType = DERIVED_FIELD_SOURCE_TYPE.get(type)?.sourceType;
+      if (sourceType === undefined) continue;
+      const sources = builtFields
+        .filter(
+          (candidate) =>
+            candidate.type === sourceType &&
+            candidate.resolved.column === resolved.column &&
+            candidate.resolved.transform?.maxPeoplePerValue !== undefined,
+        )
+        .map((candidate) => candidate.standardized);
+      if (sources.length > 0) standardized.followSharedValueScreens(sources);
+    }
 
   return new StandardizedDataset(fields, terms.linkageKeys);
 }
