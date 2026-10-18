@@ -11,12 +11,14 @@ import { resolveCsvDelimiter } from "@components/csvDelimiterChoice";
 import {
   allowedRelaysError,
   allowedRelaysOffered,
+  allowedRelaysRemovable,
   allowsNoRelay,
   changedCsvDelimiter,
   localDocumentFieldEdits,
   localDocumentFieldValuesFrom,
   matchingKeyWithheld,
   ownColumnsOffered,
+  removeAllowedRelaysValues,
 } from "./localDocumentFieldsModel";
 import { useDelimiterRecheck } from "./useDelimiterRecheck";
 
@@ -81,6 +83,13 @@ export interface LocalFieldsDraft {
    * which the empty field would not show. */
   allowsNoRelay: boolean;
   editAllowedRelays: (text: string) => void;
+  /** Whether the stored document holds allowed relays, an empty list
+   * included; the control that removes them is shown only where it does. */
+  allowedRelaysRemovable: boolean;
+  /** Whether the save removes the stored allowed relays; the field is
+   * emptied and disabled while it does. */
+  removeAllowedRelays: boolean;
+  editRemoveAllowedRelays: (remove: boolean) => void;
   /** The field error the allowed relays show, absent where there is none. */
   allowedRelaysError: string | undefined;
   /** What the save writes for the document's settings: only the ones the
@@ -212,6 +221,12 @@ export function useLocalFieldsDraft(
     allowedRelaysOffered: relaysOffered,
     allowsNoRelay: allowsNoRelay(record.exchangeFile),
     editAllowedRelays: (allowedRelays) => editDocumentFields({ allowedRelays }),
+    allowedRelaysRemovable: allowedRelaysRemovable(record.exchangeFile),
+    removeAllowedRelays: documentFields.removeAllowedRelays,
+    editRemoveAllowedRelays: (remove) =>
+      editDocumentFields(
+        removeAllowedRelaysValues(record.exchangeFile, remove),
+      ),
     allowedRelaysError: relaysError,
     documentEdits: localDocumentFieldEdits(record.exchangeFile, documentFields),
     markEdited: () => setSaved(false),

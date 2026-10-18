@@ -223,6 +223,19 @@ export const ALLOWED_RELAYS_SCOPE =
   "That setting covers relay servers only: the STUN servers a run lists " +
   "are still contacted.";
 
+/**
+ * What a saved exchange's own allowed relays decide, and what they do not:
+ * {@link ALLOWED_RELAYS_SCOPE} for the list on its page.
+ */
+export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
+  "This exchange's allowed relays decide which relays its runs connect " +
+  "through and enroll at, and which it names in the invitations it " +
+  "creates; a run still registers each new key at its own relay's " +
+  "registrar whatever the list keeps. " +
+  "Your partner's side can still connect through a relay the list leaves " +
+  "out. The list covers relay servers only: the STUN servers a run lists " +
+  "are still contacted.";
+
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
   "To let a run try a relay left out, add its host to Allowed relays, or " +

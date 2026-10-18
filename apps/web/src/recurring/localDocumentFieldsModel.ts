@@ -48,6 +48,8 @@ export interface LocalDocumentFieldValues {
   retentionNote: string;
   /** The allowed relays as typed, one per line. */
   allowedRelays: string;
+  /** Whether a save removes the stored allowed relays, empty list included. */
+  removeAllowedRelays: boolean;
 }
 
 /** The edits a save of the five controls writes. */
@@ -60,13 +62,21 @@ export type LocalDocumentFieldEdits = Pick<
   | "allowedRelays"
 >;
 
+/** The label of the control that removes a stored document's allowed relays. */
+export const REMOVE_ALLOWED_RELAYS_LABEL = "Remove Allowed relays";
+
+/** What removing the stored allowed relays does to the runs. */
+export const REMOVE_ALLOWED_RELAYS_DESCRIPTION =
+  "When you save, this exchange's runs use every relay they list.";
+
 /**
  * What the Allowed relays field states for a stored document whose list is
  * empty: its runs keep no TURN url, which the empty field would not show.
  */
 export const NO_ALLOWED_RELAY_NOTE =
   "This exchange's configuration allows no relay server, so its runs " +
-  "connect without one. Enter the relays its runs may use.";
+  "connect without one. Enter the relays its runs may use, or check " +
+  `${REMOVE_ALLOWED_RELAYS_LABEL} to let them use every relay they list.`;
 
 /**
  * The delimiter choice that shows a stored `csvDelimiter`: the named option
@@ -95,6 +105,7 @@ export function localDocumentFieldValuesFrom(
     delimiter: csvDelimiterChoiceFrom(exchangeFile.csvDelimiter),
     retentionNote: exchangeFile.retentionDisposition ?? "",
     allowedRelays: allowedRelaysText(managedAllowedRelays(exchangeFile)),
+    removeAllowedRelays: false,
   };
 }
 
@@ -113,6 +124,31 @@ export function allowedRelaysOffered(exchangeFile: ExchangeSpec): boolean {
  */
 export function allowsNoRelay(exchangeFile: ExchangeSpec): boolean {
   return managedAllowedRelays(exchangeFile)?.length === 0;
+}
+
+/**
+ * Whether a document holds allowed relays, an empty list included, so the
+ * control that removes them is offered.
+ */
+export function allowedRelaysRemovable(exchangeFile: ExchangeSpec): boolean {
+  return managedAllowedRelays(exchangeFile) !== undefined;
+}
+
+/**
+ * The allowed-relays values for the remove control set to `remove`: the field
+ * emptied while removing, which a document without a list shows, and the
+ * stored list again once the control is cleared.
+ */
+export function removeAllowedRelaysValues(
+  exchangeFile: ExchangeSpec,
+  remove: boolean,
+): Pick<LocalDocumentFieldValues, "allowedRelays" | "removeAllowedRelays"> {
+  return {
+    allowedRelays: remove
+      ? ""
+      : allowedRelaysText(managedAllowedRelays(exchangeFile)),
+    removeAllowedRelays: remove,
+  };
 }
 
 /**
@@ -136,16 +172,22 @@ function sameEntries(
 }
 
 /**
- * What a save writes for the allowed relays as typed: nothing where the text
- * is the stored list's or reads as the same entries, the entries where they
+ * What a save writes for the allowed relays: `null` where the remove control
+ * is set over a stored list; otherwise, for the text as typed, nothing where
+ * it is the stored list's or reads as the same entries, the entries where they
  * differ, and `null` where the field is emptied of a list that names relays.
  * An empty stored list shows as an empty field, so an empty field keeps it.
  */
 function allowedRelaysEdit(
   exchangeFile: ExchangeSpec,
-  text: string,
+  values: Pick<
+    LocalDocumentFieldValues,
+    "allowedRelays" | "removeAllowedRelays"
+  >,
 ): ReadonlyArray<string> | null | undefined {
   const stored = managedAllowedRelays(exchangeFile);
+  if (values.removeAllowedRelays && stored !== undefined) return null;
+  const text = values.allowedRelays;
   if (text === allowedRelaysText(stored)) return undefined;
   const lines = parseExchangeAllowedRelayLines(text);
   if (!lines.ok) return undefined;
@@ -205,8 +247,8 @@ export function changedCsvDelimiter(
  * differs from the stored document, and nothing for one that does not, so a
  * save that changed only the label leaves the document as it was imported. A
  * `null` drops the field: "Nothing of mine" for the own-columns choice, an
- * unchecked matched-key box, an empty retention note, and an emptied list of
- * allowed relays. A refused delimiter or allowed relay writes nothing; the
+ * unchecked matched-key box, an empty retention note, and allowed relays
+ * emptied or removed. A refused delimiter or allowed relay writes nothing; the
  * editor blocks the save on it.
  */
 export function localDocumentFieldEdits(
@@ -231,7 +273,7 @@ export function localDocumentFieldEdits(
     edits.retentionDisposition =
       retentionNoteValue(values.retentionNote) ?? null;
   if (allowedRelaysOffered(exchangeFile)) {
-    const allowedRelays = allowedRelaysEdit(exchangeFile, values.allowedRelays);
+    const allowedRelays = allowedRelaysEdit(exchangeFile, values);
     if (allowedRelays !== undefined) edits.allowedRelays = allowedRelays;
   }
   return edits;

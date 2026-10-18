@@ -12,6 +12,7 @@
 - - -> **Allowed relays.**
 - - -> Core's entry rule is their only bound: the count and length bounds of the browser's stored Allowed relays do not apply to a record.
 - - -> An empty list keeps no TURN url, so the record's runs use no relay; the editor shows it as an empty field with a line stating so, a save leaves it while the field stays empty, and entered relays replace it.
+- - -> While the document holds a list, empty or not, the editor offers a control that removes it: a save with that control set drops the field, so the record's runs use every relay they list.
 - - -> The allowed-relays control is offered only on a webrtc connection; elsewhere a save leaves the connection as it is.
 - - -> Each run, and each re-invite, applies the record's `allowedRelays` in place of the browser's Allowed relays on its Relay server page, as [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) states the setting.
 - At setup the offer to save an exchange as recurring authors `retentionDisposition` beside the label and the max-age policy; the other three come from the setup's own file and columns steps. -> At setup the offer to save an exchange as recurring authors `retentionDisposition` beside the label and the max-age policy; `allowedRelays` starts as the browser's Allowed relays on its Relay server page at the save, absent where none are set; the other three come from the setup's own file and columns steps.

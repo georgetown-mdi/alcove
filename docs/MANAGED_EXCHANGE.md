@@ -75,7 +75,10 @@ goes: a backup holds it, the command-line export writes it as
 `connection.allowed_relays`, and an imported configuration that sets that key
 keeps it as written. A configuration whose list is empty allows no relay
 server, so its runs connect without one; the exchange's page says so beside
-the empty field, and entering relays there replaces the empty list.
+the empty field, and entering relays there replaces the empty list. While an
+exchange holds a list, empty or not, its page offers **Remove Allowed relays**:
+saving with it checked removes the list, so the exchange's runs use every relay
+they list.
 
 ## How a scheduled run happens
 

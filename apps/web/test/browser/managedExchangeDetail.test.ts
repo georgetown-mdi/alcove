@@ -21,8 +21,10 @@ import {
 import {
   MAX_RECENT_RUNS,
   applyManagedExchangeLastRun,
+  applyManagedExchangeLocalEdits,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  managedAllowedRelays,
   parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -34,8 +36,14 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
 
-import { ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
-import { NO_ALLOWED_RELAY_NOTE } from "@recurring/localDocumentFieldsModel";
+import {
+  ALLOWED_RELAYS_SCOPE,
+  EXCHANGE_ALLOWED_RELAYS_SCOPE,
+} from "@psi/transport/relayRestriction";
+import {
+  NO_ALLOWED_RELAY_NOTE,
+  REMOVE_ALLOWED_RELAYS_LABEL,
+} from "@recurring/localDocumentFieldsModel";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -1610,8 +1618,9 @@ describe("managed exchange detail document settings", () => {
     const field = page.getByRole("textbox", { name: "Allowed relays" });
     await expect.element(field).toHaveValue("relay.example.org");
     await expect
-      .element(page.getByText(ALLOWED_RELAYS_SCOPE))
+      .element(page.getByText(EXCHANGE_ALLOWED_RELAYS_SCOPE))
       .toBeInTheDocument();
+    expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
 
     await field.fill("Relay.Example.org\nbackup.example.org:443");
     await page.getByRole("button", { name: "Save settings" }).click();
@@ -1675,6 +1684,68 @@ describe("managed exchange detail document settings", () => {
       expect(saved).toHaveLength(1);
     });
     expect(saved[0]).not.toHaveProperty("allowedRelays");
+  });
+
+  test.each([
+    ["an empty list", []],
+    ["a list", ["relay.example.org"]],
+  ] as const)(
+    "removing %s saves the setting absent, so runs use no restriction",
+    async (_case, allowedRelays) => {
+      const { saved, onSave } = recordingSaves();
+      const stored = relaysRecord(allowedRelays);
+      renderDetail(stored, onSave);
+
+      const field = page.getByRole("textbox", { name: "Allowed relays" });
+      await page
+        .getByRole("checkbox", { name: REMOVE_ALLOWED_RELAYS_LABEL })
+        .click();
+      await expect.element(field).toBeDisabled();
+      await expect.element(field).toHaveValue("");
+      await page.getByRole("button", { name: "Save settings" }).click();
+
+      await vi.waitFor(() => {
+        expect(saved).toHaveLength(1);
+      });
+      expect(saved[0].allowedRelays).toBeNull();
+      const edited = applyManagedExchangeLocalEdits(stored, saved[0]);
+      expect(edited.exchangeFile.connection).not.toHaveProperty(
+        "allowedRelays",
+      );
+      expect(managedAllowedRelays(edited.exchangeFile)).toBeUndefined();
+    },
+  );
+
+  test("clearing the remove control gives the field back with the stored list", async () => {
+    const { saved, onSave } = recordingSaves();
+    renderDetail(relaysRecord(["relay.example.org"]), onSave);
+
+    const field = page.getByRole("textbox", { name: "Allowed relays" });
+    const remove = page.getByRole("checkbox", {
+      name: REMOVE_ALLOWED_RELAYS_LABEL,
+    });
+    await remove.click();
+    await expect.element(field).toBeDisabled();
+    await remove.click();
+    await expect.element(field).toBeEnabled();
+    await expect.element(field).toHaveValue("relay.example.org");
+
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await vi.waitFor(() => {
+      expect(saved).toHaveLength(1);
+    });
+    expect(saved[0]).not.toHaveProperty("allowedRelays");
+  });
+
+  test("a record with no allowed relays is not offered the remove control", async () => {
+    renderDetail(relaysRecord(), () => Promise.resolve());
+
+    await expect
+      .element(page.getByRole("textbox", { name: "Allowed relays" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("checkbox", { name: REMOVE_ALLOWED_RELAYS_LABEL }).query(),
+    ).toBeNull();
   });
 
   test("the field passes the accessibility rules", async () => {

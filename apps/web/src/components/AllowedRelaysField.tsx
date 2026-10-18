@@ -12,11 +12,13 @@ export function AllowedRelaysField({
   value,
   error,
   onChange,
+  disabled,
   mt,
 }: {
   value: string;
   error: string | undefined;
   onChange: (text: string) => void;
+  disabled?: boolean;
   /** The space above the field, as the fields beside it set theirs. */
   mt?: MantineSpacing;
 }) {
@@ -30,6 +32,7 @@ export function AllowedRelaysField({
       error={error}
       errorProps={{ role: "alert" }}
       onChange={(event) => onChange(event.currentTarget.value)}
+      {...(disabled !== undefined ? { disabled } : {})}
       {...(mt !== undefined ? { mt } : {})}
     />
   );

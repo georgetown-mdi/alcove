@@ -16,6 +16,7 @@ import {
   applyManagedExchangeLocalEdits,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  managedAllowedRelays,
   parseManagedExchangeRecord,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
@@ -30,6 +31,7 @@ import { readManagedCommandLineConfiguration } from "@psi/managed/managedCommand
 import {
   allowedRelaysError,
   allowedRelaysOffered,
+  allowedRelaysRemovable,
   allowsNoRelay,
   csvDelimiterChoiceFrom,
   delimiterRecheckFrom,
@@ -38,6 +40,7 @@ import {
   localDocumentFieldValuesFrom,
   matchingKeyWithheld,
   ownColumnsOffered,
+  removeAllowedRelaysValues,
 } from "@recurring/localDocumentFieldsModel";
 import { MATCHING_KEY_STORED_WITHHELD_COPY } from "@psi/matchingKeyModel";
 
@@ -153,6 +156,7 @@ describe("an imported value pre-fills each control", () => {
       delimiter: { option: ";", other: "" },
       retentionNote: note,
       allowedRelays: "relay.example.org\nbackup.example.org:443",
+      removeAllowedRelays: false,
     });
   });
 
@@ -163,6 +167,7 @@ describe("an imported value pre-fills each control", () => {
       delimiter: { option: ",", other: "" },
       retentionNote: "",
       allowedRelays: "",
+      removeAllowedRelays: false,
     });
   });
 
@@ -513,6 +518,53 @@ describe("the allowed relays", () => {
     expect(connectionOf(edited)).toMatchObject({
       allowedRelays: ["relay.example.org"],
     });
+  });
+
+  test("the remove control is offered only where the document holds a list", () => {
+    expect(allowedRelaysRemovable(relaysDocument([]))).toBe(true);
+    expect(allowedRelaysRemovable(relaysDocument(["relay.example.org"]))).toBe(
+      true,
+    );
+    expect(allowedRelaysRemovable(relaysDocument())).toBe(false);
+    expect(allowedRelaysRemovable(assembleSftpDocument())).toBe(false);
+  });
+
+  test.each([
+    ["an empty list", []],
+    ["a list", ["relay.example.org"]],
+  ] as const)(
+    "removing %s drops it, so runs and the export use no restriction",
+    (_case, stored) => {
+      const record = relaysRecord(stored);
+      const values = {
+        ...localDocumentFieldValuesFrom(record.exchangeFile),
+        ...removeAllowedRelaysValues(record.exchangeFile, true),
+      };
+      const edits = localDocumentFieldEdits(record.exchangeFile, values);
+      expect(edits).toEqual({ allowedRelays: null });
+
+      const edited = readBack(applyManagedExchangeLocalEdits(record, edits));
+      expect(connectionOf(edited)).not.toHaveProperty("allowedRelays");
+      expect(managedAllowedRelays(edited.exchangeFile)).toBeUndefined();
+      expect(exported(edited).connection).not.toHaveProperty("allowedRelays");
+      // The editor keeps its values over the record a save hands back, and
+      // they write nothing further there.
+      expect(localDocumentFieldEdits(edited.exchangeFile, values)).toEqual({});
+    },
+  );
+
+  test("clearing the remove control restores the stored list and writes nothing", () => {
+    const document = relaysDocument(["relay.example.org"]);
+    expect(removeAllowedRelaysValues(document, true)).toEqual({
+      allowedRelays: "",
+      removeAllowedRelays: true,
+    });
+    const values = {
+      ...localDocumentFieldValuesFrom(document),
+      ...removeAllowedRelaysValues(document, false),
+    };
+    expect(values.allowedRelays).toBe("relay.example.org");
+    expect(localDocumentFieldEdits(document, values)).toEqual({});
   });
 
   test("a refused entry is named by its line and writes nothing", () => {

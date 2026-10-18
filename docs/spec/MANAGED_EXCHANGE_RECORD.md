@@ -519,7 +519,10 @@ configuration-only one alike, without a re-invite.
   length bounds of the browser's stored Allowed relays do not apply to a
   record. An empty list keeps no TURN url, so the record's runs use no relay;
   the editor shows it as an empty field with a line stating so, a save leaves
-  it while the field stays empty, and entered relays replace it.
+  it while the field stays empty, and entered relays replace it. While the
+  document holds a list, empty or not, the editor offers a control that
+  removes it: a save with that control set drops the field, so the record's
+  runs use every relay they list.
 - **Offered where it acts.** The own-columns control is offered only where the
   terms give this party a result file (not on a count-only exchange, and not
   where `output` gives it none); elsewhere a save leaves the stored value as it

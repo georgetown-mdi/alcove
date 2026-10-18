@@ -21,6 +21,8 @@ import styles from "@styles/app.module.css";
 
 import {
   NO_ALLOWED_RELAY_NOTE,
+  REMOVE_ALLOWED_RELAYS_DESCRIPTION,
+  REMOVE_ALLOWED_RELAYS_LABEL,
   delimiterRecheckNote,
 } from "./localDocumentFieldsModel";
 
@@ -45,8 +47,10 @@ const RESULT_FILE_STORED_NOTICE =
  * saves the draft's edits with its own.
  *
  * A changed separator re-reads the stored input file, where there is one, and
- * what the read found is stated under the control. `allowedRelaysScope`, where
- * given, states under the relays what they decide for the runs that read them.
+ * what the read found is stated under the control. A document holding allowed
+ * relays, an empty list included, is offered a control that removes them on
+ * save. `allowedRelaysScope`, where given, states under the relays what they
+ * decide for the runs that read them.
  */
 export function LocalDocumentFields({
   draft,
@@ -70,6 +74,9 @@ export function LocalDocumentFields({
     | "allowedRelaysOffered"
     | "allowsNoRelay"
     | "editAllowedRelays"
+    | "allowedRelaysRemovable"
+    | "removeAllowedRelays"
+    | "editRemoveAllowedRelays"
     | "allowedRelaysError"
   >;
   allowedRelaysScope?: string;
@@ -151,12 +158,24 @@ export function LocalDocumentFields({
             value={draft.allowedRelays}
             error={draft.allowedRelaysError}
             onChange={draft.editAllowedRelays}
+            disabled={draft.allowedRelaysRemovable && draft.removeAllowedRelays}
             mt="sm"
           />
           {draft.allowsNoRelay && (
             <p className={`${styles.small} ${styles.sub}`}>
               {NO_ALLOWED_RELAY_NOTE}
             </p>
+          )}
+          {draft.allowedRelaysRemovable && (
+            <Checkbox
+              label={REMOVE_ALLOWED_RELAYS_LABEL}
+              description={REMOVE_ALLOWED_RELAYS_DESCRIPTION}
+              checked={draft.removeAllowedRelays}
+              onChange={(event) =>
+                draft.editRemoveAllowedRelays(event.currentTarget.checked)
+              }
+              mt="sm"
+            />
           )}
           {allowedRelaysScope !== undefined && (
             <p className={`${styles.small} ${styles.sub}`}>

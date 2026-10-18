@@ -22,9 +22,9 @@ import {
   workingDirectoryGrantSupported,
 } from "@psi/managed/managedWorkingDirectory";
 
-import { ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
@@ -716,7 +716,7 @@ function LocalFieldsEditor({
       </p>
       <LocalDocumentFields
         draft={draft}
-        allowedRelaysScope={ALLOWED_RELAYS_SCOPE}
+        allowedRelaysScope={EXCHANGE_ALLOWED_RELAYS_SCOPE}
       />
       {failed && (
         <Alert
