@@ -167,15 +167,21 @@ export function KeysTab({
     () => declaredFieldsFor(editor.draft),
     [editor.draft],
   );
-  // A loaded document's own field declarations name its keys' fields, and
-  // take precedence over the ones the columns declare.
-  const keyFields = useMemo(
-    () => [...declaredFields, ...(editor.draft.importedLinkageFields ?? [])],
-    [declaredFields, editor.draft.importedLinkageFields],
-  );
   const currentTerms = useMemo(
     () => buildAdvancedTerms(editor.draft),
     [editor.draft],
+  );
+  // Types a field as the built terms do, so this list and the partner's
+  // acceptance screen agree. A field the terms omit (a turned-off key's) takes
+  // the columns' type, then the loaded document's, the order the terms' own
+  // reconciliation uses. A later entry wins.
+  const keyFields = useMemo(
+    () => [
+      ...(editor.draft.importedLinkageFields ?? []),
+      ...declaredFields,
+      ...currentTerms.linkageFields,
+    ],
+    [declaredFields, editor.draft.importedLinkageFields, currentTerms],
   );
   const citationDrop = useMemo(
     () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),

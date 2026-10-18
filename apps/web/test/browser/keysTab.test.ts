@@ -25,6 +25,7 @@ import {
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   LESS_CERTAIN_KEY_COPY,
+  linkageKeyIsLessCertain,
   precisionFloorStatement,
 } from "@alcove/core";
 
@@ -44,6 +45,7 @@ import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
+import type { LinkageField } from "@alcove/core";
 
 // A minimal file with a date_of_birth column, so the seeded default keys
 // include one built from it (the element the dead-key transform below targets).
@@ -745,6 +747,66 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
         `${LESS_CERTAIN_KEY_COPY.explanation} ` +
           MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration,
       );
+  });
+
+  /** A loaded document whose field declarations type `retyped` apart from the
+   * file's columns. */
+  function documentTypingFieldsApart(retyped: ReadonlyArray<LinkageField>) {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const loaded = editorWithImportedTerms(
+      seeded,
+      csv,
+      buildAdvancedTerms(seeded.draft),
+    );
+    return editorWithAuthoredDraft(loaded, {
+      ...loaded.draft,
+      importedLinkageFields: (loaded.draft.importedLinkageFields ?? []).map(
+        (field) =>
+          retyped.find((candidate) => candidate.name === field.name) ?? field,
+      ),
+    });
+  }
+
+  function infoButtonLabels(): Array<string> {
+    return page
+      .getByRole("button", { name: /less certain$/ })
+      .elements()
+      .map((button) => button.getAttribute("aria-label") ?? "");
+  }
+
+  function labelsOfKeysMarkedByBuiltTerms(editor: InviterEditor) {
+    const { linkageFields } = buildAdvancedTerms(editor.draft);
+    return editor.draft.keys
+      .filter((entry) => linkageKeyIsLessCertain(entry.key, linkageFields))
+      .map((entry) => lessCertainInfoLabel(entry.key.name));
+  }
+
+  test("marks a key as the built terms type its fields where the document types one apart from its column", async () => {
+    const editor = documentTypingFieldsApart([
+      { name: "date_of_birth", type: "phone_number" },
+    ]);
+    app.render(createElement(Harness, { initial: editor }));
+
+    await expect
+      .element(page.getByRole("checkbox", nameAndDateKey))
+      .toBeChecked();
+    const expected = labelsOfKeysMarkedByBuiltTerms(editor);
+    expect(expected).toContain(lessCertainInfoLabel("LN + FN + DOB"));
+    expect(infoButtonLabels()).toStrictEqual(expected);
+  });
+
+  test("leaves a key unmarked as the built terms type its fields where the document types a field as a name", async () => {
+    const editor = documentTypingFieldsApart([
+      { name: "ssn4", type: "first_name" },
+    ]);
+    app.render(createElement(Harness, { initial: editor }));
+
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
+      .toBeChecked();
+    const expected = labelsOfKeysMarkedByBuiltTerms(editor);
+    expect(expected).not.toContain(lessCertainInfoLabel("SSN4 + LN + DOB"));
+    expect(infoButtonLabels()).toStrictEqual(expected);
   });
 
   test("describes the key list with the order the chosen floor gives it", async () => {
