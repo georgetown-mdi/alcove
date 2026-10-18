@@ -1460,7 +1460,7 @@ describe("customize tabs", () => {
   test("an ssn4 field rebound to an ssn column takes the default ssn4 steps", () => {
     const ssnCsv: AcquiredCsv = {
       ...csv,
-      rawRows: [{ ...csv.rawRows[0], ssn: "078-05-1120" }],
+      rawRows: [{ ...csv.rawRows[0], ssn: "287-65-4321" }],
       columns: [...csv.columns, "ssn"],
     };
     const seeded = editorFromCsv("Dana", ssnCsv);
@@ -1473,7 +1473,7 @@ describe("customize tabs", () => {
     const ssn4 = rebound.draft.standardization.find((t) => t.output === "ssn4");
     expect(ssn4?.input).toBe("ssn");
     expect(ssn4?.steps).toEqual(derivedFieldSteps("ssn4", "ssn"));
-    expect(runPipeline("078-05-1120", ssn4?.steps ?? [])).toBe("1120");
+    expect(runPipeline("287-65-4321", ssn4?.steps ?? [])).toBe("4321");
 
     // Back on its own type, the field keeps the steps it has.
     const restored = editorWithFieldInput(

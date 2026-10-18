@@ -10,8 +10,13 @@ import {
 describe("the completion run's expected result", () => {
   it("finds the population rows whose SSN the built-in standardization nulls", () => {
     const rows = nulledPopulationRows(2 ** 24 + 2 ** 23);
-    expect(rows).toEqual([11_111_111, 23_456_789]);
-    expect(rows.map(populationSsn)).toEqual(["111-11-1111", "123-45-6789"]);
+    expect(rows).toEqual([9_876_543, 11_111_111, 11_223_333, 23_456_789]);
+    expect(rows.map(populationSsn)).toEqual([
+      "109-87-6543",
+      "111-11-1111",
+      "111-22-3333",
+      "123-45-6789",
+    ]);
   });
 
   it("leaves a nulled shared row out of each party's result", () => {

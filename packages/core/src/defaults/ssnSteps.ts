@@ -2,7 +2,8 @@ import type { StandardizationStep } from "../config/standardizationSchema.js";
 
 // The default `ssn` and `ssn4` pipelines, in a module of their own because
 // field resolution (standardization.ts) derives `ssn4` from an `ssn` column
-// with SSN4_STEPS, and builtInStandardization.ts imports standardization.ts.
+// with SSN4_FROM_SSN_STEPS, and builtInStandardization.ts imports
+// standardization.ts.
 
 // The ASCII hyphen and the Unicode dashes spreadsheet or word-processor
 // autocorrect substitutes for it (U+2010 to U+2014 and the minus sign U+2212),
@@ -15,6 +16,26 @@ const DASHES = "\\-\\x{2010}-\\x{2014}\\x{2212}";
 function repeatedDigits(length: number): string[] {
   return Array.from({ length: 10 }, (_, digit) => String(digit).repeat(length));
 }
+
+// The first nine digits of each rotation of 0123456789, then each of those
+// reversed: 012345678 to 901234567, then 876543210 to 765432109.
+function sequentialDigitRuns(): string[] {
+  const digits = "0123456789";
+  const forward = Array.from({ length: 10 }, (_, start) =>
+    (digits.slice(start) + digits.slice(0, start)).slice(0, 9),
+  );
+  return [...forward, ...forward.map((run) => [...run].reverse().join(""))];
+}
+
+// The values the default `ssn` pipeline drops as placeholders, which the
+// `ssn4` derived from an `ssn` column drops too.
+const SSN_PLACEHOLDERS: readonly string[] = [
+  ...repeatedDigits(9),
+  ...sequentialDigitRuns(),
+  "078051120",
+  "219099999",
+  "111223333",
+];
 
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [
@@ -49,14 +70,11 @@ export const SSN_STEPS: StandardizationStep[] = [
     params: { pattern: "^\\d{3}(?:[1-9]\\d|\\d[1-9])" },
   },
   { function: "filter_regex", params: { pattern: "[1-9]\\d{0,3}$" } },
-  {
-    function: "null_if",
-    params: { values: [...repeatedDigits(9), "123456789"] },
-  },
+  { function: "null_if", params: { values: [...SSN_PLACEHOLDERS] } },
 ];
 
-/** The default `ssn4` pipeline, which also derives `ssn4` from an `ssn` column. */
-export const SSN4_STEPS: StandardizationStep[] = [
+// The `ssn4` steps up to and including the empty-value drop.
+const SSN4_DIGIT_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   // Keep a value of only ASCII digits, spaces and dashes, or one ending in
   // four ASCII digits (spaces and dashes aside), whose mask lies before its
@@ -73,9 +91,31 @@ export const SSN4_STEPS: StandardizationStep[] = [
   // Drop a value that cleaned to empty before pad_left masks it as "0000"; see
   // SSN_STEPS for why this explicit blank-drop is needed.
   { function: "null_if", params: { value: "" } },
+];
+
+const SSN4_LAST_FOUR_STEPS: StandardizationStep[] = [
   // Zero-pad to 4 digits for SSN4 values stored without a leading zero.
   { function: "pad_left", params: { length: 4 } },
   { function: "extract_regex", params: { pattern: "(\\d{4})$" } },
   { function: "filter_regex", params: { pattern: "^\\d{4}$" } },
   { function: "null_if", params: { values: repeatedDigits(4) } },
+];
+
+/** The default `ssn4` pipeline. */
+export const SSN4_STEPS: StandardizationStep[] = [
+  ...SSN4_DIGIT_STEPS,
+  ...SSN4_LAST_FOUR_STEPS,
+];
+
+/**
+ * The default steps that derive `ssn4` from an `ssn` column:
+ * {@link SSN4_STEPS} with the digits padded to nine and screened against the
+ * `ssn` placeholders. A value masked in its first five digits pads to area
+ * 000, where the only placeholder is 000000000, so its last four are kept.
+ */
+export const SSN4_FROM_SSN_STEPS: StandardizationStep[] = [
+  ...SSN4_DIGIT_STEPS,
+  { function: "pad_left", params: { length: 9 } },
+  { function: "null_if", params: { values: [...SSN_PLACEHOLDERS] } },
+  ...SSN4_LAST_FOUR_STEPS,
 ];

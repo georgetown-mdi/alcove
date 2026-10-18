@@ -404,7 +404,9 @@ filler (HUD 2025a), so two records independently agree on a date neither knows,
 and its name data-quality codes admit placeholder and made-up names entered to
 create a record (HUD 2025a). `baseline-pii` excludes placeholder SSNs, and the
 default cleaning drops a listed placeholder name or date
-([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#per-party-placeholder-lists)),
+([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#per-party-placeholder-lists))
+and the SSN, ZIP and phone fillers below
+([Fillers the default cleaning drops](#fillers-the-default-cleaning-drops)),
 but nothing bounds a filler month and day.
 
 **A missing field yields no key.** A record missing any element of a rule
@@ -413,6 +415,63 @@ reach is therefore the joint fill across both parties: Bernstam et al. (2022)
 found 94.6% of records filled the phone number field, while the cell-phone
 token's pair fill was 68.01%. A rule's reach must be quoted as pair fill or it
 is overstated.
+
+## Fillers the default cleaning drops
+
+A filler both files hold is a false match on every key it enters, so the
+default cleaning drops the fillers below. The pipelines are specified in
+[DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
+
+### SSN placeholders
+
+- **`078-05-1120`.** It first appeared on a sample card in wallets sold
+  nationwide in 1938, and was "subsequently reported thousands of times by
+  different individuals", 6,000 or more wage earners in 1943 (Scheuren 1985).
+  linkja and the California Policy Lab's hashing code each reject it, with
+  `123-45-6789` (MRAIA 2020; California Policy Lab 2023).
+- **`219-09-9999` and runs of consecutive digits.** The Open Path HMIS
+  warehouse rejects as published numbers `219-09-9999`, `078-05-1120`, the
+  first nine digits of each rotation of `0123456789`, and each of those
+  reversed (Green River Data Group 2026).
+- **`111-22-3333`.** North Carolina names it "the most common 'SSN' in North
+  Carolina", entered by people who do not want to share their real SSNs
+  (Government Data Analytics Center 2023).
+
+The `ssn4` derived from an `ssn` column drops a value whose full digits are on
+the same list, from the same constant in code, so the two cannot list different
+values. Without it, everyone who wrote a placeholder would share its last four
+on every `SSN4` rule (reasoning). A column of last fours is not screened: a
+bare last four cannot be told from a placeholder's.
+
+### ZIP fillers
+
+- **Codes for an unknown or foreign address.** The Florida Cancer Data System
+  asks for `99999` when a US resident's ZIP is unknown and `88888` for a
+  resident of a country other than the United States or Canada (Florida Cancer
+  Data System 2021).
+- **Codes for no address.** A Medi-Cal guide lists ZIP `00000`, `99999` or
+  `ZZZZZ` among the entries used in place of the address of a person
+  experiencing homelessness (Center for Health Care Strategies 2025). The
+  CenSoc geography codebook warns that "non-identifiable codes such as 'XX768'
+  and '00000'" may remain in its ZIP field (CenSoc 2025).
+- **Codes not issued.** The Datavant specification N3C sites follow treats "zip
+  codes not issued by the US government" as invalid (Regenstrief Institute
+  2021), and OpenLinkToken rejects any code starting `000` (Open Link Token
+  2026). Its list also names repeated-digit and sequential codes, which the
+  default does not adopt.
+
+The default drops `00000`, `99999`, `88888` and any value starting `000` after
+padding. `ZZZZZ` has no digits and is dropped as empty. A value with letters
+among its digits, such as `XX768`, keeps its digits and is padded, here to
+`00768` (reasoning).
+
+### Phone fillers
+
+CDC's immunization-registry guide says to "eliminate 'filler' data that can
+match incorrectly (e.g. 999-999-9999 for phone number)" (CDC 2025), and Grannis
+et al. (2023) hold that telephone numbers "should contain no more than six
+nines or six zeros in a row". The default drops a ten-digit value holding seven
+or more 9s, or seven or more 0s, in a row.
 
 ## No SSN conflict veto by default
 
@@ -669,12 +728,20 @@ decide.
 Sources cited by both notes are in the catalog's
 [Sources](linkage-rule-catalog.md#sources) list. Those cited only here:
 
+- **California Policy Lab 2023.** California Policy Lab. "hashed-linkage," source code and README (the SSN screen in Hash/Python/hashing_base_linkagetoolkit.py). GitHub, last revised 2023. https://github.com/californiapolicylab/hashed-linkage
 - **Campbell et al. 2006.** Campbell K, Deck D, Cox A, Broderick C. "The Link King: User Manual, Version v5.2." Washington State Department of Social and Health Services, 2006. https://web.archive.org/web/20070106073145id_/http://www.the-link-king.com:80/user_manual.zip
+- **CDC 2025.** Centers for Disease Control and Prevention, National Center for Immunization and Respiratory Diseases. "Immunization Information Systems Patient-Level De-duplication Best Practices." February 2025. https://www.cdc.gov/iis/media/pdfs/2025/02/De-Duplication_Best_Practices_Report.pdf
+- **CenSoc 2025.** CenSoc project. "censocdev," the code and codebooks that build the CenSoc files (the Geography File codebook's `death_zip` entry). GitHub, 2025. https://github.com/caseybreen/censocdev
+- **Center for Health Care Strategies 2025.** Center for Health Care Strategies. "Data Sources for Determining Members' Housing and Homelessness Status." Tool, February 2025. https://www.chcs.org/media/Data-Sources-for-Determining-Members-Housing-and-Homelessness-Status.pdf
 - **Cole and Logan 2006.** Cole N, Logan C. "Data Matching in the National School Lunch Program: 2005. Volume 2: State Case Studies." Abt Associates for the U.S. Department of Agriculture, Food and Nutrition Service, Report CN-06-DM2, 2006. https://www.fns.usda.gov/sites/default/files/DataMatching-V2.pdf
 - **Dynarski et al. 2013.** Dynarski SM, Hemelt SW, Hyman JM. "The Missing Manual: Using National Student Clearinghouse Data to Track Postsecondary Outcomes." NBER Working Paper 19552, 2013. doi:10.3386/w19552
 - **Eliazar et al. 2025.** Eliazar A, Brown JT, Cinamon S, Kantarcioglu M, Malin B. "Re-identification risk for common privacy preserving patient matching strategies when shared with de-identified demographics." Journal of the American Medical Informatics Association 33(2):336-346, 2026 (online 2025). doi:10.1093/jamia/ocaf183
+- **Florida Cancer Data System 2021.** Florida Cancer Data System, University of Miami. "Data Linkage Record Layout." 2021. https://fcds.med.miami.edu/downloads/datarequest/Data%20Linkage%20Record%20Layout.pdf
 - **Fu et al. 2022.** Fu S, Davis C, Rothstein J, Ramesh A, White E. "Hashed Linkages for Administrative Datasets: A Technical How-to Guide." California Policy Lab, 2022. https://capolicylab.org/wp-content/uploads/2022/03/Hashed-Linkages-for-Administrative-Datasets.-A-Technical-How-to-Guide.pdf
 - **Gilbert et al. 2018.** Gilbert R, Lafferty R, Hagger-Johnson G, Harron K, Zhang LC, Smith P, et al. "GUILD: GUidance for Information about Linking Data sets." Journal of Public Health 40(1):191-198, 2018. doi:10.1093/pubmed/fdx037
+- **Government Data Analytics Center 2023.** North Carolina Government Data Analytics Center. "Linking Records Across Data Systems, Part 3: Linking Workforce Data." NCLDS, version 1.1, December 2023. https://nclds.nc.gov/documents/linking-data-workforce-data/download
+- **Grannis et al. 2023.** Grannis SJ, Xu H, Li X, Kasthurirathne S, Vest J, Harle C, et al. "Enhancing Patient Matching in Support of Operational Health Information Exchange: Final Report." Agency for Healthcare Research and Quality, grant 5R01HS023808, 2023. https://digital.ahrq.gov/file/39156/download?token=7edlb45a
+- **Green River Data Group 2026.** Green River Data Group. "hmis-warehouse" (Open Path HMIS Warehouse), lib/util/concerns/hud_validation_util.rb. GitHub, 2026. https://github.com/greenriver/hmis-warehouse/blob/c19a88c2beebf21dbc741e10d5bd6d82e4d131fb/lib/util/concerns/hud_validation_util.rb
 - **Harron et al. 2017.** Harron KL, Doidge JC, Knight HE, Gilbert RE, Goldstein H, Cromwell DA, et al. "A guide to evaluating linkage quality for the analysis of linked data." International Journal of Epidemiology 46(5):1699-1710, 2017. doi:10.1093/ije/dyx177
 - **Hawaii Department of Education 2016.** Hawaii Department of Education, Hawaii Child Nutrition Programs. "Direct Certification Module User Guide for All Schools." 2016. https://hcnp.hawaii.gov/wp-content/uploads/2016/07/Direct-Certification-User-Guide-for-All-Schools.pdf
 - **Heins et al. 2022.** Heins S, Predmore Z, Hoch E, Baxi S. "Linking Medicaid Claims, Birth Certificates, and Other Sources to Advance Maternal and Infant Health: Final Report." RAND, PR-A1961-1, for the HHS Office of the Assistant Secretary for Planning and Evaluation, 2022. https://aspe.hhs.gov/sites/default/files/documents/db89f9777de0142dc5b6562692f67032/linking-medicaid-claims-other-data.pdf
@@ -693,7 +760,9 @@ Sources cited by both notes are in the catalog's
 - **NCHS 2024.** National Center for Health Statistics. "The Linkage of National Center for Health Statistics Survey Data to Centers for Medicare & Medicaid Services Transformed Medicaid Statistical Information System Claims Data (2014-2019): Matching Methodology and Analytic Considerations." 2024. https://www.cdc.gov/nchs/data/datalinkage/NCHS-CMS-TMSIS-Linkage-Methodology_1.pdf
 - **Nescott et al. 2023.** Nescott E, Metraux S, McDuffie MJ, Brown E. "Health & Housing in Delaware: Matching Medicaid Claims and Encounters and the Community Management Information System Databases." Delaware Journal of Public Health 9(2):18-22, 2023. doi:10.32481/djph.2023.06.005
 - **Ong et al. 2020.** Ong TC, Duca LM, Kahn MG, Crume TL. "A hybrid approach to record linkage using a combination of deterministic and probabilistic methodology." Journal of the American Medical Informatics Association 27(4):505-513, 2020. doi:10.1093/jamia/ocz232
+- **Open Link Token 2026.** Open Link Token Contributors. "OpenLinkToken," v2.2.0, the US postal code attribute (lib/python/openlinktoken/src/main/openlinktoken/attributes/person/us_postal_code_attribute.py). GitHub, 2026. https://github.com/TruvetaPublic/OpenLinkToken
 - **Rhoades et al. 2017.** Rhoades H, Wenzel S, Rice E, Winetrobe H, Henwood B. "No Digital Divide? Technology Use among Homeless Adults." Journal of Social Distress and the Homeless 26(1):73-77, 2017. doi:10.1080/10530789.2017.1305140
+- **Scheuren 1985.** Scheuren F. "Methodologic Issues in Linkage of Multiple Data Bases." In Kilss B, Alvey W (eds.), "Record Linkage Techniques - 1985: Proceedings of the Workshop on Exact Matching Methodologies." Internal Revenue Service, Statistics of Income Division, 1985, p. 158. https://nces.ed.gov/FCSM/pdf/RLT85.pdf
 - **Sokol and Gutierrez 2005.** Sokol B, Gutierrez O. "Technical Guidelines for Unduplicating and De-identifying HMIS Client Records." U.S. Department of Housing and Urban Development, 2005. https://web.archive.org/web/2017id_/https://www.hudexchange.info/resources/documents/TechnicalGuidelinesForUnduplicatingAndDeIdentifyingClientRecords.pdf
 - **SSA 2022.** Social Security Administration. "Beneficiary Earnings and Data Exchange (BENDEX) Handbook for Daily Process." 2022. https://web.archive.org/web/20230605183520id_/https://www.ssa.gov/dataexchange/documents/BENDEXMANUAL2022.pdf
 - **The Sequoia Project 2018.** The Sequoia Project. "A Framework for Cross-Organizational Patient Identity Management." 2018. https://sequoiaproject.org/wp-content/uploads/2018/06/The-Sequoia-Project-Framework-for-Patient-Identity-Management-v31.pdf

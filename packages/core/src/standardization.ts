@@ -52,7 +52,7 @@ import {
 import { isDisclosedToPartner } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import type { SemanticType } from "./types.js";
-import { SSN4_STEPS } from "./defaults/ssnSteps.js";
+import { SSN4_FROM_SSN_STEPS } from "./defaults/ssnSteps.js";
 import { readRowColumn } from "./file.js";
 import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
 import {
@@ -2132,7 +2132,7 @@ interface FieldColumnResolution {
 const DERIVED_FIELD_SOURCE_TYPE: ReadonlyMap<
   SemanticType,
   { sourceType: SemanticType; steps: ReadonlyArray<StandardizationStep> }
-> = new Map([["ssn4", { sourceType: "ssn", steps: SSN4_STEPS }]]);
+> = new Map([["ssn4", { sourceType: "ssn", steps: SSN4_FROM_SSN_STEPS }]]);
 
 function linkageColumnOfType(
   type: SemanticType,
