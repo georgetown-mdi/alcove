@@ -215,7 +215,7 @@ Result: exactly nine digits.
   so is each listed run of consecutive digits and each listed value known to
   be shared by many people.
 - **Filler runs.** A value holding seven or more 9s in a row, or seven or more
-  0s in a row after the area number, is dropped. The `replace_regex` empties
+  0s in a row (unless the area number is `000`), is dropped. The `replace_regex` empties
   such a value and the `null_if` drops the empty result; six in a row are kept.
 - **Shared within the file.** A value more than one person in the party's own
   file holds is dropped from every record holding it (see
@@ -433,7 +433,7 @@ A masked value keeps its last four: the digits of `***-**-8924` pad to
 `000008924`, which the list does not name.
 
 The `ssn` filler runs reach it too: `129-99-9999` and `100-00-0001` are `null`
-as `ssn` and as `ssn4`. A run of zeros starting inside the area number is not a
+as `ssn` and as `ssn4`. A run of zeros in an area number of `000` is not a
 filler here, since it is the padding of a masked value: `***-**-0001` pads to
 `000000001` and keeps `"0001"`.
 
@@ -463,7 +463,7 @@ as `ssn` and `"3456"` as `ssn4`.
 A file with its own `role: linkage` column of type `ssn4` keeps using it, and
 nothing is derived. That column runs the `ssn4` pipeline, without the `ssn`
 placeholder list, so a full SSN written there keeps its last four, as
-`123-45-6789` does in the table above. An `ssn4` column with any other role does not stop the
+`123-45-6789` does in the [`ssn4` table](#ssn4). An `ssn4` column with any other role does not stop the
 derivation, so a file that keeps its `ssn4` column out of matching still
 supplies `ssn4` keys derived from a matched `ssn` column.
 

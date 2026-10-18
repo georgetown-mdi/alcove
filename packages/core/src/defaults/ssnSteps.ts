@@ -37,10 +37,10 @@ const SSN_PLACEHOLDERS: readonly string[] = [
   "111223333",
 ];
 
-// Seven or more 9s in a row, or seven or more 0s in a row after the area
-// number, is filler such as 129-99-9999. A zero run starting inside the first
-// three digits is exempt: it is area 000, the padding of a masked value such as
-// ***-**-0012, whose last four the derived `ssn4` keeps.
+// Seven or more 9s in a row, or seven or more 0s in a row, is filler such as
+// 129-99-9999 or 100-00-0001. A zero run is exempt when the area number is 000:
+// it is the padding of a masked value such as ***-**-0012, whose last four the
+// derived `ssn4` keeps.
 const SSN_FILLER_STEPS: StandardizationStep[] = [
   {
     function: "replace_regex",

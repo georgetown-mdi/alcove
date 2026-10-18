@@ -445,7 +445,7 @@ The `ssn4` derived from an `ssn` column drops a value whose full digits are on
 the same list, from the same constant in code, so the two cannot list different
 values. Without it, everyone who wrote a placeholder would share its last four
 on every `SSN4` rule (reasoning). It drops a value with a filler run too, except
-a run of zeros starting inside the area number, which is the padding of a masked
+a run of zeros when the area number is `000`, which is the padding of a masked
 SSN whose last four it keeps (reasoning). A column of last fours is not
 screened: a bare last four cannot be told from a placeholder's.
 
