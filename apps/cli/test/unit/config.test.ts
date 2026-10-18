@@ -51,7 +51,6 @@ import {
   persistPartnerFingerprint,
   persistStatedPayloadSend,
   readConfigLinkageSource,
-  refuseRuleSetCitationWithoutRules,
   saveConfig,
   warnOnLinkageRuleSetCitationDrift,
 } from "../../src/config";
@@ -5211,12 +5210,6 @@ function writeTermsConfig(terms: Record<string, unknown>): string {
   return configPath;
 }
 
-const RULE_SET_WITHOUT_RULES_REFUSAL =
-  "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-  "linkage_fields or linkage_keys. Run 'alcove init' to write a " +
-  "configuration that lists them, or write linkage_fields and linkage_keys " +
-  "out under linkage_terms.";
-
 test.each<[string, LinkageRuleSetReference]>([
   ["the shipped set", DEFAULT_LINKAGE_RULE_SET.reference],
   [
@@ -5227,25 +5220,21 @@ test.each<[string, LinkageRuleSetReference]>([
     },
   ],
 ])(
-  "a config citing %s and writing no rules is refused at load",
+  "a config citing %s and writing no rules is refused by the schema",
   (_label, reference) => {
     const configPath = writeTermsConfig(citationOnlyTerms(reference));
     expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
     expect(() => loadConfigLinkageSource(configPath)).toThrow(
-      RULE_SET_WITHOUT_RULES_REFUSAL,
+      "has invalid linkage_terms",
     );
+    expect(() => readConfigLinkageSource(configPath)).toThrow(
+      "has invalid linkage_terms",
+    );
+    expect(() =>
+      parseExchangeSpec(YAML.parse(fs.readFileSync(configPath, "utf8"))),
+    ).toThrow(/linkageFields/);
   },
 );
-
-test("the refusal reads the camelCase spelling too", () => {
-  const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
-  expect(() =>
-    refuseRuleSetCitationWithoutRules(
-      { linkageTerms: { linkageRuleSet: { fieldSet, keySet } } },
-      "alcove.yaml",
-    ),
-  ).toThrow(RULE_SET_WITHOUT_RULES_REFUSAL);
-});
 
 test("rules written out beside a citation load as written", () => {
   const terms = getDefaultLinkageTerms("Agency A");
@@ -5265,27 +5254,6 @@ test("one rule list beside a citation is left for the schema", () => {
   expect(() => loadConfigLinkageSource(configPath)).toThrow(
     "has invalid linkage_terms",
   );
-});
-
-test("a partner's terms citing a set with no rules are left for the schema", () => {
-  const configPath = writeTermsConfig(
-    citationOnlyTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-  );
-  expect(() => readConfigLinkageSource(configPath, "partner")).toThrow(
-    "has invalid linkage_terms",
-  );
-  expect(() => readConfigLinkageSource(configPath, "partner")).not.toThrow(
-    RULE_SET_WITHOUT_RULES_REFUSAL,
-  );
-});
-
-test("a config with no linkage terms is not refused", () => {
-  expect(() =>
-    refuseRuleSetCitationWithoutRules(
-      { connection: { channel: "filedrop", path: "/mnt/share" } },
-      "alcove.yaml",
-    ),
-  ).not.toThrow();
 });
 
 test.each<[string, unknown]>([

@@ -33,7 +33,6 @@ import {
   persistExpectedPartnerDeduplicate,
   persistInvitationRelay,
   reconcileConflictError,
-  refuseRuleSetCitationWithoutRules,
   type InvitationRelayRefresh,
   type ReconcileDiff,
 } from "../config";
@@ -931,10 +930,6 @@ function readExistingAcceptConfig(
     )} but is not valid YAML, so it cannot be compared against ${against}.${RECONCILE_RETRY_REMEDY} ${retryWith}.`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  // Outside the catch below: a configuration that names a rule set and writes
-  // no rules is refused as every command refuses it, not as a document that
-  // could not be parsed.
-  refuseRuleSetCitationWithoutRules(parsed, configPath);
   try {
     return parseExchangeSpec(parsed);
   } catch (err) {

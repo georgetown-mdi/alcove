@@ -232,7 +232,7 @@ That case is recognized from a record `alcove accept` writes into the configurat
 
 Only a set this build ships can be checked. A citation naming another set, or the built-in set at a version this build does not include, passes without comment: there is nothing behind that name here to compare your rules against. The field set and the key set are checked separately, so a citation pairing a name this build does not know with the built-in key set is still held to the built-in keys. A partner's citation on an invitation is their statement about their own rules; `alcove accept` runs this same check over it against the rules the invitation declares and shows the per-half verdict on the accept prompt before you consent.
 
-A citation does not stand in for the rules: a configuration whose `linkage_terms` names a rule set and writes no `linkage_fields` or `linkage_keys` is refused when it loads, by every command that reads it. Run `alcove init`, which writes them, or write the lists out.
+A citation does not stand in for the rules: `linkage_fields` and `linkage_keys` are required in `linkage_terms` whether or not it names a rule set.
 
 ## Initialization
 

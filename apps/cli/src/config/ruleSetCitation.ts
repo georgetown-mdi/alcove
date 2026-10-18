@@ -15,10 +15,6 @@ import {
   ruleSetCitation,
 } from "@alcove/core";
 
-import { configFileRefusal } from "./persist";
-
-// --- Rules a configuration writes out ----------------------------------------
-
 /**
  * A rule-set reference as one clause, keys first -- the keys are the specific
  * artifact and the fields the substrate they are built from -- matching the
@@ -31,57 +27,6 @@ function ruleSetCitationClause(
   renderHalf: (identity: LinkageSetIdentity) => string,
 ): string {
   return `${renderHalf(reference.keySet)} over ${renderHalf(reference.fieldSet)}`;
-}
-
-/**
- * Whether a raw block writes a key under either spelling, a present-but-empty
- * value included: what the document declares is the question here, not what
- * the declaration holds, which the schema decides.
- */
-function declaresKey(
-  block: Record<string, unknown>,
-  written: string,
-  camelized: string,
-): boolean {
-  return Object.hasOwn(block, written) || Object.hasOwn(block, camelized);
-}
-
-/**
- * Refuse a raw configuration whose `linkage_terms` names a rule set and writes
- * neither `linkage_fields` nor `linkage_keys`. A configuration's rules are the
- * lists it writes, and nothing fills them in from the set it cites. Every
- * other shape, one list missing included, is left for the schema. Both
- * spellings of each key are read, since this runs ahead of the camelizing
- * parse.
- */
-export function refuseRuleSetCitationWithoutRules(
-  rawConfig: unknown,
-  configPath: string,
-): void {
-  if (
-    rawConfig === null ||
-    typeof rawConfig !== "object" ||
-    Array.isArray(rawConfig)
-  )
-    return;
-  const config = rawConfig as Record<string, unknown>;
-  const terms = config["linkage_terms"] ?? config["linkageTerms"];
-  if (terms === null || typeof terms !== "object" || Array.isArray(terms))
-    return;
-  const block = terms as Record<string, unknown>;
-  if (
-    !declaresKey(block, "linkage_rule_set", "linkageRuleSet") ||
-    declaresKey(block, "linkage_fields", "linkageFields") ||
-    declaresKey(block, "linkage_keys", "linkageKeys")
-  )
-    return;
-  throw configFileRefusal(
-    configPath,
-    "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-      "linkage_fields or linkage_keys. Run 'alcove init' to write a " +
-      "configuration that lists them, or write linkage_fields and " +
-      "linkage_keys out under linkage_terms.",
-  );
 }
 
 // --- Rule-set citation drift -------------------------------------------------

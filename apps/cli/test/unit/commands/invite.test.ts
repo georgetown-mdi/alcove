@@ -11,7 +11,6 @@ import {
   CONNECTION_BLOCK_NOTICE,
   ConnectionError,
   decodeInvitation,
-  DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   deriveAcceptedLinkageTerms,
@@ -1612,59 +1611,6 @@ test("validateInvite: derives terms from a config when no input file is given", 
     // The minted invitation holds the config's terms, not inferred ones.
     const token = await decodeInvitation(ready.invitation);
     expect(token.linkageTerms).toEqual(terms);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("validateInvite: a config naming a rule set and writing no rules is refused", async () => {
-  // A configuration's rules are the lists it writes, so one that writes none
-  // mints nothing, input file or not.
-  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-named-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
-  fs.writeFileSync(
-    configPath,
-    YAML.stringify({
-      connection: { channel: "filedrop", path: "/mnt/share" },
-      linkage_terms: {
-        version: "1.0.0",
-        identity: "Agency Config",
-        date: "2026-01-01",
-        algorithm: "psi",
-        output: { expects_output: true, share_with_partner: true },
-        deduplicate: false,
-        linkage_rule_set: {
-          field_set: { ...fieldSet },
-          key_set: { ...keySet },
-        },
-      },
-    }),
-  );
-  const input = path.join(dir, "input.csv");
-  fs.writeFileSync(
-    input,
-    "first_name,last_name,dob,ssn\nAda,Lovelace,1815-12-10,123456789\n",
-  );
-  try {
-    for (const resolved of [
-      { mode: "offline" as const, input },
-      { mode: "offline" as const },
-    ])
-      await expect(
-        validateInvite({
-          resolved,
-          options: testOptions({
-            configFile: configPath,
-            keyFile: path.join(dir, ".alcove.key"),
-          }),
-          acceptTimeout: 900,
-          log: silentLog,
-        }),
-      ).rejects.toThrow(
-        "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-          "linkage_fields or linkage_keys. Run 'alcove init'",
-      );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

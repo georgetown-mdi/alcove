@@ -56,7 +56,6 @@ export {
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
   linkageTermsStandingOf,
-  refuseRuleSetCitationWithoutRules,
   warnOnLinkageRuleSetCitationDrift,
 } from "./config/ruleSetCitation";
 export type {
@@ -75,7 +74,6 @@ export {
 export type {
   ConfigLinkageSource,
   ConfigLinkageSourceResult,
-  TermsDocumentAuthor,
   SFTPConnectionAwaitingAddress,
   WebRTCConnectionAwaitingAddress,
 } from "./config/loaders";

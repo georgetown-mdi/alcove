@@ -35,10 +35,7 @@ import {
   configFileRefusal,
   normalizeKeyPathSpelling,
 } from "./persist";
-import {
-  type LinkageTermsStanding,
-  refuseRuleSetCitationWithoutRules,
-} from "./ruleSetCitation";
+import type { LinkageTermsStanding } from "./ruleSetCitation";
 
 // --- Config reader -----------------------------------------------------------
 
@@ -217,15 +214,6 @@ export function describeConfigSchemaError(err: unknown): string {
 }
 
 /**
- * Who wrote the document a read takes linkage terms from. A document this
- * party wrote, `"own"`, is refused where its terms name a rule set and write
- * no rules ({@link refuseRuleSetCitationWithoutRules}), with the remedy its
- * author can take. A partner-authored terms document, `"partner"`, the
- * default, is left to the schema, which names the missing lists.
- */
-export type TermsDocumentAuthor = "own" | "partner";
-
-/**
  * Read the linkage-terms source from a config file, reporting a missing file
  * and a config that defines no `linkage_terms` as distinct outcomes, so each
  * caller attributes them in its own terms.
@@ -247,12 +235,9 @@ export type TermsDocumentAuthor = "own" | "partner";
  * is treated as intentional, so a broken one is reported for the user to
  * fix. Top-level keys are read as either the written snake_case form or
  * their camelCase spelling.
- *
- * @param author who wrote the document; see {@link TermsDocumentAuthor}.
  */
 export function readConfigLinkageSource(
   configPath: string,
-  author: TermsDocumentAuthor = "partner",
 ): ConfigLinkageSourceResult {
   // Read, then parse through the sensitive-file chokepoint. A read failure
   // holds only a path and errno (ENOENT means no config, not an error here); a
@@ -288,8 +273,6 @@ export function readConfigLinkageSource(
   const obj = raw as Record<string, unknown>;
   const rawTerms = obj["linkage_terms"] ?? obj["linkageTerms"];
   if (rawTerms === undefined) return { status: "no-linkage-terms" };
-
-  if (author === "own") refuseRuleSetCitationWithoutRules(obj, configPath);
 
   // Read through the entry point whose refusals address the party who WROTE
   // the document: this block is the operator's own, and the file is open to
@@ -582,14 +565,11 @@ export function persistProvisionedServerAddress(
  * invitation's linkage terms, so one that defines none cannot serve as that
  * source and is a {@link UsageError} rather than a silent fall-through to
  * input inference.
- *
- * The file here is this party's own configuration (see
- * {@link TermsDocumentAuthor}).
  */
 export function loadConfigLinkageSource(
   configPath: string,
 ): ConfigLinkageSource | undefined {
-  const result = readConfigLinkageSource(configPath, "own");
+  const result = readConfigLinkageSource(configPath);
   if (result.status === "no-config-file") return undefined;
   if (result.status === "no-linkage-terms")
     throw configFileRefusal(
