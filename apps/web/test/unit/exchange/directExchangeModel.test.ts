@@ -137,8 +137,52 @@ describe("previewInferredTerms", () => {
       { name: "county", type: "county" },
     ]);
     expect(terms.linkageRuleSet).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.2.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+      fieldSet: { name: "baseline-pii", version: "1.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.2.0" },
+    });
+    expect(preview.refusal).toBeUndefined();
+  });
+
+  test("a file with house number and ZIP columns previews the street number rule", () => {
+    // The same keys, fields and citation the CLI's quick exchange runs for this
+    // header (apps/cli/test/unit/commands/zeroSetup.test.ts), so the two
+    // parties of a CLI-to-browser quick exchange present equal terms.
+    const preview = previewInferredTerms(
+      ["first_name", "last_name", "date_of_birth", "house_number", "zip"],
+      DEFAULT_PREVIEW_IDENTITY,
+      DIRECT_LINKAGE_STRATEGY_DEFAULT,
+      DIRECT_DEDUPLICATE_DEFAULT,
+    );
+    const terms = preview.linkageTerms;
+    expect(terms.linkageKeys.map((key) => key.name)).toStrictEqual([
+      "LN + FN + DOB + street number + ZIP5",
+      "LN + FN + DOB + ZIP5",
+      "LN + FN + DOB + ZIP3",
+      "ZIP5 + soundex(LN) + FN + DOB",
+      "ZIP5 + LN + FN + DOB +/-1 year",
+      "LN + FN + DOB",
+      "swap(LN, FN) + DOB",
+      "split(LN) + FN + DOB",
+      "LN + FN + YOB + MOB + ZIP5",
+    ]);
+    expect(terms.linkageFields).toStrictEqual([
+      {
+        name: "first_name",
+        type: "first_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      { name: "date_of_birth", type: "date_of_birth" },
+      { name: "zip_code", type: "zip_code" },
+      { name: "street_number", type: "street_number" },
+    ]);
+    expect(terms.linkageRuleSet).toStrictEqual({
+      fieldSet: { name: "baseline-pii", version: "1.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.2.0" },
     });
     expect(preview.refusal).toBeUndefined();
   });

@@ -301,6 +301,65 @@ describe("the geography rules on the guided list", () => {
   });
 });
 
+describe("the street number rule on the guided list", () => {
+  const STREET_NUMBER_RULE = "LN + FN + DOB + street number + ZIP5";
+  const withStreetNumber = csvOf({
+    client_id: "1",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "01/02/1990",
+    house_number: "123",
+    zip: "02139",
+  });
+  const seeded = editorFromCsv("Dana", withStreetNumber);
+
+  test.each([
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+    AT_95_NO,
+    AT_99_YES,
+    { floor: 99, oneStateOrMetroArea: false } as const,
+  ])("is listed first, before the ZIP5 rule, at %o", (selection) => {
+    const selected = editorWithPrecisionFloorSelection(seeded, selection);
+    expect(keyNames(selected)).toStrictEqual(
+      catalogKeyNames(selected, selection),
+    );
+    expect(keyNames(selected).slice(0, 2)).toStrictEqual([
+      STREET_NUMBER_RULE,
+      "LN + FN + DOB + ZIP5",
+    ]);
+    expect(enabledKeys(selected.draft)).toHaveLength(
+      selected.draft.keys.length,
+    );
+    expect(buildAdvancedTerms(selected.draft).linkageRuleSet).toStrictEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+  });
+
+  test("is not listed for a file with no street number column", () => {
+    const zipOnly = editorFromCsv(
+      "Dana",
+      csvOf({
+        client_id: "1",
+        first_name: "Ann",
+        last_name: "Lee",
+        dob: "01/02/1990",
+        zip: "02139",
+      }),
+    );
+    expect(keyNames(zipOnly)).not.toContain(STREET_NUMBER_RULE);
+  });
+
+  test("cleans the street number field the terms declare", () => {
+    const terms = buildAdvancedTerms(seeded.draft);
+    expect(terms.linkageFields.map((field) => field.name)).toContain(
+      "street_number",
+    );
+    expect(seeded.draft.standardization.map((entry) => entry.output)).toContain(
+      "street_number",
+    );
+  });
+});
+
 describe("keys written in Expert authoring or loaded from a document", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 

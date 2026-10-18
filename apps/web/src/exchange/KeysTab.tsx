@@ -73,17 +73,18 @@ import type {
 /** The types the guided list states the shared-value caveat beside. */
 const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<string> = new Set([
   ...CONTACT_AND_LOCATION_FIELD_TYPES,
+  "street_number",
   "state",
   "county",
 ]);
 
-/** The caveat beside guided keys over a phone, email, ZIP, state or county
- * field. */
+/** The caveat beside guided keys over a phone, email, street number, ZIP,
+ * state or county field. */
 const SHARED_VALUE_CAVEAT =
   "A phone number or email address many people share, such as a shelter's " +
   "phone or a site's email, matches people who are not the same person. A " +
-  "ZIP code, state or county column must hold each person's own, never that " +
-  "of a site that serves them.";
+  "street number, ZIP code, state or county column must hold each person's " +
+  "own, never that of a site that serves them.";
 
 /** The coverage question's two answers, as the radio values hold them. */
 const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;

@@ -1179,11 +1179,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           }
         },
@@ -1217,11 +1217,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           }
         },
@@ -1254,7 +1254,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "gHYisQsG6DP8UMKJrhrCLgr9l8vDhgC-7qjkjxC9q-c",
+        "termsHash": "5eyWiPGWGlJQ2y1euwArOuw6fKHs-geW6fW7uwCDKMo",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1268,11 +1268,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           },
           "linkageRuleSetVerdict": {
@@ -1361,11 +1361,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           }
         },
@@ -1421,11 +1421,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           }
         },
@@ -1455,7 +1455,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "ziGR5cxglivrH_IjztbUpFg8J7Xf8tifIfcPavw9Ox4",
+        "termsHash": "75CE48m8nxx84tgYGD42_8E3moccxum5GQ7P5h7UPfM",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1477,11 +1477,11 @@
           "linkageRuleSet": {
             "fieldSet": {
               "name": "baseline-pii",
-              "version": "1.2.0"
+              "version": "1.3.0"
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.1.0"
+              "version": "2.2.0"
             }
           },
           "linkageRuleSetVerdict": {

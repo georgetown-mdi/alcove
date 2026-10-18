@@ -5,7 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.1.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.2.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -121,9 +121,8 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks or a rule not yet added to the set:
+Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
 
-- Rule 21: the `street_number` type exists; the rule is not yet in the built-in key set.
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
 - The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 
@@ -312,7 +311,10 @@ Trick et al. (2019) conflict on whether Cook County's reversed-name rule needed 
 
 #### 21. `LN + FN + DOB + street number + ZIP5`
 
-99%. Any coverage. Refinement of rule 22. Needs `street_number`.
+99%. Any coverage. Refinement of rule 22.
+
+Built from the `street_number` element, the leading house number of the cleaned address, beside `ZIP5`.
+Like the ZIP, the street number is the person's own address, never a site's: a site's address recorded for its clients would put every client of that site at one number.
 
 Its 99% rests on rule 22's extrapolation.
 Ansolabehere and Hersh (2016) report 97.5% for a voter-file match, but that is a recall over a union of matching sweeps, and the paper measures neither `ZIP5` nor street number + `ZIP5` alone, so it is not a basis here.

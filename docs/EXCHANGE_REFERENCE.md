@@ -55,8 +55,8 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 
 The built-in rules are two named artifacts, versioned separately:
 
-- **`baseline-pii`, version `1.2.0`** -- the linkage **fields**: ten PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, and `county`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.1.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
+- **`baseline-pii`, version `1.3.0`** -- the linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
+- **`precision-ranked-rules`, version `2.2.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -301,7 +301,7 @@ The first eleven values are the complete type set for a `linkage_fields[].type`.
 
 Additional types will be added as their use case arises.
 
-A `street_number` column is inferred only from a number-named column, `street_number`, `house_number` or `address_number` and their short spellings (complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). An address-line column such as `address`, `street_address` or `address1` is not inferred as one; to match on the number such a column starts with, type it `street_number` in your `metadata`. Either way the value is cleaned to the number it starts with, so `123 Main St Apt 4` and `123` both match as `123`, and a value that does not start with a digit is dropped. It has no built-in linkage key, so it is matched on only where your terms declare a key that uses it; on its own a house number matches everyone at that number on any street, so it does its work beside a ZIP code, a name and a date of birth. The cleaning steps and the rules for leading zeros, ranges and fractions are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#street_number).
+A `street_number` column is inferred only from a number-named column, `street_number`, `house_number` or `address_number` and their short spellings (complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). An address-line column such as `address`, `street_address` or `address1` is not inferred as one; to match on the number such a column starts with, type it `street_number` in your `metadata`. Either way the value is cleaned to the number it starts with, so `123 Main St Apt 4` and `123` both match as `123`, and a value that does not start with a digit is dropped. On its own a house number matches everyone at that number on any street, so its built-in linkage key, `LN + FN + DOB + street number + ZIP5`, puts it beside a ZIP code, a name and a date of birth: a street number column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. The column must hold each person's own address, never that of a site that serves them. The cleaning steps and the rules for leading zeros, ranges and fractions are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#street_number).
 
 A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
 A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`. The built-in rule `LN + FN + DOB + ZIP3` does.
@@ -423,10 +423,10 @@ linkage_terms:
   linkage_rule_set:
     field_set:
       name: "baseline-pii"
-      version: "1.2.0"
+      version: "1.3.0"
     key_set:
       name: "precision-ranked-rules"
-      version: "2.1.0"
+      version: "2.2.0"
 ```
 
 Every path that fills in your fields and keys for you writes this citation: a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, and the console's quick exchange, whose confirm screen shows it in the terms it infers from your file. It travels wherever the terms do -- into the invitation, onto the wire, onto the accepting party's terms review, and into each party's exchange record, which is what lets "which rules did this linkage match on" be answered by a name and a version.

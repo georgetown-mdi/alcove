@@ -192,6 +192,10 @@ function baseValues(party: PartyName, record: number): Record<string, string> {
       case "county":
         values[field.name] = `${nameCode(party, record)} County`;
         break;
+      case "street_number":
+        values[field.name] =
+          `${(party === "a" ? 1000 : 5000) + record} Main St Apt 4`;
+        break;
       default:
         throw new Error(
           `the built-in linkage fields declare a "${(field as LinkageField).type}" field, which this file generates no value for`,
