@@ -19,6 +19,7 @@ import {
   RELAY_OPERATOR_DISCLOSURE,
   RESTRICTION_SAVED_RELAY_NOT_SAVED,
   RelaySettingsScreen,
+  SAVED_EXCHANGE_ALLOWED_RELAYS_LINE,
 } from "@exchange/RelaySettingsScreen";
 import {
   RELAY_TEST_FAILED,
@@ -195,6 +196,9 @@ describe("RelaySettingsScreen: allowed relays", () => {
     expect(ALLOWED_RELAYS_SCOPE).toContain(
       "Your partner's side can still connect through a relay you leave out.",
     );
+    await expect
+      .element(page.getByText(SAVED_EXCHANGE_ALLOWED_RELAYS_LINE))
+      .toBeVisible();
     await expect
       .element(allowedField())
       .toHaveAccessibleDescription(
@@ -383,6 +387,9 @@ describe("RelaySettingsScreen: the relays a run may use on each build", () => {
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
     ).toBeNull();
     expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
+    expect(
+      page.getByText(SAVED_EXCHANGE_ALLOWED_RELAYS_LINE).query(),
+    ).toBeNull();
     expect(document.body.textContent).not.toContain("allowed relays below");
     await expect.element(turnField()).toBeVisible();
     await expect

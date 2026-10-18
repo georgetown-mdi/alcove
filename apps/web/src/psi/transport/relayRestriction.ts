@@ -128,18 +128,16 @@ export type AllowedRelayLines =
   | { ok: true; entries?: Array<string> }
   | { ok: false; problems: Array<AllowedRelayProblem> };
 
-/**
- * Read one allowed relay per line from `text`, skipping blank lines, each
- * normalized as core's `connection.allowed_relays` entry is. Every refused
- * line is reported.
- */
-export function parseAllowedRelayLines(text: string): AllowedRelayLines {
+function readAllowedRelayLines(
+  text: string,
+  maxEntryLength: number | undefined,
+): AllowedRelayLines {
   const entries: Array<string> = [];
   const problems: Array<AllowedRelayProblem> = [];
   text.split(/\r?\n/).forEach((line, index) => {
     if (line.trim() === "") return;
     const entry =
-      line.length > MAX_ALLOWED_RELAY_LENGTH
+      maxEntryLength !== undefined && line.length > maxEntryLength
         ? undefined
         : normalizeAllowedRelay(line);
     if (entry === undefined)
@@ -150,12 +148,61 @@ export function parseAllowedRelayLines(text: string): AllowedRelayLines {
     else if (!entries.includes(entry)) entries.push(entry);
   });
   if (problems.length > 0) return { ok: false, problems };
-  if (entries.length > MAX_ALLOWED_RELAYS)
+  return entries.length === 0 ? { ok: true } : { ok: true, entries };
+}
+
+/**
+ * Read one allowed relay per line from `text` for this browser's stored
+ * setting, skipping blank lines, each normalized as core's
+ * `connection.allowed_relays` entry is, within the stored setting's bounds.
+ * Every refused line is reported.
+ */
+export function parseAllowedRelayLines(text: string): AllowedRelayLines {
+  const lines = readAllowedRelayLines(text, MAX_ALLOWED_RELAY_LENGTH);
+  if (lines.ok && (lines.entries?.length ?? 0) > MAX_ALLOWED_RELAYS)
     return {
       ok: false,
       problems: [{ message: `enter at most ${MAX_ALLOWED_RELAYS} relays` }],
     };
-  return entries.length === 0 ? { ok: true } : { ok: true, entries };
+  return lines;
+}
+
+/**
+ * Read one allowed relay per line from `text` for an exchange's own
+ * configuration: as {@link parseAllowedRelayLines}, under core's entry rule
+ * alone, with no bound on how many entries or how long one is.
+ */
+export function parseExchangeAllowedRelayLines(
+  text: string,
+): AllowedRelayLines {
+  return readAllowedRelayLines(text, undefined);
+}
+
+/**
+ * The text that shows an allowed-relays list in the field, one entry per
+ * line; empty where the list is unset or empty.
+ */
+export function allowedRelaysText(
+  allowedRelays: ReadonlyArray<string> | undefined,
+): string {
+  return (allowedRelays ?? []).join("\n");
+}
+
+/**
+ * The field error for a parse of the allowed relays, each problem prefixed
+ * with its line where it names one, or `undefined` where the text parsed.
+ */
+export function allowedRelayLinesError(
+  lines: AllowedRelayLines,
+): string | undefined {
+  if (lines.ok) return undefined;
+  return lines.problems
+    .map((problem) =>
+      problem.line === undefined
+        ? problem.message
+        : `Line ${problem.line}: ${problem.message}`,
+    )
+    .join("; ");
 }
 
 // --- The words a run and the acceptance review use ---------------------------
@@ -178,8 +225,9 @@ export const ALLOWED_RELAYS_SCOPE =
 
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
-  "To let a run try a relay left out, add its host to Allowed relays on " +
-  "the Relay server page, or remove the setting.";
+  "To let a run try a relay left out, add its host to Allowed relays, or " +
+  "remove the setting. A saved exchange sets them on its own page, and any " +
+  "other exchange on the Relay server page.";
 
 function urlList(urls: ReadonlyArray<string>): string {
   return urls.map((url) => sanitizeForDisplay(url)).join(", ");

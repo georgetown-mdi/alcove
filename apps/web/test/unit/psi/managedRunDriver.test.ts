@@ -1933,26 +1933,29 @@ describe("the relay registrations of a run whose allowed relays leave its own re
     url: "https://own.example.org:8443",
     exchangeId: "riverbend-q3",
   };
-  const ENROLLED = {
-    ...RECORD,
-    relayRegistrar: REGISTRAR,
-    relayRegistrationPendingSince: "2026-09-29T12:00:00.000Z",
-  } as RunnableManagedExchangeRecord;
+  /** An enrolled record whose own allowed relays are `allowedRelays`. */
+  function enrolled(allowedRelays: Array<string>) {
+    return {
+      ...RECORD,
+      exchangeFile: {
+        connection: {
+          channel: "webrtc",
+          server: { host: "signaling.example.org" },
+          allowedRelays,
+        },
+      },
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: "2026-09-29T12:00:00.000Z",
+    } as unknown as RunnableManagedExchangeRecord;
+  }
 
-  /** This browser's stored own relay and allowed relays, as a run reads them. */
-  function storeRelaySettings(allowedRelays: Array<string>) {
-    const values = new Map([
-      [
-        "alcove-own-relay",
-        JSON.stringify({ version: 1, turn: [OWN_URL], stun: [] }),
-      ],
-      [
-        "alcove-relay-restriction",
-        JSON.stringify({ version: 1, allowedRelays }),
-      ],
-    ]);
+  /** This browser's stored own relay, as a run reads it. */
+  function storeOwnRelay() {
     vi.stubGlobal("localStorage", {
-      getItem: (key: string) => values.get(key) ?? null,
+      getItem: (key: string) =>
+        key === "alcove-own-relay"
+          ? JSON.stringify({ version: 1, turn: [OWN_URL], stun: [] })
+          : null,
     });
   }
 
@@ -1960,8 +1963,9 @@ describe("the relay registrations of a run whose allowed relays leave its own re
     vi.unstubAllGlobals();
   });
 
-  test("an own relay the allowed relays leave out still gets the pending retry and the rotated key's registration", async () => {
-    storeRelaySettings(["elsewhere.example.org"]);
+  test("an own relay the record's allowed relays leave out still gets the pending retry and the rotated key's registration", async () => {
+    storeOwnRelay();
+    const ENROLLED = enrolled(["elsewhere.example.org"]);
     vi.mocked(retryPendingManagedRelayRegistration).mockResolvedValueOnce();
     vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
       kind: "registered",
@@ -1972,6 +1976,10 @@ describe("the relay registrations of a run whose allowed relays leave its own re
 
     await runDriver(new AbortController().signal, undefined, ENROLLED);
 
+    expect(mockedRendezvous).toHaveBeenCalledWith(
+      expect.objectContaining({ exchangeFile: ENROLLED.exchangeFile }),
+      expect.anything(),
+    );
     expect(retryPendingManagedRelayRegistration).toHaveBeenCalledWith(
       ENROLLED,
       REGISTRAR,

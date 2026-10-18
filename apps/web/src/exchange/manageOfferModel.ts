@@ -113,9 +113,11 @@ export interface ManagedExchangeDocumentParts {
 }
 
 /**
- * Compose this party's persisted exchange-file document from its parts and the
- * credential-free webrtc locator. `expectedPartnerDeduplicate` is copied verbatim,
- * never re-derived; `false` is preserved and only an absent field is omitted.
+ * Compose this party's persisted exchange-file document from its parts, the
+ * credential-free webrtc locator, and the relays its runs may use, which the
+ * connection holds as its `allowedRelays` where given.
+ * `expectedPartnerDeduplicate` is copied verbatim, never re-derived; `false`
+ * is preserved and only an absent field is omitted.
  *
  * @throws {ZodError} if the assembled document fails schema validation (a
  *   malformed locator, an out-of-range port).
@@ -123,9 +125,11 @@ export interface ManagedExchangeDocumentParts {
 export function composeManagedDocument(
   parts: ManagedExchangeDocumentParts,
   connection: WebRTCExchangeLocator,
+  allowedRelays?: ReadonlyArray<string>,
 ): ExchangeSpec {
   return composeManagedExchangeFile({
     connection,
+    ...(allowedRelays !== undefined ? { allowedRelays } : {}),
     linkageTerms: parts.linkageTerms,
     ...(parts.metadata !== undefined ? { metadata: parts.metadata } : {}),
     ...(parts.standardization !== undefined
@@ -166,6 +170,9 @@ export interface ManagedDepositInputs {
   documentParts: ManagedExchangeDocumentParts;
   /** The locator the document's connection block is composed from. */
   connection: WebRTCExchangeLocator;
+  /** The relays the completed exchange ran with, which the record keeps as its
+   * own; `undefined` where none were set. */
+  allowedRelays: ReadonlyArray<string> | undefined;
   /** The shared secret the completed run's handshake rotated to, stored as the
    * record's live secret. */
   rotatedSecret: string;
@@ -203,6 +210,7 @@ export function buildManagedDeposit(
           : {}),
       },
       inputs.connection,
+      inputs.allowedRelays,
     ),
     side: inputs.documentParts.side,
     sharedSecret: inputs.rotatedSecret,

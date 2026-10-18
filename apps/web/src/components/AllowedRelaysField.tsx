@@ -1,18 +1,24 @@
 import { Textarea } from "@mantine/core";
 
+import type { MantineSpacing } from "@mantine/core";
+
 /**
  * The field that sets the relays an exchange may use, one entry per line. The
- * caller parses the text (`parseAllowedRelayLines`) and states the field's
- * scope beside it.
+ * caller parses the text (`parseAllowedRelayLines` for this browser's stored
+ * setting, `parseExchangeAllowedRelayLines` for an exchange's own) and states
+ * the field's scope beside it.
  */
 export function AllowedRelaysField({
   value,
   error,
   onChange,
+  mt,
 }: {
   value: string;
   error: string | undefined;
   onChange: (text: string) => void;
+  /** The space above the field, as the fields beside it set theirs. */
+  mt?: MantineSpacing;
 }) {
   return (
     <Textarea
@@ -24,6 +30,7 @@ export function AllowedRelaysField({
       error={error}
       errorProps={{ role: "alert" }}
       onChange={(event) => onChange(event.currentTarget.value)}
+      {...(mt !== undefined ? { mt } : {})}
     />
   );
 }

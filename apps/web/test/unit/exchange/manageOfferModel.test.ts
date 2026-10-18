@@ -77,6 +77,7 @@ function depositInputs(
       metadata: inviterMetadata,
     },
     connection: webrtcLocatorFromEndpoint(inviterEndpoint),
+    allowedRelays: undefined,
     rotatedSecret: generateSharedSecret(),
     choices: { label: "Riverbend quarterly" },
     ...overrides,
@@ -234,6 +235,31 @@ describe("buildManagedDeposit (inviter)", () => {
     // setup lifetime never flows into the record's expires.
     expect(deposit.expires).toBe(new Date(now + 30 * 86_400_000).toISOString());
   });
+
+  test("keeps the allowed relays the exchange ran with as the record's own", () => {
+    const deposit = buildManagedDeposit(
+      depositInputs({
+        allowedRelays: ["relay.example.org", "backup.example.org:443"],
+      }),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(deposit.exchangeFile.connection).toMatchObject({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+  });
+
+  test("an empty list is kept as one, and none set writes no field", () => {
+    const empty = buildManagedDeposit(
+      depositInputs({ allowedRelays: [] }),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(empty.exchangeFile.connection).toMatchObject({ allowedRelays: [] });
+    const unset = buildManagedDeposit(
+      depositInputs(),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(unset.exchangeFile.connection).not.toHaveProperty("allowedRelays");
+  });
 });
 
 describe("buildManagedDeposit (acceptor)", () => {
@@ -253,6 +279,7 @@ describe("buildManagedDeposit (acceptor)", () => {
             : {}),
         },
         connection: webrtcLocatorFromEndpoint(invitationEndpoint),
+        allowedRelays: undefined,
         rotatedSecret: generateSharedSecret(),
         choices: { label: "Clinic A partnership" },
       },
@@ -293,6 +320,7 @@ describe("the deposit's side and its document", () => {
       {
         documentParts: parts,
         connection,
+        allowedRelays: undefined,
         rotatedSecret: generateSharedSecret(),
         choices: { label: "Clinic A partnership" },
       },

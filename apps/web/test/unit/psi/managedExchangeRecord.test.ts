@@ -35,6 +35,7 @@ import {
   channelThisAppDoesNotRun,
   composeManagedExchangeFile,
   diagnoseManagedExchangeRecord,
+  managedAllowedRelays,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   recentRunsOf,
@@ -570,6 +571,70 @@ describe("applyManagedExchangeLocalEdits", () => {
         label: "x".repeat(MAX_LABEL_LENGTH + 1),
       }),
     ).toThrow();
+  });
+
+  test("sets and drops the connection's allowed relays, leaving the rest of the connection", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const set = applyManagedExchangeLocalEdits(record, {
+      allowedRelays: ["relay.example.org"],
+      retentionDisposition: "Filed with the program office.",
+    });
+    expect(set.exchangeFile.connection).toEqual({
+      ...record.exchangeFile.connection,
+      allowedRelays: ["relay.example.org"],
+    });
+    expect(set.exchangeFile.retentionDisposition).toBe(
+      "Filed with the program office.",
+    );
+    expect(managedAllowedRelays(set.exchangeFile)).toEqual([
+      "relay.example.org",
+    ]);
+
+    const dropped = applyManagedExchangeLocalEdits(set, {
+      allowedRelays: null,
+    });
+    expect(dropped.exchangeFile.connection).toEqual(
+      record.exchangeFile.connection,
+    );
+    expect(managedAllowedRelays(dropped.exchangeFile)).toBeUndefined();
+    expect(set.exchangeFile.connection).toMatchObject({
+      allowedRelays: ["relay.example.org"],
+    });
+  });
+
+  test("an empty list is set as one", () => {
+    const edited = applyManagedExchangeLocalEdits(
+      buildManagedExchangeRecord(newExchange()),
+      { allowedRelays: [] },
+    );
+    expect(managedAllowedRelays(edited.exchangeFile)).toEqual([]);
+  });
+
+  test("an allowed relay off core's entry form is refused", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(() =>
+      applyManagedExchangeLocalEdits(record, {
+        allowedRelays: ["turns:relay.example.org:443"],
+      }),
+    ).toThrow();
+  });
+
+  test("allowed relays on a connection other than webrtc are refused, not dropped", () => {
+    const record = buildManagedExchangeRecord({
+      label: "Riverbend quarterly",
+      exchangeFile: assembleExchangeSpec({
+        connection: connectionFromLocator({
+          channel: "filedrop",
+          path: "/exchange",
+        }),
+        linkageTerms,
+      }),
+    });
+    expect(() =>
+      applyManagedExchangeLocalEdits(record, {
+        allowedRelays: ["relay.example.org"],
+      }),
+    ).toThrow(/webrtc connection, not filedrop/);
   });
 
   test("an edit that does not touch the policy leaves expires untouched", () => {

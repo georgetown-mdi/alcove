@@ -1,14 +1,15 @@
 /**
- * The pure model behind the stored exchange's editor for the four settings of
+ * The pure model behind the stored exchange's editor for the five settings of
  * its document that are this party's alone -- which of its own columns its
  * result file holds (`includeOwnColumns`), whether that file names the key
  * each match was made on (`includeMatchingKey`), how its input file separates
- * fields (`csvDelimiter`), and the retention note filed with its exchange
- * record (`retentionDisposition`): what each control starts on for a stored
+ * fields (`csvDelimiter`), the retention note filed with its exchange record
+ * (`retentionDisposition`), and the relays its runs may use (a webrtc
+ * connection's `allowedRelays`): what each control starts on for a stored
  * document, what a save writes, and what re-reading the input file under a
  * changed delimiter found. No React and no I/O.
  *
- * None of the four is a term: nothing about them is sent to the partner or
+ * None of the five is a term: nothing about them is sent to the partner or
  * folded into the agreed-terms hash, so each edits in place on a stored record
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Local settings of the document").
  */
@@ -21,7 +22,13 @@ import {
   INITIAL_CSV_DELIMITER_CHOICE,
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
+import {
+  allowedRelayLinesError,
+  allowedRelaysText,
+  parseExchangeAllowedRelayLines,
+} from "@psi/transport/relayRestriction";
 import { assessManagedInputColumns } from "@psi/managed/managedInputGuard";
+import { managedAllowedRelays } from "@psi/managed/managedExchangeRecord";
 import { matchingKeyWithheldReason } from "@psi/matchingKeyModel";
 import { ownColumnsActionable } from "@psi/ownColumnsModel";
 import { retentionNoteValue } from "@exchange/manageOfferModel";
@@ -31,7 +38,7 @@ import type { CsvDelimiterChoice } from "@components/csvDelimiterChoice";
 import type { ManagedExchangeLocalEdits } from "@psi/managed/managedExchangeRecord";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
-/** The four controls' values as the operator has them. */
+/** The five controls' values as the operator has them. */
 export interface LocalDocumentFieldValues {
   ownColumns: OwnColumnsChoice;
   /** Whether the result file ends with the `matched_on_key` column. */
@@ -39,16 +46,27 @@ export interface LocalDocumentFieldValues {
   delimiter: CsvDelimiterChoice;
   /** The retention note as typed. */
   retentionNote: string;
+  /** The allowed relays as typed, one per line. */
+  allowedRelays: string;
 }
 
-/** The edits a save of the four controls writes. */
+/** The edits a save of the five controls writes. */
 export type LocalDocumentFieldEdits = Pick<
   ManagedExchangeLocalEdits,
   | "includeOwnColumns"
   | "includeMatchingKey"
   | "csvDelimiter"
   | "retentionDisposition"
+  | "allowedRelays"
 >;
+
+/**
+ * What the Allowed relays field states for a stored document whose list is
+ * empty: its runs keep no TURN url, which the empty field would not show.
+ */
+export const NO_ALLOWED_RELAY_NOTE =
+  "This exchange's configuration allows no relay server, so its runs " +
+  "connect without one. Enter the relays its runs may use.";
 
 /**
  * The delimiter choice that shows a stored `csvDelimiter`: the named option
@@ -76,7 +94,64 @@ export function localDocumentFieldValuesFrom(
     matchingKey: exchangeFile.includeMatchingKey === true,
     delimiter: csvDelimiterChoiceFrom(exchangeFile.csvDelimiter),
     retentionNote: exchangeFile.retentionDisposition ?? "",
+    allowedRelays: allowedRelaysText(managedAllowedRelays(exchangeFile)),
   };
+}
+
+/**
+ * Whether the Allowed relays control is offered for a document: only on a
+ * webrtc connection, the one channel with relays. Where it is not offered, a
+ * save leaves the connection as it is.
+ */
+export function allowedRelaysOffered(exchangeFile: ExchangeSpec): boolean {
+  return exchangeFile.connection.channel === "webrtc";
+}
+
+/**
+ * Whether a document's allowed relays are an empty list, under which its runs
+ * keep no TURN url ({@link NO_ALLOWED_RELAY_NOTE}).
+ */
+export function allowsNoRelay(exchangeFile: ExchangeSpec): boolean {
+  return managedAllowedRelays(exchangeFile)?.length === 0;
+}
+
+/**
+ * The field error the allowed relays as typed show, or `undefined` where they
+ * can be saved. Core's entry rule only, with no bound on how many or how long
+ * ({@link parseExchangeAllowedRelayLines}).
+ */
+export function allowedRelaysError(text: string): string | undefined {
+  return allowedRelayLinesError(parseExchangeAllowedRelayLines(text));
+}
+
+function sameEntries(
+  a: ReadonlyArray<string>,
+  b: ReadonlyArray<string> | undefined,
+): boolean {
+  return (
+    b !== undefined &&
+    a.length === b.length &&
+    a.every((entry, index) => entry === b[index])
+  );
+}
+
+/**
+ * What a save writes for the allowed relays as typed: nothing where the text
+ * is the stored list's or reads as the same entries, the entries where they
+ * differ, and `null` where the field is emptied of a list that names relays.
+ * An empty stored list shows as an empty field, so an empty field keeps it.
+ */
+function allowedRelaysEdit(
+  exchangeFile: ExchangeSpec,
+  text: string,
+): ReadonlyArray<string> | null | undefined {
+  const stored = managedAllowedRelays(exchangeFile);
+  if (text === allowedRelaysText(stored)) return undefined;
+  const lines = parseExchangeAllowedRelayLines(text);
+  if (!lines.ok) return undefined;
+  if (lines.entries === undefined)
+    return stored !== undefined && stored.length > 0 ? null : undefined;
+  return sameEntries(lines.entries, stored) ? undefined : lines.entries;
 }
 
 /**
@@ -126,13 +201,13 @@ export function changedCsvDelimiter(
 }
 
 /**
- * What a save writes for the four controls: an edit for each value that
+ * What a save writes for the five controls: an edit for each value that
  * differs from the stored document, and nothing for one that does not, so a
  * save that changed only the label leaves the document as it was imported. A
  * `null` drops the field: "Nothing of mine" for the own-columns choice, an
- * unchecked matched-key box, and an empty retention note. A refused delimiter
- * writes nothing; the editor blocks
- * the save on it.
+ * unchecked matched-key box, an empty retention note, and an emptied list of
+ * allowed relays. A refused delimiter or allowed relay writes nothing; the
+ * editor blocks the save on it.
  */
 export function localDocumentFieldEdits(
   exchangeFile: ExchangeSpec,
@@ -155,6 +230,10 @@ export function localDocumentFieldEdits(
   if (values.retentionNote !== (exchangeFile.retentionDisposition ?? ""))
     edits.retentionDisposition =
       retentionNoteValue(values.retentionNote) ?? null;
+  if (allowedRelaysOffered(exchangeFile)) {
+    const allowedRelays = allowedRelaysEdit(exchangeFile, values.allowedRelays);
+    if (allowedRelays !== undefined) edits.allowedRelays = allowedRelays;
+  }
   return edits;
 }
 

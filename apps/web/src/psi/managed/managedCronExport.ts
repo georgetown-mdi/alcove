@@ -6,7 +6,7 @@
  * (docs/notes/managed-exchange-design.md, "Who this is for").
  *
  * This module is the pure half -- no download, no store write, no spend; the
- * one thing it reads beyond the record is this browser's relay settings,
+ * one thing it reads beyond the record is this browser's own relay setting,
  * through an injected reader.
  *
  * - It SPLITS the export artifact rather than serializing a second format.
@@ -55,9 +55,9 @@
  *   when the relay it allocates on is one the invitation names. A
  *   registrar with no own TURN url to write, and a registration a re-invite
  *   left pending, which no run can confirm, are refused.
- * - It WRITES this browser's allowed relays, which a run here applies, as
- *   `connection.allowed_relays` where set. The import does not take the
- *   field back: it refuses a configuration holding it.
+ * - It WRITES the record's own allowed relays, which a run here applies, as
+ *   `connection.allowed_relays`, with the rest of the stored connection; the
+ *   import reads the field back onto the record.
  *
  * The key file is a plaintext credential under the CLI key file's own trust
  * model: custody and storage permissions, never a passphrase (the spec's
@@ -79,7 +79,6 @@ import {
 } from "@jobContract/handoffBindPaths";
 
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
-import { readRelayRestriction } from "../transport/relayRestriction";
 
 import {
   connectionFieldsNotHeld,
@@ -105,7 +104,6 @@ import type {
 } from "./managedExchangeRecord";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
-import type { RelayRestriction } from "../transport/relayRestriction";
 
 /** The config file name `alcove exchange` reads at its default config path
  * (`DEFAULT_CONFIG_PATH`, `apps/cli/src/config.ts`), so a run in the folder
@@ -257,25 +255,11 @@ function relayRegistrationConnectionFields(
 }
 
 /**
- * The connection field this browser's relay restriction sets: its allowed
- * relays, where set.
- */
-function relayRestrictionConnectionFields(
-  readRestriction: () => RelayRestriction,
-): Pick<WebRTCConnectionConfig, "allowedRelays"> {
-  const { allowedRelays } = readRestriction();
-  return allowedRelays !== undefined
-    ? { allowedRelays: [...allowedRelays] }
-    : {};
-}
-
-/**
- * The connection the export writes: the stored one, its `invitationRelay`
- * whole, with a webrtc `role` set from the record's `side`, this browser's
- * relay restriction ({@link relayRestrictionConnectionFields}) and, on a
- * record whose runs register at a relay registrar, the fields that register
- * there ({@link relayRegistrationConnectionFields}). A webrtc record always
- * holds a side (the record schema binds the two), so a missing one is
+ * The connection the export writes: the stored one, its `invitationRelay` and
+ * `allowedRelays` whole, with a webrtc `role` set from the record's `side`
+ * and, on a record whose runs register at a relay registrar, the fields that
+ * register there ({@link relayRegistrationConnectionFields}). A webrtc record
+ * always holds a side (the record schema binds the two), so a missing one is
  * refused rather than exported roleless for the CLI to refuse at the
  * operator's first scheduled run.
  */
@@ -283,7 +267,6 @@ function exportedConnection(
   connection: ConnectionConfig,
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
-  readRestriction: () => RelayRestriction,
 ): ConnectionConfig {
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
@@ -296,7 +279,6 @@ function exportedConnection(
   const exported: WebRTCConnectionConfig = {
     ...connection,
     role: record.side,
-    ...relayRestrictionConnectionFields(readRestriction),
     ...(record.relayRegistrar !== undefined
       ? relayRegistrationConnectionFields(record.relayRegistrar, readOwn)
       : {}),
@@ -364,9 +346,9 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
 /**
  * Compose the exchange-file document the export holds: the stored document
  * with a webrtc `role` set from the record's `side` and, when the record holds
- * a max-age policy, an `authentication` block holding it, this browser's
- * relay restriction, and on a record whose runs register at a relay
- * registrar, the fields that register there. Returns the schema's parse
+ * a max-age policy, an `authentication` block holding it, and on a record
+ * whose runs register at a relay registrar, the fields that register there.
+ * Returns the schema's parse
  * result rather than the assembled input, matching `assembleExchangeSpec`'s
  * discipline, so a value the exchange-file schema would not accept fails
  * here rather than at the operator's first scheduled run.
@@ -381,18 +363,12 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
 function composeCronExportDocument(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
-  readRestriction: () => RelayRestriction,
 ): ExchangeSpec {
   const connection = heldConnectionOrRefuse(record.exchangeFile);
   assertNoStoredAuthentication(record.exchangeFile);
   const document = ExchangeSpecSchema.parse({
     ...record.exchangeFile,
-    connection: exportedConnection(
-      connection,
-      record,
-      readOwn,
-      readRestriction,
-    ),
+    connection: exportedConnection(connection, record, readOwn),
     ...(record.tokenMaxAgeDays !== undefined
       ? { authentication: { tokenMaxAgeDays: record.tokenMaxAgeDays } }
       : {}),
@@ -463,9 +439,8 @@ function exportedExchangeArgv(
 export function composeManagedCronExportConfig(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  readRestriction: () => RelayRestriction = readRelayRestriction,
 ): ManagedCommandLineConfig {
-  const document = composeCronExportDocument(record, readOwn, readRestriction);
+  const document = composeCronExportDocument(record, readOwn);
   const argv = exportedExchangeArgv(record.schedule);
   return {
     config: {
@@ -484,9 +459,8 @@ export function composeManagedCronExportConfig(
  * Compose a managed record into the CLI's two files and the command that runs
  * them: the configuration half above, plus the key file. The record is read,
  * never written, and no marker, spend, or download is involved; `readOwn`
- * and `readRestriction` read this browser's relay settings. The record type
- * is the runnable one, so the key half cannot be asked of a record that
- * holds no secret.
+ * reads this browser's own relay setting. The record type is the runnable
+ * one, so the key half cannot be asked of a record that holds no secret.
  *
  * @throws {Error} if the record's stored connection holds a field or a
  *   literal credential the app does not hold, its stored document holds an
@@ -498,14 +472,9 @@ export function composeManagedCronExportConfig(
 export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  readRestriction: () => RelayRestriction = readRelayRestriction,
 ): ManagedCronExport {
   assertNoReinviteRegistrationPending(record);
-  const commandLine = composeManagedCronExportConfig(
-    record,
-    readOwn,
-    readRestriction,
-  );
+  const commandLine = composeManagedCronExportConfig(record, readOwn);
   const keyFields = keyFileFieldsFromRecord(record);
   return {
     ...commandLine,

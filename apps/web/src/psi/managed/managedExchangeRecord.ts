@@ -964,6 +964,10 @@ export interface ManagedExchangeFileComposition {
    * kept, written into its own exchange record at each run. Absent where the
    * operator wrote none. */
   retentionDisposition?: ExchangeSpec["retentionDisposition"];
+  /** The relays this exchange's runs may use, written to the connection as
+   * the command line's `connection.allowed_relays`. An empty list keeps no
+   * TURN url; absent restricts none. */
+  allowedRelays?: ReadonlyArray<string>;
 }
 
 /**
@@ -972,20 +976,40 @@ export interface ManagedExchangeFileComposition {
  * serializes, so one code path holds the assembly rule for both artifacts. The
  * connection is expanded from the locator through {@link connectionFromLocator}
  * (validated through the strict `WebRTCEndpointSchema`, so a credential-bearing
- * field is rejected rather than stripped); the schema's parse result, never the
- * raw input, is what the record persists, so no credential is representable in a
- * stored document and no `authentication` block is ever assembled.
+ * field is rejected rather than stripped), with `allowedRelays` beside it where
+ * given; the schema's parse result, never the raw input, is what the record
+ * persists, so no credential is representable in a stored document and no
+ * `authentication` block is ever assembled.
  *
  * @throws {ZodError} if the assembled spec fails validation (an out-of-range port,
- *   a malformed locator, a smuggled unknown key on the locator).
+ *   a malformed locator, a smuggled unknown key on the locator, an allowed
+ *   relay not of core's entry form).
  */
 export function composeManagedExchangeFile(
   composition: ManagedExchangeFileComposition,
 ): ExchangeSpec {
+  const { connection: locator, allowedRelays, ...document } = composition;
+  const connection = connectionFromLocator(locator);
   return assembleExchangeSpec({
-    ...composition,
-    connection: connectionFromLocator(composition.connection),
+    ...document,
+    connection:
+      allowedRelays !== undefined && connection.channel === "webrtc"
+        ? { ...connection, allowedRelays: [...allowedRelays] }
+        : connection,
   });
+}
+
+/**
+ * The relays a stored document's runs may use: its webrtc connection's
+ * `allowedRelays`, the command line's `connection.allowed_relays`. `undefined`
+ * where it sets none or the connection is on another channel, which restricts
+ * none.
+ */
+export function managedAllowedRelays(
+  exchangeFile: ExchangeSpec,
+): ReadonlyArray<string> | undefined {
+  const { connection } = exchangeFile;
+  return connection.channel === "webrtc" ? connection.allowedRelays : undefined;
 }
 
 /** The fields a caller supplies to create a new managed exchange record. The
@@ -2027,10 +2051,10 @@ export function applyManagedExchangeWorkingDirectory(
 }
 
 /** The local fields an operator may edit in place without a re-invite: the
- * display label, the run schedule, the max-token-age policy, and the four
+ * display label, the run schedule, the max-token-age policy, and the five
  * per-party settings of the document that are not terms (its own-columns
- * choice, its matched-key choice, its field delimiter, and its retention
- * note). The agreed terms, the
+ * choice, its matched-key choice, its field delimiter, its retention note, and
+ * its webrtc connection's allowed relays). The agreed terms, the rest of the
  * connection, and the secret are not editable here: the columns this party
  * sends change in place through {@link applyManagedExchangeSentColumns}, while
  * a change to the match or identifier columns is a new exchange. */
@@ -2049,6 +2073,9 @@ export interface ManagedExchangeLocalEdits {
   csvDelimiter?: string | null;
   /** A new `retentionDisposition` for the document, or `null` to drop it. */
   retentionDisposition?: string | null;
+  /** New allowed relays for the document's webrtc connection, or `null` to
+   * drop them so its runs use every relay they list. */
+  allowedRelays?: ReadonlyArray<string> | null;
 }
 
 /** The edits that change the document rather than a record field. */
@@ -2062,13 +2089,32 @@ const LOCAL_DOCUMENT_EDIT_FIELDS = [
 >;
 
 /**
+ * The connection `allowedRelays` sets: the webrtc connection with the list,
+ * or without one for `null`. Another channel has no allowed relays, so an
+ * edit naming them there is refused rather than dropped by the parse.
+ */
+function connectionWithAllowedRelays(
+  connection: ExchangeSpec["connection"],
+  allowedRelays: ReadonlyArray<string> | null,
+): ExchangeSpec["connection"] {
+  if (connection.channel !== MANAGED_RUN_CHANNEL)
+    throw new Error(
+      `allowed relays apply to a webrtc connection, not ${connection.channel}`,
+    );
+  const { allowedRelays: _replaced, ...rest } = connection;
+  return allowedRelays === null
+    ? rest
+    : { ...rest, allowedRelays: [...allowedRelays] };
+}
+
+/**
  * Apply local edits to a record, producing a validated new record. Only the
- * label, schedule, max-token-age policy, and the document's four per-party
+ * label, schedule, max-token-age policy, and the document's five per-party
  * settings update in place; a `null` drops the corresponding optional field. The
  * result is re-validated through the schema, so an over-long label, a refused
- * delimiter, or an own-columns or matched-key choice on terms that cannot act
- * on it is rejected here exactly as at create or import. The input record is
- * not mutated.
+ * delimiter, an allowed relay not of core's entry form, or an own-columns or
+ * matched-key choice on terms that cannot act on it is rejected here exactly
+ * as at create or import. The input record is not mutated.
  *
  * An edit to `tokenMaxAgeDays` re-derives `expires` conservatively through
  * {@link deriveEditedExpiry}: a shorter policy recomputes the bound from the
@@ -2081,6 +2127,8 @@ const LOCAL_DOCUMENT_EDIT_FIELDS = [
  * not touch `tokenMaxAgeDays` leaves `expires` untouched.
  *
  * @throws {ZodError} if the edited record is invalid.
+ * @throws {Error} if `allowedRelays` is edited on a connection other than
+ *   webrtc.
  */
 export function applyManagedExchangeLocalEdits(
   record: ManagedExchangeRecord,
@@ -2093,8 +2141,16 @@ export function applyManagedExchangeLocalEdits(
     if (edits.schedule === null) delete next.schedule;
     else next.schedule = edits.schedule;
   }
+  if (edits.allowedRelays !== undefined)
+    next.exchangeFile = {
+      ...next.exchangeFile,
+      connection: connectionWithAllowedRelays(
+        next.exchangeFile.connection,
+        edits.allowedRelays,
+      ),
+    };
   if (LOCAL_DOCUMENT_EDIT_FIELDS.some((field) => edits[field] !== undefined)) {
-    const exchangeFile: ExchangeSpec = { ...record.exchangeFile };
+    const exchangeFile: ExchangeSpec = { ...next.exchangeFile };
     if (edits.includeOwnColumns === null) delete exchangeFile.includeOwnColumns;
     else if (edits.includeOwnColumns !== undefined)
       exchangeFile.includeOwnColumns = edits.includeOwnColumns;

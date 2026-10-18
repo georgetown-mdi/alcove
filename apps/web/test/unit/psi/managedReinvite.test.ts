@@ -6,7 +6,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
@@ -18,6 +18,7 @@ import {
   canReinviteFromRecord,
   composeManagedReinvite,
 } from "@psi/managed/managedReinvite";
+import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 
 import type {
   ManagedExchangeRecord,
@@ -85,7 +86,6 @@ const seams = {
   now: () => NOW,
   ownRelay: undefined,
   defaultRelay: undefined,
-  allowedRelays: undefined,
 };
 
 const DEFAULT_RELAY_TURN_URL = "turns:turn.example.org:443?transport=tcp";
@@ -193,14 +193,38 @@ describe("composeManagedReinvite", () => {
     });
   });
 
-  test("leaves the build's default relay out where the allowed relays do", async () => {
-    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+  test("leaves the build's default relay out where the record's allowed relays do", async () => {
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        allowedRelays: ["relay.example.org"],
+      }),
+    });
+    const reinvite = await composeManagedReinvite(record, location, {
       ...seams,
       defaultRelay: DEFAULT_RELAY,
-      allowedRelays: ["relay.example.org"],
     });
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).not.toHaveProperty("relay");
+  });
+
+  test("keeps the build's default relay where the record's allowed relays name it", async () => {
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        allowedRelays: ["turn.example.org"],
+      }),
+    });
+    const reinvite = await composeManagedReinvite(record, location, {
+      ...seams,
+      defaultRelay: DEFAULT_RELAY,
+    });
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      relay: { turn: [DEFAULT_RELAY_TURN_URL] },
+    });
   });
 
   test("the deep link contains the encoded token in its fragment", async () => {
@@ -286,5 +310,42 @@ describe("the re-invite rotation's expires provenance", () => {
     const token: InvitationToken = await decodeInvitation(reinvite.encoded);
     expect(token.expires).toBe(reinvite.tokenExpires);
     expect(token.expires).not.toBe(reinvite.rotation.expires);
+  });
+});
+
+describe("the re-invite driver's relays", () => {
+  test("reads this browser's own relay under the record's allowed relays, never this browser's stored ones", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-relay-restriction"
+          ? JSON.stringify({ version: 1, allowedRelays: ["elsewhere.example"] })
+          : null,
+    });
+    try {
+      const record = inviterRecord({
+        exchangeFile: composeManagedExchangeFile({
+          connection: { channel: "webrtc", host: "signaling.example.org" },
+          linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+          allowedRelays: ["relay.example.org"],
+        }),
+      });
+      const asked: Array<ReadonlyArray<string> | undefined> = [];
+      await reinviteManagedExchange(record, {
+        location: () => location,
+        generateSecret: () => FRESH_SECRET,
+        encode: encodeInvitation,
+        persistRotation: () => Promise.resolve(record),
+        registerRelayKey: (_replaced, written) => Promise.resolve(written),
+        now: () => NOW,
+        ownRelay: (allowedRelays) => {
+          asked.push(allowedRelays);
+          return undefined;
+        },
+        defaultRelay: () => undefined,
+      });
+      expect(asked).toEqual([["relay.example.org"]]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

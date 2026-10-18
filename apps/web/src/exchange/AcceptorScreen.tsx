@@ -1242,6 +1242,7 @@ function AcceptorInvitationScreen({
                 : {}),
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
+            allowedRelays: readRelayRestriction().allowedRelays,
             rotatedSecret,
             choices,
           },

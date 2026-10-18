@@ -15,10 +15,14 @@ import {
   RETENTION_NOTE_NOTICE_WEB,
   RETENTION_NOTE_PLACEHOLDER,
 } from "@psi/receiptsModel";
+import { AllowedRelaysField } from "@components/AllowedRelaysField";
 
 import styles from "@styles/app.module.css";
 
-import { delimiterRecheckNote } from "./localDocumentFieldsModel";
+import {
+  NO_ALLOWED_RELAY_NOTE,
+  delimiterRecheckNote,
+} from "./localDocumentFieldsModel";
 
 import type { LocalFieldsDraft } from "./useLocalFieldsDraft";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
@@ -30,20 +34,23 @@ const RESULT_FILE_STORED_NOTICE =
   "nothing extra, and their own result file is untouched.";
 
 /**
- * The controls for the four settings of a stored exchange's document that
+ * The controls for the five settings of a stored exchange's document that
  * are this party's alone: which of its own columns its result file holds (only
  * where the terms give it a result file), whether that file names the key each
  * match was made on (shown disabled, with the reason, where the terms leave no
- * key to name), how its input file separates fields, and the retention note
- * filed with its exchange record. Each starts on the value the stored document
- * holds. Presentational over the draft ({@link useLocalFieldsDraft}); the
- * surface saves the draft's edits with its own.
+ * key to name), how its input file separates fields, the retention note
+ * filed with its exchange record, and the relays its runs may use (only on a
+ * webrtc connection). Each starts on the value the stored document holds.
+ * Presentational over the draft ({@link useLocalFieldsDraft}); the surface
+ * saves the draft's edits with its own.
  *
  * A changed separator re-reads the stored input file, where there is one, and
- * what the read found is stated under the control.
+ * what the read found is stated under the control. `allowedRelaysScope`, where
+ * given, states under the relays what they decide for the runs that read them.
  */
 export function LocalDocumentFields({
   draft,
+  allowedRelaysScope,
 }: {
   draft: Pick<
     LocalFieldsDraft,
@@ -59,7 +66,13 @@ export function LocalDocumentFields({
     | "retentionNote"
     | "editRetentionNote"
     | "retentionError"
+    | "allowedRelays"
+    | "allowedRelaysOffered"
+    | "allowsNoRelay"
+    | "editAllowedRelays"
+    | "allowedRelaysError"
   >;
+  allowedRelaysScope?: string;
 }) {
   const recheckNote =
     draft.delimiterRecheck === undefined
@@ -132,6 +145,26 @@ export function LocalDocumentFields({
         onChange={(event) => draft.editRetentionNote(event.currentTarget.value)}
         mt="sm"
       />
+      {draft.allowedRelaysOffered && (
+        <>
+          <AllowedRelaysField
+            value={draft.allowedRelays}
+            error={draft.allowedRelaysError}
+            onChange={draft.editAllowedRelays}
+            mt="sm"
+          />
+          {draft.allowsNoRelay && (
+            <p className={`${styles.small} ${styles.sub}`}>
+              {NO_ALLOWED_RELAY_NOTE}
+            </p>
+          )}
+          {allowedRelaysScope !== undefined && (
+            <p className={`${styles.small} ${styles.sub}`}>
+              {allowedRelaysScope}
+            </p>
+          )}
+        </>
+      )}
     </>
   );
 }

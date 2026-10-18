@@ -6,7 +6,8 @@
  *
  * The rule is an allowlist measured off the app's own composition rather than a
  * list restated here: the connection may hold what a credential-free locator on
- * its own channel expands to ({@link connectionFromLocator}), and the document
+ * its own channel expands to ({@link connectionFromLocator}), on webrtc with
+ * the allowed relays the record composer adds beside it, and the document
  * only the top-level fields the record composer produces
  * ({@link composeManagedExchangeFile}), plus the `authentication` block the
  * export injects from the local max-age policy and the parts this app holds
@@ -47,7 +48,6 @@ import type {
   ExchangeSpec,
   HttpAuth,
   SFTPConnectionConfig,
-  WebRTCExchangeLocator,
 } from "@alcove/core";
 import type { ManagedExchangeFileComposition } from "./managedExchangeRecord";
 
@@ -56,32 +56,51 @@ import type { ManagedExchangeFileComposition } from "./managedExchangeRecord";
 type LocatorChannel = ExchangeLocator["channel"];
 
 /**
- * The webrtc locator the document-field probe below is driven with, holding
- * every optional field, so what the probe measures is the widest shape the app
- * can compose rather than the narrowest.
+ * The record composition the webrtc and document-field probes below are driven
+ * with, holding every optional field, so what the probes measure is the widest
+ * shape the app can compose rather than the narrowest. Typed
+ * `Required<ManagedExchangeFileComposition>`, so a field added to the record
+ * composer's input fails this module's compile until the probe holds it. Only
+ * the keys a composition produces are read, never these values.
  */
-const WIDEST_WEBRTC_PROBE_LOCATOR: WebRTCExchangeLocator = {
-  channel: "webrtc",
-  host: "locator.invalid",
-  port: 443,
-  path: "/",
-  relay: {
-    turn: ["turns:relay.example.org:443?transport=tcp"],
-    stun: ["stun:stun.example.org:3478"],
+const WIDEST_COMPOSITION: Required<ManagedExchangeFileComposition> = {
+  connection: {
+    channel: "webrtc",
+    host: "locator.invalid",
+    port: 443,
+    path: "/",
+    relay: {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: ["stun:stun.example.org:3478"],
+    },
   },
+  linkageTerms: getDefaultLinkageTerms("composition probe"),
+  metadata: [],
+  standardization: [],
+  expectedPartnerDeduplicate: false,
+  includeOwnColumns: "all",
+  includeMatchingKey: true,
+  csvDelimiter: "|",
+  retentionDisposition: "composition probe",
+  allowedRelays: ["relay.example.org"],
 };
 
+/** The document {@link WIDEST_COMPOSITION} composes. */
+const WIDEST_COMPOSED_DOCUMENT = composeManagedExchangeFile(WIDEST_COMPOSITION);
+
 /**
- * One credential-free locator per channel, each holding every optional field,
- * so each connection allowlist below is the widest a locator on that channel
- * expands to. Keyed by channel, so a channel added to the locator union fails
- * this module's compile until it has a probe. Only the KEYS an expansion
- * produces are read, never these values.
+ * One credential-free locator per file-sync channel, each holding every
+ * optional field, so each connection allowlist below is the widest a locator
+ * on that channel expands to. Keyed by channel, so a channel added to the
+ * locator union fails this module's compile until it has a probe. Only the
+ * keys an expansion produces are read, never these values.
  */
 const WIDEST_PROBE_LOCATORS: {
-  [Channel in LocatorChannel]: Extract<ExchangeLocator, { channel: Channel }>;
+  [Channel in Exclude<LocatorChannel, "webrtc">]: Extract<
+    ExchangeLocator,
+    { channel: Channel }
+  >;
 } = {
-  webrtc: WIDEST_WEBRTC_PROBE_LOCATOR,
   sftp: {
     channel: "sftp",
     host: "locator.invalid",
@@ -108,20 +127,17 @@ interface HeldConnectionFields {
 }
 
 /**
- * The field names one channel's credential-free locator expands to. Read off
- * {@link connectionFromLocator}'s own arm for that channel rather than
- * restated, so the allowlist cannot drift from the composition rule
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "The connection block: credential-free
- * by composition").
+ * The field names a composed connection on `channel` holds, at the connection
+ * and at its nested `server`.
  */
-function credentialFreeLocatorFields(
+function composedConnectionFields(
   channel: LocatorChannel,
+  composed: ConnectionConfig,
 ): HeldConnectionFields {
-  const composed = connectionFromLocator(WIDEST_PROBE_LOCATORS[channel]);
   if (composed.channel !== channel)
     throw new Error(
-      `the credential-free locator expansion did not compose a ${channel} ` +
-        `connection from a ${channel} locator`,
+      `the composition did not compose a ${channel} connection from a ` +
+        `${channel} locator`,
     );
   const server: unknown = "server" in composed ? composed.server : undefined;
   return {
@@ -130,6 +146,22 @@ function credentialFreeLocatorFields(
       typeof server === "object" && server !== null ? Object.keys(server) : [],
     ),
   };
+}
+
+/**
+ * The field names one file-sync channel's credential-free locator expands to.
+ * Read off {@link connectionFromLocator}'s own arm for that channel rather than
+ * restated, so the allowlist cannot drift from the composition rule
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "The connection block: credential-free
+ * by composition").
+ */
+function credentialFreeLocatorFields(
+  channel: Exclude<LocatorChannel, "webrtc">,
+): HeldConnectionFields {
+  return composedConnectionFields(
+    channel,
+    connectionFromLocator(WIDEST_PROBE_LOCATORS[channel]),
+  );
 }
 
 /** The sftp connection fields held beyond the locator's expansion. */
@@ -158,8 +190,16 @@ function withHeldFields(
   };
 }
 
+/**
+ * What a configuration on each channel holds. On webrtc, the connection the
+ * record composer writes ({@link composeManagedExchangeFile}): the locator's
+ * expansion and the allowed relays beside it.
+ */
 const HELD_CONNECTION_FIELDS: Record<LocatorChannel, HeldConnectionFields> = {
-  webrtc: credentialFreeLocatorFields("webrtc"),
+  webrtc: composedConnectionFields(
+    "webrtc",
+    WIDEST_COMPOSED_DOCUMENT.connection,
+  ),
   sftp: withHeldFields(
     credentialFreeLocatorFields("sftp"),
     SFTP_HELD_CONNECTION_FIELDS,
@@ -396,38 +436,16 @@ export function fileReferenceFields(
 }
 
 /**
- * The top-level document fields the app can put in a stored document, measured
- * by composing one. Typed `Required<ManagedExchangeFileComposition>`, so a
- * field added to the record composer's input fails this module's compile
- * until the probe holds it. Read off {@link composeManagedExchangeFile}'s
- * OUTPUT, not its input: the probe measures which KEYS survive composition,
- * never what they hold. The connection is one key whatever its channel, so one
- * webrtc probe measures the document for every channel.
- */
-function composableDocumentFields(): ReadonlySet<string> {
-  const widestComposition: Required<ManagedExchangeFileComposition> = {
-    connection: WIDEST_WEBRTC_PROBE_LOCATOR,
-    linkageTerms: getDefaultLinkageTerms("composition probe"),
-    metadata: [],
-    standardization: [],
-    expectedPartnerDeduplicate: false,
-    includeOwnColumns: "all",
-    includeMatchingKey: true,
-    csvDelimiter: "|",
-    retentionDisposition: "composition probe",
-  };
-  return new Set(Object.keys(composeManagedExchangeFile(widestComposition)));
-}
-
-/**
  * The top-level fields a command-line document may hold: what the app can
- * compose (above), the `authentication` block holding the max-age policy, and
- * the parts held unchanged on a record that does not run here. Nothing else
- * the shared exchange-file schema can represent belongs in a managed
- * exchange's alcove.yaml.
+ * compose, read off {@link composeManagedExchangeFile}'s output for the widest
+ * composition, the `authentication` block holding the max-age policy, and the
+ * parts held unchanged on a record that does not run here. The connection is
+ * one key whatever its channel, so one webrtc probe measures the document for
+ * every channel. Nothing else the shared exchange-file schema can represent
+ * belongs in a managed exchange's alcove.yaml.
  */
 const COMMAND_LINE_DOCUMENT_FIELDS: ReadonlySet<string> = new Set([
-  ...composableDocumentFields(),
+  ...Object.keys(WIDEST_COMPOSED_DOCUMENT),
   "authentication",
   ...DOCUMENT_PARTS_THIS_APP_DOES_NOT_RUN,
 ]);

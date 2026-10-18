@@ -61,6 +61,10 @@ export const CONSOLE_RELAY_RESTRICTION_LINE =
   "its connection.allowed_relays key decides which relays an exchange may " +
   "use.";
 
+/** Where a saved exchange's allowed relays are set instead of here. */
+export const SAVED_EXCHANGE_ALLOWED_RELAYS_LINE =
+  "A saved exchange uses the Allowed relays on its own page instead.";
+
 /** The status after a save stored the allowed relays, and not the relay
  * server addresses. */
 export const RESTRICTION_SAVED_RELAY_NOT_SAVED =
@@ -100,6 +104,7 @@ function AllowedRelaysControls({
   return (
     <>
       <p>{ALLOWED_RELAYS_SCOPE}</p>
+      <p>{SAVED_EXCHANGE_ALLOWED_RELAYS_LINE}</p>
 
       <Stack gap="md" mt="md">
         <AllowedRelaysField

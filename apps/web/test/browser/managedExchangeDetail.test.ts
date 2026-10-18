@@ -34,6 +34,8 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
 
+import { ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
+import { NO_ALLOWED_RELAY_NOTE } from "@recurring/localDocumentFieldsModel";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -1579,6 +1581,114 @@ describe("managed exchange detail document settings", () => {
     expect(saved[0].csvDelimiter).toBe(";");
     expect(saved[0]).not.toHaveProperty("includeOwnColumns");
     expect(saved[0]).not.toHaveProperty("retentionDisposition");
+  });
+
+  /** A record whose own allowed relays are `allowedRelays`. */
+  function relaysRecord(allowedRelays?: ReadonlyArray<string>) {
+    return record("acceptor", {
+      exchangeFile: composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+      }),
+    });
+  }
+
+  function recordingSaves() {
+    const saved: Array<ManagedExchangeLocalEdits> = [];
+    const onSave = (edits: ManagedExchangeLocalEdits) => {
+      saved.push(edits);
+      return Promise.resolve();
+    };
+    return { saved, onSave };
+  }
+
+  test("the allowed relays start on the record's own list, with what they decide, and a save writes the entered list", async () => {
+    const { saved, onSave } = recordingSaves();
+    renderDetail(relaysRecord(["relay.example.org"]), onSave);
+
+    const field = page.getByRole("textbox", { name: "Allowed relays" });
+    await expect.element(field).toHaveValue("relay.example.org");
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_SCOPE))
+      .toBeInTheDocument();
+
+    await field.fill("Relay.Example.org\nbackup.example.org:443");
+    await page.getByRole("button", { name: "Save settings" }).click();
+
+    await vi.waitFor(() => {
+      expect(saved).toHaveLength(1);
+    });
+    expect(saved[0].allowedRelays).toEqual([
+      "relay.example.org",
+      "backup.example.org:443",
+    ]);
+  });
+
+  test("emptying the allowed relays clears them, and a save that leaves them alone writes none", async () => {
+    const { saved, onSave } = recordingSaves();
+    renderDetail(relaysRecord(["relay.example.org"]), onSave);
+
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await vi.waitFor(() => {
+      expect(saved).toHaveLength(1);
+    });
+    expect(saved[0]).not.toHaveProperty("allowedRelays");
+
+    await page.getByRole("textbox", { name: "Allowed relays" }).fill("");
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await vi.waitFor(() => {
+      expect(saved).toHaveLength(2);
+    });
+    expect(saved[1].allowedRelays).toBeNull();
+  });
+
+  test("a refused entry is named by its line and blocks the save", async () => {
+    const { saved, onSave } = recordingSaves();
+    renderDetail(relaysRecord(), onSave);
+
+    await page
+      .getByRole("textbox", { name: "Allowed relays" })
+      .fill("relay.example.org\nturns:relay.example.org:443");
+
+    await expect
+      .element(page.getByRole("alert").filter({ hasText: "Line 2:" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Save settings" }))
+      .toBeDisabled();
+    expect(saved).toHaveLength(0);
+  });
+
+  test("a record allowing no relay says so, and an untouched save keeps it", async () => {
+    const { saved, onSave } = recordingSaves();
+    renderDetail(relaysRecord([]), onSave);
+
+    await expect
+      .element(page.getByText(NO_ALLOWED_RELAY_NOTE))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("textbox", { name: "Allowed relays" }))
+      .toHaveValue("");
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await vi.waitFor(() => {
+      expect(saved).toHaveLength(1);
+    });
+    expect(saved[0]).not.toHaveProperty("allowedRelays");
+  });
+
+  test("the field passes the accessibility rules", async () => {
+    renderDetail(relaysRecord(["relay.example.org"]), () => Promise.resolve());
+
+    await expect
+      .element(page.getByRole("textbox", { name: "Allowed relays" }))
+      .toBeInTheDocument();
+    const settings = page
+      .getByRole("heading", { name: "Local settings" })
+      .element()
+      .closest("div");
+    expect(settings).not.toBeNull();
+    if (settings !== null) expectNoAccessibilityViolations(settings);
   });
 });
 

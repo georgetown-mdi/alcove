@@ -58,6 +58,25 @@ shows the name itself, and states which of those rules it broke, so the fix is
 the header row rather than a retry -- the same document is refused every time.
 The one-off exchange that just completed is unaffected; nothing was stored.
 
+### The relays a saved exchange may use
+
+A saved exchange keeps its own **Allowed relays**, under Local settings on its
+page: the relay servers its runs may use, one host per line, with a port where
+needed. Its runs and re-invites apply this list, not the Allowed relays on the
+Relay server page: a run connects through and enrolls at only the relays an
+entry names, and a re-invite names only those relays in the invitation it
+creates. An empty field lets its runs use every relay they list. The entry
+form, the matching, and what the list does not decide are the command line's
+([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
+
+Saving an exchange as recurring starts its list from the Allowed relays the
+Relay server page holds at that moment. The list goes wherever the exchange
+goes: a backup holds it, the command-line export writes it as
+`connection.allowed_relays`, and an imported configuration that sets that key
+keeps it as written. A configuration whose list is empty allows no relay
+server, so its runs connect without one; the exchange's page says so beside
+the empty field, and entering relays there replaces the empty list.
+
 ## How a scheduled run happens
 
 A run with nobody present needs the app installed and running on Chromium (see
@@ -1196,7 +1215,8 @@ What the import accepts is what this app can hold:
   longer matches the format Alcove reads is refused naming the fields to fix,
   spelled as the file spells them.
 - **A connection this app can hold.** A webrtc connection may hold what this
-  app composes for it, a rendezvous address; a TURN credential, an ICE
+  app composes for it, a rendezvous address and its `allowed_relays`; a TURN
+  credential, an ICE
   provisioning block, or a PeerJS server key is refused by field name. A filedrop
   connection holds its folders and `options`. An sftp connection is held whole
   -- host, port, username, folders, `options`, `host_key_fingerprint`,
@@ -1227,12 +1247,14 @@ What the import accepts is what this app can hold:
 What is editable is what a browser-run exchange edits in place: the label; the
 maximum age for the exchange's secret, which the exported configuration holds as
 `authentication.token_max_age_days` for the command-line run to apply; and the
-four settings of the file that are this party's alone -- which of its own columns
+five settings of the file that are this party's alone -- which of its own columns
 its result file holds (`include_own_columns`), whether that file names the
 linkage key each match was made on (`include_matching_key`, shown unavailable,
 with the reason, on terms that leave no key to name), how its input file
-separates fields (`csv_delimiter`), and its retention note
-(`retention_disposition`).
+separates fields (`csv_delimiter`), its retention note
+(`retention_disposition`), and, on a webrtc connection, the relays its runs
+may use (`connection.allowed_relays`; see [The relays a saved exchange may
+use](#the-relays-a-saved-exchange-may-use)).
 The agreed terms are not among them: a configuration imported alone keeps its
 terms as the file states them, and an exchange imported with its key file
 changes them only under Change terms (see [Changing the terms of a saved

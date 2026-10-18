@@ -556,6 +556,58 @@ describe("beginManagedRendezvous: relay", () => {
     expect(onRunNotice).not.toHaveBeenCalled();
   });
 
+  test("an acceptor's record lists only the relays its own allowed relays keep, and says which", async () => {
+    stubAppLocation();
+    stubOwnRelay();
+    const named = {
+      turn: ["turns:partner-relay.example.org:443?transport=tcp"],
+    };
+    const { flows, acceptorCalls } = recordingFlows();
+    const onRunNotice = vi.fn();
+
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      composeManagedExchangeFile({
+        connection: { ...webrtcLocator, relay: named },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        allowedRelays: ["partner-relay.example.org"],
+      }),
+      { flows, onRunNotice },
+    );
+
+    expect(acceptorCalls[0].options?.relay).toEqual({
+      turn: named.turn,
+      stun: [],
+    });
+    expect(acceptorCalls[0].options?.relaysLeftOut).toEqual(ownRelay.turn);
+    expect(onRunNotice).toHaveBeenCalledWith(
+      expect.stringContaining(`leave out ${ownRelay.turn[0]}`),
+    );
+  });
+
+  test("this browser's stored allowed relays do not narrow a record's run", async () => {
+    stubAppLocation();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => {
+        if (key === "alcove-own-relay")
+          return JSON.stringify({ version: 1, ...ownRelay });
+        if (key === "alcove-relay-restriction")
+          return JSON.stringify({
+            version: 1,
+            allowedRelays: ["elsewhere.example.org"],
+          });
+        return null;
+      },
+    });
+    const { flows, acceptorCalls } = recordingFlows();
+
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
+
+    expect(acceptorCalls[0].options?.relay).toEqual(ownRelay);
+    expect(acceptorCalls[0].options?.relaysLeftOut).toEqual([]);
+  });
+
   test("with no own relay the flows get none", async () => {
     stubAppLocation();
     const { flows, acceptorCalls } = recordingFlows();

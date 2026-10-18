@@ -4,6 +4,7 @@ import {
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
+  mintExchangeSpec,
   parseExchangeSpec,
   parseSensitiveYaml,
   snakeizeKeys,
@@ -27,6 +28,9 @@ import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchang
 import { readManagedCommandLineConfiguration } from "@psi/managed/managedCommandLineImport";
 
 import {
+  allowedRelaysError,
+  allowedRelaysOffered,
+  allowsNoRelay,
   csvDelimiterChoiceFrom,
   delimiterRecheckFrom,
   delimiterRecheckNote,
@@ -46,7 +50,7 @@ import type {
 import type { LocalDocumentFieldValues } from "@recurring/localDocumentFieldsModel";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
-// The stored exchange's editor for its document's four per-party settings:
+// The stored exchange's editor for its document's five per-party settings:
 // what each control starts on for an imported document, what a save writes,
 // and that each edit reaches both the configuration the export hands back and
 // the document the next run is prepared from.
@@ -137,6 +141,7 @@ describe("an imported value pre-fills each control", () => {
           connection: {
             ...storedDocument().connection,
             role: "acceptor",
+            allowedRelays: ["relay.example.org", "backup.example.org:443"],
           },
         }),
       ),
@@ -147,6 +152,7 @@ describe("an imported value pre-fills each control", () => {
       matchingKey: true,
       delimiter: { option: ";", other: "" },
       retentionNote: note,
+      allowedRelays: "relay.example.org\nbackup.example.org:443",
     });
   });
 
@@ -156,6 +162,7 @@ describe("an imported value pre-fills each control", () => {
       matchingKey: false,
       delimiter: { option: ",", other: "" },
       retentionNote: "",
+      allowedRelays: "",
     });
   });
 
@@ -401,6 +408,152 @@ describe("each edit reaches the export and the next run", () => {
       csvDelimiter: ";",
       retentionDisposition: note,
     });
+  });
+});
+
+describe("the allowed relays", () => {
+  /** A stored document whose connection's allowed relays are `allowedRelays`. */
+  function relaysDocument(allowedRelays?: ReadonlyArray<string>) {
+    return composeManagedExchangeFile({
+      connection: { channel: "webrtc", host: "signaling.example.org" },
+      linkageTerms,
+      metadata,
+      ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+    });
+  }
+
+  function relaysRecord(allowedRelays?: ReadonlyArray<string>) {
+    return buildManagedExchangeRecord({
+      label: "Riverbend quarterly",
+      exchangeFile: relaysDocument(allowedRelays),
+      side: "inviter",
+      sharedSecret: generateSharedSecret(),
+    });
+  }
+
+  function connectionOf(record: ManagedExchangeRecord) {
+    return record.exchangeFile.connection;
+  }
+
+  function assembleSftpDocument(): ExchangeSpec {
+    return mintExchangeSpec({
+      connection: {
+        channel: "sftp",
+        host: "sftp.example.org",
+        path: "/exchange",
+      },
+      linkageTerms,
+    });
+  }
+
+  test("an untouched field writes nothing, an empty list included", () => {
+    for (const stored of [undefined, [], ["relay.example.org"]]) {
+      const document = relaysDocument(stored);
+      expect(
+        localDocumentFieldEdits(
+          document,
+          localDocumentFieldValuesFrom(document),
+        ),
+      ).toEqual({});
+    }
+  });
+
+  test("entered relays are set on the connection, reach the export, and read back", () => {
+    const edited = readBack(
+      save(relaysRecord(), {
+        allowedRelays: "Relay.Example.org\n\nbackup.example.org:443\n",
+      }),
+    );
+
+    expect(connectionOf(edited)).toMatchObject({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+    expect(exported(edited).connection).toMatchObject({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+    expect(
+      localDocumentFieldValuesFrom(edited.exchangeFile).allowedRelays,
+    ).toBe("relay.example.org\nbackup.example.org:443");
+  });
+
+  test("an emptied field clears them, so runs use every relay they list", () => {
+    const edited = readBack(
+      save(relaysRecord(["relay.example.org"]), { allowedRelays: "  \n" }),
+    );
+
+    expect(connectionOf(edited)).not.toHaveProperty("allowedRelays");
+    expect(exported(edited).connection).not.toHaveProperty("allowedRelays");
+  });
+
+  test("the same entries written another way write nothing", () => {
+    const document = relaysDocument(["relay.example.org"]);
+
+    expect(
+      localDocumentFieldEdits(document, {
+        ...localDocumentFieldValuesFrom(document),
+        allowedRelays: "RELAY.example.org.\n",
+      }),
+    ).toEqual({});
+  });
+
+  test("an empty stored list is stated, kept by an empty field, and replaced by entered relays", () => {
+    const document = relaysDocument([]);
+    expect(allowsNoRelay(document)).toBe(true);
+    expect(allowsNoRelay(relaysDocument())).toBe(false);
+    expect(
+      localDocumentFieldEdits(document, {
+        ...localDocumentFieldValuesFrom(document),
+        allowedRelays: "\n",
+      }),
+    ).toEqual({});
+
+    const edited = save(relaysRecord([]), {
+      allowedRelays: "relay.example.org",
+    });
+    expect(connectionOf(edited)).toMatchObject({
+      allowedRelays: ["relay.example.org"],
+    });
+  });
+
+  test("a refused entry is named by its line and writes nothing", () => {
+    const document = relaysDocument();
+    const text = "relay.example.org\nturns:relay.example.org:443";
+
+    expect(allowedRelaysError(text)).toMatch(/^Line 2: /);
+    expect(
+      localDocumentFieldEdits(document, {
+        ...localDocumentFieldValuesFrom(document),
+        allowedRelays: text,
+      }),
+    ).toEqual({});
+  });
+
+  test("only core's entry rule bounds them: no count or length cap", () => {
+    const many = Array.from(
+      { length: 12 },
+      (_unused, index) => `relay-${index}.example.org`,
+    );
+    const long = `${"a".repeat(1100)}.example.org`;
+    const text = [...many, long].join("\n");
+
+    expect(allowedRelaysError(text)).toBeUndefined();
+    const edited = readBack(save(relaysRecord(), { allowedRelays: text }));
+    expect(connectionOf(edited)).toMatchObject({
+      allowedRelays: [...many, long],
+    });
+  });
+
+  test("a connection on another channel is not offered them, and a save leaves it alone", () => {
+    const sftp = assembleSftpDocument();
+
+    expect(allowedRelaysOffered(sftp)).toBe(false);
+    expect(allowedRelaysOffered(relaysDocument())).toBe(true);
+    expect(
+      localDocumentFieldEdits(sftp, {
+        ...localDocumentFieldValuesFrom(sftp),
+        allowedRelays: "relay.example.org",
+      }),
+    ).toEqual({});
   });
 });
 

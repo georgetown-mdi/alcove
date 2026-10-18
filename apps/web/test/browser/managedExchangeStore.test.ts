@@ -928,6 +928,7 @@ describe("deposit persists a managed record of the party's side", () => {
       {
         documentParts: { side: "inviter", linkageTerms },
         connection: webrtcLocator,
+        allowedRelays: undefined,
         rotatedSecret: secret,
         choices: { label: "Riverbend quarterly" },
       },
@@ -949,6 +950,7 @@ describe("deposit persists a managed record of the party's side", () => {
       {
         documentParts: { side: "acceptor", linkageTerms },
         connection: webrtcLocator,
+        allowedRelays: undefined,
         rotatedSecret: secret,
         choices: { label: "Riverbend quarterly" },
       },
@@ -969,6 +971,7 @@ describe("deposit persists a managed record of the party's side", () => {
         {
           documentParts: { side: "inviter", linkageTerms },
           connection: webrtcLocator,
+          allowedRelays: undefined,
           rotatedSecret: generateSharedSecret(),
           choices: { label: "Invited partnership" },
         },
@@ -980,6 +983,7 @@ describe("deposit persists a managed record of the party's side", () => {
         {
           documentParts: { side: "acceptor", linkageTerms },
           connection: webrtcLocator,
+          allowedRelays: undefined,
           rotatedSecret: generateSharedSecret(),
           choices: { label: "Accepted partnership" },
         },

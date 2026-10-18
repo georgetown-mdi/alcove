@@ -56,6 +56,7 @@ import {
 
 import { deepLinkFor, invitationWebrtcEndpoint } from "../invitation";
 import { invitationRelayWithDefault } from "../transport/defaultRelay";
+import { managedAllowedRelays } from "./managedExchangeRecord";
 import { rotationWriteBack } from "./managedRunRotate";
 
 import type {
@@ -160,23 +161,21 @@ interface ManagedReinviteSeams {
    * {@link INVITATION_LIFETIME_SECONDS} and is bounded by
    * {@link assertInvitationLifetimeSeconds}. */
   lifetimeSeconds?: number;
-  /** This browser's own relay, which the invitation names; `undefined` names
-   * none. */
+  /** This browser's own relay, less the TURN urls the record's allowed relays
+   * leave out, which the invitation names; `undefined` names none. */
   ownRelay: RelayUrls | undefined;
   /** The build's default relay, whose TURN url the invitation names after the
    * own relay, with its registrar; `undefined` names none. */
   defaultRelay: DefaultRelaySetting | undefined;
-  /** The relays this exchange may use: the invitation names no TURN url an
-   * entry leaves out (`turnUrlIsAllowed` in core); `undefined` restricts
-   * none. */
-  allowedRelays: ReadonlyArray<string> | undefined;
 }
 
 /**
  * Compose a fast re-invite from a stored inviter record: mint a fresh setup secret,
  * build and encode the invitation token from the record's own document, and compute
  * the record rotation the host persists. The operator re-authors nothing -- the terms,
- * the committed send set, and the record's `id`/handle are all retained.
+ * the committed send set, and the record's `id`/handle are all retained. The
+ * invitation names no TURN url the record's allowed relays leave out
+ * (`turnUrlIsAllowed` in core).
  *
  * @throws {Error} if the record is not the inviter side (only the inviter re-mints; an
  *   acceptor's recovery is to accept the partner's fresh invitation), or if the setup
@@ -215,7 +214,7 @@ export async function composeManagedReinvite(
     invitationRelayWithDefault(
       seams.ownRelay,
       seams.defaultRelay,
-      seams.allowedRelays,
+      managedAllowedRelays(record.exchangeFile),
     ),
   );
   const encoded = await seams.encode(token);
