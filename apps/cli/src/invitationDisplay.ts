@@ -8,6 +8,7 @@ import {
   displayText,
   distinctLinkageRuleSetVerdicts,
   InternalConsistencyError,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   PROPOSED_NOT_APPLIED_NOTES,
@@ -434,6 +435,23 @@ function logList(
 }
 
 /**
+ * The explanation of the less certain mark, printed once beneath a key list
+ * holding a key marked so, in the words the web screens show behind their
+ * info button. `remedy` follows it where the reader can act only through
+ * the partner.
+ */
+export function displayLessCertainNote(
+  emit: ConsentSurfaceSink,
+  remedy?: string,
+): void {
+  emit(`  ${LESS_CERTAIN_KEY_COPY.mark}:`);
+  emit(
+    `    ${LESS_CERTAIN_KEY_COPY.explanation}` +
+      (remedy !== undefined ? ` ${remedy}` : ""),
+  );
+}
+
+/**
  * One declared payload direction's column names, painted at most
  * {@link MAX_DECLARED_NAMES_SHOWN} deep and closed by the shared line
  * counting the names left out. Only the declared payload directions take
@@ -508,7 +526,10 @@ function displayLinkageKey(
   // separator.
   emit(
     `      matches on: ${key.headerFields.join(" - ")}` +
-      (key.swapHeaderMarker !== undefined ? ` ${key.swapHeaderMarker}` : ""),
+      (key.swapHeaderMarker !== undefined ? ` ${key.swapHeaderMarker}` : "") +
+      (key.lessCertainHeaderMarker !== undefined
+        ? ` ${key.lessCertainHeaderMarker}`
+        : ""),
   );
   emit("      elements:");
   for (const element of key.elements) {
@@ -1035,6 +1056,8 @@ export function displayInvitation(params: {
   displayLinkageFields(emit, summary);
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   for (const key of summary.linkageKeys) displayLinkageKey(emit, key);
+  if (summary.linkageKeys.some((key) => key.lessCertain))
+    displayLessCertainNote(emit, LESS_CERTAIN_KEY_COPY.acceptorRemedy);
 
   // What this party will RECEIVE: the inviter's `payload.send`, which an
   // acceptance mirrors into this party's `payload.receive` and every terms

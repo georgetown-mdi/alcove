@@ -15,12 +15,10 @@ import {
   AlgorithmSchema,
   CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_PRECISION_FLOOR_SELECTION,
+  LESS_CERTAIN_KEY_COPY,
   LinkageStrategySchema,
-  ONE_STATE_OR_METRO_AREA_HELP,
-  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
-  ONE_STATE_OR_METRO_AREA_QUESTION,
   PRECISION_FLOORS,
-  precisionFloorAsksCoverage,
+  linkageKeyIsLessCertain,
   precisionFloorStatement,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -37,6 +35,7 @@ import {
 } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
+import { LessCertainInfo } from "@components/LessCertainInfo";
 import { TermsImportExport } from "@components/TermsImportExport";
 
 import {
@@ -86,21 +85,20 @@ const SHARED_VALUE_CAVEAT =
   "street number, ZIP code, state or county column must hold each person's " +
   "own, never that of a site that serves them.";
 
-/** The coverage question's two answers, as the radio values hold them. */
-const COVERAGE_ANSWER = { yes: "yes", no: "no" } as const;
-
 /**
- * The Matching keys tab: the precision floor and coverage question the guided
- * keys are drawn from the built-in catalog with, the guided ordered key list
- * (enable + reorder), the expert switch that opens element-by-element
- * authoring and terms import/export, and the matching settings -- the linkage
- * strategy, matching method, and deduplication controls, each live while the
- * exchange applies what it writes.
+ * The Matching keys tab: the precision floor the guided keys are drawn from
+ * the built-in catalog with, the guided ordered key list (enable + reorder),
+ * the expert switch that opens element-by-element authoring and terms
+ * import/export, and the matching settings -- the linkage strategy, matching
+ * method, and deduplication controls, each live while the exchange applies
+ * what it writes.
  *
- * The list holds the built-in keys the chosen floor and answer select for
- * these columns, each with a checkbox and the reorder pair. Both choices are
- * withheld once the keys were written in Expert authoring or loaded from a
- * document, with a note saying so and, where the file supplies a built-in
+ * The list holds the built-in keys the chosen floor selects for these
+ * columns, each with a checkbox and the reorder pair, and a key core marks
+ * less certain (`linkageKeyIsLessCertain`) states the mark in its label with
+ * the button that explains it. The floor is withheld once the keys were
+ * written in Expert authoring or loaded from a document, with a note saying
+ * so and, where the file supplies a built-in
  * rule, an action that replaces those keys, fields and cleaning with a new
  * invitation's: no floor selected them. On the console, keys an opened
  * configuration states (`keysFromOpenedConfiguration`,
@@ -135,7 +133,7 @@ export function KeysTab({
   csv: AcquiredCsv;
   expertMode: boolean;
   onExpertMode: (on: boolean) => void;
-  /** Reseed the guided keys at a precision floor and coverage answer. */
+  /** Reseed the guided keys at a precision floor. */
   onPrecisionFloorSelection: (selection: PrecisionFloorSelection) => void;
   /** Replace keys written in Expert authoring or loaded from a document, with
    * their fields and cleaning, by a new invitation's, once the operator
@@ -168,6 +166,12 @@ export function KeysTab({
     () => declaredFieldsFor(editor.draft),
     [editor.draft],
   );
+  // A loaded document's own field declarations name its keys' fields, and
+  // take precedence over the ones the columns declare.
+  const keyFields = useMemo(
+    () => [...declaredFields, ...(editor.draft.importedLinkageFields ?? [])],
+    [declaredFields, editor.draft.importedLinkageFields],
+  );
   const currentTerms = useMemo(
     () => buildAdvancedTerms(editor.draft),
     [editor.draft],
@@ -187,7 +191,6 @@ export function KeysTab({
   );
   const selection =
     editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;
-  const asksCoverage = precisionFloorAsksCoverage(selection.floor);
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -231,7 +234,7 @@ export function KeysTab({
         <>
           <Radio.Group
             label="Built-in rules"
-            description="Changing this or the answer below lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
+            description="Changing this lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
             value={String(selection.floor)}
             onChange={(value) => {
               const floor = PRECISION_FLOORS.find(
@@ -254,55 +257,35 @@ export function KeysTab({
               );
             })}
           </Radio.Group>
-          <Radio.Group
-            label={ONE_STATE_OR_METRO_AREA_QUESTION}
-            description={
-              asksCoverage
-                ? ONE_STATE_OR_METRO_AREA_HELP.join(" ")
-                : ONE_STATE_OR_METRO_AREA_NOT_ASKED
-            }
-            disabled={!asksCoverage}
-            value={
-              selection.oneStateOrMetroArea
-                ? COVERAGE_ANSWER.yes
-                : COVERAGE_ANSWER.no
-            }
-            onChange={(value) =>
-              onPrecisionFloorSelection({
-                ...selection,
-                oneStateOrMetroArea: value === COVERAGE_ANSWER.yes,
-              })
-            }
-            mt="md"
-          >
-            <Radio value={COVERAGE_ANSWER.yes} label="Yes" mt="xs" />
-            <Radio
-              value={COVERAGE_ANSWER.no}
-              label="No"
-              description="The rules that match on a name and a date of birth alone are left out."
-              mt="xs"
-            />
-          </Radio.Group>
         </>
       )}
       <p id="key-order-help">{keyOrderHelp(editor)}</p>
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
+          const lessCertain = linkageKeyIsLessCertain(entry.key, keyFields);
+          const checkbox = (
+            <Checkbox
+              checked={entry.enabled}
+              onChange={(event) =>
+                onKeyEnabled(index, event.currentTarget.checked)
+              }
+              label={
+                <>
+                  Key {index + 1} -{" "}
+                  <span className={styles.mono}>{displayName}</span>
+                  {lessCertain && ` (${LESS_CERTAIN_KEY_COPY.mark})`}
+                </>
+              }
+            />
+          );
           return (
             <li key={entry.key.name}>
-              <Checkbox
-                checked={entry.enabled}
-                onChange={(event) =>
-                  onKeyEnabled(index, event.currentTarget.checked)
-                }
-                label={
-                  <>
-                    Key {index + 1} -{" "}
-                    <span className={styles.mono}>{displayName}</span>
-                  </>
-                }
-              />
+              {lessCertain ? (
+                <LessCertainInfo>{checkbox}</LessCertainInfo>
+              ) : (
+                checkbox
+              )}
               <span className={styles.movers}>
                 <ActionIcon
                   variant="default"

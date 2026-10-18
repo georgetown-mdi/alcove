@@ -219,7 +219,7 @@ export function editorWithKeyEnabled(
   };
 }
 
-/** Choose the precision floor and coverage answer the guided keys are drawn
+/** Choose the precision floor the guided keys are drawn
  * with, reseeding them from the built-in catalog
  * ({@link draftWithPrecisionFloorSelection}). Returns the session unchanged
  * where its keys were written in the expert editor or loaded from a document
@@ -278,7 +278,7 @@ export function editorCitationDrop(
 /** Replace keys written in the expert editor or loaded from a document, with
  * their fields and cleaning, by those a new invitation starts with for the
  * session's columns ({@link draftWithBuiltInKeys}), returning the session to
- * the guided list: the precision floor and coverage controls apply again, and
+ * the guided list: the precision floor control applies again, and
  * a later column edit reconciles the keys. Returns the session unchanged
  * where the columns supply no built-in key ({@link editorOffersBuiltInKeys}). */
 export function editorWithBuiltInKeys(
@@ -297,8 +297,8 @@ export function editorWithBuiltInKeys(
   };
 }
 
-/** What Matching keys shows in place of the precision floor and coverage
- * controls on a session whose keys no floor selected
+/** What Matching keys shows in place of the precision floor
+ * control on a session whose keys no floor selected
  * ({@link editorWithPrecisionFloorSelection} refuses there), beside the
  * action that replaces them ({@link editorWithBuiltInKeys}). */
 export const AUTHORED_KEYS_FLOOR_NOTE =
@@ -313,8 +313,8 @@ export const USE_BUILT_IN_RULES_STATEMENT =
   "all turned on. The invitation will cite the built-in rules. Your " +
   "columns and other settings stay. This cannot be undone.";
 
-/** What Matching keys shows in place of the precision floor and coverage
- * controls on the console, for keys a run of an opened configuration
+/** What Matching keys shows in place of the precision floor
+ * control on the console, for keys a run of an opened configuration
  * continues under: the partner holds them, so no action here replaces them. */
 export const OPENED_CONFIGURATION_KEYS_NOTE =
   "These keys come from the configuration you opened, which your partner " +
@@ -343,8 +343,8 @@ export function keyOrderHelp(editor: InviterEditor): string {
         `precision first, then the rules at ${lower.join(", ")}.`;
 }
 
-/** The note for a guided key list the precision floor and coverage answer
- * leave empty while a wider choice would not, or `undefined` otherwise. */
+/** The note for a guided key list the precision floor leaves empty while a
+ * wider floor would not, or `undefined` otherwise. */
 export function emptyGuidedKeysNotice(
   editor: InviterEditor,
 ): string | undefined {
@@ -352,20 +352,19 @@ export function emptyGuidedKeysNotice(
     return undefined;
   const widest: PrecisionFloorSelection = {
     floor: PRECISION_FLOORS.at(-1) ?? DEFAULT_PRECISION_FLOOR_SELECTION.floor,
-    oneStateOrMetroArea: true,
   };
   if (
     !draftHasOfferedKeys({ ...editor.draft, precisionFloorSelection: widest })
   )
     return undefined;
   return (
-    "Your file's columns supply none of the built-in rules these choices " +
-    `select. ${precisionFloorStatement(widest.floor).label}, with the ` +
-    "question above answered Yes, include rules your file supplies."
+    "Your file's columns supply none of the built-in rules this choice " +
+    `selects. ${precisionFloorStatement(widest.floor).label} include rules ` +
+    "your file supplies."
   );
 }
 
-/** What a screen reader hears after a precision floor or coverage choice
+/** What a screen reader hears after a precision floor choice
  * reseeds the guided keys: how many the list shows and how many are on, or,
  * for an empty list, the note beside it ({@link emptyGuidedKeysNotice}). */
 export function guidedKeysAnnouncement(editor: InviterEditor): string {

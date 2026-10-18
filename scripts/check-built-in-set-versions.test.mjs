@@ -438,11 +438,11 @@ describe("the check driven end to end", () => {
   });
 
   it.each([
-    ["a band", "band: 99,", "band: 95,"],
+    ["a band", "band: 99 }", "band: 95 }"],
     [
-      "a coverage condition",
-      'coverage: "one_state_or_metro_area"',
-      'coverage: "any"',
+      "an unbuilt rule's need",
+      'needs: "name suffix and the shared-contact screen"',
+      'needs: "name suffix"',
     ],
   ])(
     "fails %s of the shipped catalog moved with no bump",

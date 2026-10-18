@@ -31,6 +31,7 @@ import {
 
 import {
   consentSurfaceSink,
+  displayLessCertainNote,
   marked,
   verdictMarked,
   type ConsentSurfaceSink,
@@ -379,8 +380,13 @@ export function renderExchangeDisclosure(
   for (const key of summary.linkageKeys)
     emit(
       `    - ${key.name}: ${key.headerFields.join(" - ")}` +
-        (key.hasSwap ? " (matched in either order)" : ""),
+        (key.hasSwap ? " (matched in either order)" : "") +
+        (key.lessCertainHeaderMarker !== undefined
+          ? ` ${key.lessCertainHeaderMarker}`
+          : ""),
     );
+  if (summary.linkageKeys.some((key) => key.lessCertain))
+    displayLessCertainNote(emit);
 
   // Last, directly beneath the keys and fields it is a finding about: the
   // caveat ends on those being what the exchange holds both parties to, and a

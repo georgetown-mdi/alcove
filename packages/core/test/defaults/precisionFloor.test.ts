@@ -5,7 +5,6 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
-  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
   PRECISION_FLOORS,
   checkLinkageRuleSetCitation,
   findBuiltInLinkageRuleSet,
@@ -13,13 +12,14 @@ import {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
-  precisionFloorAsksCoverage,
   precisionFloorSelectionStatement,
   precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
+import { linkageKeyIsLessCertain } from "../../src/consent/lessCertainKey";
 
+import type { LinkageKey } from "../../src/config/linkageTermsSchema";
 import type { LinkageRuleBand } from "../../src/defaults/builtInLinkageTerms";
 
 const catalog = DEFAULT_LINKAGE_RULE_SET;
@@ -57,18 +57,8 @@ describe("the catalog's bands", () => {
 });
 
 describe("a precision floor", () => {
-  const at99 = names(
-    linkageKeysAtPrecisionFloor(catalog, {
-      floor: 99,
-      oneStateOrMetroArea: true,
-    }),
-  );
-  const at95 = names(
-    linkageKeysAtPrecisionFloor(catalog, {
-      floor: 95,
-      oneStateOrMetroArea: true,
-    }),
-  );
+  const at99 = names(linkageKeysAtPrecisionFloor(catalog, { floor: 99 }));
+  const at95 = names(linkageKeysAtPrecisionFloor(catalog, { floor: 95 }));
 
   test("selects a rule above the floor", () => {
     expect(bandOf("SSN + LN + DOB")?.band).toBe(99);
@@ -94,42 +84,54 @@ describe("a precision floor", () => {
   });
 });
 
-describe("the coverage answer", () => {
-  const sameAreaOnly = [
+describe("the rules marked less certain", () => {
+  const NAME_AND_DATE_RULES = [
     "LN + FN + DOB",
     "swap(LN, FN) + DOB",
     "split(LN) + FN + DOB",
   ];
-
-  test("admits the name and date rules where both files share one area", () => {
-    const keys = names(
-      linkageKeysAtPrecisionFloor(catalog, {
-        floor: 95,
-        oneStateOrMetroArea: true,
-      }),
+  const lessCertain = (keys: ReadonlyArray<LinkageKey>) =>
+    names(
+      keys.filter((key) => linkageKeyIsLessCertain(key, catalog.linkageFields)),
     );
-    for (const name of sameAreaOnly) expect(keys).toContain(name);
+
+  test("are the name and date rules, in the 95% band", () => {
+    expect(lessCertain(catalog.linkageKeys)).toStrictEqual(NAME_AND_DATE_RULES);
+    for (const name of NAME_AND_DATE_RULES) expect(bandOf(name)?.band).toBe(95);
   });
 
-  test("withholds them otherwise, and only them", () => {
-    const keys = names(
-      linkageKeysAtPrecisionFloor(catalog, {
-        floor: 95,
-        oneStateOrMetroArea: false,
-      }),
-    );
-    for (const name of sameAreaOnly) expect(keys).not.toContain(name);
+  test("are selected at the 95% floor, and the quick exchange runs them", () => {
     expect(
-      names(catalog.linkageKeys).filter((name) => !keys.includes(name)),
-    ).toStrictEqual(
-      bands
-        .filter(
-          (band) =>
-            band.coverage === "one_state_or_metro_area" &&
-            band.needs === undefined,
-        )
-        .map((band) => band.rule),
+      lessCertain(linkageKeysAtPrecisionFloor(catalog, { floor: 95 })),
+    ).toStrictEqual(NAME_AND_DATE_RULES);
+    expect(
+      lessCertain(linkageKeysAtPrecisionFloor(catalog, { floor: 99 })),
+    ).toStrictEqual([]);
+    const nameAndDateOnly = inferMetadata(
+      ["first_name", "last_name", "dob"],
+      [],
     );
+    expect(
+      names(getDefaultLinkageTerms("Party A", nameAndDateOnly).linkageKeys),
+    ).toStrictEqual(NAME_AND_DATE_RULES);
+  });
+
+  test("leave no selection condition on any band", () => {
+    for (const band of bands)
+      expect(Object.keys(band).sort()).toStrictEqual(
+        band.needs === undefined ? ["band", "rule"] : ["band", "needs", "rule"],
+      );
+  });
+
+  test("leave no coverage question in core's exports", () => {
+    for (const retired of [
+      "ONE_STATE_OR_METRO_AREA_QUESTION",
+      "ONE_STATE_OR_METRO_AREA_HELP",
+      "ONE_STATE_OR_METRO_AREA_NOT_ASKED",
+      "precisionFloorAsksCoverage",
+    ])
+      expect(Object.keys(core)).not.toContain(retired);
+    expect(DEFAULT_PRECISION_FLOOR_SELECTION).toStrictEqual({ floor: 95 });
   });
 });
 
@@ -146,13 +148,10 @@ describe("the geography rules", () => {
   const keysFor = (
     metadata: ReturnType<typeof inferMetadata>,
     floor: 99 | 95,
-    oneStateOrMetroArea: boolean,
   ) =>
     names(
-      linkageTermsFromRuleSet(catalog, "Party A", metadata, {
-        floor,
-        oneStateOrMetroArea,
-      }).linkageKeys,
+      linkageTermsFromRuleSet(catalog, "Party A", metadata, { floor })
+        .linkageKeys,
     );
 
   test("are built from the ZIP3, state and county elements", () => {
@@ -185,35 +184,18 @@ describe("the geography rules", () => {
     ]);
   });
 
-  test("sit in the 95% band at any coverage", () => {
-    expect(bandOf(ZIP3_RULE)).toStrictEqual({
-      rule: ZIP3_RULE,
-      band: 95,
-      coverage: "any",
-    });
-    expect(bandOf(STATE_RULE)).toStrictEqual({
-      rule: STATE_RULE,
-      band: 95,
-      coverage: "any",
-    });
-    expect(bandOf(COUNTY_RULE)).toStrictEqual({
-      rule: COUNTY_RULE,
-      band: 95,
-      coverage: "any",
-    });
+  test("sit in the 95% band", () => {
+    expect(bandOf(ZIP3_RULE)).toStrictEqual({ rule: ZIP3_RULE, band: 95 });
+    expect(bandOf(STATE_RULE)).toStrictEqual({ rule: STATE_RULE, band: 95 });
+    expect(bandOf(COUNTY_RULE)).toStrictEqual({ rule: COUNTY_RULE, band: 95 });
   });
 
-  test("are selected by floor and coverage answer as their bands state", () => {
-    expect(keysFor(withGeography, 95, true)).toEqual(
+  test("are selected by floor as their bands state", () => {
+    expect(keysFor(withGeography, 95)).toEqual(
       expect.arrayContaining(GEOGRAPHY_RULES),
     );
-    const at95No = keysFor(withGeography, 95, false);
-    expect(at95No).toEqual(expect.arrayContaining(GEOGRAPHY_RULES));
-    for (const oneStateOrMetroArea of [true, false])
-      for (const rule of GEOGRAPHY_RULES)
-        expect(keysFor(withGeography, 99, oneStateOrMetroArea)).not.toContain(
-          rule,
-        );
+    for (const rule of GEOGRAPHY_RULES)
+      expect(keysFor(withGeography, 99)).not.toContain(rule);
   });
 
   test("are selected only where the file supplies the column", () => {
@@ -221,25 +203,25 @@ describe("the geography rules", () => {
       ["first_name", "last_name", "dob", "zip"],
       [],
     );
-    expect(keysFor(zipOnly, 95, true)).toContain(ZIP3_RULE);
-    expect(keysFor(zipOnly, 95, true)).not.toContain(STATE_RULE);
-    expect(keysFor(zipOnly, 95, true)).not.toContain(COUNTY_RULE);
+    expect(keysFor(zipOnly, 95)).toContain(ZIP3_RULE);
+    expect(keysFor(zipOnly, 95)).not.toContain(STATE_RULE);
+    expect(keysFor(zipOnly, 95)).not.toContain(COUNTY_RULE);
     const stateOnly = inferMetadata(
       ["first_name", "last_name", "dob", "state"],
       [],
     );
-    expect(keysFor(stateOnly, 95, true)).toContain(STATE_RULE);
-    expect(keysFor(stateOnly, 95, true)).not.toContain(ZIP3_RULE);
+    expect(keysFor(stateOnly, 95)).toContain(STATE_RULE);
+    expect(keysFor(stateOnly, 95)).not.toContain(ZIP3_RULE);
     const countyOnly = inferMetadata(
       ["first_name", "last_name", "dob", "county_name"],
       [],
     );
-    expect(keysFor(countyOnly, 95, true)).toContain(COUNTY_RULE);
-    expect(keysFor(countyOnly, 95, true)).not.toContain(STATE_RULE);
+    expect(keysFor(countyOnly, 95)).toContain(COUNTY_RULE);
+    expect(keysFor(countyOnly, 95)).not.toContain(STATE_RULE);
   });
 
   test("run in the catalog's order, before the name and date rule they refine", () => {
-    const keys = keysFor(withGeography, 95, true);
+    const keys = keysFor(withGeography, 95);
     expect(keys).toStrictEqual([
       "LN + FN + DOB + ZIP5",
       ZIP3_RULE,
@@ -359,20 +341,11 @@ describe("the street number rule", () => {
   const keysFor = (
     metadata: ReturnType<typeof inferMetadata>,
     floor: 99 | 95,
-    oneStateOrMetroArea: boolean,
   ) =>
     names(
-      linkageTermsFromRuleSet(catalog, "Party A", metadata, {
-        floor,
-        oneStateOrMetroArea,
-      }).linkageKeys,
+      linkageTermsFromRuleSet(catalog, "Party A", metadata, { floor })
+        .linkageKeys,
     );
-  const everySelection = [
-    [99, true],
-    [99, false],
-    [95, true],
-    [95, false],
-  ] as const;
 
   test("is built from the street number and ZIP5 elements", () => {
     expect(
@@ -390,39 +363,36 @@ describe("the street number rule", () => {
     ).toStrictEqual([{ name: "street_number", type: "street_number" }]);
   });
 
-  test("sits in the 99% band at any coverage", () => {
+  test("sits in the 99% band", () => {
     expect(bandOf(STREET_NUMBER_RULE)).toStrictEqual({
       rule: STREET_NUMBER_RULE,
       band: 99,
-      coverage: "any",
     });
   });
 
-  test.each(everySelection)(
-    "is selected at the %i%% floor (one area: %s) where the file supplies a street number and a ZIP",
-    (floor, oneStateOrMetroArea) => {
-      expect(keysFor(withStreetNumber, floor, oneStateOrMetroArea)).toContain(
-        STREET_NUMBER_RULE,
-      );
+  test.each(PRECISION_FLOORS)(
+    "is selected at the %i%% floor where the file supplies a street number and a ZIP",
+    (floor) => {
+      expect(keysFor(withStreetNumber, floor)).toContain(STREET_NUMBER_RULE);
       const streetNumberOnly = inferMetadata(
         ["first_name", "last_name", "dob", "house_number"],
         [],
       );
-      expect(
-        keysFor(streetNumberOnly, floor, oneStateOrMetroArea),
-      ).not.toContain(STREET_NUMBER_RULE);
-      expect(
-        keysFor(withoutStreetNumber, floor, oneStateOrMetroArea),
-      ).not.toContain(STREET_NUMBER_RULE);
+      expect(keysFor(streetNumberOnly, floor)).not.toContain(
+        STREET_NUMBER_RULE,
+      );
+      expect(keysFor(withoutStreetNumber, floor)).not.toContain(
+        STREET_NUMBER_RULE,
+      );
     },
   );
 
   test("runs first among the ZIP rules, before the ZIP5 rule it refines", () => {
-    expect(keysFor(withStreetNumber, 99, false)).toStrictEqual([
+    expect(keysFor(withStreetNumber, 99)).toStrictEqual([
       STREET_NUMBER_RULE,
       ZIP5_RULE,
     ]);
-    expect(keysFor(withStreetNumber, 95, true)).toStrictEqual([
+    expect(keysFor(withStreetNumber, 95)).toStrictEqual([
       STREET_NUMBER_RULE,
       ...GEOGRAPHY_KEYS_AT_95,
     ]);
@@ -473,11 +443,8 @@ describe("the street number rule", () => {
 });
 
 describe("the quick exchange's selection", () => {
-  test("is the 95% floor with the coverage question answered yes", () => {
-    expect(DEFAULT_PRECISION_FLOOR_SELECTION).toStrictEqual({
-      floor: 95,
-      oneStateOrMetroArea: true,
-    });
+  test("is the 95% floor", () => {
+    expect(DEFAULT_PRECISION_FLOOR_SELECTION).toStrictEqual({ floor: 95 });
     expect(names(getDefaultLinkageTerms("Party A").linkageKeys)).toStrictEqual(
       names(
         linkageKeysAtPrecisionFloor(catalog, DEFAULT_PRECISION_FLOOR_SELECTION),
@@ -487,19 +454,14 @@ describe("the quick exchange's selection", () => {
 });
 
 describe("the citation", () => {
-  const sameAreaNo99 = { floor: 99, oneStateOrMetroArea: false } as const;
-
   test("names the catalog and its version, not the floor", () => {
-    const terms = linkageTermsFromRuleSet(
-      catalog,
-      "Party A",
-      undefined,
-      sameAreaNo99,
-    );
+    const terms = linkageTermsFromRuleSet(catalog, "Party A", undefined, {
+      floor: 99,
+    });
     expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
     expect(catalog.reference).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.2.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
     });
   });
 
@@ -607,63 +569,14 @@ describe("the guided opt-in offers", () => {
 });
 
 describe("precisionFloorSelectionStatement", () => {
-  test("names the floor and the coverage answer", () => {
+  test("names the floor alone", () => {
     expect(
       precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
     ).toBe(
-      "the built-in rules at 95% precision and above that your file " +
-        "supplies, for two files that both draw their members from one " +
-        "state or one metropolitan area",
+      "the built-in rules at 95% precision and above that your file supplies",
     );
-    expect(
-      precisionFloorSelectionStatement({
-        floor: 95,
-        oneStateOrMetroArea: false,
-      }),
-    ).toBe(
-      "the built-in rules at 95% precision and above that your file " +
-        "supplies, leaving out the rules that need both files to draw " +
-        "their members from one state or one metropolitan area",
-    );
-  });
-
-  test("names no coverage condition at a floor the answer does not change", () => {
-    for (const oneStateOrMetroArea of [true, false])
-      expect(
-        precisionFloorSelectionStatement({ floor: 99, oneStateOrMetroArea }),
-      ).toBe(
-        "the built-in rules at 99% precision and above that your file " +
-          "supplies",
-      );
-  });
-});
-
-describe("precisionFloorAsksCoverage", () => {
-  test("is true exactly where the coverage answer changes the selection", () => {
-    const metadata = inferMetadata(
-      ["ssn", "first_name", "last_name", "dob", "zip", "phone", "email"],
-      [],
-    );
-    for (const floor of PRECISION_FLOORS) {
-      const keysAnswering = (oneStateOrMetroArea: boolean) =>
-        names(
-          linkageTermsFromRuleSet(catalog, "Party A", metadata, {
-            floor,
-            oneStateOrMetroArea,
-          }).linkageKeys,
-        );
-      expect(precisionFloorAsksCoverage(floor)).toBe(
-        keysAnswering(true).length !== keysAnswering(false).length,
-      );
-    }
-  });
-
-  test("is true only at the 95% floor, the band the not-asked note names", () => {
-    expect(
-      PRECISION_FLOORS.filter((floor) => precisionFloorAsksCoverage(floor)),
-    ).toStrictEqual([95]);
-    expect(ONE_STATE_OR_METRO_AREA_NOT_ASKED).toBe(
-      "Applies only to the 95% rules.",
+    expect(precisionFloorSelectionStatement({ floor: 99 })).toBe(
+      "the built-in rules at 99% precision and above that your file supplies",
     );
   });
 });
@@ -679,7 +592,7 @@ describe("PRECISION_FLOORS", () => {
 });
 
 describe("precisionFloorStatement", () => {
-  test("states the 99% floor's share, with no coverage condition", () => {
+  test("states the 99% floor's share, which selects no rule marked less certain", () => {
     expect(precisionFloorStatement(99)).toStrictEqual({
       label: "The built-in rules at 99% precision and above",
       description:
@@ -688,21 +601,20 @@ describe("precisionFloorStatement", () => {
     });
   });
 
-  test("states the 95% floor's share and its coverage condition", () => {
+  test("states the 95% floor's share, except the rules marked less certain", () => {
     expect(precisionFloorStatement(95)).toStrictEqual({
       label: "The built-in rules at 95% precision and above",
       description:
         "Of the pairs each rule matches, at least 95 in 100 are the same " +
-        "person. The rules that match on a name and a date of birth alone " +
-        "are included only when both files draw their members from one " +
-        "state or one metropolitan area.",
+        "person, except rules marked less certain, which can fall below " +
+        "that when the files cover many people.",
     });
   });
 
   test("names the floor in the words the selection statement uses", () => {
     for (const floor of PRECISION_FLOORS)
-      expect(
-        precisionFloorSelectionStatement({ floor, oneStateOrMetroArea: true }),
-      ).toContain(precisionFloorStatement(floor).label.toLowerCase());
+      expect(precisionFloorSelectionStatement({ floor })).toContain(
+        precisionFloorStatement(floor).label.toLowerCase(),
+      );
   });
 });

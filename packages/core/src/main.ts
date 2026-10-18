@@ -376,9 +376,6 @@ export {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
-  ONE_STATE_OR_METRO_AREA_HELP,
-  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
-  ONE_STATE_OR_METRO_AREA_QUESTION,
   PRECISION_FLOORS,
   authoredLinkageFields,
   encodeForComparison,
@@ -388,7 +385,6 @@ export {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
-  precisionFloorAsksCoverage,
   precisionFloorSelectionStatement,
   precisionFloorStatement,
   resolveLinkageRuleSetCitation,
@@ -399,9 +395,9 @@ export type {
   PrecisionBand,
   PrecisionFloor,
   PrecisionFloorSelection,
-  RuleCoverage,
   LinkageRuleSetCitationVerdict,
 } from "./defaults/builtInLinkageTerms";
+export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
 export { getDefaultStandardization } from "./defaults/builtInStandardization";
 export {
   ExchangeSpecSchema,
@@ -688,6 +684,7 @@ export {
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,

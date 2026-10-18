@@ -10,6 +10,7 @@ import {
   parseDateInputDropsEveryRecord,
 } from "../linkageSatisfiability.js";
 import { displayText } from "../utils/sanitizeForDisplay.js";
+import { linkageKeyIsLessCertain } from "./lessCertainKey.js";
 import {
   frozenLookupTable,
   frozenLookupTableEntry,
@@ -336,6 +337,19 @@ export interface InvitationKeySummary {
    * copy; the remedy stays in the per-key swap caveat.
    */
   swapHeaderMarker?: Displayable;
+  /**
+   * Whether the key matches on nothing beyond a name and a date of birth
+   * (`linkageKeyIsLessCertain`, read from the declared field types), so a
+   * surface marks it with `LESS_CERTAIN_KEY_COPY` (`consentFacts.ts`).
+   */
+  lessCertain: boolean;
+  /**
+   * Header suffix for a key marked {@link lessCertain}, present only then:
+   * `LESS_CERTAIN_KEY_COPY.mark` in parentheses, after any
+   * {@link swapHeaderMarker}. Fixed copy; the explanation is the same
+   * table's.
+   */
+  lessCertainHeaderMarker?: Displayable;
 }
 
 /**
@@ -880,6 +894,7 @@ export function matchedFieldsWithColumns(
  */
 function summarizeKey(
   key: LinkageKey,
+  fields: ReadonlyArray<LinkageField>,
   fieldByName: Map<string, LinkageField["type"]>,
   fanOutMatches: boolean,
 ): InvitationKeySummary {
@@ -996,6 +1011,7 @@ function summarizeKey(
       ? displayText`(matched in either order)`
       : displayText`(either order not supported)`
     : undefined;
+  const lessCertain = linkageKeyIsLessCertain(key, fields);
 
   return {
     id: key.name,
@@ -1009,6 +1025,10 @@ function summarizeKey(
     swapApplied,
     swap,
     swapHeaderMarker,
+    lessCertain,
+    lessCertainHeaderMarker: lessCertain
+      ? displayText`(less certain)`
+      : undefined,
   };
 }
 
@@ -1236,7 +1256,7 @@ export function summarizeInvitation(
     acceptorTableWithheld: withholdsAcceptorAssociationTable(terms),
     inviterTableWithheld: withholdsInviterAssociationTable(terms),
     linkageKeys: terms.linkageKeys.map((key) =>
-      summarizeKey(key, fieldByName, fanOutMatches),
+      summarizeKey(key, terms.linkageFields, fieldByName, fanOutMatches),
     ),
     matchedFields,
     linkageFields,

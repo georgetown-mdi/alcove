@@ -23,9 +23,7 @@ import {
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
-  ONE_STATE_OR_METRO_AREA_HELP,
-  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
-  ONE_STATE_OR_METRO_AREA_QUESTION,
+  LESS_CERTAIN_KEY_COPY,
   precisionFloorStatement,
 } from "@alcove/core";
 
@@ -38,8 +36,10 @@ import {
 } from "@psi/authoring/advancedInvite";
 
 import { KeysTab } from "@exchange/KeysTab";
+import { LESS_CERTAIN_INFO_LABEL } from "@components/LessCertainInfo";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 
+import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
@@ -450,7 +450,7 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
   });
 });
 
-describe("KeysTab: the precision floor and the coverage question", () => {
+describe("KeysTab: the precision floor and the less certain mark", () => {
   /** The tab over a live session, applying each floor choice through the
    * session model the inviter screen applies it through. */
   function Harness({
@@ -489,9 +489,11 @@ describe("KeysTab: the precision floor and the coverage question", () => {
 
   const at99 = precisionFloorStatement(99);
   const at95 = precisionFloorStatement(95);
-  const nameAndDateKey = { name: /Key \d+ - LN \+ FN \+ DOB$/ };
+  const nameAndDateKey = {
+    name: /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
+  };
 
-  test("offers each floor in core's words, 95% chosen, with the coverage question and its help", async () => {
+  test("offers each floor in core's words, 95% chosen, and asks no coverage question", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
@@ -502,21 +504,19 @@ describe("KeysTab: the precision floor and the coverage question", () => {
     await expect.element(floor99).not.toBeChecked();
     await expect.element(page.getByText(at99.description)).toBeInTheDocument();
     await expect.element(page.getByText(at95.description)).toBeInTheDocument();
+    expect(at95.description).toContain("except rules marked less certain");
     expect(document.body.textContent).not.toMatch(/tier/i);
 
-    const question = page.getByRole("radiogroup", {
-      name: ONE_STATE_OR_METRO_AREA_QUESTION,
-    });
-    await expect.element(question).toBeInTheDocument();
-    await expect
-      .element(question.getByRole("radio", { name: "Yes", exact: true }))
-      .toBeChecked();
-    await expect
-      .element(question)
-      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_HELP.join(" "));
+    expect(page.getByRole("radiogroup").elements()).toHaveLength(2);
+    expect(page.getByRole("radio", { name: "Yes", exact: true }).query()).toBe(
+      null,
+    );
+    expect(document.body.textContent).not.toMatch(
+      /metropolitan|one state|answer below/i,
+    );
   });
 
-  test("reseeds the key list on a floor choice and on the coverage answer", async () => {
+  test("reseeds the key list on a floor choice", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
@@ -541,13 +541,6 @@ describe("KeysTab: the precision floor and the coverage question", () => {
 
     await page.getByRole("radio", { name: at95.label }).click();
     await expect.element(nameAndDate).toBeChecked();
-
-    const answerNo = page
-      .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
-      .getByRole("radio", { name: "No", exact: true });
-    await answerNo.click();
-    await expect.element(answerNo).toBeChecked();
-    expect(nameAndDate.query()).toBeNull();
   });
 
   test("states a citation the moved keys drop, and clears it once moved back", async () => {
@@ -590,11 +583,6 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       )
       .toBeInTheDocument();
     expect(page.getByRole("radio", { name: at99.label }).query()).toBeNull();
-    expect(
-      page
-        .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
-        .query(),
-    ).toBeNull();
   });
 
   test("keeps a key turned off across a floor change and back", async () => {
@@ -615,24 +603,102 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       .toBeChecked();
   });
 
-  test("disables the coverage question at 99%, saying where it applies", async () => {
+  test("marks the three name and date keys less certain, each with a button that explains why", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
 
-    await page.getByRole("radio", { name: at99.label }).click();
-    const question = page.getByRole("radiogroup", {
-      name: ONE_STATE_OR_METRO_AREA_QUESTION,
+    for (const rule of [
+      /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
+      /Key \d+ - swap\(LN, FN\) \+ DOB \(less certain\)$/,
+      /Key \d+ - split\(LN\) \+ FN \+ DOB \(less certain\)$/,
+    ])
+      await expect
+        .element(page.getByRole("checkbox", { name: rule }))
+        .toBeChecked();
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
+      .toBeInTheDocument();
+    const infoButtons = page.getByRole("button", {
+      name: LESS_CERTAIN_INFO_LABEL,
     });
+    expect(infoButtons.elements()).toHaveLength(3);
+
+    const first = infoButtons.first();
+    await expect.element(first).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(
+      first.element().getAttribute("aria-controls") ?? "",
+    )!;
     await expect
-      .element(question)
-      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_NOT_ASKED);
+      .poll(() => panel.textContent)
+      .toBe(LESS_CERTAIN_KEY_COPY.explanation);
+    const explanation = page
+      .elementLocator(panel)
+      .getByText(LESS_CERTAIN_KEY_COPY.explanation);
+    await expect.element(explanation).not.toBeVisible();
+
+    await activate(control("button", LESS_CERTAIN_INFO_LABEL));
+    await expect.element(first).toHaveAttribute("aria-expanded", "true");
+    await expect.element(explanation).toBeVisible();
+    expect(document.body.textContent).not.toContain(
+      LESS_CERTAIN_KEY_COPY.acceptorRemedy,
+    );
+
+    await page.getByRole("radio", { name: at99.label }).click();
+    expect(infoButtons.elements()).toHaveLength(0);
+  });
+
+  test("marks a key written in Expert authoring on a name and a date of birth alone", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const authored = editorWithAuthoredDraft(seeded, {
+      ...seeded.draft,
+      keys: [
+        {
+          enabled: true,
+          key: {
+            name: "my people",
+            elements: [
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "last_name" },
+            ],
+          },
+        },
+        {
+          enabled: true,
+          key: {
+            name: "my people with SSN4",
+            elements: [
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "last_name" },
+              { field: "ssn4" },
+            ],
+          },
+        },
+      ],
+    });
+    app.render(createElement(Harness, { initial: authored }));
+
     await expect
-      .element(question.getByRole("radio", { name: "Yes", exact: true }))
-      .toBeDisabled();
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 1 - my people (less certain)",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
     await expect
-      .element(question.getByRole("radio", { name: "No", exact: true }))
-      .toBeDisabled();
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 2 - my people with SSN4",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: LESS_CERTAIN_INFO_LABEL }).elements(),
+    ).toHaveLength(1);
   });
 
   test("describes the key list with the order the chosen floor gives it", async () => {
@@ -644,14 +710,11 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       .element(keyList)
       .toHaveAccessibleDescription(keyOrderHelp(seeded));
     await page.getByRole("radio", { name: at99.label }).click();
-    await expect.element(keyList).toHaveAccessibleDescription(
-      keyOrderHelp(
-        editorWithPrecisionFloorSelection(seeded, {
-          floor: 99,
-          oneStateOrMetroArea: true,
-        }),
-      ),
-    );
+    await expect
+      .element(keyList)
+      .toHaveAccessibleDescription(
+        keyOrderHelp(editorWithPrecisionFloorSelection(seeded, { floor: 99 })),
+      );
   });
 
   test("offers the built-in rules in place of authored keys, behind a confirm", async () => {

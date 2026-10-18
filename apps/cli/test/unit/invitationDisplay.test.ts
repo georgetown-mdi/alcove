@@ -7,6 +7,7 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   getLogger,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
@@ -302,12 +303,12 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
         ...base.linkageTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "precision-ranked-rules", version: "2.3.0" },
+          keySet: { name: "precision-ranked-rules", version: "2.4.0" },
         },
       },
     });
     expect(cited).toContain("linkage rule set (your partner's word):");
-    expect(cited).toContain('"precision-ranked-rules" 2.3.0');
+    expect(cited).toContain('"precision-ranked-rules" 2.4.0');
     expect(cited).toContain('"baseline-pii" 1.0.0');
 
     // The name is partner-controlled free text and the version beside it is not, so
@@ -319,11 +320,11 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
         ...base.linkageTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.3.0" },
+          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.4.0" },
         },
       },
     });
-    expect(spacedName).toContain('"precision-ranked-rules 9.9.9" 2.3.0');
+    expect(spacedName).toContain('"precision-ranked-rules 9.9.9" 2.4.0');
 
     const uncited = renderDisplayInvitation(log, {
       ...base,
@@ -2155,9 +2156,86 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(keyIndex).toBeGreaterThanOrEqual(0);
     expect(lines[keyIndex + 1]).toBe(
       "      matches on: first name (partial) - last name (partial) - " +
-        "date of birth (fuzzy) (matched in either order)",
+        "date of birth (fuzzy) (matched in either order) (less certain)",
     );
     expect(lines[keyIndex + 2]).toBe("      elements:");
+  });
+
+  test("displayInvitation: marks a name and date key less certain and explains it once, with the remedy", () => {
+    const log = getLogger("accept-display-less-certain-test");
+    log.setLevel("silent");
+    const token = sampleToken(FUTURE());
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          { name: "given", type: "first_name" },
+          { name: "born", type: "date_of_birth" },
+          { name: "surname", type: "last_name" },
+          { name: "tax_id", type: "ssn" },
+        ],
+        linkageKeys: [
+          {
+            name: "authored with ssn",
+            elements: [{ field: "tax_id" }, { field: "born" }],
+          },
+          {
+            name: "authored people",
+            elements: [
+              { field: "given" },
+              { field: "born" },
+              { field: "surname" },
+            ],
+          },
+          {
+            name: "authored people again",
+            elements: [{ field: "surname" }, { field: "born" }],
+          },
+        ],
+      },
+    }).split("\n");
+
+    const matchesOn = (keyName: string) =>
+      lines[lines.indexOf(`    - ${keyName}`) + 1];
+    expect(matchesOn("authored people")).toBe(
+      "      matches on: first name - date of birth - last name (less certain)",
+    );
+    expect(matchesOn("authored people again")).toBe(
+      "      matches on: last name - date of birth (less certain)",
+    );
+    expect(matchesOn("authored with ssn")).toBe(
+      "      matches on: SSN - date of birth",
+    );
+    const note = `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_KEY_COPY.acceptorRemedy}`;
+    expect(lines.filter((line) => line === note)).toHaveLength(1);
+    expect(lines[lines.indexOf(note) - 1]).toBe("  less certain:");
+    expect(lines.indexOf(note)).toBeGreaterThan(
+      lines.indexOf("    - authored people again"),
+    );
+  });
+
+  test("displayInvitation: prints no less certain note where no key is marked", () => {
+    const log = getLogger("accept-display-no-less-certain-test");
+    log.setLevel("silent");
+    const token = sampleToken(FUTURE());
+    const out = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          { name: "tax_id", type: "ssn" },
+          { name: "born", type: "date_of_birth" },
+        ],
+        linkageKeys: [
+          {
+            name: "authored with ssn",
+            elements: [{ field: "tax_id" }, { field: "born" }],
+          },
+        ],
+      },
+    });
+    expect(out).not.toContain("less certain");
   });
 
   test("displayInvitation: names a street number field in plain words", () => {

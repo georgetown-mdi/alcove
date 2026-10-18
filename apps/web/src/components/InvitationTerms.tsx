@@ -40,6 +40,7 @@ import {
 
 import { ColumnChips } from "@components/ColumnChips";
 import { ColumnName } from "@components/ColumnName";
+import { LessCertainInfo } from "@components/LessCertainInfo";
 
 import {
   ALLOWED_RELAYS_SCOPE,
@@ -276,15 +277,37 @@ function DeclaredColumnList({ columns }: { columns: Array<string> }) {
  * (not the Collapse panel) so it stays a stable target, and the panel hidden from
  * assistive tech and the tab order while closed. The toggle's accessible name is
  * the key name alone; the field one-liner is its description (aria-describedby)
- * rather than folded into the name.
+ * rather than folded into the name, so the less certain mark on it is announced
+ * with the key, and the button explaining the mark follows the line.
  */
-function MatchKeyDisclosure({ summary }: { summary: InvitationKeySummary }) {
+function MatchKeyDisclosure({
+  summary,
+  acceptor,
+}: {
+  summary: InvitationKeySummary;
+  /** Whether the reader is accepting the invitation, whose explanation of a
+   * less certain key adds the remedy. */
+  acceptor: boolean;
+}) {
   const [open, setOpen] = useState(false);
   // One component instance per key, so useId is called once per widget (never
   // inside a map).
   const panelId = useId();
   const sublineId = useId();
   const reduceMotion = useReducedMotion();
+  // Always-visible, AT-associated breadth signal. The "Matches on " lead-in
+  // and the markers are fixed copy, and each field entry is a fixed compact
+  // label: the sanitized unknown-field fallback is unreachable for a decoded
+  // token (a dangling field reference is rejected at decode) and cosmetic-only
+  // if ever reached, so the joined line contains no unescaped partner text.
+  const subline = (
+    <Text id={sublineId} size="xs" c="dimmed">
+      Matches on {summary.headerFields.join(" - ")}
+      {summary.swapHeaderMarker !== undefined && ` ${summary.swapHeaderMarker}`}
+      {summary.lessCertainHeaderMarker !== undefined &&
+        ` ${summary.lessCertainHeaderMarker}`}
+    </Text>
+  );
   return (
     <Stack gap={2} role="listitem">
       <UnstyledButton
@@ -307,16 +330,11 @@ function MatchKeyDisclosure({ summary }: { summary: InvitationKeySummary }) {
           </Text>
         </Group>
       </UnstyledButton>
-      {/* Always-visible, AT-associated breadth signal. The "Matches on " lead-in
-          and the markers are fixed copy, and each field entry is a fixed compact
-          label: the sanitized unknown-field fallback is unreachable for a decoded
-          token (a dangling field reference is rejected at decode) and cosmetic-only
-          if ever reached, so the joined line contains no unescaped partner text. */}
-      <Text id={sublineId} size="xs" c="dimmed">
-        Matches on {summary.headerFields.join(" - ")}
-        {summary.swapHeaderMarker !== undefined &&
-          ` ${summary.swapHeaderMarker}`}
-      </Text>
+      {summary.lessCertain ? (
+        <LessCertainInfo acceptor={acceptor}>{subline}</LessCertainInfo>
+      ) : (
+        subline
+      )}
       <div id={panelId}>
         <Collapse expanded={open}>
           <MatchKeyDetails summary={summary} />
@@ -1303,7 +1321,11 @@ export function InvitationTerms({
             <Collapse expanded={matchingOpen}>
               <Stack gap="xs" role="list" aria-labelledby={matchedOnLabelId}>
                 {summary.linkageKeys.map((key) => (
-                  <MatchKeyDisclosure key={key.id} summary={key} />
+                  <MatchKeyDisclosure
+                    key={key.id}
+                    summary={key}
+                    acceptor={perspective === "review"}
+                  />
                 ))}
               </Stack>
             </Collapse>

@@ -68,12 +68,12 @@ The split between measured and reasoned bands is not the axis that matters
 (reasoning). Every measurement comes from a pool of records unlike the
 operator's, so a measured band is itself an extrapolation to the operator's
 files. What decides whether a rule is offered is whether its band applies
-across the files it will be offered for. Where it applies only within one
-state or metropolitan area, the rule is offered only there; that is the
-coverage condition on rules 31 to 33.
+across the files it will be offered for.
 
-The three email rules are the one exception: the maintainer placed them at 95%
-while evidence for them is gathered, and the catalog says so.
+The maintainer makes two exceptions, and the catalog states each: the three
+email rules are placed at 95% while evidence for them is gathered, and rules 31
+to 33, whose band holds only where the files cover few people, are offered at
+95% for any pair of files and marked less certain.
 
 The catalog keeps each band's evidence and reasoning; the screens an operator
 sees show the band alone.
@@ -100,12 +100,16 @@ The catalog's entry for rule 31 sets out the measured range: Florida, Tennessee
 and Cook County at or above 95%, most at or above 99%; Iowa the one in-state
 outlier, plausibly an error in the reference; and cross-state pairings where
 only about three-quarters were confirmed duplicates (Goel et al. 2020). So name
-+ date rules with no SSN, contact field or geography are offered only when both
-files draw their members from one state or one metropolitan area.
++ date rules with no SSN, contact field or geography are marked less certain
+wherever keys are listed: their band holds where the files cover few people
+and falls as the number covered grows. The mark speaks of how many people the
+files cover rather than of a place, since size is what drives chance agreement
+and a state or metropolitan area is only one unit that could stand for it.
 
 Ocampo et al. (2016) matched case records across the whole of DC, Maryland and
 Virginia, confirmed by each jurisdiction's own check. It is a data point for
-the name + date rules, not a precedent for the metropolitan-area condition.
+the name + date rules, not evidence of how many people they hold their band
+over.
 
 A file drawn from one age group behaves like a far larger file, since its
 members share birth years. In one graduating class, 0.12% of name and date

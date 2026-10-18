@@ -14,6 +14,7 @@ import {
   UsageError,
   getDiagnosticSink,
   getLogger,
+  linkageKeyIsLessCertain,
   parseExchangeSpec,
   safeParseMetadata,
   setDiagnosticSink,
@@ -255,20 +256,26 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
   const bands = new Map(
     (DEFAULT_LINKAGE_RULE_SET.ruleBands ?? []).map((band) => [band.rule, band]),
   );
-  const shippedAt95 = DEFAULT_LINKAGE_RULE_SET.linkageKeys
-    .map((key) => bands.get(key.name)!)
-    .filter((band) => band.band === 95);
+  const shippedAt95 = DEFAULT_LINKAGE_RULE_SET.linkageKeys.filter(
+    (key) => bands.get(key.name)!.band === 95,
+  );
   const listed = (names: string[]) =>
     `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-  const oneArea = shippedAt95
-    .filter((band) => band.coverage === "one_state_or_metro_area")
-    .map((band) => band.rule);
-  const anyArea = shippedAt95
-    .filter((band) => band.coverage === "any")
-    .map((band) => band.rule);
-  expect(oneArea).toHaveLength(3);
-  expect(help).toContain(`alone: ${listed(oneArea)}.`);
-  expect(help).toContain(`delete those three and ${listed(anyArea)}.`);
+  const isLessCertain = (key: (typeof shippedAt95)[number]) =>
+    linkageKeyIsLessCertain(key, DEFAULT_LINKAGE_RULE_SET.linkageFields);
+  const lessCertain = shippedAt95
+    .filter((key) => isLessCertain(key))
+    .map((key) => key.name);
+  const others = shippedAt95
+    .filter((key) => !isLessCertain(key))
+    .map((key) => key.name);
+  expect(lessCertain).toHaveLength(3);
+  expect(help).toContain(`alone: ${listed(lessCertain)}.`);
+  expect(help).toContain(`delete those three and ${listed(others)}.`);
+  expect(help).toContain(
+    "delete those three keys when your files cover many people.",
+  );
+  expect(help).not.toMatch(/state or one|metropolitan|wider area/);
 });
 
 test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {

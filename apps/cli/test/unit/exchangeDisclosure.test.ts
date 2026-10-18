@@ -14,6 +14,7 @@ import {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   DEFAULT_LINKAGE_RULE_SET,
   inferMetadata,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
   precisionFloorSelectionStatement,
@@ -496,6 +497,76 @@ test("a quick exchange names its rule selection above the keys, and a configured
   )}`;
   expect(shown(true)).toContain(`${line}\n  linkage keys (`);
   expect(shown(false)).not.toContain("rules selected");
+});
+
+test("a key on names and a date of birth alone is marked less certain, and the mark explained once with no remedy", () => {
+  const terms: LinkageTerms = {
+    ...localTerms,
+    linkageFields: [
+      { name: "given", type: "first_name" },
+      { name: "surname", type: "last_name" },
+      { name: "born", type: "date_of_birth" },
+      { name: "postcode", type: "zip_code" },
+    ],
+    linkageKeys: [
+      {
+        name: "with ZIP",
+        elements: [
+          { field: "given" },
+          { field: "surname" },
+          { field: "born" },
+          { field: "postcode" },
+        ],
+      },
+      {
+        name: "people",
+        elements: [{ field: "given" }, { field: "born" }, { field: "surname" }],
+      },
+      {
+        name: "people swapped",
+        elements: [{ field: "given" }, { field: "surname" }, { field: "born" }],
+        swap: ["given", "surname"],
+      },
+    ],
+  };
+  const lines = rendered(terms);
+  expect(lines).toContain(
+    "    - with ZIP: first name - last name - date of birth - ZIP",
+  );
+  expect(lines).toContain(
+    "    - people: first name - date of birth - last name (less certain)",
+  );
+  expect(lines).toContain(
+    "    - people swapped: first name - last name - date of birth " +
+      "(matched in either order) (less certain)",
+  );
+  const note = `    ${LESS_CERTAIN_KEY_COPY.explanation}`;
+  expect(lines.filter((entry) => entry === note)).toHaveLength(1);
+  expect(lines[lines.indexOf(note) - 1]).toBe("  less certain:");
+  expect(lines.indexOf(note)).toBeGreaterThan(
+    lines.indexOf(
+      "    - people swapped: first name - last name - date of birth " +
+        "(matched in either order) (less certain)",
+    ),
+  );
+  expect(lines.join("\n")).not.toContain(LESS_CERTAIN_KEY_COPY.acceptorRemedy);
+});
+
+test("a key set with no key marked less certain prints no note", () => {
+  const lines = rendered({
+    ...localTerms,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "ssn", type: "ssn" },
+    ],
+    linkageKeys: [
+      {
+        name: "SSN + FN",
+        elements: [{ field: "ssn" }, { field: "first_name" }],
+      },
+    ],
+  });
+  expect(lines.join("\n")).not.toContain("less certain");
 });
 
 // --- The shapes the columns line takes ---------------------------------------
