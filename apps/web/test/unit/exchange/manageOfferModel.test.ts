@@ -236,7 +236,7 @@ describe("buildManagedDeposit (inviter)", () => {
     expect(deposit.expires).toBe(new Date(now + 30 * 86_400_000).toISOString());
   });
 
-  test("keeps the allowed relays the exchange ran with as the record's own", () => {
+  test("keeps the allowed relays at the save as the record's own", () => {
     const deposit = buildManagedDeposit(
       depositInputs({
         allowedRelays: ["relay.example.org", "backup.example.org:443"],

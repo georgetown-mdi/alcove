@@ -65,7 +65,7 @@ page: the relay servers its runs may use, one host per line, with a port where
 needed. Its runs and re-invites apply this list, not the Allowed relays on the
 Relay server page: a run connects through and enrolls at only the relays an
 entry names, and a re-invite names only those relays in the invitation it
-creates. An empty field lets its runs use every relay they list. The entry
+creates. With no list set, its runs use every relay they list. The entry
 form, the matching, and what the list does not decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 

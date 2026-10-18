@@ -170,7 +170,7 @@ export interface ManagedDepositInputs {
   documentParts: ManagedExchangeDocumentParts;
   /** The locator the document's connection block is composed from. */
   connection: WebRTCExchangeLocator;
-  /** The relays the completed exchange ran with, which the record keeps as its
+  /** The browser's Allowed relays at the save, which the record keeps as its
    * own; `undefined` where none were set. */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** The shared secret the completed run's handshake rotated to, stored as the

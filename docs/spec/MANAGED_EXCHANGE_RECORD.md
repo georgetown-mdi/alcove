@@ -540,7 +540,8 @@ configuration-only one alike, without a re-invite.
   Each run, and each re-invite, applies the record's `allowedRelays` in place
   of the browser's Allowed relays on its Relay server page, as
   [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) states the
-  setting.
+  setting. A record that holds no `allowedRelays` applies no restriction,
+  whatever the browser's Allowed relays hold.
 - **A changed delimiter re-reads the file.** Before a changed delimiter is saved,
   the input file in the stored `workingDirectoryHandle` is read with it and the
   columns it yields are graded against the agreed terms, as the run-start input

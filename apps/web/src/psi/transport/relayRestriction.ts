@@ -216,7 +216,8 @@ export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 /** What the setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =
   "Your allowed relays decide which relays this browser connects through, " +
-  "enrolls at and names in the invitations it creates; a run still " +
+  "enrolls at and names in the invitations it creates, except for a saved " +
+  "exchange, which uses its own; a run still " +
   "registers each new key at its own relay's registrar whatever the " +
   "setting keeps. " +
   "Your partner's side can still connect through a relay you leave out. " +
