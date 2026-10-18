@@ -18,7 +18,6 @@ import type { ExchangeSpec } from "@alcove/core";
 import {
   describeConfigSchemaError,
   loadConfigLinkageSource,
-  refuseRuleSetCitationWithoutRules,
   type ConfigLinkageSource,
 } from "./config";
 import { checkKeyFileExpiry, loadKeyFile } from "./keyFile";
@@ -94,7 +93,6 @@ export function readPartnershipConfig(configPath: string): ExchangeSpec {
     source,
     messageWithOperatorText`config file ${operatorSuppliedText(configPath)}`,
   );
-  refuseRuleSetCitationWithoutRules(parsed, configPath);
   try {
     return parseExchangeSpec(parsed);
   } catch (err) {

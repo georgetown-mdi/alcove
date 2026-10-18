@@ -12,7 +12,6 @@ import {
   InternalConsistencyError,
   RoundSetLimitError,
   UsageError,
-  DEFAULT_LINKAGE_RULE_SET,
   assertFirstRoundWithinSetMaximum,
   assertSharedSecretReadyForHandshake,
   csvDelimiterRefusal,
@@ -27,14 +26,13 @@ import {
 import { computeTermsHash } from "@alcove/core/testing";
 import type {
   InvitationToken,
-  LinkageRuleSetReference,
   LinkageTerms,
   PreparedExchange,
 } from "@alcove/core";
 import {
   announceRetainMode,
-  refuseRuleSetCitationWithoutRules,
   readConfigLinkageSource,
+  warnOnLinkageRuleSetCitationDrift,
 } from "../../../src/config";
 import {
   keyFileFromInvitation,
@@ -191,17 +189,17 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
 });
 
-// The rule-set citation refusal is the first call in loadConfig outside a catch
-// that rewraps it, so it is spy-WRAPPED to plant an error the configuration
-// boundary has to classify on its own. The retain-mode notice is spy-WRAPPED
-// to plant an error at a step no catch of its own surrounds.
+// The linkage-rule-set citation drift warning runs in readExchangeConfig
+// outside any inner catch, so it is spy-WRAPPED to plant an error the
+// configuration boundary has to classify on its own. The retain-mode notice is
+// spy-WRAPPED to plant an error at a step no catch of its own surrounds.
 vi.mock("../../../src/config", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/config")>();
   return {
     ...actual,
     announceRetainMode: vi.fn(actual.announceRetainMode),
-    refuseRuleSetCitationWithoutRules: vi.fn(
-      actual.refuseRuleSetCitationWithoutRules,
+    warnOnLinkageRuleSetCitationDrift: vi.fn(
+      actual.warnOnLinkageRuleSetCitationDrift,
     ),
   };
 });
@@ -555,50 +553,6 @@ test("loadConfig stays silent on a config containing no citation", () => {
   writeConfigWithTerms({ ...terms, linkageKeys: [second!, first!, ...rest] });
   loadConfig(baseOptions());
   expect(citationWarnings()).toEqual([]);
-});
-
-// --- a rule-set citation with no rules written -------------------------------
-
-/** A filedrop config whose linkage terms name `cited` and write no rules of
- *  their own, plus the key file the load needs. */
-function writeConfigNamingRuleSet(cited: LinkageRuleSetReference): void {
-  fs.writeFileSync(
-    configFile,
-    YAML.stringify({
-      connection: { channel: "filedrop", path: "/mnt/share/drop" },
-      linkage_terms: {
-        version: "1.0.0",
-        identity: "Test Party",
-        date: "2026-01-01",
-        algorithm: "psi",
-        output: { expects_output: true, share_with_partner: true },
-        deduplicate: false,
-        linkage_rule_set: {
-          field_set: { ...cited.fieldSet },
-          key_set: { ...cited.keySet },
-        },
-      },
-    }),
-  );
-  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-}
-
-test("loadConfig refuses a config that names a rule set and writes no rules", () => {
-  writeConfigNamingRuleSet(DEFAULT_LINKAGE_RULE_SET.reference);
-  let caught: unknown;
-  try {
-    loadConfig(baseOptions());
-  } catch (err) {
-    caught = err;
-  }
-  expect(caught).toBeInstanceOf(UsageError);
-  expect((caught as Error).message).toContain(configFile);
-  expect((caught as Error).message).toContain(
-    "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-      "linkage_fields or linkage_keys. Run 'alcove init'",
-  );
-  // Its own refusal, not a spec that failed to validate.
-  expect((caught as Error).message).not.toContain("not a valid exchange spec");
 });
 
 // --- config file errors ------------------------------------------------------
@@ -1536,7 +1490,7 @@ test.each([
     // to fix.
     fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
     saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-    vi.mocked(refuseRuleSetCitationWithoutRules).mockImplementationOnce(() => {
+    vi.mocked(warnOnLinkageRuleSetCitationDrift).mockImplementationOnce(() => {
       throw plant();
     });
     const exitSpy = captureProcessExit();

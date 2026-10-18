@@ -857,7 +857,7 @@ function configFileSource(
   log: { warn: (message: string) => void },
 ): ConfigLinkageSource | undefined {
   if (configFile === undefined) return undefined;
-  const source = readConfigLinkageSource(expandTilde(configFile), "own");
+  const source = readConfigLinkageSource(expandTilde(configFile));
   if (source.status === "no-config-file") {
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
       configFile,
@@ -939,10 +939,7 @@ function partnerTermsFrom(
   log: { warn: (message: string) => void },
 ): LinkageTerms | undefined {
   if (partnerTermsFile === undefined) return undefined;
-  const source = readConfigLinkageSource(
-    expandTilde(partnerTermsFile),
-    "partner",
-  );
+  const source = readConfigLinkageSource(expandTilde(partnerTermsFile));
   if (source.status === "no-config-file") {
     const message = messageWithOperatorText`partner-terms file ${operatorSuppliedText(
       partnerTermsFile,

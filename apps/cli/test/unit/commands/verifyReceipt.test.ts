@@ -1344,8 +1344,6 @@ describe("handler", () => {
   });
 
   test("a --partner-terms file naming a rule set and writing no rules fails the schema", async () => {
-    // A partner's document is read as the partner wrote it, so its missing
-    // lists are a schema failure rather than this party's refusal and remedy.
     const { recordPath } = await exchangeArtifacts();
     const {
       linkageFields: _fields,
@@ -1367,34 +1365,6 @@ describe("handler", () => {
     expect(exits).toEqual([64]);
     expect(stderr).toContain("has invalid linkage_terms");
     expect(stderr).toContain("linkage_fields");
-    expect(stderr).not.toContain("alcove init");
-    expect(stdout).toBe("");
-  });
-
-  test("a --config-file naming a rule set and writing no rules is refused", async () => {
-    const { recordPath } = await exchangeArtifacts();
-    const {
-      linkageFields: _fields,
-      linkageKeys: _keys,
-      linkageRuleSet: _ruleSet,
-      ...withoutRules
-    } = baseInputs.localTerms;
-    const { stdout, stderr, exits } = await runVerify({
-      record: recordPath,
-      "config-file": writeYaml(
-        YAML.stringify({
-          linkage_terms: {
-            ...withoutRules,
-            linkage_rule_set: DEFAULT_LINKAGE_RULE_SET.reference,
-          },
-        }),
-      ),
-    });
-    expect(exits).toEqual([64]);
-    expect(stderr).toContain(
-      "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-        "linkage_fields or linkage_keys. Run 'alcove init'",
-    );
     expect(stdout).toBe("");
   });
 

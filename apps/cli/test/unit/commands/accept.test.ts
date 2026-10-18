@@ -10,11 +10,9 @@ import YAML from "yaml";
 import {
   CONNECTION_BLOCK_DOC_URL,
   CONNECTION_BLOCK_NOTICE,
-  DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_POLLING_FREQUENCY_MS,
   DISPLAY_TRUNCATION_MARKER,
   encodeInvitation,
-  getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
   parseExchangeSpec,
@@ -38,7 +36,6 @@ import type {
   ConnectionEndpoint,
   Displayable,
   InvitationToken,
-  LinkageRuleSetReference,
   LinkageTerms,
 } from "@alcove/core";
 
@@ -2095,28 +2092,6 @@ function identityNoEffectNotice(promptWrites: string): string {
   return notices[0];
 }
 
-/**
- * A configuration at `configPath` whose linkage terms name `reference` and
- * write no `linkage_fields` or `linkage_keys` of their own.
- */
-function writeRuleSetNamingConfig(
-  configPath: string,
-  reference: LinkageRuleSetReference,
-): void {
-  const {
-    linkageFields: _fields,
-    linkageKeys: _keys,
-    ...rest
-  } = getDefaultLinkageTerms("Acceptor Org");
-  fs.writeFileSync(
-    configPath,
-    YAML.stringify({
-      connection: { channel: "filedrop", path: "/mnt/share" },
-      linkage_terms: { ...rest, linkageRuleSet: reference },
-    }),
-  );
-}
-
 /** The default terms with their first two keys swapped: rules that no longer
  *  support the rule-set citation the same terms hold, key order being cascade
  *  order. */
@@ -2379,36 +2354,6 @@ describe("reconciling a pre-existing config", () => {
     } finally {
       stdio.restore();
       warnSpy.mockRestore();
-      fs.rmSync(options.configFile, { force: true });
-    }
-  });
-
-  test("validateAccept: a reused config naming a rule set and writing no rules refuses", async () => {
-    // The file writes no rules to compare against the invitation, so the
-    // acceptance stops on the file rather than on a terms diff.
-    const options = testOptions();
-    writeRuleSetNamingConfig(
-      options.configFile,
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE()),
-        linkageTerms: getDefaultLinkageTerms("Inviter Org"),
-      });
-      const run = () =>
-        validateAccept({
-          resolved: { mode: "offline", invitation: encoded },
-          options,
-          log: silentLog,
-        });
-      await expect(run()).rejects.toBeInstanceOf(UsageError);
-      await expect(run()).rejects.toThrow(
-        "names a rule set in linkage_terms.linkage_rule_set but writes no " +
-          "linkage_fields or linkage_keys. Run 'alcove init'",
-      );
-      await expect(run()).rejects.toThrow(options.configFile);
-    } finally {
       fs.rmSync(options.configFile, { force: true });
     }
   });

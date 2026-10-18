@@ -36,7 +36,6 @@ import {
   describeConfigSchemaError,
   linkageTermsStandingOf,
   persistFilledPayloadReceive,
-  refuseRuleSetCitationWithoutRules,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { outcomeLineWriter } from "../exchangeOutcome";
@@ -574,10 +573,6 @@ function readExchangeConfig(
       options.configFile,
       log,
     );
-
-  // Ahead of the schema, which would report only the missing lists, and
-  // outside the catch below, so it is not relabeled as an invalid spec.
-  refuseRuleSetCitationWithoutRules(rawConfig, options.configFile);
 
   let parsedSpec: ReturnType<typeof parseExchangeSpec>;
   try {
