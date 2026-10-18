@@ -3,7 +3,6 @@
 - It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are each dropped, while a name holding one of the words beside another (`"Jane Doe"`, `"Baby Boy"`) or inside a longer one (`"Doering"`) is kept. -> It runs on the cleaned value, so `"Unknown"`, `"unknown"` and `"UNK"` are each dropped, and so are `"Baby Boy"` and `"B.B."`.
 - - -> A name containing one of the values beside another word (`"Baby Jane"`) or inside a longer one (`"Boyd"`, `"Babyak"`) is kept.
 - - -> The `first_name` list is the `last_name` list with nine values added, each a whole value a record system writes in place of a first name it does not have: `BABY BOY` and `BABY GIRL` and their initials `BB` and `BG`, `UNKNOWN MALE` and `UNKNOWN FEMALE`, `TWIN A` and `TWIN B`, and `FNU`, for first name unknown.
-- - -> No word of a listed value is dropped on its own: a given name after `BABY` can be a recorded legal name.
 - Each name field has its own copy of the placeholder list, and an operator may edit either one for their own data (see [Per-party placeholder lists](#per-party-placeholder-lists)). -> Each name field has its own placeholder list, and an operator may edit either one for their own data (see [Per-party placeholder lists](#per-party-placeholder-lists)).
 - `"Doe"` | `null` -> `"Doe"` | `"DOE"`
 - - -> `"Doe"` | `"DOE"`
@@ -22,3 +21,5 @@
 - Household sizes in the US Census run 1 person 28%, 2 at 35%, 3 at 15%, 4 at 13%, 5 at 6%, 6 at 2%, and 7 or more about 1.5%, so a limit of five keeps about 96% of households. -> In the American Community Survey 2024 1-year estimates for the US (tables B11016, households by size, and B25008, population in occupied housing units), about 90% of people live in households of five or fewer, and at least 9.5% in households of six or more, counting a household of seven or more as seven.
 - - -> A limit of five keeps the values of most households.
 - - -> Five is a working value, not set from a measurement of where, between a household and an organization's clients, false matches start.
+- The `last_name` sequence is the `first_name` sequence with one step added, the `filter_regex` on `^.{2,}$` before the placeholder list; the notes under [`first_name`](#first_name) on the steps they share apply unchanged. -> The `last_name` sequence is the `first_name` sequence with one step added, the `filter_regex` on `^.{2,}$` before the placeholder list, and a shorter placeholder list (below); the notes under [`first_name`](#first_name) on the other steps apply unchanged.
+- That step drops a value of one character. -> The added step drops a value of one character.

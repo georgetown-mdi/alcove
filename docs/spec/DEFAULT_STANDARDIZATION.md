@@ -547,8 +547,6 @@ The `first_name` list is the `last_name` list with nine values added, each a
 whole value a record system writes in place of a first name it does not have:
 `BABY BOY` and `BABY GIRL` and their initials `BB` and `BG`, `UNKNOWN MALE` and
 `UNKNOWN FEMALE`, `TWIN A` and `TWIN B`, and `FNU`, for first name unknown.
-No word of a listed value is dropped on its own: a given name after `BABY` can
-be a recorded legal name.
 
 Each name field has its own placeholder list, and an operator may
 edit either one for their own data (see
@@ -674,9 +672,9 @@ steps:
 ```
 
 The `last_name` sequence is the `first_name` sequence with one step added, the
-`filter_regex` on `^.{2,}$` before the placeholder list; the notes under
-[`first_name`](#first_name) on the steps they share apply unchanged. That step
-drops a value of one
+`filter_regex` on `^.{2,}$` before the placeholder list, and a shorter
+placeholder list (below); the notes under [`first_name`](#first_name) on the
+other steps apply unchanged. The added step drops a value of one
 character. Every such value left at this point is a letter, so it drops an
 initial written in place of a surname (`"Q"`, `"Q."`). The two are listed
 separately because they are two independent defaults: a change to one is not
