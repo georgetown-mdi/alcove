@@ -238,6 +238,69 @@ describe("the coverage answer", () => {
   });
 });
 
+describe("the geography rules on the guided list", () => {
+  const withGeography = csvOf({
+    client_id: "1",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "01/02/1990",
+    zip: "02139",
+    state: "Massachusetts",
+    county: "Middlesex County",
+  });
+  const seeded = editorFromCsv("Dana", withGeography);
+  const ZIP3_RULE = "LN + FN + DOB + ZIP3";
+  const STATE_RULE = "LN + FN + DOB + STATE";
+  const COUNTY_RULE = "LN + FN + DOB + COUNTY";
+
+  test("are listed on, in the catalog's order, before the name + date rule", () => {
+    expect(keyNames(seeded)).toStrictEqual(
+      catalogKeyNames(seeded, DEFAULT_PRECISION_FLOOR_SELECTION),
+    );
+    expect(keyNames(seeded)).toStrictEqual([
+      "LN + FN + DOB + ZIP5",
+      ZIP3_RULE,
+      "ZIP5 + soundex(LN) + FN + DOB",
+      "ZIP5 + LN + FN + DOB +/-1 year",
+      STATE_RULE,
+      COUNTY_RULE,
+      ...NAME_AND_DATE_RULES,
+      "LN + FN + YOB + MOB + ZIP5",
+    ]);
+    expect(enabledKeys(seeded.draft)).toHaveLength(seeded.draft.keys.length);
+  });
+
+  test("keep the ZIP3, state and county rules when the coverage answer is no", () => {
+    const answeredNo = editorWithPrecisionFloorSelection(seeded, AT_95_NO);
+    expect(keyNames(answeredNo)).toContain(ZIP3_RULE);
+    expect(keyNames(answeredNo)).toContain(STATE_RULE);
+    expect(keyNames(answeredNo)).toContain(COUNTY_RULE);
+    expect(keyNames(answeredNo)).toStrictEqual(
+      catalogKeyNames(answeredNo, AT_95_NO),
+    );
+    expect(buildAdvancedTerms(answeredNo.draft).linkageRuleSet).toStrictEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+  });
+
+  test("are left out at the 99% floor", () => {
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+    for (const rule of [ZIP3_RULE, STATE_RULE, COUNTY_RULE])
+      expect(keyNames(at99)).not.toContain(rule);
+  });
+
+  test("clean the state and county fields the terms declare", () => {
+    const terms = buildAdvancedTerms(seeded.draft);
+    expect(terms.linkageFields.map((field) => field.name)).toEqual(
+      expect.arrayContaining(["zip_code", "state", "county"]),
+    );
+    const outputs = seeded.draft.standardization.map((entry) => entry.output);
+    expect(outputs).toEqual(
+      expect.arrayContaining(["zip_code", "state", "county"]),
+    );
+  });
+});
+
 describe("keys written in Expert authoring or loaded from a document", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 

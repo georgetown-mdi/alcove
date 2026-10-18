@@ -63,10 +63,10 @@ const CONFIGURATION_UNWRITTEN =
   "accept.";
 const QUICK =
   "Agree with your partner on the columns your input files share and the " +
-  "--linkage-strategy you both pass, then run again. A phone, email or ZIP " +
-  "column in only one of the two files makes the terms differ: the party " +
-  "whose file has it removes that column, or you agree the terms through an " +
-  "invitation (alcove invite, then alcove accept).";
+  "--linkage-strategy you both pass, then run again. A phone, email, ZIP, " +
+  "state or county column in only one of the two files makes the terms " +
+  "differ: the party whose file has it removes that column, or you agree " +
+  "the terms through an invitation (alcove invite, then alcove accept).";
 
 describe("the next step beneath a terms refusal", () => {
   test.each([
@@ -210,6 +210,21 @@ describe("the next step beneath a terms refusal", () => {
       ]);
       expect(marked(lacksZip).endsWith(`\n${QUICK}`)).toBe(true);
     }
+  });
+
+  test("a state or county key only one party's terms hold names that party's columns", async () => {
+    const shared = ["ssn", "first_name", "last_name", "dob"];
+    const [hasGeography, lacksGeography] = await quickExchangeRefusals(
+      [...shared, "State", "County Name"],
+      shared,
+    );
+    expect(marked(hasGeography).split("\n").at(-1)).toBe(
+      `Your file's columns "State" (state) and "County Name" (county) are ` +
+        "matched on. Where your partner's file has no such column, remove " +
+        "that column from your file and run again, or agree the terms " +
+        "through an invitation (alcove invite, then alcove accept).",
+    );
+    expect(marked(lacksGeography).endsWith(`\n${QUICK}`)).toBe(true);
   });
 
   test("a quick exchange refused on its linkage strategy adds no column line", async () => {

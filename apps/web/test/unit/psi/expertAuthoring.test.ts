@@ -291,11 +291,10 @@ describe("an expert-authored key over a recognized type cleans as its partner do
   });
 
   test.each(["state", "county"])(
-    "a key over %s holds the cleaning the accepting party derives",
+    "the built-in key and an added key over %s hold the cleaning the accepting party derives",
     (field) => {
       const { draft } = seedAdvancedInvite("Inviter", COLUMNS, ROWS);
-      expect(draft.standardization.some((t) => t.output === field)).toBe(false);
-      for (const keyed of [addKey(draft, field), expertKeyed(field)]) {
+      for (const keyed of [draft, addKey(draft, field), expertKeyed(field)]) {
         const terms = buildAdvancedTerms(keyed);
         const stepsFor = (standardization: Standardization) =>
           standardization.find((t) => t.output === field)?.steps;

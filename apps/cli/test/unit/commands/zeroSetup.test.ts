@@ -562,12 +562,10 @@ test("handler: a repeated single-value flag exits 64 naming the flag", async () 
 async function termsFromZeroSetupRun(
   dir: string,
   identity: string | undefined,
+  csv = "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
 ): Promise<LinkageTerms> {
   const input = path.join(dir, "input.csv");
-  fs.writeFileSync(
-    input,
-    "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
-  );
+  fs.writeFileSync(input, csv);
   let prepared: PreparedExchange | undefined;
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
     prepared = optionsArg(callArgs).prepared;
@@ -621,6 +619,57 @@ test("handler: an --identity still holding the init placeholder exits 64", async
       termsFromZeroSetupRun(dir, `  ${PLACEHOLDER_IDENTITY}  `),
     ).rejects.toThrow("exit:64");
     expect(runProtocol).not.toHaveBeenCalled();
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handler: a file with ZIP, state and county columns runs the geography rules", async () => {
+  // The same keys, fields and citation the web app's direct exchange previews
+  // for this header (apps/web/test/unit/exchange/directExchangeModel.test.ts),
+  // so the two parties of a CLI-to-browser quick exchange present equal terms.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerogeo-"));
+  const exitSpy = captureProcessExit();
+  try {
+    const terms = await termsFromZeroSetupRun(
+      dir,
+      "Tester",
+      "first_name,last_name,date_of_birth,zip,state,county\n" +
+        "Bob,Jones,1990-01-02,20001,Maryland,Montgomery County\n",
+    );
+    expect(terms.linkageKeys.map((key) => key.name)).toStrictEqual([
+      "LN + FN + DOB + ZIP5",
+      "LN + FN + DOB + ZIP3",
+      "ZIP5 + soundex(LN) + FN + DOB",
+      "ZIP5 + LN + FN + DOB +/-1 year",
+      "LN + FN + DOB + STATE",
+      "LN + FN + DOB + COUNTY",
+      "LN + FN + DOB",
+      "swap(LN, FN) + DOB",
+      "split(LN) + FN + DOB",
+      "LN + FN + YOB + MOB + ZIP5",
+    ]);
+    expect(terms.linkageFields).toStrictEqual([
+      {
+        name: "first_name",
+        type: "first_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        constraints: { affixesAllowed: false, allowedCharacters: "A-Z " },
+      },
+      { name: "date_of_birth", type: "date_of_birth" },
+      { name: "zip_code", type: "zip_code" },
+      { name: "state", type: "state" },
+      { name: "county", type: "county" },
+    ]);
+    expect(terms.linkageRuleSet).toStrictEqual({
+      fieldSet: { name: "baseline-pii", version: "1.2.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.1.0" },
+    });
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });

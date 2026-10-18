@@ -4379,11 +4379,6 @@ describe("readConfigLinkageSource", () => {
     const terms: LinkageTerms = {
       ...defaults,
       linkageRuleSet: undefined,
-      linkageFields: [
-        ...defaults.linkageFields,
-        { name: "state", type: "state" },
-        { name: "county", type: "county" },
-      ],
       linkageKeys: [
         {
           name: "LN+FN+DOB+ZIP3",

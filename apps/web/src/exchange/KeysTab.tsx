@@ -70,17 +70,19 @@ import type {
   Standardization,
 } from "@alcove/core";
 
-/** {@link CONTACT_AND_LOCATION_FIELD_TYPES} as a membership test: the guided
- * list states the shared-value caveat beside keys over these types. */
-const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<string> = new Set(
-  CONTACT_AND_LOCATION_FIELD_TYPES,
-);
+/** The types the guided list states the shared-value caveat beside. */
+const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<string> = new Set([
+  ...CONTACT_AND_LOCATION_FIELD_TYPES,
+  "state",
+  "county",
+]);
 
-/** The caveat beside guided keys over a phone, email or ZIP field. */
+/** The caveat beside guided keys over a phone, email, ZIP, state or county
+ * field. */
 const SHARED_VALUE_CAVEAT =
   "A phone number or email address many people share, such as a shelter's " +
   "phone or a site's email, matches people who are not the same person. A " +
-  "ZIP code column must hold each person's own ZIP code, never the ZIP code " +
+  "ZIP code, state or county column must hold each person's own, never that " +
   "of a site that serves them.";
 
 /** The coverage question's two answers, as the radio values hold them. */

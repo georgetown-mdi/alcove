@@ -418,7 +418,7 @@ describe("a webrtc configuration", () => {
         turn: [
           {
             url: "turn:turn.example.org:3478",
-            username: "county",
+            username: "relay-user",
             credential: "@/run/secrets/turn-credential",
           },
         ],
@@ -464,7 +464,7 @@ describe("a webrtc configuration", () => {
       "turn:turn.example.org:3478",
     ]);
     const body = JSON.stringify(response);
-    expect(body).not.toContain("county");
+    expect(body).not.toContain("relay-user");
     expect(body).not.toContain("turn-credential");
     expect(body).not.toContain("broker-key");
     expect(body).not.toContain("stun.example.org");

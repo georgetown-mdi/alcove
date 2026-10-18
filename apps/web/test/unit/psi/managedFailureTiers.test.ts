@@ -528,6 +528,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     "phone",
     "email",
     "zip",
+    "state",
+    "county",
   ];
   const rows: Array<CSVRow> = [
     {
@@ -539,6 +541,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       phone: "3125550142",
       email: "ada@example.org",
       zip: "20001",
+      state: "DC",
+      county: "District of Columbia",
     },
     {
       ssn: "345-67-8901",
@@ -549,6 +553,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       phone: "3125550143",
       email: "alan@example.org",
       zip: "20002",
+      state: "DC",
+      county: "District of Columbia",
     },
   ];
 
