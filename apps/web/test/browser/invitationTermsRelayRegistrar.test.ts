@@ -14,7 +14,6 @@ import {
 
 import {
   ALLOWED_RELAYS_SCOPE,
-  ALLOWED_RELAYS_UNSET,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
   writeRelayRestriction,
@@ -188,13 +187,14 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
       `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
     );
     expect(text).toContain(ALLOWED_RELAYS_SCOPE);
-    expect(text).not.toContain(ALLOWED_RELAYS_UNSET);
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
   });
 
-  test("the hosted build with the setting unset marks nothing and says a run contacts the relay", async () => {
+  test("the hosted build with the setting unset marks nothing and says nothing about the setting", async () => {
     const text = await producesText(relayEndpoint);
-    expect(text).toContain(ALLOWED_RELAYS_UNSET);
+    expect(text).toContain(`TURN ${KEPT_URL}`);
+    expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
+    expect(text).not.toMatch(/relay server page|leave out a TURN server/i);
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
@@ -208,7 +208,6 @@ describe("InvitationTerms: the invitation's relays under this browser's allowed 
     expect(text).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
     expect(text).not.toContain(ALLOWED_RELAYS_SCOPE);
-    expect(text).not.toContain(ALLOWED_RELAYS_UNSET);
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
   });
 });

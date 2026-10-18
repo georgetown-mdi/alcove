@@ -174,16 +174,6 @@ export const ALLOWED_RELAYS_SCOPE =
   "setting keeps. " +
   "Your partner's side can still connect through a relay you leave out.";
 
-/**
- * The acceptance review's line under the invitation's relay when the setting
- * is unset: a browser run contacts every relay it lists.
- */
-export const ALLOWED_RELAYS_UNSET =
-  "A run in this browser contacts this relay. To leave out a TURN server " +
-  "listed here, set Allowed relays on the Relay server page. That setting " +
-  "covers relay servers only: the STUN servers listed here are still " +
-  "contacted.";
-
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
   "To let a run try a relay left out, add its host to Allowed relays on " +

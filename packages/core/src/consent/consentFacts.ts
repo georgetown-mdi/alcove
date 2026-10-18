@@ -663,8 +663,7 @@ export const CONSENT_FACTS = {
       "operator can observe is the note's, since that follows from " +
       "contacting the relay at all. The note says a run may contact the " +
       "relay rather than that it does, since a command-line run allocates " +
-      "on the first TURN url it lists alone; a browser run, which contacts " +
-      "every relay it lists, says so beside the note.",
+      "on the first TURN url it lists alone.",
     note:
       "Your partner named this relay for the exchange. A run on your side " +
       "may contact it unless your allowed relays leave it out, and the " +

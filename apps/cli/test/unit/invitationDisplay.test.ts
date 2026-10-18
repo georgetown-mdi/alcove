@@ -43,10 +43,7 @@ import type {
 } from "@alcove/core";
 import type { ConsentFact } from "@alcove/core/testing";
 
-import {
-  ALLOWED_RELAYS_SCOPE,
-  ALLOWED_RELAYS_UNSET,
-} from "../../src/allowedRelays";
+import { ALLOWED_RELAYS_SCOPE } from "../../src/allowedRelays";
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import {
   displayInvitation,
@@ -1404,12 +1401,12 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     ).split("\n");
     const heading = lines.indexOf("  relay your partner named (enforced):");
     expect(heading).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(heading + 1, heading + 5)).toEqual([
+    expect(lines.slice(heading + 1, heading + 4)).toEqual([
       "    TURN turns:relay.example.org:443?transport=tcp",
       "    STUN stun:relay.example.org\\x1b[31m:3478",
       `    ${CONSENT_FACTS.invitationRelay.note}`,
-      `    ${ALLOWED_RELAYS_UNSET}`,
     ]);
+    expect(lines.join("\n")).not.toContain("allowed_relays");
     expect(heading).toBeLessThan(lines.indexOf(REPEAT_HEADING));
     // The note is shared with the browser, whose setting has another name:
     // each app names its own on a line of its own.
@@ -1423,11 +1420,10 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     );
     expect(without).not.toContain("relay your partner named");
     expect(without).not.toContain(CONSENT_FACTS.invitationRelay.note);
-    expect(without).not.toContain(ALLOWED_RELAYS_UNSET);
     expect(without).not.toContain("registers this exchange at");
   });
 
-  test("displayInvitation: a terms update naming a relay does not say how to set allowed_relays", () => {
+  test("displayInvitation: a terms update naming a relay says nothing about allowed_relays when none is set", () => {
     const log = getLogger("accept-display-relay-update-test");
     log.setLevel("silent");
     const lines: string[] = [];
@@ -1445,7 +1441,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       surface: "update",
     });
     expect(lines).toContain(`    ${CONSENT_FACTS.invitationRelay.note}`);
-    expect(lines).not.toContain(`    ${ALLOWED_RELAYS_UNSET}`);
+    expect(lines.join("\n")).not.toContain("allowed_relays");
   });
 
   test("displayInvitation: a relay naming a registrar gains one line saying its operator learns this party's address", () => {
@@ -1463,15 +1459,15 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       }),
     ).split("\n");
     const heading = lines.indexOf("  relay your partner named (enforced):");
-    expect(lines.slice(heading + 1, heading + 5)).toEqual([
+    expect(lines.slice(heading + 1, heading + 4)).toEqual([
       "    TURN turns:default-relay.example.net:443?transport=tcp",
       "    A run registers this exchange at " +
         "https://default-relay.example.net before it connects only when " +
         "your side sets up its own connection on this relay, and whoever " +
         "runs that registrar then learns your network address.",
       `    ${CONSENT_FACTS.invitationRelay.note}`,
-      `    ${ALLOWED_RELAYS_UNSET}`,
     ]);
+    expect(lines.join("\n")).not.toContain("allowed_relays");
     expect(
       invitationRelayRegistrarLine("https://r\\x1b[31m.example" as Displayable),
     ).toContain("https://r\\x1b[31m.example");
