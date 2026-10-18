@@ -335,9 +335,16 @@ export const MATCHING_KEYS_LESS_CERTAIN_REMEDY = {
 /** What the key list's help says about its order: the bands the floor
  * selects, in the order the built-in keys list them, or for keys no floor
  * selected, only that they are tried in the order listed. */
-export function keyOrderHelp(editor: InviterEditor): string {
+export function keyOrderHelp(
+  editor: InviterEditor,
+  keysFromOpenedConfiguration = false,
+): string {
   const selection = editor.draft.precisionFloorSelection;
-  if (editor.keysAuthored === true || selection === undefined)
+  if (
+    editor.keysAuthored === true ||
+    keysFromOpenedConfiguration ||
+    selection === undefined
+  )
     return (
       "Records are matched on these keys, tried in the order listed, and " +
       "earlier keys match first."

@@ -268,7 +268,9 @@ export function KeysTab({
           </Radio.Group>
         </>
       )}
-      <p id="key-order-help">{keyOrderHelp(editor)}</p>
+      <p id="key-order-help">
+        {keyOrderHelp(editor, keysFromOpenedConfiguration)}
+      </p>
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);

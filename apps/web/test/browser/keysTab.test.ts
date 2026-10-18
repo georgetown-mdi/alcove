@@ -963,6 +963,9 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE });
     const floor95 = page.getByRole("radio", { name: at95.label });
     await expect.element(openedNote).toBeInTheDocument();
+    expect(
+      document.getElementById("key-order-help")!.textContent,
+    ).not.toContain("95%");
     expect(floor95.query()).toBeNull();
     expect(
       page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
