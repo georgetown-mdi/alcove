@@ -442,8 +442,9 @@ written, not the `ssn` result. The `ssn` character screen does not: `***-**-8924
 is `null` as `ssn` and `"8924"` as `ssn4`. Nor does the `ssn` area-number rule:
 `000-00-8924` is likewise `null` as `ssn` and `"8924"` as `ssn4`. The `ssn`
 rules for numbers never issued do not reach it either: `900-12-3456` is `null`
-as `ssn` and `"3456"` as `ssn4`. The shared-value screen on `ssn` reaches it
-only where the party's own terms set `deduplicate` (see
+as `ssn` and `"3456"` as `ssn4`. The shared-value screen on the `ssn` column
+reaches it only where the party's own terms set `deduplicate`, whether or not
+they declare an `ssn` field (see
 [Shared-value screens](#shared-value-screens)).
 
 | Input | Result |
@@ -1222,13 +1223,23 @@ The defaults state these limits:
 No other default transformation states one.
 
 Where the party's own terms set `deduplicate`, the `ssn` screen also reaches
-the `ssn4` field read from the same column (see
-[Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)): a
-record whose `ssn` value the screen drops has no `ssn4` value either. Where
-they do not, the record keeps its `ssn4` value. The same holds under the
-party's own standardization, for an `ssn4` transformation reading the column of
-an `ssn` transformation that states `max_people_per_value`. An `ssn4` field
-read from a column of its own is not screened.
+an `ssn4` field read from a column of type `ssn` or from the column an `ssn`
+field reads (see
+[Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)),
+whether or not the terms declare an `ssn` field: a record whose SSN the screen
+drops has no `ssn4` value either. A party whose terms do not set `deduplicate`
+keeps the record's `ssn4` value. The screen is the one an `ssn` field reading
+that column has:
+
+- Where an `ssn` field of the terms reads the column, it is that field's own
+  screen, so under the party's own standardization it is the
+  `max_people_per_value` its `ssn` transformation states, and none where that
+  transformation states none.
+- Otherwise the column is cleaned by the default `ssn` pipeline and screened at
+  the default `ssn` limit, under the default cleaning and the party's own
+  standardization alike.
+
+An `ssn4` field read from a column of its own is not screened.
 
 ### Counting distinct people
 

@@ -1,7 +1,9 @@
-- - -> The shared-value screen on `ssn` reaches it only where the party's own terms set `deduplicate` (see [Shared-value screens](#shared-value-screens)).
-- - -> Where the party's own terms set `deduplicate`, the `ssn` screen also reaches the `ssn4` field read from the same column (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)): a record whose `ssn` value the screen drops has no `ssn4` value either.
-- - -> Where they do not, the record keeps its `ssn4` value.
-- - -> The same holds under the party's own standardization, for an `ssn4` transformation reading the column of an `ssn` transformation that states `max_people_per_value`.
+- - -> The shared-value screen on the `ssn` column reaches it only where the party's own terms set `deduplicate`, whether or not they declare an `ssn` field (see [Shared-value screens](#shared-value-screens)).
+- - -> Where the party's own terms set `deduplicate`, the `ssn` screen also reaches an `ssn4` field read from a column of type `ssn` or from the column an `ssn` field reads (see [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)), whether or not the terms declare an `ssn` field: a record whose SSN the screen drops has no `ssn4` value either.
+- - -> A party whose terms do not set `deduplicate` keeps the record's `ssn4` value.
+- - -> The screen is the one an `ssn` field reading that column has:
+- - -> Where an `ssn` field of the terms reads the column, it is that field's own screen, so under the party's own standardization it is the `max_people_per_value` its `ssn` transformation states, and none where that transformation states none.
+- - -> Otherwise the column is cleaned by the default `ssn` pipeline and screened at the default `ssn` limit, under the default cleaning and the party's own standardization alike.
 - - -> An `ssn4` field read from a column of its own is not screened.
 - A person is a record's cleaned `first_name`, `last_name` and `date_of_birth` values. -> A person is a record's cleaned `first_name` and `date_of_birth` values.
 - - -> The last name takes no part in the count, so a person whose last name differs between records, after a marriage or a keying error, is still one person.

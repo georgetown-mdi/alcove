@@ -664,6 +664,77 @@ describe("the ssn4 derived from a screened SSN", () => {
       ["6780"],
     ]);
   });
+
+  function ssn4OnlyTerms(deduplicate: boolean): LinkageTerms {
+    return {
+      ...terms,
+      deduplicate,
+      linkageFields: [{ name: "ssn4", type: "ssn4" }],
+      linkageKeys: [{ name: "ssn4", elements: [{ field: "ssn4" }] }],
+    };
+  }
+
+  test("is dropped with a shared SSN on a deduplicating side whose terms declare no ssn", () => {
+    const sameLastFour = [
+      ...people,
+      { first: "Luisa", dob: "07/07/1970", ssn: "223-45-6780" },
+      { first: "Rosa", dob: "08/08/1960", ssn: "323-45-6780" },
+    ];
+    const kept = [[], [], ["4321"], ["4321"], ["6780"], ["6780"]];
+    expect(
+      cleaned("ssn4", sameLastFour, undefined, ssn4OnlyTerms(true)),
+    ).toEqual(kept);
+    const authored: Standardization = [
+      { output: "ssn4", input: "SSN", steps: derivedFieldSteps("ssn4", "ssn") },
+    ];
+    expect(
+      cleaned("ssn4", sameLastFour, authored, ssn4OnlyTerms(true)),
+    ).toEqual(kept);
+  });
+
+  test("is kept on a side that does not deduplicate and declares no ssn", () => {
+    expect(cleaned("ssn4", people, undefined, ssn4OnlyTerms(false))).toEqual([
+      ["6780"],
+      ["6780"],
+      ["4321"],
+      ["4321"],
+    ]);
+  });
+
+  test("is not screened when read from a column of its own beside an ssn column", () => {
+    const columns: ColumnMetadata[] = [
+      ...metadata,
+      { name: "SSN4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    const rows = people.map((person) => ({
+      ...row(person),
+      SSN4: person.ssn?.slice(-4) ?? "",
+    }));
+    const fieldOf = (agreedTerms: LinkageTerms, name: string) => {
+      const standardization = getDefaultStandardization(columns, agreedTerms);
+      const field = buildStandardizedDataset(
+        standardization,
+        rows,
+        columns,
+        agreedTerms,
+        personColumns(standardization, columns, agreedTerms, rows),
+      ).getField(name);
+      return rows.map((_, index) => field?.get(index));
+    };
+    expect(fieldOf(ssn4Terms(true), "ssn")).toEqual([
+      [],
+      [],
+      ["287654321"],
+      ["287654321"],
+    ]);
+    for (const agreedTerms of [ssn4Terms(true), ssn4OnlyTerms(true)])
+      expect(fieldOf(agreedTerms, "ssn4")).toEqual([
+        ["6780"],
+        ["6780"],
+        ["4321"],
+        ["4321"],
+      ]);
+  });
 });
 
 describe("the limit in a standardization document", () => {
