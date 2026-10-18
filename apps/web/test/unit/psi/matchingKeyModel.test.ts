@@ -166,6 +166,7 @@ describe("editorWithIncludeMatchingKey", () => {
 describe("generateInvitation narrows the choice once, at the mint", () => {
   test("a chosen column rides the mint and the run's data spec, never the token", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: Readable.from(CSV),
       location,
@@ -188,6 +189,7 @@ describe("generateInvitation narrows the choice once, at the mint", () => {
 
   test("single-pass terms mint no choice", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: Readable.from(CSV),
       location,
@@ -200,6 +202,7 @@ describe("generateInvitation narrows the choice once, at the mint", () => {
 
   test("an omitted choice mints none", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: Readable.from(CSV),
       location,

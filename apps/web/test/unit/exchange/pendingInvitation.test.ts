@@ -64,6 +64,7 @@ afterEach(() => {
 
 async function mint() {
   return generateInvitation({
+    allowedRelays: undefined,
     inviterName: "County Health Dept",
     file: Readable.from(CSV),
     location,
@@ -91,6 +92,7 @@ describe("the invitation kept for a resume", () => {
 
   test("keeps the matched-key choice the mint decided", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: Readable.from(CSV),
       location,
@@ -100,6 +102,42 @@ describe("the invitation kept for a resume", () => {
     writePendingInvitation(minted, context);
     const pending = await readPendingInvitation(new Date());
     expect(pending?.invitation.includeMatchingKey).toBe(true);
+  });
+
+  test("keeps the allowed relays the mint took, and a resume runs under them", async () => {
+    const minted = await generateInvitation({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+      inviterName: "County Health Dept",
+      file: Readable.from(CSV),
+      location,
+    });
+    writePendingInvitation(minted, context);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toMatchObject({
+      v: 2,
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    expect(pending.invitation.allowedRelays).toEqual([
+      "relay.example.org",
+      "backup.example.org:443",
+    ]);
+    const outcome = await resumeFromChosenFile(pending, Readable.from(CSV));
+    if (outcome.kind !== "resumed") throw new Error(outcome.kind);
+    expect(outcome.invitation.allowedRelays).toEqual([
+      "relay.example.org",
+      "backup.example.org:443",
+    ]);
+  });
+
+  test("an invitation minted with no allowed relays keeps none", async () => {
+    writePendingInvitation(await mint(), context);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).not.toHaveProperty(
+      "allowedRelays",
+    );
+    const pending = await readPendingInvitation(new Date());
+    expect(pending?.invitation).not.toHaveProperty("allowedRelays");
   });
 
   async function pendingFor(minted: Awaited<ReturnType<typeof mint>>) {
@@ -266,6 +304,23 @@ describe("the invitation kept for a resume", () => {
     [
       "holds a matched-key choice the app does not write",
       (entry) => (entry.includeMatchingKey = false),
+    ],
+    [
+      "holds allowed relays that are not a list",
+      (entry) => (entry.allowedRelays = "relay.example.org"),
+    ],
+    [
+      "holds an allowed relay not in its normalized form",
+      (entry) => (entry.allowedRelays = ["Relay.Example.org"]),
+    ],
+    [
+      "holds an allowed relay naming a scheme",
+      (entry) => (entry.allowedRelays = ["turns:relay.example.org:443"]),
+    ],
+    [
+      "holds an allowed relay twice",
+      (entry) =>
+        (entry.allowedRelays = ["relay.example.org", "relay.example.org"]),
     ],
   ])("an entry that %s is not offered and is removed", async (_, damage) => {
     const entry = await writtenEntry();

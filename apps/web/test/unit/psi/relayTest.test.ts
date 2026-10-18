@@ -100,7 +100,6 @@ afterEach(() => {
 describe("relayTestTargets", () => {
   test("lists the saved TURN urls then the site's relay, each once", () => {
     const targets = relayTestTargets(
-      undefined,
       () => ({
         kind: "set",
         relay: { turn: [OWN_URL, SITE_URL, OWN_URL], stun: [] },
@@ -116,7 +115,6 @@ describe("relayTestTargets", () => {
   test("lists no STUN url, and nothing where neither names a relay", () => {
     expect(
       relayTestTargets(
-        undefined,
         () => ({
           kind: "set",
           relay: { turn: [], stun: ["stun:stun.example.org:3478"] },
@@ -129,7 +127,6 @@ describe("relayTestTargets", () => {
   test("a saved setting this build cannot read adds nothing, as for a run", () => {
     expect(
       relayTestTargets(
-        undefined,
         () => ({ kind: "unreadable" }),
         () => SITE,
       ).map((t) => t.url),

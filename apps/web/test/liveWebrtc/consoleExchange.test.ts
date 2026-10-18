@@ -193,6 +193,7 @@ describe("a console webrtc job invites and a browser peer accepts", () => {
     const started = leg();
     const { columns } = await readBrowserCsv(CLI_PARTY_CSV);
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: CONSOLE_IDENTITY,
       profiledColumns: columns,
       location: locationFor(started),
@@ -229,6 +230,7 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
     const started = leg();
     // The browser inviter's deployment and the console share the one broker.
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: BROWSER_IDENTITY,
       file: new File([BROWSER_CSV], "input.csv", { type: "text/csv" }),
       location: locationFor(started),
@@ -302,6 +304,7 @@ describe("a webrtc alcove.yaml opened in the console runs in place", () => {
     const started = leg();
     const { columns } = await readBrowserCsv(CLI_PARTY_CSV);
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: CONSOLE_IDENTITY,
       profiledColumns: columns,
       location: locationFor(started),

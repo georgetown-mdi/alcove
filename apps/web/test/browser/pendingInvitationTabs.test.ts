@@ -78,6 +78,7 @@ async function openOtherTab(): Promise<OtherTab> {
  * does; the name of its claim. */
 async function mintIn(tab: OtherTab): Promise<string> {
   const invitation = await generateInvitation({
+    allowedRelays: undefined,
     inviterName: "Dana Okafor",
     file: new File(
       ["first_name,last_name,dob\nAnn,Lee,1990-01-02\n"],

@@ -79,6 +79,7 @@ describe("the guided key list", () => {
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: draft.identity,
       profiledColumns: COLUMNS,
       location: LOCATION,

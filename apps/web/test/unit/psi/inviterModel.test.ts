@@ -521,6 +521,7 @@ describe("the create gate and the two sentences that state it", () => {
     offlineBlocked: false,
     connectionIncomplete: false,
     coordinationServerHeld: undefined,
+    allowedRelaysBlocked: false,
     splitDirectoryProblem: undefined,
     exchangeFilesBlocked: false,
     connectionTuningBlocked: false,
@@ -565,6 +566,12 @@ describe("the create gate and the two sentences that state it", () => {
       },
       statusLine: COORDINATION_SERVER_MISSING,
       announcement: COORDINATION_SERVER_MISSING,
+    },
+    {
+      gate: "allowedRelaysBlocked",
+      gates: { ...clearGates, allowedRelaysBlocked: true },
+      statusLine: "Resolve the allowed relays above to continue.",
+      announcement: "Resolve the allowed relays above before you can create.",
     },
     {
       gate: "splitDirectoryProblem",

@@ -285,6 +285,7 @@ describe("editorWithIncludeOwnColumns", () => {
 describe("generateInvitation narrows the choice once, at the mint", () => {
   test("a chosen selection rides the mint and never the token", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: csvStream(),
       location,
@@ -302,6 +303,7 @@ describe("generateInvitation narrows the choice once, at the mint", () => {
 
   test("terms that hand the result to the partner alone mint no selection", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: csvStream(),
       location,
@@ -314,6 +316,7 @@ describe("generateInvitation narrows the choice once, at the mint", () => {
 
   test("an omitted choice mints no selection", async () => {
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health",
       file: csvStream(),
       location,

@@ -145,6 +145,7 @@ describe("expert authoring round-trips", () => {
     expect(safeParseLinkageTerms(authored).success).toBe(true);
 
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: d.identity,
       file: csvStream(),
       location,
@@ -321,6 +322,7 @@ describe("an expert-authored key over a recognized type cleans as its partner do
     ).toEqual({});
 
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: draft.identity,
       profiledColumns: COLUMNS,
       location,

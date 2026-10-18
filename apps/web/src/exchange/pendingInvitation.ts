@@ -8,6 +8,7 @@ import {
   decodeInvitation,
   getLogger,
   isCsvDelimiterChoice,
+  normalizeAllowedRelay,
   parseBoundedJson,
   safeParseMetadata,
   safeParseStandardization,
@@ -71,6 +72,7 @@ interface StoredRecord {
   standardization?: Standardization;
   includeOwnColumns?: OwnColumnSelection;
   includeMatchingKey?: true;
+  allowedRelays?: Array<string>;
 }
 
 function storage(): Storage | undefined {
@@ -111,6 +113,9 @@ export function writePendingInvitation(
       : {}),
     ...(invitation.includeMatchingKey !== undefined
       ? { includeMatchingKey: invitation.includeMatchingKey }
+      : {}),
+    ...(invitation.allowedRelays !== undefined
+      ? { allowedRelays: [...invitation.allowedRelays] }
       : {}),
   };
   try {
@@ -263,6 +268,7 @@ const STORED_MEMBERS: ReadonlySet<string> = new Set(
     standardization: true,
     includeOwnColumns: true,
     includeMatchingKey: true,
+    allowedRelays: true,
   } satisfies Record<keyof StoredRecord, true>),
 );
 
@@ -300,6 +306,19 @@ function isColumnList(value: unknown): value is Array<string> {
   );
 }
 
+/** An allowed-relays list as the mint holds it: each entry in core's
+ * normalized `connection.allowed_relays` form, none repeated. */
+function isAllowedRelayList(value: unknown): value is Array<string> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "string" && normalizeAllowedRelay(entry) === entry,
+    ) &&
+    new Set(value).size === value.length
+  );
+}
+
 /** The deep link this page builds for `encoded`, or undefined off a page. */
 function ownDeepLink(encoded: string): string | undefined {
   const origin = (globalThis as { location?: { origin?: unknown } }).location
@@ -312,8 +331,8 @@ function ownDeepLink(encoded: string): string | undefined {
  * this app writes, or not one the writer sets. Each string is bounded by what
  * the app can write: the encoded invitation by core's decoder, the deep link
  * by being the one this page builds, the name by a terms party identity, the
- * file name by 255 code points, and the column names by the header line the
- * CSV read accepts.
+ * file name by 255 code points, the column names by the header line the CSV
+ * read accepts, and each allowed relay by core's entry rule.
  */
 function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -340,8 +359,11 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     rowCount < 0
   )
     return undefined;
-  const { csvDelimiter, includeOwnColumns, includeMatchingKey } = fields;
+  const { csvDelimiter, includeOwnColumns, includeMatchingKey, allowedRelays } =
+    fields;
   if (includeMatchingKey !== undefined && includeMatchingKey !== true)
+    return undefined;
+  if (allowedRelays !== undefined && !isAllowedRelayList(allowedRelays))
     return undefined;
   if (
     csvDelimiter !== undefined &&
@@ -379,6 +401,7 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     ...(standardization !== undefined ? { standardization } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
     ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
+    ...(allowedRelays !== undefined ? { allowedRelays } : {}),
   };
 }
 
@@ -441,6 +464,9 @@ async function pendingInvitationOf(
         : {}),
       ...(token.connectionEndpoint !== undefined
         ? { connectionEndpoint: token.connectionEndpoint }
+        : {}),
+      ...(stored.allowedRelays !== undefined
+        ? { allowedRelays: stored.allowedRelays }
         : {}),
     },
     inviterName: stored.inviterName,

@@ -4,9 +4,8 @@ import type { MantineSpacing } from "@mantine/core";
 
 /**
  * The field that sets the relays an exchange may use, one entry per line. The
- * caller parses the text (`parseAllowedRelayLines` for this browser's stored
- * setting, `parseExchangeAllowedRelayLines` for an exchange's own) and states
- * the field's scope beside it.
+ * caller parses the text (`parseExchangeAllowedRelayLines`) and states the
+ * field's scope beside it.
  */
 export function AllowedRelaysField({
   value,

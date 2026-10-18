@@ -60,7 +60,6 @@ import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
-import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import {
@@ -1284,7 +1283,7 @@ export function useInviterExchange({
       const relayPlan = await relayPlanForRun(
         minted.sharedSecret,
         undefined,
-        readRelayRestriction().allowedRelays,
+        minted.allowedRelays,
         { signal, onRunNotice },
       );
       const peer = await listenAsInviter(minted.sharedSecret, {

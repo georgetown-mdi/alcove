@@ -300,6 +300,9 @@ export interface InviterCreateGates {
    * coordination server set or with the choice withheld, `undefined` when
    * neither. Already a complete sentence, used as-is. */
   coordinationServerHeld: string | undefined;
+  /** Whether the browser exchange's Allowed relays hold a line the field
+   * refuses. */
+  allowedRelaysBlocked: boolean;
   /** Why the split rendezvous and the retain choice disagree, `undefined` when
    * they do not. Already a complete, remedy-naming sentence, used as-is. */
   splitDirectoryProblem: string | undefined;
@@ -372,6 +375,11 @@ export function inviterCreateStatus(
     return heldCreate(
       gates.coordinationServerHeld,
       gates.coordinationServerHeld,
+    );
+  if (gates.allowedRelaysBlocked)
+    return heldCreate(
+      "Resolve the allowed relays above to continue.",
+      "Resolve the allowed relays above before you can create.",
     );
   if (gates.splitDirectoryProblem !== undefined)
     return heldCreate(gates.splitDirectoryProblem, gates.splitDirectoryProblem);

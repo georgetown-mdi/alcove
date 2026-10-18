@@ -62,16 +62,14 @@ The one-off exchange that just completed is unaffected; nothing was stored.
 
 A saved exchange keeps its own **Allowed relays**, under Local settings on its
 page: the relay servers its runs may use, one host per line, with a port where
-needed. Its runs and re-invites apply this list, not the Allowed relays on the
-Relay server page: a run connects through and enrolls at only the relays an
-entry names, and a re-invite names only those relays in the invitation it
+needed. Its runs and re-invites apply this list: a run connects through and
+enrolls at only the relays an entry names, and a re-invite names only those relays in the invitation it
 creates. With no list set, its runs use every relay they list. The entry
 form, the matching, and what the list does not decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 
-Saving an exchange you accepted as recurring starts its list from the Allowed
-relays set on that invitation's review; saving one you created starts it from
-the Allowed relays the Relay server page holds at that moment. The list goes
+Saving an exchange as recurring starts its list from the Allowed relays set on
+the review of the invitation you accepted or created. The list goes
 wherever the exchange goes: a backup holds it, the command-line export writes it as
 `connection.allowed_relays`, and an imported configuration that sets that key
 keeps it as written. A configuration whose list is empty allows no relay

@@ -101,6 +101,7 @@ describe("generateInvitation", () => {
   test("round-trips through decodeInvitation with secret, terms, and endpoint intact", async () => {
     const inviterName = "County Health Dept";
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(),
       location,
@@ -133,6 +134,7 @@ describe("generateInvitation", () => {
     // The existing call sites omit connectionEndpoint, so the default path must
     // still embed the app's own webrtc signaling locator, unchanged.
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -150,6 +152,7 @@ describe("generateInvitation", () => {
     test("refuses a webrtc invitation", async () => {
       await expect(
         generateInvitation({
+          allowedRelays: undefined,
           inviterName: "County Health Dept",
           file: csvStream(),
           location: consoleLocation,
@@ -184,6 +187,7 @@ describe("generateInvitation", () => {
           warnings: [],
         });
         const { encoded, deepLink } = await generateInvitation({
+          allowedRelays: undefined,
           inviterName: "County Health Dept",
           file: csvStream(),
           location: { ...consoleLocation, origin: "https://app.example.org" },
@@ -211,6 +215,7 @@ describe("generateInvitation", () => {
       "still mints a $channel invitation, which names no signaling address",
       async (connectionEndpoint) => {
         const { encoded } = await generateInvitation({
+          allowedRelays: undefined,
           inviterName: "County Health Dept",
           file: csvStream(),
           location: consoleLocation,
@@ -240,6 +245,7 @@ describe("generateInvitation", () => {
       };
       writeOwnRelaySetting(ownRelay);
       const { encoded } = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -284,6 +290,7 @@ describe("generateInvitation", () => {
       setting: () => typeof DEFAULT_RELAY | undefined,
     ) {
       const { encoded } = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         profiledColumns: ["ssn", "first_name", "last_name", "dob"],
         location,
@@ -352,8 +359,21 @@ describe("generateInvitation", () => {
       expect(minted.allowedRelays).toStrictEqual(allowedRelays);
     });
 
+    test("requires the allowed relays, so a caller cannot drop a list by leaving it out", () => {
+      const withoutAllowedRelays = {
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+      };
+      // @ts-expect-error -- the mint's allowedRelays has no default
+      const params: Parameters<typeof generateInvitation>[0] =
+        withoutAllowedRelays;
+      expect(params).not.toHaveProperty("allowedRelays");
+    });
+
     test("returns no list where none is given, and keeps every relay", async () => {
       const minted = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         profiledColumns: ["ssn", "first_name", "last_name", "dob"],
         location,
@@ -392,6 +412,7 @@ describe("generateInvitation", () => {
         host: "sftp.example.org",
       } as const;
       const { encoded } = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         profiledColumns: ["ssn", "first_name", "last_name", "dob"],
         location,
@@ -406,6 +427,7 @@ describe("generateInvitation", () => {
 
   test("embeds a credential-free sftp endpoint when one is requested", async () => {
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -436,6 +458,7 @@ describe("generateInvitation", () => {
     // The console mints the file-sync invitations, so it is where the partner's
     // consent display gets told the exchange leaves a permanent transcript.
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -454,6 +477,7 @@ describe("generateInvitation", () => {
     // reaches the token: an absent field states nothing, which is the accurate
     // answer for a webrtc mint (a channel with no retain mode) as well.
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -493,6 +517,7 @@ describe("generateInvitation", () => {
       // the token. The other two shapes have no retention to derive from, so an
       // omitted flag still declares nothing.
       const { encoded } = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -514,6 +539,7 @@ describe("generateInvitation", () => {
       // declaration, rather than the token stating a mode the endpoint
       // contradicts.
       const { encoded } = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -532,6 +558,7 @@ describe("generateInvitation", () => {
     // could be in.
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -542,6 +569,7 @@ describe("generateInvitation", () => {
 
   test("embeds a filedrop endpoint when one is requested", async () => {
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -557,6 +585,7 @@ describe("generateInvitation", () => {
   test("derives and embeds terms filtered to the keys the file can satisfy", async () => {
     const inviterName = "County Health Dept";
     const result = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(NO_SSN_CSV),
       location,
@@ -596,6 +625,7 @@ describe("generateInvitation", () => {
     // The default cleaning derives ssn4 from the full SSN column, so the quick
     // path offers the SSN4 keys to a party holding only full SSNs.
     const { linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Inviter",
       file: csvStream(PARTIAL_CSV),
       location,
@@ -610,6 +640,7 @@ describe("generateInvitation", () => {
 
   test("returns the exact parsed rows and columns the terms came from", async () => {
     const { rawRows, columns } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(PARTIAL_CSV),
       location,
@@ -640,6 +671,7 @@ describe("generateInvitation", () => {
         : c,
     );
     const result = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(PARTIAL_CSV),
       location,
@@ -659,6 +691,7 @@ describe("generateInvitation", () => {
     // inviter both embeds and runs THESE terms, and the acceptor adopts them (its
     // own identity substituted), so the two sides have an identical key set.
     const { linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Inviter",
       file: csvStream(NO_SSN_CSV),
       location,
@@ -696,6 +729,7 @@ describe("generateInvitation", () => {
     };
 
     const { encoded, linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "ignored-name",
       file: csvStream(ALL_COLUMNS_CSV),
       location,
@@ -737,6 +771,7 @@ describe("generateInvitation", () => {
 
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(NO_SSN_CSV),
         location,
@@ -756,6 +791,7 @@ describe("generateInvitation", () => {
       inferMetadata(["ssn", "ssn4", "first_name", "last_name", "dob"], []),
     );
     const error = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(NO_SSN_CSV),
       location,
@@ -809,6 +845,7 @@ describe("generateInvitation", () => {
       ],
     };
     const error = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream("first_name,last_name,dob\nAlice,Smith,1990-01-02\n"),
       location,
@@ -859,6 +896,7 @@ describe("generateInvitation", () => {
     // window and not the fixture.
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: inviterFile(),
         location,
@@ -867,6 +905,7 @@ describe("generateInvitation", () => {
     ).resolves.toBeDefined();
 
     const error = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: inviterFile(),
       location,
@@ -896,6 +935,7 @@ describe("generateInvitation", () => {
     const EMPTY_HEADER_CSV =
       "ssn,first_name,last_name,dob,\n123456789,Alice,Smith,1990-01-02,\n";
     const error = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(EMPTY_HEADER_CSV),
       location,
@@ -917,6 +957,7 @@ describe("generateInvitation", () => {
       "ssn,first_name,last_name,dob,\u202e\u2069\n" +
       "123456789,Alice,Smith,1990-01-02,x\n";
     const error = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(STRIPPED_TO_EMPTY_CSV),
       location,
@@ -951,6 +992,7 @@ describe("generateInvitation", () => {
       { name, type: "other", role: "payload", isPayload: true },
     ];
     return generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(csvSending(name)),
       location,
@@ -1011,6 +1053,7 @@ describe("generateInvitation", () => {
         : column,
     );
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(csvSending(PAST_CEILING)),
       location,
@@ -1039,6 +1082,7 @@ describe("generateInvitation", () => {
 
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
@@ -1089,6 +1133,7 @@ describe("generateInvitation", () => {
 
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
@@ -1105,6 +1150,7 @@ describe("generateInvitation", () => {
     );
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
@@ -1126,6 +1172,7 @@ describe("generateInvitation", () => {
       const metadata = inferMetadata(["first_name", "last_name", "dob"], []);
       await expect(
         generateInvitation({
+          allowedRelays: undefined,
           inviterName: "Org",
           file: csvStream(NO_SSN_CSV),
           location,
@@ -1165,6 +1212,7 @@ describe("generateInvitation", () => {
         ),
       };
       const minted = await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
@@ -1206,6 +1254,7 @@ describe("generateInvitation", () => {
 
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(PARTIAL_CSV),
         location,
@@ -1220,6 +1269,7 @@ describe("generateInvitation", () => {
     const metadata = inferMetadata(["first_name", "last_name", "dob"], []);
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "Org",
         file: csvStream(NO_SSN_CSV),
         location,
@@ -1269,6 +1319,7 @@ describe("generateInvitation", () => {
       };
       await expect(
         generateInvitation({
+          allowedRelays: undefined,
           inviterName: "Org",
           file: csvStream(PARTIAL_CSV),
           location,
@@ -1306,6 +1357,7 @@ describe("generateInvitation", () => {
     expect(disclosed).toEqual(["id"]);
 
     const { encoded, linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(DISCLOSING_CSV),
       location,
@@ -1353,6 +1405,7 @@ describe("generateInvitation", () => {
       ),
     ).toEqual([]);
     const { encoded, linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(ALL_COLUMNS_CSV),
       location,
@@ -1374,6 +1427,7 @@ describe("generateInvitation", () => {
     const authored = getDefaultLinkageTerms("Authored Org", metadata);
     expect(authored.payload).toBeUndefined();
     const { encoded, linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "ignored-name",
       file: csvStream(ALL_COLUMNS_CSV),
       location,
@@ -1398,6 +1452,7 @@ describe("generateInvitation", () => {
     expect(disclosed.length).toBeGreaterThan(0);
     const authored = getDefaultLinkageTerms("Authored Org", metadata);
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "ignored-name",
       file: csvStream(DISCLOSING_CSV),
       location,
@@ -1412,6 +1467,7 @@ describe("generateInvitation", () => {
 
   test("the quick path's authored payload reconciles with a lazy acceptor", async () => {
     const { linkageTerms } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Inviter",
       file: csvStream(DISCLOSING_CSV),
       location,
@@ -1447,6 +1503,7 @@ describe("generateInvitation", () => {
 
   test("returns the embedded shared secret so the inviter can derive its id", async () => {
     const { encoded, sharedSecret } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1460,6 +1517,7 @@ describe("generateInvitation", () => {
 
   test("returns the embedded expires so the inviter can arm the handshake expiry guards", async () => {
     const { encoded, expires } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1477,11 +1535,13 @@ describe("generateInvitation", () => {
   test("two successive generations yield different secrets (so different derived ids)", async () => {
     const inviterName = "County Health Dept";
     const first = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(),
       location,
     });
     const second = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(),
       location,
@@ -1496,6 +1556,7 @@ describe("generateInvitation", () => {
 
   test("the deep-link and the bare string decode to identical tokens", async () => {
     const { encoded, deepLink } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1509,6 +1570,7 @@ describe("generateInvitation", () => {
 
   test("the deep-link targets the /accept route with the token in the fragment", async () => {
     const { encoded, deepLink } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1531,6 +1593,7 @@ describe("generateInvitation", () => {
       vi.stubGlobal("fetch", vi.fn());
 
       await generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -1559,11 +1622,13 @@ describe("generateInvitation from profiled columns (console path)", () => {
   test("binds the same terms as parsing the same columns, with no rawRows", async () => {
     const inviterName = "County Health Dept";
     const fromColumns = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       profiledColumns: ALL_COLUMNS,
       location,
     });
     const fromFile = await generateInvitation({
+      allowedRelays: undefined,
       inviterName,
       file: csvStream(),
       location,
@@ -1582,6 +1647,7 @@ describe("generateInvitation from profiled columns (console path)", () => {
   test("keeps the columns-based satisfiability re-check: an unlinkable column set is refused", async () => {
     // A column set that satisfies no default linkage key -- no name, dob, ssn, etc.
     const error: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       profiledColumns: ["member_id", "notes"],
       location,
@@ -1592,6 +1658,7 @@ describe("generateInvitation from profiled columns (console path)", () => {
 
   test("rejects supplying neither file nor profiledColumns", async () => {
     const error: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       location,
     }).catch((caught: unknown) => caught);
@@ -1603,6 +1670,7 @@ describe("generateInvitation from profiled columns (console path)", () => {
 
   test("rejects supplying both file and profiledColumns", async () => {
     const error: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "Org",
       file: csvStream(),
       profiledColumns: ALL_COLUMNS,
@@ -1625,6 +1693,7 @@ describe("generateInvitation fail-closed before mint", () => {
       },
     });
     const err: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: erroring,
       location,
@@ -1639,6 +1708,7 @@ describe("generateInvitation fail-closed before mint", () => {
     // it cannot produce, so the derivation narrows the built-in set all the way to
     // no key -- the refusal core's own verdict raises for terms declaring none.
     const err: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream("notes\nhello\n"),
       location,
@@ -1664,6 +1734,7 @@ describe("generateInvitation fail-closed before mint", () => {
     // the built-in set to no key, the same refusal as a file of unrecognized
     // columns, and every default field is named as missing.
     const err: unknown = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(""),
       location,
@@ -1705,6 +1776,7 @@ describe("generateInvitation expiry", () => {
   test("mints a non-empty `expires`, one hour (the default) ahead of generation", async () => {
     const before = Date.now();
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1723,6 +1795,7 @@ describe("generateInvitation expiry", () => {
     const lifetimeSeconds = 30 * 60;
     const before = Date.now();
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1748,6 +1821,7 @@ describe("generateInvitation expiry", () => {
     ]) {
       await expect(
         generateInvitation({
+          allowedRelays: undefined,
           inviterName: "County Health Dept",
           file: csvStream(),
           location,
@@ -1763,6 +1837,7 @@ describe("generateInvitation expiry", () => {
     // own cause.
     await expect(
       generateInvitation({
+        allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
@@ -1775,6 +1850,7 @@ describe("generateInvitation expiry", () => {
     // The bound is inclusive: one year to the second is allowed.
     const before = Date.now();
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1794,6 +1870,7 @@ describe("generateInvitation expiry", () => {
     // Read the actual minted expiry rather than recompute it, since the generator
     // measures from its own clock.
     const { encoded } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1926,6 +2003,7 @@ describe("tokenFromInput", () => {
 
   test("a wrapped paste of a real invitation still decodes", async () => {
     const { encoded, sharedSecret } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
@@ -1940,6 +2018,7 @@ describe("tokenFromInput", () => {
     // decodeAndValidateInvitation: leading/trailing U+00A0, an interior
     // U+2028, and a hard wrap.
     const { encoded, sharedSecret } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location,
