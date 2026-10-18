@@ -24,6 +24,7 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
@@ -40,6 +41,7 @@ import {
 
 import { ColumnChips } from "@components/ColumnChips";
 import { ColumnName } from "@components/ColumnName";
+import { LessCertainInfo } from "@components/LessCertainInfo";
 
 import {
   ALLOWED_RELAYS_SCOPE,
@@ -65,6 +67,12 @@ import type {
 function yesNo(value: boolean): string {
   return value ? "Yes" : "No";
 }
+
+/** The line under the matched fields, outside the collapsed key list, where
+ * any key is marked less certain. */
+export const LESS_CERTAIN_TERMS_LINE =
+  "Some of the matching keys are marked less certain. Open Matching " +
+  "strategies to see which.";
 
 /** The count phrase every payload-column notice states its magnitude with ("1 data
  * column", "3 data columns"). Shared so the outbound-send, egress-request, and
@@ -276,15 +284,36 @@ function DeclaredColumnList({ columns }: { columns: Array<string> }) {
  * (not the Collapse panel) so it stays a stable target, and the panel hidden from
  * assistive tech and the tab order while closed. The toggle's accessible name is
  * the key name alone; the field one-liner is its description (aria-describedby)
- * rather than folded into the name.
+ * rather than folded into the name, so the less certain mark on it is announced
+ * with the key, and the button explaining the mark follows the line.
  */
-function MatchKeyDisclosure({ summary }: { summary: InvitationKeySummary }) {
+function MatchKeyDisclosure({
+  summary,
+  lessCertainRemedy,
+}: {
+  summary: InvitationKeySummary;
+  /** What the reader does to leave out a key marked less certain. */
+  lessCertainRemedy: string;
+}) {
   const [open, setOpen] = useState(false);
   // One component instance per key, so useId is called once per widget (never
   // inside a map).
   const panelId = useId();
   const sublineId = useId();
   const reduceMotion = useReducedMotion();
+  // Always-visible, AT-associated breadth signal. The "Matches on " lead-in
+  // and the markers are fixed copy, and each field entry is a fixed compact
+  // label: the sanitized unknown-field fallback is unreachable for a decoded
+  // token (a dangling field reference is rejected at decode) and cosmetic-only
+  // if ever reached, so the joined line contains no unescaped partner text.
+  const subline = (
+    <Text id={sublineId} size="xs" c="dimmed">
+      Matches on {summary.headerFields.join(" - ")}
+      {summary.swapHeaderMarker !== undefined && ` ${summary.swapHeaderMarker}`}
+      {summary.lessCertainHeaderMarker !== undefined &&
+        ` ${summary.lessCertainHeaderMarker}`}
+    </Text>
+  );
   return (
     <Stack gap={2} role="listitem">
       <UnstyledButton
@@ -307,16 +336,13 @@ function MatchKeyDisclosure({ summary }: { summary: InvitationKeySummary }) {
           </Text>
         </Group>
       </UnstyledButton>
-      {/* Always-visible, AT-associated breadth signal. The "Matches on " lead-in
-          and the markers are fixed copy, and each field entry is a fixed compact
-          label: the sanitized unknown-field fallback is unreachable for a decoded
-          token (a dangling field reference is rejected at decode) and cosmetic-only
-          if ever reached, so the joined line contains no unescaped partner text. */}
-      <Text id={sublineId} size="xs" c="dimmed">
-        Matches on {summary.headerFields.join(" - ")}
-        {summary.swapHeaderMarker !== undefined &&
-          ` ${summary.swapHeaderMarker}`}
-      </Text>
+      {summary.lessCertain ? (
+        <LessCertainInfo keyName={summary.name} remedy={lessCertainRemedy}>
+          {subline}
+        </LessCertainInfo>
+      ) : (
+        subline
+      )}
       <div id={panelId}>
         <Collapse expanded={open}>
           <MatchKeyDetails summary={summary} />
@@ -463,6 +489,7 @@ export function InvitationTerms({
   headingRef,
   framing,
   allowedRelays,
+  lessCertainRemedy = LESS_CERTAIN_KEY_COPY.acceptorRemedy,
 }: {
   linkageTerms: LinkageTerms;
   /** The invitation's expiry instant (ISO 8601), if it has one. */
@@ -543,6 +570,11 @@ export function InvitationTerms({
    * invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
    * restricts nothing and marks nothing. Applies to a hosted run only. */
   allowedRelays?: ReadonlyArray<string>;
+  /** What the reader of this screen does to leave out a key marked less
+   * certain, shown after the reason for the mark: by default the accepting
+   * party's, who takes the invitation's keys whole. The console's quick
+   * exchange confirm passes its own. Fixed copy, never partner text. */
+  lessCertainRemedy?: string;
 }) {
   const summary = summarizeInvitation({
     linkageTerms,
@@ -1293,6 +1325,13 @@ export function InvitationTerms({
               Matching on {summary.matchedFields.join(", ")}.
             </Text>
           )}
+          {/* Outside the collapse too, so a reader who never opens the list
+              still learns the terms include a key marked less certain. */}
+          {summary.linkageKeys.some((key) => key.lessCertain) && (
+            <LessCertainInfo remedy={lessCertainRemedy}>
+              <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
+            </LessCertainInfo>
+          )}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's
               flow content) so AT announces the set; keyed by each key's stable id
@@ -1303,7 +1342,11 @@ export function InvitationTerms({
             <Collapse expanded={matchingOpen}>
               <Stack gap="xs" role="list" aria-labelledby={matchedOnLabelId}>
                 {summary.linkageKeys.map((key) => (
-                  <MatchKeyDisclosure key={key.id} summary={key} />
+                  <MatchKeyDisclosure
+                    key={key.id}
+                    summary={key}
+                    lessCertainRemedy={lessCertainRemedy}
+                  />
                 ))}
               </Stack>
             </Collapse>

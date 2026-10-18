@@ -18,6 +18,8 @@ import type {
   StandardizationTransformation,
 } from "../config/standardizationSchema";
 import type { SemanticType } from "../types";
+import { LESS_CERTAIN_KEY_COPY } from "../consent/consentFacts";
+import { linkageKeyIsLessCertain } from "../consent/lessCertainKey";
 
 /**
  * Neutral, stable identifier of the built-in linkage field set: the PII
@@ -115,38 +117,29 @@ export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
  * Distinct from `LinkageTerms.version`, which versions the terms schema and
  * is cross-checked between the parties at exchange time. This one versions
  * the content of the built-in key set -- which key combinations it declares,
- * in what order, and each one's precision band and coverage condition -- and
- * is not on the wire. Neither it nor {@link DEFAULT_LINKAGE_FIELD_SET_VERSION}
- * may ever be assigned to a terms document's `version`.
+ * in what order, and each one's precision band -- and is not on the wire.
+ * Neither it nor {@link DEFAULT_LINKAGE_FIELD_SET_VERSION} may ever be
+ * assigned to a terms document's `version`.
  *
  * Bump it in the same change that edits {@link DEFAULT_LINKAGE_KEYS} or
  * {@link DEFAULT_LINKAGE_RULE_BANDS}: a key added or removed, an element or
- * transform changed, the keys reordered, or a band or coverage condition
- * moved. The recorded evidence attaches to the name and version together, so
- * an edited set holding the old version makes that record describe rules
- * nobody ran.
+ * transform changed, the keys reordered, or a band moved. The recorded
+ * evidence attaches to the name and version together, so an edited set
+ * holding the old version makes that record describe rules nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.2.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.3.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
 export type PrecisionBand = 99 | 95;
 
-/**
- * Which pairs of files a rule's band holds for: `any`, or only files that both
- * draw their members from one state or one metropolitan area.
- */
-export type RuleCoverage = "any" | "one_state_or_metro_area";
-
-/** One rule of the catalog: its band, its coverage condition, and, for a rule
- * Alcove cannot build yet, the element it needs. */
+/** One rule of the catalog: its band and, for a rule Alcove cannot build yet,
+ * the element it needs. */
 export interface LinkageRuleBand {
   /** The rule's key name, or its catalog notation where it has no key. */
   rule: string;
   /** The band the catalog places the rule in. */
   band: PrecisionBand;
-  /** The files the band holds for. */
-  coverage: RuleCoverage;
   /** The element the rule needs that no field supplies yet; such a rule has
    * no key and is never selected. */
   needs?: string;
@@ -294,85 +287,72 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
 ];
 
 /**
- * Every rule of the catalog in its order, each with its band and coverage
- * condition ({@link LinkageRuleBand}), including the rules that need an
- * element Alcove does not build yet. Bands do not travel: a terms document
+ * Every rule of the catalog in its order, each with its band
+ * ({@link LinkageRuleBand}), including the rules that need an element Alcove
+ * does not build yet. Bands do not travel: a terms document
  * holds the keys a floor selected, never the floor or a band.
  */
 const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
-  { rule: "SSN + LN + DOB", band: 99, coverage: "any" },
-  { rule: "SSN + LN4 + DOB", band: 99, coverage: "any" },
-  { rule: "SSN + LN3 + DOB", band: 99, coverage: "any" },
-  { rule: "SSN + DOB + FN", band: 99, coverage: "any" },
-  { rule: "SSN + FN3 + DOB", band: 99, coverage: "any" },
-  { rule: "SSN + DOB", band: 99, coverage: "any" },
-  { rule: "SSN + FN + LN", band: 99, coverage: "any" },
-  { rule: "SSN + soundex(FN) + soundex(LN)", band: 99, coverage: "any" },
-  { rule: "SSN + LN + FN1", band: 99, coverage: "any" },
-  { rule: "SSN + LN3 + FN1", band: 99, coverage: "any" },
-  { rule: "SSN + FN + YOB + MOB", band: 99, coverage: "any" },
-  { rule: "SSN + FN3 + YOB + MOB", band: 99, coverage: "any" },
-  { rule: "SSN + LN4 + YOB + MOB", band: 99, coverage: "any" },
-  { rule: "SSN4 + LN + DOB", band: 99, coverage: "any" },
-  { rule: "SSN4 + split(LN) + FN + DOB", band: 99, coverage: "any" },
-  { rule: "SSN4 + FN + DOB", band: 99, coverage: "any" },
-  { rule: "SSN4 + LN + FN + DOB +/-1 year", band: 99, coverage: "any" },
-  { rule: "SSN4 + LN + FN + DOB +/-1 day", band: 99, coverage: "any" },
-  {
-    rule: "SSN4 + LN + FN + DOB day/month exchanged",
-    band: 99,
-    coverage: "any",
-  },
-  { rule: "SSN4 + swap(LN, FN) + DOB", band: 99, coverage: "any" },
-  { rule: "LN + FN + DOB + street number + ZIP5", band: 99, coverage: "any" },
-  { rule: "LN + FN + DOB + ZIP5", band: 99, coverage: "any" },
-  { rule: "LN + FN + DOB + PHONE", band: 99, coverage: "any" },
-  { rule: "FN + DOB + PHONE", band: 99, coverage: "any" },
-  { rule: "SSN + FN", band: 95, coverage: "any" },
-  { rule: "SSN4 + LN4 + YOB + MOB", band: 95, coverage: "any" },
-  { rule: "LN + FN + DOB + ZIP3", band: 95, coverage: "any" },
-  { rule: "ZIP5 + soundex(LN) + FN + DOB", band: 95, coverage: "any" },
-  { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95, coverage: "any" },
-  { rule: "LN + FN + DOB + STATE", band: 95, coverage: "any" },
-  { rule: "LN + FN + DOB + COUNTY", band: 95, coverage: "any" },
-  { rule: "LN + FN + DOB", band: 95, coverage: "one_state_or_metro_area" },
-  { rule: "swap(LN, FN) + DOB", band: 95, coverage: "one_state_or_metro_area" },
-  {
-    rule: "split(LN) + FN + DOB",
-    band: 95,
-    coverage: "one_state_or_metro_area",
-  },
-  { rule: "LN + FN + YOB + MOB + ZIP5", band: 95, coverage: "any" },
+  { rule: "SSN + LN + DOB", band: 99 },
+  { rule: "SSN + LN4 + DOB", band: 99 },
+  { rule: "SSN + LN3 + DOB", band: 99 },
+  { rule: "SSN + DOB + FN", band: 99 },
+  { rule: "SSN + FN3 + DOB", band: 99 },
+  { rule: "SSN + DOB", band: 99 },
+  { rule: "SSN + FN + LN", band: 99 },
+  { rule: "SSN + soundex(FN) + soundex(LN)", band: 99 },
+  { rule: "SSN + LN + FN1", band: 99 },
+  { rule: "SSN + LN3 + FN1", band: 99 },
+  { rule: "SSN + FN + YOB + MOB", band: 99 },
+  { rule: "SSN + FN3 + YOB + MOB", band: 99 },
+  { rule: "SSN + LN4 + YOB + MOB", band: 99 },
+  { rule: "SSN4 + LN + DOB", band: 99 },
+  { rule: "SSN4 + split(LN) + FN + DOB", band: 99 },
+  { rule: "SSN4 + FN + DOB", band: 99 },
+  { rule: "SSN4 + LN + FN + DOB +/-1 year", band: 99 },
+  { rule: "SSN4 + LN + FN + DOB +/-1 day", band: 99 },
+  { rule: "SSN4 + LN + FN + DOB day/month exchanged", band: 99 },
+  { rule: "SSN4 + swap(LN, FN) + DOB", band: 99 },
+  { rule: "LN + FN + DOB + street number + ZIP5", band: 99 },
+  { rule: "LN + FN + DOB + ZIP5", band: 99 },
+  { rule: "LN + FN + DOB + PHONE", band: 99 },
+  { rule: "FN + DOB + PHONE", band: 99 },
+  { rule: "SSN + FN", band: 95 },
+  { rule: "SSN4 + LN4 + YOB + MOB", band: 95 },
+  { rule: "LN + FN + DOB + ZIP3", band: 95 },
+  { rule: "ZIP5 + soundex(LN) + FN + DOB", band: 95 },
+  { rule: "ZIP5 + LN + FN + DOB +/-1 year", band: 95 },
+  { rule: "LN + FN + DOB + STATE", band: 95 },
+  { rule: "LN + FN + DOB + COUNTY", band: 95 },
+  { rule: "LN + FN + DOB", band: 95 },
+  { rule: "swap(LN, FN) + DOB", band: 95 },
+  { rule: "split(LN) + FN + DOB", band: 95 },
+  { rule: "LN + FN + YOB + MOB + ZIP5", band: 95 },
   {
     rule: "LN + FN + SFX + PHONE",
     band: 95,
-    coverage: "any",
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "PHONE + soundex(LN) + FN + SFX",
     band: 95,
-    coverage: "any",
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "FN + SFX + PHONE",
     band: 95,
-    coverage: "any",
-    needs: "name suffix and the shared-contact screen",
+    needs: "a per-side missing-date condition",
   },
-  { rule: "FN + DOB + EMAIL", band: 95, coverage: "any" },
+  { rule: "FN + DOB + EMAIL", band: 95 },
   {
     rule: "LN + FN + SFX + EMAIL",
     band: 95,
-    coverage: "any",
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "EMAIL + soundex(LN) + FN + SFX",
     band: 95,
-    coverage: "any",
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
 ];
 
@@ -394,8 +374,8 @@ export interface BuiltInLinkageRuleSet {
   linkageFields: ReadonlyArray<LinkageField>;
   /** The set's linkage keys, in the cascade order the set declares. */
   linkageKeys: ReadonlyArray<LinkageKey>;
-  /** Each rule's precision band and coverage condition, for a set a
-   * precision floor selects from; absent on a set with no bands. */
+  /** Each rule's precision band, for a set a precision floor selects from;
+   * absent on a set with no bands. */
   ruleBands?: ReadonlyArray<LinkageRuleBand>;
 }
 
@@ -455,64 +435,19 @@ export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
 /** A precision floor: the lowest band whose rules are selected. */
 export type PrecisionFloor = PrecisionBand;
 
-/**
- * What an author chooses the catalog's rules by: the floor, and the answer to
- * whether both files draw their members from one state or one metropolitan
- * area, which admits the rules with that coverage condition.
- */
+/** What an author chooses the catalog's rules by: the floor. */
 export interface PrecisionFloorSelection {
   floor: PrecisionFloor;
-  oneStateOrMetroArea: boolean;
 }
 
-/** The selection every path that authors nothing runs: the 95% floor, with
- * the coverage question answered yes. */
+/** The selection every path that authors nothing runs: the 95% floor. */
 export const DEFAULT_PRECISION_FLOOR_SELECTION: PrecisionFloorSelection =
-  Object.freeze({ floor: 95, oneStateOrMetroArea: true });
+  Object.freeze({ floor: 95 });
 
 /** Every floor a selection may name, most precise first. */
 export const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = Object.freeze([
   99, 95,
 ]);
-
-/** The question whose answer admits the rules with the
- * `one_state_or_metro_area` coverage condition, as an authoring screen asks
- * it. */
-export const ONE_STATE_OR_METRO_AREA_QUESTION =
-  "Do both files draw their members from one state or one metropolitan area?";
-
-/** The help an authoring screen shows beside
- * {@link ONE_STATE_OR_METRO_AREA_QUESTION}, one sentence per entry. */
-export const ONE_STATE_OR_METRO_AREA_HELP: ReadonlyArray<string> =
-  Object.freeze([
-    "A file covering one birth year, such as one school class, behaves like " +
-      "a far larger file, because more of its members share a name and a " +
-      "date of birth.",
-    "If either file covers one age group, such as one school class, answer " +
-      "No.",
-    "Each rule's precision comes from studies of similar rules in other " +
-      "settings.",
-  ]);
-
-/** What an authoring screen shows in place of
- * {@link ONE_STATE_OR_METRO_AREA_HELP} at a floor whose rules
- * {@link precisionFloorAsksCoverage} says the answer does not change. */
-export const ONE_STATE_OR_METRO_AREA_NOT_ASKED =
-  "Applies only to the 95% rules.";
-
-/**
- * Whether the rules `floor` selects include one with the
- * `one_state_or_metro_area` coverage condition, so that the answer to
- * {@link ONE_STATE_OR_METRO_AREA_QUESTION} changes what it selects.
- */
-export function precisionFloorAsksCoverage(floor: PrecisionFloor): boolean {
-  return DEFAULT_LINKAGE_RULE_BANDS.some(
-    (rule) =>
-      rule.band >= floor &&
-      rule.coverage === "one_state_or_metro_area" &&
-      rule.needs === undefined,
-  );
-}
 
 /** The rules a floor selects, as a phrase starting lowercase. */
 function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
@@ -521,25 +456,28 @@ function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
 
 /**
  * A floor as the control choosing it states it: a label naming the rules it
- * selects, and a description of its band's conditions -- the share of matched
- * pairs that are the same person, and, where the rules it selects include one
- * with the `one_state_or_metro_area` coverage condition, that condition.
+ * selects, and a description of the share of matched pairs that are the same
+ * person. Where the rules it selects include a key `linkageKeyIsLessCertain`
+ * marks, the share names those rules as the exception.
  */
 export function precisionFloorStatement(floor: PrecisionFloor): {
   label: string;
   description: string;
 } {
   const label = rulesAtPrecisionFloor(floor);
-  const share =
-    `Of the pairs each rule matches, at least ${String(floor)} in 100 are ` +
-    "the same person.";
+  const share = `Of the pairs each rule matches, at least ${String(floor)} in 100 are the same person`;
+  const selectsLessCertain = linkageKeysAtPrecisionFloor(
+    DEFAULT_LINKAGE_RULE_SET,
+    { floor },
+  ).some((key) =>
+    linkageKeyIsLessCertain(key, DEFAULT_LINKAGE_RULE_SET.linkageFields),
+  );
   return {
     label: label.charAt(0).toUpperCase() + label.slice(1),
-    description: precisionFloorAsksCoverage(floor)
-      ? `${share} The rules that match on a name and a date of birth alone ` +
-        "are included only when both files draw their members from one " +
-        "state or one metropolitan area."
-      : share,
+    description: selectsLessCertain
+      ? `${share}, except rules marked ${LESS_CERTAIN_KEY_COPY.mark}, which ` +
+        "can fall below that when the files cover many people."
+      : `${share}.`,
   };
 }
 
@@ -547,27 +485,18 @@ export function precisionFloorStatement(floor: PrecisionFloor): {
  * The rules `selection` picks for a file, as every screen that names a
  * selection words it: the console's confirm step, the CLI's display before
  * the run, and the web invitation's review. Starts lowercase, for use after a
- * label. Names no coverage condition at a floor the answer does not change
- * ({@link precisionFloorAsksCoverage}).
+ * label.
  */
 export function precisionFloorSelectionStatement(
   selection: PrecisionFloorSelection,
 ): string {
-  const rules = `${rulesAtPrecisionFloor(selection.floor)} that your file supplies`;
-  if (!precisionFloorAsksCoverage(selection.floor)) return rules;
-  const coverage = selection.oneStateOrMetroArea
-    ? "for two files that both draw their members from one state or one " +
-      "metropolitan area"
-    : "leaving out the rules that need both files to draw their members " +
-      "from one state or one metropolitan area";
-  return `${rules}, ${coverage}`;
+  return `${rulesAtPrecisionFloor(selection.floor)} that your file supplies`;
 }
 
 /**
  * The keys of `ruleSet` that `selection` selects, in the set's cascade order:
- * each key whose band is at or above the floor, less a key with the
- * `one_state_or_metro_area` coverage condition where the answer is no. A set
- * with no bands has nothing to select by, and answers all of its keys.
+ * each key whose band is at or above the floor. A set with no bands has
+ * nothing to select by, and answers all of its keys.
  */
 export function linkageKeysAtPrecisionFloor(
   ruleSet: BuiltInLinkageRuleSet,
@@ -577,11 +506,7 @@ export function linkageKeysAtPrecisionFloor(
   const bandByRule = new Map(ruleSet.ruleBands.map((b) => [b.rule, b]));
   return ruleSet.linkageKeys.filter((key) => {
     const band = bandByRule.get(key.name);
-    return (
-      band !== undefined &&
-      band.band >= selection.floor &&
-      (band.coverage === "any" || selection.oneStateOrMetroArea)
-    );
+    return band !== undefined && band.band >= selection.floor;
   });
 }
 

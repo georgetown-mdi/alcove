@@ -1046,3 +1046,25 @@ export const PROPOSED_NOT_APPLIED_NOTES = {
  */
 export const UNRECOGNIZED_TRANSFORM_NOTE =
   "Not recognized by this version; its effect on matching is not shown.";
+
+/**
+ * The copy every surface shows for a key `linkageKeyIsLessCertain` marks
+ * (`consent/lessCertainKey.ts`): the mark beside the key, the explanation
+ * behind it, and the remedy a party accepting an invitation adds, since
+ * accepted terms are taken whole. Each other surface adds the remedy its
+ * reader can carry out there, in that app's own words.
+ */
+export const LESS_CERTAIN_KEY_COPY = {
+  mark: "less certain",
+  explanation:
+    "A key marked less certain uses only first name, last name and date of " +
+    "birth fields, with no SSN, phone number, email or address. Different " +
+    "people share these more often the more people the two files cover, so " +
+    "some of its matches may be two different people. The built-in rules of " +
+    "this kind reach 95% precision only when both files cover few people. " +
+    "Leave such keys out when the files cover many people. A file of one age " +
+    "group, such as one school class, counts as covering many people, " +
+    "because its members share birth years.",
+  acceptorRemedy:
+    "To leave them out, ask your partner for an invitation without them.",
+} as const;

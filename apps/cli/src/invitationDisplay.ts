@@ -8,6 +8,7 @@ import {
   displayText,
   distinctLinkageRuleSetVerdicts,
   InternalConsistencyError,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   PROPOSED_NOT_APPLIED_NOTES,
@@ -433,6 +434,47 @@ function logList(
   for (const entry of entries) emit(`${indent}- ${entry}`);
 }
 
+/** The label above the explanation of the less certain mark. */
+export const LESS_CERTAIN_NOTE_LABEL = "why keys are marked less certain";
+
+/**
+ * What each CLI display adds after the explanation of the less certain mark:
+ * the action that leaves such keys out, from where its reader stands.
+ */
+export const LESS_CERTAIN_REMEDY = {
+  /** `alcove accept`, which takes the invitation's keys whole. */
+  invitation: LESS_CERTAIN_KEY_COPY.acceptorRemedy,
+  /** `alcove apply`, whose reader can decline the update. */
+  update:
+    "To leave them out, do not apply this update, and ask your partner for " +
+    "one without them.",
+  /** A quick exchange, which writes these keys whenever the file supplies
+   * them. */
+  quickExchange:
+    "A quick exchange always uses these keys. To leave them out, write a " +
+    "configuration with alcove init URL INPUT_FILE, delete them from " +
+    "linkage_keys, and set the exchange up with alcove invite and alcove " +
+    "accept.",
+  /** `alcove exchange`, whose partner runs the same keys. */
+  configuredExchange:
+    "To leave them out, delete them from linkage_keys in your configuration, " +
+    "run alcove update, and have your partner run alcove apply on what it " +
+    "prints.",
+} as const;
+
+/**
+ * The explanation of the less certain mark, printed once beneath a key list
+ * holding a key marked so, in the words the web screens show behind their
+ * info button, followed by `remedy`, one of {@link LESS_CERTAIN_REMEDY}.
+ */
+export function displayLessCertainNote(
+  emit: ConsentSurfaceSink,
+  remedy: string,
+): void {
+  emit(`  ${LESS_CERTAIN_NOTE_LABEL}:`);
+  emit(`    ${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`);
+}
+
 /**
  * One declared payload direction's column names, painted at most
  * {@link MAX_DECLARED_NAMES_SHOWN} deep and closed by the shared line
@@ -508,7 +550,10 @@ function displayLinkageKey(
   // separator.
   emit(
     `      matches on: ${key.headerFields.join(" - ")}` +
-      (key.swapHeaderMarker !== undefined ? ` ${key.swapHeaderMarker}` : ""),
+      (key.swapHeaderMarker !== undefined ? ` ${key.swapHeaderMarker}` : "") +
+      (key.lessCertainHeaderMarker !== undefined
+        ? ` ${key.lessCertainHeaderMarker}`
+        : ""),
   );
   emit("      elements:");
   for (const element of key.elements) {
@@ -1035,6 +1080,8 @@ export function displayInvitation(params: {
   displayLinkageFields(emit, summary);
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   for (const key of summary.linkageKeys) displayLinkageKey(emit, key);
+  if (summary.linkageKeys.some((key) => key.lessCertain))
+    displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[surface]);
 
   // What this party will RECEIVE: the inviter's `payload.send`, which an
   // acceptance mirrors into this party's `payload.receive` and every terms

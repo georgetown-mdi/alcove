@@ -5,7 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.2.0, in this order and with these bands and coverage conditions (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.3.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -24,8 +24,9 @@ A rule matches two records only when every element agrees exactly.
 - `LN` and `FN` are the last and first name, standardized.
   `LN3` and `LN4` are the first three or four letters of the last name.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
-- `SFX` is the name suffix, standardized to a code (JR, SR, II, III, IV) or to the empty string when there is none, so two records without a suffix agree.
-  It is read from a column of its own or taken from the name column, and suffixes stay stripped from `LN` and `FN`.
+- `SFX` is a name suffix (JR, SR, II, III, IV).
+  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they wait on a per-side missing-date condition instead ([Status](#status)).
+  Suffixes stay stripped from `LN` and `FN`.
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
 - `ZIP5` is the five-digit ZIP code of the person's own address, and `ZIP3` its first three digits.
@@ -68,19 +69,24 @@ Each entry names its kind:
 - **Extrapolation.** Reasoning from a measurement, with each step stated in the entry.
 
 The band must apply wherever the rule is offered.
-Where it applies only to some files, the rule has a coverage condition (below), and it is offered only where the condition is met.
 A rule with no such evidence is not offered: an operator reaches it only by authoring it in the expert key editor.
 Those rules are listed, each with its reason, under [Not offered](#not-offered).
 
-One exception is made by the maintainer's judgment: the three email rules (37 to 39) are offered at 95% while evidence for them is gathered.
+Two exceptions are made by the maintainer's judgment: the three email rules (37 to 39) are offered at 95% while evidence for them is gathered, and the three name and date rules (31 to 33) are offered at 95% for any pair of files, marked less certain ([Coverage](#coverage)).
 
 ### Coverage
 
-Most rules are offered for any pair of files.
-Rules 31 to 33, name and date with no SSN, contact field or geography, are offered only when both files draw their members from one state or one metropolitan area.
+Most rules hold their band for any pair of files.
+Rules 31 to 33, name and date with no SSN, contact field or geography, hold it only where the two files cover few people.
 Chance agreement on a name and a date grows with the number of people the two files cover (Hillestad et al. 2008; Goel et al. 2020), and the measurements that place these rules at 95% are within one state or county.
-Rule 30 puts the same condition into the rule itself, as a `STATE` or `COUNTY` element.
-A `STATE` or `COUNTY` element stands in for the coverage answer, as a decision taken: within one state the element does what the answer does, and for files spanning states it still narrows the name and date of birth to one state or one county name. A county name repeats across states, so across states the `COUNTY` key narrows less than the `STATE` key, and its 95% there rests on that reasoning, not on a measurement.
+Across states they fall short: Goel et al. (2020) confirmed only about three-quarters of cross-state name + date pairings as duplicates, and Grannis (2005) measured a no-SSN name + date + gender rule at 89.1% and 89.5% specificity against the national Death Master File.
+
+As a decision taken, the three rules are offered at 95% for any pair of files and marked less certain wherever keys are listed, with the reason and the way to leave them out ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#rules-marked-less-certain)).
+The mark is read from a key's fields, so any key on names and a date of birth alone takes it, the built-in rules and authored keys alike.
+A question asking whether both files draw their members from one state or one metropolitan area, admitting the three rules only on yes, was weighed and not taken: the number of people the files cover drives chance agreement, and a state or metropolitan area is one of several units that could stand for it.
+
+Rule 30 narrows rule 31 by place within the rule, with a `STATE` or `COUNTY` element.
+Such an element is taken as enough for 95% for any pair of files, as a decision taken: for files spanning states it still narrows the name and date of birth to one state or one county name. A county name repeats across states, so across states the `COUNTY` key narrows less than the `STATE` key, and its 95% there rests on that reasoning, not on a measurement.
 
 A file drawn from one age group, such as one school class or one birth cohort, behaves like a far larger file, because its members share birth years.
 In one graduating class of 428,410 students, about 500 combinations of name and date of birth appeared more than once, 0.12% (Fong et al. 2018), so at least about 0.23% of the students shared theirs (computed here).
@@ -123,8 +129,9 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
 
-- `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
-- The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
+- A per-side missing-date condition: rules 35, 36, 36a, 38 and 39, the contact rules with no date of birth.
+  Each would run without the suffix, only where one party's record has no date of birth.
+  No suffix field is built ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
 
 Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
@@ -419,9 +426,9 @@ One loosening on rule 22 stays at 95%, for the reason given under rule 28.
 
 #### 30. `LN + FN + DOB + STATE` or `LN + FN + DOB + COUNTY`
 
-95%. Any coverage, both keys. Measured relatives within one state; reasoning across states (see [Coverage](#coverage)).
+95%. Both keys, for any pair of files. Measured relatives within one state; reasoning across states (see [Coverage](#coverage)).
 
-Rule 31 with its coverage condition written into the rule.
+Rule 31 narrowed by place within the rule.
 Its basis is rule 31's: Cole and Lee (2004) by state, Bian et al. (2019), Nechuta et al. (2020), and Mirel et al.'s (2022) row with the state token agreeing.
 The two forms are two keys, the `STATE` key first, both a refinement of rule 31 and run before it.
 
@@ -431,7 +438,7 @@ For a region crossing a state line, such as the District of Columbia, Maryland a
 
 #### 31. `LN + FN + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Measured relatives.
+95%, marked less certain ([Coverage](#coverage)). Measured relatives.
 
 A rule with no SSN evidence, catching records whose SSN is missing or wrong.
 The evidence spans a range, and both ends are stated.
@@ -449,7 +456,7 @@ Within one state or county:
 - **Mirel et al. (2022)** has a pattern-table row of 99.6% where name + sex + DOB and the state token agreed (79,757 true, 315 false; computed here, and the table prints a false rate of 0.3%).
   Each row counts the links on which exactly that set of tokens agreed, after each link was chosen for having the most SSN tokens, against an earlier NCHS linkage, so it is a stratum, not a rule's precision.
 - **Ocampo et al. (2016)** matched case records across the whole of DC, Maryland and Virginia on names + DOB + sex or race, confirmed by each jurisdiction's own check rather than reviewed truth.
-  It is a data point for the name + date rules, not a precedent for the metropolitan-area condition.
+  It is a data point for the name + date rules, not evidence of how many people they hold their band over.
 - **Bernstam et al. (2022)** measured last + first name + gender + DOB at 787 true and 1 false (99.9%), a one-sided 95% lower bound of 99.40% (computed here), on candidate pairs blocked within one data warehouse.
 
 Wider than one state:
@@ -462,7 +469,7 @@ An age-cohort file behaves like a far larger file ([Coverage](#coverage)).
 
 #### 32. `swap(LN, FN) + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31.
+95%, marked less certain. Follows rule 31.
 
 Catches a first and last name recorded in the wrong fields.
 Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
@@ -472,7 +479,7 @@ linkja (MRAIA 2020) and Cook County use the same device.
 
 #### 33. `split(LN) + FN + DOB`
 
-95%. Offered only when both files draw from one state or one metropolitan area. Follows rule 31.
+95%, marked less certain. Follows rule 31.
 
 Catches one part of a compound last name dropped or the parts reversed.
 Barrat and Berliner (2013), matching California's foster-care records to its K-12 records, found two steps splitting names added 9.1% of the final matches (memorandum Table 4); the 9.1% is an upper bound, since the steps also cut compound first names.
@@ -493,26 +500,26 @@ Hillestad et al. (2008) put first + last name + birth year + ZIP at about one po
 
 #### 35. `LN + FN + SFX + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs `name_suffix`.
+95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
 
 Catches any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
-The suffix removes that pair where both sides record a suffix, at the cost of the pair where only one side did, which loses this rule and keeps every rule without the element.
-The band does not rise: Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
-Where one party's file has no suffix at all, the rule runs without the element rather than being dropped, since otherwise every junior recorded in the other file would fail it.
+A suffix would remove that pair only where both sides record one, and no suffix field is built.
+The rule waits instead on a per-side missing-date condition: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
+Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
 #### 36. `PHONE + soundex(LN) + FN + SFX`
 
-95%. Any coverage. One loosening on rule 35. Needs `name_suffix`.
+95%. Any coverage. One loosening on rule 35. Needs a per-side missing-date condition.
 
 As rule 35, with a last name that keeps its Soundex code; it runs after rule 35, a refinement of it.
 The people most likely to share a phone are relatives, who share the surname exactly, so the Soundex code adds little (reasoning).
 
 #### 36a. `FN + SFX + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs `name_suffix` and the shared-contact screen.
+95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
 
 Catches a changed last name and any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites.
@@ -529,7 +536,7 @@ See [The email rules](#the-email-rules).
 
 #### 38. `LN + FN + SFX + EMAIL`
 
-95%. Any coverage. The maintainer's judgment, pending evidence. Needs `name_suffix`.
+95%. Any coverage. The maintainer's judgment, pending evidence. Needs a per-side missing-date condition.
 
 Catches any date-of-birth error with no SSN, for records with an email address.
 Kim et al. (2019) is its nearest measurement.
@@ -537,7 +544,7 @@ It is stricter than first name + email in the N3C configuration and the last nam
 
 #### 39. `EMAIL + soundex(LN) + FN + SFX`
 
-95%. Any coverage. One loosening on rule 38. Needs `name_suffix`.
+95%. Any coverage. One loosening on rule 38. Needs a per-side missing-date condition.
 
 As rule 38, with a last name that keeps its Soundex code; it runs after rule 38, a refinement of it, on the reasoning of rule 36.
 
@@ -579,7 +586,6 @@ An operator reaches them by authoring them in the expert key editor.
 | Rule | Why it has no band |
 | --- | --- |
 | `LN + FN + DOB` with day and month exchanged | Its precision runs from 99% to under 50% as file size grows ([linkage-rule-grounding.md](linkage-rule-grounding.md#why-one-loosened-element)). Rule 19, with the last four SSN digits, covers the error |
-| `LN + FN + DOB`, its swap and split forms, where the files cover more than one state or metropolitan area | Goel et al. (2020) confirmed only about three-quarters of cross-state name + date pairings as duplicates. Grannis (2005) measured a no-SSN name + date + gender rule at 89.1% and 89.5% specificity against the national Death Master File |
 | `FN3 + LN + DOB` and `FN1 + LN + DOB` without an SSN; `soundex(FN) + soundex(LN) + DOB` without an SSN, geography or a contact field | In Mirel et al. (2022), links on which only these tokens agreed were 53.8% (first initial and three-letter first name), 95.7% (first initial) and 81.4% (Soundex names) false. Cook County's one confirmed false match came from its three-letter first-name rule (Trick et al. 2019) |
 | `FN3 + LN + DOB` for uncommon names | Parked. A general tool cannot define a common name except relative to a particular population, so the name-frequency condition it needs is not built. Cook County's rule of this shape found 7,623 matches, the most of any rule (Trick et al. 2019) |
 | Any contact field alone, or with only a date | A party learns from the result whether a value's holder is in the other file, and a contact value is shared across people ([default-linkage-rule-set.md](default-linkage-rule-set.md#criticisms-on-record)). Bernstam et al. (2022) measured a phone alone at 95.6%, and remark that infant twins share a birth date and phone |

@@ -59,7 +59,7 @@ function csvOf(row: Record<string, string>): AcquiredCsv {
 }
 
 // A full SSN, both names and a date of birth: rules in both bands, and the
-// three name + date rules with the coverage condition.
+// three name + date rules marked less certain.
 const withSsn = csvOf({
   client_id: "1",
   ssn: "123-45-6789",
@@ -77,14 +77,7 @@ const namesAndDate = csvOf({
   dob: "01/02/1990",
 });
 
-const AT_99_YES: PrecisionFloorSelection = {
-  floor: 99,
-  oneStateOrMetroArea: true,
-};
-const AT_95_NO: PrecisionFloorSelection = {
-  floor: 95,
-  oneStateOrMetroArea: false,
-};
+const AT_99: PrecisionFloorSelection = { floor: 99 };
 
 const NAME_AND_DATE_RULES = [
   "LN + FN + DOB",
@@ -118,7 +111,7 @@ function rulesSelected(editor: InviterEditor, csv: AcquiredCsv): string {
 }
 
 describe("the seeded draft", () => {
-  test("opens at the 95% floor with the coverage question answered yes", () => {
+  test("opens at the 95% floor", () => {
     const editor = editorFromCsv("Dana", withSsn);
     expect(editor.draft.precisionFloorSelection).toStrictEqual(
       DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -136,18 +129,18 @@ describe("choosing a precision floor", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 
   test("at 99% keeps a rule at the floor and drops one below it", () => {
-    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
     expect(keyNames(at99)).toContain("SSN + LN + DOB");
     expect(keyNames(at99)).not.toContain("SSN + FN");
     for (const rule of NAME_AND_DATE_RULES)
       expect(keyNames(at99)).not.toContain(rule);
-    expect(keyNames(at99)).toStrictEqual(catalogKeyNames(at99, AT_99_YES));
-    expect(at99.draft.precisionFloorSelection).toStrictEqual(AT_99_YES);
+    expect(keyNames(at99)).toStrictEqual(catalogKeyNames(at99, AT_99));
+    expect(at99.draft.precisionFloorSelection).toStrictEqual(AT_99);
   });
 
   test("at 95% keeps a rule above the floor and one at it", () => {
     const at95 = editorWithPrecisionFloorSelection(
-      editorWithPrecisionFloorSelection(seeded, AT_99_YES),
+      editorWithPrecisionFloorSelection(seeded, AT_99),
       DEFAULT_PRECISION_FLOOR_SELECTION,
     );
     expect(keyNames(at95)).toContain("SSN + LN + DOB");
@@ -156,7 +149,7 @@ describe("choosing a precision floor", () => {
   });
 
   test("emits the catalog's citation at either floor", () => {
-    for (const selection of [AT_99_YES, DEFAULT_PRECISION_FLOOR_SELECTION]) {
+    for (const selection of [AT_99, DEFAULT_PRECISION_FLOOR_SELECTION]) {
       const chosen = editorWithPrecisionFloorSelection(seeded, selection);
       expect(buildAdvancedTerms(chosen.draft).linkageRuleSet).toStrictEqual(
         DEFAULT_LINKAGE_RULE_SET.reference,
@@ -172,7 +165,7 @@ describe("choosing a precision floor", () => {
       editor.draft.keys.find((entry) => entry.key.name === "SSN + LN + DOB")
         ?.enabled === false;
 
-    const at99 = editorWithPrecisionFloorSelection(narrowed, AT_99_YES);
+    const at99 = editorWithPrecisionFloorSelection(narrowed, AT_99);
     expect(isOff(at99)).toBe(true);
     expect(enabledKeys(at99.draft)).toHaveLength(at99.draft.keys.length - 1);
 
@@ -185,7 +178,7 @@ describe("choosing a precision floor", () => {
   });
 
   test("turns on a key the new selection adds", () => {
-    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
     const at95 = editorWithPrecisionFloorSelection(
       at99,
       DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -199,41 +192,40 @@ describe("choosing a precision floor", () => {
 
   test("takes the order from the catalog, not from a key moved by hand", () => {
     const moved = editorWithKeyMoved(seeded, 0, 1);
-    const at99 = editorWithPrecisionFloorSelection(moved, AT_99_YES);
-    expect(keyNames(at99)).toStrictEqual(catalogKeyNames(at99, AT_99_YES));
+    const at99 = editorWithPrecisionFloorSelection(moved, AT_99);
+    expect(keyNames(at99)).toStrictEqual(catalogKeyNames(at99, AT_99));
   });
 
   test("holds across a column edit, which reconciles at the chosen floor", () => {
-    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
     const edited = editorWithColumnDisclosure(
       at99,
       withSsn,
       "program_code",
       "payload",
     ).editor;
-    expect(edited.draft.precisionFloorSelection).toStrictEqual(AT_99_YES);
+    expect(edited.draft.precisionFloorSelection).toStrictEqual(AT_99);
     expect(keyNames(edited)).toStrictEqual(keyNames(at99));
   });
 });
 
-describe("the coverage answer", () => {
-  const seeded = editorFromCsv("Dana", withSsn);
-
-  test("yes admits the name + date rules at the 95% floor", () => {
-    for (const rule of NAME_AND_DATE_RULES)
-      expect(keyNames(seeded)).toContain(rule);
+describe("the name + date rules marked less certain", () => {
+  test("are listed on at the 95% floor the draft opens at", () => {
+    for (const csv of [withSsn, namesAndDate]) {
+      const seeded = editorFromCsv("Dana", csv);
+      for (const rule of NAME_AND_DATE_RULES) {
+        const entry = seeded.draft.keys.find((key) => key.key.name === rule);
+        expect(entry?.enabled).toBe(true);
+      }
+      expect(buildAdvancedTerms(seeded.draft).linkageRuleSet).toStrictEqual(
+        DEFAULT_LINKAGE_RULE_SET.reference,
+      );
+    }
   });
 
-  test("no withholds them, and the rest of the floor's rules stay", () => {
-    const answeredNo = editorWithPrecisionFloorSelection(seeded, AT_95_NO);
-    for (const rule of NAME_AND_DATE_RULES)
-      expect(keyNames(answeredNo)).not.toContain(rule);
-    expect(keyNames(answeredNo)).toContain("SSN + FN");
-    expect(keyNames(answeredNo)).toStrictEqual(
-      keyNames(seeded).filter((name) => !NAME_AND_DATE_RULES.includes(name)),
-    );
-    expect(buildAdvancedTerms(answeredNo.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
+  test("are what a file of names and a date of birth alone matches on", () => {
+    expect(keyNames(editorFromCsv("Dana", namesAndDate))).toStrictEqual(
+      NAME_AND_DATE_RULES,
     );
   });
 });
@@ -270,21 +262,8 @@ describe("the geography rules on the guided list", () => {
     expect(enabledKeys(seeded.draft)).toHaveLength(seeded.draft.keys.length);
   });
 
-  test("keep the ZIP3, state and county rules when the coverage answer is no", () => {
-    const answeredNo = editorWithPrecisionFloorSelection(seeded, AT_95_NO);
-    expect(keyNames(answeredNo)).toContain(ZIP3_RULE);
-    expect(keyNames(answeredNo)).toContain(STATE_RULE);
-    expect(keyNames(answeredNo)).toContain(COUNTY_RULE);
-    expect(keyNames(answeredNo)).toStrictEqual(
-      catalogKeyNames(answeredNo, AT_95_NO),
-    );
-    expect(buildAdvancedTerms(answeredNo.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
-  });
-
   test("are left out at the 99% floor", () => {
-    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
     for (const rule of [ZIP3_RULE, STATE_RULE, COUNTY_RULE])
       expect(keyNames(at99)).not.toContain(rule);
   });
@@ -313,27 +292,25 @@ describe("the street number rule on the guided list", () => {
   });
   const seeded = editorFromCsv("Dana", withStreetNumber);
 
-  test.each([
-    DEFAULT_PRECISION_FLOOR_SELECTION,
-    AT_95_NO,
-    AT_99_YES,
-    { floor: 99, oneStateOrMetroArea: false } as const,
-  ])("is listed first, before the ZIP5 rule, at %o", (selection) => {
-    const selected = editorWithPrecisionFloorSelection(seeded, selection);
-    expect(keyNames(selected)).toStrictEqual(
-      catalogKeyNames(selected, selection),
-    );
-    expect(keyNames(selected).slice(0, 2)).toStrictEqual([
-      STREET_NUMBER_RULE,
-      "LN + FN + DOB + ZIP5",
-    ]);
-    expect(enabledKeys(selected.draft)).toHaveLength(
-      selected.draft.keys.length,
-    );
-    expect(buildAdvancedTerms(selected.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
-  });
+  test.each([DEFAULT_PRECISION_FLOOR_SELECTION, AT_99])(
+    "is listed first, before the ZIP5 rule, at %o",
+    (selection) => {
+      const selected = editorWithPrecisionFloorSelection(seeded, selection);
+      expect(keyNames(selected)).toStrictEqual(
+        catalogKeyNames(selected, selection),
+      );
+      expect(keyNames(selected).slice(0, 2)).toStrictEqual([
+        STREET_NUMBER_RULE,
+        "LN + FN + DOB + ZIP5",
+      ]);
+      expect(enabledKeys(selected.draft)).toHaveLength(
+        selected.draft.keys.length,
+      );
+      expect(buildAdvancedTerms(selected.draft).linkageRuleSet).toStrictEqual(
+        DEFAULT_LINKAGE_RULE_SET.reference,
+      );
+    },
+  );
 
   test("is not listed for a file with no street number column", () => {
     const zipOnly = editorFromCsv(
@@ -368,18 +345,14 @@ describe("keys written in Expert authoring or loaded from a document", () => {
       seeded,
       addKey(seeded.draft, "first_name"),
     );
-    expect(editorWithPrecisionFloorSelection(authored, AT_99_YES)).toBe(
-      authored,
-    );
+    expect(editorWithPrecisionFloorSelection(authored, AT_99)).toBe(authored);
     const imported = editorWithImportedTerms(
       seeded,
       withSsn,
       buildAdvancedTerms(seeded.draft),
     );
     expect(imported.draft.precisionFloorSelection).toBeUndefined();
-    expect(editorWithPrecisionFloorSelection(imported, AT_99_YES)).toBe(
-      imported,
-    );
+    expect(editorWithPrecisionFloorSelection(imported, AT_99)).toBe(imported);
   });
 
   test("are named on Review & create as selected by no floor", () => {
@@ -396,7 +369,7 @@ describe("keys written in Expert authoring or loaded from a document", () => {
 
 describe("replacing authored keys with the built-in rules", () => {
   const seeded = editorFromCsv("Dana", withSsn);
-  const at99 = editorWithPrecisionFloorSelection(seeded, AT_99_YES);
+  const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
 
   test("lists the default selection's rules, all on, and opens the floor choice again", () => {
     const authored = editorWithAuthoredDraft(
@@ -414,9 +387,9 @@ describe("replacing authored keys with the built-in rules", () => {
     );
     expect(editorCitationDrop(guided, false)).toBeUndefined();
     expect(
-      editorWithPrecisionFloorSelection(guided, AT_99_YES).draft
+      editorWithPrecisionFloorSelection(guided, AT_99).draft
         .precisionFloorSelection,
-    ).toStrictEqual(AT_99_YES);
+    ).toStrictEqual(AT_99);
   });
 
   test("keeps the columns, their sharing and every setting outside the keys, fields and cleaning", () => {
@@ -502,9 +475,8 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
       "This replaces the keys, fields and cleaning with the ones a new " +
         "invitation starts with for your file: the built-in rules at 95% " +
-        "precision and above that your file supplies, for two files that " +
-        "both draw their members from one state or one metropolitan area, " +
-        "all turned on. The invitation will cite the built-in rules. Your " +
+        "precision and above that your file supplies, all turned on. The " +
+        "invitation will cite the built-in rules. Your " +
         "columns and other settings stay. This cannot be undone.",
     );
   });
@@ -696,9 +668,7 @@ describe("the key order help", () => {
   });
 
   test("at 99% names the 99% rules only", () => {
-    expect(
-      keyOrderHelp(editorWithPrecisionFloorSelection(seeded, AT_99_YES)),
-    ).toBe(
+    expect(keyOrderHelp(editorWithPrecisionFloorSelection(seeded, AT_99))).toBe(
       "Records are matched on these keys, tried in order, and earlier keys " +
         "match first. The built-in keys are only the rules at 99% precision.",
     );
@@ -733,7 +703,7 @@ describe("the announcement after a floor choice", () => {
   test("reads the empty-list note for an empty list", () => {
     const empty = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", namesAndDate),
-      AT_99_YES,
+      AT_99,
     );
     expect(empty.draft.keys).toHaveLength(0);
     expect(guidedKeysAnnouncement(empty)).toBe(emptyGuidedKeysNotice(empty));
@@ -742,7 +712,7 @@ describe("the announcement after a floor choice", () => {
 });
 
 describe("Review & create", () => {
-  test("names the floor and the coverage answer the keys were selected with", () => {
+  test("names the floor the keys were selected with", () => {
     const seeded = editorFromCsv("Dana", withSsn);
     const capitalized = (selection: PrecisionFloorSelection) => {
       const statement = precisionFloorSelectionStatement(selection);
@@ -751,29 +721,11 @@ describe("Review & create", () => {
     expect(rulesSelected(seeded, withSsn)).toBe(
       capitalized(DEFAULT_PRECISION_FLOOR_SELECTION),
     );
-    for (const selection of [AT_99_YES, AT_95_NO])
-      expect(
-        rulesSelected(
-          editorWithPrecisionFloorSelection(seeded, selection),
-          withSsn,
-        ),
-      ).toBe(capitalized(selection));
-  });
-
-  test("names no coverage condition at 99%, whichever the answer", () => {
-    const seeded = editorFromCsv("Dana", withSsn);
-    for (const oneStateOrMetroArea of [true, false])
-      expect(
-        rulesSelected(
-          editorWithPrecisionFloorSelection(seeded, {
-            floor: 99,
-            oneStateOrMetroArea,
-          }),
-          withSsn,
-        ),
-      ).toBe(
-        "The built-in rules at 99% precision and above that your file supplies",
-      );
+    expect(
+      rulesSelected(editorWithPrecisionFloorSelection(seeded, AT_99), withSsn),
+    ).toBe(
+      "The built-in rules at 99% precision and above that your file supplies",
+    );
   });
 });
 
@@ -891,7 +843,7 @@ describe("a seeded draft's dropped citation", () => {
   test("is noticed for keys authored after a floor that offers the file none", () => {
     const at99 = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", namesAndDate),
-      AT_99_YES,
+      AT_99,
     );
     expect(at99.draft.keys).toHaveLength(0);
     expect(editorCitationDrop(at99, false)).toBeUndefined();
@@ -943,7 +895,7 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
   test("states the citation its new keys drop", () => {
     const at99 = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", withSsn),
-      AT_99_YES,
+      AT_99,
     );
     const narrowed = editorWithAuthoredDraft(at99, removeKey(at99.draft, 0));
     expect(buildAdvancedTerms(narrowed.draft).linkageRuleSet).toBeDefined();
@@ -954,7 +906,7 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
       "ssn",
       "other",
     ).editor;
-    expect(retyped.draft.precisionFloorSelection).toStrictEqual(AT_99_YES);
+    expect(retyped.draft.precisionFloorSelection).toStrictEqual(AT_99);
     expect(draftHasOfferedKeys(retyped.draft)).toBe(false);
 
     const allOff = {
@@ -979,23 +931,20 @@ describe("an empty guided key list", () => {
   test("names the wider choice that supplies rules", () => {
     const seeded = editorFromCsv("Dana", namesAndDate);
     expect(emptyGuidedKeysNotice(seeded)).toBeUndefined();
-    for (const selection of [AT_99_YES, AT_95_NO]) {
-      const empty = editorWithPrecisionFloorSelection(seeded, selection);
-      expect(empty.draft.keys).toHaveLength(0);
-      expect(emptyGuidedKeysNotice(empty)).toBe(
-        "Your file's columns supply none of the built-in rules these " +
-          "choices select. The built-in rules at 95% precision and above, " +
-          "with the question above answered Yes, include rules your file " +
-          "supplies.",
-      );
-    }
+    const empty = editorWithPrecisionFloorSelection(seeded, AT_99);
+    expect(empty.draft.keys).toHaveLength(0);
+    expect(emptyGuidedKeysNotice(empty)).toBe(
+      "Your file's columns supply none of the built-in rules this choice " +
+        "selects. The built-in rules at 95% precision and above include " +
+        "rules your file supplies.",
+    );
   });
 
   test("says nothing where no choice supplies a rule", () => {
     const unmatchable = csvOf({ client_id: "1", program_code: "A" });
     const at99 = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", unmatchable),
-      AT_99_YES,
+      AT_99,
     );
     expect(at99.draft.keys).toHaveLength(0);
     expect(emptyGuidedKeysNotice(at99)).toBeUndefined();

@@ -121,7 +121,7 @@ function keysFact(draft: AdvancedInviteDraft): string {
   return plural(enabledKeys(draft).length, "key");
 }
 
-/** What the keys were selected with: the precision floor and coverage answer
+/** What the keys were selected with: the precision floor
  * in core's words, the ones the quick exchange's confirm step uses, or that no
  * floor selected keys written in Expert authoring or loaded from a document. */
 function rulesSelectedFact(editor: InviterEditor): string {

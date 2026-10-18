@@ -347,8 +347,8 @@ function readRuleSet(element, index, constants, read) {
       },
     };
   }
-  // A key set's bands and coverage conditions are part of what its version
-  // names, so they are read with it where the entry declares them.
+  // A key set's bands are part of what its version names, so they are read
+  // with it where the entry declares them.
   const bandsNode = entry.get(BANDS_KEY);
   if (bandsNode !== undefined) {
     halves.keySet.bands = literalValue(bandsNode, read);

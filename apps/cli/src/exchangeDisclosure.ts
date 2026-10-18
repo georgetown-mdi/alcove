@@ -31,6 +31,8 @@ import {
 
 import {
   consentSurfaceSink,
+  displayLessCertainNote,
+  LESS_CERTAIN_REMEDY,
   marked,
   verdictMarked,
   type ConsentSurfaceSink,
@@ -217,9 +219,10 @@ function displayContradictedRuleSetCitation(
  * the run holds back ({@link heldBackColumnNames}). `inputColumns` is the
  * header the run read, in input order, which the held back line lists from.
  *
- * `ruleSelection`, where given, states which built-in rules the run selected
- * for its keys, on a line above them: a quick exchange's, whose keys no file
- * lists.
+ * `run` names the command the display is for. A quick exchange's display
+ * states which built-in rules the run selected for its keys, on a line above
+ * them, since no file lists them; the remedy under a key marked less certain
+ * is that command's own ({@link LESS_CERTAIN_REMEDY}).
  */
 export function renderExchangeDisclosure(
   emit: ConsentSurfaceSink,
@@ -227,7 +230,7 @@ export function renderExchangeDisclosure(
   metadata: Metadata,
   inputColumns: ReadonlyArray<string>,
   standardization: Standardization | undefined,
-  ruleSelection?: string,
+  run: "quickExchange" | "configuredExchange",
 ): void {
   const summary = summarizeInvitation({ linkageTerms });
   emit(DISCLOSURE_HEADING);
@@ -371,7 +374,11 @@ export function renderExchangeDisclosure(
       `  ${marked("held back", "heldBackColumnsSelfAuthored")}: ` +
         heldBack.map((name) => redactAndSanitizeForDisplay(name)).join(", "),
     );
-  if (ruleSelection !== undefined) emit(`  rules selected: ${ruleSelection}`);
+  if (run === "quickExchange")
+    emit(
+      "  rules selected: " +
+        precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
+    );
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   // One line per key: its name and the fields it combines, both already escaped
   // by the summary. The full element and transform detail stays in the
@@ -379,8 +386,13 @@ export function renderExchangeDisclosure(
   for (const key of summary.linkageKeys)
     emit(
       `    - ${key.name}: ${key.headerFields.join(" - ")}` +
-        (key.hasSwap ? " (matched in either order)" : ""),
+        (key.hasSwap ? " (matched in either order)" : "") +
+        (key.lessCertainHeaderMarker !== undefined
+          ? ` ${key.lessCertainHeaderMarker}`
+          : ""),
     );
+  if (summary.linkageKeys.some((key) => key.lessCertain))
+    displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[run]);
 
   // Last, directly beneath the keys and fields it is a finding about: the
   // caveat ends on those being what the exchange holds both parties to, and a
@@ -599,6 +611,7 @@ export function displayExchangeDisclosure(params: {
         metadata,
         inputColumns,
         standardization,
+        "configuredExchange",
       ),
     linkageTerms,
     connection,
@@ -646,7 +659,7 @@ export function displayZeroSetupDisclosure(params: {
         prepared.metadata,
         prepared.metadata.map((column) => column.name),
         undefined,
-        precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
+        "quickExchange",
       ),
     linkageTerms: prepared.linkageTerms,
     connection,

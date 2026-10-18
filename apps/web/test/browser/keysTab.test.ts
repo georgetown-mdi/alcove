@@ -8,6 +8,7 @@ import { createElement, useState } from "react";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
@@ -23,9 +24,8 @@ import {
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
-  ONE_STATE_OR_METRO_AREA_HELP,
-  ONE_STATE_OR_METRO_AREA_NOT_ASKED,
-  ONE_STATE_OR_METRO_AREA_QUESTION,
+  LESS_CERTAIN_KEY_COPY,
+  linkageKeyIsLessCertain,
   precisionFloorStatement,
 } from "@alcove/core";
 
@@ -39,10 +39,13 @@ import {
 
 import { KeysTab } from "@exchange/KeysTab";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
+import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
+import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
+import type { LinkageField } from "@alcove/core";
 
 // A minimal file with a date_of_birth column, so the seeded default keys
 // include one built from it (the element the dead-key transform below targets).
@@ -450,7 +453,7 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
   });
 });
 
-describe("KeysTab: the precision floor and the coverage question", () => {
+describe("KeysTab: the precision floor and the less certain mark", () => {
   /** The tab over a live session, applying each floor choice through the
    * session model the inviter screen applies it through. */
   function Harness({
@@ -489,9 +492,11 @@ describe("KeysTab: the precision floor and the coverage question", () => {
 
   const at99 = precisionFloorStatement(99);
   const at95 = precisionFloorStatement(95);
-  const nameAndDateKey = { name: /Key \d+ - LN \+ FN \+ DOB$/ };
+  const nameAndDateKey = {
+    name: /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
+  };
 
-  test("offers each floor in core's words, 95% chosen, with the coverage question and its help", async () => {
+  test("offers each floor in core's words, 95% chosen, and asks no coverage question", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
@@ -502,21 +507,19 @@ describe("KeysTab: the precision floor and the coverage question", () => {
     await expect.element(floor99).not.toBeChecked();
     await expect.element(page.getByText(at99.description)).toBeInTheDocument();
     await expect.element(page.getByText(at95.description)).toBeInTheDocument();
+    expect(at95.description).toContain("except rules marked less certain");
     expect(document.body.textContent).not.toMatch(/tier/i);
 
-    const question = page.getByRole("radiogroup", {
-      name: ONE_STATE_OR_METRO_AREA_QUESTION,
-    });
-    await expect.element(question).toBeInTheDocument();
-    await expect
-      .element(question.getByRole("radio", { name: "Yes", exact: true }))
-      .toBeChecked();
-    await expect
-      .element(question)
-      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_HELP.join(" "));
+    expect(page.getByRole("radiogroup").elements()).toHaveLength(2);
+    expect(page.getByRole("radio", { name: "Yes", exact: true }).query()).toBe(
+      null,
+    );
+    expect(document.body.textContent).not.toMatch(
+      /metropolitan|one state|answer below/i,
+    );
   });
 
-  test("reseeds the key list on a floor choice and on the coverage answer", async () => {
+  test("reseeds the key list on a floor choice", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
@@ -541,13 +544,6 @@ describe("KeysTab: the precision floor and the coverage question", () => {
 
     await page.getByRole("radio", { name: at95.label }).click();
     await expect.element(nameAndDate).toBeChecked();
-
-    const answerNo = page
-      .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
-      .getByRole("radio", { name: "No", exact: true });
-    await answerNo.click();
-    await expect.element(answerNo).toBeChecked();
-    expect(nameAndDate.query()).toBeNull();
   });
 
   test("states a citation the moved keys drop, and clears it once moved back", async () => {
@@ -590,11 +586,6 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       )
       .toBeInTheDocument();
     expect(page.getByRole("radio", { name: at99.label }).query()).toBeNull();
-    expect(
-      page
-        .getByRole("radiogroup", { name: ONE_STATE_OR_METRO_AREA_QUESTION })
-        .query(),
-    ).toBeNull();
   });
 
   test("keeps a key turned off across a floor change and back", async () => {
@@ -615,24 +606,207 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       .toBeChecked();
   });
 
-  test("disables the coverage question at 99%, saying where it applies", async () => {
+  test("marks the three name and date keys less certain, each with a button that explains why", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
 
+    for (const rule of [
+      /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
+      /Key \d+ - swap\(LN, FN\) \+ DOB \(less certain\)$/,
+      /Key \d+ - split\(LN\) \+ FN \+ DOB \(less certain\)$/,
+    ])
+      await expect
+        .element(page.getByRole("checkbox", { name: rule }))
+        .toBeChecked();
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
+      .toBeInTheDocument();
+    const infoButtons = page.getByRole("button", { name: /less certain$/ });
+    expect(
+      infoButtons
+        .elements()
+        .map((button) => button.getAttribute("aria-label") ?? ""),
+    ).toStrictEqual([
+      "Why LN + FN + DOB is less certain",
+      "Why swap(LN, FN) + DOB is less certain",
+      "Why split(LN) + FN + DOB is less certain",
+    ]);
+
+    const name = lessCertainInfoLabel("LN + FN + DOB");
+    const first = page.getByRole("button", { name, exact: true });
+    await expect.element(first).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(
+      first.element().getAttribute("aria-controls") ?? "",
+    )!;
+    expect(MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox).toBe(
+      "To leave one out, turn off its checkbox.",
+    );
+    const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox}`;
+    await expect.poll(() => panel.textContent).toBe(explained);
+    const explanation = page.elementLocator(panel).getByText(explained);
+    await expect.element(explanation).not.toBeVisible();
+
+    await activate(control("button", name));
+    await expect.element(first).toHaveAttribute("aria-expanded", "true");
+    await expect.element(explanation).toBeVisible();
+    expect(document.body.textContent).not.toContain(
+      LESS_CERTAIN_KEY_COPY.acceptorRemedy,
+    );
+
     await page.getByRole("radio", { name: at99.label }).click();
-    const question = page.getByRole("radiogroup", {
-      name: ONE_STATE_OR_METRO_AREA_QUESTION,
+    expect(infoButtons.elements()).toHaveLength(0);
+  });
+
+  function authoredNameAndDateKeys() {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    return editorWithAuthoredDraft(seeded, {
+      ...seeded.draft,
+      keys: [
+        {
+          enabled: true,
+          key: {
+            name: "my people",
+            elements: [
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "last_name" },
+            ],
+          },
+        },
+        {
+          enabled: true,
+          key: {
+            name: "my people with SSN4",
+            elements: [
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "last_name" },
+              { field: "ssn4" },
+            ],
+          },
+        },
+      ],
     });
+  }
+
+  test("marks a key written in Expert authoring on a name and a date of birth alone", async () => {
+    app.render(createElement(Harness, { initial: authoredNameAndDateKeys() }));
+
     await expect
-      .element(question)
-      .toHaveAccessibleDescription(ONE_STATE_OR_METRO_AREA_NOT_ASKED);
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 1 - my people (less certain)",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
     await expect
-      .element(question.getByRole("radio", { name: "Yes", exact: true }))
-      .toBeDisabled();
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 2 - my people with SSN4",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: /less certain$/ }).elements(),
+    ).toHaveLength(1);
     await expect
-      .element(question.getByRole("radio", { name: "No", exact: true }))
-      .toBeDisabled();
+      .element(
+        page.getByRole("button", {
+          name: "Why my people is less certain",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("on keys an opened configuration states, the remedy is the configuration's update", async () => {
+    app.render(
+      createElement(Harness, {
+        initial: authoredNameAndDateKeys(),
+        keysFromOpenedConfiguration: true,
+      }),
+    );
+
+    const name = lessCertainInfoLabel("my people");
+    const info = page.getByRole("button", { name, exact: true });
+    await expect.element(info).toBeInTheDocument();
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    expect(MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration).toBe(
+      "To leave them out, delete them from linkage_keys in alcove.yaml, run " +
+        "alcove update, and have your partner run alcove apply on what it " +
+        "prints.",
+    );
+    await expect
+      .poll(() => panel.textContent)
+      .toBe(
+        `${LESS_CERTAIN_KEY_COPY.explanation} ` +
+          MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration,
+      );
+  });
+
+  /** A loaded document whose field declarations type `retyped` apart from the
+   * file's columns. */
+  function documentTypingFieldsApart(retyped: ReadonlyArray<LinkageField>) {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const loaded = editorWithImportedTerms(
+      seeded,
+      csv,
+      buildAdvancedTerms(seeded.draft),
+    );
+    return editorWithAuthoredDraft(loaded, {
+      ...loaded.draft,
+      importedLinkageFields: (loaded.draft.importedLinkageFields ?? []).map(
+        (field) =>
+          retyped.find((candidate) => candidate.name === field.name) ?? field,
+      ),
+    });
+  }
+
+  function infoButtonLabels(): Array<string> {
+    return page
+      .getByRole("button", { name: /less certain$/ })
+      .elements()
+      .map((button) => button.getAttribute("aria-label") ?? "");
+  }
+
+  function labelsOfKeysMarkedByBuiltTerms(editor: InviterEditor) {
+    const { linkageFields } = buildAdvancedTerms(editor.draft);
+    return editor.draft.keys
+      .filter((entry) => linkageKeyIsLessCertain(entry.key, linkageFields))
+      .map((entry) => lessCertainInfoLabel(entry.key.name));
+  }
+
+  test("marks a key as the built terms type its fields where the document types one apart from its column", async () => {
+    const editor = documentTypingFieldsApart([
+      { name: "date_of_birth", type: "phone_number" },
+    ]);
+    app.render(createElement(Harness, { initial: editor }));
+
+    await expect
+      .element(page.getByRole("checkbox", nameAndDateKey))
+      .toBeChecked();
+    const expected = labelsOfKeysMarkedByBuiltTerms(editor);
+    expect(expected).toContain(lessCertainInfoLabel("LN + FN + DOB"));
+    expect(infoButtonLabels()).toStrictEqual(expected);
+  });
+
+  test("leaves a key unmarked as the built terms type its fields where the document types a field as a name", async () => {
+    const editor = documentTypingFieldsApart([
+      { name: "ssn4", type: "first_name" },
+    ]);
+    app.render(createElement(Harness, { initial: editor }));
+
+    await expect
+      .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
+      .toBeChecked();
+    const expected = labelsOfKeysMarkedByBuiltTerms(editor);
+    expect(expected).not.toContain(lessCertainInfoLabel("SSN4 + LN + DOB"));
+    expect(infoButtonLabels()).toStrictEqual(expected);
   });
 
   test("describes the key list with the order the chosen floor gives it", async () => {
@@ -644,14 +818,11 @@ describe("KeysTab: the precision floor and the coverage question", () => {
       .element(keyList)
       .toHaveAccessibleDescription(keyOrderHelp(seeded));
     await page.getByRole("radio", { name: at99.label }).click();
-    await expect.element(keyList).toHaveAccessibleDescription(
-      keyOrderHelp(
-        editorWithPrecisionFloorSelection(seeded, {
-          floor: 99,
-          oneStateOrMetroArea: true,
-        }),
-      ),
-    );
+    await expect
+      .element(keyList)
+      .toHaveAccessibleDescription(
+        keyOrderHelp(editorWithPrecisionFloorSelection(seeded, { floor: 99 })),
+      );
   });
 
   test("offers the built-in rules in place of authored keys, behind a confirm", async () => {

@@ -649,7 +649,7 @@ describe("checkLinkageRuleSetCitation", () => {
     expect(
       cite(wholeSet(), {
         fieldSet: shipped.fieldSet,
-        keySet: { name: shipped.keySet.name, version: "2.3.0" },
+        keySet: { name: shipped.keySet.name, version: "2.4.0" },
       }),
     ).toStrictEqual({ fieldSet: "consistent", keySet: "unchecked" });
     expect(

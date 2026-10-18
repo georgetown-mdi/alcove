@@ -14,6 +14,7 @@ import {
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
@@ -26,7 +27,12 @@ import {
   unshownDeclaredNamesLine,
 } from "@alcove/core";
 
-import { InvitationTerms } from "@components/InvitationTerms";
+import {
+  InvitationTerms,
+  LESS_CERTAIN_TERMS_LINE,
+} from "@components/InvitationTerms";
+import { DIRECT_LESS_CERTAIN_REMEDY } from "@exchange/directExchangeModel";
+import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
 import {
   BEL,
@@ -42,6 +48,7 @@ import {
   hostileTerms,
   hostileVariants,
 } from "@alcove/core/testing";
+import { activate, control as namedControl } from "./keyboardOnly";
 import {
   openDisclosure,
   readyCollapse,
@@ -166,11 +173,15 @@ async function renderTerms(
     headingOrder?: 1 | 2 | 3;
     /** The accepting party's own `deduplicate`, rendering the seat's control. */
     acceptorDeduplicate?: boolean;
+    lessCertainRemedy?: string;
   },
 ) {
   app.render(
     createElement(InvitationTerms, {
       linkageTerms,
+      ...(options?.lessCertainRemedy !== undefined
+        ? { lessCertainRemedy: options.lessCertainRemedy }
+        : {}),
       ...(options?.acceptorDeduplicate !== undefined
         ? {
             acceptorDeduplicate: {
@@ -288,12 +299,12 @@ describe("InvitationTerms: per-key matching disclosures", () => {
   // verdicts against this build, which is what the citation's independent halves
   // are for: `baseline-pii 1.3.0` is a set this build ships, and the fields above
   // are not it (no constraints on `ssn`, a field named `dob`), while
-  // `precision-ranked-rules 2.3.0` is a version it does not ship at all.
+  // `precision-ranked-rules 2.4.0` is a version it does not ship at all.
   const citingTerms: LinkageTerms = {
     ...terms,
     linkageRuleSet: {
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
     },
   };
 
@@ -306,7 +317,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     expect(app.container.textContent).toContain("Linkage rule set");
     expect(app.container.textContent).toContain(
-      '"precision-ranked-rules" 2.3.0',
+      '"precision-ranked-rules" 2.4.0',
     );
     expect(app.container.textContent).toContain('"baseline-pii" 1.3.0');
     expect(app.container.textContent).toContain(
@@ -366,14 +377,14 @@ describe("InvitationTerms: per-key matching disclosures", () => {
         ...citingTerms,
         linkageRuleSet: {
           fieldSet: { name: "baseline-pii", version: "1.3.0" },
-          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.3.0" },
+          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.4.0" },
         },
       },
       { perspective: "review" },
     );
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      '"precision-ranked-rules 9.9.9" 2.3.0',
+      '"precision-ranked-rules 9.9.9" 2.4.0',
     );
   });
 
@@ -466,7 +477,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     expect(app.container.textContent).toContain("Linkage rule set");
     expect(app.container.textContent).toContain(
-      '"precision-ranked-rules" 2.3.0',
+      '"precision-ranked-rules" 2.4.0',
     );
     expect(app.container.textContent).toContain('"baseline-pii" 1.3.0');
     expect(app.container.textContent).toContain(
@@ -698,6 +709,133 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     // ... and the per-key matching detail moved out, into the key's own
     // disclosure.
     expect(panel.textContent).not.toContain("Matches on the first character");
+  });
+});
+
+describe("InvitationTerms: a key on a name and a date of birth alone is marked less certain", () => {
+  // An authored key over fields the inviter named itself, so the mark is read
+  // from the field types and not from a built-in key name.
+  const lessCertainTerms: LinkageTerms = {
+    ...terms,
+    linkageKeys: [
+      ...terms.linkageKeys,
+      {
+        name: "people",
+        elements: [
+          { field: "first_name" },
+          { field: "dob" },
+          { field: "last_name" },
+        ],
+      },
+    ],
+  };
+
+  // The accepting party's remedy by default; the quick exchange confirm, the
+  // one "proposing" caller, passes its own.
+  const remedyCases = [
+    [
+      "review",
+      undefined,
+      "To leave them out, ask your partner for an invitation without them.",
+    ],
+    [
+      "proposing",
+      DIRECT_LESS_CERTAIN_REMEDY,
+      "A quick exchange always uses these keys. To leave them out, create " +
+        "an invitation instead and turn them off on Customize > Matching keys.",
+    ],
+  ] as const;
+
+  /** The panel an info button controls, and its explanation as a locator. */
+  function infoPanel(name: string, explained: string) {
+    const info = page.getByRole("button", { name, exact: true });
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    return {
+      info,
+      panel,
+      explanation: page.elementLocator(panel).getByText(explained),
+    };
+  }
+
+  test.each(remedyCases)(
+    "on the %s screen the mark is in the key's description, and a button named for the key states why and the remedy",
+    async (perspective, lessCertainRemedy, remedy) => {
+      await renderTerms(lessCertainTerms, {
+        perspective,
+        ...(lessCertainRemedy !== undefined ? { lessCertainRemedy } : {}),
+      });
+      await userEvent.click(toggle("Matching strategies"));
+      await expect.element(toggle("people")).toBeInTheDocument();
+
+      await expect
+        .element(toggle("people"))
+        .toHaveAccessibleDescription(
+          "Matches on first name - date of birth - last name (less certain)",
+        );
+      await expect
+        .element(toggle("SSN + LN + DOB"))
+        .toHaveAccessibleDescription(
+          "Matches on SSN - last name - date of birth",
+        );
+
+      const name = lessCertainInfoLabel("people");
+      expect(name).toBe("Why people is less certain");
+      expect(
+        page.getByRole("button", { name, exact: true }).elements(),
+      ).toHaveLength(1);
+      const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`;
+      const { info, panel, explanation } = infoPanel(name, explained);
+      await expect.element(info).toHaveAttribute("aria-expanded", "false");
+      await expect.poll(() => panel.textContent).toBe(explained);
+      await expect.element(explanation).not.toBeVisible();
+
+      await activate(namedControl("button", name));
+      await expect.element(info).toHaveAttribute("aria-expanded", "true");
+      await expect.element(explanation).toBeVisible();
+    },
+  );
+
+  test.each(remedyCases)(
+    "on the %s screen a line outside the collapsed key list says some keys are less certain, with its own button",
+    async (perspective, lessCertainRemedy, remedy) => {
+      await renderTerms(lessCertainTerms, {
+        perspective,
+        ...(lessCertainRemedy !== undefined ? { lessCertainRemedy } : {}),
+      });
+      await expect
+        .element(toggle("Matching strategies"))
+        .toHaveAttribute("aria-expanded", "false");
+      expect(LESS_CERTAIN_TERMS_LINE).toBe(
+        "Some of the matching keys are marked less certain. Open Matching " +
+          "strategies to see which.",
+      );
+      await expect
+        .element(page.getByText(LESS_CERTAIN_TERMS_LINE))
+        .toBeVisible();
+
+      const name = lessCertainInfoLabel();
+      expect(name).toBe("Why some keys are less certain");
+      const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`;
+      const { info, panel, explanation } = infoPanel(name, explained);
+      await expect.element(info).toBeVisible();
+      await expect.poll(() => panel.textContent).toBe(explained);
+      await expect.element(explanation).not.toBeVisible();
+      await activate(namedControl("button", name));
+      await expect.element(info).toHaveAttribute("aria-expanded", "true");
+      await expect.element(explanation).toBeVisible();
+    },
+  );
+
+  test("a key with any other identifying field has no mark, no line and no button", async () => {
+    await renderTerms(terms, { perspective: "review" });
+    await userEvent.click(toggle("Matching strategies"));
+    await expect.element(toggle("SSN + FN1")).toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: /less certain/ }).query(),
+    ).toBeNull();
+    expect(app.container.textContent).not.toContain("less certain");
   });
 });
 

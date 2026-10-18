@@ -188,40 +188,23 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
       .first();
   }
 
-  test("names the default floor and coverage answer", async () => {
+  test("names the default floor", async () => {
     render(editorFromCsv("Dana Okafor", csv));
 
     await expect
       .element(rulesSelectedCell())
       .toHaveTextContent(
-        "The built-in rules at 95% precision and above that your file " +
-          "supplies, for two files that both draw their members from one " +
-          "state or one metropolitan area",
+        "The built-in rules at 95% precision and above that your file supplies",
       );
-  });
-
-  test("names a no answer at the 95% floor", async () => {
-    render(
-      editorWithPrecisionFloorSelection(editorFromCsv("Dana Okafor", csv), {
-        floor: 95,
-        oneStateOrMetroArea: false,
-      }),
-    );
-
     await expect
       .element(rulesSelectedCell())
-      .toHaveTextContent(
-        "The built-in rules at 95% precision and above that your file " +
-          "supplies, leaving out the rules that need both files to draw " +
-          "their members from one state or one metropolitan area",
-      );
+      .not.toHaveTextContent("metropolitan");
   });
 
-  test("names no coverage condition at the 99% floor", async () => {
+  test("names the 99% floor", async () => {
     render(
       editorWithPrecisionFloorSelection(editorFromCsv("Dana Okafor", csv), {
         floor: 99,
-        oneStateOrMetroArea: false,
       }),
     );
 
@@ -230,9 +213,6 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
       .toHaveTextContent(
         "The built-in rules at 99% precision and above that your file supplies",
       );
-    await expect
-      .element(rulesSelectedCell())
-      .not.toHaveTextContent("one state or one metropolitan area");
   });
 
   test("names no floor for keys loaded from a document", async () => {

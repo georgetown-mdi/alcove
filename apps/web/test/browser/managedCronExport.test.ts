@@ -104,7 +104,9 @@ const app = createAppMount();
 
 const EXPORT_PANEL = "Run this from the command line instead";
 
-const exportToggle = () => disclosureToggle(EXPORT_PANEL);
+// A pattern for the label, since a refused export's toggle also names its
+// collapsed summary.
+const exportToggle = () => disclosureToggle(new RegExp(`^${EXPORT_PANEL}`));
 
 /** Open the collapsed export panel on a freshly rendered run surface, through
  * the helper that waits out its open transition: the download button inside it

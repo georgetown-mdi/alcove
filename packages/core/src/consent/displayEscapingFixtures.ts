@@ -127,6 +127,11 @@ export const hostileTerms: LinkageTerms = {
       ],
       swap: [`elem${RLO}one`, `last${BEL}name`],
     },
+    // Names alone, so the summary holds the less certain marker too.
+    {
+      name: `key${RLO}two`,
+      elements: [{ field: "first_name" }, { field: `last${BEL}name` }],
+    },
   ],
   linkageRuleSet: {
     fieldSet: { name: `base${BEL}line`, version: `1.0.0${RLO}` },
