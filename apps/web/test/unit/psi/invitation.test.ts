@@ -62,7 +62,7 @@ const consoleLocation: InvitationLocation = {
 // A CSV containing every default linkage column, so the file-derived terms keep all
 // the default keys -- the baseline that round-trips to the full default terms.
 const ALL_COLUMNS_CSV =
-  "ssn,ssn4,first_name,last_name,dob,phone,email,zip\n123456789,6789,Alice,Smith,1990-01-02,3125550142,alice@example.org,60614\n";
+  "ssn,ssn4,first_name,last_name,dob,phone,email,zip,state,county\n123456789,6789,Alice,Smith,1990-01-02,3125550142,alice@example.org,60614,IL,Cook County\n";
 // A partial CSV missing ssn4 (like test_data/fake_data_{1,2}.csv): keys that
 // reference ssn4 drop out, the rest survive.
 const PARTIAL_CSV =
@@ -1511,6 +1511,8 @@ describe("generateInvitation from profiled columns (console path)", () => {
     "phone",
     "email",
     "zip",
+    "state",
+    "county",
   ];
 
   test("binds the same terms as parsing the same columns, with no rawRows", async () => {
