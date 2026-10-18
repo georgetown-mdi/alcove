@@ -268,7 +268,27 @@ describe("KeysTab: a file with a ZIP column", () => {
     await expect
       .element(
         page.getByRole("note").filter({
-          hasText: "must hold each person's own ZIP code",
+          hasText:
+            "must hold each person's own, never that of a site that serves them.",
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("states the shared-value caveat beside a county key", async () => {
+    // The file has no phone, email or ZIP column, so the caveat can only come
+    // from the county key.
+    renderFor({
+      ...csv,
+      rawRows: [{ ...csv.rawRows[0], county: "COOK" }],
+      columns: [...csv.columns, "county"],
+    });
+
+    await expect
+      .element(
+        page.getByRole("note").filter({
+          hasText:
+            "must hold each person's own, never that of a site that serves them.",
         }),
       )
       .toBeInTheDocument();
@@ -281,7 +301,7 @@ describe("KeysTab: a file with a ZIP column", () => {
       .element(page.getByRole("heading", { name: "Matching keys" }))
       .toBeInTheDocument();
     expect(document.body.textContent).not.toContain(
-      "must hold each person's own ZIP code",
+      "must hold each person's own, never that of a site that serves them.",
     );
   });
 });
@@ -299,7 +319,8 @@ describe("KeysTab: the shared-value caveat follows the enabled keys", () => {
     ],
     columns: [...csv.columns, "zip", "phone", "email"],
   };
-  const caveat = "must hold each person's own ZIP code";
+  const caveat =
+    "must hold each person's own, never that of a site that serves them.";
 
   function renderWith(turnOff: (type: string | undefined) => boolean) {
     const editor = editorFromCsv("Dana Okafor", withContacts);
