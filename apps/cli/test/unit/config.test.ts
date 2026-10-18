@@ -70,6 +70,7 @@ import type {
   FileDropConnectionConfig,
   LinkageRuleSetReference,
   LinkageTerms,
+  Metadata,
   SFTPConnectionConfig,
 } from "@alcove/core";
 
@@ -4300,6 +4301,55 @@ describe("readConfigLinkageSource", () => {
     });
     expect(readConfigLinkageSource(configPath)).toEqual({
       status: "no-linkage-terms",
+    });
+  });
+
+  test("reads a street number field over an address column typed in its metadata", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const defaults = getDefaultLinkageTerms("Agency A");
+    const terms: LinkageTerms = {
+      ...defaults,
+      linkageRuleSet: undefined,
+      linkageFields: [
+        ...defaults.linkageFields,
+        { name: "street_number", type: "street_number" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+street number",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "street_number" },
+          ],
+        },
+      ],
+    };
+    const metadata: Metadata = [
+      {
+        name: "address",
+        type: "street_number",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share" },
+      linkageTerms: terms,
+      metadata,
+    });
+    const written = fs.readFileSync(configPath, "utf8");
+    expect(written).toContain("type: street_number");
+    expect(readConfigLinkageSource(configPath)).toMatchObject({
+      status: "loaded",
+      source: {
+        linkageTerms: {
+          linkageFields: terms.linkageFields,
+          linkageKeys: terms.linkageKeys,
+        },
+        metadata,
+      },
     });
   });
 

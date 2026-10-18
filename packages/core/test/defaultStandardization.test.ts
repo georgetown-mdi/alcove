@@ -44,6 +44,7 @@ const minimalTerms: LinkageTerms = {
     { name: "date_of_birth", type: "date_of_birth" },
     { name: "phone_number", type: "phone_number" },
     { name: "email_address", type: "email_address" },
+    { name: "street_number", type: "street_number" },
     { name: "zip_code", type: "zip_code" },
     { name: "state", type: "state" },
     { name: "county", type: "county" },
@@ -64,6 +65,12 @@ const fullMetadata: ColumnMetadata[] = [
   { name: "DOB", type: "date_of_birth", role: "linkage", isPayload: false },
   { name: "PHONE", type: "phone_number", role: "linkage", isPayload: false },
   { name: "EMAIL", type: "email_address", role: "linkage", isPayload: false },
+  {
+    name: "HOUSE_NO",
+    type: "street_number",
+    role: "linkage",
+    isPayload: false,
+  },
   { name: "ZIP", type: "zip_code", role: "linkage", isPayload: false },
   { name: "STATE", type: "state", role: "linkage", isPayload: false },
   { name: "COUNTY", type: "county", role: "linkage", isPayload: false },
@@ -93,7 +100,7 @@ function withPlaceholders(
 describe("getDefaultStandardization — structure", () => {
   test("returns one transformation per matching linkage field", () => {
     const result = getDefaultStandardization(fullMetadata, minimalTerms);
-    expect(result).toHaveLength(10);
+    expect(result).toHaveLength(11);
   });
 
   test("output names match linkage field names", () => {
@@ -106,6 +113,7 @@ describe("getDefaultStandardization — structure", () => {
     expect(outputs).toContain("date_of_birth");
     expect(outputs).toContain("phone_number");
     expect(outputs).toContain("email_address");
+    expect(outputs).toContain("street_number");
     expect(outputs).toContain("zip_code");
     expect(outputs).toContain("state");
     expect(outputs).toContain("county");
@@ -212,6 +220,12 @@ describe("getDefaultStandardization — structure", () => {
       },
       { name: "Zip5", type: "zip_code", role: "linkage", isPayload: false },
       { name: "St", type: "state", role: "linkage", isPayload: false },
+      {
+        name: "address",
+        type: "street_number",
+        role: "linkage",
+        isPayload: false,
+      },
       { name: "notes", type: "other", role: "payload", isPayload: true },
       {
         name: "eMail",
@@ -313,8 +327,8 @@ describe('default chains: a blank input yields null, never ""', () => {
   const transformations = getDefaultStandardization(fullMetadata, minimalTerms);
 
   // Guard: every default linkage field is exercised, so this is not a vacuous pass.
-  test("covers all ten default linkage fields", () => {
-    expect(transformations).toHaveLength(10);
+  test("covers all eleven default linkage fields", () => {
+    expect(transformations).toHaveLength(11);
   });
 
   for (const t of transformations) {
@@ -1302,6 +1316,84 @@ describe("default email_address pipeline", () => {
     );
     expect(asciiIdx).toBeGreaterThanOrEqual(0);
     expect(emailFilterIdx).toBeGreaterThan(asciiIdx);
+  });
+});
+
+// --- Street number pipeline --------------------------------------------------
+
+describe("default street_number pipeline", () => {
+  function run(input: string) {
+    const [t] = getDefaultStandardization(
+      [
+        {
+          name: "ADDRESS",
+          type: "street_number",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+      {
+        ...minimalTerms,
+        linkageFields: [{ name: "street_number", type: "street_number" }],
+      },
+    );
+    return runPipeline(input, t.steps!);
+  }
+
+  test.each([
+    ["123", "123"],
+    ["123 Main St", "123"],
+    ["123 Main St Apt 4", "123"],
+    ["123 Main St, Unit 4B", "123"],
+    ["123-B Main St", "123"],
+    ["123B Main St", "123"],
+    ["123 N. Main St.", "123"],
+    ["\t123 Main St ", "123"],
+    ["100 Elm", "100"],
+    ["4821", "4821"],
+  ])("keeps the leading number of %j as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test("removes leading zeros, so a padded number agrees with a bare one", () => {
+    expect(run("  0042 Elm")).toBe("42");
+    expect(run("0042")).toBe(run("42 Elm St"));
+    expect(run("007")).toBe("7");
+  });
+
+  test("keeps a range's first number", () => {
+    expect(run("123-125 Main")).toBe("123");
+    expect(run("123 - 125 Main")).toBe("123");
+    expect(run("37-12 75th St")).toBe("37");
+  });
+
+  test("drops a fraction after the number", () => {
+    expect(run("123 1/2 Main")).toBe("123");
+    expect(run("123½ Main")).toBe("123");
+  });
+
+  test.each([
+    "0",
+    "000",
+    "0 Main St",
+    "Main St",
+    "PO Box 12",
+    "RR 2 Box 5",
+    "#12 Main St",
+    "No. 12 Main St",
+    "N6W23001 Bluemound Rd",
+    "１２３ Main St",
+    "-12 Main",
+    "",
+    "   ",
+  ])("drops %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  test("two parties with differently written addresses agree", () => {
+    const inviter = ["123 Main St Apt 4", "0042 Elm", "7-9 Oak Ave"];
+    const acceptor = ["123", "42", "7 Oak Avenue"];
+    expect(inviter.map(run)).toEqual(acceptor.map(run));
   });
 });
 

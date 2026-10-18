@@ -54,6 +54,7 @@ export const SEMANTIC_TYPE_LABELS: Record<SemanticType, string> = {
   identifier: "Unique record identifier",
   phone_number: "Phone number",
   email_address: "Email address",
+  street_number: "Street number",
   zip_code: "ZIP code",
   state: "State",
   county: "County",

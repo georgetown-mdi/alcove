@@ -290,15 +290,18 @@ linkage_terms:
 | `date_of_birth` | Date of birth |
 | `phone_number` | Phone number |
 | `email_address` | Email address |
+| `street_number` | House number of a street address; canonical form is the leading digits with no leading zero |
 | `zip_code` | US ZIP code; canonical form is 5 digits, zero-padded |
 | `state` | US state, District of Columbia, or inhabited territory; canonical form is the two-letter USPS code |
 | `county` | County name; canonical form is uppercase with the word `COUNTY` and punctuation removed |
 | `identifier` | Column that indexes a party's own records; never matchable |
 | `other` | A column whose PII type is none of the above |
 
-The first ten values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
+The first eleven values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
 
 Additional types will be added as their use case arises.
+
+A `street_number` column is inferred only from a number-named column, `street_number`, `house_number` or `address_number` and their short spellings (complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). An address-line column such as `address`, `street_address` or `address1` is not inferred as one; to match on the number such a column starts with, type it `street_number` in your `metadata`. Either way the value is cleaned to the number it starts with, so `123 Main St Apt 4` and `123` both match as `123`, and a value that does not start with a digit is dropped. It has no built-in linkage key, so it is matched on only where your terms declare a key that uses it; on its own a house number matches everyone at that number on any street, so it does its work beside a ZIP code, a name and a date of birth. The cleaning steps and the rules for leading zeros, ranges and fractions are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#street_number).
 
 A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
 A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`.

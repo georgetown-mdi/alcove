@@ -540,3 +540,20 @@ describe("the state and county column types", () => {
     expect(isDisclosedToPartner(out[0])).toBe(false);
   });
 });
+
+describe("the street number column type", () => {
+  test("is offered for matching with a label of its own", () => {
+    expect(SEMANTIC_TYPES).toContain("street_number");
+    expect(disclosureChoicesForType("street_number")).toContain("match");
+    expect(SEMANTIC_TYPE_LABELS.street_number).toBe("Street number");
+  });
+
+  test("an address column picked as a street number becomes a match column", () => {
+    const [address] = inferMetadataForEveryColumn(["address"], []);
+    expect(address.type).toBe("other");
+    const out = setColumnTypeForMatching([address], "address", "street_number");
+    expect(out[0].type).toBe("street_number");
+    expect(disclosureOf(out[0])).toBe("match");
+    expect(isDisclosedToPartner(out[0])).toBe(false);
+  });
+});

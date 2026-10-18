@@ -1047,6 +1047,50 @@ describe("the consent summary's withheld-table register, mirrored", () => {
   });
 });
 
+describe("the consent summary's street number field", () => {
+  const baseTerms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+  // The field's name is partner free text the summary never shows, so it is
+  // named here as an address column would be.
+  const summary = summarizeInvitation({
+    linkageTerms: {
+      ...baseTerms,
+      linkageFields: [
+        ...baseTerms.linkageFields,
+        { name: "address_line", type: "street_number" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+street number",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "address_line" },
+          ],
+        },
+      ],
+    },
+  });
+
+  test("names the field in plain words in the field list", () => {
+    expect(summary.linkageFields.map((field) => field.label)).toContain(
+      "Street number",
+    );
+  });
+
+  test("names the field in plain words in the key's one-line summary", () => {
+    expect(summary.linkageKeys[0].headerFields).toEqual([
+      "last name",
+      "first name",
+      "date of birth",
+      "street number",
+    ]);
+  });
+});
+
 describe("the consent summary's date-collapse marker", () => {
   const metadata = inferMetadata(LINKAGE_ONLY_COLUMNS, []);
   const baseTerms = getDefaultLinkageTerms("Inviter", metadata);

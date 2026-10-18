@@ -157,6 +157,13 @@ test.each([
   ["phone", "phone_number"],
   ["email_address", "email_address"],
   ["email", "email_address"],
+  ["street_number", "street_number"],
+  ["street_no", "street_number"],
+  ["street_num", "street_number"],
+  ["house_number", "street_number"],
+  ["house_no", "street_number"],
+  ["house_num", "street_number"],
+  ["address_number", "street_number"],
   ["zip_code", "zip_code"],
   ["zip", "zip_code"],
   ["zip5", "zip_code"],
@@ -178,9 +185,23 @@ test.each([
   ["dateofbirth", "date_of_birth"],
   ["phonenumber", "phone_number"],
   ["emailaddress", "email_address"],
+  ["streetnumber", "street_number"],
+  ["housenumber", "street_number"],
+  ["addressnumber", "street_number"],
 ] as const)('alias "%s" resolves to type "%s"', (alias, expectedType) => {
   const [col] = inferMetadata([alias], []);
   expect(col.type).toBe(expectedType);
+});
+
+test.each([
+  "address",
+  "street_address",
+  "streetaddress",
+  "address1",
+  "address_line_1",
+])("an address-line column %s is not inferred as a street number", (name) => {
+  expect(inferMetadata([name], [])).toEqual([]);
+  expect(inferMetadata([name], [], { mode: "direct" })[0].type).toBe("other");
 });
 
 // --- inferMetadata: case-insensitive lookup -----------------------------------

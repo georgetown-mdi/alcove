@@ -122,7 +122,7 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks or a rule not yet added to the set:
 
-- `street_number`, the number of a street address: rule 21.
+- Rule 21: the `street_number` type exists; the rule is not yet in the built-in key set.
 - Rule 27: the `zip3` element exists; the rule is not yet in the built-in key set.
 - Rule 30: the `state` and `county` types exist; the rule is not yet in the built-in key set.
 - `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.

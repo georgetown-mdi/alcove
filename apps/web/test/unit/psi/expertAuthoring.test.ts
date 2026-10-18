@@ -6,6 +6,7 @@ import {
   decodeInvitation,
   deriveAcceptedLinkageTerms,
   getDefaultStandardization,
+  inferMetadata,
   prepareForExchange,
   safeParseLinkageTerms,
 } from "@alcove/core";
@@ -27,7 +28,12 @@ import {
 } from "../../../src/psi/authoring/advancedInvite.js";
 import { generateInvitation } from "../../../src/psi/invitation.js";
 
-import type { CSVRow, LinkageKeyElement, Standardization } from "@alcove/core";
+import type {
+  CSVRow,
+  LinkageKeyElement,
+  Metadata,
+  Standardization,
+} from "@alcove/core";
 
 import type { AdvancedInviteDraft } from "../../../src/psi/authoring/advancedInvite.js";
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
@@ -435,5 +441,103 @@ describe("addElement keeps element identifiers unique within a key", () => {
       elements: [...key.elements, { field: "first_name" }],
     }));
     expect(safeParseLinkageTerms(buildAdvancedTerms(d)).success).toBe(false);
+  });
+});
+
+describe("a key over a street number cleans as its partner does", () => {
+  // The inviter's house_number column is inferred; the acceptor holds the whole
+  // address line, typed street_number by its operator. Both clean to the number.
+  const INVITER_COLUMNS = ["first_name", "last_name", "dob", "house_number"];
+  const INVITER_ROWS: Array<CSVRow> = [
+    {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      dob: "12/10/1815",
+      house_number: "0042",
+    },
+  ];
+  const ACCEPTOR_COLUMNS = ["first_name", "last_name", "dob", "address"];
+  const ACCEPTOR_ROWS: Array<CSVRow> = [
+    {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      dob: "12/10/1815",
+      address: "42-B Main St Apt 4",
+    },
+  ];
+
+  function seededDraft(): AdvancedInviteDraft {
+    return seedAdvancedInvite("Inviter", INVITER_COLUMNS, INVITER_ROWS).draft;
+  }
+
+  function keyedDrafts(): Array<AdvancedInviteDraft> {
+    const draft = seededDraft();
+    return [
+      addKey(draft, "street_number"),
+      addElement(
+        addKey({ ...draft, keys: [] }, "last_name"),
+        0,
+        "street_number",
+      ),
+    ];
+  }
+
+  test("the draft holds no street number cleaning until a key uses the field", () => {
+    const cleaned = seededDraft().standardization.map((t) => t.output);
+    expect(cleaned).not.toContain("street_number");
+  });
+
+  test("the inviter's cleaning is the pipeline the accepting party derives", () => {
+    for (const keyed of keyedDrafts()) {
+      const terms = buildAdvancedTerms(keyed);
+      const stepsFor = (standardization: Standardization) =>
+        standardization.find((t) => t.output === "street_number")?.steps;
+      const acceptorSteps = stepsFor(
+        getDefaultStandardization(
+          keyed.metadata,
+          deriveAcceptedLinkageTerms(terms, "Acceptor"),
+        ),
+      );
+      expect(acceptorSteps).toBeDefined();
+      expect(stepsFor(keyed.standardization)).toEqual(acceptorSteps);
+    }
+  });
+
+  test("a padded number and an address line match as the same number", () => {
+    const acceptorMetadata: Metadata = [
+      ...inferMetadata(ACCEPTOR_COLUMNS, []),
+      {
+        name: "address",
+        type: "street_number",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    for (const keyed of keyedDrafts()) {
+      const terms = buildAdvancedTerms(keyed);
+      const inviter = prepareForExchange(
+        inviterExchangeDataSpec(terms, {
+          metadata: keyed.metadata,
+          standardization: keyed.standardization,
+        }),
+        "Inviter",
+        INVITER_ROWS,
+        INVITER_COLUMNS,
+      );
+      const acceptor = prepareForExchange(
+        {
+          metadata: acceptorMetadata,
+          linkageTerms: deriveAcceptedLinkageTerms(terms, "Acceptor"),
+        },
+        "Acceptor",
+        ACCEPTOR_ROWS,
+        ACCEPTOR_COLUMNS,
+      );
+      const inviterValue = inviter.dataset.getField("street_number")?.get(0);
+      expect(inviterValue).toEqual(["42"]);
+      expect(acceptor.dataset.getField("street_number")?.get(0)).toEqual(
+        inviterValue,
+      );
+    }
   });
 });
