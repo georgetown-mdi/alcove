@@ -142,9 +142,10 @@ export interface AcceptorScreenState {
    * accept, as typed, one entry per line. It starts empty for every invitation:
    * nothing pre-fills it. */
   acceptorAllowedRelays: string;
-  /** Whether a Continue from the review step met a line the field refuses, so
-   * the field shows its error from then on. */
-  allowedRelaysChecked: boolean;
+  /** Whether Start met Allowed relays edited since the review step's Continue
+   * and returned to that step, which then says to continue again. Cleared by
+   * the Continue that commits the field. */
+  allowedRelaysChangedAtStart: boolean;
   /** The allowed relays the review step's Continue committed, and the only ones
    * the launch takes. Undefined until that Continue, and again after any edit
    * to the field, so a later step restored from browser history settles back
@@ -236,7 +237,7 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   committedName: "",
   committedDeduplicate: false,
   acceptorAllowedRelays: "",
-  allowedRelaysChecked: false,
+  allowedRelaysChangedAtStart: false,
   committedAllowedRelays: undefined,
   committedCsvDelimiter: undefined,
   file: undefined,
@@ -293,9 +294,12 @@ export type AcceptorScreenAction =
    * committed until the operator continues from it again. */
   | { type: "allowed-relays-changed"; value: string }
   /** The operator continued from the review step: the Allowed relays field is
-   * committed where every line parses, and shows its error where one does
+   * committed where every line parses, and nothing changes where one does
    * not. */
   | { type: "review-continued" }
+  /** Start met Allowed relays edited since the review step's Continue, so the
+   * launch waits for that step to commit them again. */
+  | { type: "start-held-for-allowed-relays" }
   /** A file was chosen from the dropzone: the prior read's refusals and stripped
    * positions go with it, since both describe a file this one replaces. */
   | { type: "file-selected"; file: File }
@@ -431,13 +435,16 @@ export function acceptorScreenReducer(
       };
     case "review-continued": {
       const lines = parseExchangeAllowedRelayLines(state.acceptorAllowedRelays);
-      if (!lines.ok) return { ...state, allowedRelaysChecked: true };
+      if (!lines.ok) return state;
       return {
         ...state,
         committedAllowedRelays:
           lines.entries === undefined ? {} : { allowedRelays: lines.entries },
+        allowedRelaysChangedAtStart: false,
       };
     }
+    case "start-held-for-allowed-relays":
+      return { ...state, allowedRelaysChangedAtStart: true };
     case "file-selected":
       return {
         ...state,

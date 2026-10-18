@@ -226,9 +226,9 @@ export const ALLOWED_RELAYS_SCOPE =
   "are still contacted.";
 
 /**
- * What an exchange's own allowed relays decide, and what they do not: the
- * counterpart of {@link ALLOWED_RELAYS_SCOPE} shown with a saved exchange's
- * list on its page and an accepted invitation's on its review.
+ * What a saved exchange's own allowed relays decide, and what they do not:
+ * the counterpart of {@link ALLOWED_RELAYS_SCOPE} shown with the list on the
+ * exchange's page.
  */
 export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its runs connect " +
@@ -238,6 +238,28 @@ export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
   "Your partner's side can still connect through a relay the list leaves " +
   "out. The list covers relay servers only: the STUN servers a run lists " +
   "are still contacted.";
+
+/**
+ * What an accepted invitation's allowed relays decide, and what they do not:
+ * the counterpart of {@link EXCHANGE_ALLOWED_RELAYS_SCOPE} shown with the list
+ * on the invitation's review.
+ */
+export const ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
+  "This exchange's allowed relays decide which relays its run connects " +
+  "through and enrolls at; a run still registers each new key at its own " +
+  "relay's registrar whatever the list keeps. " +
+  "Your partner's side can still connect through a relay the list leaves " +
+  "out. The list covers relay servers only: the STUN servers a run lists " +
+  "are still contacted. Saving this exchange as a recurring exchange keeps " +
+  "the list as its own.";
+
+/**
+ * The accepted invitation's review notice after Start met Allowed relays
+ * edited since that step's Continue.
+ */
+export const ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE =
+  "Allowed relays changed since you pressed Continue, so the exchange did " +
+  "not start. Press Continue to use them.";
 
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =

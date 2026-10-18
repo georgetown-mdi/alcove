@@ -40,6 +40,8 @@ import { AcceptorColumnsStep } from "@exchange/AcceptorColumnsStep";
 import { STEP_STATE_KEY } from "@exchange/stepHistory";
 
 import {
+  ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
   EXCHANGE_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
@@ -3235,7 +3237,7 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     expect(pageText()).toContain(`TURN ${KEPT_URL}`);
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
-    expect(pageText()).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
   test("the terms mark each TURN url kept or left out as the field is typed", async () => {
@@ -3248,29 +3250,37 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     expect(pageText()).toContain(
       `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
     );
-    expect(pageText()).toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    expect(pageText()).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
 
     await userEvent.clear(allowedField());
     await expect.poll(pageText).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
-    expect(pageText()).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
-  test("a line the field refuses holds Continue with the field's error", async () => {
+  test("a line the field refuses shows its error in place of the marks, and holds Continue", async () => {
     await openRelayInvitation();
+    const refusal = () => page.getByText(/^Line 1: enter /);
 
     await userEvent.fill(allowedField(), "turn:partner.example.net");
-    expect(pageText()).not.toContain("Line 1:");
+    await expect.element(refusal()).toHaveAttribute("role", "alert");
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
     await userEvent.click(continueButton());
-    await expect
-      .element(page.getByText(/^Line 1: enter /))
-      .toHaveAttribute("role", "alert");
+    await expect.element(refusal()).toBeInTheDocument();
     expect(
       page.getByRole("heading", { name: "Consent & your file" }).query(),
     ).toBeNull();
 
     await userEvent.fill(allowedField(), "partner.example.net");
     await expect.poll(pageText).not.toContain("Line 1:");
+    expect(pageText()).toContain(
+      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
     await userEvent.click(continueButton());
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -3329,5 +3339,68 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     await userEvent.click(continueButton());
     await acceptAndStart();
     expect(launchHarness.last?.allowedRelays).toEqual(["other.example.net"]);
+  });
+
+  test("Start after an edit since Continue returns to the review with a notice Continue clears", async () => {
+    expectConsole(
+      "error",
+      "Error: standardization output name contradicts the terms",
+    );
+    await openRelayInvitation();
+    await userEvent.fill(allowedField(), "partner.example.net");
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+
+    // Back from the run to the review, edit the field there, then jump to the
+    // run's entry, whose launch the edit leaves standing.
+    const nextPopState = () =>
+      new Promise<void>((resolve) => {
+        window.addEventListener("popstate", () => resolve(), { once: true });
+      });
+    let landed = nextPopState();
+    window.history.go(-3);
+    await landed;
+    await expect.element(allowedField()).toHaveValue("partner.example.net");
+    await userEvent.fill(allowedField(), "other.example.net");
+    landed = nextPopState();
+    window.history.go(3);
+    await landed;
+    await expect
+      .element(page.getByRole("heading", { name: "Exchange in progress" }))
+      .toBeInTheDocument();
+
+    // A config failure's recovery reaches the columns step, and Start there.
+    lifecycleCall(0).onError({
+      category: "config",
+      error: new Error("standardization output name contradicts the terms"),
+    });
+    await page.getByRole("button", { name: "Back to your columns" }).click();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
+    await userEvent.click(
+      page.getByRole("button", { name: "Start the exchange" }),
+    );
+
+    await expect.element(allowedField()).toHaveValue("other.example.net");
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE))
+      .toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(document.activeElement?.textContent).toContain(
+        ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
+      );
+    });
+    expect(lifecycleCalls).toHaveLength(1);
+
+    await userEvent.click(continueButton());
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
+    window.history.back();
+    await expect.element(allowedField()).toHaveValue("other.example.net");
+    expect(pageText()).not.toContain(ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE);
   });
 });

@@ -44,14 +44,14 @@ import { ColumnName } from "@components/ColumnName";
 import { LessCertainInfo } from "@components/LessCertainInfo";
 
 import {
-  DEDUPLICATE_CONTROL_DESCRIPTION,
-  DEDUPLICATE_CONTROL_LABEL,
-} from "@psi/deduplicateChoice";
-import {
-  EXCHANGE_ALLOWED_RELAYS_SCOPE,
+  ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "@psi/transport/relayRestriction";
+import {
+  DEDUPLICATE_CONTROL_DESCRIPTION,
+  DEDUPLICATE_CONTROL_LABEL,
+} from "@psi/deduplicateChoice";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
 import { isConsoleBuild } from "@utils/clientConfig";
 
@@ -566,8 +566,8 @@ export function InvitationTerms({
    * renders as the proposing preview does. Fixed, caller-supplied copy, never
    * partner text. */
   framing?: { heading: string; intro: string };
-  /** The relays this exchange may use, marking each TURN url of the
-   * invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
+  /** The relays an accepted invitation's run may use, marking each TURN url of
+   * the invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
    * restricts nothing and marks nothing. Applies to a hosted run only.
    * Required, so a caller holding a list cannot drop it by leaving the prop
    * out. */
@@ -1119,7 +1119,7 @@ export function InvitationTerms({
               </Text>
             )}
             {browserRun && allowedRelays !== undefined && (
-              <Text size="sm">{EXCHANGE_ALLOWED_RELAYS_SCOPE}</Text>
+              <Text size="sm">{ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE}</Text>
             )}
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.invitationRelay.note}

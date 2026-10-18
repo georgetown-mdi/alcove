@@ -592,7 +592,7 @@ describe("the review step's allowed relays", () => {
   test("start empty and uncommitted for every invitation", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.acceptorAllowedRelays).toBe("");
     expect(ACCEPTOR_SCREEN_INITIAL.committedAllowedRelays).toBeUndefined();
-    expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChecked).toBe(false);
+    expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
   });
 
   test("typing commits nothing; Continue commits the entries, normalized", () => {
@@ -609,10 +609,25 @@ describe("the review step's allowed relays", () => {
     );
   });
 
-  test("Continue over a refused line commits nothing and asks for the field's error", () => {
-    const state = continued(typed("relay.example.org\nturn:relay.example.org"));
-    expect(state.committedAllowedRelays).toBeUndefined();
-    expect(state.allowedRelaysChecked).toBe(true);
+  test("Continue over a refused line changes nothing", () => {
+    const state = typed("relay.example.org\nturn:relay.example.org");
+    expect(continued(state)).toBe(state);
+  });
+
+  test("a Start held for an edit after Continue says so until the next commit", () => {
+    const committed = continued(typed("relay.example.org"));
+    const edited = typed("other.example.org", committed);
+    const held = acceptorScreenReducer(edited, {
+      type: "start-held-for-allowed-relays",
+    });
+    expect(held.allowedRelaysChangedAtStart).toBe(true);
+    const refused = typed("turn:other.example.org", held);
+    expect(continued(refused).allowedRelaysChangedAtStart).toBe(true);
+    const recommitted = continued(typed("other.example.org", refused));
+    expect(recommitted.allowedRelaysChangedAtStart).toBe(false);
+    expect(recommitted.committedAllowedRelays).toEqual({
+      allowedRelays: ["other.example.org"],
+    });
   });
 
   test("an edit after Continue voids the commit until the next one", () => {
