@@ -3264,7 +3264,12 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     const refusal = () => page.getByText(/^Line 1: enter /);
 
     await userEvent.fill(allowedField(), "turn:partner.example.net");
-    await expect.element(refusal()).toHaveAttribute("role", "alert");
+    await expect.element(refusal()).toBeInTheDocument();
+    await expect.element(refusal()).not.toHaveAttribute("role", "alert");
+    await expect.element(allowedField()).toBeEnabled();
+    await expect
+      .element(allowedField())
+      .toHaveAttribute("aria-invalid", "true");
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);

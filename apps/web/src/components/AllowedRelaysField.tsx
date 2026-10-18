@@ -14,6 +14,7 @@ export function AllowedRelaysField({
   onChange,
   disabled,
   mt,
+  liveError,
 }: {
   value: string;
   error: string | undefined;
@@ -21,6 +22,9 @@ export function AllowedRelaysField({
   disabled?: boolean;
   /** The space above the field, as the fields beside it set theirs. */
   mt?: MantineSpacing;
+  /** The error follows typing, so it is not announced as an alert; the field
+   * still names it to assistive technology through its description. */
+  liveError?: boolean;
 }) {
   return (
     <Textarea
@@ -30,7 +34,7 @@ export function AllowedRelaysField({
       minRows={2}
       value={value}
       error={error}
-      errorProps={{ role: "alert" }}
+      {...(liveError === true ? {} : { errorProps: { role: "alert" } })}
       onChange={(event) => onChange(event.currentTarget.value)}
       {...(disabled !== undefined ? { disabled } : {})}
       {...(mt !== undefined ? { mt } : {})}

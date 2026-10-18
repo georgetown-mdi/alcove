@@ -1374,6 +1374,7 @@ function AcceptorInvitationScreen({
                   <AllowedRelaysField
                     value={acceptorAllowedRelays}
                     error={allowedRelaysError}
+                    liveError
                     onChange={(value) =>
                       dispatch({ type: "allowed-relays-changed", value })
                     }
