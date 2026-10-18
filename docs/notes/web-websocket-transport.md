@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; of it, only the relay proof derivation is built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2, S4 and S6 to S8, none of which has run; the browser legs of S3 and S5, whose Node legs passed on 2026-10-18; and S1's open parts, S1 having run in a narrower form with its decisive part met (each [below](#the-spikes)).
+What remains open is the spikes S2, S4 and S6 to S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3 and S5 passed with Node and Chromium parties on 2026-10-18 (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
@@ -129,11 +129,12 @@ The relay forwards each message unread, applying a per-message size cap a little
 **Backpressure, not termination.** When the destination socket's send buffer is above a bound, the relay stops reading from the source socket and resumes below a lower bound, the window the CLI's own send path uses (1 MiB and 256 KiB; [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#outbound-pacing)).
 `ws` applies that pause end to end: `pause()` on a `ws` socket stops reads on its TCP socket once the read in flight completes, so the sender's own buffer fills and its send window waits ([S3](#the-spikes)).
 The few messages already read when the pause lands are still emitted, and the relay forwards them.
+A browser at either end takes part the same way, measured on Chromium: a page's send window waited on the relay's pause, and a page that fell behind stopped Chromium reading its socket, so the relay's buffer for it filled and the relay paused the sender ([S3](#the-spikes)).
 
 **Delivery.** The transport is a delivering close in the terms of [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown): a WebSocket send buffers locally, so the close must wait.
 Each side sends the sentinel and waits for the peer's close to reach it through the relay, bounded by the close drain budget; the relay forwards a close frame only after every message queued ahead of it, and closes the other socket when one closes.
 That is the browser's WebRTC reading of the peer's close applied to a relayed socket, and the CLI's acknowledgement drain has no counterpart here: TCP acknowledges to the relay, not to the peer, so the peer's close is the one signal either side has.
-A sender whose process ends the instant its close returns keeps its final frame only if the close waited: a close that returned once the sentinel was queued lost the frame in 8 of 10 runs, and the wait for the relayed peer close lost it in none of 10 ([S5](#the-spikes), Node parties; a closing browser tab is not yet measured).
+A sender whose process or tab ends the instant its close returns keeps its final frame only if the close waited: a close that returned once the sentinel was queued lost the frame in 8 of 10 runs from a Node process and in 6 and 8 of 10 from a closed Chromium tab, and the wait for the relayed peer close lost it in none of 10 from either ([S5](#the-spikes)).
 
 **Keepalive.** A PSI step can hold a party silent for the parked-receive budget of an hour ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)), and any TLS front in the path has an idle timeout -- the broker's is 300 s.
 The CLI client sends a WebSocket ping on a short interval while a receive is parked; the relay answers and forwards nothing.
@@ -344,7 +345,25 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   The larger chunk saves 10 to 33 percent of the relay's CPU across two pairs of runs, gains no consistent throughput, and breaks the memory bound, which supports [fork 3](#the-forks-and-their-rulings)'s ruling.
 
   The harness is throwaway and kept outside the repository: `node s3.mjs --repo <checkout> --out <dir> --leg round --chunk 16300 --total 539000000 --rate 2000000 --recv-rate 1500000 --ack`, with `--chunk 262144` for the comparison, `--leg rate --total 67108864` for pacing and `--rate 0` for no cap; the pause probe is `node probe-pause.mjs --repo <checkout>`.
-  Still open: the Chromium-against-Node leg, which needs a host run, and more than one pairing at once, since the resident set rose with the rate forwarded (77 MB at 2 MB/s, 91 MB at 156 MB/s).
+
+  **Result, Chromium against Node (2026-10-18): PASS in both directions at 16,300-byte chunks.**
+  The relay of the Node legs, on the same machine and Node; one party a page in Playwright 1.64.0's headless Chromium, 156.0.8078.4 (`chrome-headless-shell`, linux/arm64), the other a Node party.
+  The page runs the same `MessageConnection` as the Node party, with core's chunk encoder, bounded reassembler and `EncryptedMessageConnection`, and the 1 MiB send window polled against the socket's `bufferedAmount`.
+  A browser cannot pause its socket, so the Chromium slow reader is a page whose main thread is held busy for most of each second.
+  The relay's resident set was read every 100 ms, Chromium's every second as the sum over its processes, which counts shared pages more than once.
+
+  | Direction | The round, 539,000,000 bytes | Relay peak resident set | Slow reader held the sender | Sender's `bufferedAmount` peak | Chromium's peak resident set |
+  | --- | --- | --- | --- | --- | --- |
+  | Chromium sends; Node reads at 1,500,000 bytes a second | 360 s, every frame's SHA-256 matching | 76.2 MB, median 74.3 MB over 3,564 samples, from 60.6 MB idle | 183 s of the 350 s the relay had its socket paused | 1,063,622 bytes, the page's window | 2.12 GB |
+  | Node sends; Chromium's main thread busy 980 ms of every second | 333 s, read at 1,618,376 bytes a second, every frame's SHA-256 matching | 77.5 MB, median 75.2 MB over 3,265 samples | 58 s of 308 s | 1,062,295 bytes | 2.54 GB |
+
+  - **Pacing.** In both directions the sender ran above the 2,000,000-byte rate, the relay paced it, and it was not disconnected; each close ended on the relayed peer close (code 1000).
+  - **Chromium stops reading when its page falls behind.** With the main thread busy 800 ms of every second the page kept pace with the rate and the relay's buffer for it never filled, in a 20,000,000-byte run.
+    At 995 ms the page read 244,004 bytes a second, and the relay held the Node sender back for 222 s of a 246 s transfer of 60,000,000 bytes, its resident set peaking at 77.3 MB.
+    So the relay's pause reaches a browser receiver as it reaches a `ws` one, and a browser sender's window waits on it, as [Backpressure, not termination](#the-websocket-relay-as-recommended) states.
+
+  Harness: `node browser-leg.mjs --repo <checkout> --out <dir> --leg s3 --browser-role send --chunk 16300 --total 539000000 --rate 2000000 --recv-rate 1500000 --ack`, and `--browser-role recv --busy-ms 980 --busy-period-ms 1000` in place of `--browser-role send --recv-rate 1500000` for the other direction.
+  Still open: more than one pairing at once, since the resident set rose with the rate forwarded (77 MB at 2 MB/s, 91 MB at 156 MB/s).
 - **S4. The wrap in the browser.**
   `EncryptedMessageConnection` over a browser WebSocket transport, the web side requesting the wrap, a CLI partner.
   PASS: the exchange completes with the correct intersection, and a capture at the relay shows only the handshake frames outside the AEAD envelope, every later frame beginning with the envelope's version byte.
@@ -374,11 +393,42 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   - A close that returns once the sentinel is written to the socket delivered the final frame in all 10 on loopback, the sender's kernel sending its buffered bytes after the process had gone, but resolved 1.1 to 3.4 s before the peer had the frame, so it confirmed nothing.
 
   Harness: `node s5.mjs --repo <checkout> --out <dir> --close wait --runs 10`, with `--close nowait` and `--close flush` for the controls.
-  Still open, for a host run: the Chromium leg, the sender's tab closed the instant its close resolves.
+
+  **Result, Chromium sender (2026-10-18): PASS, on the second set of ten runs after a harness repair.**
+  The relay and Node receiver of the Node legs; the sender a page in the Chromium of S3.
+  In each run the page sent a 1,024-byte frame and a final frame of 16,777,216 bytes and closed.
+  - **How the close resolved.** The page sent the close sentinel behind the final frame and waited for its socket's `close` event, bounded by a drain timer; the close resolved when that event came with code 1000, which the relay sends only to forward the receiver's own close.
+  - **How the tab ended.** On the line after its close resolved, the page called a Playwright binding whose handler closed the tab at once with `page.close({ runBeforeUnload: false })`.
+  - Times are epoch-anchored (`performance.timeOrigin` plus `performance.now()`) in the page, the driver and the Node process, on one machine.
+
+  In every run of the second set the receiver had the final frame, its SHA-256 matching, and the page's close resolved on the relayed peer close (code 1000), after the receiver had read the sentinel and sent its close:
+
+  | Run | Final frame | Close wait, ms | Close resolved after the peer's close, ms | Tab closed after its close resolved, ms |
+  | --- | --- | --- | --- | --- |
+  | 1 | Received | 3,225 | 17.1 | 24 |
+  | 2 | Received | 2,596 | 28.1 | 15 |
+  | 3 | Received | 3,276 | 22.9 | 16 |
+  | 4 | Received | 2,034 | 19.4 | 22 |
+  | 5 | Received | 2,378 | 16.1 | 8 |
+  | 6 | Received | 2,257 | 17.9 | 15 |
+  | 7 | Received | 2,567 | 15.8 | 6 |
+  | 8 | Received | 2,586 | 3.4 | 7 |
+  | 9 | Received | 2,730 | 23.8 | 10 |
+  | 10 | Received | 2,334 | 29.0 | 20 |
+
+  - **The first set of ten** had the final frame in 9 runs, every close resolving on the relayed peer close.
+    In the tenth the receiver lost the 1,024-byte first frame, not the final one, and refused the next frame's sequence number.
+    The loss was in the harness's Node party, which added its data handler only after awaiting the relay's `paired` message: `ws` 8.22.0 emits a message read together with `paired` before that await resumes, and a probe lost it in 20 of 20 trials.
+    The repaired party keeps such messages for its handler, and kept one in 3 of the 20 runs of the second set and its control.
+  - **The control**, a close that returns once the sentinel is queued, with the tab closed as above, lost the final frame in 8 of 10 runs, and in 6 of 10 on the second set.
+    In each loss the relay saw the page's socket end with a code other than 1000 and passed 4000 to the receiver.
+    Where the frame did arrive, the page's close had returned 2.2 to 2.7 s before the receiver had it.
+
+  Harness: `node browser-leg.mjs --repo <checkout> --out <dir> --leg s5 --close wait --runs 10`, with `--close nowait` for the control.
 - **S6. Silence through a front.**
   A relayed exchange whose PSI step is silent for longer than the front's idle timeout, with the clients' pings on.
   PASS: the socket survives the silence and the parked-receive budget is what bounds it.
-  Not run; it needs the 443 front, so it goes to a host run with the browser legs of S3 and S5.
+  Not run; it needs the 443 front, so it goes to a host run.
   Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match, and S6 runs the browser with the relay's pings.
 - **S7. The raw SFTP relay.**
   From the earlier note: a candidate proxy in front of the SFTP test server, backpressure, close mapping and the `Origin` refusal ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), run only after the relay work above.
