@@ -473,7 +473,8 @@ SSN column would hash the whole SSN as its last four. An authored
 transformation that binds `ssn4` to an `ssn` column runs the steps the operator
 wrote: steps that do not reduce the value to its last four hash more of the
 SSN. Rebinding the web inviter's `ssn4` cleaning card to an `ssn` column
-replaces the card's steps with this pipeline's. A configuration loaded into the
+replaces the card's steps with this pipeline's, and so does a web acceptor's
+rebinding of its `ssn4` field to an `ssn` column. A configuration loaded into the
 web inviter or the console keeps its own steps, as the command line runs them.
 A second card for an `ssn4`-typed field, named other than `ssn4`, that is
 rebound to an `ssn` column is declared with type `ssn` and keeps the steps it
