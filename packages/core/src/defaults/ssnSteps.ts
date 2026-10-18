@@ -1,9 +1,9 @@
 import type { StandardizationStep } from "../config/standardizationSchema.js";
 
-// The default `ssn` and `ssn4` pipelines, in a module of their own because
-// field resolution (standardization.ts) derives `ssn4` from an `ssn` column
-// with SSN4_FROM_SSN_STEPS, and builtInStandardization.ts imports
-// standardization.ts.
+// The default `ssn` and `ssn4` pipelines and the default `ssn` shared-value
+// limit, in a module of their own because field resolution (standardization.ts)
+// derives `ssn4` from an `ssn` column with SSN4_FROM_SSN_STEPS and screens that
+// column, and builtInStandardization.ts imports standardization.ts.
 
 // The ASCII hyphen and the Unicode dashes spreadsheet or word-processor
 // autocorrect substitutes for it (U+2010 to U+2014 and the minus sign U+2212),
@@ -51,6 +51,13 @@ const SSN_FILLER_STEPS: StandardizationStep[] = [
   },
   { function: "null_if", params: { value: "" } },
 ];
+
+/**
+ * The most distinct people one cleaned SSN may belong to in a party's own file
+ * under the default cleaning (docs/spec/DEFAULT_STANDARDIZATION.md,
+ * Shared-value screens).
+ */
+export const SSN_MAX_PEOPLE_PER_VALUE = 1;
 
 /** The default `ssn` pipeline. */
 export const SSN_STEPS: StandardizationStep[] = [

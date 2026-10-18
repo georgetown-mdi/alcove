@@ -1,8 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
-import { getDefaultStandardization } from "../src/defaults/builtInStandardization";
-import { buildStandardizedDataset } from "../src/standardization";
+import {
+  defaultStepsForType,
+  getDefaultStandardization,
+} from "../src/defaults/builtInStandardization";
+import {
+  buildStandardizedDataset,
+  derivedFieldSteps,
+} from "../src/standardization";
 import { personColumns } from "../src/personColumns";
 import { safeParseStandardization } from "../src/config/standardizationSchema";
 import {
@@ -201,6 +207,38 @@ describe("shared SSN within a file", () => {
     expect(cleaned("ssn", people)).toEqual([[], [], []]);
   });
 
+  test("records differing only in last name are one person and keep the SSN", () => {
+    const people = [
+      { ...maria, ssn: SSN },
+      { ...maria, last: "Garcia", ssn: SSN },
+      { first: maria.first, dob: maria.dob, ssn: SSN },
+    ];
+    expect(cleaned("ssn", people)).toEqual([
+      ["123456780"],
+      ["123456780"],
+      ["123456780"],
+    ]);
+  });
+
+  test.each([
+    ["first name", { first: "Ana" }],
+    ["date of birth", { dob: "05/05/1990" }],
+  ])("records differing in %s are two people and drop the SSN", (_, other) => {
+    const people = [
+      { ...maria, ssn: SSN },
+      { ...maria, ...other, ssn: SSN },
+    ];
+    expect(cleaned("ssn", people)).toEqual([[], []]);
+  });
+
+  test("a first-name nickname counts as another person", () => {
+    const people = [
+      { ...maria, first: "Robert", ssn: SSN },
+      { ...maria, first: "Bob", ssn: SSN },
+    ];
+    expect(cleaned("ssn", people)).toEqual([[], []]);
+  });
+
   test("the screen drops only the shared value, not the record's other fields", () => {
     const people = [
       { ...maria, ssn: SSN },
@@ -246,6 +284,22 @@ describe("shared phone or email within a file", () => {
       ["family@example.org"],
     ]);
   });
+
+  test.each([
+    ["phone_number", { phone: PHONE }, "2025550123"],
+    ["email_address", { email: EMAIL }, "family@example.org"],
+  ] as const)(
+    "%s: a sixth record differing only in last name is no sixth person",
+    (field, shared, value) => {
+      const five = distinctPeople(5, shared);
+      expect(cleaned(field, [...five, { ...five[0], last: "Garcia" }])).toEqual(
+        Array.from({ length: 6 }, () => [value]),
+      );
+      expect(cleaned(field, [...five, { ...five[0], first: "Grace" }])).toEqual(
+        Array.from({ length: 6 }, () => []),
+      );
+    },
+  );
 
   test("one person's two records count once", () => {
     const people = [
@@ -517,6 +571,169 @@ describe("counting distinct people", () => {
       () => [],
     );
     expect(dropped.none).toBe(true);
+  });
+});
+
+describe("the ssn4 derived from a screened SSN", () => {
+  function ssn4Terms(deduplicate: boolean): LinkageTerms {
+    return {
+      ...terms,
+      deduplicate,
+      linkageFields: [...terms.linkageFields, { name: "ssn4", type: "ssn4" }],
+      linkageKeys: [
+        { name: "ssn", elements: [{ field: "ssn" }] },
+        { name: "ssn4", elements: [{ field: "ssn4" }] },
+      ],
+    };
+  }
+
+  const OTHER_SSN = "287-65-4321";
+  const people = [
+    { ...maria, ssn: SSN },
+    { ...maria, first: "Ana", ssn: SSN },
+    { ...maria, last: "Garcia", ssn: OTHER_SSN },
+    { ...maria, ssn: OTHER_SSN },
+  ];
+
+  test("is dropped with the SSN on a deduplicating side", () => {
+    const agreedTerms = ssn4Terms(true);
+    expect(cleaned("ssn", people, undefined, agreedTerms)).toEqual([
+      [],
+      [],
+      ["287654321"],
+      ["287654321"],
+    ]);
+    expect(cleaned("ssn4", people, undefined, agreedTerms)).toEqual([
+      [],
+      [],
+      ["4321"],
+      ["4321"],
+    ]);
+  });
+
+  test("is kept on a side that does not deduplicate", () => {
+    const agreedTerms = ssn4Terms(false);
+    expect(cleaned("ssn", people, undefined, agreedTerms)).toEqual([
+      [],
+      [],
+      ["287654321"],
+      ["287654321"],
+    ]);
+    expect(cleaned("ssn4", people, undefined, agreedTerms)).toEqual([
+      ["6780"],
+      ["6780"],
+      ["4321"],
+      ["4321"],
+    ]);
+  });
+
+  test("follows a party-authored limit on the SSN the same way", () => {
+    const authored = (maxPeoplePerValue?: number): Standardization => [
+      {
+        output: "ssn",
+        input: "SSN",
+        steps: defaultStepsForType("ssn"),
+        ...(maxPeoplePerValue === undefined ? {} : { maxPeoplePerValue }),
+      },
+      { output: "ssn4", input: "SSN", steps: derivedFieldSteps("ssn4", "ssn") },
+    ];
+    const three = [
+      { ...maria, ssn: SSN },
+      { ...maria, first: "Ana", ssn: SSN },
+      { ...maria, first: "Luisa", ssn: SSN },
+    ];
+    const ssn4Of = (
+      group: Person[],
+      standardization: Standardization,
+      deduplicate: boolean,
+    ) => cleaned("ssn4", group, standardization, ssn4Terms(deduplicate));
+
+    expect(ssn4Of(three.slice(0, 2), authored(2), true)).toEqual([
+      ["6780"],
+      ["6780"],
+    ]);
+    expect(ssn4Of(three, authored(2), true)).toEqual([[], [], []]);
+    expect(ssn4Of(three, authored(2), false)).toEqual([
+      ["6780"],
+      ["6780"],
+      ["6780"],
+    ]);
+    expect(ssn4Of(three, authored(), true)).toEqual([
+      ["6780"],
+      ["6780"],
+      ["6780"],
+    ]);
+  });
+
+  function ssn4OnlyTerms(deduplicate: boolean): LinkageTerms {
+    return {
+      ...terms,
+      deduplicate,
+      linkageFields: [{ name: "ssn4", type: "ssn4" }],
+      linkageKeys: [{ name: "ssn4", elements: [{ field: "ssn4" }] }],
+    };
+  }
+
+  test("is dropped with a shared SSN on a deduplicating side whose terms declare no ssn", () => {
+    const sameLastFour = [
+      ...people,
+      { first: "Luisa", dob: "07/07/1970", ssn: "223-45-6780" },
+      { first: "Rosa", dob: "08/08/1960", ssn: "323-45-6780" },
+    ];
+    const kept = [[], [], ["4321"], ["4321"], ["6780"], ["6780"]];
+    expect(
+      cleaned("ssn4", sameLastFour, undefined, ssn4OnlyTerms(true)),
+    ).toEqual(kept);
+    const authored: Standardization = [
+      { output: "ssn4", input: "SSN", steps: derivedFieldSteps("ssn4", "ssn") },
+    ];
+    expect(
+      cleaned("ssn4", sameLastFour, authored, ssn4OnlyTerms(true)),
+    ).toEqual(kept);
+  });
+
+  test("is kept on a side that does not deduplicate and declares no ssn", () => {
+    expect(cleaned("ssn4", people, undefined, ssn4OnlyTerms(false))).toEqual([
+      ["6780"],
+      ["6780"],
+      ["4321"],
+      ["4321"],
+    ]);
+  });
+
+  test("is not screened when read from a column of its own beside an ssn column", () => {
+    const columns: ColumnMetadata[] = [
+      ...metadata,
+      { name: "SSN4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    const rows = people.map((person) => ({
+      ...row(person),
+      SSN4: person.ssn?.slice(-4) ?? "",
+    }));
+    const fieldOf = (agreedTerms: LinkageTerms, name: string) => {
+      const standardization = getDefaultStandardization(columns, agreedTerms);
+      const field = buildStandardizedDataset(
+        standardization,
+        rows,
+        columns,
+        agreedTerms,
+        personColumns(standardization, columns, agreedTerms, rows),
+      ).getField(name);
+      return rows.map((_, index) => field?.get(index));
+    };
+    expect(fieldOf(ssn4Terms(true), "ssn")).toEqual([
+      [],
+      [],
+      ["287654321"],
+      ["287654321"],
+    ]);
+    for (const agreedTerms of [ssn4Terms(true), ssn4OnlyTerms(true)])
+      expect(fieldOf(agreedTerms, "ssn4")).toEqual([
+        ["6780"],
+        ["6780"],
+        ["4321"],
+        ["4321"],
+      ]);
   });
 });
 

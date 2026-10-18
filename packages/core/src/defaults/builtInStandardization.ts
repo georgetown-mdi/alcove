@@ -6,7 +6,7 @@ import type {
 } from "../config/standardizationSchema.js";
 import type { ColumnMetadata } from "../config/metadata.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
-import { SSN4_STEPS, SSN_STEPS } from "./ssnSteps.js";
+import { SSN4_STEPS, SSN_MAX_PEOPLE_PER_VALUE, SSN_STEPS } from "./ssnSteps.js";
 
 // --- Step arrays -------------------------------------------------------------
 
@@ -205,7 +205,7 @@ const COUNTY_STEPS: StandardizationStep[] = [
 // household shares a phone or an email, so five keeps most of them, while an
 // organization's number on dozens of clients is dropped.
 const MAX_PEOPLE_PER_VALUE: Readonly<Partial<Record<string, number>>> = {
-  ssn: 1,
+  ssn: SSN_MAX_PEOPLE_PER_VALUE,
   phone_number: 5,
   email_address: 5,
 };

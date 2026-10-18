@@ -10,13 +10,12 @@ import type { SemanticType } from "./types.js";
 
 const PERSON_COLUMN_TYPES: ReadonlyArray<SemanticType> = [
   "first_name",
-  "last_name",
   "date_of_birth",
 ];
 
 /**
- * This party's own first name, last name and date of birth columns, each with
- * the steps that clean it, from which the shared-value screens count people
+ * This party's own first name and date of birth columns, each with the steps
+ * that clean it, from which the shared-value screens count people
  * (docs/spec/DEFAULT_STANDARDIZATION.md, Counting distinct people).
  *
  * Each is the first `role: linkage` column of its type in `metadata`, whether

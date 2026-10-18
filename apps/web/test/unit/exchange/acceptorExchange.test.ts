@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { acceptorInitialColumnsState } from "@exchange/acceptorColumnsModel";
+import { prepareForExchange } from "@alcove/core";
+
+import {
+  acceptorColumnsEditorState,
+  acceptorInitialColumnsState,
+} from "@exchange/acceptorColumnsModel";
 import { prepareAcceptorExchange } from "@exchange/acceptorExchange";
 
 import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
@@ -175,6 +180,72 @@ describe("the accepting party's own deduplicate in the prepared exchange", () =>
       // And the binding on the PARTNER's value stays the invitation's own
       // declaration, so this party's choice binds the inviter to nothing.
       expect(prepared.expectedPartnerDeduplicate).toBe(declared);
+    },
+  );
+});
+
+describe("the shared-SSN screen in the prepared exchange", () => {
+  const ssnTerms: LinkageTerms = {
+    ...inviterTerms,
+    linkageFields: [
+      { name: "ssn", type: "ssn" },
+      { name: "ssn4", type: "ssn4" },
+    ],
+    linkageKeys: [
+      { name: "ssn", elements: [{ field: "ssn" }] },
+      { name: "ssn4", elements: [{ field: "ssn4" }] },
+    ],
+    payload: { send: [], receive: [] },
+  };
+  const ssnColumns = ["ssn", "first_name", "last_name", "date_of_birth"];
+  const ssnRows: Array<CSVRow> = [
+    ["123-45-6780", "Maria", "Lopez", "01/02/1980"],
+    ["123-45-6780", "Maria", "Garcia", "01/02/1980"],
+    ["287-65-4321", "Maria", "Lopez", "01/02/1980"],
+    ["287-65-4321", "Ana", "Lopez", "01/02/1980"],
+  ].map((cells) =>
+    Object.fromEntries(cells.map((cell, index) => [ssnColumns[index], cell])),
+  );
+
+  test.each([
+    [true, [["6780"], ["6780"], [], []]],
+    [false, [["6780"], ["6780"], ["4321"], ["4321"]]],
+  ])(
+    "deduplicate %s: the browser's cleaning gives the values the default cleaning gives",
+    (deduplicate, expectedSsn4) => {
+      const browser = prepareAcceptorExchange({
+        deduplicate,
+        linkageTerms: ssnTerms,
+        acceptorName: "Sam Alvarez",
+        edits: acceptorColumnsEditorState(
+          acceptorInitialColumnsState(ssnColumns),
+          ssnTerms,
+          ssnRows,
+        ),
+        rawRows: ssnRows,
+        columns: ssnColumns,
+      });
+      const defaults = prepareForExchange(
+        { linkageTerms: browser.linkageTerms },
+        "Sam Alvarez",
+        ssnRows,
+        ssnColumns,
+      );
+      const valuesOf = (
+        prepared: ReturnType<typeof prepareForExchange>,
+        field: string,
+      ) =>
+        ssnRows.map((_, index) => prepared.dataset.getField(field)?.get(index));
+
+      expect(valuesOf(browser, "ssn")).toEqual([
+        ["123456780"],
+        ["123456780"],
+        [],
+        [],
+      ]);
+      expect(valuesOf(browser, "ssn4")).toEqual(expectedSsn4);
+      for (const field of ["ssn", "ssn4"])
+        expect(valuesOf(browser, field)).toEqual(valuesOf(defaults, field));
     },
   );
 });

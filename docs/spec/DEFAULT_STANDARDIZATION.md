@@ -442,7 +442,10 @@ written, not the `ssn` result. The `ssn` character screen does not: `***-**-8924
 is `null` as `ssn` and `"8924"` as `ssn4`. Nor does the `ssn` area-number rule:
 `000-00-8924` is likewise `null` as `ssn` and `"8924"` as `ssn4`. The `ssn`
 rules for numbers never issued do not reach it either: `900-12-3456` is `null`
-as `ssn` and `"3456"` as `ssn4`.
+as `ssn` and `"3456"` as `ssn4`. The shared-value screen on the `ssn` column
+reaches it only where the party's own terms set `deduplicate`, whether or not
+they declare an `ssn` field (see
+[Shared-value screens](#shared-value-screens)).
 
 | Input | Result |
 | ----- | ------ |
@@ -1219,10 +1222,33 @@ The defaults state these limits:
 
 No other default transformation states one.
 
+Where the party's own terms set `deduplicate`, the `ssn` screen also reaches
+an `ssn4` field read from a column of type `ssn` or from the column an `ssn`
+field reads (see
+[Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)),
+whether or not the terms declare an `ssn` field: a record whose SSN the screen
+drops has no `ssn4` value either. Where a party's own cleaning splits a
+record's SSN cell into several values, the record has no `ssn4` value when the
+screen drops any one of them. A party whose terms do not set `deduplicate`
+keeps the record's `ssn4` value. The screen is the one an `ssn` field reading
+that column has:
+
+- Where an `ssn` field of the terms reads the column, it is that field's own
+  screen, so under the party's own standardization it is the
+  `max_people_per_value` its `ssn` transformation states, and none where that
+  transformation states none.
+- Otherwise the column is cleaned by the default `ssn` pipeline and screened at
+  the default `ssn` limit, under the default cleaning and the party's own
+  standardization alike.
+
+An `ssn4` field read from a column of its own is not screened.
+
 ### Counting distinct people
 
-A person is a record's cleaned `first_name`, `last_name` and `date_of_birth`
-values. Each is read from the party's own column of that type, the first
+A person is a record's cleaned `first_name` and `date_of_birth` values. The
+last name takes no part in the count, so a person whose last name differs
+between records, after a marriage or a keying error, is still one person. Each
+is read from the party's own column of that type, the first
 `role: linkage` column of the type in its metadata, declared or inferred,
 whether or not the terms declare a field of the type. A type with no such
 column takes no part in the count.
@@ -1233,30 +1259,35 @@ by the default pipeline for the type, a date's format inferred from the column
 (see [Date-format inference](#date-format-inference)). The terms cannot remove
 a column from the count.
 
-- Records holding the same three values are one person, so a person's own
-  duplicate records count once.
-- A record missing one or more of the values, because its cell was empty or
+- Records holding the same two values are one person, so a person's own
+  duplicate records count once, whatever last name each holds.
+- A record missing one or both of the values, because its cell was empty or
   its pipeline dropped the value, is the same person as a record that holds
   the same value of the field, agrees with it on every value it has, and has a
   value it lacks. A record no other record completes this way is a person of
   its own.
-- When the file has none of the three columns, every record holding a value is
-  one person, and the screen drops nothing.
+- When the file has neither column, every record holding a value is one
+  person, and the screen drops nothing.
 
-The count has two limits:
+The count has three limits:
 
-- A record with neither a name nor a date of birth agrees with every holder of
-  its value, so it never counts as another person.
-- A person's own duplicate record whose cleaned name differs, such as a
-  spelling variant, counts as another person, so a value can be dropped from
-  one person's records.
+- A record with neither a first name nor a date of birth agrees with every
+  holder of its value, so it never counts as another person.
+- A person's own duplicate record whose cleaned first name differs, such as a
+  typo or a nickname, counts as another person, so a value can be dropped from
+  one person's records. The count compares cleaned values exactly, so it
+  recognizes neither.
+- A file with no first-name column counts people by date of birth alone, so
+  two people born on one date who share a value count as one, and the value is
+  kept.
 
 For example, two records sharing an SSN, one holding `MARIA`, `LOPEZ`,
 `19800101` and the other no name and `19900505`, are two people, so the SSN is
 dropped from both. Had the second record held `19800101`, the two would be one
-person and the SSN would be kept. A record holding `MARIA`, `LOPES`,
-`19800101` beside the first is another person: the count compares cleaned
-values and corrects no spelling.
+person and the SSN would be kept. A record holding `MARIA`, `GARCIA`,
+`19800101` beside the first is the same person, and the SSN is kept: the last
+name is not compared. A record holding `MAIRA`, `LOPEZ`, `19800101` beside the
+first is another person: the count corrects no spelling.
 
 Under one-to-one matching the cascade accepts a pair only on a key value one
 record on each side holds (see [PSI](PROTOCOL.md#psi)), so a key value two of
