@@ -82,6 +82,7 @@ export const SEMANTIC_TYPES = [
   "ssn4",
   "first_name",
   "last_name",
+  "name_suffix",
   "date_of_birth",
   "identifier",
   "phone_number",

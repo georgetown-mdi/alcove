@@ -557,3 +557,18 @@ describe("the street number column type", () => {
     expect(isDisclosedToPartner(out[0])).toBe(false);
   });
 });
+
+describe("the name suffix column type", () => {
+  test("is offered for matching with a label of its own", () => {
+    expect(SEMANTIC_TYPES).toContain("name_suffix");
+    expect(disclosureChoicesForType("name_suffix")).toContain("match");
+    expect(SEMANTIC_TYPE_LABELS.name_suffix).toBe("Name suffix");
+  });
+
+  test("a suffix column is inferred as a match column, not sent", () => {
+    const [suffix] = inferMetadataForEveryColumn(["Suffix"], []);
+    expect(suffix.type).toBe("name_suffix");
+    expect(disclosureOf(suffix)).toBe("match");
+    expect(isDisclosedToPartner(suffix)).toBe(false);
+  });
+});

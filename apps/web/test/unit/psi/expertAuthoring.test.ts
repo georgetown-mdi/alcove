@@ -10,7 +10,11 @@ import {
   prepareForExchange,
   safeParseLinkageTerms,
 } from "@alcove/core";
-import { validateStandardizationAgainstTerms } from "@alcove/core/testing";
+
+import {
+  buildKeyStrings,
+  validateStandardizationAgainstTerms,
+} from "@alcove/core/testing";
 
 import {
   addElement,
@@ -539,5 +543,136 @@ describe("a key over a street number cleans as its partner does", () => {
         inviterValue,
       );
     }
+  });
+});
+
+describe("a key over a name suffix cleans as its partner does", () => {
+  // Both suffix columns are inferred, from `suffix` and `name_suffix`. The
+  // third person has no suffix on the inviter's side and JR on the acceptor's.
+  const INVITER_COLUMNS = ["first_name", "last_name", "dob", "suffix"];
+  const INVITER_ROWS: Array<CSVRow> = [
+    { first_name: "Ada", last_name: "Lovelace", dob: "12/10/1815", suffix: "" },
+    {
+      first_name: "John",
+      last_name: "Smith",
+      dob: "01/02/1950",
+      suffix: "Jr.",
+    },
+    { first_name: "Carl", last_name: "Jung", dob: "07/26/1875", suffix: "" },
+  ];
+  const ACCEPTOR_COLUMNS = ["first_name", "last_name", "dob", "name_suffix"];
+  const ACCEPTOR_ROWS: Array<CSVRow> = [
+    {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      dob: "12/10/1815",
+      name_suffix: " ",
+    },
+    {
+      first_name: "John",
+      last_name: "Smith",
+      dob: "01/02/1950",
+      name_suffix: "Junior",
+    },
+    {
+      first_name: "Carl",
+      last_name: "Jung",
+      dob: "07/26/1875",
+      name_suffix: "Jr",
+    },
+  ];
+
+  function seededDraft(): AdvancedInviteDraft {
+    return seedAdvancedInvite("Inviter", INVITER_COLUMNS, INVITER_ROWS).draft;
+  }
+
+  function nameAndSuffixDraft(): AdvancedInviteDraft {
+    return addElement(
+      addElement(
+        addKey({ ...seededDraft(), keys: [] }, "last_name"),
+        0,
+        "first_name",
+      ),
+      0,
+      "name_suffix",
+    );
+  }
+
+  function keyedDrafts(): Array<AdvancedInviteDraft> {
+    return [addKey(seededDraft(), "name_suffix"), nameAndSuffixDraft()];
+  }
+
+  function preparedParties(keyed: AdvancedInviteDraft) {
+    const terms = buildAdvancedTerms(keyed);
+    const inviter = prepareForExchange(
+      inviterExchangeDataSpec(terms, {
+        metadata: keyed.metadata,
+        standardization: keyed.standardization,
+      }),
+      "Inviter",
+      INVITER_ROWS,
+      INVITER_COLUMNS,
+    );
+    const acceptor = prepareForExchange(
+      {
+        metadata: inferMetadata(ACCEPTOR_COLUMNS, []),
+        linkageTerms: deriveAcceptedLinkageTerms(terms, "Acceptor"),
+      },
+      "Acceptor",
+      ACCEPTOR_ROWS,
+      ACCEPTOR_COLUMNS,
+    );
+    return { terms, inviter, acceptor };
+  }
+
+  test("the draft holds no name suffix cleaning until a key uses the field", () => {
+    const cleaned = seededDraft().standardization.map((t) => t.output);
+    expect(cleaned).not.toContain("name_suffix");
+  });
+
+  test("the inviter's cleaning is the pipeline the accepting party derives", () => {
+    for (const keyed of keyedDrafts()) {
+      const terms = buildAdvancedTerms(keyed);
+      const stepsFor = (standardization: Standardization) =>
+        standardization.find((t) => t.output === "name_suffix")?.steps;
+      const acceptorSteps = stepsFor(
+        getDefaultStandardization(
+          inferMetadata(ACCEPTOR_COLUMNS, []),
+          deriveAcceptedLinkageTerms(terms, "Acceptor"),
+        ),
+      );
+      expect(acceptorSteps).toBeDefined();
+      expect(stepsFor(keyed.standardization)).toEqual(acceptorSteps);
+    }
+  });
+
+  test("both parties clean each suffix to the same value", () => {
+    for (const keyed of keyedDrafts()) {
+      const { inviter, acceptor } = preparedParties(keyed);
+      const values = (party: typeof inviter) =>
+        [0, 1, 2].map((row) => party.dataset.getField("name_suffix")?.get(row));
+      expect(values(inviter)).toEqual([[""], ["JR"], [""]]);
+      expect(values(acceptor)).toEqual([[""], ["JR"], ["JR"]]);
+    }
+  });
+
+  test("an empty suffix matches an empty suffix, and JR does not match one", () => {
+    const { terms, inviter, acceptor } = preparedParties(nameAndSuffixDraft());
+    const [key] = terms.linkageKeys;
+    const keyValues = (party: typeof inviter) =>
+      [0, 1, 2].map((row) => [
+        ...(buildKeyStrings(key, party.dataset, row) ?? []),
+      ]);
+    const inviterKeys = keyValues(inviter);
+    const acceptorKeys = keyValues(acceptor);
+    expect(inviterKeys).toEqual([
+      ["LOVELACEADA"],
+      ["SMITHJOHNJR"],
+      ["JUNGCARL"],
+    ]);
+    expect(acceptorKeys[0]).toEqual(inviterKeys[0]);
+    expect(acceptorKeys[1]).toEqual(inviterKeys[1]);
+    expect(acceptorKeys[2]).toEqual(["JUNGCARLJR"]);
+    expect(acceptorKeys[2]).not.toEqual(inviterKeys[2]);
   });
 });

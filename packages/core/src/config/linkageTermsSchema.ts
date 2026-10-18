@@ -418,6 +418,15 @@ interface LastNameField {
   type: "last_name";
   constraints?: NameConstraints;
 }
+/**
+ * A generational name suffix, JR, SR, II, III or IV, or the empty string for a
+ * person with none.
+ */
+interface NameSuffixField {
+  name: string;
+  type: "name_suffix";
+  constraints?: AnyConstraints;
+}
 interface DateOfBirthField {
   name: string;
   type: "date_of_birth";
@@ -482,6 +491,7 @@ interface CountyField {
 export type LinkageField =
   | FirstNameField
   | LastNameField
+  | NameSuffixField
   | DateOfBirthField
   | SsnField
   | Ssn4Field
@@ -502,6 +512,10 @@ const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
     z.object({
       type: z.literal("last_name"),
       ...linkageFieldBase(NameConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("name_suffix"),
+      ...linkageFieldBase(AnyConstraintsSchema),
     }),
     z.object({
       type: z.literal("date_of_birth"),

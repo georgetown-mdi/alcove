@@ -2164,6 +2164,41 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines[keyIndex + 2]).toBe("      elements:");
   });
 
+  test("displayInvitation: names a name suffix field in plain words", () => {
+    const log = getLogger("accept-display-name-suffix-test");
+    log.setLevel("silent");
+    const token = sampleToken(FUTURE());
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          ...token.linkageTerms.linkageFields,
+          { name: "generation", type: "name_suffix" },
+        ],
+        linkageKeys: [
+          {
+            name: "name, date of birth and suffix",
+            elements: [
+              { field: "last_name" },
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "generation" },
+            ],
+          },
+        ],
+      },
+    }).split("\n");
+
+    expect(lines).toContain("    - Name suffix");
+    expect(
+      lines.some((line) =>
+        /^ {2}matched on \(.*\): .*, name suffix$/.test(line),
+      ),
+    ).toBe(true);
+    expect(lines.join("\n")).not.toContain("generation");
+  });
+
   test("displayInvitation: names a street number field in plain words", () => {
     const log = getLogger("accept-display-street-number-test");
     log.setLevel("silent");

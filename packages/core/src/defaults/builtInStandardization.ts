@@ -74,6 +74,38 @@ const LAST_NAME_STEPS: StandardizationStep[] = [
   NAME_PLACEHOLDER_STEP,
 ];
 
+// A generational suffix as JR, SR, II, III or IV, from a column of its own.
+// The empty string is kept as a value, so a record with no suffix matches a
+// record with no suffix; every other default pipeline drops a blank. A value
+// that folds to none of the five codes is dropped.
+const NAME_SUFFIX_STEPS: StandardizationStep[] = [
+  { function: "trim_whitespace" },
+  { function: "to_upper_case" },
+  { function: "remove_punctuation" },
+  { function: "trim_whitespace" },
+  {
+    function: "replace_regex",
+    params: { pattern: "^(?:JUNIOR|JNR)$", replacement: "JR" },
+  },
+  {
+    function: "replace_regex",
+    params: { pattern: "^(?:SENIOR|SNR)$", replacement: "SR" },
+  },
+  {
+    function: "replace_regex",
+    params: { pattern: "^2ND$", replacement: "II" },
+  },
+  {
+    function: "replace_regex",
+    params: { pattern: "^3RD$", replacement: "III" },
+  },
+  {
+    function: "replace_regex",
+    params: { pattern: "^4TH$", replacement: "IV" },
+  },
+  { function: "filter_regex", params: { pattern: "^(?:JR|SR|II|III|IV)?$" } },
+];
+
 /** The `date_of_birth` input format used when none is supplied or inferred. */
 export const DEFAULT_DATE_INPUT_FORMAT = "MM/DD/YYYY";
 
@@ -225,6 +257,8 @@ function stepsForType(
       return FIRST_NAME_STEPS;
     case "last_name":
       return LAST_NAME_STEPS;
+    case "name_suffix":
+      return NAME_SUFFIX_STEPS;
     case "date_of_birth":
       return dateOfBirthSteps(
         opts.dateInputFormat ?? DEFAULT_DATE_INPUT_FORMAT,

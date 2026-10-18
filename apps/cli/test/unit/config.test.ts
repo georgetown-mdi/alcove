@@ -4304,6 +4304,55 @@ describe("readConfigLinkageSource", () => {
     });
   });
 
+  test("reads a name suffix field over a suffix column", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const defaults = getDefaultLinkageTerms("Agency A");
+    const terms: LinkageTerms = {
+      ...defaults,
+      linkageRuleSet: undefined,
+      linkageFields: [
+        ...defaults.linkageFields,
+        { name: "name_suffix", type: "name_suffix" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+suffix",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "name_suffix" },
+          ],
+        },
+      ],
+    };
+    const metadata: Metadata = [
+      {
+        name: "Suffix",
+        type: "name_suffix",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share" },
+      linkageTerms: terms,
+      metadata,
+    });
+    const written = fs.readFileSync(configPath, "utf8");
+    expect(written).toContain("type: name_suffix");
+    expect(readConfigLinkageSource(configPath)).toMatchObject({
+      status: "loaded",
+      source: {
+        linkageTerms: {
+          linkageFields: terms.linkageFields,
+          linkageKeys: terms.linkageKeys,
+        },
+        metadata,
+      },
+    });
+  });
+
   test("reads a street number field over an address column typed in its metadata", () => {
     const configPath = path.join(dir, "alcove.yaml");
     const defaults = getDefaultLinkageTerms("Agency A");

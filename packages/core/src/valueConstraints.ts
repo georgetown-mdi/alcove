@@ -292,6 +292,7 @@ export function checkValueConstraints(
             "This cleaned value is the all-zero serial 0000, which the Social Security Administration never issues.",
         });
       break;
+    case "name_suffix":
     case "phone_number":
     case "email_address":
     case "street_number":

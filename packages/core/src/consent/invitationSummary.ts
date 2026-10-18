@@ -55,6 +55,7 @@ import type { Displayable } from "../utils/sanitizeForDisplay.js";
 const FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   first_name: displayText`First name`,
   last_name: displayText`Last name`,
+  name_suffix: displayText`Name suffix`,
   date_of_birth: displayText`Date of birth`,
   ssn: displayText`Social Security number`,
   ssn4: displayText`Last 4 of Social Security number`,
@@ -74,6 +75,7 @@ const FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
 const COMPACT_FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   first_name: displayText`first name`,
   last_name: displayText`last name`,
+  name_suffix: displayText`name suffix`,
   date_of_birth: displayText`date of birth`,
   ssn: displayText`SSN`,
   ssn4: displayText`SSN (last 4)`,

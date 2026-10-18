@@ -13,7 +13,12 @@ import {
   CANDIDATE_DATE_FORMATS,
   INFER_DATE_SCAN_CAP,
 } from "../src/utils/date";
-import { runPipeline, titles } from "../src/standardization";
+import {
+  buildKeyStrings,
+  buildStandardizedDataset,
+  runPipeline,
+  titles,
+} from "../src/standardization";
 import {
   patternConformsToDialect,
   patternWeightedSize,
@@ -22,6 +27,7 @@ import {
   MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
   regexStepPatternParam,
 } from "../src/config/transformRegexDialect";
+import type { CSVRow } from "../src/file";
 import type { ColumnMetadata } from "../src/config/metadata";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import type { StandardizationStep } from "../src/config/standardizationSchema";
@@ -41,6 +47,7 @@ const minimalTerms: LinkageTerms = {
     { name: "ssn4", type: "ssn4" },
     { name: "first_name", type: "first_name" },
     { name: "last_name", type: "last_name" },
+    { name: "name_suffix", type: "name_suffix" },
     { name: "date_of_birth", type: "date_of_birth" },
     { name: "phone_number", type: "phone_number" },
     { name: "email_address", type: "email_address" },
@@ -62,6 +69,7 @@ const fullMetadata: ColumnMetadata[] = [
   { name: "SSN4", type: "ssn4", role: "linkage", isPayload: false },
   { name: "FIRST_NAME", type: "first_name", role: "linkage", isPayload: false },
   { name: "LAST_NAME", type: "last_name", role: "linkage", isPayload: false },
+  { name: "SUFFIX", type: "name_suffix", role: "linkage", isPayload: false },
   { name: "DOB", type: "date_of_birth", role: "linkage", isPayload: false },
   { name: "PHONE", type: "phone_number", role: "linkage", isPayload: false },
   { name: "EMAIL", type: "email_address", role: "linkage", isPayload: false },
@@ -100,7 +108,7 @@ function withPlaceholders(
 describe("getDefaultStandardization — structure", () => {
   test("returns one transformation per matching linkage field", () => {
     const result = getDefaultStandardization(fullMetadata, minimalTerms);
-    expect(result).toHaveLength(11);
+    expect(result).toHaveLength(12);
   });
 
   test("output names match linkage field names", () => {
@@ -110,6 +118,7 @@ describe("getDefaultStandardization — structure", () => {
     expect(outputs).toContain("ssn4");
     expect(outputs).toContain("first_name");
     expect(outputs).toContain("last_name");
+    expect(outputs).toContain("name_suffix");
     expect(outputs).toContain("date_of_birth");
     expect(outputs).toContain("phone_number");
     expect(outputs).toContain("email_address");
@@ -243,6 +252,7 @@ describe("getDefaultStandardization — structure", () => {
       { name: "surname", type: "last_name", role: "linkage", isPayload: false },
       { name: "given", type: "first_name", role: "linkage", isPayload: false },
       { name: "social", type: "ssn", role: "linkage", isPayload: false },
+      { name: "Sfx", type: "name_suffix", role: "linkage", isPayload: false },
     ];
     const stepsByField = (metadata: ColumnMetadata[]) =>
       new Map(
@@ -320,15 +330,33 @@ describe('default chains: a blank input yields null, never ""', () => {
   // Assumes default per-type cleaning maps a blank value to null, so a
   // fully-default exchange never emits "" as a key (link.ts
   // removeDuplicatesAndUndefineds drops only undefined). docs/spec/PROTOCOL.md
-  // and the CHANGELOG state this as prose; pinned here as a check so a chain
-  // that lets a blank fall through does not silently widen default matching.
-  // toBeNull also distinguishes the result from "".
+  // states this as prose; pinned here as a check so a chain that lets a blank
+  // fall through does not silently widen default matching. toBeNull also
+  // distinguishes the result from "". The one exception is name_suffix, whose
+  // empty value means "no suffix" and is matched on.
   const blanks = ["", " ", "   ", "\t", " \t\n "];
-  const transformations = getDefaultStandardization(fullMetadata, minimalTerms);
+  const allTransformations = getDefaultStandardization(
+    fullMetadata,
+    minimalTerms,
+  );
+  const transformations = allTransformations.filter(
+    (t) => t.output !== "name_suffix",
+  );
+  const nameSuffix = allTransformations.find((t) => t.output === "name_suffix");
 
   // Guard: every default linkage field is exercised, so this is not a vacuous pass.
-  test("covers all eleven default linkage fields", () => {
+  test("covers all twelve default linkage fields", () => {
+    expect(allTransformations).toHaveLength(12);
     expect(transformations).toHaveLength(11);
+    expect(nameSuffix).toBeDefined();
+  });
+
+  test('name_suffix: every blank input, and one that cleans to empty, maps to ""', () => {
+    for (const blank of [...blanks, "---", "...", "!!!", "@@@"])
+      expect(
+        runPipeline(blank, nameSuffix!.steps!),
+        `input ${JSON.stringify(blank)}`,
+      ).toBe("");
   });
 
   for (const t of transformations) {
@@ -1394,6 +1422,155 @@ describe("default street_number pipeline", () => {
     const inviter = ["123 Main St Apt 4", "0042 Elm", "7-9 Oak Ave"];
     const acceptor = ["123", "42", "7 Oak Avenue"];
     expect(inviter.map(run)).toEqual(acceptor.map(run));
+  });
+});
+
+// --- Name suffix pipeline ----------------------------------------------------
+
+describe("default name_suffix pipeline", () => {
+  const suffixTerms: LinkageTerms = {
+    ...minimalTerms,
+    linkageFields: [{ name: "name_suffix", type: "name_suffix" }],
+  };
+  const suffixMetadata: ColumnMetadata[] = [
+    { name: "SFX", type: "name_suffix", role: "linkage", isPayload: false },
+  ];
+
+  function run(input: string) {
+    const [t] = getDefaultStandardization(suffixMetadata, suffixTerms);
+    return runPipeline(input, t.steps!);
+  }
+
+  test.each(["JR", "SR", "II", "III", "IV"])("keeps the code %j", (code) => {
+    expect(run(code)).toBe(code);
+  });
+
+  test.each([
+    ["Jr", "JR"],
+    ["jr", "JR"],
+    ["Jr.", "JR"],
+    ["J.R.", "JR"],
+    ["Jr.,", "JR"],
+    [" jr ", "JR"],
+    ["Junior", "JR"],
+    ["JUNIOR", "JR"],
+    ["Jnr", "JR"],
+    ["Sr.", "SR"],
+    ["senior", "SR"],
+    ["Snr", "SR"],
+    ["ii", "II"],
+    ["2nd", "II"],
+    ["3rd", "III"],
+    ["III.", "III"],
+    ["4th", "IV"],
+    ["iv", "IV"],
+  ])("folds %j to %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test.each(["", " ", "\t", "-", "."])(
+    "keeps %j as the empty suffix",
+    (input) => {
+      expect(run(input)).toBe("");
+    },
+  );
+
+  test.each([
+    "V",
+    "I",
+    "2",
+    "3",
+    "1st",
+    "5th",
+    "Esq",
+    "MD",
+    "PhD",
+    "N/A",
+    "None",
+    "J R",
+    "Jr Sr",
+    "Junior High",
+    "Smith Jr",
+    "Ⅲ",
+    "ＪＲ",
+  ])("drops %j", (input) => {
+    expect(run(input)).toBeNull();
+  });
+
+  // Key values on both sides: a suffix element whose value is "" is kept, so
+  // two records with no suffix build the same key, and JR never matches it.
+  describe("key values", () => {
+    const keyTerms: LinkageTerms = {
+      ...minimalTerms,
+      linkageFields: [
+        { name: "last_name", type: "last_name" },
+        { name: "first_name", type: "first_name" },
+        { name: "name_suffix", type: "name_suffix" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+SFX",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "name_suffix" },
+          ],
+        },
+      ],
+    };
+    const keyMetadata: ColumnMetadata[] = [
+      { name: "LAST", type: "last_name", role: "linkage", isPayload: false },
+      { name: "FIRST", type: "first_name", role: "linkage", isPayload: false },
+      { name: "SFX", type: "name_suffix", role: "linkage", isPayload: false },
+    ];
+
+    function keyValues(rows: CSVRow[]): Array<string[] | null> {
+      const dataset = buildStandardizedDataset(
+        getDefaultStandardization(keyMetadata, keyTerms),
+        rows,
+        keyMetadata,
+        keyTerms,
+      );
+      return rows.map((_row, index) => {
+        const built = buildKeyStrings(keyTerms.linkageKeys[0], dataset, index);
+        return built === null ? null : [...built];
+      });
+    }
+
+    test("an empty suffix is a key value, and matches an empty suffix", () => {
+      const inviter = keyValues([{ LAST: "Smith", FIRST: "John", SFX: "" }]);
+      const acceptor = keyValues([{ LAST: "SMITH", FIRST: "john", SFX: " " }]);
+      expect(inviter).toEqual([["SMITHJOHN"]]);
+      expect(acceptor).toEqual(inviter);
+    });
+
+    test("JR does not match an empty suffix", () => {
+      const [junior] = keyValues([
+        { LAST: "Smith", FIRST: "John", SFX: "Jr." },
+      ]);
+      const [none] = keyValues([{ LAST: "Smith", FIRST: "John", SFX: "" }]);
+      expect(junior).toEqual(["SMITHJOHNJR"]);
+      expect(junior).not.toEqual(none);
+    });
+
+    test("a folded spelling matches its code", () => {
+      expect(
+        keyValues([{ LAST: "Smith", FIRST: "John", SFX: "Junior" }]),
+      ).toEqual(keyValues([{ LAST: "Smith", FIRST: "John", SFX: "JR" }]));
+    });
+
+    test("a dropped suffix, or a row with no suffix cell, builds no key", () => {
+      expect(
+        keyValues([
+          { LAST: "Smith", FIRST: "John", SFX: "Esq" },
+          { LAST: "Smith", FIRST: "John" },
+        ]),
+      ).toEqual([null, null]);
+    });
+
+    test("an empty suffix does not stand in for a missing name", () => {
+      expect(keyValues([{ LAST: "", FIRST: "John", SFX: "" }])).toEqual([null]);
+    });
   });
 });
 

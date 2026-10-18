@@ -50,6 +50,7 @@ export const SEMANTIC_TYPE_LABELS: Record<SemanticType, string> = {
   ssn4: "Last 4 of Social Security number",
   first_name: "First name",
   last_name: "Last name",
+  name_suffix: "Name suffix",
   date_of_birth: "Date of birth",
   identifier: "Unique record identifier",
   phone_number: "Phone number",

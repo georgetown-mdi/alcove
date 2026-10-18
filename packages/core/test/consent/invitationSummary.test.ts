@@ -1091,6 +1091,48 @@ describe("the consent summary's street number field", () => {
   });
 });
 
+describe("the consent summary's name suffix field", () => {
+  const baseTerms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+  const summary = summarizeInvitation({
+    linkageTerms: {
+      ...baseTerms,
+      linkageFields: [
+        ...baseTerms.linkageFields,
+        { name: "generation", type: "name_suffix" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+suffix",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "generation" },
+          ],
+        },
+      ],
+    },
+  });
+
+  test("names the field in plain words in the field list", () => {
+    expect(summary.linkageFields.map((field) => field.label)).toContain(
+      "Name suffix",
+    );
+  });
+
+  test("names the field in plain words in the key's one-line summary", () => {
+    expect(summary.linkageKeys[0].headerFields).toEqual([
+      "last name",
+      "first name",
+      "date of birth",
+      "name suffix",
+    ]);
+  });
+});
+
 describe("the consent summary's date-collapse marker", () => {
   const metadata = inferMetadata(LINKAGE_ONLY_COLUMNS, []);
   const baseTerms = getDefaultLinkageTerms("Inviter", metadata);

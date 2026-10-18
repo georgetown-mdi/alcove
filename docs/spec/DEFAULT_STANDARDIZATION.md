@@ -611,6 +611,98 @@ father. A title or suffix word in the middle of the value is always kept.
 | `"Monsieur"` | `null` |
 | `"Jr"` | `"JR"` |
 
+### `name_suffix`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: trim_whitespace
+  - function: replace_regex
+    params:
+      pattern: "^(?:JUNIOR|JNR)$"
+      replacement: "JR"
+  - function: replace_regex
+    params:
+      pattern: "^(?:SENIOR|SNR)$"
+      replacement: "SR"
+  - function: replace_regex
+    params:
+      pattern: "^2ND$"
+      replacement: "II"
+  - function: replace_regex
+    params:
+      pattern: "^3RD$"
+      replacement: "III"
+  - function: replace_regex
+    params:
+      pattern: "^4TH$"
+      replacement: "IV"
+  - function: filter_regex
+    params:
+      pattern: "^(?:JR|SR|II|III|IV)?$"
+```
+
+Result: one of the five generational suffix codes `JR`, `SR`, `II`, `III` and
+`IV`, or the empty string for a person with no suffix. The value is
+uppercased, and its ASCII punctuation and surrounding whitespace are removed,
+so `Jr.`, `J.R.`, `Jr.,` and `jr` all clean to `JR`. Then these spellings
+fold to a code:
+
+| Spelling | Code |
+| -------- | ---- |
+| `JUNIOR`, `JNR` | `JR` |
+| `SENIOR`, `SNR` | `SR` |
+| `2ND` | `II` |
+| `3RD` | `III` |
+| `4TH` | `IV` |
+
+A value that is none of the five codes after folding is dropped. This drops
+`V`, a bare digit such as `2`, a professional suffix such as `Esq` or `MD`, a
+filler such as `N/A` or `None`, and a value of more than one word, such as
+`Smith Jr`. A letter outside ASCII is not folded, so a fullwidth letter or a
+Roman-numeral character is dropped.
+
+The empty suffix is a value, not a missing one:
+
+- A blank cell, a cell of whitespace, and a cell of punctuation alone, such as
+  `-`, clean to `""`. Every other pipeline in this document drops such a
+  cell; this one keeps it, so a record with no suffix matches a record with no
+  suffix on a key holding the suffix element.
+- An empty suffix matches only an empty suffix. `JR` does not match `""`, so
+  such a key tells a parent from a child of the same name where both files
+  record the suffix, and misses the pair where only one file does.
+- A row too short to hold the column has no value for it, and is left out of
+  every key holding the suffix element, as for any field.
+- The other elements of a key keep their own rules, so a record whose name is
+  blank builds no key, whatever its suffix.
+
+The type is read from a column of its own, inferred from the names `suffix`,
+`name_suffix` and `namesuffix`
+([Type inference from column names](#type-inference-from-column-names)). The
+defaults do not derive it from a name column: the `first_name` and
+`last_name` pipelines remove a trailing suffix
+([Affix removal](#affix-removal)) and keep nothing of it.
+
+| Input | Result |
+| ----- | ------ |
+| `"JR"` | `"JR"` |
+| `"Jr."` | `"JR"` |
+| `"J.R."` | `"JR"` |
+| `"Junior"` | `"JR"` |
+| `"Snr"` | `"SR"` |
+| `"iii"` | `"III"` |
+| `"2nd"` | `"II"` |
+| `"4th"` | `"IV"` |
+| `""` | `""` |
+| `"  "` | `""` |
+| `"-"` | `""` |
+| `"V"` | `null` |
+| `"Esq"` | `null` |
+| `"N/A"` | `null` |
+| `"Smith Jr"` | `null` |
+
 ### `date_of_birth`
 
 ```yaml
@@ -1192,6 +1284,7 @@ whitespace.
 | `ssn4` | `ssn4` | `linkage` | `false` |
 | `first_name` | `first_name`, `firstname`, `fname` | `linkage` | `false` |
 | `last_name` | `last_name`, `lastname`, `lname` | `linkage` | `false` |
+| `name_suffix` | `name_suffix`, `namesuffix`, `suffix` | `linkage` | `false` |
 | `date_of_birth` | `date_of_birth`, `dateofbirth`, `dob` | `linkage` | `false` |
 | `identifier` | `identifier`, `id` | `identifier` | `true` |
 | `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |

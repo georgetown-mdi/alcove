@@ -78,11 +78,12 @@ export function defaultStandardizationForRows(
 /**
  * The types whose recommended cleaning the draft holds exactly while an enabled
  * key references the field: the matchable types the default terms declare no
- * field for, {@link CONTACT_AND_LOCATION_FIELD_TYPES} plus street number,
- * state and county.
+ * field for, {@link CONTACT_AND_LOCATION_FIELD_TYPES} plus name suffix,
+ * street number, state and county.
  */
 const KEY_GATED_CLEANING_TYPES: ReadonlySet<string> = new Set([
   ...CONTACT_AND_LOCATION_FIELD_TYPES,
+  "name_suffix",
   "street_number",
   "state",
   "county",
@@ -510,10 +511,11 @@ export function setDraftMetadata(
 
 /**
  * Turn the key at `index` on or off and bring the cleaning a key-gated type
- * holds with it: a phone, email, street number, ZIP, state or county field has
- * its recommended pipeline exactly while an enabled key references it. Turning
- * on a key over such a field creates its cleaning (the data-prep workbench's
- * card appears with the key); turning off the last key over it withdraws it.
+ * holds with it: a name suffix, phone, email, street number, ZIP, state or
+ * county field has its recommended pipeline exactly while an enabled key
+ * references it. Turning on a key over such a field creates its cleaning (the
+ * data-prep workbench's card appears with the key); turning off the last key
+ * over it withdraws it.
  *
  * Only that type-named cleaning moves -- a transformation an imported
  * document's field name owns is never withdrawn this way -- and any other

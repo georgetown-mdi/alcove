@@ -340,6 +340,12 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     isPayload: false,
   },
   {
+    type: "name_suffix",
+    aliases: ["namesuffix", "suffix"],
+    role: "linkage",
+    isPayload: false,
+  },
+  {
     type: "date_of_birth",
     aliases: ["dateofbirth", "dob"],
     role: "linkage",

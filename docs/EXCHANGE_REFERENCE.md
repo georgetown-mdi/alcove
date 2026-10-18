@@ -287,6 +287,7 @@ linkage_terms:
 | `ssn4` | Last four digits of SSN; distinct from `ssn` because some parties only possess the last four digits |
 | `first_name` | Given name |
 | `last_name` | Family name |
+| `name_suffix` | Generational name suffix; canonical form is `JR`, `SR`, `II`, `III` or `IV`, or the empty string for no suffix |
 | `date_of_birth` | Date of birth |
 | `phone_number` | Phone number |
 | `email_address` | Email address |
@@ -297,9 +298,11 @@ linkage_terms:
 | `identifier` | Column that indexes a party's own records; never matchable |
 | `other` | A column whose PII type is none of the above |
 
-The first eleven values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
+The first twelve values are the complete type set for a `linkage_fields[].type`. The last two, `identifier` and `other`, are additionally valid for a `metadata[].type` -- inference assigns `identifier` to an `id`, `identifier`, or `_id`-suffixed column, and `other` is the type of a declared column that has no linkage type -- but are not linkage-field types: a `linkage_fields[].type` set to either is rejected.
 
 Additional types will be added as their use case arises.
+
+A `name_suffix` column is inferred from `suffix`, `name_suffix` or `namesuffix`, and is read from a column of its own: the name pipelines remove a suffix such as `Jr.` from a name and keep nothing of it. The value is cleaned to `JR`, `SR`, `II`, `III` or `IV`, with `Junior`, `Senior` and the ordinals `2nd`, `3rd` and `4th` folded to their code, and any other value is dropped. A blank cell cleans to the empty suffix, which is a value: a record with no suffix matches a record with no suffix, and `JR` does not match a record with no suffix. It has no built-in linkage key, so it is matched on only where your terms declare a key that uses it. An inferred suffix column is not sent as payload unless you mark it so. The cleaning steps and every folded spelling are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#name_suffix).
 
 A `street_number` column is inferred only from a number-named column, `street_number`, `house_number` or `address_number` and their short spellings (complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). An address-line column such as `address`, `street_address` or `address1` is not inferred as one; to match on the number such a column starts with, type it `street_number` in your `metadata`. Either way the value is cleaned to the number it starts with, so `123 Main St Apt 4` and `123` both match as `123`, and a value that does not start with a digit is dropped. It has no built-in linkage key, so it is matched on only where your terms declare a key that uses it; on its own a house number matches everyone at that number on any street, so it does its work beside a ZIP code, a name and a date of birth. The cleaning steps and the rules for leading zeros, ranges and fractions are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#street_number).
 
