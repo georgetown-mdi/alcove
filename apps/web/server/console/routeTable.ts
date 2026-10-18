@@ -23,6 +23,7 @@ import { route as SftpRoute } from "./routes/sftp/index";
 import { route as SigningFingerprintRoute } from "./routes/signing/fingerprint";
 import { route as SlotRoute } from "./routes/slot";
 import { route as WebrtcRoute } from "./routes/webrtc";
+import { route as WebrtcWorkingFolderRoute } from "./routes/webrtc/working-folder";
 
 import { JOB_ROUTE_METHODS } from "./jobRoute";
 
@@ -45,6 +46,7 @@ export const jobRoutes: ReadonlyArray<JobRouteDefinition> = [
   SftpRoute,
   SftpProbeRoute,
   WebrtcRoute,
+  WebrtcWorkingFolderRoute,
   SigningFingerprintRoute,
   JobRoute,
   ApplyTermsRoute,

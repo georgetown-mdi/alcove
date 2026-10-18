@@ -9,7 +9,15 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-import { KeyFileSchema, parseSensitiveJson } from "@alcove/core";
+import { z } from "zod";
+
+import {
+  AllowedRelaySchema,
+  KeyFileSchema,
+  editSensitiveYamlDocument,
+  parseSensitiveJson,
+  parseSensitiveYaml,
+} from "@alcove/core";
 
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 
@@ -17,6 +25,7 @@ import { JOB_FILE_MODE, jobPathPresent, resolveWorkdirFile } from "./workdir";
 import { MAX_CONFIGURATION_FILE_BYTES } from "./configLoad";
 import { MAX_MOUNTED_KEY_FILE_BYTES } from "./mountedKeyFile";
 import { readBoundedMountedBytes } from "./boundedMountedFile";
+import { writeReplacing } from "./configHandBack";
 
 /** The paths of an exchange's configuration and key file. */
 export interface ExchangeFilePaths {
@@ -152,18 +161,22 @@ export function readWorkingFolderExchangeFiles(dataRoot: string): {
   key: Buffer | undefined;
 } {
   const { configPath, keyPath } = workingFolderExchangeFilePaths(dataRoot);
+  const key = readBoundedMountedBytes(keyPath, MAX_MOUNTED_KEY_FILE_BYTES, {
+    followLink: false,
+  });
+  return {
+    config: readConfigBytes(configPath),
+    key: key.outcome === "read" ? key.bytes : undefined,
+  };
+}
+
+function readConfigBytes(configPath: string): Buffer | undefined {
   const config = readBoundedMountedBytes(
     configPath,
     MAX_CONFIGURATION_FILE_BYTES,
     { followLink: false },
   );
-  const key = readBoundedMountedBytes(keyPath, MAX_MOUNTED_KEY_FILE_BYTES, {
-    followLink: false,
-  });
-  return {
-    config: config.outcome === "read" ? config.bytes : undefined,
-    key: key.outcome === "read" ? key.bytes : undefined,
-  };
+  return config.outcome === "read" ? config.bytes : undefined;
 }
 
 /** The digests of the working folder's pair on disk, or undefined
@@ -231,4 +244,102 @@ export function removeUnchangedWorkingFolderExchangeFiles(
   fs.rmSync(keyPath, { force: true });
   fs.rmSync(configPath, { force: true });
   return true;
+}
+
+const ALLOWED_RELAYS_PATH = ["connection", "allowed_relays"];
+
+const CONFIGURATION_LABEL = "the working folder's exchange configuration";
+
+const StatedAllowedRelaysSchema = z.array(AllowedRelaySchema).optional();
+
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The `connection.allowed_relays` a configuration's bytes state, each entry
+ * normalized by core's rule, or undefined where they state none. Null where
+ * the bytes are not a YAML mapping with a `connection` mapping, or the key
+ * holds anything but a list of entries.
+ */
+function statedAllowedRelays(config: Buffer): Array<string> | undefined | null {
+  let parsed: unknown;
+  try {
+    parsed = parseSensitiveYaml(config.toString("utf8"), CONFIGURATION_LABEL);
+  } catch {
+    return null;
+  }
+  if (!isMapping(parsed) || !isMapping(parsed.connection)) return null;
+  const stated = StatedAllowedRelaysSchema.safeParse(
+    parsed.connection.allowed_relays,
+  );
+  return stated.success ? stated.data : null;
+}
+
+function sameAllowedRelays(
+  a: ReadonlyArray<string> | undefined,
+  b: ReadonlyArray<string> | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((entry, index) => entry === b[index]);
+}
+
+/**
+ * The `connection.allowed_relays` the working folder's `alcove.yaml` states
+ * ({@link statedAllowedRelays}); null where no configuration can be read
+ * there.
+ */
+export function workingFolderAllowedRelays(
+  dataRoot: string,
+): Array<string> | undefined | null {
+  const config = readConfigBytes(
+    workingFolderExchangeFilePaths(dataRoot).configPath,
+  );
+  return config === undefined ? null : statedAllowedRelays(config);
+}
+
+/**
+ * Set the working folder's `alcove.yaml`, whose bytes have the digest
+ * `expectedConfig`, to state `allowedRelays` as its
+ * `connection.allowed_relays`, removing the key where that is undefined. A
+ * file already stating that list is left as it is. Every other line keeps
+ * its bytes where the YAML writer allows, and the file is replaced by a new
+ * owner-only file renamed over its name, so a link put there is replaced
+ * rather than written through.
+ *
+ * @returns the digest of the bytes written, or undefined where nothing was.
+ * @throws {WorkingFolderFilesRefusedError} `present` where the file's bytes
+ *   are not those, `unwritable` where it is no configuration this can edit
+ *   or cannot be replaced.
+ */
+export function setWorkingFolderAllowedRelays(
+  dataRoot: string,
+  expectedConfig: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): string | undefined {
+  const { configPath } = workingFolderExchangeFilePaths(dataRoot);
+  const config = readConfigBytes(configPath);
+  if (config === undefined || digestOf(config) !== expectedConfig)
+    throw new WorkingFolderFilesRefusedError("present");
+  const stated = statedAllowedRelays(config);
+  if (stated !== null && sameAllowedRelays(stated, allowedRelays))
+    return undefined;
+  let edited: Buffer;
+  try {
+    edited = Buffer.from(
+      editSensitiveYamlDocument(
+        config.toString("utf8"),
+        CONFIGURATION_LABEL,
+        (doc) => {
+          if (allowedRelays === undefined) doc.deleteIn(ALLOWED_RELAYS_PATH);
+          else doc.setIn(ALLOWED_RELAYS_PATH, [...allowedRelays]);
+        },
+      ),
+      "utf8",
+    );
+    writeReplacing(configPath, edited, JOB_FILE_MODE);
+  } catch {
+    throw new WorkingFolderFilesRefusedError("unwritable");
+  }
+  return digestOf(edited);
 }

@@ -1,3 +1,5 @@
+import { normalizeAllowedRelay } from "@alcove/core";
+
 import { jobOwnRelaySchema } from "@jobContract/signalingServer";
 
 import {
@@ -14,12 +16,15 @@ import type { RelayLocator } from "@alcove/core";
 
 /**
  * The browser-side client for the coordination server a console webrtc run
- * dials: `GET`, `PUT` and `DELETE /api/jobs/webrtc`. Off the console the route
- * answers 404, which reads as no server set. A malformed body reads as no
- * server rather than arming a run against an address the operator did not set.
+ * dials: `GET`, `PUT` and `DELETE /api/jobs/webrtc`, and `GET
+ * /api/jobs/webrtc/working-folder` for the pair a retry runs over. Off the
+ * console each route answers 404, which reads as no server set and no pair
+ * held. A malformed body reads as no server rather than arming a run against
+ * an address the operator did not set.
  */
 
 const ROUTE = "/api/jobs/webrtc";
+const WORKING_FOLDER_ROUTE = "/api/jobs/webrtc/working-folder";
 
 /** Read the projection off a `GET` or `PUT` body, or null when it reports
  * `configured: false` or is malformed.
@@ -155,6 +160,51 @@ export async function putSignalingServer(
       return { kind: "refused", message: body.error };
   }
   return { kind: "error" };
+}
+
+/** The digest the console records an invitation under: the lowercase hex
+ * sha256 of its original shared secret. */
+async function invitationDigest(sharedSecret: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(sharedSecret),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/**
+ * The allowed relays the working folder's `alcove.yaml` states where the
+ * console holds the pair a retry of the invitation with `sharedSecret` runs
+ * over (`GET /api/jobs/webrtc/working-folder`); undefined where it holds
+ * none, the file states none, or the answer is not that shape, an entry
+ * not in core's normalized form included.
+ */
+export async function fetchHeldAllowedRelays(
+  sharedSecret: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Array<string> | undefined> {
+  try {
+    const invitation = await invitationDigest(sharedSecret);
+    const response = await fetchImpl(
+      `${WORKING_FOLDER_ROUTE}?invitation=${invitation}`,
+      { method: "GET" },
+    );
+    if (!response.ok) return undefined;
+    const body = await readJsonOrNull(response, MAX_JOB_STATUS_RESPONSE_BYTES);
+    if (!isRecord(body) || body.held !== true) return undefined;
+    const { allowedRelays } = body;
+    return Array.isArray(allowedRelays) &&
+      allowedRelays.every(
+        (entry: unknown): entry is string =>
+          typeof entry === "string" && normalizeAllowedRelay(entry) === entry,
+      )
+      ? allowedRelays
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Forget the coordination server. The caller treats any outcome as done. */

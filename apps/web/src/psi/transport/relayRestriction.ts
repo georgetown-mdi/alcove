@@ -86,6 +86,27 @@ export const KEPT_BY_ALLOWED_RELAYS = "kept by your allowed relays";
 /** The mark of a TURN url the setting leaves out. */
 export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 
+function allowedRelaysFieldDescription(relays: string): string {
+  return (
+    "One host per line, with a port where needed, for example " +
+    "relay.example.org or relay.example.org:443. Each run uses only the " +
+    `relay servers listed here, ${relays}. The setting covers relay servers ` +
+    "only: a run still contacts the STUN servers an invitation names. Leave " +
+    "it empty to use every relay a run lists."
+  );
+}
+
+/** The Allowed relays field's description where the run is this browser's
+ * or a saved exchange's, which can relay through this site's relay. */
+export const ALLOWED_RELAYS_FIELD_DESCRIPTION = allowedRelaysFieldDescription(
+  "yours, the invitation's or this site's",
+);
+
+/** The Allowed relays field's description on the console, whose runs have
+ * no relay of the site's. */
+export const CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION =
+  allowedRelaysFieldDescription("yours or the invitation's");
+
 /**
  * What a saved exchange's own allowed relays decide, and what they do not,
  * shown with the list on the exchange's page.

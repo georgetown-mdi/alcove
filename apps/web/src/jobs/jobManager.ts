@@ -42,6 +42,8 @@ import {
   createWorkingFolderExchangeFiles,
   invitationIdOf,
   removeUnchangedWorkingFolderExchangeFiles,
+  setWorkingFolderAllowedRelays,
+  workingFolderAllowedRelays,
   workingFolderExchangeFileDigests,
   workingFolderExchangeFilePaths,
   workingFolderExchangeFilesMatch,
@@ -146,6 +148,10 @@ import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
+import type {
+  SignalingServerProjection,
+  WorkingFolderPairProjection,
+} from "@jobContract/signalingServer";
 import type { AuthoredSignalingServer } from "./signalingServer";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
@@ -154,7 +160,6 @@ import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
 import type { SftpProbeResult } from "./sftpProbe";
-import type { SignalingServerProjection } from "@jobContract/signalingServer";
 import type { SigningFingerprintResult } from "./signingIdentity";
 
 /**
@@ -502,8 +507,8 @@ export interface WorkingFolderPair {
   invitation: string;
   /** The bytes written when the pair was created. */
   written: ExchangeFileDigests;
-  /** The bytes when the pair was created or the latest run over it ended;
-   * undefined where either file was gone then. */
+  /** The bytes when the pair was created, a retry set its allowed relays, or
+   * the latest run over it ended; undefined where either file was gone then. */
   latest: ExchangeFileDigests | undefined;
 }
 
@@ -961,6 +966,8 @@ export class JobManager {
           ? this.resolveWorkInputPath(intent.inputFile)
           : undefined;
       let workingFolderPair = pairToRunOver;
+      if (pairToRunOver !== undefined && intent.channel === "webrtc")
+        this.setPairAllowedRelays(pairToRunOver, intent.allowedRelays);
       if (
         intent.channel === "webrtc" &&
         !runsOpenedConfiguration &&
@@ -1150,21 +1157,67 @@ export class JobManager {
     intent: JobWebrtcExchangeIntent,
   ): WorkingFolderPair | undefined {
     if (!workingFolderExchangeFilesPresent(this.dataRoot)) return undefined;
-    const pair = this.workingFolderPair;
-    const heldByConsoleExchange =
-      pair?.latest !== undefined &&
-      workingFolderExchangeFilesMatch(
-        this.dataRoot,
-        pair.latest,
-        pair.invitation,
-      );
+    const pair = this.heldWorkingFolderPair();
     if (
-      heldByConsoleExchange &&
+      pair !== undefined &&
       intent.sharedSecret !== undefined &&
       invitationIdOf(intent.sharedSecret) === pair.invitation
     )
       return pair;
-    throw new WorkingFolderFilesRefusedError("present", heldByConsoleExchange);
+    throw new WorkingFolderFilesRefusedError("present", pair !== undefined);
+  }
+
+  /** The pair this console recorded, while the working folder's files hold
+   * the content it recorded last; undefined otherwise. */
+  private heldWorkingFolderPair(): WorkingFolderPair | undefined {
+    const pair = this.workingFolderPair;
+    return pair?.latest !== undefined &&
+      workingFolderExchangeFilesMatch(
+        this.dataRoot,
+        pair.latest,
+        pair.invitation,
+      )
+      ? pair
+      : undefined;
+  }
+
+  /**
+   * Whether a webrtc create of the invitation `invitation` identifies
+   * ({@link invitationIdOf}) runs over the working folder's pair, and the
+   * `connection.allowed_relays` its `alcove.yaml` states, which an accept's
+   * review starts from. A file whose list cannot be read is reported as not
+   * held: the review starts empty, and the create replaces the list or is
+   * refused.
+   */
+  workingFolderPairFor(invitation: string): WorkingFolderPairProjection {
+    const pair = this.heldWorkingFolderPair();
+    if (pair?.invitation !== invitation) return { held: false };
+    const allowedRelays = workingFolderAllowedRelays(this.dataRoot);
+    if (allowedRelays === null) return { held: false };
+    return {
+      held: true,
+      ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+    };
+  }
+
+  /**
+   * Write the allowed relays a run over the console's pair commits into the
+   * pair's `alcove.yaml` ({@link setWorkingFolderAllowedRelays}), so the run
+   * uses the list its review showed, and record the bytes written as the
+   * pair's latest.
+   */
+  private setPairAllowedRelays(
+    pair: WorkingFolderPair,
+    allowedRelays: ReadonlyArray<string> | undefined,
+  ): void {
+    if (pair.latest === undefined)
+      throw new Error("a run reached the console's pair with no content held");
+    const config = setWorkingFolderAllowedRelays(
+      this.dataRoot,
+      pair.latest.config,
+      allowedRelays,
+    );
+    if (config !== undefined) pair.latest = { ...pair.latest, config };
   }
 
   /**

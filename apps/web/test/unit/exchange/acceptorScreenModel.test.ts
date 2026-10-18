@@ -4,6 +4,7 @@ import { setColumnDisclosure } from "@psi/metadataEditing";
 
 import {
   ACCEPTOR_SCREEN_INITIAL,
+  acceptOffersAllowedRelays,
   acceptorScreenReducer,
 } from "@exchange/acceptorScreenModel";
 import {
@@ -589,10 +590,45 @@ describe("the review step's allowed relays", () => {
       edits: { metadata: [], standardization: [] },
     });
 
-  test("start empty and uncommitted for every invitation", () => {
+  test("start empty and uncommitted", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.acceptorAllowedRelays).toBe("");
     expect(ACCEPTOR_SCREEN_INITIAL.committedAllowedRelays).toBeUndefined();
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
+    const decoded = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "invitation-decoded",
+      invitation,
+      rendezvous: { configured: false },
+    });
+    expect(decoded.acceptorAllowedRelays).toBe("");
+  });
+
+  test("start from the held files' list, one entry per line, uncommitted", () => {
+    const decoded = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "invitation-decoded",
+      invitation,
+      rendezvous: { configured: false },
+      heldAllowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+    expect(decoded.acceptorAllowedRelays).toBe(
+      "relay.example.org\nbackup.example.org:443",
+    );
+    expect(decoded.committedAllowedRelays).toBeUndefined();
+    expect(continued(decoded).committedAllowedRelays).toEqual({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+  });
+
+  test("are offered on a WebRTC accept, and on the console only where the invitation names a relay", () => {
+    const relayed = {
+      ...invitation.endpoint,
+      relay: { turn: ["turn:relay.example.org"] },
+    };
+    expect(acceptOffersAllowedRelays(invitation.endpoint, false)).toBe(true);
+    expect(acceptOffersAllowedRelays(invitation.endpoint, true)).toBe(false);
+    expect(acceptOffersAllowedRelays(relayed, true)).toBe(true);
+    expect(
+      acceptOffersAllowedRelays({ channel: "filedrop", path: "/drop" }, false),
+    ).toBe(false);
   });
 
   test("typing commits nothing; Continue commits the entries, normalized", () => {
