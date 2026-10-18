@@ -6,7 +6,8 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; of it, only the relay proof derivation is built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2 to S8, none of which has run (S1 ran in a narrower form: its decisive part was met and the rest stays open, [recorded below](#the-spikes)), and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
+What remains open is the spikes S2, S4 and S6 to S8, none of which has run; the browser legs of S3 and S5, whose Node legs passed on 2026-10-18; and S1's open parts, S1 having run in a narrower form with its decisive part met (each [below](#the-spikes)).
+Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
@@ -126,15 +127,17 @@ Keeping the envelope means the receiver is the bounded reassembler the CLI has, 
 The relay forwards each message unread, applying a per-message size cap a little above the largest chunk envelope and refusing anything larger, so it buffers one chunk a socket and never a frame.
 
 **Backpressure, not termination.** When the destination socket's send buffer is above a bound, the relay stops reading from the source socket and resumes below a lower bound, the window the CLI's own send path uses (1 MiB and 256 KiB; [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#outbound-pacing)).
-Whether `ws` applies that pause end to end -- its stream wrapper, or `pause()` on the underlying socket -- is unverified here and is the first thing [S3](#the-spikes) measures.
+`ws` applies that pause end to end: `pause()` on a `ws` socket stops reads on its TCP socket once the read in flight completes, so the sender's own buffer fills and its send window waits ([S3](#the-spikes)).
+The few messages already read when the pause lands are still emitted, and the relay forwards them.
 
 **Delivery.** The transport is a delivering close in the terms of [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown): a WebSocket send buffers locally, so the close must wait.
 Each side sends the sentinel and waits for the peer's close to reach it through the relay, bounded by the close drain budget; the relay forwards a close frame only after every message queued ahead of it, and closes the other socket when one closes.
 That is the browser's WebRTC reading of the peer's close applied to a relayed socket, and the CLI's acknowledgement drain has no counterpart here: TCP acknowledges to the relay, not to the peer, so the peer's close is the one signal either side has.
-A sender whose process or tab ends the instant its close returns can still lose the final frame in flight to the relay, as it can on WebRTC; [S5](#the-spikes) measures the window.
+A sender whose process ends the instant its close returns keeps its final frame only if the close waited: a close that returned once the sentinel was queued lost the frame in 8 of 10 runs, and the wait for the relayed peer close lost it in none of 10 ([S5](#the-spikes), Node parties; a closing browser tab is not yet measured).
 
 **Keepalive.** A PSI step can hold a party silent for the parked-receive budget of an hour ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)), and any TLS front in the path has an idle timeout -- the broker's is 300 s.
-Both clients send a WebSocket ping on a short interval while a receive is parked; the relay answers and forwards nothing.
+The CLI client sends a WebSocket ping on a short interval while a receive is parked; the relay answers and forwards nothing.
+A browser's `WebSocket` cannot send a ping but answers one (measured on Chromium 156, [S6](#the-spikes)), so the browser's keepalive is a ping the relay sends its socket on the same interval.
 
 **Quotas.** The relay bounds what one key and one address can use, as coturn's `user-quota`, `total-quota` and `max-bps` do ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#quotas-against-one-exchange)): one pairing a key, a cap on concurrent pairings, a per-pairing byte rate at the same 2,000,000 bytes a second each direction, and an idle bound at the parked-receive budget.
 Each is a working value reviewed against the largest exchange, as the relay's are.
@@ -196,7 +199,7 @@ A second public address on the relay instance is the deployment record's fallbac
 | Bound | On WebRTC | On the relay path |
 | --- | --- | --- |
 | Frame ceiling | `MAX_WEBRTC_FRAME_BYTES`, 268,435,456 bytes, reassembled from chunks | The same constant, the same reassembler; the relay never holds a frame |
-| Chunk size | 16,300 bytes, PeerJS's threshold under the SCTP ceiling | Reused as is in the first cut; a WebSocket has no 64 KiB ceiling, so a larger chunk on this path alone is a tuning left to [S3](#the-spikes), and the relay's per-message cap follows it |
+| Chunk size | 16,300 bytes, PeerJS's threshold under the SCTP ceiling | The same 16,300 bytes, by the ruling on fork 3; a WebSocket has no 64 KiB ceiling, but a 262,144-byte chunk held the prototype relay above 100 MB resident ([S3](#the-spikes)). The relay's per-message cap follows the chunk |
 | Send pacing | 1 MiB and 256 KiB window on the CLI; PeerJS's on the browser | The same window on both clients against the socket's `bufferedAmount`, and the relay's pause and resume between the two |
 | Lists in parts, PSI sets in parts | Sized to the partner's data-channel bound | Unchanged: the bound is the same number |
 | Budgets | Rendezvous, channel open, parked receive, close drain | Rendezvous bounds the wait for the partner's hello; channel open becomes the wait for pairing after start; parked receive and close drain apply as written |
@@ -317,15 +320,66 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   A prototype relay with pause-and-resume forwarding; two Node parties, then Chromium against Node, sending frames up to 268,435,456 bytes in chunks, with one receiver throttled.
   PASS: a round of the largest measured exchange's size, 539,000,000 bytes one way, completes; the relay's resident set stays under 100 MB throughout with the slow reader; a sender above the per-pairing rate is paced and not disconnected.
   The chunk size question is answered here by measuring 16,300 against a larger chunk on the same run.
+  **Result, Node legs (2026-10-18): PASS at 16,300-byte chunks; a 262,144-byte chunk broke the memory bound.**
+  A prototype relay on `ws` 8.22.0 with pause-and-resume forwarding: a destination window of 1 MiB and 256 KiB, and a per-pairing token bucket at 2,000,000 bytes a second each way.
+  Two Node parties, each a `MessageConnection` over `ws` with core's chunk encoder, bounded reassembler and `EncryptedMessageConnection`, the CLI's send window, and an acknowledgement after each frame.
+  Node 26.12.0 in the development container (Docker Desktop's Linux VM on an Apple silicon Mac, 10 vCPUs, 24 GiB), one pairing on loopback, the relay's resident set read every 100 ms.
+  - **The round.** 539,000,000 bytes one way, in frames of 267,532,651, 267,532,651 and 3,934,698 bytes (the largest a sender may frame, wrapped), the receiver reading at 1,500,000 bytes a second: complete in 360 s, every frame's SHA-256 matching.
+  - **Memory.** The relay's resident set peaked at 77.0 MB over 3,486 samples, from 60.6 MB idle; two earlier runs of the leg peaked at 76.3 and 77.5 MB.
+    The slow reader held the sender back for 215 s of the 351 s the relay had its socket paused.
+  - **Pacing.** A sender above the rate, its receiver unthrottled, moved 64 MiB at 1,993,671 bytes a second with its own `bufferedAmount` at its 1 MiB window, and was not disconnected.
+    Every leg's close ended on the relayed peer close.
+  - **The open question: `ws` applies the pause end to end.** After `pause()` on the relay's `ws` socket, 114,156 more bytes were read (the read in flight) and none in a 3 s hold, while the sender's `bufferedAmount` stayed level; three messages already read were still emitted.
+    `pause()` on the underlying socket measured the same.
+    The stream wrapper (`createWebSocketStream`) also stops reads, but only once 16 messages wait in its own buffer, by which point it had read 4,552,858 bytes of 262,144-byte messages.
+  - **Chunk size.** Each leg ran at both sizes back to back; a cell with two values reads 262,144 bytes / 16,300 bytes:
+
+  | Leg | Relay peak resident set | Relay CPU | Throughput |
+  | --- | --- | --- | --- |
+  | The round | 112.0 MB, above 100 MB in 82% of samples / 77.0 MB | 5.0 s / 6.6 s | The receiver's 1.5 MB/s either way |
+  | Pacing, 64 MiB | 107.1 MB / 77.4 MB | 1.0 s / 1.4 s | The rate either way |
+  | No rate cap, 539,000,000 bytes | 154.2 MB / 91.1 MB | 1.2 s / 1.3 s | 177 / 156 MB/s; an earlier pair 160 / 161 |
+
+  At 262,144 bytes the relay held at most 262,191 bytes for the destination while its count of array buffers reached 43 MB, so the growth is buffers released and not yet collected rather than data held.
+  The larger chunk saves 10 to 33 percent of the relay's CPU across two pairs of runs, gains no consistent throughput, and breaks the memory bound, which supports [fork 3](#the-forks-and-their-rulings)'s ruling.
+
+  The harness is throwaway and kept outside the repository: `node s3.mjs --repo <checkout> --out <dir> --leg round --chunk 16300 --total 539000000 --rate 2000000 --recv-rate 1500000 --ack`, with `--chunk 262144` for the comparison, `--leg rate --total 67108864` for pacing and `--rate 0` for no cap; the pause probe is `node probe-pause.mjs --repo <checkout>`.
+  Still open: the Chromium-against-Node leg, which needs a host run, and more than one pairing at once, since the resident set rose with the rate forwarded (77 MB at 2 MB/s, 91 MB at 156 MB/s).
 - **S4. The wrap in the browser.**
   `EncryptedMessageConnection` over a browser WebSocket transport, the web side requesting the wrap, a CLI partner.
   PASS: the exchange completes with the correct intersection, and a capture at the relay shows only the handshake frames outside the AEAD envelope, every later frame beginning with the envelope's version byte.
 - **S5. Close delivery through the relay.**
   The sender's tab or process ended the instant its close resolves, as the WebRTC measurement did ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#the-clean-close)).
   PASS: the peer receives the final frame in every one of ten runs, and the sender's close resolved only on the relayed peer close.
+  **Result, Node legs (2026-10-18): PASS.**
+  The relay and parties of S3, with the rate cap on, on the same machine.
+  In each run the sender sent a 1,024-byte frame and a final frame of 16,777,216 bytes, closed, and called `process.exit` the instant its close resolved; times are read from one monotonic clock across the processes.
+  In every run the receiver had the final frame, its SHA-256 matching, and the sender's close resolved on the relayed peer close (code 1000), after the receiver had read the sentinel and sent its close:
+
+  | Run | Final frame | Close wait, ms | Close resolved after the peer's close, ms | Sender's process gone after its close, ms |
+  | --- | --- | --- | --- | --- |
+  | 1 | Received | 2,361 | 6.1 | 13 |
+  | 2 | Received | 2,999 | 16.9 | 11 |
+  | 3 | Received | 2,931 | 12.2 | 17 |
+  | 4 | Received | 2,301 | 9.1 | 34 |
+  | 5 | Received | 2,223 | 36.1 | 17 |
+  | 6 | Received | 2,784 | 20.9 | 13 |
+  | 7 | Received | 2,296 | 16.7 | 15 |
+  | 8 | Received | 2,576 | 15.9 | 16 |
+  | 9 | Received | 2,568 | 25.4 | 19 |
+  | 10 | Received | 3,275 | 22.3 | 16 |
+
+  Two controls of ten runs each show the window the wait closes:
+  - A close that returns once the sentinel is queued, as PeerJS's own close does, lost the final frame in 8 runs (5 in an earlier run of the control).
+  - A close that returns once the sentinel is written to the socket delivered the final frame in all 10 on loopback, the sender's kernel sending its buffered bytes after the process had gone, but resolved 1.1 to 3.4 s before the peer had the frame, so it confirmed nothing.
+
+  Harness: `node s5.mjs --repo <checkout> --out <dir> --close wait --runs 10`, with `--close nowait` and `--close flush` for the controls.
+  Still open, for a host run: the Chromium leg, the sender's tab closed the instant its close resolves.
 - **S6. Silence through a front.**
   A relayed exchange whose PSI step is silent for longer than the front's idle timeout, with the clients' pings on.
   PASS: the socket survives the silence and the parked-receive budget is what bounds it.
+  Not run; it needs the 443 front, so it goes to a host run with the browser legs of S3 and S5.
+  Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match, and S6 runs the browser with the relay's pings.
 - **S7. The raw SFTP relay.**
   From the earlier note: a candidate proxy in front of the SFTP test server, backpressure, close mapping and the `Origin` refusal ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), run only after the relay work above.
 - **S8. The browser SSH client with an external signer.**
@@ -413,6 +467,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: the same size until S3 shows the overhead matters ([How the relay fits the existing bounds](#how-the-relay-fits-the-existing-bounds)).
    Ruling (2026-10-09): "Keep 16,300 bytes."
    Reading: the relay path uses 16,300 bytes, and S3 still measures a larger chunk on the same run.
+   S3's Node legs measured 262,144 bytes on 2026-10-18; the result supports the ruling ([S3](#the-spikes)).
 4. **Where the relay's reference deployment lives**: beside coturn in `infra/relay`, under the one registrar and table, or a directory of its own as the broker has.
    Beside coturn shares the key table by construction; apart keeps each reference small.
    Recommendation: beside coturn, since the table is the authentication ([Who runs it, and what it costs](#who-runs-it-and-what-it-costs)).
