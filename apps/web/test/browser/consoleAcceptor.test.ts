@@ -269,6 +269,11 @@ describe("console acceptor of a webrtc invitation", () => {
       .toBeInTheDocument();
     expect(page.getByText(ACCEPT_UNSUPPORTED_TITLE).query()).toBeNull();
     expect(page.getByRole("textbox", { name: /server/i }).query()).toBeNull();
+    // The run is the command line's, which reads its own configuration, so the
+    // hosted review's Allowed relays field is not offered here.
+    expect(
+      page.getByRole("textbox", { name: "Allowed relays" }).query(),
+    ).toBeNull();
     await expect
       .element(
         page.getByRole("button", { name: "Continue: consent & your file" }),

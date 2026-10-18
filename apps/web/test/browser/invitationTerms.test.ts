@@ -179,6 +179,7 @@ async function renderTerms(
   app.render(
     createElement(InvitationTerms, {
       linkageTerms,
+      allowedRelays: undefined,
       ...(options?.lessCertainRemedy !== undefined
         ? { lessCertainRemedy: options.lessCertainRemedy }
         : {}),
@@ -855,7 +856,12 @@ describe("InvitationTerms: a key disclosure stays mounted but hidden under a red
   afterEach(restoreMatchMedia);
 
   test("every disclosure's aria-controls resolves to a present, hidden panel while collapsed under reduced motion", async () => {
-    app.render(createElement(InvitationTerms, { linkageTerms: terms }));
+    app.render(
+      createElement(InvitationTerms, {
+        linkageTerms: terms,
+        allowedRelays: undefined,
+      }),
+    );
 
     // The always-mounted-wrapper design for every disclosure. The top-level ones
     // are the matching list ("Matching strategies") and the master "Other details";
@@ -3348,7 +3354,7 @@ describe("InvitationTerms: no partner-controlled byte reaches the screen", () =>
     "every string the screen presents is escaped, so the raw key id never reaches the DOM ($name)",
     async ({ source }) => {
       await expectEveryPresentedStringEscaped(
-        { linkageTerms: source.linkageTerms },
+        { linkageTerms: source.linkageTerms, allowedRelays: undefined },
         partnerStringsOnScreen(source.linkageTerms),
       );
     },
@@ -3368,6 +3374,7 @@ describe("InvitationTerms: no partner-controlled byte reaches the screen", () =>
         perspective: "review",
         outboundColumns: ["header"],
         expires: hostileSource.expires,
+        allowedRelays: undefined,
       },
       [HOSTILE_IDENTITY, `risk${BEL}score`],
     );
@@ -3396,6 +3403,7 @@ describe("InvitationTerms: the accepting party's own deduplicate", () => {
     app.render(
       createElement(InvitationTerms, {
         linkageTerms: { ...terms, ...overrides },
+        allowedRelays: undefined,
         acceptorDeduplicate: {
           value,
           onChange: (next: boolean) => changes.push(next),

@@ -554,8 +554,10 @@ configuration-only one alike, without a re-invite.
 
 At setup the offer to save an exchange as recurring authors `retentionDisposition`
 beside the label and the max-age policy; `allowedRelays` starts as the
-browser's Allowed relays on its Relay server page at the save, absent where
-none are set; the other three come from the setup's own file and columns steps.
+Allowed relays set on the review of an invitation this party accepted, or as
+the browser's Allowed relays on its Relay server page at the save of one it
+created, absent where none are set; the other three come from the setup's own
+file and columns steps.
 
 #### Edit-time re-derivation of `expires`
 

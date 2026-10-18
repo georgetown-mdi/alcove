@@ -9,18 +9,18 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
-  ALLOWED_RELAYS_SCOPE,
-  readRelayRestriction,
-} from "@psi/transport/relayRestriction";
-import {
+  ALLOWED_RELAYS_APPLY_LINE,
   CONSOLE_RELAY_RESTRICTION_LINE,
   NOTHING_SAVED,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
   RESTRICTION_SAVED_RELAY_NOT_SAVED,
   RelaySettingsScreen,
-  SAVED_EXCHANGE_ALLOWED_RELAYS_LINE,
 } from "@exchange/RelaySettingsScreen";
+import {
+  ALLOWED_RELAYS_SCOPE,
+  readRelayRestriction,
+} from "@psi/transport/relayRestriction";
 import {
   RELAY_TEST_FAILED,
   RELAY_TEST_INTRO,
@@ -197,8 +197,13 @@ describe("RelaySettingsScreen: allowed relays", () => {
       "Your partner's side can still connect through a relay you leave out.",
     );
     await expect
-      .element(page.getByText(SAVED_EXCHANGE_ALLOWED_RELAYS_LINE))
+      .element(page.getByText(ALLOWED_RELAYS_APPLY_LINE))
       .toBeVisible();
+    expect(ALLOWED_RELAYS_APPLY_LINE).toBe(
+      "These allowed relays apply to invitations you create; an invitation " +
+        "you accept sets its own on its review, and a saved exchange on its " +
+        "own page.",
+    );
     await expect
       .element(allowedField())
       .toHaveAccessibleDescription(
@@ -363,7 +368,7 @@ describe("RelaySettingsScreen: the relays a run may use on each build", () => {
       .toBeVisible();
     expect(page.getByText(CONSOLE_RELAY_RESTRICTION_LINE).query()).toBeNull();
     expect(document.body.textContent).toContain(
-      "unless your allowed relays below leave it out",
+      "unless the allowed relays set on its review leave it out",
     );
   });
 
@@ -387,10 +392,10 @@ describe("RelaySettingsScreen: the relays a run may use on each build", () => {
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
     ).toBeNull();
     expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
-    expect(
-      page.getByText(SAVED_EXCHANGE_ALLOWED_RELAYS_LINE).query(),
-    ).toBeNull();
-    expect(document.body.textContent).not.toContain("allowed relays below");
+    expect(page.getByText(ALLOWED_RELAYS_APPLY_LINE).query()).toBeNull();
+    expect(document.body.textContent).not.toContain(
+      "allowed relays set on its review",
+    );
     await expect.element(turnField()).toBeVisible();
     await expect
       .element(page.getByText(RELAY_OPERATOR_DISCLOSURE))

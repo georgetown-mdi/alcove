@@ -62,10 +62,17 @@ import {
   coverageProvider,
   useNonEmptyRates,
 } from "@components/useNonEmptyRates";
+import { AllowedRelaysField } from "@components/AllowedRelaysField";
 import { CONSOLE_COVERAGE_PENDING_LABEL } from "@components/FieldCoverage";
 import { InvitationTerms } from "@components/InvitationTerms";
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 
+import {
+  ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
+  allowedRelayLinesError,
+  allowedRelaysText,
+  parseExchangeAllowedRelayLines,
+} from "@psi/transport/relayRestriction";
 import {
   receiptsIntentFields,
   receiptsProblems,
@@ -76,7 +83,6 @@ import {
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
 import { byteSizeLabel } from "@psi/formatting";
-import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { seedRows } from "@psi/inviterEditor";
 
 import { ledgerOutcomeOf } from "@psi/ledger";
@@ -274,11 +280,14 @@ function AcceptorInvitationScreen({
   );
   const {
     acceptedFile,
+    acceptorAllowedRelays,
     acceptorDeduplicate,
     acceptorName,
     acquired,
+    allowedRelaysChangedAtStart,
     columnsSection,
     columnsState,
+    committedAllowedRelays,
     committedCsvDelimiter,
     committedDeduplicate,
     committedName,
@@ -313,7 +322,27 @@ function AcceptorInvitationScreen({
   const csvDelimiter = delimiterResolution.ok
     ? delimiterResolution.delimiter
     : undefined;
-  const [allowedRelays] = useState(() => readRelayRestriction().allowedRelays);
+  // The review step's Allowed relays. Before a launch they follow the typed
+  // text: while it parses the terms mark the invitation's TURN urls by it, and
+  // while it does not the field shows its error and the terms mark nothing.
+  // Once a launch exists the field is fixed on the list that launch took, the
+  // list the run and a later save as recurring both keep, and the marks follow
+  // it.
+  const allowedRelayLines = parseExchangeAllowedRelayLines(
+    acceptorAllowedRelays,
+  );
+  const allowedRelaysFixed = launched !== undefined;
+  const allowedRelaysError = allowedRelaysFixed
+    ? undefined
+    : allowedRelayLinesError(allowedRelayLines);
+  const allowedRelaysFieldText = allowedRelaysFixed
+    ? allowedRelaysText(launched.allowedRelays)
+    : acceptorAllowedRelays;
+  const markedAllowedRelays = allowedRelaysFixed
+    ? launched.allowedRelays
+    : allowedRelayLines.ok
+      ? allowedRelayLines.entries
+      : undefined;
 
   // Decode the token once, failing closed: an empty fragment, a bad
   // checksum/schema, an expired token, or an endpoint this build cannot drive
@@ -484,20 +513,25 @@ function AcceptorInvitationScreen({
     acceptSftpLocator !== undefined && sftpConnection == null;
 
   // On the review step, move focus to the terms heading once the decode resolves
-  // to ready, to the block when this accept cannot go on from here, or to the
-  // error alert once it resolves to error, so a screen-reader user is taken to
-  // the revealed terms, the block, or the failure rather than left on the
+  // to ready, to the block when this accept cannot go on from here, to the
+  // Allowed relays notice when Start returned here, or to the error alert once
+  // it resolves to error, so a screen-reader user is taken to the revealed
+  // terms, the block, the notice, or the failure rather than left on the
   // spinner. The consent and columns steps own their own heading focus below.
   const termsHeadingRef = useRef<HTMLHeadingElement>(null);
   const reviewBlockRef = useRef<HTMLDivElement>(null);
+  const allowedRelaysChangedRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const reviewBlockShown = reviewBlock !== undefined;
   useEffect(() => {
     if (step !== "review") return;
-    if (decode.status === "ready")
-      (reviewBlockShown ? reviewBlockRef : termsHeadingRef).current?.focus();
-    else if (decode.status === "error") errorRef.current?.focus();
-  }, [decode.status, step, reviewBlockShown]);
+    if (decode.status === "ready") {
+      const readyFocus = allowedRelaysChangedAtStart
+        ? allowedRelaysChangedRef
+        : termsHeadingRef;
+      (reviewBlockShown ? reviewBlockRef : readyFocus).current?.focus();
+    } else if (decode.status === "error") errorRef.current?.focus();
+  }, [decode.status, step, reviewBlockShown, allowedRelaysChangedAtStart]);
 
   // Moving to the consent step replaces the work column, so focus is sent to the
   // incoming h1 (it has tabIndex -1) or a screen-reader user is left on a control
@@ -546,11 +580,13 @@ function AcceptorInvitationScreen({
   // token naming no live step (a stale entry from before a deploy renamed one)
   // is ignored rather than rendered as an empty work column. A position whose
   // backing state is gone (a `launched` entry left behind by a back-to-columns
-  // recovery) clamps to a step that can still render; the settled token is
-  // returned so the hook rewrites the dead entry.
+  // recovery, or a later step after an edit to the review's Allowed relays)
+  // clamps to a step that can still render; the settled token is returned so
+  // the hook rewrites the dead entry.
   function restorePosition(token: string): string | void {
     const settled = restorablePosition(token, {
       hasLaunch: launched !== undefined,
+      reviewCommitted: committedAllowedRelays !== undefined,
     });
     if (settled === "columns:cleaning") {
       dispatch({
@@ -584,6 +620,14 @@ function AcceptorInvitationScreen({
       columnsSection: nextColumnsSection,
     });
     pushStep(positionToken(nextStep, nextColumnsSection));
+  }
+
+  // The review step's Continue: commit its Allowed relays and move on, or stay
+  // where a line is refused. The reducer reads the same text this render
+  // parsed, so the two cannot disagree.
+  function continueFromReview() {
+    dispatch({ type: "review-continued" });
+    if (allowedRelayLines.ok) goToStep("consent");
   }
 
   // The file-assurance line for the acceptor's own intake: the console reads the
@@ -883,6 +927,7 @@ function AcceptorInvitationScreen({
       edits: launched.edits,
       inputSource,
       deduplicate: launched.deduplicate,
+      allowedRelays: launched.allowedRelays,
       ...(options !== undefined ? { options } : {}),
       runDiagnostics: runDiagnosticsIntentFields(
         fileSyncAccept
@@ -1167,6 +1212,14 @@ function AcceptorInvitationScreen({
     // the committed value, so it starts only while the terms step shows that
     // same value.
     if (deduplicateChangedAfterConsent) return;
+    // And for Allowed relays with no commit behind them, as an edit since the
+    // review step's Continue leaves them: the field is on the review step,
+    // which commits it again.
+    if (committedAllowedRelays === undefined) {
+      dispatch({ type: "start-held-for-allowed-relays" });
+      goToStep("review");
+      return;
+    }
     dispatch({
       type: "exchange-launched",
       ...acceptorLaunchPayload(editorState),
@@ -1242,7 +1295,7 @@ function AcceptorInvitationScreen({
                 : {}),
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
-            allowedRelays: readRelayRestriction().allowedRelays,
+            allowedRelays: launched.allowedRelays,
             rotatedSecret,
             choices,
           },
@@ -1322,14 +1375,37 @@ function AcceptorInvitationScreen({
               perspective="review"
               headingOrder={1}
               headingRef={termsHeadingRef}
-              allowedRelays={allowedRelays}
+              allowedRelays={markedAllowedRelays}
             />
             {acceptSignaling !== undefined && (
               <AcceptorSignalingServerNotice accepted={acceptSignaling} />
             )}
             {!consoleBuild &&
               decode.invitation.endpoint.channel === "webrtc" && (
-                <DefaultRelayNotice />
+                <>
+                  <DefaultRelayNotice />
+                  <AllowedRelaysField
+                    value={allowedRelaysFieldText}
+                    error={allowedRelaysError}
+                    disabled={allowedRelaysFixed}
+                    liveError
+                    onChange={(value) =>
+                      dispatch({ type: "allowed-relays-changed", value })
+                    }
+                    mt="md"
+                  />
+                  {allowedRelaysChangedAtStart && (
+                    <Alert
+                      color="yellow"
+                      icon={<IconAlertCircle aria-hidden />}
+                      ref={allowedRelaysChangedRef}
+                      tabIndex={-1}
+                      mt="md"
+                    >
+                      {ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE}
+                    </Alert>
+                  )}
+                </>
               )}
             {/* This console cannot run this endpoint's shape, or no acceptance
                 can run these terms: stop here, before consent or intake, with a
@@ -1350,7 +1426,7 @@ function AcceptorInvitationScreen({
             ) : (
               <div className={styles.workFoot}>
                 <Button
-                  onClick={() => goToStep("consent")}
+                  onClick={continueFromReview}
                   disabled={pairRefusal !== undefined}
                 >
                   Continue: consent &amp; your file

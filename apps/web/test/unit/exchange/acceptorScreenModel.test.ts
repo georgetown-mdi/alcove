@@ -578,6 +578,80 @@ describe("the console's mounted-file commit", () => {
   });
 });
 
+describe("the review step's allowed relays", () => {
+  const typed = (value: string, state = ACCEPTOR_SCREEN_INITIAL) =>
+    acceptorScreenReducer(state, { type: "allowed-relays-changed", value });
+  const continued = (state: AcceptorScreenState) =>
+    acceptorScreenReducer(state, { type: "review-continued" });
+  const launch = (state: AcceptorScreenState) =>
+    acceptorScreenReducer(state, {
+      type: "exchange-launched",
+      edits: { metadata: [], standardization: [] },
+    });
+
+  test("start empty and uncommitted for every invitation", () => {
+    expect(ACCEPTOR_SCREEN_INITIAL.acceptorAllowedRelays).toBe("");
+    expect(ACCEPTOR_SCREEN_INITIAL.committedAllowedRelays).toBeUndefined();
+    expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
+  });
+
+  test("typing commits nothing; Continue commits the entries, normalized", () => {
+    const state = typed("Relay.Example.org.\n\nbackup.example.org:443\n");
+    expect(state.committedAllowedRelays).toBeUndefined();
+    expect(continued(state).committedAllowedRelays).toEqual({
+      allowedRelays: ["relay.example.org", "backup.example.org:443"],
+    });
+  });
+
+  test("Continue over an empty field commits no list", () => {
+    expect(continued(ACCEPTOR_SCREEN_INITIAL).committedAllowedRelays).toEqual(
+      {},
+    );
+  });
+
+  test("Continue over a refused line changes nothing", () => {
+    const state = typed("relay.example.org\nturn:relay.example.org");
+    expect(continued(state)).toBe(state);
+  });
+
+  test("a Start held for an edit after Continue says so until the next commit", () => {
+    const committed = continued(typed("relay.example.org"));
+    const edited = typed("other.example.org", committed);
+    const held = acceptorScreenReducer(edited, {
+      type: "start-held-for-allowed-relays",
+    });
+    expect(held.allowedRelaysChangedAtStart).toBe(true);
+    const refused = typed("turn:other.example.org", held);
+    expect(continued(refused).allowedRelaysChangedAtStart).toBe(true);
+    const recommitted = continued(typed("other.example.org", refused));
+    expect(recommitted.allowedRelaysChangedAtStart).toBe(false);
+    expect(recommitted.committedAllowedRelays).toEqual({
+      allowedRelays: ["other.example.org"],
+    });
+  });
+
+  test("an edit after Continue voids the commit until the next one", () => {
+    const committed = continued(typed("relay.example.org"));
+    const edited = typed("other.example.org", committed);
+    expect(edited.committedAllowedRelays).toBeUndefined();
+    expect(continued(edited).committedAllowedRelays).toEqual({
+      allowedRelays: ["other.example.org"],
+    });
+  });
+
+  test("a launch takes the committed list, and none where the field was empty", () => {
+    const committedList = accepted(
+      { type: "allowed-relays-changed", value: "relay.example.org" },
+      { type: "review-continued" },
+    );
+    expect(launch(committedList).launched?.allowedRelays).toEqual([
+      "relay.example.org",
+    ]);
+    const committedEmpty = accepted({ type: "review-continued" });
+    expect(launch(committedEmpty).launched?.allowedRelays).toBeUndefined();
+  });
+});
+
 describe("the managed-exchange offer", () => {
   test("a failed deposit holds the refusal beside the error", () => {
     const depositing = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {

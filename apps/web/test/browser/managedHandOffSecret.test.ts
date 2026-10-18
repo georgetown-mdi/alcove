@@ -22,6 +22,7 @@ import {
 import { ACCEPTED_INVITATION_STORAGE_KEY } from "@exchange/acceptedInvitation";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
+import { managedAllowedRelays } from "@psi/managed/managedExchangeRecord";
 import { stagesFor } from "@exchange/exchangeRun";
 
 import { createAppMount } from "./renderApp";
@@ -155,34 +156,13 @@ describe("the managed record a one-shot hand-off deposits", () => {
   });
 
   test("the acceptor's record holds the run's rotated secret, not the invitation's", async () => {
-    const token: InvitationToken = {
-      version: "1",
-      linkageTerms: acceptorTerms,
-      sharedSecret: generateSharedSecret(),
-      connectionEndpoint: {
-        channel: "webrtc",
-        host: "127.0.0.1",
-        port: 3000,
-        path: "/api/",
-      },
-    };
+    const token = acceptorToken();
     window.location.hash = await encodeInvitation(token);
     app.render(createElement(AcceptorScreen));
     await page
       .getByRole("button", { name: "Continue: consent & your file" })
       .click();
-    await userEvent.click(page.getByRole("checkbox"));
-    await userEvent.fill(page.getByLabelText("Your name"), "Sam Alvarez");
-    const fileInput = document.querySelector('input[type="file"]');
-    await userEvent.upload(
-      page.elementLocator(fileInput as HTMLElement),
-      new File(["first_name,last_name\nAlice,Smith\n"], "cohort.csv", {
-        type: "text/csv",
-      }),
-    );
-    await expect.element(page.getByText("cohort.csv")).toBeInTheDocument();
-    await page.getByRole("button", { name: "Accept and continue" }).click();
-    await page.getByRole("button", { name: "Start the exchange" }).click();
+    await acceptAndStart();
 
     const rotatedSecret = generateSharedSecret();
     const runSecret = await completeRun(rotatedSecret);
@@ -194,4 +174,63 @@ describe("the managed record a one-shot hand-off deposits", () => {
     expect(record.sharedSecret).toBe(rotatedSecret);
     expect(record.sharedSecret).not.toBe(token.sharedSecret);
   });
+
+  test("the acceptor's record keeps the Allowed relays set on its review, not this browser's", async () => {
+    window.localStorage.setItem(
+      "alcove-relay-restriction",
+      JSON.stringify({ version: 1, allowedRelays: ["browser.example.org"] }),
+    );
+    try {
+      window.location.hash = await encodeInvitation(acceptorToken());
+      app.render(createElement(AcceptorScreen));
+      await userEvent.fill(
+        page.getByRole("textbox", { name: "Allowed relays" }),
+        "Review.Example.org\nbackup.example.org:443",
+      );
+      await page
+        .getByRole("button", { name: "Continue: consent & your file" })
+        .click();
+      await acceptAndStart();
+      await completeRun(generateSharedSecret());
+      const record = await saveAndReadRecord();
+
+      expect(managedAllowedRelays(record.exchangeFile)).toEqual([
+        "review.example.org",
+        "backup.example.org:443",
+      ]);
+    } finally {
+      window.localStorage.removeItem("alcove-relay-restriction");
+    }
+  });
 });
+
+/** A webrtc invitation over the acceptor fixture's terms. */
+function acceptorToken(): InvitationToken {
+  return {
+    version: "1",
+    linkageTerms: acceptorTerms,
+    sharedSecret: generateSharedSecret(),
+    connectionEndpoint: {
+      channel: "webrtc",
+      host: "127.0.0.1",
+      port: 3000,
+      path: "/api/",
+    },
+  };
+}
+
+/** From the consent step, accept a file and start the exchange. */
+async function acceptAndStart(): Promise<void> {
+  await userEvent.click(page.getByRole("checkbox"));
+  await userEvent.fill(page.getByLabelText("Your name"), "Sam Alvarez");
+  const fileInput = document.querySelector('input[type="file"]');
+  await userEvent.upload(
+    page.elementLocator(fileInput as HTMLElement),
+    new File(["first_name,last_name\nAlice,Smith\n"], "cohort.csv", {
+      type: "text/csv",
+    }),
+  );
+  await expect.element(page.getByText("cohort.csv")).toBeInTheDocument();
+  await page.getByRole("button", { name: "Accept and continue" }).click();
+  await page.getByRole("button", { name: "Start the exchange" }).click();
+}

@@ -1,8 +1,10 @@
 /**
- * This browser's relay restriction: the relays a run may use, each an entry of
- * core's `connection.allowed_relays` form (`normalizeAllowedRelay`). Kept in
- * localStorage beside the own relay setting, and so held per origin. Operator
- * page: docs/EXCHANGE_REFERENCE.md, connection.allowed_relays.
+ * This browser's relay restriction: the relays the run of an invitation it
+ * creates may use, each an entry of core's `connection.allowed_relays` form
+ * (`normalizeAllowedRelay`). Kept in localStorage beside the own relay setting,
+ * and so held per origin. A saved exchange and an accepted invitation each
+ * set their own list instead. Operator page: docs/EXCHANGE_REFERENCE.md,
+ * connection.allowed_relays.
  */
 
 import { z } from "zod";
@@ -213,11 +215,10 @@ export const KEPT_BY_ALLOWED_RELAYS = "kept by your allowed relays";
 /** The mark of a TURN url the setting leaves out. */
 export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 
-/** What the setting decides, and what it does not. */
+/** What this browser's stored setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =
-  "Your allowed relays decide which relays this browser connects through, " +
-  "enrolls at and names in the invitations it creates, except for a saved " +
-  "exchange, which uses its own; a run still " +
+  "Your allowed relays decide which relays an invitation you create names, " +
+  "and which relays its run connects through and enrolls at; a run still " +
   "registers each new key at its own relay's registrar whatever the " +
   "setting keeps. " +
   "Your partner's side can still connect through a relay you leave out. " +
@@ -226,7 +227,8 @@ export const ALLOWED_RELAYS_SCOPE =
 
 /**
  * What a saved exchange's own allowed relays decide, and what they do not:
- * {@link ALLOWED_RELAYS_SCOPE} for the list on its page.
+ * the counterpart of {@link ALLOWED_RELAYS_SCOPE} shown with the list on the
+ * exchange's page.
  */
 export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its runs connect " +
@@ -237,11 +239,34 @@ export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
   "out. The list covers relay servers only: the STUN servers a run lists " +
   "are still contacted.";
 
+/**
+ * What an accepted invitation's allowed relays decide, and what they do not:
+ * the counterpart of {@link EXCHANGE_ALLOWED_RELAYS_SCOPE} shown with the list
+ * on the invitation's review.
+ */
+export const ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
+  "This exchange's allowed relays decide which relays its run connects " +
+  "through and enrolls at; a run still registers each new key at its own " +
+  "relay's registrar whatever the list keeps. " +
+  "Your partner's side can still connect through a relay the list leaves " +
+  "out. The list covers relay servers only: the STUN servers a run lists " +
+  "are still contacted. Saving this exchange as a recurring exchange keeps " +
+  "the list as its own.";
+
+/**
+ * The accepted invitation's review notice after Start met Allowed relays
+ * edited since that step's Continue.
+ */
+export const ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE =
+  "Allowed relays changed since you pressed Continue, so the exchange did " +
+  "not start. Press Continue to use them.";
+
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =
   "To let a run try a relay left out, add its host to Allowed relays, or " +
-  "remove the setting. A saved exchange sets them on its own page, and any " +
-  "other exchange on the Relay server page.";
+  "remove the setting. A saved exchange sets them on its own page, an " +
+  "invitation you accept on its review, and an invitation you create on the " +
+  "Relay server page.";
 
 function urlList(urls: ReadonlyArray<string>): string {
   return urls.map((url) => sanitizeForDisplay(url)).join(", ");

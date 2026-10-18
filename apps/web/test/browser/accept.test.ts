@@ -40,6 +40,12 @@ import { AcceptorColumnsStep } from "@exchange/AcceptorColumnsStep";
 import { STEP_STATE_KEY } from "@exchange/stepHistory";
 
 import {
+  ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  EXCHANGE_ALLOWED_RELAYS_SCOPE,
+  KEPT_BY_ALLOWED_RELAYS,
+  LEFT_OUT_BY_ALLOWED_RELAYS,
+} from "@psi/transport/relayRestriction";
+import {
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
@@ -161,20 +167,23 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
 );
 
 // The launch the run hook last received, so a test can read the delimiter the
-// run writes its result with. The real hook still runs.
+// run writes its result with and the relays it may use. The real hook still
+// runs.
+interface CapturedLaunch {
+  csvDelimiter?: string;
+  allowedRelays?: ReadonlyArray<string>;
+}
 const launchHarness = vi.hoisted(() => ({
-  last: undefined as { csvDelimiter?: string } | undefined,
+  last: undefined as CapturedLaunch | undefined,
 }));
 vi.mock("@exchange/useAcceptorExchange", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   const useAcceptorExchange = actual.useAcceptorExchange as (args: {
-    launch: { csvDelimiter?: string } | undefined;
+    launch: CapturedLaunch | undefined;
   }) => unknown;
   return {
     ...actual,
-    useAcceptorExchange: (args: {
-      launch: { csvDelimiter?: string } | undefined;
-    }) => {
+    useAcceptorExchange: (args: { launch: CapturedLaunch | undefined }) => {
       if (args.launch !== undefined) launchHarness.last = args.launch;
       return useAcceptorExchange(args);
     },
@@ -3156,5 +3165,248 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
         .getByRole("button", { name: "Continue: consent & your file" })
         .query(),
     ).toBeNull();
+  });
+});
+
+describe("AcceptorScreen: the review's Allowed relays", () => {
+  const KEPT_URL = "turn:partner.example.net:3478";
+  const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
+  const RESTRICTION_KEY = "alcove-relay-restriction";
+
+  const allowedField = () =>
+    page.getByRole("textbox", { name: "Allowed relays" });
+  const continueButton = () =>
+    page.getByRole("button", { name: "Continue: consent & your file" });
+  const pageText = () => document.body.textContent;
+
+  afterEach(() => {
+    window.localStorage.removeItem(RESTRICTION_KEY);
+  });
+
+  /** Open a webrtc invitation whose relay names two TURN urls. */
+  async function openRelayInvitation() {
+    const token: InvitationToken = {
+      version: "1",
+      linkageTerms: acceptorTerms,
+      sharedSecret: generateSharedSecret(),
+      connectionEndpoint: {
+        channel: "webrtc",
+        host: "127.0.0.1",
+        port: 3000,
+        path: "/api/",
+        relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+      },
+    };
+    window.location.hash = await encodeInvitation(token);
+    app.render(createElement(AcceptorScreen));
+    await expect.element(allowedField()).toBeInTheDocument();
+  }
+
+  /** From the consent step, accept a file and start the exchange. */
+  async function acceptAndStart() {
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    await consentAndName();
+    const fileInput = document.querySelector('input[type="file"]');
+    await userEvent.upload(
+      page.elementLocator(fileInput as HTMLElement),
+      csvFile("first_name,last_name\nAlice,Smith\n"),
+    );
+    await expect
+      .element(page.getByText("cohort_intake.csv"))
+      .toBeInTheDocument();
+    await userEvent.click(
+      page.getByRole("button", { name: "Accept and continue" }),
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: "Start the exchange" }),
+    );
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
+  }
+
+  test("starts empty whatever this browser's Relay server page holds", async () => {
+    window.localStorage.setItem(
+      RESTRICTION_KEY,
+      JSON.stringify({ version: 1, allowedRelays: ["partner.example.net"] }),
+    );
+    await openRelayInvitation();
+
+    await expect.element(allowedField()).toHaveValue("");
+    expect(pageText()).toContain(`TURN ${KEPT_URL}`);
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+  });
+
+  test("the terms mark each TURN url kept or left out as the field is typed", async () => {
+    await openRelayInvitation();
+
+    await userEvent.fill(allowedField(), "partner.example.net");
+    await expect
+      .poll(pageText)
+      .toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
+    expect(pageText()).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    expect(pageText()).not.toContain(EXCHANGE_ALLOWED_RELAYS_SCOPE);
+
+    await userEvent.clear(allowedField());
+    await expect.poll(pageText).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+  });
+
+  test("a line the field refuses shows its error in place of the marks, and holds Continue", async () => {
+    await openRelayInvitation();
+    const refusal = () => page.getByText(/^Line 1: enter /);
+
+    await userEvent.fill(allowedField(), "turn:partner.example.net");
+    await expect.element(refusal()).toBeInTheDocument();
+    await expect.element(refusal()).not.toHaveAttribute("role", "alert");
+    await expect.element(allowedField()).toBeEnabled();
+    await expect
+      .element(allowedField())
+      .toHaveAttribute("aria-invalid", "true");
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
+    await userEvent.click(continueButton());
+    await expect.element(refusal()).toBeInTheDocument();
+    expect(
+      page.getByRole("heading", { name: "Consent & your file" }).query(),
+    ).toBeNull();
+
+    await userEvent.fill(allowedField(), "partner.example.net");
+    await expect.poll(pageText).not.toContain("Line 1:");
+    expect(pageText()).toContain(
+      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    await userEvent.click(continueButton());
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+  });
+
+  test("the run lists the relays the review committed", async () => {
+    await openRelayInvitation();
+    await userEvent.fill(allowedField(), "Partner.Example.net");
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+
+    expect(launchHarness.last?.allowedRelays).toEqual(["partner.example.net"]);
+  });
+
+  test("the run lists every relay where the field is left empty", async () => {
+    window.localStorage.setItem(
+      RESTRICTION_KEY,
+      JSON.stringify({ version: 1, allowedRelays: ["partner.example.net"] }),
+    );
+    await openRelayInvitation();
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+
+    expect(launchHarness.last).toBeDefined();
+    expect(launchHarness.last?.allowedRelays).toBeUndefined();
+  });
+
+  test("an edit after Continue sends Forward back to the review, and the run takes the edited list", async () => {
+    await openRelayInvitation();
+    await userEvent.fill(allowedField(), "partner.example.net");
+    await userEvent.click(continueButton());
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+
+    window.history.back();
+    await expect.element(allowedField()).toHaveValue("partner.example.net");
+    await userEvent.fill(allowedField(), "other.example.net");
+
+    // The consent entry is rewritten to the review it settled on, in the same
+    // popstate that would otherwise have shown the consent step.
+    const landed = new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
+    window.history.forward();
+    await landed;
+    expect(
+      (window.history.state as Record<string, unknown>)[STEP_STATE_KEY],
+    ).toBe("review");
+    await expect.element(allowedField()).toHaveValue("other.example.net");
+    expect(
+      page.getByRole("heading", { name: "Consent & your file" }).query(),
+    ).toBeNull();
+
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+    expect(launchHarness.last?.allowedRelays).toEqual(["other.example.net"]);
+  });
+
+  const nextPopState = () =>
+    new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
+
+  test("Back from the started exchange shows the field fixed on the launched list", async () => {
+    expectConsole(
+      "error",
+      "Error: standardization output name contradicts the terms",
+    );
+    await openRelayInvitation();
+    await userEvent.fill(allowedField(), "Partner.Example.net");
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+
+    let landed = nextPopState();
+    window.history.go(-3);
+    await landed;
+    await expect.element(allowedField()).toBeDisabled();
+    await expect.element(allowedField()).toHaveValue("partner.example.net");
+    expect(pageText()).toContain(
+      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(
+      `TURN ${LEFT_OUT_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+    expect(pageText()).toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
+    // A recovery that discards the launch frees the field again.
+    landed = nextPopState();
+    window.history.go(3);
+    await landed;
+    await expect
+      .element(page.getByRole("heading", { name: "Exchange in progress" }))
+      .toBeInTheDocument();
+    lifecycleCall(0).onError({
+      category: "config",
+      error: new Error("standardization output name contradicts the terms"),
+    });
+    await page.getByRole("button", { name: "Back to your columns" }).click();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+    landed = nextPopState();
+    window.history.go(-4);
+    await landed;
+    await expect.element(allowedField()).toBeEnabled();
+    await expect.element(allowedField()).toHaveValue("Partner.Example.net");
+  });
+
+  test("Back from an exchange started with no list shows the field empty and fixed", async () => {
+    await openRelayInvitation();
+    await userEvent.click(continueButton());
+    await acceptAndStart();
+
+    const landed = nextPopState();
+    window.history.go(-3);
+    await landed;
+    await expect.element(allowedField()).toBeDisabled();
+    await expect.element(allowedField()).toHaveValue("");
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
+    expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 });
