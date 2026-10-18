@@ -15,3 +15,6 @@
 - - -> The count compares cleaned values exactly, so it recognizes neither.
 - - -> A record holding `MARIA`, `GARCIA`, `19800101` beside the first is the same person, and the SSN is kept: the last name is not compared.
 - A record holding `MARIA`, `LOPES`, `19800101` beside the first is another person: the count compares cleaned values and corrects no spelling. -> A record holding `MAIRA`, `LOPEZ`, `19800101` beside the first is another person: the count corrects no spelling.
+- - -> Where a party's own cleaning splits a record's SSN cell into several values, the record has no `ssn4` value when the screen drops any one of them.
+- The count has two limits: -> The count has three limits:
+- - -> A file with no first-name column counts people by date of birth alone, so two people born on one date who share a value count as one, and the value is kept.

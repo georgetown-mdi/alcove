@@ -1227,7 +1227,9 @@ an `ssn4` field read from a column of type `ssn` or from the column an `ssn`
 field reads (see
 [Last four derived from a full SSN](#last-four-derived-from-a-full-ssn)),
 whether or not the terms declare an `ssn` field: a record whose SSN the screen
-drops has no `ssn4` value either. A party whose terms do not set `deduplicate`
+drops has no `ssn4` value either. Where a party's own cleaning splits a
+record's SSN cell into several values, the record has no `ssn4` value when the
+screen drops any one of them. A party whose terms do not set `deduplicate`
 keeps the record's `ssn4` value. The screen is the one an `ssn` field reading
 that column has:
 
@@ -1267,7 +1269,7 @@ a column from the count.
 - When the file has neither column, every record holding a value is one
   person, and the screen drops nothing.
 
-The count has two limits:
+The count has three limits:
 
 - A record with neither a first name nor a date of birth agrees with every
   holder of its value, so it never counts as another person.
@@ -1275,6 +1277,9 @@ The count has two limits:
   typo or a nickname, counts as another person, so a value can be dropped from
   one person's records. The count compares cleaned values exactly, so it
   recognizes neither.
+- A file with no first-name column counts people by date of birth alone, so
+  two people born on one date who share a value count as one, and the value is
+  kept.
 
 For example, two records sharing an SSN, one holding `MARIA`, `LOPEZ`,
 `19800101` and the other no name and `19900505`, are two people, so the SSN is
