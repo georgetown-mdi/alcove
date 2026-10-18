@@ -63,9 +63,10 @@ The one-off exchange that just completed is unaffected; nothing was stored.
 A saved exchange keeps its own **Allowed relays**, under Local settings on its
 page: the relay servers its runs may use, one host per line, with a port where
 needed. Its runs and re-invites apply this list: a run connects through and
-enrolls at only the relays an entry names, and a re-invite names only those relays in the invitation it
-creates. With no list set, its runs use every relay they list. The entry
-form, the matching, and what the list does not decide are the command line's
+enrolls at only the relays an entry names, and a re-invite names only those
+relays in the invitation it creates. With no list set, its runs use every
+relay they list. The entry form, the matching, and what the list does not
+decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 
 Saving an exchange as recurring starts its list from the Allowed relays set on
