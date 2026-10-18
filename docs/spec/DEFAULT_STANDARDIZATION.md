@@ -64,10 +64,7 @@ surface rather than a local formatting choice.
   values are dropped, never the form of a value kept (see
   [Per-party placeholder lists](#per-party-placeholder-lists)). The
   shared-value limit is the third, and it also decides only which values are
-  dropped (see [Shared-value screens](#shared-value-screens)). The
-  `first_name` rule for a listed last name is the fourth, and it too decides
-  only which values are dropped (see
-  [First name beside a listed last name](#first-name-beside-a-listed-last-name)).
+  dropped (see [Shared-value screens](#shared-value-screens)).
 
 ### Per-party placeholder lists
 
@@ -487,9 +484,6 @@ had.
 ### `first_name`
 
 ```yaml
-null_if_last_name:
-  values: ["JOHN", "JANE"]
-  last_names: ["DOE"]
 steps:
   - function: trim_whitespace
   - function: squash_spaces
@@ -604,33 +598,6 @@ it.
 | `"5"` | `null` |
 | `"   "` | `null` |
 
-#### First name beside a listed last name
-
-`null_if_last_name` drops the cleaned first name of a record whose cleaned last
-name is listed: by default the first name `JOHN` or `JANE` beside the last name
-`DOE`. The record keeps its other fields, so it matches only on the keys
-without a first name. The Census Bureau's Person Identification Validation
-System keeps John and Jane Doe as names but sets stricter matching
-requirements for them; this rule makes the matching stricter by dropping the
-first name.
-
-The rule is not a step, because it reads a second field and a step reads one
-value. It compares whole cleaned values, as a `null_if` list does: `JOHN`
-beside `DOE` is dropped, while `JOHNNY` or `JOHN Q` beside `DOE`, and `JOHN`
-beside `DOER` or `DOE SMITH`, are kept.
-
-The last name is read and cleaned as the shared-value screens read it (see
-[Counting distinct people](#counting-distinct-people)): from the party's first
-`role: linkage` column of type `last_name`, whether or not the terms declare a
-field of that type. A file with no such column drops nothing by this rule.
-
-Like a placeholder list, the rule is the party's own: an operator may edit
-either list or remove the rule in their own standardization, and it is never
-sent. It drops a value and changes none it keeps, so it cannot make two
-different values equal. The shared-value screens count people by the first
-name before this rule, and a coverage count taken record by record before the
-run does not apply it.
-
 #### Whitespace fold
 
 `squash_spaces` replaces every run of characters with the Unicode
@@ -716,8 +683,8 @@ separately because they are two independent defaults: a change to one is not
 automatically a change to the other.
 
 The placeholder list is the `first_name` list without the nine values that
-list adds, and the `last_name` transformation has no rule for a listed last
-name. Neither list drops `DOE`, which is a surname as well as a placeholder.
+list adds. Neither list drops `DOE`, which is a surname as well as a
+placeholder.
 
 | Input | Result |
 | ----- | ------ |

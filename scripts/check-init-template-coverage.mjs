@@ -82,10 +82,6 @@ export const ALLOWED_OMISSIONS = new Map([
     "linkage_terms.payload",
     "Derived from the metadata block's is_payload columns when init reads an input file, and the receive list is set by the first exchange, which the template states.",
   ],
-  [
-    "standardization.null_if_last_name",
-    "Written on the first_name transformation by the default cleaning when init reads an input file with a first-name column; the reference documents it.",
-  ],
 ]);
 
 /** camelCase schema key -> the snake_case key an operator writes. */
