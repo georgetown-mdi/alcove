@@ -17,8 +17,6 @@ import {
 
 import { defaultRelaySetting } from "@utils/clientConfig";
 
-import { readRelayRestriction } from "./relayRestriction";
-
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayLocator } from "./rendezvous";
 import type { RelayUrls } from "./ownRelaySetting";
@@ -48,12 +46,6 @@ export interface DefaultRelayDependencies {
   /** Receives {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} when the enrollment
    * fails. */
   onRunNotice?: (message: string) => void;
-  /** The allowed relays; this browser's stored setting when unset. */
-  allowedRelays?: () => ReadonlyArray<string> | undefined;
-}
-
-function storedAllowedRelays(): ReadonlyArray<string> | undefined {
-  return readRelayRestriction().allowedRelays;
 }
 
 /**
@@ -67,7 +59,7 @@ function storedAllowedRelays(): ReadonlyArray<string> | undefined {
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
   defaultRelay: DefaultRelaySetting | undefined,
-  allowedRelays: ReadonlyArray<string> | undefined = storedAllowedRelays(),
+  allowedRelays: ReadonlyArray<string> | undefined,
 ): RelayUrls | undefined {
   if (defaultRelay === undefined) return ownRelay;
   if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return ownRelay;
@@ -99,16 +91,17 @@ export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
  * it, and the run dials with the rest. A refused, unreachable or unanswered
  * enrollment shows {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through
  * `onRunNotice`, once, before this returns; a cancelled one shows nothing.
- * A default relay the allowed relays leave out is not enrolled at or listed.
+ * A default relay `allowedRelays` leaves out is not enrolled at or listed;
+ * unset keeps it.
  */
 export async function relayWithDefaultForRun(
   sharedSecret: string,
   relay: RelayLocator | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
   dependencies: DefaultRelayDependencies = {},
 ): Promise<RelayLocator | undefined> {
   const setting = (dependencies.setting ?? defaultRelaySetting)();
   if (setting === undefined) return relay;
-  const allowedRelays = (dependencies.allowedRelays ?? storedAllowedRelays)();
   if (!turnUrlIsAllowed(setting.turnUrl, allowedRelays)) return relay;
   const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;
   const enrollment = await enroll(

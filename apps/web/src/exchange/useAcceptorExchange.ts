@@ -25,6 +25,7 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
+import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -524,6 +525,7 @@ export function useAcceptorExchange({
       const relayPlan = await relayPlanForRun(
         token.sharedSecret,
         endpoint.relay,
+        readRelayRestriction().allowedRelays,
         { signal, onRunNotice },
       );
       const [peer, conn] = await dialAsAcceptor(token.sharedSecret, endpoint, {

@@ -258,7 +258,7 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
   ): Promise<RTCConfiguration> {
     const options = await peerOptionsOf((factory) =>
       dialAsAcceptor(secret, invited, {
-        relay: relayForRun(invited.relay, readOwn),
+        relay: relayForRun(invited.relay, undefined, readOwn),
         peerFactory: factory,
       }),
     );
@@ -389,7 +389,8 @@ describe("the ICE list of a build naming a default relay", () => {
     const secret = generateSharedSecret();
     const relay = await relayWithDefaultForRun(
       secret,
-      relayForRun(invitationRelay, () => own),
+      relayForRun(invitationRelay, undefined, () => own),
+      undefined,
       { setting: () => setting, enroll },
     );
     const servers = await buildIceServers(relay, secret, NOW);

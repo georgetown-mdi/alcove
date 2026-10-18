@@ -60,6 +60,7 @@ import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
+import { readRelayRestriction } from "@psi/transport/relayRestriction";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import {
@@ -1280,10 +1281,12 @@ export function useInviterExchange({
       // connection. Destroy the peer on a wait failure so acquisition stays
       // atomic (the lifecycle's teardown only ever covers a returned
       // {peer, conn}).
-      const relayPlan = await relayPlanForRun(minted.sharedSecret, undefined, {
-        signal,
-        onRunNotice,
-      });
+      const relayPlan = await relayPlanForRun(
+        minted.sharedSecret,
+        undefined,
+        readRelayRestriction().allowedRelays,
+        { signal, onRunNotice },
+      );
       const peer = await listenAsInviter(minted.sharedSecret, {
         signal,
         ...relayPlan,

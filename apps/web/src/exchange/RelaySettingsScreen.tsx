@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Alert, Anchor, Button, Group, Stack, Textarea } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
+import { AllowedRelaysField } from "@components/AllowedRelaysField";
+
 import {
   ALLOWED_RELAYS_SCOPE,
   parseAllowedRelayLines,
@@ -100,15 +102,10 @@ function AllowedRelaysControls({
       <p>{ALLOWED_RELAYS_SCOPE}</p>
 
       <Stack gap="md" mt="md">
-        <Textarea
-          label="Allowed relays"
-          description="One host per line, with a port where needed, for example relay.example.org or relay.example.org:443. Each run uses only the relay servers listed here, yours, the invitation's or this site's. The setting covers relay servers only: a run still contacts the STUN servers an invitation names. Leave it empty to use every relay a run lists."
-          autosize
-          minRows={2}
+        <AllowedRelaysField
           value={allowedText}
           error={allowedError}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => onAllowedText(event.currentTarget.value)}
+          onChange={onAllowedText}
         />
       </Stack>
     </>
@@ -156,7 +153,11 @@ export function RelaySettingsScreen({
   const [attempted, setAttempted] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
   const [testTargets, setTestTargets] = useState(() =>
-    relayTestTargets(() => initial, defaultRelay),
+    relayTestTargets(
+      initialRestriction.allowedRelays,
+      () => initial,
+      defaultRelay,
+    ),
   );
   const [savedTurn, setSavedTurn] = useState<ReadonlyArray<string>>(
     initial.kind === "set" ? initial.relay.turn : [],
@@ -179,8 +180,11 @@ export function RelaySettingsScreen({
 
   function refreshTestTargets(turn: ReadonlyArray<string>) {
     setSavedTurn(turn);
-    setSavedAllowed(readRelayRestriction().allowedRelays ?? []);
-    setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
+    const allowedRelays = readRelayRestriction().allowedRelays;
+    setSavedAllowed(allowedRelays ?? []);
+    setTestTargets(
+      relayTestTargets(allowedRelays, readOwnRelaySetting, defaultRelay),
+    );
   }
 
   function save() {

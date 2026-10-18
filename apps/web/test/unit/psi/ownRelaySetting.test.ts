@@ -139,6 +139,8 @@ describe("parseRelayUrlLines", () => {
 });
 
 describe("relayForRun", () => {
+  const NO_RESTRICTION = undefined;
+
   const invitation: RelayLocator = {
     turn: ["turns:partner-relay.example.org:443"],
     stun: [],
@@ -149,7 +151,9 @@ describe("relayForRun", () => {
       turn: ["turns:partner-relay.example.org:443"],
       stun: ["stun:partner-relay.example.org:3478"],
     };
-    expect(relayForRun(named, () => ({ kind: "set", relay: OWN }))).toEqual({
+    expect(
+      relayForRun(named, NO_RESTRICTION, () => ({ kind: "set", relay: OWN })),
+    ).toEqual({
       turn: [...OWN.turn, ...named.turn],
       stun: [...OWN.stun, ...named.stun],
     });
@@ -157,13 +161,20 @@ describe("relayForRun", () => {
 
   test("keeps the own setting's kind the invitation leaves unnamed", () => {
     expect(
-      relayForRun(invitation, () => ({ kind: "set", relay: OWN })),
-    ).toEqual({ turn: [...OWN.turn, ...invitation.turn], stun: OWN.stun });
-    expect(
-      relayForRun({ stun: ["stun:partner-relay.example.org:3478"] }, () => ({
+      relayForRun(invitation, NO_RESTRICTION, () => ({
         kind: "set",
         relay: OWN,
       })),
+    ).toEqual({ turn: [...OWN.turn, ...invitation.turn], stun: OWN.stun });
+    expect(
+      relayForRun(
+        { stun: ["stun:partner-relay.example.org:3478"] },
+        NO_RESTRICTION,
+        () => ({
+          kind: "set",
+          relay: OWN,
+        }),
+      ),
     ).toEqual({
       turn: OWN.turn,
       stun: [...OWN.stun, "stun:partner-relay.example.org:3478"],
@@ -171,28 +182,48 @@ describe("relayForRun", () => {
   });
 
   test("lists a url both name once", () => {
-    expect(relayForRun(OWN, () => ({ kind: "set", relay: OWN }))).toEqual(OWN);
+    expect(
+      relayForRun(OWN, NO_RESTRICTION, () => ({ kind: "set", relay: OWN })),
+    ).toEqual(OWN);
   });
 
   test("uses the invitation's relay alone with no own setting", () => {
-    expect(relayForRun(invitation, () => ({ kind: "none" }))).toEqual(
-      invitation,
-    );
-    expect(relayForRun(invitation, () => ({ kind: "unreadable" }))).toEqual(
-      invitation,
-    );
+    expect(
+      relayForRun(invitation, NO_RESTRICTION, () => ({ kind: "none" })),
+    ).toEqual(invitation);
+    expect(
+      relayForRun(invitation, NO_RESTRICTION, () => ({ kind: "unreadable" })),
+    ).toEqual(invitation);
   });
 
   test("falls back to the own setting", () => {
-    expect(relayForRun(undefined, () => ({ kind: "set", relay: OWN }))).toEqual(
-      OWN,
-    );
+    expect(
+      relayForRun(undefined, NO_RESTRICTION, () => ({
+        kind: "set",
+        relay: OWN,
+      })),
+    ).toEqual(OWN);
+  });
+
+  test("lists only the TURN urls the allowed relays keep, and every STUN url", () => {
+    const named: RelayLocator = {
+      turn: ["turns:partner-relay.example.org:443"],
+      stun: ["stun:partner-relay.example.org:3478"],
+    };
+    expect(
+      relayForRun(named, ["relay.example.org"], () => ({
+        kind: "set",
+        relay: OWN,
+      })),
+    ).toEqual({ turn: OWN.turn, stun: [...OWN.stun, ...named.stun] });
   });
 
   test("is none with neither", () => {
-    expect(relayForRun(undefined, () => ({ kind: "none" }))).toBeUndefined();
     expect(
-      relayForRun(undefined, () => ({ kind: "unreadable" })),
+      relayForRun(undefined, NO_RESTRICTION, () => ({ kind: "none" })),
+    ).toBeUndefined();
+    expect(
+      relayForRun(undefined, NO_RESTRICTION, () => ({ kind: "unreadable" })),
     ).toBeUndefined();
   });
 });

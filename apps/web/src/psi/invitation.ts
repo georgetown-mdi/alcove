@@ -152,6 +152,9 @@ export interface GeneratedInvitation {
   includeMatchingKey?: true;
   /** Where the token sends the partner: the endpoint inside {@link encoded}. */
   connectionEndpoint?: ConnectionEndpoint;
+  /** The relays this exchange may use, as given to the mint; absent where it
+   * restricts none. Never in the token. */
+  allowedRelays?: ReadonlyArray<string>;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -287,11 +290,16 @@ function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
   readDefaultRelay: () => DefaultRelaySetting | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
 ): ConnectionEndpoint {
   if (request.channel === "webrtc" && !("host" in request))
     return invitationWebrtcEndpoint(
       location,
-      invitationRelayWithDefault(relayForRun(), readDefaultRelay()),
+      invitationRelayWithDefault(
+        relayForRun(undefined, allowedRelays),
+        readDefaultRelay(),
+        allowedRelays,
+      ),
     );
   return request;
 }
@@ -373,6 +381,12 @@ export async function generateInvitation(params: {
   /** Reads the build's default relay; {@link defaultRelaySetting} when
    * omitted. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
+  /**
+   * The relays this exchange may use (`turnUrlIsAllowed` in core): a webrtc
+   * locator names no TURN url they leave out. Returned as
+   * {@link GeneratedInvitation.allowedRelays}. Omitted restricts nothing.
+   */
+  allowedRelays?: ReadonlyArray<string>;
 }): Promise<GeneratedInvitation> {
   const {
     inviterName,
@@ -521,6 +535,7 @@ export async function generateInvitation(params: {
     connectionEndpoint,
     location,
     params.defaultRelay ?? defaultRelaySetting,
+    params.allowedRelays,
   );
   const token: InvitationToken = {
     version: "1",
@@ -546,5 +561,8 @@ export async function generateInvitation(params: {
     ...ownColumnsField(includeOwnColumns, linkageTerms),
     ...matchingKeyField(params.includeMatchingKey, linkageTerms),
     connectionEndpoint: resolvedEndpoint,
+    ...(params.allowedRelays !== undefined && {
+      allowedRelays: params.allowedRelays,
+    }),
   };
 }

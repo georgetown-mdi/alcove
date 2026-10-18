@@ -325,6 +325,46 @@ describe("generateInvitation", () => {
       });
     });
 
+    test("names only the TURN urls the allowed relays keep, and returns the list", async () => {
+      const ownRelay = {
+        turn: ["turns:relay.example.org:443?transport=tcp"],
+        stun: ["stun:relay.example.org:3478"],
+      };
+      stubOwnRelay(ownRelay);
+      const allowedRelays = ["turn.example.org"];
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: () => DEFAULT_RELAY,
+        allowedRelays,
+      });
+      expect(
+        (await decodeInvitation(minted.encoded)).connectionEndpoint,
+      ).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: {
+          turn: [DEFAULT_RELAY.turnUrl],
+          stun: ownRelay.stun,
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
+      });
+      expect(minted.allowedRelays).toStrictEqual(allowedRelays);
+    });
+
+    test("returns no list where none is given, and keeps every relay", async () => {
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: () => DEFAULT_RELAY,
+      });
+      expect(minted).not.toHaveProperty("allowedRelays");
+      expect(
+        (await decodeInvitation(minted.encoded)).connectionEndpoint,
+      ).toMatchObject({ relay: { turn: [DEFAULT_RELAY.turnUrl] } });
+    });
+
     test("names no relay when the build names none and this browser has none", async () => {
       expect(await mintedEndpoint(() => undefined)).toStrictEqual(
         WEBRTC_ENDPOINT,

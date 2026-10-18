@@ -11,7 +11,6 @@ import { sanitizeForDisplay, turnUrlIsAllowed } from "@alcove/core";
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import { readOwnRelaySetting } from "./ownRelaySetting";
-import { readRelayRestriction } from "./relayRestriction";
 
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { OwnRelayRead } from "./ownRelaySetting";
@@ -104,10 +103,9 @@ export function turnUrlTransport(url: string): RelayTransport {
  * known here, so it is not listed.
  */
 export function relayTestTargets(
+  allowedRelays: ReadonlyArray<string> | undefined,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
   defaultRelay: () => DefaultRelaySetting | undefined = defaultRelaySetting,
-  allowedRelays: ReadonlyArray<string> | undefined = readRelayRestriction()
-    .allowedRelays,
 ): Array<RelayTestTarget> {
   const own = readOwn();
   const site = defaultRelay();
