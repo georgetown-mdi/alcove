@@ -905,6 +905,7 @@ describe("accept kit invariants", () => {
     // locator that mint held, exactly as the screen does.
     const endpoint = { channel: "filedrop" as const, path: "alcove" };
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: Readable.from(CSV),
       location,
@@ -935,6 +936,7 @@ describe("accept kit invariants", () => {
       retainsFiles: false,
     });
     const minted = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: Readable.from(CSV),
       location,

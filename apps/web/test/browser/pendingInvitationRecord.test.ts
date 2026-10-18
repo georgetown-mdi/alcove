@@ -39,6 +39,7 @@ afterEach(async () => {
 
 async function mint(lifetimeSeconds?: number): Promise<GeneratedInvitation> {
   return generateInvitation({
+    allowedRelays: undefined,
     inviterName: "Dana Okafor",
     file: new File(
       ["first_name,last_name,dob\nAnn,Lee,1990-01-02\n"],

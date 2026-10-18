@@ -203,6 +203,11 @@ export interface InviterScreenState {
   /** The operator's receipt-signing and retention choices for the same run, held
    * beside the three drafts above for the same reasons. */
   receipts: ReceiptsDraft;
+  /** The Allowed relays field in the review step's browser transport card, as
+   * typed, one entry per line. It starts empty: nothing pre-fills it. Creating
+   * the invitation commits its parse, which the minted invitation holds as
+   * `allowedRelays` for the run and a save as a recurring exchange. */
+  inviterAllowedRelays: string;
   /** How this party's own file is read and its own result file written. Held
    * here rather than beside the file step's controls because a loaded
    * configuration states it: a read that the seal refuses must leave it where
@@ -305,6 +310,7 @@ export const INVITER_SCREEN_INITIAL: InviterScreenState = {
   connectionTuning: CONNECTION_TUNING_DEFAULT,
   runDiagnostics: RUN_DIAGNOSTICS_DEFAULT,
   receipts: RECEIPTS_DEFAULT,
+  inviterAllowedRelays: "",
   delimiterChoice: INITIAL_CSV_DELIMITER_CHOICE,
   demoActive: false,
   manageOffer: MANAGE_OFFER_IDLE,
@@ -430,6 +436,8 @@ export type InviterScreenAction =
   | { type: "connection-tuning-chosen"; draft: ConnectionTuningDraft }
   | { type: "run-diagnostics-chosen"; draft: RunDiagnosticsDraft }
   | { type: "receipts-chosen"; draft: ReceiptsDraft }
+  /** The review step's Allowed relays field was typed in. */
+  | { type: "allowed-relays-changed"; value: string }
   /** The field delimiter this party's file is read by was chosen. The screen
    * re-reads the file by it; nothing else here depends on the read. */
   | { type: "delimiter-chosen"; choice: CsvDelimiterChoice }
@@ -773,6 +781,8 @@ function applyAction(
       return { ...state, runDiagnostics: action.draft };
     case "receipts-chosen":
       return { ...state, receipts: action.draft };
+    case "allowed-relays-changed":
+      return { ...state, inviterAllowedRelays: action.value };
     case "delimiter-chosen":
       return { ...state, delimiterChoice: action.choice };
     case "expert-mode-chosen":

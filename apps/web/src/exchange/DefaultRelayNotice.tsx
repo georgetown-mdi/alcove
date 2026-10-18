@@ -15,7 +15,7 @@ import type { DefaultRelaySetting } from "@utils/clientConfig";
  */
 export const DEFAULT_RELAY_NOTICE_LEAD =
   "Exchanges that run in your browser on this site use the site's relay " +
-  "server.";
+  "server, unless an exchange's allowed relays leave it out.";
 
 /**
  * What the build's default relay lets its operator learn, shown where a party

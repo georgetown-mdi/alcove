@@ -22,6 +22,9 @@ import { isConsoleBuild } from "@utils/clientConfig";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
+import { AllowedRelaysField } from "@components/AllowedRelaysField";
+import { CREATED_INVITATION_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
+
 import {
   LIFETIME_CHOICES,
   RESULTS_DIRECTION_LABELS,
@@ -167,6 +170,7 @@ export function ReviewCreateSection({
   onSaveConfiguration,
   onReopenConfiguration,
   conversion,
+  allowedRelays,
 }: {
   editor: InviterEditor;
   /** Whether the keys are an opened configuration's, as Matching keys is told
@@ -272,6 +276,19 @@ export function ReviewCreateSection({
    * offered here where it is what releases the withheld run: the statement of
    * what it replaces (`conversionStatement`), and the action. */
   conversion?: { statement: string; onConvert: () => void };
+  /** The hosted browser exchange's Allowed relays, shown in the browser
+   * transport card: the text the field shows, its error, whether it is fixed
+   * on the list a created invitation took, and whether that text restricts
+   * the relays, which brings the statement of what the list decides. A line
+   * the field refuses holds the create. Absent where the field is not
+   * offered. */
+  allowedRelays?: {
+    value: string;
+    error: string | undefined;
+    fixed: boolean;
+    restricts: boolean;
+    onChange: (text: string) => void;
+  };
 }) {
   const consoleBuild = isConsoleBuild();
   const online = useOnlineStatus();
@@ -422,11 +439,18 @@ export function ReviewCreateSection({
   // is no promise the partner is there (see @utils/networkStatus).
   const offlineBlocked =
     !online && transportRunMode(available, transport) !== "save-file";
+  // A list the run would not take is a form problem here, before the
+  // invitation names any relay.
+  const allowedRelaysBlocked =
+    transport === "browser" &&
+    allowedRelays !== undefined &&
+    allowedRelays.error !== undefined;
   const createStatus = inviterCreateStatus({
     runWithheld,
     offlineBlocked,
     connectionIncomplete,
     coordinationServerHeld,
+    allowedRelaysBlocked,
     splitDirectoryProblem,
     exchangeFilesBlocked,
     connectionTuningBlocked,
@@ -502,7 +526,28 @@ export function ReviewCreateSection({
             label={browserLabel}
             description={browserDescription}
           />
-          {transport === "browser" && makesInvitation && <DefaultRelayNotice />}
+          {transport === "browser" && makesInvitation && (
+            <>
+              <DefaultRelayNotice />
+              {allowedRelays !== undefined && (
+                <>
+                  <AllowedRelaysField
+                    value={allowedRelays.value}
+                    error={allowedRelays.error}
+                    disabled={allowedRelays.fixed}
+                    liveError
+                    onChange={allowedRelays.onChange}
+                    mt="md"
+                  />
+                  {allowedRelays.restricts && (
+                    <Text size="sm" mt="xs">
+                      {CREATED_INVITATION_ALLOWED_RELAYS_SCOPE}
+                    </Text>
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
         <div
           className={

@@ -153,7 +153,8 @@ export interface GeneratedInvitation {
   /** Where the token sends the partner: the endpoint inside {@link encoded}. */
   connectionEndpoint?: ConnectionEndpoint;
   /** The relays this exchange may use, as given to the mint; absent where it
-   * restricts none. Never in the token. */
+   * restricts none. The run and a save as a recurring exchange read them from
+   * here. Never in the token. */
   allowedRelays?: ReadonlyArray<string>;
 }
 
@@ -384,9 +385,10 @@ export async function generateInvitation(params: {
   /**
    * The relays this exchange may use (`turnUrlIsAllowed` in core): a webrtc
    * locator names no TURN url they leave out. Returned as
-   * {@link GeneratedInvitation.allowedRelays}. Omitted restricts nothing.
+   * {@link GeneratedInvitation.allowedRelays}. `undefined` restricts nothing.
+   * Required, so a caller holding a list cannot drop it by leaving it out.
    */
-  allowedRelays?: ReadonlyArray<string>;
+  allowedRelays: ReadonlyArray<string> | undefined;
 }): Promise<GeneratedInvitation> {
   const {
     inviterName,

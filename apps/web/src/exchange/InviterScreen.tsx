@@ -101,7 +101,12 @@ import { inviterLedgerRows, ledgerOutcomeOf } from "@psi/ledger";
 import { matchingKeyWithheldReason } from "@psi/matchingKeyModel";
 import { outputForDirection } from "@psi/authoring/advancedInvite";
 import { ownColumnsActionable } from "@psi/ownColumnsModel";
-import { readRelayRestriction } from "@psi/transport/relayRestriction";
+
+import {
+  allowedRelayLinesError,
+  allowedRelaysText,
+  parseExchangeAllowedRelayLines,
+} from "@psi/transport/relayRestriction";
 
 import {
   availableTransports,
@@ -391,6 +396,7 @@ export function InviterScreen() {
     expertMode,
     intakeAlert,
     invitation,
+    inviterAllowedRelays,
     lastSpineStep,
     loadedConfiguration,
     loadedEnforcementRecords,
@@ -602,6 +608,15 @@ export function InviterScreen() {
   // console filedrop as a save-a-file card, unlike the raw driver mapping): the
   // create branch and the live run both read it.
   const chosenRunMode = transportRunMode(available, transport);
+  // The browser exchange's Allowed relays, set in its transport card on the
+  // hosted build. Creating the invitation commits their parse: the invitation
+  // names only the relays they keep and holds the list, which the run and a
+  // save as a recurring exchange read. Once it exists the field is fixed on
+  // that list.
+  const allowedRelaysOffered = !isConsoleBuild() && transport === "browser";
+  const allowedRelayLines =
+    parseExchangeAllowedRelayLines(inviterAllowedRelays);
+  const allowedRelaysFixed = invitation !== undefined;
   // A console run of the opened configuration continues the exchange it set
   // up, under the key file beside it on the server, so it sends no invitation.
   const continuesOpenedExchange =
@@ -858,7 +873,7 @@ export function InviterScreen() {
               ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
             },
             connection,
-            allowedRelays: readRelayRestriction().allowedRelays,
+            allowedRelays: invitation.allowedRelays,
             rotatedSecret,
             choices,
           },
@@ -1251,6 +1266,9 @@ export function InviterScreen() {
     if (spineProblems(editor).length > 0 || coverageProblems.length > 0) return;
     const validation = reviewValidation(editor);
     if (!validation.canGenerate || validation.terms === undefined) return;
+    // The create gate holds a refused Allowed relays line; repeated here so no
+    // invitation names relays the field does not show.
+    if (allowedRelaysOffered && !allowedRelayLines.ok) return;
     // A save-file run mode seals the terms exactly as the live path does but
     // mints NOTHING here: the code and the config YAML are minted together on
     // the save surface, from the authored locator. Seal, discard any prior
@@ -1406,7 +1424,10 @@ export function InviterScreen() {
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
         retainsFiles: declaresRetainedFiles,
-        allowedRelays: readRelayRestriction().allowedRelays,
+        allowedRelays:
+          allowedRelaysOffered && allowedRelayLines.ok
+            ? allowedRelayLines.entries
+            : undefined,
       });
       // The bilateral file-handling choices are captured beside the locator:
       // the lockless rendezvous from the options block the run itself holds
@@ -1513,7 +1534,7 @@ export function InviterScreen() {
         includeMatchingKey: editor.draft.includeMatchingKey === true,
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         connectionEndpoint: endpointRequestFor(cliTransport, saveFields),
-        allowedRelays: readRelayRestriction().allowedRelays,
+        allowedRelays: undefined,
       });
       // Mint the config from the SAME invitation the code came from; a
       // ZodError here (a malformed locator the endpoint schema also rejects)
@@ -1956,6 +1977,31 @@ export function InviterScreen() {
                 }
                 onCreate={() => void createInvitation()}
                 onNavigate={goTo}
+                {...(allowedRelaysOffered
+                  ? {
+                      allowedRelays: allowedRelaysFixed
+                        ? {
+                            value: allowedRelaysText(invitation.allowedRelays),
+                            error: undefined,
+                            fixed: true,
+                            restricts: invitation.allowedRelays !== undefined,
+                            onChange: () => undefined,
+                          }
+                        : {
+                            value: inviterAllowedRelays,
+                            error: allowedRelayLinesError(allowedRelayLines),
+                            fixed: false,
+                            restricts:
+                              allowedRelayLines.ok &&
+                              allowedRelayLines.entries !== undefined,
+                            onChange: (value: string) =>
+                              dispatch({
+                                type: "allowed-relays-changed",
+                                value,
+                              }),
+                          },
+                    }
+                  : {})}
               />
               {createAlert !== undefined && (
                 <Alert

@@ -1,26 +1,21 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { generateSharedSecret } from "@alcove/core";
 
+import {
+  ALLOWED_RELAYS_REMEDY,
+  allowedRelaysRunNotice,
+  parseExchangeAllowedRelayLines,
+} from "@psi/transport/relayRestriction";
 import {
   DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   invitationRelayWithDefault,
   relayWithDefaultForRun,
 } from "@psi/transport/defaultRelay";
-import {
-  MAX_ALLOWED_RELAYS,
-  allowedRelaysRunNotice,
-  parseAllowedRelayLines,
-  readRelayRestriction,
-  writeRelayRestriction,
-} from "@psi/transport/relayRestriction";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
-import { relayTestTargets } from "@psi/transport/relayTest";
 
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
-
-const STORAGE_KEY = "alcove-relay-restriction";
 
 const OWN_URL = "turns:own.example.org:443?transport=tcp";
 const PARTNER_URL = "turn:partner.example.net:3478?transport=udp";
@@ -34,81 +29,10 @@ const readOwn = (): OwnRelayRead => ({
   relay: { turn: [OWN_URL], stun: ["stun:own.example.org:3478"] },
 });
 
-function stubStorage(): Map<string, string> {
-  const values = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => void values.set(key, value),
-    removeItem: (key: string) => void values.delete(key),
-  });
-  return values;
-}
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-describe("the stored relay restriction", () => {
-  test("reads back what was written, and restricts nothing when none is stored", () => {
-    const values = stubStorage();
-    expect(readRelayRestriction()).toEqual({});
-    writeRelayRestriction({
-      allowedRelays: ["relay.example.org", "backup.example.org:443"],
-    });
-    expect(JSON.parse(values.get(STORAGE_KEY) ?? "")).toStrictEqual({
-      version: 1,
-      allowedRelays: ["relay.example.org", "backup.example.org:443"],
-    });
-    expect(readRelayRestriction()).toEqual({
-      allowedRelays: ["relay.example.org", "backup.example.org:443"],
-    });
-  });
-
-  test("a restriction of nothing removes the stored value", () => {
-    const values = stubStorage();
-    writeRelayRestriction({ allowedRelays: ["relay.example.org"] });
-    expect(values.has(STORAGE_KEY)).toBe(true);
-    writeRelayRestriction({});
-    expect(values.has(STORAGE_KEY)).toBe(false);
-  });
-
-  test("an entry not in its normalized form is refused on write", () => {
-    stubStorage();
-    expect(() =>
-      writeRelayRestriction({ allowedRelays: ["Relay.Example.org"] }),
-    ).toThrow();
-  });
-
-  test.each([
-    [
-      "a version this build does not know",
-      { version: 2, allowedRelays: ["relay.example.org"] },
-    ],
-    [
-      "a field this build does not know",
-      { version: 1, allowedRelays: ["relay.example.org"], other: true },
-    ],
-    [
-      "an entry not in its normalized form",
-      { version: 1, allowedRelays: ["turns:relay.example.org"] },
-    ],
-  ])("a stored value holding %s is treated as none saved", (_name, value) => {
-    const values = stubStorage();
-    values.set(STORAGE_KEY, JSON.stringify(value));
-    expect(readRelayRestriction()).toEqual({});
-  });
-
-  test("a stored value that is not JSON is treated as none saved", () => {
-    const values = stubStorage();
-    values.set(STORAGE_KEY, "{not json");
-    expect(readRelayRestriction()).toEqual({});
-  });
-});
-
-describe("parseAllowedRelayLines", () => {
+describe("parseExchangeAllowedRelayLines", () => {
   test("normalizes each entry as core's allowed_relays does, once each", () => {
     expect(
-      parseAllowedRelayLines(
+      parseExchangeAllowedRelayLines(
         " Relay.Example.ORG. \n\nrelay.example.org\n[2001:DB8::1]:3478\n",
       ),
     ).toEqual({
@@ -118,11 +42,11 @@ describe("parseAllowedRelayLines", () => {
   });
 
   test("blank text leaves the setting unset", () => {
-    expect(parseAllowedRelayLines(" \n")).toEqual({ ok: true });
+    expect(parseExchangeAllowedRelayLines(" \n")).toEqual({ ok: true });
   });
 
   test("names each refused line and the form", () => {
-    const parsed = parseAllowedRelayLines(
+    const parsed = parseExchangeAllowedRelayLines(
       "relay.example.org\nturns:relay.example.org:443\nrelay.example.org:0",
     );
     expect(parsed.ok).toBe(false);
@@ -133,17 +57,27 @@ describe("parseAllowedRelayLines", () => {
     );
   });
 
-  test("refuses more entries than the bound", () => {
-    const text = Array.from(
-      { length: MAX_ALLOWED_RELAYS + 1 },
+  test("bounds neither how many entries nor how long one is, as core does not", () => {
+    const hosts = Array.from(
+      { length: 20 },
       (_unused, index) => `relay-${String(index)}.example.org`,
-    ).join("\n");
-    expect(parseAllowedRelayLines(text)).toEqual({
-      ok: false,
-      problems: [
-        { message: `enter at most ${String(MAX_ALLOWED_RELAYS)} relays` },
-      ],
-    });
+    );
+    const long = `${"a".repeat(2000)}.example.org`;
+    expect(parseExchangeAllowedRelayLines([...hosts, long].join("\n"))).toEqual(
+      { ok: true, entries: [...hosts, long] },
+    );
+  });
+});
+
+describe("the remedy for a run that left relays out", () => {
+  test("names where an exchange's own list is set, and no browser-wide page", () => {
+    expect(ALLOWED_RELAYS_REMEDY).toBe(
+      "To let a run try a relay left out, add its host to the exchange's " +
+        "Allowed relays, or remove them. A saved exchange sets them on its " +
+        "own page; any other exchange sets them on its review, before the " +
+        "invitation is created or accepted.",
+    );
+    expect(ALLOWED_RELAYS_REMEDY).not.toContain("Relay server page");
   });
 });
 
@@ -188,44 +122,9 @@ describe("the relays a browser run lists under its allowed relays", () => {
     ).toBe(relay);
     expect(enroll).not.toHaveBeenCalled();
   });
-
-  test("the relay test contacts only the relays kept", () => {
-    expect(
-      relayTestTargets(["site.example.com"], readOwn, () => SITE).map(
-        (target) => target.url,
-      ),
-    ).toEqual([SITE.turnUrl]);
-  });
 });
 
 describe("relayPlanForRun", () => {
-  test("a stored restriction this build cannot read lets the run proceed with no restriction", async () => {
-    const values = stubStorage();
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({ version: 2, allowedRelays: ["other.example"] }),
-    );
-    const enroll = vi.fn(() =>
-      Promise.resolve({ kind: "enrolled" as const, lapsesAt: "x" }),
-    );
-    const onRunNotice = vi.fn();
-    const plan = await relayPlanForRun(
-      generateSharedSecret(),
-      { turn: [PARTNER_URL] },
-      readRelayRestriction().allowedRelays,
-      { readOwn, setting: () => SITE, enroll, onRunNotice },
-    );
-    expect(plan).toEqual({
-      relay: {
-        turn: [OWN_URL, PARTNER_URL, SITE.turnUrl],
-        stun: ["stun:own.example.org:3478"],
-      },
-      relaysLeftOut: [],
-    });
-    expect(enroll).toHaveBeenCalledOnce();
-    expect(onRunNotice).not.toHaveBeenCalled();
-  });
-
   test("keeps the relays named and says which it kept and left out", async () => {
     const onRunNotice = vi.fn();
     const plan = await relayPlanForRun(

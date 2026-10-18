@@ -101,6 +101,7 @@ describe("the browser file entry the inviter and acceptor seats share", () => {
 describe("the invitation mint's own re-parse", () => {
   test("mints terms and a payload the partner reads under the stripped name", async () => {
     const { encoded, columns, rawRows } = await generateInvitation({
+      allowedRelays: undefined,
       inviterName: "County Health Dept",
       file: csvStream(),
       location: {

@@ -37,7 +37,7 @@ import {
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
 
 import {
-  ALLOWED_RELAYS_SCOPE,
+  CREATED_INVITATION_ALLOWED_RELAYS_SCOPE,
   EXCHANGE_ALLOWED_RELAYS_SCOPE,
 } from "@psi/transport/relayRestriction";
 import {
@@ -1620,7 +1620,9 @@ describe("managed exchange detail document settings", () => {
     await expect
       .element(page.getByText(EXCHANGE_ALLOWED_RELAYS_SCOPE))
       .toBeInTheDocument();
-    expect(page.getByText(ALLOWED_RELAYS_SCOPE).query()).toBeNull();
+    expect(
+      page.getByText(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE).query(),
+    ).toBeNull();
 
     await field.fill("Relay.Example.org\nbackup.example.org:443");
     await page.getByRole("button", { name: "Save settings" }).click();

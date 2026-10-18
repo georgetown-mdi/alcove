@@ -171,9 +171,8 @@ export interface ManagedDepositInputs {
   /** The locator the document's connection block is composed from. */
   connection: WebRTCExchangeLocator;
   /** The list the exchange's own run used, which the record keeps as its own:
-   * the acceptor's committed review list, or for an exchange this browser
-   * created, the browser's Allowed relays at the save; `undefined` where none
-   * were set. */
+   * the list committed on the review of the invitation this browser accepted
+   * or created; `undefined` where none was set. */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** The shared secret the completed run's handshake rotated to, stored as the
    * record's live secret. */

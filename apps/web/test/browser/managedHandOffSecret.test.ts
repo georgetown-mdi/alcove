@@ -155,6 +155,46 @@ describe("the managed record a one-shot hand-off deposits", () => {
     expect(record.sharedSecret).not.toBe(invitationSecret);
   });
 
+  test("the inviter's record keeps the Allowed relays set on its review", async () => {
+    app.render(createElement(InviterScreen));
+    await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
+    const fileInput = document.querySelector('input[type="file"]');
+    await userEvent.upload(
+      page.elementLocator(fileInput as HTMLElement),
+      new File(
+        [
+          "client_id,first_name,last_name,dob\n" +
+            "1,Ann,Lee,01/02/1990\n2,Bo,Ray,03/04/1985\n",
+        ],
+        "clients.csv",
+        { type: "text/csv" },
+      ),
+    );
+    await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Continue to matching & sharing" })
+      .click();
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
+    await userEvent.fill(
+      page.getByRole("textbox", { name: "Allowed relays" }),
+      "Review.Example.org\nbackup.example.org:443",
+    );
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    await completeRun(generateSharedSecret());
+    const record = await saveAndReadRecord();
+
+    expect(record.side).toBe("inviter");
+    expect(managedAllowedRelays(record.exchangeFile)).toEqual([
+      "review.example.org",
+      "backup.example.org:443",
+    ]);
+  });
+
   test("the acceptor's record holds the run's rotated secret, not the invitation's", async () => {
     const token = acceptorToken();
     window.location.hash = await encodeInvitation(token);

@@ -111,6 +111,7 @@ export async function inviteAsWebParty(params: {
   const { identity, inputCsvPath, dropDir } = params;
   const { rawRows, columns } = await readCsv(inputCsvPath);
   const minted = await generateInvitation({
+    allowedRelays: undefined,
     inviterName: identity,
     profiledColumns: columns,
     location: {

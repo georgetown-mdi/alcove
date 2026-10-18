@@ -3225,7 +3225,7 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
   }
 
-  test("starts empty whatever this browser's Relay server page holds", async () => {
+  test("starts empty whatever an earlier build stored for this browser", async () => {
     window.localStorage.setItem(
       RESTRICTION_KEY,
       JSON.stringify({ version: 1, allowedRelays: ["partner.example.net"] }),

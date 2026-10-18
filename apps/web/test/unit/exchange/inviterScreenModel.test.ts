@@ -322,6 +322,36 @@ describe("whether the mint may proceed", () => {
     expect(state.saveAlert).toBeUndefined();
   });
 
+  test("the review's Allowed relays start empty and hold the text typed, through a mint and a start-over", () => {
+    expect(INVITER_SCREEN_INITIAL.inviterAllowedRelays).toBe("");
+    const seeded = withFile("Dana Okafor", {
+      type: "allowed-relays-changed",
+      value: "Relay.Example.org\nbackup.example.org:443",
+    });
+    if (seeded.editor === undefined)
+      throw new Error("the fixture read no file");
+    expect(seeded.inviterAllowedRelays).toBe(
+      "Relay.Example.org\nbackup.example.org:443",
+    );
+    const minted = inviterScreenReducer(seeded, {
+      type: "invitation-minted",
+      editor: seeded.editor,
+      invitation: {
+        ...mintedFrom(seeded),
+        allowedRelays: ["relay.example.org", "backup.example.org:443"],
+      },
+    });
+    expect(minted.invitation?.allowedRelays).toEqual([
+      "relay.example.org",
+      "backup.example.org:443",
+    ]);
+    const restarted = inviterScreenReducer(minted, { type: "started-over" });
+    expect(restarted.invitation).toBeUndefined();
+    expect(restarted.inviterAllowedRelays).toBe(
+      "Relay.Example.org\nbackup.example.org:443",
+    );
+  });
+
   test("starting over reopens the terms and discards what was minted", () => {
     const seeded = withFile();
     if (seeded.editor === undefined)

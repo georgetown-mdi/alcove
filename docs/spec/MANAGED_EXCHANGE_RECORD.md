@@ -515,9 +515,8 @@ configuration-only one alike, without a re-invite.
   allowed relays drops the field; a changed delimiter is written as the value
   chosen, and changed allowed relays as the entries typed, each normalized as
   core normalizes an entry.
-- **Allowed relays.** Core's entry rule is their only bound: the count and
-  length bounds of the browser's stored Allowed relays do not apply to a
-  record. An empty list keeps no TURN url, so the record's runs use no relay;
+- **Allowed relays.** Core's entry rule is their only bound. An empty list
+  keeps no TURN url, so the record's runs use no relay;
   the editor shows it as an empty field with a line stating so, a save leaves
   it while the field stays empty, and entered relays replace it. While the
   document holds a list, empty or not, the editor offers a control that
@@ -537,11 +536,9 @@ configuration-only one alike, without a re-invite.
   `includeOwnColumns` and `includeMatchingKey`, and writes
   `retentionDisposition` into the exchange record it files. The command-line export and the export artifact hold the edited
   document.
-  Each run, and each re-invite, applies the record's `allowedRelays` in place
-  of the browser's Allowed relays on its Relay server page, as
+  Each run, and each re-invite, applies the record's `allowedRelays`, as
   [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator) states the
-  setting. A record that holds no `allowedRelays` applies no restriction,
-  whatever the browser's Allowed relays hold.
+  setting. A record that holds no `allowedRelays` applies no restriction.
 - **A changed delimiter re-reads the file.** Before a changed delimiter is saved,
   the input file in the stored `workingDirectoryHandle` is read with it and the
   columns it yields are graded against the agreed terms, as the run-start input
@@ -554,8 +551,7 @@ configuration-only one alike, without a re-invite.
 
 At setup the offer to save an exchange as recurring authors `retentionDisposition`
 beside the label and the max-age policy; `allowedRelays` starts as the
-Allowed relays set on the review of an invitation this party accepted, or as
-the browser's Allowed relays on its Relay server page at the save of one it
+Allowed relays set on the review of the invitation this party accepted or
 created, absent where none are set; the other three come from the setup's own
 file and columns steps.
 
