@@ -449,13 +449,19 @@ describe("the check driven end to end", () => {
     (_moved, from, to) => {
       const shipped = readRoot(RULE_SET_SOURCE);
       expect(shipped).toContain(from);
+      const version = /DEFAULT_LINKAGE_KEY_SET_VERSION = "([^"]+)"/.exec(
+        shipped,
+      )?.[1];
+      expect(version).toBeDefined();
       const root = fixtureTree({
         source: shipped.replace(from, to),
         ledgerText: readRoot(PINS_FILE),
       });
       const { status, stderr } = runCheck(root);
       expect(status).toBe(1);
-      expect(stderr).toContain("has moved under precision-ranked-rules 2.0.0");
+      expect(stderr).toContain(
+        `has moved under precision-ranked-rules ${version}`,
+      );
     },
   );
 
