@@ -24,6 +24,7 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
+  LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
@@ -66,6 +67,12 @@ import type {
 function yesNo(value: boolean): string {
   return value ? "Yes" : "No";
 }
+
+/** The line under the matched fields, outside the collapsed key list, where
+ * any key is marked less certain. */
+export const LESS_CERTAIN_TERMS_LINE =
+  "Some of the matching keys are marked less certain. Open Matching " +
+  "strategies to see which.";
 
 /** The count phrase every payload-column notice states its magnitude with ("1 data
  * column", "3 data columns"). Shared so the outbound-send, egress-request, and
@@ -282,12 +289,11 @@ function DeclaredColumnList({ columns }: { columns: Array<string> }) {
  */
 function MatchKeyDisclosure({
   summary,
-  acceptor,
+  lessCertainRemedy,
 }: {
   summary: InvitationKeySummary;
-  /** Whether the reader is accepting the invitation, whose explanation of a
-   * less certain key adds the remedy. */
-  acceptor: boolean;
+  /** What the reader does to leave out a key marked less certain. */
+  lessCertainRemedy: string;
 }) {
   const [open, setOpen] = useState(false);
   // One component instance per key, so useId is called once per widget (never
@@ -331,7 +337,9 @@ function MatchKeyDisclosure({
         </Group>
       </UnstyledButton>
       {summary.lessCertain ? (
-        <LessCertainInfo acceptor={acceptor}>{subline}</LessCertainInfo>
+        <LessCertainInfo keyName={summary.name} remedy={lessCertainRemedy}>
+          {subline}
+        </LessCertainInfo>
       ) : (
         subline
       )}
@@ -481,6 +489,7 @@ export function InvitationTerms({
   headingRef,
   framing,
   allowedRelays,
+  lessCertainRemedy = LESS_CERTAIN_KEY_COPY.acceptorRemedy,
 }: {
   linkageTerms: LinkageTerms;
   /** The invitation's expiry instant (ISO 8601), if it has one. */
@@ -561,6 +570,11 @@ export function InvitationTerms({
    * invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
    * restricts nothing and marks nothing. Applies to a hosted run only. */
   allowedRelays?: ReadonlyArray<string>;
+  /** What the reader of this screen does to leave out a key marked less
+   * certain, shown after the reason for the mark: by default the accepting
+   * party's, who takes the invitation's keys whole. The console's quick
+   * exchange confirm passes its own. Fixed copy, never partner text. */
+  lessCertainRemedy?: string;
 }) {
   const summary = summarizeInvitation({
     linkageTerms,
@@ -1311,6 +1325,13 @@ export function InvitationTerms({
               Matching on {summary.matchedFields.join(", ")}.
             </Text>
           )}
+          {/* Outside the collapse too, so a reader who never opens the list
+              still learns the terms include a key marked less certain. */}
+          {summary.linkageKeys.some((key) => key.lessCertain) && (
+            <LessCertainInfo remedy={lessCertainRemedy}>
+              <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
+            </LessCertainInfo>
+          )}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's
               flow content) so AT announces the set; keyed by each key's stable id
@@ -1324,7 +1345,7 @@ export function InvitationTerms({
                   <MatchKeyDisclosure
                     key={key.id}
                     summary={key}
-                    acceptor={perspective === "review"}
+                    lessCertainRemedy={lessCertainRemedy}
                   />
                 ))}
               </Stack>

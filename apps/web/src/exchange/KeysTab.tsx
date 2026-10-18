@@ -40,6 +40,7 @@ import { TermsImportExport } from "@components/TermsImportExport";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
@@ -282,7 +283,16 @@ export function KeysTab({
           return (
             <li key={entry.key.name}>
               {lessCertain ? (
-                <LessCertainInfo>{checkbox}</LessCertainInfo>
+                <LessCertainInfo
+                  keyName={displayName}
+                  remedy={
+                    keysAuthored && keysFromOpenedConfiguration
+                      ? MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration
+                      : MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox
+                  }
+                >
+                  {checkbox}
+                </LessCertainInfo>
               ) : (
                 checkbox
               )}

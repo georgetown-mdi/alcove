@@ -29,12 +29,14 @@ import { page, userEvent } from "vitest/browser";
 const DEFERRED_COMMIT_TIMEOUT_MS = 10_000;
 
 /**
- * A disclosure's toggle button, located by the accessible name it holds. A
- * toggle whose name includes the panel's collapsed summary beside its label is
- * matched by a pattern for the label part.
+ * A disclosure's toggle button, located by the whole accessible name it holds,
+ * so a button whose name only contains it -- the less certain info button
+ * naming its key -- is not matched. A toggle whose name includes the panel's
+ * collapsed summary beside its label is matched by a pattern for the label
+ * part.
  */
 export function disclosureToggle(name: string | RegExp) {
-  return page.getByRole("button", { name });
+  return page.getByRole("button", { name, exact: typeof name === "string" });
 }
 
 // The always-mounted wrapper a toggle's aria-controls points at, resolved the way

@@ -27,8 +27,12 @@ import {
   unshownDeclaredNamesLine,
 } from "@alcove/core";
 
-import { InvitationTerms } from "@components/InvitationTerms";
-import { LESS_CERTAIN_INFO_LABEL } from "@components/LessCertainInfo";
+import {
+  InvitationTerms,
+  LESS_CERTAIN_TERMS_LINE,
+} from "@components/InvitationTerms";
+import { DIRECT_LESS_CERTAIN_REMEDY } from "@exchange/directExchangeModel";
+import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
 import {
   BEL,
@@ -169,11 +173,15 @@ async function renderTerms(
     headingOrder?: 1 | 2 | 3;
     /** The accepting party's own `deduplicate`, rendering the seat's control. */
     acceptorDeduplicate?: boolean;
+    lessCertainRemedy?: string;
   },
 ) {
   app.render(
     createElement(InvitationTerms, {
       linkageTerms,
+      ...(options?.lessCertainRemedy !== undefined
+        ? { lessCertainRemedy: options.lessCertainRemedy }
+        : {}),
       ...(options?.acceptorDeduplicate !== undefined
         ? {
             acceptorDeduplicate: {
@@ -722,16 +730,42 @@ describe("InvitationTerms: a key on a name and a date of birth alone is marked l
     ],
   };
 
-  test.each([
+  // The accepting party's remedy by default; the quick exchange confirm, the
+  // one "proposing" caller, passes its own.
+  const remedyCases = [
     [
       "review",
-      `${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_KEY_COPY.acceptorRemedy}`,
+      undefined,
+      "To leave them out, ask your partner for an invitation without them.",
     ],
-    ["proposing", LESS_CERTAIN_KEY_COPY.explanation],
-  ] as const)(
-    "on the %s screen the mark is in the key's description, and a keyboard-reachable button states why",
-    async (perspective, explained) => {
-      await renderTerms(lessCertainTerms, { perspective });
+    [
+      "proposing",
+      DIRECT_LESS_CERTAIN_REMEDY,
+      "A quick exchange always uses these keys. To leave them out, create " +
+        "an invitation instead and turn them off on Customize > Matching keys.",
+    ],
+  ] as const;
+
+  /** The panel an info button controls, and its explanation as a locator. */
+  function infoPanel(name: string, explained: string) {
+    const info = page.getByRole("button", { name, exact: true });
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    return {
+      info,
+      panel,
+      explanation: page.elementLocator(panel).getByText(explained),
+    };
+  }
+
+  test.each(remedyCases)(
+    "on the %s screen the mark is in the key's description, and a button named for the key states why and the remedy",
+    async (perspective, lessCertainRemedy, remedy) => {
+      await renderTerms(lessCertainTerms, {
+        perspective,
+        ...(lessCertainRemedy !== undefined ? { lessCertainRemedy } : {}),
+      });
       await userEvent.click(toggle("Matching strategies"));
       await expect.element(toggle("people")).toBeInTheDocument();
 
@@ -746,28 +780,60 @@ describe("InvitationTerms: a key on a name and a date of birth alone is marked l
           "Matches on SSN - last name - date of birth",
         );
 
-      const info = page.getByRole("button", { name: LESS_CERTAIN_INFO_LABEL });
-      expect(info.elements()).toHaveLength(1);
+      const name = lessCertainInfoLabel("people");
+      expect(name).toBe("Why people is less certain");
+      expect(
+        page.getByRole("button", { name, exact: true }).elements(),
+      ).toHaveLength(1);
+      const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`;
+      const { info, panel, explanation } = infoPanel(name, explained);
       await expect.element(info).toHaveAttribute("aria-expanded", "false");
-      const panel = document.getElementById(
-        info.element().getAttribute("aria-controls") ?? "",
-      )!;
       await expect.poll(() => panel.textContent).toBe(explained);
-      const explanation = page.elementLocator(panel).getByText(explained);
       await expect.element(explanation).not.toBeVisible();
 
-      await activate(namedControl("button", LESS_CERTAIN_INFO_LABEL));
+      await activate(namedControl("button", name));
       await expect.element(info).toHaveAttribute("aria-expanded", "true");
       await expect.element(explanation).toBeVisible();
     },
   );
 
-  test("a key with any other identifying field has no mark and no button", async () => {
+  test.each(remedyCases)(
+    "on the %s screen a line outside the collapsed key list says some keys are less certain, with its own button",
+    async (perspective, lessCertainRemedy, remedy) => {
+      await renderTerms(lessCertainTerms, {
+        perspective,
+        ...(lessCertainRemedy !== undefined ? { lessCertainRemedy } : {}),
+      });
+      await expect
+        .element(toggle("Matching strategies"))
+        .toHaveAttribute("aria-expanded", "false");
+      expect(LESS_CERTAIN_TERMS_LINE).toBe(
+        "Some of the matching keys are marked less certain. Open Matching " +
+          "strategies to see which.",
+      );
+      await expect
+        .element(page.getByText(LESS_CERTAIN_TERMS_LINE))
+        .toBeVisible();
+
+      const name = lessCertainInfoLabel();
+      expect(name).toBe("Why some keys are less certain");
+      const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`;
+      const { info, panel, explanation } = infoPanel(name, explained);
+      await expect.element(info).toBeVisible();
+      await expect.poll(() => panel.textContent).toBe(explained);
+      await expect.element(explanation).not.toBeVisible();
+      await activate(namedControl("button", name));
+      await expect.element(info).toHaveAttribute("aria-expanded", "true");
+      await expect.element(explanation).toBeVisible();
+    },
+  );
+
+  test("a key with any other identifying field has no mark, no line and no button", async () => {
     await renderTerms(terms, { perspective: "review" });
     await userEvent.click(toggle("Matching strategies"));
     await expect.element(toggle("SSN + FN1")).toBeInTheDocument();
     expect(
-      page.getByRole("button", { name: LESS_CERTAIN_INFO_LABEL }).query(),
+      page.getByRole("button", { name: /less certain/ }).query(),
     ).toBeNull();
     expect(app.container.textContent).not.toContain("less certain");
   });

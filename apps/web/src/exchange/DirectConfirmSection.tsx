@@ -46,6 +46,7 @@ import {
 import {
   DEFAULT_PREVIEW_IDENTITY,
   DIRECT_DEDUPLICATE_SIDE_NOTICE,
+  DIRECT_LESS_CERTAIN_REMEDY,
   DIRECT_LINKAGE_STRATEGY_AGREEMENT_NOTICE,
   DIRECT_RECOGNIZED_COLUMNS_NOTICE,
   DIRECT_RULE_SELECTION_NOTICE,
@@ -325,6 +326,7 @@ export function DirectConfirmSection({
                 "These are the terms Alcove inferred from your own file. " +
                 "There is no invitation for your partner to review or consent to.",
             }}
+            lessCertainRemedy={DIRECT_LESS_CERTAIN_REMEDY}
           />
         ) : (
           <Alert

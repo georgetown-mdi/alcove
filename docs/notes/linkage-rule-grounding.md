@@ -516,9 +516,9 @@ These are requirements, not designs. None exists in Alcove.
   deletes a potential match with conflicting values in two of gender, name
   suffix, the parts of the date and the full SSN (Sokol and Gutierrez 2005).
   The follow-on rule `FN + LN + SSN4`, for a side with no valid date of birth,
-  needs it, and counts a filler date as absent.
-- **A name suffix element** (`name_suffix`, `SFX` in the catalog), for rules
-  35, 36, 36a, 38 and 39; see [Name suffixes](#name-suffixes).
+  needs it, and counts a filler date as absent. So do rules 35, 36, 36a, 38
+  and 39, the contact rules with no date of birth, as a missing-date condition;
+  see [Name suffixes](#name-suffixes).
 - **Address and area types**: a street number (rule 21), a three-digit ZIP
   (rule 27), and state and county (rule 30).
 - **A shared-contact screen.** The default cleaning drops a phone or email held
@@ -578,17 +578,16 @@ a father and son make a false match.
   false match, and keeping it risks missing a son's own record that lacks it (Fu
   et al. 2022).
 
-So the catalog uses the suffix as an element only in the contact rules with no
-date of birth, where the same-name parent and child on a household phone or
-email is the floor (rules 35, 36, 36a, 38 and 39). `SFX` is a code (JR, SR, II,
-III, IV) or the empty string, from a column of its own or taken from the name
-column, so two records without a suffix still match, and suffixes stay stripped
-from the name fields. The element removes the parent-and-child pair where both
-sides record the suffix, at the cost of the pair where only one side did, which
-loses that rule and keeps every rule without the element. Where one party's
-file has no suffix at all, the rule runs without the element rather than being
-dropped, since otherwise every junior recorded in the other file would fail it.
-The bands do not rise, because the phone and email floor is unmeasured.
+So the catalog writes the suffix as an element only in the contact rules with
+no date of birth, where the same-name parent and child on a household phone or
+email is the floor (rules 35, 36, 36a, 38 and 39). No suffix field is built.
+The element would remove the parent-and-child pair only where both sides record
+the suffix, at the cost of the pair where only one side did. The five rules
+wait instead on a per-side missing-date condition: each would run without the
+suffix, only where one party's record has no date of birth, so a parent and
+child whose records both hold a date are left to the rules that compare it.
+Suffixes stay stripped from the name fields. The bands do not rise, because
+the phone and email floor is unmeasured.
 
 ## The acceptance-evidence bar
 

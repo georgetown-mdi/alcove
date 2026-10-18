@@ -8,6 +8,7 @@ import { createElement, useState } from "react";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
@@ -36,8 +37,8 @@ import {
 } from "@psi/authoring/advancedInvite";
 
 import { KeysTab } from "@exchange/KeysTab";
-import { LESS_CERTAIN_INFO_LABEL } from "@components/LessCertainInfo";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
+import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
 import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
@@ -619,25 +620,32 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect
       .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
       .toBeInTheDocument();
-    const infoButtons = page.getByRole("button", {
-      name: LESS_CERTAIN_INFO_LABEL,
-    });
-    expect(infoButtons.elements()).toHaveLength(3);
+    const infoButtons = page.getByRole("button", { name: /less certain$/ });
+    expect(
+      infoButtons
+        .elements()
+        .map((button) => button.getAttribute("aria-label") ?? ""),
+    ).toStrictEqual([
+      "Why LN + FN + DOB is less certain",
+      "Why swap(LN, FN) + DOB is less certain",
+      "Why split(LN) + FN + DOB is less certain",
+    ]);
 
-    const first = infoButtons.first();
+    const name = lessCertainInfoLabel("LN + FN + DOB");
+    const first = page.getByRole("button", { name, exact: true });
     await expect.element(first).toHaveAttribute("aria-expanded", "false");
     const panel = document.getElementById(
       first.element().getAttribute("aria-controls") ?? "",
     )!;
-    await expect
-      .poll(() => panel.textContent)
-      .toBe(LESS_CERTAIN_KEY_COPY.explanation);
-    const explanation = page
-      .elementLocator(panel)
-      .getByText(LESS_CERTAIN_KEY_COPY.explanation);
+    expect(MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox).toBe(
+      "To leave one out, turn off its checkbox.",
+    );
+    const explained = `${LESS_CERTAIN_KEY_COPY.explanation} ${MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox}`;
+    await expect.poll(() => panel.textContent).toBe(explained);
+    const explanation = page.elementLocator(panel).getByText(explained);
     await expect.element(explanation).not.toBeVisible();
 
-    await activate(control("button", LESS_CERTAIN_INFO_LABEL));
+    await activate(control("button", name));
     await expect.element(first).toHaveAttribute("aria-expanded", "true");
     await expect.element(explanation).toBeVisible();
     expect(document.body.textContent).not.toContain(
@@ -648,9 +656,9 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     expect(infoButtons.elements()).toHaveLength(0);
   });
 
-  test("marks a key written in Expert authoring on a name and a date of birth alone", async () => {
+  function authoredNameAndDateKeys() {
     const seeded = editorFromCsv("Dana Okafor", csv);
-    const authored = editorWithAuthoredDraft(seeded, {
+    return editorWithAuthoredDraft(seeded, {
       ...seeded.draft,
       keys: [
         {
@@ -678,7 +686,10 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
         },
       ],
     });
-    app.render(createElement(Harness, { initial: authored }));
+  }
+
+  test("marks a key written in Expert authoring on a name and a date of birth alone", async () => {
+    app.render(createElement(Harness, { initial: authoredNameAndDateKeys() }));
 
     await expect
       .element(
@@ -697,8 +708,43 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       )
       .toBeInTheDocument();
     expect(
-      page.getByRole("button", { name: LESS_CERTAIN_INFO_LABEL }).elements(),
+      page.getByRole("button", { name: /less certain$/ }).elements(),
     ).toHaveLength(1);
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Why my people is less certain",
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("on keys an opened configuration states, the remedy is the configuration's update", async () => {
+    app.render(
+      createElement(Harness, {
+        initial: authoredNameAndDateKeys(),
+        keysFromOpenedConfiguration: true,
+      }),
+    );
+
+    const name = lessCertainInfoLabel("my people");
+    const info = page.getByRole("button", { name, exact: true });
+    await expect.element(info).toBeInTheDocument();
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    expect(MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration).toBe(
+      "To leave them out, delete them from linkage_keys in alcove.yaml, run " +
+        "alcove update, and have your partner run alcove apply on what it " +
+        "prints.",
+    );
+    await expect
+      .poll(() => panel.textContent)
+      .toBe(
+        `${LESS_CERTAIN_KEY_COPY.explanation} ` +
+          MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration,
+      );
   });
 
   test("describes the key list with the order the chosen floor gives it", async () => {

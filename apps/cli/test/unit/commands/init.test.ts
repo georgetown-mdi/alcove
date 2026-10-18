@@ -275,6 +275,10 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
   expect(help).toContain(
     "delete those three keys when your files cover many people.",
   );
+  expect(help).toContain(
+    "A file of one age group, such as one school class, counts as covering " +
+      "many people, because its members share birth years.",
+  );
   expect(help).not.toMatch(/state or one|metropolitan|wider area/);
 });
 

@@ -143,6 +143,13 @@ export const DIRECT_RULE_SELECTION_NOTICE = `Rules selected: ${precisionFloorSel
   DEFAULT_PRECISION_FLOOR_SELECTION,
 )}.`;
 
+/** What the quick exchange's confirm step tells the reader of a key marked
+ * less certain to do to leave such keys out: a quick exchange writes every
+ * built-in key the file supplies, and only an invitation chooses among them. */
+export const DIRECT_LESS_CERTAIN_REMEDY =
+  "A quick exchange always uses these keys. To leave them out, create an " +
+  "invitation instead and turn them off on Customize > Matching keys.";
+
 /**
  * The deduplicate field a zero-setup intent holds for the operator's choice,
  * emitted only for a non-default one for the reason

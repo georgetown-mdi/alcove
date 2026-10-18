@@ -151,14 +151,26 @@ describe("LESS_CERTAIN_KEY_COPY", () => {
     expect(LESS_CERTAIN_KEY_COPY).toStrictEqual({
       mark: "less certain",
       explanation:
-        "Matches on nothing beyond a name and a date of birth. Different " +
-        "people share a name and a date of birth more often the more people " +
-        "the two files cover, so some of these matches may be two different " +
-        "people. Rules like this are usually safe when both files cover a " +
-        "small population; leave them out when the files cover many people.",
+        "A key marked less certain uses only first name, last name and date " +
+        "of birth fields, with no SSN, phone number, email or address. " +
+        "Different people share these more often the more people the two " +
+        "files cover, so some of its matches may be two different people. " +
+        "The built-in rules of this kind reach 95% precision only when both " +
+        "files cover few people. Leave such keys out when the files cover " +
+        "many people. A file of one age group, such as one school class, " +
+        "counts as covering many people, because its members share birth " +
+        "years.",
       acceptorRemedy:
         "To leave them out, ask your partner for an invitation without them.",
     });
+  });
+
+  test("tells a file of one age group to leave such keys out", () => {
+    expect(LESS_CERTAIN_KEY_COPY.explanation).toContain(
+      "Leave such keys out when the files cover many people. A file of one " +
+        "age group, such as one school class, counts as covering many people",
+    );
+    expect(LESS_CERTAIN_KEY_COPY.explanation).not.toMatch(/usually safe/i);
   });
 
   test("speaks of how many people the files cover, not of a place", () => {

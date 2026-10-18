@@ -24,8 +24,9 @@ A rule matches two records only when every element agrees exactly.
 - `LN` and `FN` are the last and first name, standardized.
   `LN3` and `LN4` are the first three or four letters of the last name.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
-- `SFX` is the name suffix, standardized to a code (JR, SR, II, III, IV) or to the empty string when there is none, so two records without a suffix agree.
-  It is read from a column of its own or taken from the name column, and suffixes stay stripped from `LN` and `FN`.
+- `SFX` is a name suffix (JR, SR, II, III, IV).
+  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they wait on a per-side missing-date condition instead ([Status](#status)).
+  Suffixes stay stripped from `LN` and `FN`.
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
 - `ZIP5` is the five-digit ZIP code of the person's own address, and `ZIP3` its first three digits.
@@ -128,8 +129,9 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
 
-- `name_suffix`, the standardized suffix behind `SFX`: rules 35, 36, 36a, 38 and 39.
-- The shared-contact screen (rule 36a): the default cleaning drops a phone or email held by more than five distinct people in a party's file.
+- A per-side missing-date condition: rules 35, 36, 36a, 38 and 39, the contact rules with no date of birth.
+  Each would run without the suffix, only where one party's record has no date of birth.
+  No suffix field is built ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
 
 Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
@@ -498,26 +500,26 @@ Hillestad et al. (2008) put first + last name + birth year + ZIP at about one po
 
 #### 35. `LN + FN + SFX + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs `name_suffix`.
+95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
 
 Catches any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
-The suffix removes that pair where both sides record a suffix, at the cost of the pair where only one side did, which loses this rule and keeps every rule without the element.
-The band does not rise: Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
-Where one party's file has no suffix at all, the rule runs without the element rather than being dropped, since otherwise every junior recorded in the other file would fail it.
+A suffix would remove that pair only where both sides record one, and no suffix field is built.
+The rule waits instead on a per-side missing-date condition: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
+Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
 #### 36. `PHONE + soundex(LN) + FN + SFX`
 
-95%. Any coverage. One loosening on rule 35. Needs `name_suffix`.
+95%. Any coverage. One loosening on rule 35. Needs a per-side missing-date condition.
 
 As rule 35, with a last name that keeps its Soundex code; it runs after rule 35, a refinement of it.
 The people most likely to share a phone are relatives, who share the surname exactly, so the Soundex code adds little (reasoning).
 
 #### 36a. `FN + SFX + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs `name_suffix` and the shared-contact screen.
+95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
 
 Catches a changed last name and any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites.
@@ -534,7 +536,7 @@ See [The email rules](#the-email-rules).
 
 #### 38. `LN + FN + SFX + EMAIL`
 
-95%. Any coverage. The maintainer's judgment, pending evidence. Needs `name_suffix`.
+95%. Any coverage. The maintainer's judgment, pending evidence. Needs a per-side missing-date condition.
 
 Catches any date-of-birth error with no SSN, for records with an email address.
 Kim et al. (2019) is its nearest measurement.
@@ -542,7 +544,7 @@ It is stricter than first name + email in the N3C configuration and the last nam
 
 #### 39. `EMAIL + soundex(LN) + FN + SFX`
 
-95%. Any coverage. One loosening on rule 38. Needs `name_suffix`.
+95%. Any coverage. One loosening on rule 38. Needs a per-side missing-date condition.
 
 As rule 38, with a last name that keeps its Soundex code; it runs after rule 38, a refinement of it, on the reasoning of rule 36.
 

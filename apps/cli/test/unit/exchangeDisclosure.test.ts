@@ -42,6 +42,7 @@ import {
   lastRecordedDisclosureDigest,
   renderExchangeDisclosure,
 } from "../../src/exchangeDisclosure";
+import { LESS_CERTAIN_REMEDY } from "../../src/invitationDisplay";
 import type { ProtocolConnectionConfig } from "../../src/protocol";
 import { configureLogFile } from "../../src/util/logging";
 import {
@@ -100,8 +101,12 @@ function metadataDisclosing(columns: string[]): Metadata {
   ];
 }
 
-/** Every line {@link renderExchangeDisclosure} emits for `terms`. */
-function rendered(terms: LinkageTerms, columns: string[] = []): string[] {
+/** Every line {@link renderExchangeDisclosure} emits for `terms`, on `run`. */
+function rendered(
+  terms: LinkageTerms,
+  columns: string[] = [],
+  run: "quickExchange" | "configuredExchange" = "configuredExchange",
+): string[] {
   const lines: string[] = [];
   renderExchangeDisclosure(
     (line) => lines.push(line),
@@ -109,6 +114,7 @@ function rendered(terms: LinkageTerms, columns: string[] = []): string[] {
     metadataDisclosing(columns),
     ["first_name", "last_name", ...columns],
     undefined,
+    run,
   );
   return lines;
 }
@@ -394,6 +400,7 @@ test("no name in the display puts a control character or a digest line into the 
     metadata,
     metadata.map((column) => column.name),
     undefined,
+    "configuredExchange",
   );
   // Held non-vacuous: each hostile name is in the display, escaped.
   const shown = lines.join("\n");
@@ -499,37 +506,38 @@ test("a quick exchange names its rule selection above the keys, and a configured
   expect(shown(false)).not.toContain("rules selected");
 });
 
-test("a key on names and a date of birth alone is marked less certain, and the mark explained once with no remedy", () => {
-  const terms: LinkageTerms = {
-    ...localTerms,
-    linkageFields: [
-      { name: "given", type: "first_name" },
-      { name: "surname", type: "last_name" },
-      { name: "born", type: "date_of_birth" },
-      { name: "postcode", type: "zip_code" },
-    ],
-    linkageKeys: [
-      {
-        name: "with ZIP",
-        elements: [
-          { field: "given" },
-          { field: "surname" },
-          { field: "born" },
-          { field: "postcode" },
-        ],
-      },
-      {
-        name: "people",
-        elements: [{ field: "given" }, { field: "born" }, { field: "surname" }],
-      },
-      {
-        name: "people swapped",
-        elements: [{ field: "given" }, { field: "surname" }, { field: "born" }],
-        swap: ["given", "surname"],
-      },
-    ],
-  };
-  const lines = rendered(terms);
+const lessCertainTerms: LinkageTerms = {
+  ...localTerms,
+  linkageFields: [
+    { name: "given", type: "first_name" },
+    { name: "surname", type: "last_name" },
+    { name: "born", type: "date_of_birth" },
+    { name: "postcode", type: "zip_code" },
+  ],
+  linkageKeys: [
+    {
+      name: "with ZIP",
+      elements: [
+        { field: "given" },
+        { field: "surname" },
+        { field: "born" },
+        { field: "postcode" },
+      ],
+    },
+    {
+      name: "people",
+      elements: [{ field: "given" }, { field: "born" }, { field: "surname" }],
+    },
+    {
+      name: "people swapped",
+      elements: [{ field: "given" }, { field: "surname" }, { field: "born" }],
+      swap: ["given", "surname"],
+    },
+  ],
+};
+
+test("a key on names and a date of birth alone is marked less certain, and the mark explained once", () => {
+  const lines = rendered(lessCertainTerms);
   expect(lines).toContain(
     "    - with ZIP: first name - last name - date of birth - ZIP",
   );
@@ -540,17 +548,49 @@ test("a key on names and a date of birth alone is marked less certain, and the m
     "    - people swapped: first name - last name - date of birth " +
       "(matched in either order) (less certain)",
   );
-  const note = `    ${LESS_CERTAIN_KEY_COPY.explanation}`;
-  expect(lines.filter((entry) => entry === note)).toHaveLength(1);
-  expect(lines[lines.indexOf(note) - 1]).toBe("  less certain:");
-  expect(lines.indexOf(note)).toBeGreaterThan(
+  const noteAt = lines.findIndex((entry) =>
+    entry.startsWith(`    ${LESS_CERTAIN_KEY_COPY.explanation}`),
+  );
+  expect(
+    lines.filter((entry) => entry.includes(LESS_CERTAIN_KEY_COPY.explanation)),
+  ).toHaveLength(1);
+  expect(lines[noteAt - 1]).toBe("  why keys are marked less certain:");
+  expect(noteAt).toBeGreaterThan(
     lines.indexOf(
       "    - people swapped: first name - last name - date of birth " +
         "(matched in either order) (less certain)",
     ),
   );
-  expect(lines.join("\n")).not.toContain(LESS_CERTAIN_KEY_COPY.acceptorRemedy);
 });
+
+test.each([
+  [
+    "configuredExchange",
+    "To leave them out, delete them from linkage_keys in your configuration, " +
+      "run alcove update, and have your partner run alcove apply on what it " +
+      "prints.",
+  ],
+  [
+    "quickExchange",
+    "A quick exchange always uses these keys. To leave them out, write a " +
+      "configuration with alcove init URL INPUT_FILE, delete them from " +
+      "linkage_keys, and set the exchange up with alcove invite and alcove " +
+      "accept.",
+  ],
+] as const)(
+  "the less certain note on a %s run ends with that command's remedy",
+  (run, remedy) => {
+    expect(LESS_CERTAIN_REMEDY[run]).toBe(remedy);
+    const lines = rendered(lessCertainTerms, [], run);
+    expect(lines).toContain(
+      `    ${LESS_CERTAIN_KEY_COPY.explanation} ${remedy}`,
+    );
+    const shown = lines.join("\n");
+    expect(shown).not.toContain(LESS_CERTAIN_KEY_COPY.acceptorRemedy);
+    for (const other of Object.values(LESS_CERTAIN_REMEDY))
+      if (other !== remedy) expect(shown).not.toContain(other);
+  },
+);
 
 test("a key set with no key marked less certain prints no note", () => {
   const lines = rendered({
@@ -798,6 +838,7 @@ function renderedForHeader(
     inferMetadata(header, [], { mode: "direct" }),
     header,
     standardization,
+    "configuredExchange",
   );
   return lines;
 }
@@ -861,6 +902,7 @@ test("the matched-on line names a column whose name differs from the field label
     inferMetadata(header, [], { mode: "direct" }),
     header,
     undefined,
+    "configuredExchange",
   );
   expect(lines).toContain(
     "  matched on (enforced): first name, date of birth (dob)",
@@ -887,6 +929,7 @@ test("a held-back line lists only columns the input holds, in input order", () =
     metadata,
     ["last_name", "first_name", "email"],
     undefined,
+    "configuredExchange",
   );
   expect(lines).toContain("  held back (enforced): email");
   expect(lines.join("\n")).not.toContain("ghost_phone");

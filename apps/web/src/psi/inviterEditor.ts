@@ -321,6 +321,17 @@ export const OPENED_CONFIGURATION_KEYS_NOTE =
   "agreed to. To change them, edit alcove.yaml and run alcove update, then " +
   "have your partner run alcove apply on what it prints.";
 
+/** What Matching keys tells the reader of a key marked less certain to do to
+ * leave it out: turn off the checkbox on its row, or, for keys an opened
+ * configuration states, change them with the partner as
+ * {@link OPENED_CONFIGURATION_KEYS_NOTE} says. */
+export const MATCHING_KEYS_LESS_CERTAIN_REMEDY = {
+  checkbox: "To leave one out, turn off its checkbox.",
+  openedConfiguration:
+    "To leave them out, delete them from linkage_keys in alcove.yaml, run " +
+    "alcove update, and have your partner run alcove apply on what it prints.",
+} as const;
+
 /** What the key list's help says about its order: the bands the floor
  * selects, in the order the built-in keys list them, or for keys no floor
  * selected, only that they are tried in the order listed. */

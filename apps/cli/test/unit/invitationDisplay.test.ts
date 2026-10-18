@@ -49,6 +49,7 @@ import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import {
   displayInvitation,
   invitationRelayRegistrarLine,
+  LESS_CERTAIN_REMEDY,
   logDecisionFacts,
 } from "../../src/invitationDisplay";
 import {
@@ -2161,19 +2162,17 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines[keyIndex + 2]).toBe("      elements:");
   });
 
-  test("displayInvitation: marks a name and date key less certain and explains it once, with the remedy", () => {
-    const log = getLogger("accept-display-less-certain-test");
-    log.setLevel("silent");
+  function lessCertainToken() {
     const token = sampleToken(FUTURE());
-    const lines = renderDisplayInvitation(log, {
+    return {
       ...token,
       linkageTerms: {
         ...token.linkageTerms,
         linkageFields: [
-          { name: "given", type: "first_name" },
-          { name: "born", type: "date_of_birth" },
-          { name: "surname", type: "last_name" },
-          { name: "tax_id", type: "ssn" },
+          { name: "given", type: "first_name" as const },
+          { name: "born", type: "date_of_birth" as const },
+          { name: "surname", type: "last_name" as const },
+          { name: "tax_id", type: "ssn" as const },
         ],
         linkageKeys: [
           {
@@ -2194,7 +2193,13 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
           },
         ],
       },
-    }).split("\n");
+    };
+  }
+
+  test("displayInvitation: marks a name and date key less certain and explains it once, with the acceptor's remedy", () => {
+    const log = getLogger("accept-display-less-certain-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(log, lessCertainToken()).split("\n");
 
     const matchesOn = (keyName: string) =>
       lines[lines.indexOf(`    - ${keyName}`) + 1];
@@ -2207,12 +2212,38 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(matchesOn("authored with ssn")).toBe(
       "      matches on: SSN - date of birth",
     );
-    const note = `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_KEY_COPY.acceptorRemedy}`;
+    expect(LESS_CERTAIN_REMEDY.invitation).toBe(
+      "To leave them out, ask your partner for an invitation without them.",
+    );
+    const note = `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_REMEDY.invitation}`;
     expect(lines.filter((line) => line === note)).toHaveLength(1);
-    expect(lines[lines.indexOf(note) - 1]).toBe("  less certain:");
+    expect(lines[lines.indexOf(note) - 1]).toBe(
+      "  why keys are marked less certain:",
+    );
     expect(lines.indexOf(note)).toBeGreaterThan(
       lines.indexOf("    - authored people again"),
     );
+  });
+
+  test("displayInvitation: a terms update explains the less certain mark with the update's remedy", () => {
+    const lines: string[] = [];
+    displayInvitation({
+      token: lessCertainToken(),
+      ownOutboundSend: undefined,
+      emit: (line) => {
+        lines.push(line);
+      },
+      promptFollows: true,
+      surface: "update",
+    });
+    expect(LESS_CERTAIN_REMEDY.update).toBe(
+      "To leave them out, do not apply this update, and ask your partner " +
+        "for one without them.",
+    );
+    expect(lines).toContain(
+      `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_REMEDY.update}`,
+    );
+    expect(lines.join("\n")).not.toContain(LESS_CERTAIN_REMEDY.invitation);
   });
 
   test("displayInvitation: prints no less certain note where no key is marked", () => {

@@ -331,28 +331,28 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   {
     rule: "LN + FN + SFX + PHONE",
     band: 95,
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "PHONE + soundex(LN) + FN + SFX",
     band: 95,
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "FN + SFX + PHONE",
     band: 95,
-    needs: "name suffix and the shared-contact screen",
+    needs: "a per-side missing-date condition",
   },
   { rule: "FN + DOB + EMAIL", band: 95 },
   {
     rule: "LN + FN + SFX + EMAIL",
     band: 95,
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
   {
     rule: "EMAIL + soundex(LN) + FN + SFX",
     band: 95,
-    needs: "name suffix",
+    needs: "a per-side missing-date condition",
   },
 ];
 

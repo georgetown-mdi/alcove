@@ -441,8 +441,8 @@ describe("the check driven end to end", () => {
     ["a band", "band: 99 }", "band: 95 }"],
     [
       "an unbuilt rule's need",
-      'needs: "name suffix and the shared-contact screen"',
-      'needs: "name suffix"',
+      'needs: "a per-side missing-date condition"',
+      'needs: "a name suffix"',
     ],
   ])(
     "fails %s of the shipped catalog moved with no bump",
