@@ -20,6 +20,7 @@ import {
   editorWithKeyMoved,
   editorWithPrecisionFloorSelection,
   keyOrderHelp,
+  resetToRecommended,
 } from "@psi/inviterEditor";
 
 import {
@@ -38,7 +39,9 @@ import {
 } from "@psi/authoring/advancedInvite";
 
 import { KeysTab } from "@exchange/KeysTab";
+import { canonicalLinkageKeysAndFields } from "@console/loadedConfig";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
+import { keysFromOpenedConfiguration as derivedKeysFromOpenedConfiguration } from "@exchange/inviterScreenModel";
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
 import { activate, control } from "./keyboardOnly";
@@ -46,6 +49,7 @@ import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { LinkageField } from "@alcove/core";
+import type { MountedConfigurationState } from "@console/mountedConfiguration";
 
 // A minimal file with a date_of_birth column, so the seeded default keys
 // include one built from it (the element the dead-key transform below targets).
@@ -454,16 +458,29 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
 });
 
 describe("KeysTab: the precision floor and the less certain mark", () => {
+  /** A configuration open on the console, whose run continues its exchange. */
+  const OPENED_MOUNTED_CONFIGURATION: MountedConfigurationState = {
+    status: "opened",
+    carriedThrough: [],
+    warnings: [],
+  };
+
   /** The tab over a live session, applying each floor choice through the
    * session model the inviter screen applies it through. */
   function Harness({
     initial,
     file = csv,
     keysFromOpenedConfiguration = false,
+    openedConfigurationKeys,
   }: {
     initial: InviterEditor;
     file?: AcquiredCsv;
     keysFromOpenedConfiguration?: boolean;
+    /** An opened configuration's keys and fields
+     * (`canonicalLinkageKeysAndFields`), from which the tab's
+     * `keysFromOpenedConfiguration` is derived at each render, as the inviter
+     * screen derives it. */
+    openedConfigurationKeys?: string;
   }) {
     const [editor, setEditor] = useState(initial);
     return createElement(KeysTab, {
@@ -474,7 +491,14 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       onPrecisionFloorSelection: (selection) =>
         setEditor(editorWithPrecisionFloorSelection(editor, selection)),
       onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, file)),
-      keysFromOpenedConfiguration,
+      keysFromOpenedConfiguration:
+        openedConfigurationKeys === undefined
+          ? keysFromOpenedConfiguration
+          : derivedKeysFromOpenedConfiguration({
+              editor,
+              mountedConfiguration: OPENED_MOUNTED_CONFIGURATION,
+              openedConfigurationKeys,
+            }),
       onKeyEnabled: (index, enabled) =>
         setEditor(editorWithKeyEnabled(editor, index, enabled)),
       onKeyMoved: (index, offset) =>
@@ -916,6 +940,64 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
     ).toBeNull();
     expect(document.body.textContent).not.toContain("Reset to defaults");
+  });
+
+  test("names the file in place of the floor after Reset to defaults, while the keys equal the opened configuration's", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const opened = editorWithImportedTerms(
+      seeded,
+      csv,
+      buildAdvancedTerms(seeded.draft),
+    );
+    const reset = resetToRecommended(opened, csv);
+    expect(reset.keysAuthored).toBeUndefined();
+    app.render(
+      createElement(Harness, {
+        initial: reset,
+        openedConfigurationKeys: canonicalLinkageKeysAndFields(opened),
+      }),
+    );
+
+    const openedNote = page
+      .getByRole("note")
+      .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE });
+    const floor95 = page.getByRole("radio", { name: at95.label });
+    await expect.element(openedNote).toBeInTheDocument();
+    expect(
+      document.getElementById("key-order-help")!.textContent,
+    ).not.toContain("95%");
+    expect(floor95.query()).toBeNull();
+    expect(
+      page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).query(),
+    ).toBeNull();
+    expect(
+      page
+        .getByRole("note")
+        .filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE })
+        .query(),
+    ).toBeNull();
+    const info = page.getByRole("button", {
+      name: lessCertainInfoLabel("LN + FN + DOB"),
+      exact: true,
+    });
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    await expect
+      .poll(() => panel.textContent)
+      .toBe(
+        `${LESS_CERTAIN_KEY_COPY.explanation} ` +
+          MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration,
+      );
+
+    const kept = page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ });
+    await kept.click();
+    await expect.element(floor95).toBeChecked();
+    expect(openedNote.query()).toBeNull();
+
+    await kept.click();
+    await expect.element(openedNote).toBeInTheDocument();
+    expect(floor95.query()).toBeNull();
   });
 
   test("says on the Expert authoring switch that editing keys there replaces the choice", async () => {
