@@ -21,7 +21,7 @@ import {
   DEFAULT_DATE_INPUT_FORMAT,
   getDefaultStandardization,
 } from "./defaults/builtInStandardization.js";
-import { personColumns } from "./personColumns.js";
+import { lastNameColumn, personColumns } from "./personColumns.js";
 import {
   buildStandardizedDataset,
   declaredEffectiveKeyCount,
@@ -804,6 +804,7 @@ export function prepareForExchange(
     metadata,
     linkageTerms,
     personColumns(standardization, metadata, linkageTerms, rawRows),
+    lastNameColumn(standardization, metadata, linkageTerms, rawRows),
   );
 
   // The count this party declares, which is what the ceiling weighs and what the

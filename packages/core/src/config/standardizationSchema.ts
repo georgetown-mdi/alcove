@@ -77,6 +77,23 @@ const StandardizationStepSchema: z.ZodType<StandardizationStep> = z
 // --- Standardizing transformation --------------------------------------------
 
 /**
+ * A rule dropping a field's cleaned value that is one of `values` from a record
+ * whose cleaned last name is one of `lastNames`
+ * (docs/spec/DEFAULT_STANDARDIZATION.md, First name beside a listed last name).
+ */
+export interface NullIfLastName {
+  /** Cleaned values of this field the rule drops. */
+  values: string[];
+  /** Cleaned last names beside which the rule drops them. */
+  lastNames: string[];
+}
+
+const NullIfLastNameSchema: z.ZodType<NullIfLastName> = z.object({
+  values: z.array(z.string()),
+  lastNames: z.array(z.string()),
+});
+
+/**
  * A single data standardization transformation. Takes one input column from the
  * raw data, applies a sequence of steps, and makes the result available for use
  * as the linkage field with the given name.
@@ -108,6 +125,11 @@ export interface StandardizationTransformation {
    * screens.
    */
   maxPeoplePerValue?: number;
+  /**
+   * Drops a cleaned value of this field beside a listed last name; omitted,
+   * no value is dropped for the record's last name.
+   */
+  nullIfLastName?: NullIfLastName;
 }
 
 const StandardizationTransformationSchema: z.ZodType<StandardizationTransformation> =
@@ -121,6 +143,7 @@ const StandardizationTransformationSchema: z.ZodType<StandardizationTransformati
     input: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
     steps: z.array(StandardizationStepSchema).optional(),
     maxPeoplePerValue: z.int().min(1).optional(),
+    nullIfLastName: NullIfLastNameSchema.optional(),
   });
 
 // --- Standardization ---------------------------------------------------------
