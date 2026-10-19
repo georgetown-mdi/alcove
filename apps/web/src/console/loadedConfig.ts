@@ -509,7 +509,8 @@ function metadataWithLoadedColumns(
  * column and steps. The column must be `role: linkage` and of a type the field
  * may read, so a configuration cannot clean a column into a matching key that this
  * party's roles do not offer for matching. A field the block does not name is
- * cleaned with no steps, not with the reconstruction's default ones.
+ * cleaned with no steps, limit or last-name rule, not with the
+ * reconstruction's default ones.
  *
  * A setting the operator's file cannot supply whole is named rather than
  * dropped, as the file spells it, for the notice beside the load control: a

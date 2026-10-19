@@ -48,6 +48,7 @@ function renderCleaningTab(
       coverageUnavailable,
       coverageRefusedColumns,
       onFieldSteps: () => undefined,
+      onFieldCleaningSettings: () => undefined,
       onFieldInput: () => undefined,
       onFieldAdded: () => undefined,
       onFieldRemoved: () => undefined,

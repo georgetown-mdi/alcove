@@ -31,6 +31,7 @@ import {
 import {
   descriptorFor,
   functionDisplay,
+  isMaxPeoplePerValueValid,
   isStepValid,
   pipelineHasInertCoalesce,
   refusedCleaningFanOut,
@@ -282,6 +283,15 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
   "either-order swap, or the step that splits a value into parts; or " +
   REVEAL_IDENTIFIERS_INSTEAD;
 
+/** A Cleaning-tab card as the tab labels it, by its field's type: never the
+ * field's own name, which the tab does not show. */
+function fieldCardLabel(fieldType: string | undefined): string {
+  return fieldType !== undefined &&
+    Object.hasOwn(SEMANTIC_TYPE_LABELS, fieldType)
+    ? SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]
+    : "a field";
+}
+
 /** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
  * core refuses an exchange whose own cleaning splits a value under a
  * count-only algorithm or a strategy that matches none
@@ -296,13 +306,10 @@ function cleaningFanOutMessage(
   fieldType: string | undefined,
   countOnly: boolean,
 ): string {
-  const card =
-    fieldType !== undefined && Object.hasOwn(SEMANTIC_TYPE_LABELS, fieldType)
-      ? SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]
-      : "a field";
   const step =
     `the ${functionDisplay(refused.functionName).label} step in the ` +
-    `${card} cleaning from the ${sanitizeForDisplay(refused.input)} column`;
+    `${fieldCardLabel(fieldType)} cleaning from the ` +
+    `${sanitizeForDisplay(refused.input)} column`;
   return countOnly
     ? `A count-only exchange matches one value per record, but ${step} ` +
         "splits a value into parts. Remove that step, or on the Matching on " +
@@ -652,6 +659,16 @@ export function validateAdvancedInvite(
   ) {
     errors.standardization =
       "Finish, fix, or remove the highlighted cleaning steps before generating.";
+  } else {
+    const overLimit = draft.standardization.find(
+      (transformation) =>
+        !isMaxPeoplePerValueValid(transformation.maxPeoplePerValue),
+    );
+    if (overLimit !== undefined)
+      errors.standardization =
+        `Fix or clear the highlighted limit on people sharing one value in the ` +
+        `${fieldCardLabel(terms.linkageFields.find((field) => field.name === overLimit.output)?.type)} ` +
+        "cleaning before generating.";
   }
 
   // The cleaning fan-out gate, core's own refusal; the key-transform half is

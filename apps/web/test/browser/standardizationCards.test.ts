@@ -4,10 +4,14 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
-import { createElement } from "react";
+import { createElement, useState } from "react";
 
 import { authoredLinkageFields } from "@alcove/core";
 
+import {
+  MAX_PEOPLE_PER_VALUE_REFUSAL,
+  transformationWithCleaningSettings,
+} from "@psi/standardizationAuthoring";
 import { StandardizationCards } from "@components/StandardizationCards";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 
@@ -15,6 +19,7 @@ import { createAppMount } from "./renderApp";
 import { expandFieldCards } from "./fieldCards";
 
 import type { Metadata, Standardization } from "@alcove/core";
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 
 const app = createAppMount();
 
@@ -152,6 +157,194 @@ describe("StandardizationCards: per-field binding and multi-field affordances", 
     expect(
       page.getByRole("button", { name: "Remove this field" }).elements(),
     ).toHaveLength(0);
+  });
+});
+
+describe("StandardizationCards: the limit and last-name rule beside the steps", () => {
+  const ruled: Standardization = [
+    {
+      output: "first_name",
+      input: "maiden_col",
+      steps: [],
+      maxPeoplePerValue: 3,
+      nullIfLastName: { values: ["JOHN"], lastNames: ["DOE"] },
+    },
+  ];
+  const unruled: Standardization = [
+    { output: "first_name", input: "maiden_col", steps: [] },
+  ];
+
+  type SettingsSpy = (output: string, settings: CleaningSettings) => void;
+
+  /** The cards over a standardization they edit in place, as a host does. */
+  function StatefulCards({
+    initial,
+    onCleaningSettingsChange,
+  }: {
+    initial: Standardization;
+    onCleaningSettingsChange: SettingsSpy;
+  }) {
+    const [standardization, setStandardization] = useState(initial);
+    return createElement(StandardizationCards, {
+      standardization,
+      declaredFields: authoredLinkageFields(metadata, standardization),
+      metadata,
+      columnSamples,
+      onStepsChange: () => {},
+      onInputColumnChange: () => {},
+      onMissingField: "skip",
+      onCleaningSettingsChange: (output, settings) => {
+        onCleaningSettingsChange(output, settings);
+        setStandardization((current) =>
+          current.map((transformation) =>
+            transformation.output === output
+              ? transformationWithCleaningSettings(transformation, settings)
+              : transformation,
+          ),
+        );
+      },
+    });
+  }
+
+  function renderStateful(initial: Standardization) {
+    const onCleaningSettingsChange = vi.fn<SettingsSpy>();
+    app.render(
+      createElement(StatefulCards, { initial, onCleaningSettingsChange }),
+    );
+    return onCleaningSettingsChange;
+  }
+
+  const limitInput = () =>
+    page.getByRole("textbox", { name: "Most people who may share one value" });
+  const valuesInput = () =>
+    page.getByPlaceholder("Type a value and press Enter");
+
+  test("a field's card shows the limit and the rule it states", async () => {
+    renderStateful(ruled);
+    await expandFieldCards();
+    await expect.element(limitInput()).toHaveValue("3");
+    await expect
+      .element(page.getByText("JOHN", { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("DOE", { exact: true }))
+      .toBeInTheDocument();
+  });
+
+  test("editing the limit emits it with the rule kept, and clearing it removes it", async () => {
+    const onChange = renderStateful(ruled);
+    await expandFieldCards();
+    await userEvent.fill(limitInput(), "2");
+    expect(onChange).toHaveBeenLastCalledWith("first_name", {
+      maxPeoplePerValue: 2,
+      nullIfLastName: { values: ["JOHN"], lastNames: ["DOE"] },
+    });
+    await userEvent.clear(limitInput());
+    expect(onChange).toHaveBeenLastCalledWith("first_name", {
+      nullIfLastName: { values: ["JOHN"], lastNames: ["DOE"] },
+    });
+  });
+
+  test("a limit the configuration schema refuses is marked", async () => {
+    renderStateful(unruled);
+    await expandFieldCards();
+    await userEvent.fill(limitInput(), "0");
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(MAX_PEOPLE_PER_VALUE_REFUSAL);
+  });
+
+  test("a value typed into the rule emits the rule", async () => {
+    const onChange = renderStateful(unruled);
+    await expandFieldCards();
+    await userEvent.click(valuesInput());
+    await userEvent.keyboard("JANE{Enter}");
+    expect(onChange).toHaveBeenLastCalledWith("first_name", {
+      nullIfLastName: { values: ["JANE"], lastNames: [] },
+    });
+  });
+
+  test("a rule with one list empty says it drops nothing until both are filled", async () => {
+    renderStateful(unruled);
+    await expandFieldCards();
+    await userEvent.click(valuesInput());
+    await userEvent.keyboard("JANE{Enter}");
+    const lastNameNote = page.getByText(
+      "Add at least one last name, or this rule drops nothing.",
+    );
+    await expect.element(lastNameNote).toBeInTheDocument();
+    await userEvent.click(
+      page.getByPlaceholder("Type a last name and press Enter"),
+    );
+    await userEvent.keyboard("DOE{Enter}");
+    await expect.element(lastNameNote).not.toBeInTheDocument();
+    expect(
+      page
+        .getByText("Add at least one value, or this rule drops nothing.")
+        .elements(),
+    ).toHaveLength(0);
+  });
+
+  test("a value the field's cleaning changes is flagged with its cleaned form", async () => {
+    renderStateful([
+      {
+        output: "first_name",
+        input: "maiden_col",
+        steps: [{ function: "to_upper_case" }],
+      },
+    ]);
+    await expandFieldCards();
+    await userEvent.click(valuesInput());
+    await userEvent.keyboard("john{Enter}JANE{Enter}");
+    await expect
+      .element(
+        page.getByText(
+          'This field\'s cleaning turns "john" into "JOHN", so it never matches. Enter "JOHN" instead.',
+        ),
+      )
+      .toBeInTheDocument();
+    expect(page.getByText(/turns "JANE"/).elements()).toHaveLength(0);
+  });
+
+  test("the limit cannot be stepped below one person", async () => {
+    renderStateful([
+      {
+        output: "first_name",
+        input: "maiden_col",
+        steps: [],
+        maxPeoplePerValue: 2,
+      },
+    ]);
+    await expandFieldCards();
+    const down = page.getByRole("button", {
+      name: "One fewer person of shared-value limit",
+    });
+    await expect.element(down).toBeEnabled();
+    await userEvent.click(down);
+    await expect.element(limitInput()).toHaveValue("1");
+    await expect.element(down).toBeDisabled();
+  });
+
+  test("the controls say coverage counts are taken before they apply", async () => {
+    renderStateful(unruled);
+    await expandFieldCards();
+    await expect
+      .element(
+        page.getByText(
+          "Coverage counts on this screen are taken before the limit and the last-name rule apply.",
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("no settings controls when the host does not edit them (the acceptor case)", async () => {
+    render(ruled);
+    await expandFieldCards();
+    await expect
+      .element(page.getByRole("combobox", { name: "Column to clean" }))
+      .toBeInTheDocument();
+    expect(limitInput().elements()).toHaveLength(0);
+    expect(valuesInput().elements()).toHaveLength(0);
   });
 });
 

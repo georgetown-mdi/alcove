@@ -41,6 +41,7 @@ import {
   setColumnDisclosure,
   setColumnType,
 } from "./metadataEditing";
+import { transformationWithCleaningSettings } from "./standardizationAuthoring";
 
 import { LIFETIME_CHOICES } from "./formatting";
 
@@ -68,6 +69,8 @@ import type {
 } from "@alcove/core";
 
 import type { DisclosureChoice } from "./metadataEditing";
+
+import type { CleaningSettings } from "./standardizationAuthoring";
 
 import type { OwnColumnsChoice } from "./ownColumnsModel";
 
@@ -481,6 +484,27 @@ export function editorWithFieldSteps(
       standardization: editor.draft.standardization.map((transformation) =>
         transformation.output === output
           ? { ...transformation, steps }
+          : transformation,
+      ),
+    },
+  };
+}
+
+/** Set one cleaned field's shared-value limit and last-name rule, removing
+ * either one `settings` leaves out. */
+export function editorWithFieldCleaningSettings(
+  editor: InviterEditor,
+  output: string,
+  settings: CleaningSettings,
+): InviterEditor {
+  if (editor.sealed === true) return editor;
+  return {
+    ...editor,
+    draft: {
+      ...editor.draft,
+      standardization: editor.draft.standardization.map((transformation) =>
+        transformation.output === output
+          ? transformationWithCleaningSettings(transformation, settings)
           : transformation,
       ),
     },

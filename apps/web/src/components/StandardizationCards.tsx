@@ -6,11 +6,14 @@ import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { fieldSourceColumnTypes } from "@alcove/core";
 
 import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
+import { cleaningSettingsOf } from "@psi/standardizationAuthoring";
 
+import { CleaningSettingsEditor } from "@components/CleaningSettingsEditor";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { StandardizationPreview } from "@components/StandardizationPreview";
 import { StandardizationStepEditor } from "@components/StandardizationStepEditor";
 
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 import type { ColumnSamples } from "@psi/columnSamples";
 
 import type {
@@ -38,7 +41,8 @@ import type { ReactNode } from "react";
  * input would silently drop the operator's edit on the next render.
  *
  * Each card is collapsed by default to its semantic-type label, so a section of many
- * fields displays as a scannable index; expanding reveals the step editor, the coverage
+ * fields displays as a scannable index; expanding reveals the step editor, the
+ * field's shared-value limit and last-name rule where the host edits them, the coverage
  * readout (the host's {@link renderCoverage}, the silent-empty safety signal), and a
  * further-collapsible before/after sample preview. A silent-empty collapse
  * ({@link isFieldSilentEmpty}) is flagged in the collapsed header too, so the safety
@@ -60,6 +64,7 @@ export function StandardizationCards({
   isFieldSilentEmpty,
   onMissingField,
   withholdFanOut = false,
+  onCleaningSettingsChange,
 }: {
   /** The effective standardization: one transformation per declared field. */
   standardization: Standardization;
@@ -109,6 +114,12 @@ export function StandardizationCards({
   onMissingField: "skip" | "throw";
   /** Offer no step that splits a value, for a host whose terms refuse one. */
   withholdFanOut?: boolean;
+  /** Emit a field's next shared-value limit and last-name rule. The controls
+   * render only when this is supplied. */
+  onCleaningSettingsChange?: (
+    output: string,
+    settings: CleaningSettings,
+  ) => void;
 }) {
   const fieldByName = useMemo(
     () => new Map(declaredFields.map((field) => [field.name, field])),
@@ -200,6 +211,13 @@ export function StandardizationCards({
             coverage={renderCoverage?.(transformation.output)}
             silentEmpty={isFieldSilentEmpty?.(transformation.output) ?? false}
             withholdFanOut={withholdFanOut}
+            cleaningSettings={cleaningSettingsOf(transformation)}
+            onCleaningSettingsChange={
+              onCleaningSettingsChange === undefined
+                ? undefined
+                : (settings) =>
+                    onCleaningSettingsChange(transformation.output, settings)
+            }
             // Removing is offered only for an added same-typed field, so the
             // recommended single field per type cannot be removed by accident.
             onRemove={
@@ -247,6 +265,8 @@ function StandardizationCard({
   coverage,
   silentEmpty,
   withholdFanOut,
+  cleaningSettings,
+  onCleaningSettingsChange,
   onRemove,
 }: {
   field: LinkageField;
@@ -261,6 +281,8 @@ function StandardizationCard({
    * compact warning in the collapsed card header so it is not hidden with the body. */
   silentEmpty: boolean;
   withholdFanOut: boolean;
+  cleaningSettings: CleaningSettings;
+  onCleaningSettingsChange?: (settings: CleaningSettings) => void;
   onRemove?: () => void;
 }) {
   const [cardOpen, setCardOpen] = useState(false);
@@ -307,6 +329,13 @@ function StandardizationCard({
             onStepsChange={onStepsChange}
             withholdFanOut={withholdFanOut}
           />
+          {onCleaningSettingsChange !== undefined && (
+            <CleaningSettingsEditor
+              settings={cleaningSettings}
+              steps={steps}
+              onChange={onCleaningSettingsChange}
+            />
+          )}
           {/* Full-CSV coverage, visible once the card is open: the silent-empty
               safety net (also flagged in the collapsed card header). */}
           {coverage}

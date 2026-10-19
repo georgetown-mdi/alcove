@@ -1610,6 +1610,8 @@ A `split_on` step fails closed under a combination that matches one value per re
 
 `null_if_last_name` reads the last name from your own last-name column, cleaned by your own `last_name` transformation for that column or else the default one, whether or not the linkage terms use it. The default cleaning sets it on a `first_name` field to drop the first name `JOHN` or `JANE` beside the last name `DOE`, so such a record matches only on keys without a first name, and you may change or remove it in your own standardization. It is never sent to your partner. The rule and the reason for the default are in [First name beside a listed last name](spec/DEFAULT_STANDARDIZATION.md#first-name-beside-a-listed-last-name).
 
+**Authoring in the web app and the console**: the inviting party's Cleaning tab edits both settings on each field's card, for a field of any type. The accepting party's Cleaning tab shows neither, and its run applies the default cleaning's limits and rule.
+
 ### Step fields
 
 | Field | Type | Required | Description |
