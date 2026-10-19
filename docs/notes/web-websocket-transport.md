@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; of it, the relay proof derivation and the relay service are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2, S4 and S6 to S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3 and S5 passed with Node and Chromium parties on 2026-10-18 (each [below](#the-spikes)).
+What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3 and S5 passed with Node and Chromium parties on 2026-10-18, and S6 passed on 2026-10-18 through the 443 front on a host run (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
@@ -429,7 +429,18 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 - **S6. Silence through a front.**
   A relayed exchange whose PSI step is silent for longer than the front's idle timeout, with the clients' pings on.
   PASS: the socket survives the silence and the parked-receive budget is what bounds it.
-  Not run; it needs the 443 front, so it goes to a host run.
+  **Result (2026-10-18): PASS.**
+  The run was on the Mac (Apple M1 Max, Docker Desktop, linux/arm64): the repo's 443 front rendered with the relay's route and a self-signed certificate, the relay at staging 80842d8ad, Node 26.12.0 with `ws` 8.22.0, and Chromium 156.0.8078.4.
+  The front's idle bound is 900 s.
+
+  | Arm | Silence | Outcome |
+  | --- | --- | --- |
+  | Node, pings every 30 s | 960 s | Survived; the second frame arrived and the close was 1000, 960.034 s after pairing |
+  | Node, no pings | 960 s | Cut at 900 s; close 1006 at each party, 900.027 s after pairing |
+  | Node, pings, parked-receive budget 1,200 s | 1,500 s | The receiver ended at 1,200 s with `no message arrived within 1200000 ms`, the pings keeping the sockets open; the sender saw 4000 |
+  | Chromium, relay pings every 30 s | 960 s | Survived; the second frame arrived |
+  | Chromium, no pings | 960 s | Cut at 899.945 s; close 1006 at the browser, and the relay passed 4000 to the surviving sender |
+
   Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match, and S6 runs the browser with the relay's pings.
 - **S7. The raw SFTP relay.**
   From the earlier note: a candidate proxy in front of the SFTP test server, backpressure, close mapping and the `Origin` refusal ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), run only after the relay work above.
