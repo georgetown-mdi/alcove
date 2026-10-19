@@ -169,13 +169,12 @@ describe("refusals from the real relay", () => {
     });
   });
 
-  test("a proof that expired before it reached the relay", async () => {
-    await expect(
+  test("a proof that expired before it reached the relay is signed again on the relay's clock and pairs", async () => {
+    const [inviter, acceptor] = await Promise.all([
       openParty("inviter", { now: () => new Date(Date.now() - 400_000) }),
-    ).rejects.toMatchObject({
-      kind: "transport",
-      message: /^The WebSocket relay refused this side's proof as expired/,
-    });
+      openParty("acceptor"),
+    ]);
+    await Promise.all([inviter.close(), acceptor.close()]);
   });
 
   test("a partner that never arrives", async () => {

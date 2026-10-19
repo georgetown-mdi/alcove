@@ -8,6 +8,9 @@
 - - -> It opens the relay's `wss` url and, on open, sends its hello and then its start, with no wait between them.
 - - -> It refuses a url that has a fragment, which a WebSocket url cannot have, before opening a socket.
 - - -> Its proof expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- - -> **An expired proof.**
+- - -> On a 4005 whose reason is a decimal second a JavaScript `Date` can hold, it opens a new socket once and sends a hello whose proof is made at that second, the relay's clock.
+- - -> A second 4005 ends the attempt, as does a 4005 whose reason is not such a second.
 - - -> **The waits.**
 - - -> It waits 10 minutes for `paired`, the WebRTC rendezvous budget, and then 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)).
 - - -> It refuses a binary message before the partner's start, a start before `paired`, and any text message after the partner's start.

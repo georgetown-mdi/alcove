@@ -162,14 +162,14 @@ function relaySocketUrl(url: string): string {
 
 async function buildRelayProof(
   options: WebSocketRelayConnectionOptions,
-  now: () => Date,
+  proofTime: Date,
 ): Promise<WebSocketRelayProof> {
   try {
     return await buildWebSocketRelayProof({
       relayKey: options.relayKey,
       role: options.role,
       ttlSeconds: WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
-      now: now(),
+      now: proofTime,
     });
   } catch (err) {
     throw new ConnectionError(
@@ -225,25 +225,35 @@ function readRelayControlFrame(text: string): RelayControlFrame {
 }
 
 /**
- * The relay's Unix second from a 4005 close's reason, or `undefined` when the
- * reason is not a plain decimal second.
+ * The time a 4005 close's reason states, the relay's Unix second, or
+ * `undefined` when the reason is not a plain decimal second a `Date` can hold.
  */
-function relaySecondOf(reason: string): number | undefined {
+function relayClockOf(reason: string): Date | undefined {
   if (!/^(0|[1-9][0-9]{0,15})$/.test(reason)) return undefined;
-  const second = Number(reason);
-  return Number.isSafeInteger(second) ? second : undefined;
+  const time = new Date(Number(reason) * 1000);
+  return Number.isFinite(time.getTime()) ? time : undefined;
+}
+
+/** The relay's 4005 refusal, with the relay's clock when its reason states a
+ * usable time. */
+class ProofExpiredRefusal extends ConnectionError {
+  constructor(readonly relayClock: Date | undefined) {
+    super(
+      "The WebSocket relay refused this side's proof as expired: this device's clock is behind the relay's. Set this device's clock to the correct time, then start the exchange again.",
+      "transport",
+    );
+  }
 }
 
 /**
  * The failure for a close the relay sent before forwarding started. Every
- * message names what happened and what to do; the only relay-chosen text it
- * uses is a 4005 reason, and only as a parsed integer.
+ * message names what happened and what to do and uses no relay-chosen text;
+ * a 4005 reason is read only as a time to sign a proof on.
  */
 function setupCloseError(
   event: CloseEvent,
   opened: boolean,
   paired: boolean,
-  now: () => Date,
 ): ConnectionError {
   switch (event.code) {
     case RelayCloseCode.notEnrolled:
@@ -256,21 +266,8 @@ function setupCloseError(
         "The WebSocket relay refused this side's proof: the key it holds for this exchange is not the one this invitation gives. Check that both parties use the current invitation, then start the exchange again.",
         "transport",
       );
-    case RelayCloseCode.proofExpired: {
-      const relaySecond = relaySecondOf(event.reason);
-      const skew =
-        relaySecond === undefined
-          ? undefined
-          : relaySecond - Math.floor(now().getTime() / 1000);
-      const clock =
-        skew !== undefined && skew > 0
-          ? `the relay's clock is ${skew} seconds ahead of this device's`
-          : "this device's clock is behind the relay's";
-      return new ConnectionError(
-        `The WebSocket relay refused this side's proof as expired: ${clock}. Set this device's clock to the correct time, then start the exchange again.`,
-        "transport",
-      );
-    }
+    case RelayCloseCode.proofExpired:
+      return new ProofExpiredRefusal(relayClockOf(event.reason));
     case RelayCloseCode.roleTaken:
       return new ConnectionError(
         "Another connection already holds this side's place at the WebSocket relay for this exchange. Close any other window running this exchange, wait five minutes, then start the exchange again.",
@@ -367,6 +364,9 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
  * the partner's. A browser `WebSocket` cannot send a ping, so a parked
  * receive is kept alive by the relay's own pings, which the browser answers.
  *
+ * A proof the relay refuses as expired is signed again once, on the second
+ * the refusal states as the relay's clock, over a new socket.
+ *
  * @throws {ConnectionError} of kind `usage` for an address that is not a
  *         `wss` URL or has a fragment, a relay key no proof can be built
  *         from, or an address the browser refuses to open a socket to; of
@@ -379,8 +379,34 @@ export async function openWebSocketRelayConnection(
 ): Promise<MessageConnection> {
   const url = relaySocketUrl(options.url);
   const now = options.now ?? (() => new Date());
+  let relayClock: Date;
+  try {
+    return await dialRelay(url, options, now());
+  } catch (err) {
+    if (!(err instanceof ProofExpiredRefusal) || err.relayClock === undefined)
+      throw err;
+    relayClock = err.relayClock;
+  }
+  try {
+    return await dialRelay(url, options, relayClock);
+  } catch (err) {
+    if (!(err instanceof ProofExpiredRefusal)) throw err;
+    throw new ConnectionError(
+      "The WebSocket relay refused this side's proof as expired twice, the second time signed on the relay's own clock. Start the exchange again, and if the relay refuses it again, check the relay and the exchange's enrollment at it.",
+      "transport",
+    );
+  }
+}
+
+/** One socket to the relay, its hello signed at `proofTime`, up to the
+ * partner's start. */
+async function dialRelay(
+  url: string,
+  options: WebSocketRelayConnectionOptions,
+  proofTime: Date,
+): Promise<MessageConnection> {
   if (options.signal?.aborted) throw setupCancelled();
-  const proof = await buildRelayProof(options, now);
+  const proof = await buildRelayProof(options, proofTime);
   if (options.signal?.aborted) throw setupCancelled();
   const hello = helloFrame(options.exchangeId, proof);
   const socket = openRelaySocket(url, options);
@@ -471,7 +497,7 @@ export async function openWebSocketRelayConnection(
       onClose = forwarding.onClose;
       resolve(forwarding.connection);
     };
-    onClose = (event) => failSetup(setupCloseError(event, opened, paired, now));
+    onClose = (event) => failSetup(setupCloseError(event, opened, paired));
     // Error events carry nothing a close event does not; the close that
     // follows each one decides.
     const dispatchMessage = (event: MessageEvent) => onMessage(event);

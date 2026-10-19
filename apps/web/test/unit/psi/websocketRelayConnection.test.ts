@@ -304,25 +304,109 @@ describe("a refused hello", () => {
     },
   );
 
-  test("an expired proof names how far the relay's clock is ahead", async () => {
+  describe("an expired proof", () => {
     const localSecond = 1_767_225_600;
-    const { socket, pending } = await startOpening({
-      now: () => new Date(localSecond * 1000),
-    });
-    socket.open();
-    socket.closeFromRelay(4005, String(localSecond + 420));
-    await expect(pending).rejects.toThrow(
-      "The WebSocket relay refused this side's proof as expired: the relay's clock is 420 seconds ahead of this device's. Set this device's clock to the correct time, then start the exchange again.",
-    );
-  });
 
-  test("an expired proof whose reason is not a second uses none of it", async () => {
-    const { socket, pending } = await startOpening();
-    socket.open();
-    socket.closeFromRelay(4005, "\u001b[31mspoofed");
-    const error = (await pending.catch((e: unknown) => e)) as Error;
-    expect(error.message).toMatch(/this device's clock is behind the relay's/);
-    expect(error.message).not.toMatch(/spoofed/);
+    /** Start opening a connection that records every socket it dials. */
+    function startRecording(): {
+      sockets: Array<FakeRelaySocket>;
+      pending: Promise<MessageConnection>;
+    } {
+      const sockets: Array<FakeRelaySocket> = [];
+      const pending = openWebSocketRelayConnection({
+        url: RELAY_URL,
+        exchangeId: "exchange-1",
+        role: "inviter",
+        relayKey: RELAY_KEY,
+        now: () => new Date(localSecond * 1000),
+        createSocket: (url) => {
+          const socket = new FakeRelaySocket(url);
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+      });
+      pending.catch(() => {});
+      return { sockets, pending };
+    }
+
+    async function dialed(
+      sockets: Array<FakeRelaySocket>,
+      count: number,
+    ): Promise<FakeRelaySocket> {
+      await vi.waitFor(() => expect(sockets).toHaveLength(count));
+      return sockets[count - 1];
+    }
+
+    function proofExpiry(socket: FakeRelaySocket): number {
+      const hello = JSON.parse(socket.sent[0] as string) as Record<
+        string,
+        string
+      >;
+      return parseWebSocketRelayProof(
+        new TextEncoder().encode(hello.proof),
+        Uint8Array.from(Buffer.from(hello.tag, "hex")),
+      ).expiresAtSeconds;
+    }
+
+    test("is signed again once on the relay's clock, over a new socket", async () => {
+      const { sockets, pending } = startRecording();
+      const first = await dialed(sockets, 1);
+      first.open();
+      expect(proofExpiry(first)).toBe(localSecond + 300);
+      const relaySecond = localSecond + 3_600;
+      first.closeFromRelay(4005, String(relaySecond));
+
+      const second = await dialed(sockets, 2);
+      second.open();
+      expect(proofExpiry(second)).toBe(relaySecond + 300);
+      expect(second.sent[1]).toBe(START);
+      second.fromRelay(PAIRED);
+      second.fromRelay(START);
+      await expect(pending).resolves.toBeDefined();
+      expect(sockets).toHaveLength(2);
+    });
+
+    test("refused again on the relay's clock ends the attempt without blaming this device's clock", async () => {
+      const { sockets, pending } = startRecording();
+      const first = await dialed(sockets, 1);
+      first.open();
+      first.closeFromRelay(4005, String(localSecond + 3_600));
+      const second = await dialed(sockets, 2);
+      second.open();
+      second.closeFromRelay(4005, String(localSecond + 7_200));
+
+      const error = await pending.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConnectionError);
+      expect(error).toMatchObject({
+        kind: "transport",
+        message:
+          "The WebSocket relay refused this side's proof as expired twice, the second time signed on the relay's own clock. Start the exchange again, and if the relay refuses it again, check the relay and the exchange's enrollment at it.",
+      });
+      expect(sockets).toHaveLength(2);
+    });
+
+    test.each([
+      ["text that is not a second", "\u001b[31mspoofed"],
+      ["an empty reason", ""],
+      ["a second past what a date can hold", "9000000000000000"],
+    ])(
+      "with %s ends the attempt with the refusal and uses none of the reason",
+      async (_label, reason) => {
+        const { sockets, pending } = startRecording();
+        const first = await dialed(sockets, 1);
+        first.open();
+        first.closeFromRelay(4005, reason);
+
+        const error = await pending.catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(ConnectionError);
+        expect(error).toMatchObject({
+          kind: "transport",
+          message:
+            "The WebSocket relay refused this side's proof as expired: this device's clock is behind the relay's. Set this device's clock to the correct time, then start the exchange again.",
+        });
+        expect(sockets).toHaveLength(1);
+      },
+    );
   });
 
   test("a socket that never opens is a connection failure", async () => {
