@@ -14,6 +14,7 @@ import {
   INFER_DATE_SCAN_CAP,
 } from "../src/utils/date";
 import {
+  buildKeyStrings,
   buildStandardizedDataset,
   runPipeline,
   titles,
@@ -1169,6 +1170,78 @@ describe("default name pipeline (first_name / last_name)", () => {
       expect(firstName).toBe("J");
       expect(runPipeline(firstName as string, initial.transform!)).toBe("J");
     }
+  });
+
+  describe("the built-in keys on the full first name", () => {
+    const metadata: ColumnMetadata[] = [
+      { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
+      { name: "FN", type: "first_name", role: "linkage", isPayload: false },
+      { name: "LN", type: "last_name", role: "linkage", isPayload: false },
+      { name: "DOB", type: "date_of_birth", role: "linkage", isPayload: false },
+    ];
+    const linkageTerms = getDefaultLinkageTerms("test", metadata);
+    const { dataset } = prepareForExchange(
+      { metadata, linkageTerms },
+      "test",
+      [
+        { SSN: "512-34-6789", FN: "J.", LN: "Doe", DOB: "01/15/1990" },
+        { SSN: "498-76-5432", FN: "Jo", LN: "Roe", DOB: "03/02/1985" },
+      ],
+      ["SSN", "FN", "LN", "DOB"],
+    );
+    const ONE_LETTER = 0;
+    const TWO_LETTERS = 1;
+    // "FN" as a whole token of the catalog notation: not FN1, FN3 or soundex(FN).
+    const fullFirstNameKeys = linkageTerms.linkageKeys.filter((key) =>
+      /(?<!soundex\()\bFN\b/.test(key.name),
+    );
+    const initialKeys = linkageTerms.linkageKeys.filter((key) =>
+      ["SSN + LN + FN1", "SSN + LN3 + FN1"].includes(key.name),
+    );
+
+    test("the file supplies keys of both kinds", () => {
+      expect(fullFirstNameKeys.map((key) => key.name)).toEqual(
+        expect.arrayContaining([
+          "SSN + DOB + FN",
+          "SSN + FN + LN",
+          "LN + FN + DOB",
+          "swap(LN, FN) + DOB",
+        ]),
+      );
+      expect(initialKeys).toHaveLength(2);
+    });
+
+    test.each([false, true])(
+      "a one-letter first name builds none of them (receiver: %j)",
+      (isReceiver) => {
+        for (const key of fullFirstNameKeys) {
+          expect(
+            buildKeyStrings(key, dataset, ONE_LETTER, isReceiver),
+            key.name,
+          ).toBeNull();
+        }
+      },
+    );
+
+    test("a one-letter first name builds both SSN + initial keys", () => {
+      for (const key of initialKeys) {
+        expect(buildKeyStrings(key, dataset, ONE_LETTER)?.size, key.name).toBe(
+          1,
+        );
+      }
+    });
+
+    test.each([false, true])(
+      "a two-letter first name builds every one of them and both initial keys (receiver: %j)",
+      (isReceiver) => {
+        for (const key of [...fullFirstNameKeys, ...initialKeys]) {
+          expect(
+            buildKeyStrings(key, dataset, TWO_LETTERS, isReceiver),
+            key.name,
+          ).not.toBeNull();
+        }
+      },
+    );
   });
 
   test.each([

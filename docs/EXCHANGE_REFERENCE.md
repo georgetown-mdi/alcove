@@ -56,7 +56,7 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 The built-in rules are two named artifacts, versioned separately:
 
 - **`baseline-pii`, version `1.3.0`** -- the linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.3.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
+- **`precision-ranked-rules`, version `2.4.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -68,6 +68,8 @@ What the names do and do not cover:
 - Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
 Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_termslinkage_rule_set) field below, so the citation travels with the exchange: it is in the invitation, on the wire, on the accepting party's terms review, and in each party's exchange record.
+
+Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches only a first name of at least two letters. The default cleaning keeps a first name of one letter, and a [`filter_regex`](#string-transformation) step with the pattern `^.{2,}$` on each of those rules' first-name element drops it there, so a record holding only an initial matches through the rules on part of the first name, such as `SSN + LN + FN1`. The key lists on the acceptance screens show that step under each such rule.
 
 #### Choosing rules by precision floor
 

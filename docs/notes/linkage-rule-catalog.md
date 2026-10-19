@@ -5,7 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.3.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.4.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
@@ -24,6 +24,7 @@ A rule matches two records only when every element agrees exactly.
 - `LN` and `FN` are the last and first name, standardized.
   `LN3` and `LN4` are the first three or four letters of the last name.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
+  `FN` is a first name of at least two letters: cleaning keeps a one-letter first name for the `FN1` rules, and every rule on `FN` drops it, since a shared initial is much weaker evidence than a shared full first name.
 - `SFX` is a name suffix (JR, SR, II, III, IV).
   No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they wait on a per-side missing-date condition instead ([Status](#status)).
   Suffixes stay stripped from `LN` and `FN`.

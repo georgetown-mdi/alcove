@@ -28,6 +28,10 @@ const bandOf = (name: string): LinkageRuleBand | undefined =>
   bands.find((band) => band.rule === name);
 const names = (keys: ReadonlyArray<{ name: string }>): Array<string> =>
   keys.map((key) => key.name);
+const FULL_FIRST_NAME = {
+  field: "first_name",
+  transform: [{ function: "filter_regex", params: { pattern: "^.{2,}$" } }],
+};
 
 describe("the catalog's bands", () => {
   test("give every key a band, in the keys' own order", () => {
@@ -159,7 +163,7 @@ describe("the geography rules", () => {
       catalog.linkageKeys.find((key) => key.name === name);
     const nameAndDate = [
       { field: "last_name" },
-      { field: "first_name" },
+      FULL_FIRST_NAME,
       { field: "date_of_birth" },
     ];
     expect(keyOf(ZIP3_RULE)?.elements).toStrictEqual([
@@ -353,7 +357,7 @@ describe("the street number rule", () => {
         ?.elements,
     ).toStrictEqual([
       { field: "last_name" },
-      { field: "first_name" },
+      FULL_FIRST_NAME,
       { field: "date_of_birth" },
       { field: "street_number" },
       { field: "zip_code" },
@@ -461,7 +465,7 @@ describe("the citation", () => {
     expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
     expect(catalog.reference).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
     });
   });
 

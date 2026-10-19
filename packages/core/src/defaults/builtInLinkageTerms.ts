@@ -6,6 +6,7 @@ import type {
   LinkageField,
   LinkageKey,
   LinkageKeyElement,
+  TransformStep,
 } from "../config/linkageTermsSchema";
 import type { Metadata } from "../config/metadata";
 import { canonicalString } from "../utils/canonical";
@@ -127,7 +128,7 @@ export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
  * evidence attaches to the name and version together, so an edited set
  * holding the old version makes that record describe rules nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.3.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.4.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
@@ -145,11 +146,28 @@ export interface LinkageRuleBand {
   needs?: string;
 }
 
+// Cleaning keeps a one-letter first name for the SSN + initial keys (FN1), so
+// a key on the full first name drops it here: a shared initial is far weaker
+// evidence than a shared full first name.
+const AT_LEAST_TWO_CHARACTERS: TransformStep = {
+  function: "filter_regex",
+  params: { pattern: "^.{2,}$" },
+};
+
 // The elements the catalog's keys are built from, in the catalog's notation.
 const SSN: LinkageKeyElement = { field: "ssn" };
 const SSN4: LinkageKeyElement = { field: "ssn4" };
 const LN: LinkageKeyElement = { field: "last_name" };
-const FN: LinkageKeyElement = { field: "first_name" };
+const FN: LinkageKeyElement = {
+  field: "first_name",
+  transform: [AT_LEAST_TWO_CHARACTERS],
+};
+// A swap pair must declare one transform, so the last name of a swap key takes
+// the first name's; cleaning already drops a one-letter last name.
+const LN_SWAPPED_WITH_FN: LinkageKeyElement = {
+  field: "last_name",
+  transform: [AT_LEAST_TWO_CHARACTERS],
+};
 const DOB: LinkageKeyElement = { field: "date_of_birth" };
 const PHONE: LinkageKeyElement = { field: "phone_number" };
 const EMAIL: LinkageKeyElement = { field: "email_address" };
@@ -255,7 +273,7 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   },
   {
     name: "SSN4 + swap(LN, FN) + DOB",
-    elements: [SSN4, LN, FN, DOB],
+    elements: [SSN4, LN_SWAPPED_WITH_FN, FN, DOB],
     swap: ["last_name", "first_name"],
   },
   {
@@ -278,7 +296,7 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   { name: "LN + FN + DOB", elements: [LN, FN, DOB] },
   {
     name: "swap(LN, FN) + DOB",
-    elements: [LN, FN, DOB],
+    elements: [LN_SWAPPED_WITH_FN, FN, DOB],
     swap: ["last_name", "first_name"],
   },
   { name: "split(LN) + FN + DOB", elements: [SPLIT_LN, FN, DOB] },

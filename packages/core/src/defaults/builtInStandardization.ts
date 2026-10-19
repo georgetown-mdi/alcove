@@ -81,7 +81,8 @@ const LAST_NAME_PLACEHOLDER_STEP: StandardizationStep = {
 };
 
 // A one-letter first name is kept: the built-in keys beside a full SSN match
-// on the first initial alone.
+// on the first initial alone, and the keys on the full first name drop it
+// themselves (builtInLinkageTerms.ts).
 const FIRST_NAME_STEPS: StandardizationStep[] = [
   ...NAME_STEPS,
   FIRST_NAME_PLACEHOLDER_STEP,
