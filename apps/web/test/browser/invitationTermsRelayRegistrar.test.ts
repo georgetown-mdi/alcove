@@ -222,11 +222,20 @@ describe("InvitationTerms: the invitation's relays under the exchange's allowed 
     expect(await producesText(endpoint)).toContain(shown);
     app.unmount();
     expect(await producesText(endpoint, ["wsrelay.example.net"])).toContain(
-      `${shown} (${KEPT_BY_ALLOWED_RELAYS})`,
+      `${shown} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
     );
     app.unmount();
-    expect(await producesText(endpoint, ["partner.example.net"])).toContain(
-      `${shown} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    const canonical: ConnectionEndpoint = {
+      ...endpoint,
+      relay: { websocket: "wss://wsrelay.example.net/relay" },
+    };
+    const shownCanonical = "WebSocket relay wss://wsrelay.example.net/relay";
+    expect(await producesText(canonical, ["wsrelay.example.net"])).toContain(
+      `${shownCanonical} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    app.unmount();
+    expect(await producesText(canonical, ["partner.example.net"])).toContain(
+      `${shownCanonical} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
     );
   });
 

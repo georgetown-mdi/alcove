@@ -1519,13 +1519,18 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     const log = getLogger("accept-display-websocket-relay-test");
     log.setLevel("silent");
     const infoSpy = vi.spyOn(log, "info");
-    const show = (allowedRelays: ReadonlyArray<string> | undefined) => {
+    const escaped = "wss://wsrelay.example.org/\u001b[31mrelay";
+    const canonical = "wss://wsrelay.example.org/relay";
+    const show = (
+      websocket: string,
+      allowedRelays: ReadonlyArray<string> | undefined,
+    ) => {
       infoSpy.mockClear();
       displayInvitation({
         token: sampleToken(FUTURE(), {
           channel: "webrtc",
           host: "peer.example.org",
-          relay: { websocket: "wss://wsrelay.example.org/\u001b[31mrelay" },
+          relay: { websocket },
         }),
         ownOutboundSend: undefined,
         emit: (line) => {
@@ -1539,16 +1544,18 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       return lines[heading + 1];
     };
     try {
-      expect(show(undefined)).toBe(
+      expect(show(escaped, undefined)).toBe(
         "    WebSocket relay wss://wsrelay.example.org/\\x1b[31mrelay",
       );
-      expect(show(["wsrelay.example.org"])).toBe(
-        "    WebSocket relay wss://wsrelay.example.org/\\x1b[31mrelay " +
-          "(kept by connection.allowed_relays)",
-      );
-      expect(show(["relay.example.org"])).toBe(
+      expect(show(escaped, ["wsrelay.example.org"])).toBe(
         "    WebSocket relay wss://wsrelay.example.org/\\x1b[31mrelay " +
           "(left out by connection.allowed_relays)",
+      );
+      expect(show(canonical, ["wsrelay.example.org"])).toBe(
+        `    WebSocket relay ${canonical} (kept by connection.allowed_relays)`,
+      );
+      expect(show(canonical, ["relay.example.org"])).toBe(
+        `    WebSocket relay ${canonical} (left out by connection.allowed_relays)`,
       );
     } finally {
       infoSpy.mockRestore();

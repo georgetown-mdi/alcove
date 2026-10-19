@@ -171,10 +171,16 @@ describe("the relays a run lists under allowed_relays", () => {
 
 describe("matching a WebSocket relay url against allowed_relays", () => {
   test("a url names its host and its port, 443 where it names none", () => {
-    expect(webSocketRelayUrlRelay("wss://WSRelay.example.org/relay")).toEqual({
+    expect(webSocketRelayUrlRelay("wss://wsrelay.example.org/relay")).toEqual({
       host: "wsrelay.example.org",
       port: 443,
     });
+    expect(webSocketRelayUrlRelay("wss://WSRelay.example.org/relay")).toBe(
+      undefined,
+    );
+    expect(
+      webSocketRelayUrlRelay("wss://evil.example\\@wsrelay.example.org/relay"),
+    ).toBe(undefined);
     expect(webSocketRelayUrlRelay("wss://wsrelay.example.org./relay")).toEqual({
       host: "wsrelay.example.org",
       port: 443,

@@ -1129,7 +1129,9 @@ const WEBSOCKET_RELAY_URL_FORM =
   "relay's path, for example wss://relay.example.org/relay";
 
 // Why `url` cannot name a WebSocket relay, or undefined when it can. The url
-// is never repeated, since one holding a user may hold a password.
+// is repeated only once a user is ruled out, since a user may hold a password.
+// A url that differs from its parsed href would display one host and dial
+// another, so it is refused, the empty path's trailing slash aside.
 function webSocketRelayUrlProblem(url: string): string | undefined {
   let parsed: URL;
   try {
@@ -1145,12 +1147,18 @@ function webSocketRelayUrlProblem(url: string): string | undefined {
   // `search` and `hash` are empty for an empty `?` or `#`, so the text is read.
   if (url.includes("?") || url.includes("#"))
     return `has a query or fragment; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  const canonical = parsed.href;
+  const omitsEmptyPathSlash =
+    parsed.pathname === "/" && `${url}/` === canonical;
+  if (url !== canonical && !omitsEmptyPathSlash)
+    return `is not in canonical form; write it as ${canonical}`;
   return undefined;
 }
 
 /**
  * The grammar of a WebSocket relay's address: a `wss://` url naming a host, an
- * optional port and a path, with no user, query or fragment, at most
+ * optional port and a path, with no user, query or fragment, written as the
+ * URL parser's href gives it back (an empty path may omit its slash), at most
  * {@link MAX_WEBSOCKET_RELAY_URL_LENGTH} UTF-16 code units. Each refusal
  * starts with `name`, the field as the reader of the message knows it.
  */

@@ -44,6 +44,7 @@ import {
   reconcileConflictMessage,
   reconcileDiffValue,
   loadConfigLinkageSource,
+  loadConfigWebRTCConnection,
   persistExpectedPartnerDeduplicate,
   persistFilledPayloadReceive,
   persistHostKeyFingerprint,
@@ -1803,6 +1804,45 @@ describe("persistInvitationRelay", () => {
     });
     expect(parseExchangeSpec(raw).connection).not.toHaveProperty(
       "invitationRelay",
+    );
+  });
+});
+
+// --- loadConfigWebRTCConnection -----------------------------------------------
+
+describe("loadConfigWebRTCConnection", () => {
+  function writeWebSocketRelay(url: string): string {
+    const configPath = path.join(dir, "alcove.yaml");
+    fs.writeFileSync(
+      configPath,
+      [
+        "connection:",
+        "  channel: webrtc",
+        "  server:",
+        "    host: peer.example.org",
+        `  websocket_relay: ${JSON.stringify(url)}`,
+        "",
+      ].join("\n"),
+    );
+    return configPath;
+  }
+
+  test("refuses a websocket_relay not in canonical form, naming the form to write", () => {
+    const configPath = writeWebSocketRelay(
+      "wss://WSRelay.example.org:443/relay",
+    );
+    expect(() => loadConfigWebRTCConnection(configPath)).toThrow(UsageError);
+    expect(() => loadConfigWebRTCConnection(configPath)).toThrow(
+      "websocket_relay is not in canonical form; write it as " +
+        "wss://wsrelay.example.org/relay",
+    );
+  });
+
+  test("keeps a websocket_relay written in canonical form", () => {
+    const configPath = writeWebSocketRelay("wss://wsrelay.example.org/relay");
+    expect(loadConfigWebRTCConnection(configPath)).toHaveProperty(
+      "websocketRelay",
+      "wss://wsrelay.example.org/relay",
     );
   });
 });

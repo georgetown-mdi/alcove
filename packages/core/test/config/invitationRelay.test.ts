@@ -662,6 +662,32 @@ describe("the relay locator's WebSocket relay", () => {
       "wsrelay",
       `is not a url; write it as ${WEBSOCKET_FORM}`,
     ],
+    [
+      "a url whose backslash moves the host",
+      "wss://evil.example\\@wsrelay.example.org/relay",
+      "is not in canonical form; write it as " +
+        "wss://evil.example/@wsrelay.example.org/relay",
+    ],
+    [
+      "a url with a percent-encoded host",
+      "wss://%77srelay.example.org/relay",
+      `is not in canonical form; write it as ${WEBSOCKET}`,
+    ],
+    [
+      "a url with a tab inside it",
+      "wss://wsrelay.exa\tmple.org/relay",
+      `is not in canonical form; write it as ${WEBSOCKET}`,
+    ],
+    [
+      "a url with no authority",
+      "wss:///relay",
+      "is not in canonical form; write it as wss://relay/",
+    ],
+    [
+      "a url with an uppercase host",
+      "wss://WSRelay.example.org/relay",
+      `is not in canonical form; write it as ${WEBSOCKET}`,
+    ],
   ])("%s is refused at decode and at mint", async (_, websocket, problem) => {
     const token = tokenWithEndpoint({
       channel: "webrtc",

@@ -248,11 +248,9 @@ export function relayForRun(
 }
 
 /**
- * The WebSocket relays a run lists, by the rule {@link relayForRun} lists
- * TURN urls by: this browser's own followed by the invitation's, each listed
- * once, less every one `allowedRelays` leaves out. A stored setting this
- * build cannot read adds nothing. The command line lists them the same way
- * (`selectRunRelay` in core).
+ * This browser's WebSocket relay url followed by the invitation's, each
+ * listed once, less every one `allowedRelays` leaves out. A stored setting
+ * this build cannot read adds nothing.
  */
 export function webSocketRelaysForRun(
   invitationRelay: RelayUrls | undefined,

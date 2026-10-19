@@ -4,7 +4,7 @@
 # default.
 - A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locator: an object with an optional `turn` list and an optional `stun` list of urls, an optional `registrar` url, and no other key. -> A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locator: an object with an optional `turn` list and an optional `stun` list of urls, an optional `websocket` url, an optional `registrar` url, and no other key.
 - - -> **The WebSocket relay.**
-- - -> `websocket` is the address of a [WebSocket relay](WEBSOCKET_RELAY.md), in the grammar of the connection block's own [`websocket_relay`](../EXCHANGE_REFERENCE.md#connectionwebsocket_relay) (`webSocketRelayUrlSchema` in `packages/core/src/config/connection.ts`): one `wss://` url naming a host, an optional port and a path, with no user, query or fragment, at most `MAX_WEBSOCKET_RELAY_URL_LENGTH` (**1024**) UTF-16 code units.
+- - -> `websocket` is the address of a [WebSocket relay](WEBSOCKET_RELAY.md), in the grammar of the connection block's own [`websocket_relay`](../EXCHANGE_REFERENCE.md#connectionwebsocket_relay) (`webSocketRelayUrlSchema` in `packages/core/src/config/connection.ts`): one `wss://` url naming a host, an optional port and a path, with no user, query or fragment, accepted only as the WHATWG URL parser's `href` gives it back, the trailing slash of an empty path aside, at most `MAX_WEBSOCKET_RELAY_URL_LENGTH` (**1024**) UTF-16 code units.
 - - -> A list in its place is refused.
 - - -> It counts as the one url a locator names.
 - - -> **The WebSocket relay an inviter names.**
