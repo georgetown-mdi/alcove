@@ -41,6 +41,7 @@
       "Bash(node .claude/scripts/lint-issues.mjs *)",
       "Bash(node .claude/scripts/list-epic.mjs *)",
       "Bash(node .claude/scripts/list-issues.mjs *)",
+      "Bash(node .claude/scripts/find-rulings.mjs *)",
       "Bash(gh project item-create *)",
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
