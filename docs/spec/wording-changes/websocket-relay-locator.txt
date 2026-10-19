@@ -1,7 +1,7 @@
 # The invitation's relay locator gains an optional websocket url, the
 # address of a WebSocket relay, which the CLI names from its
 # websocket_relay and the web app from its relay setting or a build's
-# default; a run lists it beside its own by the TURN rule.
+# default.
 - A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locator: an object with an optional `turn` list and an optional `stun` list of urls, an optional `registrar` url, and no other key. -> A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locator: an object with an optional `turn` list and an optional `stun` list of urls, an optional `websocket` url, an optional `registrar` url, and no other key.
 - - -> **The WebSocket relay.**
 - - -> `websocket` is the address of a [WebSocket relay](WEBSOCKET_RELAY.md), in the grammar of the connection block's own [`websocket_relay`](../EXCHANGE_REFERENCE.md#connectionwebsocket_relay) (`webSocketRelayUrlSchema` in `packages/core/src/config/connection.ts`): one `wss://` url naming a host, an optional port and a path, with no user, query or fragment, at most `MAX_WEBSOCKET_RELAY_URL_LENGTH` (**1024**) UTF-16 code units.
@@ -12,13 +12,12 @@
 - - -> The web app names the browser's own relay setting's WebSocket relay url, or, where that names none, a build's default WebSocket relay (`VITE_DEFAULT_RELAY_WEBSOCKET_URL`; `invitationRelayWithDefault` in `apps/web/src/psi/transport/defaultRelay.ts`).
 - - -> Each names it only where the allowed relays that apply keep it (`webSocketRelayUrlIsAllowed` in `packages/core/src/config/connection.ts`).
 - - -> `websocket` was added to the strict locator without a `version` bump as well, so a decoder predating it refuses every invitation that names it.
-- - -> **Which WebSocket relays a run lists.**
-- - -> A run lists its WebSocket relays by the same rule as its TURN urls:
-- - -> **The order.**
-- - -> Its own first, the CLI's `websocket_relay` (`selectRunRelay`) or the browser's relay setting (`webSocketRelaysForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`), then the invitation's `websocket` url, a url both name listed once, as its own.
+- - -> **Which WebSocket relays the allowed relays keep.**
+- - -> An invitation names at most one WebSocket relay url, and the allowed relays keep it by a rule of its own, apart from the TURN urls:
 - - -> **The allowed relays.**
-- - -> They leave out every url no entry names, matching as for a TURN url, on port 443 for a url naming none (`webSocketRelayUrlIsAllowed`).
+- - -> They keep a WebSocket relay url only where an entry names its host, matching without resolving the host and, where the entry names a port, the url's port, 443 for a url naming none (`webSocketRelayUrlIsAllowed`).
+- - -> A TURN url is kept by its own rule, and a WebSocket relay url is not kept by the TURN rule.
 - - -> **No run dials one.**
-- - -> A run lists them and contacts none.
+- - -> No run contacts or reports a WebSocket relay.
 - `relay` is the inviting party's relay locator, TURN and STUN urls and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator). -> `relay` is the inviting party's relay locator, TURN and STUN urls, a WebSocket relay url and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator).
 - For the browser path the document's connection block is the `webrtc` channel restricted to its credential-free locator subset: `server` locator fields only (`host`/`port`/`path` -- no `server.username`, no PeerJS `key`), the `invitation_relay` the invitation named (TURN and STUN urls and a registrar url only, see [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), and no `turn`, `ice_provision`, or `provider_options` entries (a TURN entry holds relay credentials, and the provider map is opaque and `@`-file-pathed). -> For the browser path the document's connection block is the `webrtc` channel restricted to its credential-free locator subset: `server` locator fields only (`host`/`port`/`path` -- no `server.username`, no PeerJS `key`), the `invitation_relay` the invitation named (TURN and STUN urls, a WebSocket relay url and a registrar url only, see [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), and no `turn`, `ice_provision`, or `provider_options` entries (a TURN entry holds relay credentials, and the provider map is opaque and `@`-file-pathed).
