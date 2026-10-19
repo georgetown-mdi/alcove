@@ -81,6 +81,20 @@ function MarkedColumnList({ names }: { names: Array<string> }) {
 }
 
 /**
+ * The local remedy for columns marked to send that the partner does not take.
+ * Three choices send a column, so it names the ones that do not.
+ */
+function UnsendRemedy({ count }: { count: number }) {
+  return (
+    <>
+      Set &quot;How it is used&quot; below to a choice that does not send{" "}
+      {count === 1 ? "it" : "them"} - one ending &quot;not sent&quot;, or
+      &quot;Ignored&quot; - for {count === 1 ? "that column" : "those columns"}
+    </>
+  );
+}
+
+/**
  * The acceptor's "Confirm your columns" work surface (step 3 of 3). Presentational
  * over the shared column-step state the console owns -- the verdict, mapper, and
  * gate view-models come in derived from {@link acceptorColumnsModel}, and edits go
@@ -245,12 +259,12 @@ export function AcceptorColumnsStep({
   // about: the columns the operator would set, or the ones they would go and find.
   const expectedMissingFromFile =
     declarationConflict?.declaredButNotSent.filter((gap) => !gap.inFile) ?? [];
-  // The offer, or what taking it would cost an agreed linkage key, read from the
-  // model over the whole declared set rather than the names painted below, so the
-  // offer's choices and cost are the ones the operator would meet.
+  // The offer, read from the model over the whole declared set rather than the
+  // names painted below, so the offer's choices are the ones the operator would
+  // meet.
   const wideningOffer = useMemo(
-    () => acceptorWideningOfferSentence(columns, linkageTerms, columnsState),
-    [columns, linkageTerms, columnsState],
+    () => acceptorWideningOfferSentence(linkageTerms, columnsState.metadata),
+    [linkageTerms, columnsState.metadata],
   );
   // The cap keeps a flooded declaration from putting the metadata grid the operator
   // has to edit, and the launch control below it, past a screenful of partner text.
@@ -537,13 +551,15 @@ export function AcceptorColumnsStep({
                 <MarkedColumnList
                   names={declarationConflict.sentButNotDeclared}
                 />
-                The exchange cannot start while the two disagree. Set &quot;How
-                it is used&quot; below to anything other than &quot;Sent to your
-                partner&quot; for{" "}
+                The exchange cannot start while the two disagree.{" "}
+                <UnsendRemedy
+                  count={declarationConflict.sentButNotDeclared.length}
+                />
+                , or ask your partner for an invitation that accepts{" "}
                 {declarationConflict.sentButNotDeclared.length === 1
-                  ? "that column"
-                  : "those columns"}
-                , or ask your partner for an invitation that accepts them.
+                  ? "it"
+                  : "them"}
+                .
               </>
             ) : (
               <>
@@ -561,11 +577,9 @@ export function AcceptorColumnsStep({
                     {/* The direction with a remedy on this screen, so it leads
                         with that remedy: the notice clears as the operator
                         re-marks, without a new invitation. */}
-                    Set &quot;How it is used&quot; below to anything other than
-                    &quot;Sent to your partner&quot; for{" "}
-                    {declarationConflict.sentButNotDeclared.length === 1
-                      ? "that column"
-                      : "those columns"}
+                    <UnsendRemedy
+                      count={declarationConflict.sentButNotDeclared.length}
+                    />
                     , or ask your partner for an invitation that expects{" "}
                     {declarationConflict.sentButNotDeclared.length === 1
                       ? "it"

@@ -637,9 +637,9 @@ interface AcceptorPayloadDeclarationConflict {
  * The declaration's column names this party's marks do not send, raw and in
  * declaration order -- partner-controlled text, escaped by whichever sink paints it
  * ({@link AcceptorDeclaredColumnGap}). The one derivation of that set: the notice's
- * list, its remedies and the cost of taking its widening offer
- * ({@link acceptorSendingExpectedColumnsCostsKey}) read the same names, whole,
- * whatever the notice paints.
+ * list, its remedies and its widening offer
+ * ({@link acceptorWideningOfferSentence}) read the same names, whole, whatever
+ * the notice paints.
  *
  * DISTINCT, keeping each name's first position: a declaration may name the same
  * column twice, which is still one column to list, one to mark and one to speak
@@ -825,27 +825,18 @@ export function acceptorWidenedMetadata(
  * Names the choice {@link acceptorWidenedMetadata} applies to each column, read
  * from the marks it returns -- the matched column's and the record
  * identifier's own sending choices, "Sent to your partner" for the rest -- and
- * what each keeps. Where taking it would still cost an agreed linkage key
- * ({@link acceptorSendingExpectedColumnsCostsKey}), it states that instead.
+ * what each keeps.
  */
 export function acceptorWideningOfferSentence(
-  columns: Array<string>,
   linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
+  metadata: Metadata,
 ): string | undefined {
-  const widenable = widenableDeclaredColumns(linkageTerms, state.metadata);
+  const widenable = widenableDeclaredColumns(linkageTerms, metadata);
   if (widenable.length === 0) return undefined;
-  if (acceptorSendingExpectedColumnsCostsKey(columns, linkageTerms, state)) {
-    const held =
-      widenable.length === 1
-        ? "the column your file does have"
-        : "the columns your file does have";
-    return ` Setting ${held} to send below will not start the exchange: that would leave an agreed linkage key with no column to match on.`;
-  }
   const sent = `"${DISCLOSURE_LABELS.payload}"`;
   const matchSent = `"${DISCLOSURE_LABELS["match-sent"]}"`;
   const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
-  const choices = acceptorWidenedMetadata(linkageTerms, state.metadata)
+  const choices = acceptorWidenedMetadata(linkageTerms, metadata)
     .filter((column) => widenable.includes(column.name))
     .map(disclosureOf);
   const matchedCount = choices.filter((c) => c === "match-sent").length;
@@ -853,7 +844,9 @@ export function acceptorWideningOfferSentence(
   const otherCount = choices.length - matchedCount - identifierCount;
   const disclosesMore = "that discloses more than you have marked so far";
   if (matchedCount === 0 && identifierCount === 0)
-    return ` Where your file does have such a column, you can set it to ${sent} below instead - ${disclosesMore}, and sending it replaces the use it has now.`;
+    return otherCount === 1
+      ? ` Where your file does have such a column, you can set it to ${sent} below instead - ${disclosesMore}, and sending it replaces the use it has now.`
+      : ` Where your file does have such columns, you can set them to ${sent} below instead - ${disclosesMore}, and sending them replaces the use each has now.`;
   if (identifierCount === choices.length)
     return ` Your file does have that column as its record identifier: you can set it to ${identifierSent} below instead - ${disclosesMore}, and the column stays your record identifier.`;
   if (matchedCount === choices.length)
@@ -864,7 +857,7 @@ export function acceptorWideningOfferSentence(
   const consequences: Array<string> = [];
   if (identifierCount > 0) {
     settings.push(`your record identifier to ${identifierSent}`);
-    consequences.push("your record identifier stays your record identifier");
+    consequences.push("your record identifier keeps its use");
   }
   if (matchedCount > 0) {
     settings.push(`any column used to match to ${matchSent}`);
@@ -882,58 +875,6 @@ export function acceptorWideningOfferSentence(
 function joinClauses(clauses: Array<string>): string {
   if (clauses.length <= 2) return clauses.join(" and ");
   return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
-}
-
-/**
- * Whether taking the notice's widening offer would cost an agreed linkage key:
- * the marks {@link acceptorWidenedMetadata} leaves satisfy fewer keys than the
- * current marks do, so the run would be refused for a key the input can no
- * longer satisfy and the offer would move the operator from one refusal to the
- * next. The offer sends a column the file matches on as `match-sent`, which
- * keeps the keys that column feeds.
- *
- * Measured over the WHOLE declared-but-unsent set, not the names the notice paints,
- * so the cost is the one the operator can actually take on under a declaration
- * longer than the notice's list bound.
- *
- * The hypothetical marks are the operator's own edit ({@link setColumnDisclosure},
- * the call the grid's "How it is used" control makes) and are graded by the same
- * derivation the gate runs ({@link acceptorColumnsEditorState} then
- * {@link acceptorVerdict}), so the caveat cannot state a cost the run does not
- * charge. Both gradings read no rows: rows fix only the date-of-birth input format
- * the cleaning parses with, which grades a key dead rather than unsatisfiable, and
- * the count compared here is of satisfiable keys. The prediction is held to the
- * operator's real post-edit state, rows included, in
- * apps/web/test/unit/acceptorColumns.test.ts.
- */
-export function acceptorSendingExpectedColumnsCostsKey(
-  columns: Array<string>,
-  linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
-): boolean {
-  if (widenableDeclaredColumns(linkageTerms, state.metadata).length === 0)
-    return false;
-  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
-  return (
-    satisfiableKeysUnderMarks(columns, linkageTerms, {
-      ...state,
-      metadata: widened,
-    }) < satisfiableKeysUnderMarks(columns, linkageTerms, state)
-  );
-}
-
-/** How many agreed keys the marks in `state` leave satisfiable, through the
- * derivation the step's own verdict runs. */
-function satisfiableKeysUnderMarks(
-  columns: Array<string>,
-  linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
-): number {
-  return acceptorVerdict(
-    columns,
-    linkageTerms,
-    acceptorColumnsEditorState(state, linkageTerms, []),
-  ).satisfiableKeyCount;
 }
 
 /** Whether the metadata has more than one identifier column, shown as the

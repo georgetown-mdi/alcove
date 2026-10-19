@@ -22,7 +22,6 @@ import {
   acceptorOverlongDisclosedColumns,
   acceptorPartnerNote,
   acceptorPayloadDeclarationConflict,
-  acceptorSendingExpectedColumnsCostsKey,
   acceptorUnsatisfiedTypes,
   acceptorVerdict,
   acceptorWidenedMetadata,
@@ -140,6 +139,26 @@ function editorFor(
   return {
     state,
     editorState: acceptorColumnsEditorState(state, terms, rows(columns)),
+  };
+}
+
+/** How many agreed keys the current marks leave satisfiable, and how many
+ * taking the notice's widening offer does, graded by the launch gate's own
+ * derivation. */
+function satisfiableKeysAroundOffer(
+  columns: Array<string>,
+  terms: LinkageTerms,
+  state: AcceptorColumnsState,
+): { before: number; after: number } {
+  const count = (metadata: Metadata) =>
+    acceptorVerdict(
+      columns,
+      terms,
+      acceptorColumnsEditorState({ ...state, metadata }, terms, rows(columns)),
+    ).satisfiableKeyCount;
+  return {
+    before: count(state.metadata),
+    after: count(acceptorWidenedMetadata(terms, state.metadata)),
   };
 }
 
@@ -1379,7 +1398,7 @@ describe("the invitation's declared payload set against the marks", () => {
     const recordId = widened.find((column) => column.name === "record_id")!;
     expect(disclosureOf(recordId)).toBe("identifier-sent");
     expect(acceptorDisclosedColumns(widened)).toEqual(["record_id"]);
-    expect(acceptorWideningOfferSentence(identifierColumns, terms, state)).toBe(
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
       ` Your file does have that column as its record identifier: you can set it to "${DISCLOSURE_LABELS["identifier-sent"]}" below instead - that discloses more than you have marked so far, and the column stays your record identifier.`,
     );
   });
@@ -1401,8 +1420,8 @@ describe("the invitation's declared payload set against the marks", () => {
       ["notes", "payload"],
       ["record_id", "identifier-sent"],
     ]);
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
-      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and any other to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far. Your record identifier stays your record identifier and sending any other column replaces the use it has now.`,
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and any other to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far. Your record identifier keeps its use and sending any other column replaces the use it has now.`,
     );
   });
 
@@ -1412,11 +1431,11 @@ describe("the invitation's declared payload set against the marks", () => {
       payload: { receive: [{ name: "record_id" }, { name: "first_name" }] },
     };
     const { state } = editorFor(columns, terms);
-    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
-      false,
-    );
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
-      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and any column used to match to "${DISCLOSURE_LABELS["match-sent"]}" below instead - that discloses more than you have marked so far. Your record identifier stays your record identifier and a column used to match is still used to match.`,
+    const keys = satisfiableKeysAroundOffer(columns, terms, state);
+    expect(keys.before).toBeGreaterThan(0);
+    expect(keys.after).toBe(keys.before);
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and any column used to match to "${DISCLOSURE_LABELS["match-sent"]}" below instead - that discloses more than you have marked so far. Your record identifier keeps its use and a column used to match is still used to match.`,
     );
   });
 
@@ -1432,8 +1451,8 @@ describe("the invitation's declared payload set against the marks", () => {
       },
     };
     const { state } = editorFor(columns, terms);
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
-      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}", any column used to match to "${DISCLOSURE_LABELS["match-sent"]}", and any other to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far. Your record identifier stays your record identifier, a column used to match is still used to match, and sending any other column replaces the use it has now.`,
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` Where your file does have such columns, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}", any column used to match to "${DISCLOSURE_LABELS["match-sent"]}", and any other to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far. Your record identifier keeps its use, a column used to match is still used to match, and sending any other column replaces the use it has now.`,
     );
   });
 
@@ -1450,9 +1469,9 @@ describe("the invitation's declared payload set against the marks", () => {
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
     ).toEqual([{ displayName: "record_id", inFile: true }]);
-    expect(
-      acceptorWideningOfferSentence(identifierColumns, terms, state),
-    ).toContain("Your file does have that column");
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toContain(
+      "Your file does have that column",
+    );
   });
 
   test.each([
@@ -1498,10 +1517,10 @@ describe("the invitation's declared payload set against the marks", () => {
       expect(
         acceptorPayloadDeclarationConflict(terms, widened),
       ).toBeUndefined();
-      expect(
-        acceptorWideningOfferSentence(twoIdentifierColumns, terms, state),
-      ).toBe(
-        ` Where your file does have such a column, you can set it to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and sending it replaces the use it has now.`,
+      expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+        receive.length === 1
+          ? ` Where your file does have such a column, you can set it to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and sending it replaces the use it has now.`
+          : ` Where your file does have such columns, you can set them to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and sending them replaces the use each has now.`,
       );
     },
   );
@@ -1531,9 +1550,8 @@ describe("the invitation's declared payload set against the marks", () => {
     ]);
     expect(coreRefuses(terms, widenedMetadata)).toBe(false);
 
-    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
-      false,
-    );
+    const keys = satisfiableKeysAroundOffer(columns, terms, state);
+    expect(keys.after).toBe(keys.before);
     const widened = editorFor(columns, terms, { metadata: widenedMetadata });
     expect(
       acceptorLaunchBlockedReason(
@@ -1542,7 +1560,7 @@ describe("the invitation's declared payload set against the marks", () => {
         terms,
       ),
     ).toBeUndefined();
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
       ` Your file does have that column as one it matches on: you can set it to "${DISCLOSURE_LABELS["match-sent"]}" below instead - that discloses more than you have marked so far, and the column is still used to match.`,
     );
   });
@@ -1559,7 +1577,7 @@ describe("the invitation's declared payload set against the marks", () => {
       },
     };
     const { state } = editorFor(columns, terms, { metadata: notesSent });
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
       ` Your file does have those columns as ones it matches on: you can set them to "${DISCLOSURE_LABELS["match-sent"]}" below instead - that discloses more than you have marked so far, and the columns are still used to match.`,
     );
   });
@@ -1590,10 +1608,8 @@ describe("the invitation's declared payload set against the marks", () => {
           ?.declaredButNotSent,
         use,
       ).toEqual([{ displayName: declaredName, inFile: true }]);
-      expect(
-        acceptorSendingExpectedColumnsCostsKey(columns, terms, state),
-        use,
-      ).toBe(false);
+      const keys = satisfiableKeysAroundOffer(columns, terms, state);
+      expect(keys.after, use).toBe(keys.before);
     }
   });
 
@@ -1621,16 +1637,16 @@ describe("the invitation's declared payload set against the marks", () => {
     expect(
       gaps.slice(0, MAX_DECLARED_NAMES_SHOWN).some((gap) => gap.inFile),
     ).toBe(false);
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toContain(
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toContain(
       `you can set it to "${DISCLOSURE_LABELS["match-sent"]}" below`,
     );
   });
 
-  test("the cost the offer states is the one taking it charges", () => {
-    // The cost is a prediction about a state one edit away, so it is checked
-    // against that state as the console derives it: the operator's own re-mark,
-    // over the file's real rows -- which the prediction does not read, so a file
-    // whose rows fix the date-of-birth format is among the offers driven here.
+  test("taking the offer costs no agreed key and clears the screen", () => {
+    // The offer names no cost, so taking it must leave every key it found
+    // satisfiable. Checked against the state one edit away as the console derives
+    // it: the operator's own re-mark over the file's real rows, a file whose rows
+    // fix the date-of-birth format among them.
     const dobColumns = ["date_of_birth", "first_name", "notes"];
     const dobTerms: LinkageTerms = {
       ...nameTerms,
@@ -1711,19 +1727,12 @@ describe("the invitation's declared payload set against the marks", () => {
         offer.terms,
         offer.rows,
       );
-      const charged =
-        acceptorVerdict(offer.columns, offer.terms, after).satisfiableKeyCount <
-        acceptorVerdict(offer.columns, offer.terms, before).satisfiableKeyCount;
       expect(
-        acceptorSendingExpectedColumnsCostsKey(
-          offer.columns,
-          offer.terms,
-          state,
-        ),
+        acceptorVerdict(offer.columns, offer.terms, after).satisfiableKeyCount,
         offer.use,
-      ).toBe(charged);
-      // Where it is charged, the operator who takes the offer meets the linkage
-      // gate rather than a started exchange; where it is not, the screen clears.
+      ).toBe(
+        acceptorVerdict(offer.columns, offer.terms, before).satisfiableKeyCount,
+      );
       expect(
         acceptorLaunchBlockedReason(
           acceptorVerdict(offer.columns, offer.terms, after),
@@ -1731,12 +1740,7 @@ describe("the invitation's declared payload set against the marks", () => {
           offer.terms,
         ),
         offer.use,
-      ).toBe(
-        charged
-          ? "Cover the remaining agreed linkage keys above before you can start, " +
-              "or agree terms with your partner over the keys both files can supply."
-          : undefined,
-      );
+      ).toBeUndefined();
     }
   });
 

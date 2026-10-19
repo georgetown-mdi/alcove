@@ -1972,6 +1972,12 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
     expect(app.container.textContent).not.toContain(
       sanitizeForDisplay(bidiColumn),
     );
+    // Three choices send a column, so the remedy names the ones that do not.
+    expect(app.container.textContent).toContain(
+      'Set "How it is used" below to a choice that does not send it - one' +
+        ' ending "not sent", or "Ignored" - for that column, or ask your' +
+        " partner for an invitation that accepts it.",
+    );
 
     // The gate itself, and the reason a keyboard/screen-reader user at the button
     // hears: resolved through the button's own description, so a reason rendered

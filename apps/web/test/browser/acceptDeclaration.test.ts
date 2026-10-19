@@ -133,8 +133,8 @@ const WIDENING_OFFER_MATCHED_WITH_IDENTIFIER =
   ' identifier to "Unique record identifier - sent to your partner" and any' +
   ' column used to match to "Used to match - sent to your partner" below' +
   " instead - that discloses more than you have marked so far. Your record" +
-  " identifier stays your record identifier and a column used to match is" +
-  " still used to match.";
+  " identifier keeps its use and a column used to match is still used to" +
+  " match.";
 
 function mountStep(
   linkageTerms: LinkageTerms,
@@ -215,6 +215,12 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     expect(marked?.textContent).toBe(ownHeader);
     expect(app.container.textContent).not.toContain(
       sanitizeForDisplay(ownHeader),
+    );
+    // Three choices send a column, so the remedy names the ones that do not.
+    expect(declarationNotice().textContent).toContain(
+      'Set "How it is used" below to a choice that does not send it - one' +
+        ' ending "not sent", or "Ignored" - for that column, or ask your' +
+        " partner for an invitation that expects it.",
     );
 
     // The declared name is the partner's text on this path, so it reaches the
