@@ -100,7 +100,10 @@ acme-staging-v02.api.letsencrypt.org
 # which the `*.githubusercontent.com` pattern at the bottom already admits.
 ghcr.io
 
-# --- Docker Hub (the base images: node, alpine, amazonlinux, coturn) ---------
+# --- Docker Hub (the base images: node, alpine, coturn) ---------------------
+#
+# The FIPS variant's amazonlinux base comes from ECR Public (public.ecr.aws),
+# pulled anonymously, which this list does not admit.
 registry-1.docker.io
 auth.docker.io
 index.docker.io

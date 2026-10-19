@@ -129,6 +129,9 @@ updates:
       # digest move rather than a version change, and exempting no update type
       # is the one shape that cannot leave that case uncovered.
       - dependency-name: "amazonlinux"
+      # The same base under the registry-qualified name Dockerfile.fips's FROM
+      # spells, held out for the same reason as the entry above.
+      - dependency-name: "public.ecr.aws/amazonlinux/amazonlinux"
 
   # The relay reference's base image. infra/relay/Dockerfile is a single pinned
   # FROM and nothing else -- the digest's only home, since every other file there

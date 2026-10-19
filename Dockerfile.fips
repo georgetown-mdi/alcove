@@ -15,14 +15,14 @@
 # The per-architecture sha256 the tarball is checked against is committed below
 # and covers this release's bytes only, so a Node bump moves this version and
 # both of those hashes together.
-ARG NODE_VERSION=v26.10.0
+ARG NODE_VERSION=v26.12.0
 
 # The Amazon Linux release snapshot every dnf transaction below resolves
 # against. AWS retains superseded NVRs -- both certified provider packages are
 # still served by every snapshot since they first appeared -- so pinning the
 # snapshot as well as the package NVR is what makes the provider layer
 # reproducible rather than a function of the build date.
-ARG AL2023_RELEASEVER=2023.12.20260930
+ARG AL2023_RELEASEVER=2023.12.20261016
 
 # CMVP certificate 5438. The package and version pin which build is installed;
 # the module version string is what the module itself reports. Many NVRs share
@@ -40,7 +40,7 @@ ARG FIPS_MODULE_VERSION=3.2.2-799901ad7ab41d45
 # assertion in the stage below holds rather than this comment. Where the digest
 # was resolved, and the checklist a bump of it works through, are in
 # docs/spec/DEPENDENCY_PINS.md.
-FROM amazonlinux:2023@sha256:8ed3c0a996841537f75607e7d1de2114d8150391f75792e8da9268738547e73f AS nodebase
+FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:c07ab0773eddf9449c0994a87d8148300db98bdf8d8dad672a9dc26321c104fc AS nodebase
 ARG NODE_VERSION
 ARG AL2023_RELEASEVER
 # The coupling the digest above is pinned for, asserted rather than described:
@@ -73,8 +73,8 @@ RUN dnf -y --releasever=${AL2023_RELEASEVER} install tar gzip xz findutils libat
 RUN set -eux; \
   arch="$(uname -m)"; \
   case "$arch" in \
-  x86_64) node_arch=x64; node_sha256=ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022 ;; \
-  aarch64) node_arch=arm64; node_sha256=7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5 ;; \
+  x86_64) node_arch=x64; node_sha256=fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded ;; \
+  aarch64) node_arch=arm64; node_sha256=fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5 ;; \
   *) echo "unsupported architecture $arch" >&2; exit 1 ;; \
   esac; \
   cd /tmp; \
@@ -167,8 +167,8 @@ ARG FIPS_MODULE_VERSION
 # is the only reader of it -- the entrypoint's per-run report probes Node's own
 # crypto instead, that being the consumer Alcove actually runs on.
 RUN dnf -y --releasever=${AL2023_RELEASEVER} install samba-client openssl && dnf clean all
-# `swap`, not `install` or `downgrade`. The stock amazonlinux:2023 rootfs
-# (20260930) already ships openssl-fips-provider-latest at 3.5.8, not the
+# `swap`, not `install` or `downgrade`. The stock Amazon Linux 2023 rootfs
+# (20261016) already ships openssl-fips-provider-latest at 3.5.8, not the
 # certified version, and its fips.so is the same file path: a plain install
 # fails the transaction test on an RPM FILE conflict, which --allowerasing does
 # not resolve, and removing the incumbent first takes openssl-libs (and with it
