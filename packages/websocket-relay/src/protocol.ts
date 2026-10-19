@@ -35,13 +35,21 @@ export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 
 /**
+ * The most pairings the relay holds at once, a pairing counting from its
+ * first verified hello until every socket it admitted has closed, the close
+ * wait included: coturn's 40 concurrent allocations at two an
+ * exchange (docs/notes/webrtc-relay-deployment.md, Quotas against one
+ * exchange).
+ */
+export const RELAY_MAX_PAIRINGS = 20;
+
+/**
  * The most sockets the relay holds whose hello has not verified, each counted
  * from its upgrade until its hello verifies or its socket closes; an upgrade
- * above it is refused with 503. Four times the 20 exchanges coturn's 40
- * concurrent allocations admit at two an exchange: two hellos an exchange,
- * twice over.
+ * above it is refused with 503. Four times {@link RELAY_MAX_PAIRINGS}: two
+ * hellos a pairing, twice over.
  */
-export const RELAY_MAX_UNVERIFIED_SOCKETS = 80;
+export const RELAY_MAX_UNVERIFIED_SOCKETS = 4 * RELAY_MAX_PAIRINGS;
 
 /**
  * The window (ms) in which the relay reports a fault a hello met at most once:
@@ -59,6 +67,21 @@ export const RELAY_CLOSE_WAIT_MS = 300_000;
 /** How long (ms) a socket the relay refuses has to answer the close before it
  * is dropped. */
 export const RELAY_REFUSAL_CLOSE_WAIT_MS = 10_000;
+
+/** The bytes a second the relay forwards from each party of a pairing:
+ * coturn's `max-bps`. */
+export const RELAY_PAIRING_BYTES_PER_SECOND = 2_000_000;
+
+/** The bytes a party may send at once after a pause in its sending: one
+ * second at {@link RELAY_PAIRING_BYTES_PER_SECOND}. */
+export const RELAY_PAIRING_BURST_BYTES = 2_000_000;
+
+/**
+ * How long (ms) a pairing may pass no message either way before the relay
+ * closes it: the one-hour parked-receive budget plus the five-minute close
+ * drain budget, so a party's own budget expires first.
+ */
+export const RELAY_IDLE_TIMEOUT_MS = 3_900_000;
 
 /** The close codes the relay sends. */
 export const RelayCloseCode = Object.freeze({
@@ -90,6 +113,10 @@ export const RelayCloseCode = Object.freeze({
   roleTaken: 4006,
   /** No hello arrived within {@link RELAY_HELLO_TIMEOUT_MS}. */
   helloTimeout: 4007,
+  /** The relay holds {@link RELAY_MAX_PAIRINGS} pairings already. */
+  relayFull: 4008,
+  /** No message crossed the pairing within {@link RELAY_IDLE_TIMEOUT_MS}. */
+  idle: 4009,
 });
 
 /** The text frame the relay sends both parties once both hellos verified. */

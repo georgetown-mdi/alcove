@@ -47,6 +47,10 @@ afterEach(async () => {
 
 const START = '{"type":"start"}';
 
+// A byte rate no loopback test reaches, for a test moving more than one
+// burst whose subject is not the rate.
+const UNLIMITED_RATE = Number.MAX_SAFE_INTEGER;
+
 describe("pairing", () => {
   it("pairs an inviter and an acceptor and forwards binary both ways once both start", async () => {
     const { url } = await relay();
@@ -496,6 +500,7 @@ describe("backpressure", () => {
       testing: {
         sendBufferHighBytes: 64 * 1024,
         sendBufferLowBytes: 16 * 1024,
+        bytesPerSecond: UNLIMITED_RATE,
         observer: {
           held: (role, reason) => events.push(`held ${role} ${reason}`),
           released: (role, reason) => events.push(`released ${role} ${reason}`),
@@ -564,6 +569,7 @@ describe("close", () => {
       testing: {
         sendBufferHighBytes: 64 * 1024,
         sendBufferLowBytes: 16 * 1024,
+        bytesPerSecond: UNLIMITED_RATE,
       },
     });
     const { inviter, acceptor } = await forwardingParties(url);
