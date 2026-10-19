@@ -156,6 +156,84 @@ describe.each([
   });
 });
 
+describe.each([
+  ["wasm", wasm],
+  ["native addon", native],
+])("the %s backend over a five-way count-only split", (_name, library) => {
+  // Four values the count-only filter drops leave 196 elements, so a floor of
+  // 30 admits six shards and the five engines bound the split at five.
+  const FIVE_WAY_MIN_SHARD_ELEMENTS = 30;
+
+  test("uses all five engines and puts one engine's bytes on the wire", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const mode: PsiEngineMode = "count-only";
+    const single = {
+      starter: keyedEngine(library, "starter", mode),
+      joiner: keyedEngine(library, "joiner", mode),
+    };
+    const shards = {
+      starter: Array.from({ length: 5 }, () =>
+        keyedEngine(library, "starter", mode),
+      ),
+      joiner: Array.from({ length: 5 }, () =>
+        keyedEngine(library, "joiner", mode),
+      ),
+    };
+    const requestCalls = shards.joiner.map((engine) => {
+      const counted = vi.fn(engine.createClientRequest.bind(engine));
+      engine.createClientRequest = counted;
+      return counted;
+    });
+    const responseCalls = shards.starter.map((engine) => {
+      const counted = vi.fn(engine.processClientRequest.bind(engine));
+      engine.processClientRequest = counted;
+      return counted;
+    });
+    const sharded = {
+      starter: new ShardedPsiEngine(
+        library,
+        "starter",
+        mode,
+        shards.starter[0]!,
+        shards.starter.slice(1),
+        { minShardElements: FIVE_WAY_MIN_SHARD_ELEMENTS },
+      ),
+      joiner: new ShardedPsiEngine(
+        library,
+        "joiner",
+        mode,
+        shards.joiner[0]!,
+        shards.joiner.slice(1),
+        { minShardElements: FIVE_WAY_MIN_SHARD_ELEMENTS },
+      ),
+    };
+    try {
+      const request = await single.joiner.createClientRequest(clientValues);
+      expect(await sharded.joiner.createClientRequest(clientValues)).toEqual(
+        request,
+      );
+      for (const calls of requestCalls) expect(calls).toHaveBeenCalledOnce();
+
+      const response = await single.starter.processClientRequest(request);
+      expect(await sharded.starter.processClientRequest(request)).toEqual(
+        response,
+      );
+      for (const calls of responseCalls) expect(calls).toHaveBeenCalledOnce();
+    } finally {
+      for (const engine of [
+        single.starter,
+        single.joiner,
+        sharded.starter,
+        sharded.joiner,
+      ])
+        engine.dispose();
+    }
+  });
+});
+
 describe("the sharded engine's split", () => {
   test("a set too small for a second shard runs on the primary alone", async () => {
     const single = keyedEngine(wasm, "joiner", "identifier-revealing");
