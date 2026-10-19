@@ -91,6 +91,8 @@ interface Party {
   pending: { data: Buffer; isBinary: boolean } | undefined;
   role: RendezvousRole | undefined;
   pairing: Pairing | undefined;
+  /** Whether this party's socket is counted in its pairing's `openSockets`. */
+  counted: boolean;
   started: boolean;
   holds: Set<RelayHoldReason>;
   /** The bytes this party may still send at once, as of `tokensAt`. */
@@ -188,6 +190,8 @@ export function attachWebSocketRelay(
   // Pairings that still hold an open socket, which outlive `pairings` entries:
   // a closed side's partner can stay open for the close wait.
   const pairingsHoldingSockets = new Set<Pairing>();
+  // The latest pairing each key started, while it holds an open socket.
+  const latestPairings = new Map<string, Pairing>();
   let keyTableFailing = false;
   // Only the operator's table can hold a malformed key, so its report is kept
   // to one a window for each exchange id; any other failure is kept to one a
@@ -231,6 +235,30 @@ export function attachWebSocketRelay(
     if (partner !== undefined && partnerCode !== undefined) {
       end(partner, undefined);
       partner.socket.close(partnerCode);
+    }
+  }
+
+  // Takes the party's socket out of its pairing's count, once: at its close, or
+  // earlier when a new pairing under the key supersedes the party's pairing.
+  function uncount(party: Party): void {
+    const pairing = party.pairing;
+    if (pairing === undefined || !party.counted) return;
+    party.counted = false;
+    pairing.openSockets -= 1;
+    if (pairing.openSockets > 0) return;
+    pairingsHoldingSockets.delete(pairing);
+    if (latestPairings.get(pairing.key) === pairing) {
+      latestPairings.delete(pairing.key);
+    }
+  }
+
+  // Terminates the sockets an ended pairing still holds, so a key holds at
+  // most one pairing's sockets and a pair reconnecting is admitted at once.
+  function supersede(pairing: Pairing): void {
+    for (const party of Object.values(pairing.parties)) {
+      if (party === undefined || !party.counted) continue;
+      uncount(party);
+      party.socket.terminate();
     }
   }
 
@@ -304,6 +332,8 @@ export function attachWebSocketRelay(
       return refuse(party, RelayCloseCode.roleTaken);
     }
     if (pairing === undefined) {
+      const earlier = latestPairings.get(key);
+      if (earlier !== undefined) supersede(earlier);
       if (pairingsHoldingSockets.size >= maxPairings) {
         return refuse(party, RelayCloseCode.relayFull);
       }
@@ -316,8 +346,10 @@ export function attachWebSocketRelay(
       };
       pairings.set(key, pairing);
       pairingsHoldingSockets.add(pairing);
+      latestPairings.set(key, pairing);
     }
     pairing.openSockets += 1;
+    party.counted = true;
     pairing.activeAt = performance.now();
     pairing.parties[role] = party;
     party.pairing = pairing;
@@ -472,6 +504,7 @@ export function attachWebSocketRelay(
       pending: undefined,
       role: undefined,
       pairing: undefined,
+      counted: false,
       started: false,
       holds: new Set(),
       tokens: burstBytes,
@@ -500,12 +533,7 @@ export function attachWebSocketRelay(
     });
     socket.on("close", (code) => {
       unverified.delete(party);
-      if (party.pairing !== undefined) {
-        party.pairing.openSockets -= 1;
-        if (party.pairing.openSockets === 0) {
-          pairingsHoldingSockets.delete(party.pairing);
-        }
-      }
+      uncount(party);
       end(
         party,
         NORMAL_CLOSE_CODES.has(code)

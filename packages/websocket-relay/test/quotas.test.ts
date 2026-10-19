@@ -6,6 +6,7 @@ import {
   PAIRED_FRAME,
   RELAY_MAX_PAIRINGS,
   RelayCloseCode,
+  START_FRAME,
 } from "../src/protocol.ts";
 
 import {
@@ -187,6 +188,30 @@ describe("the cap and a pairing's close wait", () => {
     expect(acceptor.socket.readyState).toBe(WebSocket.OPEN);
 
     await eventually(async () => (await tryHello()) === undefined);
+  });
+
+  it("admits a new pairing under the key at once and closes the earlier pairing's stalled socket", async () => {
+    const { url, connections } = await relay({
+      keyTable: keyTableOf(manyExchanges(1)),
+      testing: { maxPairings: 1 },
+    });
+    const earlier = await pairUnder(url, 0);
+    earlier.acceptor.socket.pause();
+    earlier.inviter.socket.close(1000);
+    await earlier.inviter.closed;
+
+    const { inviter, acceptor } = await pairUnder(url, 0);
+    expect(inviter.received).toEqual([{ text: PAIRED_FRAME }]);
+    expect(acceptor.received).toEqual([{ text: PAIRED_FRAME }]);
+    inviter.send('{"type":"start"}');
+    expect(await acceptor.receivedCount(2)).toEqual([
+      { text: PAIRED_FRAME },
+      { text: START_FRAME },
+    ]);
+
+    await eventually(async () => (await connections()) === 2);
+    earlier.acceptor.socket.resume();
+    expect((await earlier.acceptor.closed).code).toBe(RelayCloseCode.normal);
   });
 });
 
