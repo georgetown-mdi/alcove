@@ -1319,7 +1319,11 @@ export function normalizeAllowedRelay(text: string): string | undefined {
   return relay.port === undefined ? relay.host : `${relay.host}:${relay.port}`;
 }
 
-const AllowedRelaySchema = z.string().transform((entry, ctx) => {
+/**
+ * One `connection.allowed_relays` entry: text of {@link ALLOWED_RELAY_FORM},
+ * parsed to its {@link normalizeAllowedRelay} form.
+ */
+export const AllowedRelaySchema = z.string().transform((entry, ctx) => {
   const normalized = normalizeAllowedRelay(entry);
   if (normalized === undefined) {
     ctx.addIssue({

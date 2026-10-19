@@ -315,6 +315,7 @@ export type {
 } from "./config/standardizationSchema";
 export {
   ALLOWED_RELAY_FORM,
+  AllowedRelaySchema,
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   ConnectionConfigSchema,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,

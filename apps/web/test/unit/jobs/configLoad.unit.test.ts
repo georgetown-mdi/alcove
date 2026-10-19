@@ -22,6 +22,7 @@ import {
   RELAY_ENROLLMENT_NOTICE,
   mountedConfigurationNotices,
   mountedConfigurationRead,
+  openedAllowedRelays,
   openedRelayTurnUrls,
   openedSignalingServer,
   opensInPlace,
@@ -521,6 +522,21 @@ describe("a webrtc configuration", () => {
     ).not.toHaveProperty("relaySettings");
   });
 
+  test("discloses the allowed relays the file states, an empty list included", () => {
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    const { allowed_relays: _stated, ...unrestricted } = connection;
+    const disclosed = (allowed: Record<string, unknown>) =>
+      loadDocument(
+        webrtcDocument({ connection: { ...unrestricted, ...allowed } }),
+      ).document;
+    expect(
+      disclosed({ allowed_relays: ["Turn.Example.org", "other.example:443"] })
+        ?.allowedRelays,
+    ).toEqual(["turn.example.org", "other.example:443"]);
+    expect(disclosed({ allowed_relays: [] })?.allowedRelays).toEqual([]);
+    expect(disclosed({})).not.toHaveProperty("allowedRelays");
+  });
+
   test("flags the run minting a credential only for its own entries stating none", () => {
     const connection = webrtcDocument().connection as Record<string, unknown>;
     const direct = {
@@ -799,6 +815,63 @@ describe("the console's own relay through alcove.yaml", () => {
       RELAY_ENROLLMENT_NOTICE,
     );
     expect(JSON.stringify(response)).not.toContain("registrar.example.org");
+  });
+});
+
+describe("an accepted invitation's allowed relays through alcove.yaml", () => {
+  const { scratchDir, cleanup } = trackScratchDirs();
+  afterEach(() => {
+    cleanup();
+  });
+
+  const KEPT_URL = "turn:partner.example.net:3478";
+  const LEFT_OUT_URL = "turns:other.example.net:443?transport=tcp";
+
+  /** The folder an acceptor's console run leaves, opened as the browser
+   * opens it. */
+  async function openedAcceptorRun(allowedRelays?: Array<string>) {
+    const intent = validWebrtcIntent({
+      side: "acceptor",
+      ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+    });
+    const dir = scratchDir("accepted-relays");
+    fs.writeFileSync(
+      path.join(dir, "alcove.yaml"),
+      composeWebrtcConfigDocument(intent, {
+        host: "peers.test",
+        path: "/psi/",
+        secure: true,
+        invitationRelay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dir, ".alcove.key"),
+      composeKeyFileDocument(intent),
+    );
+    const response = loadMountedConfiguration(dir);
+    const answer = await fetchMountedConfiguration(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    return mountedConfigurationRead(answer).state;
+  }
+
+  test("is written by the run, opened again, and shown with the relays it keeps", async () => {
+    const state = await openedAcceptorRun(["partner.example.net"]);
+    expect(opensInPlace(state)).toBe(true);
+    expect(openedAllowedRelays(state)).toEqual(["partner.example.net"]);
+    expect(openedRelayTurnUrls(state)).toEqual([KEPT_URL]);
+  });
+
+  test("an empty list is shown as one, and an unrestricted run shows none", async () => {
+    expect(openedAllowedRelays(await openedAcceptorRun([]))).toEqual([]);
+    const unrestricted = await openedAcceptorRun();
+    expect(openedAllowedRelays(unrestricted)).toBeUndefined();
+    expect(openedRelayTurnUrls(unrestricted)).toEqual([KEPT_URL, LEFT_OUT_URL]);
   });
 });
 

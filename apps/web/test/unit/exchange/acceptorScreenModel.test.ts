@@ -4,6 +4,7 @@ import { setColumnDisclosure } from "@psi/metadataEditing";
 
 import {
   ACCEPTOR_SCREEN_INITIAL,
+  acceptOffersAllowedRelays,
   acceptorScreenReducer,
 } from "@exchange/acceptorScreenModel";
 import {
@@ -593,6 +594,29 @@ describe("the review step's allowed relays", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.acceptorAllowedRelays).toBe("");
     expect(ACCEPTOR_SCREEN_INITIAL.committedAllowedRelays).toBeUndefined();
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
+  });
+
+  test("are offered on a WebRTC accept, and on the console only where the invitation names a TURN server", () => {
+    const relayed = {
+      ...invitation.endpoint,
+      relay: { turn: ["turn:relay.example.org"] },
+    };
+    expect(acceptOffersAllowedRelays(invitation.endpoint, false)).toBe(true);
+    expect(acceptOffersAllowedRelays(invitation.endpoint, true)).toBe(false);
+    expect(acceptOffersAllowedRelays(relayed, true)).toBe(true);
+    expect(
+      acceptOffersAllowedRelays(
+        {
+          channel: "webrtc",
+          host: "127.0.0.1",
+          relay: { stun: ["stun:stun.example.org"] },
+        },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      acceptOffersAllowedRelays({ channel: "filedrop", path: "/drop" }, false),
+    ).toBe(false);
   });
 
   test("typing commits nothing; Continue commits the entries, normalized", () => {

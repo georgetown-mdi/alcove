@@ -42,6 +42,7 @@ import {
   createWorkingFolderExchangeFiles,
   invitationIdOf,
   removeUnchangedWorkingFolderExchangeFiles,
+  setWorkingFolderAllowedRelays,
   workingFolderExchangeFileDigests,
   workingFolderExchangeFilePaths,
   workingFolderExchangeFilesMatch,
@@ -502,8 +503,8 @@ export interface WorkingFolderPair {
   invitation: string;
   /** The bytes written when the pair was created. */
   written: ExchangeFileDigests;
-  /** The bytes when the pair was created or the latest run over it ended;
-   * undefined where either file was gone then. */
+  /** The bytes when the pair was created, a retry set its allowed relays, or
+   * the latest run over it ended; undefined where either file was gone then. */
   latest: ExchangeFileDigests | undefined;
 }
 
@@ -961,6 +962,8 @@ export class JobManager {
           ? this.resolveWorkInputPath(intent.inputFile)
           : undefined;
       let workingFolderPair = pairToRunOver;
+      if (pairToRunOver !== undefined && intent.channel === "webrtc")
+        this.setPairAllowedRelays(pairToRunOver, intent.allowedRelays);
       if (
         intent.channel === "webrtc" &&
         !runsOpenedConfiguration &&
@@ -1165,6 +1168,26 @@ export class JobManager {
     )
       return pair;
     throw new WorkingFolderFilesRefusedError("present", heldByConsoleExchange);
+  }
+
+  /**
+   * Write the allowed relays a run over the console's pair commits into the
+   * pair's `alcove.yaml` ({@link setWorkingFolderAllowedRelays}), so the run
+   * uses the list its review showed, and record the bytes written as the
+   * pair's latest.
+   */
+  private setPairAllowedRelays(
+    pair: WorkingFolderPair,
+    allowedRelays: ReadonlyArray<string> | undefined,
+  ): void {
+    if (pair.latest === undefined)
+      throw new Error("a run reached the console's pair with no content held");
+    const config = setWorkingFolderAllowedRelays(
+      this.dataRoot,
+      pair.latest.config,
+      allowedRelays,
+    );
+    if (config !== undefined) pair.latest = { ...pair.latest, config };
   }
 
   /**

@@ -89,6 +89,10 @@ export interface DisclosedExchangeDocument {
    * chooses them: an accepted invitation's relay, else the file's own
    * `turn` entries, each entry's url alone. Absent where it names none. */
   relayTurnUrls?: Array<string>;
+  /** A webrtc file's `connection.allowed_relays`, each entry a relay host
+   * with an optional port and no credential. Absent where the file states
+   * none; empty where it lists none. */
+  allowedRelays?: Array<string>;
   /** The run mints a credential for the file's own `turn` entries, which
    * state none, so the relay accepts the run only once it holds the exchange's
    * key. Absent otherwise. */

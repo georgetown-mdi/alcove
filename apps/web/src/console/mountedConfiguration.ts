@@ -73,9 +73,10 @@ export type MountedConfigurationState =
    * reach every column that file has, both settled once the held terms reach
    * it. `runsInPlace` is a webrtc file the console runs in place
    * ({@link OPENED_EXCHANGE_RUNS_IN_PLACE}), `signalingServer` the
-   * coordination server address it names and `relayTurnUrls` the TURN urls
-   * its run relays through, which the review step shows and does not edit,
-   * `relayCredentialMinted` that the run mints a credential for its own
+   * coordination server address it names, `relayTurnUrls` the TURN urls
+   * its run relays through and `allowedRelays` its
+   * `connection.allowed_relays`, which the review step shows and does not
+   * edit, `relayCredentialMinted` that the run mints a credential for its own
    * `turn` entries ({@link RELAY_OWNER_ENROLLMENT_NOTICE}), and
    * `inPlaceSigningIdentity` the identity file it signs with, where it names
    * one ({@link inPlaceSigningIdentityShown}).
@@ -107,6 +108,7 @@ export type MountedConfigurationState =
       runsInPlace?: true;
       signalingServer?: string;
       relayTurnUrls?: Array<string>;
+      allowedRelays?: Array<string>;
       relayCredentialMinted?: true;
       inPlaceSigningIdentity?: InPlaceSigningIdentity;
       transportUnavailable?: UnofferedChannel;
@@ -172,8 +174,19 @@ export const OPENED_EXCHANGE_RUNS_IN_PLACE =
 export const OPENED_SIGNALING_SERVER_NOTE =
   "From your alcove.yaml: the run connects through the coordination server " +
   "and any relay the file names. To change them, edit connection.server, " +
-  "and connection.invitation_relay where the file has one, else " +
-  "connection.turn, in alcove.yaml, then open the configuration again.";
+  "connection.allowed_relays, and connection.invitation_relay where the " +
+  "file has one, else connection.turn, in alcove.yaml, then open the " +
+  "configuration again.";
+
+/** What the review step says of an opened configuration run in place whose
+ * `connection.allowed_relays` lists no relay. */
+export const OPENED_NO_ALLOWED_RELAYS =
+  "Allowed relays: none, so the run uses no relay server.";
+
+/** What the review step says after an opened configuration's allowed relays
+ * where it lists some. */
+export const OPENED_ALLOWED_RELAYS_ONLY =
+  "The run uses only relay servers on this list.";
 
 /** Whether the opened configuration runs in place. */
 export function opensInPlace(state: MountedConfigurationState): boolean {
@@ -198,6 +211,16 @@ export function openedRelayTurnUrls(
   return state.status === "opened" && state.runsInPlace === true
     ? (state.relayTurnUrls ?? [])
     : [];
+}
+
+/** The `connection.allowed_relays` of the opened configuration run in place,
+ * or undefined where it states none or for any other state. */
+export function openedAllowedRelays(
+  state: MountedConfigurationState,
+): Array<string> | undefined {
+  return state.status === "opened" && state.runsInPlace === true
+    ? state.allowedRelays
+    : undefined;
 }
 
 /**
@@ -1092,6 +1115,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
             ? { signalingServer: answer.document.signalingServer }
             : {}),
           ...(inPlace && relayTurnUrls.length > 0 ? { relayTurnUrls } : {}),
+          ...(inPlace && answer.document.allowedRelays !== undefined
+            ? { allowedRelays: answer.document.allowedRelays }
+            : {}),
           ...(inPlace && answer.document.relayCredentialMinted === true
             ? { relayCredentialMinted: true as const }
             : {}),

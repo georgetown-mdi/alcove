@@ -272,7 +272,11 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
             acceptorName: CONSOLE_IDENTITY,
             edits,
             inputSource: CONSOLE_INPUT,
-            transport: await acceptorWebrtcTransport(server, consoleFetch),
+            transport: await acceptorWebrtcTransport(
+              server,
+              ["relay.example.org"],
+              consoleFetch,
+            ),
             deduplicate: false,
           }),
         ),
@@ -280,7 +284,8 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
       const browser = await inviter.run();
       expectSameIntersection(browser, await commands.consoleWebrtcJobOutcome());
       // The run wrote its configuration and key file into the working folder,
-      // as `alcove accept` does, and ran over them there.
+      // as `alcove accept` does, and ran over them there, under the allowed
+      // relays the review committed.
       expect(await workingFolderConnection()).toMatchObject({
         channel: "webrtc",
         role: "acceptor",
@@ -290,6 +295,7 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
           path: started.signaling.path,
           secure: false,
         },
+        allowed_relays: ["relay.example.org"],
       });
     } finally {
       inviter.destroy();

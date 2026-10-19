@@ -207,7 +207,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     );
   });
 
-  test("the console build shows no Allowed relays and names the configuration key that decides them", async () => {
+  test("the console build shows no Allowed relays field and names the configuration key and the accept step that set them", async () => {
     build.console = true;
     await mountScreen();
 
@@ -219,7 +219,9 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
       "A run also lists the relay named by an invitation you accept, after " +
         "yours. Exchanges run from this console follow the command-line " +
         "configuration: its connection.allowed_relays key decides which relays " +
-        "an exchange may use. Each exchange signs in",
+        "an exchange may use, and a WebRTC invitation you accept that names a " +
+        "TURN server sets it in the Allowed relays field on its first step. " +
+        "Each exchange signs in",
     );
   });
 

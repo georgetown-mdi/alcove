@@ -4,6 +4,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import { invitationReach } from "@exchange/invitationReach";
+import { relayNamesTurnServer } from "@exchange/acceptorScreenModel";
 import styles from "@styles/app.module.css";
 
 import type { AcceptedSignalingServer } from "./signalingServerModel";
@@ -53,7 +54,10 @@ export function AcceptorSignalingServerNotice({
         )}
         <Text size="sm" c="dimmed">
           {accepted.signalingServer.relay !== undefined
-            ? "The run uses the relay your partner named, shown with the terms above."
+            ? "The run uses the relay your partner named, shown with the terms above" +
+              (relayNamesTurnServer(accepted.signalingServer.relay)
+                ? ", unless the Allowed relays below leave out its TURN servers."
+                : ".")
             : "The run connects directly to your partner's computer, so a network that blocks direct connections on either side stops the exchange from connecting."}
         </Text>
         <Text size="sm" c="dimmed">

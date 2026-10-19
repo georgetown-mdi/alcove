@@ -28,6 +28,7 @@ import {
   composeConfigDocument,
   composeKeyFileDocument,
   composeSftpConfigDocument,
+  composeWebrtcConfigDocument,
 } from "@jobs/intentConfig";
 import { runArtifactNames } from "@jobContract/runArtifactNames";
 
@@ -65,6 +66,7 @@ import type {
   Standardization,
   StandardizationStep,
 } from "@alcove/core";
+import type { JobWebrtcExchangeIntent } from "@jobContract/intentSchemas";
 
 // The intent schema is the ONLY channel from the client into a CLI invocation.
 // These pin its injection-closure: unknown/injection-shaped values are rejected,
@@ -698,6 +700,106 @@ describe("the composers forward the terms-side commitment", () => {
       composeConfigDocument(validIntent(), "/srv/jobs/abc/exchange"),
     ) as Record<string, unknown>;
     expect(doc.expected_partner_deduplicate).toBeUndefined();
+  });
+});
+
+describe("a webrtc run's allowed relays", () => {
+  const SERVER = { host: "peers.test", path: "/psi/", secure: true };
+  const composedConnection = (intent: JobWebrtcExchangeIntent) =>
+    (
+      parseYaml(composeWebrtcConfigDocument(intent, SERVER)) as {
+        connection: Record<string, unknown>;
+      }
+    ).connection;
+
+  test.each([
+    ["the exchange schema", jobExchangeIntentSchema],
+    ["the create route's schema", jobCreateIntentSchema],
+  ] as const)(
+    "are admitted by %s and normalized by core's entry rule",
+    (_, schema) => {
+      const parsed = schema.safeParse(
+        validWebrtcIntent({
+          side: "acceptor",
+          allowedRelays: [" Relay.Example.org. ", "other.example:443", "[::1]"],
+        }),
+      );
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toMatchObject({
+        allowedRelays: ["relay.example.org", "other.example:443", "[::1]"],
+      });
+      expect(
+        schema.safeParse(validWebrtcIntent({ allowedRelays: [] })).success,
+      ).toBe(true);
+    },
+  );
+
+  test.each([
+    "turn:relay.example.org",
+    "relay.example.org:0",
+    "relay.example.org/path",
+    "",
+  ])("refuse the entry %j", (entry) => {
+    for (const schema of [jobExchangeIntentSchema, jobCreateIntentSchema]) {
+      const parsed = schema.safeParse(
+        validWebrtcIntent({ allowedRelays: ["relay.example.org", entry] }),
+      );
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.path).toEqual(["allowedRelays", 1]);
+    }
+  });
+
+  test("are refused beside a run of the opened configuration, which states its own", () => {
+    const { sharedSecret: _secret, ...rest } = validWebrtcIntent();
+    const opened = { ...rest, mountedConfigurationOpened: true };
+    for (const schema of [jobExchangeIntentSchema, jobCreateIntentSchema]) {
+      expect(schema.safeParse(opened).success).toBe(true);
+      const parsed = schema.safeParse({
+        ...opened,
+        allowedRelays: ["relay.example.org"],
+      });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ["allowedRelays"],
+          message: expect.stringContaining("connection.allowed_relays"),
+        }),
+      ]);
+    }
+  });
+
+  test.each(["filedrop", "sftp"] as const)(
+    "are refused on the %s arm",
+    (channel) => {
+      expect(
+        jobExchangeIntentSchema.safeParse({
+          ...validIntent(),
+          channel,
+          allowedRelays: ["relay.example.org"],
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  test("are composed as connection.allowed_relays", () => {
+    expect(
+      composedConnection(
+        validWebrtcIntent({
+          side: "acceptor",
+          allowedRelays: ["relay.example.org", "other.example:443"],
+        }),
+      ).allowed_relays,
+    ).toEqual(["relay.example.org", "other.example:443"]);
+    expect(
+      composedConnection(validWebrtcIntent({ allowedRelays: [] }))
+        .allowed_relays,
+    ).toEqual([]);
+  });
+
+  test("compose no key where the intent states none", () => {
+    expect(composedConnection(validWebrtcIntent())).not.toHaveProperty(
+      "allowed_relays",
+    );
   });
 });
 

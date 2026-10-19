@@ -150,7 +150,7 @@ export function RelaySettingsScreen({
         through the same relay. A run also lists the relay named by an
         invitation you accept, after yours.
         {consoleBuild
-          ? " Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use."
+          ? " Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."
           : " The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of these."}{" "}
         {RELAY_KEY_NOTICE}
       </p>

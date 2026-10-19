@@ -183,7 +183,7 @@ function readModeAndBytes(file: string): { mode: number; bytes: Buffer } {
  * Write `content` to a new file beside `destination`, flush it, and rename it
  * over `destination`, so an interrupted write leaves what was there as it was.
  */
-function writeReplacing(
+export function writeReplacing(
   destination: string,
   content: string | Buffer,
   mode: number,

@@ -86,6 +86,27 @@ export const KEPT_BY_ALLOWED_RELAYS = "kept by your allowed relays";
 /** The mark of a TURN url the setting leaves out. */
 export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 
+function allowedRelaysFieldDescription(relays: string): string {
+  return (
+    "One host per line, with a port where needed, for example " +
+    "relay.example.org or relay.example.org:443. Each run uses only the " +
+    `relay servers listed here, ${relays}. The setting covers relay servers ` +
+    "only: a run still contacts the STUN servers an invitation names. Leave " +
+    "it empty to use every relay a run lists."
+  );
+}
+
+/** The Allowed relays field's description where the run is this browser's
+ * or a saved exchange's, which can relay through this site's relay. */
+export const ALLOWED_RELAYS_FIELD_DESCRIPTION = allowedRelaysFieldDescription(
+  "yours, the invitation's or this site's",
+);
+
+/** The Allowed relays field's description on the console, whose runs have
+ * no relay of the site's. */
+export const CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION =
+  allowedRelaysFieldDescription("the invitation's");
+
 /**
  * What a saved exchange's own allowed relays decide, and what they do not,
  * shown with the list on the exchange's page.
@@ -128,6 +149,19 @@ export const CREATED_INVITATION_ALLOWED_RELAYS_SCOPE =
   "out. The list covers relay servers only: the STUN servers a run lists " +
   "are still contacted. Saving this exchange as a recurring exchange keeps " +
   "the list as its own.";
+
+/**
+ * What a console accept's allowed relays decide, and what they do not: the
+ * counterpart of {@link ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE} for a run
+ * the console's command line conducts from the working folder's alcove.yaml.
+ */
+export const CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
+  "This exchange's allowed relays decide which relays its run connects " +
+  "through and enrolls at. Your partner's side can still connect through a " +
+  "relay the list leaves out. The list covers relay servers only: the STUN " +
+  "servers a run lists are still contacted. The console writes the list " +
+  "into alcove.yaml as connection.allowed_relays, so a later run of that " +
+  "file uses it too.";
 
 /**
  * The accepted invitation's review notice after Start met Allowed relays

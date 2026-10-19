@@ -246,6 +246,135 @@ describe("before the handshake", () => {
   });
 });
 
+describe("the run's allowed relays", () => {
+  test("are written into the pair's alcove.yaml, which a retry runs over as the run left it", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
+    const { manager, dataRoot } = await managerFor({
+      STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
+      STUB_ARGV_FILE: argvFile,
+      STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+      STUB_EXIT_CODE: "69",
+    });
+    const intent = validWebrtcIntent({
+      side: "acceptor",
+      allowedRelays: ["relay.example.org"],
+    });
+    const first = await manager.createJob(intent);
+    await exited(manager, first);
+    const config = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(
+      (parseYaml(config) as { connection: Record<string, unknown> }).connection
+        .allowed_relays,
+    ).toEqual(["relay.example.org"]);
+    await discard(manager, first);
+
+    const retry = await manager.createJob(intent);
+    await exited(manager, retry);
+    expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(config);
+  });
+
+  /** A manager whose first run, stating `allowedRelays`, rotated the key and
+   * failed, then was discarded, so the pair stays held for a retry. The
+   * stub never writes the configuration. */
+  async function afterRunWithAllowedRelays(
+    allowedRelays: Array<string> | undefined,
+  ): Promise<{ manager: JobManager; dataRoot: string }> {
+    const prepared = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, DROPPED]),
+      STUB_EXIT_CODE: "69",
+    });
+    const first = await prepared.manager.createJob(
+      validWebrtcIntent({
+        side: "acceptor",
+        ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+      }),
+    );
+    await exited(prepared.manager, first);
+    await discard(prepared.manager, first);
+    return prepared;
+  }
+
+  function allowedRelaysIn(dataRoot: string): unknown {
+    return (
+      parseYaml(fs.readFileSync(configPathIn(dataRoot), "utf8")) as {
+        connection: Record<string, unknown>;
+      }
+    ).connection.allowed_relays;
+  }
+
+  test("a retry with a changed list writes it into the held alcove.yaml before its run, every other line kept", async () => {
+    const { manager, dataRoot } = await afterRunWithAllowedRelays([
+      "relay.example.org",
+    ]);
+    const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+
+    const retry = await manager.createJob(
+      validWebrtcIntent({
+        side: "acceptor",
+        allowedRelays: ["other.example.org:443"],
+      }),
+    );
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(
+      before.replace("- relay.example.org\n", "- other.example.org:443\n"),
+    );
+    expect(fs.statSync(configPathIn(dataRoot)).mode & 0o777).toBe(0o600);
+    await exited(manager, retry);
+    await discard(manager, retry);
+
+    // A retry committing no list removes the key, and still runs over the
+    // pair the console rewrote.
+    const cleared = await manager.createJob(
+      validWebrtcIntent({ side: "acceptor" }),
+    );
+    expect(allowedRelaysIn(dataRoot)).toBeUndefined();
+    await exited(manager, cleared);
+    expect(exchangeFilesIn(dataRoot)).toEqual(BOTH_FILES);
+  });
+
+  test("a retry with an unchanged list leaves the held alcove.yaml byte for byte as it was", async () => {
+    const { manager, dataRoot } = await afterRunWithAllowedRelays([
+      "relay.example.org",
+    ]);
+    const before = fs.readFileSync(configPathIn(dataRoot));
+    const inode = fs.statSync(configPathIn(dataRoot)).ino;
+
+    const retry = await manager.createJob(
+      validWebrtcIntent({
+        side: "acceptor",
+        allowedRelays: ["relay.example.org"],
+      }),
+    );
+    expect(fs.readFileSync(configPathIn(dataRoot)).equals(before)).toBe(true);
+    expect(fs.statSync(configPathIn(dataRoot)).ino).toBe(inode);
+    await exited(manager, retry);
+  });
+
+  test("a retry that fails before its run leaves the rewritten alcove.yaml held for the next retry", async () => {
+    const { manager, dataRoot } = await afterRunWithAllowedRelays([
+      "relay.example.org",
+    ]);
+    // No child runs, so only the write itself records the new bytes.
+    vi.spyOn(
+      manager as unknown as { startJobInWorkdir: () => Promise<string> },
+      "startJobInWorkdir",
+    ).mockRejectedValueOnce(new Error("the run did not start"));
+    const changed = validWebrtcIntent({
+      side: "acceptor",
+      allowedRelays: ["other.example.org:443"],
+    });
+    await expect(manager.createJob(changed)).rejects.toThrow(
+      "the run did not start",
+    );
+    expect(allowedRelaysIn(dataRoot)).toEqual(["other.example.org:443"]);
+
+    const retry = await manager.createJob(changed);
+    await exited(manager, retry);
+    expect(exchangeFilesIn(dataRoot)).toEqual(BOTH_FILES);
+  });
+});
+
 describe("after the handshake", () => {
   const rotatingRun = {
     STUB_KEY_FILE: ROTATED_KEY,

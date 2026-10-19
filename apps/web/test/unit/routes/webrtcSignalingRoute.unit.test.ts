@@ -598,6 +598,48 @@ describe("POST /api/jobs on the webrtc channel", () => {
     });
   });
 
+  test("composes an acceptor's run with the allowed relays its review committed", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      invitationRelay: INVITATION_RELAY,
+    });
+    const response = await postJob(
+      validWebrtcIntent({
+        side: "acceptor",
+        signalingServer: { ...TEST_SIGNALING_SERVER, relay: INVITATION_RELAY },
+        allowedRelays: ["Relay.Test:3478"],
+      }),
+    );
+    expect(response.status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).toEqual({
+      channel: "webrtc",
+      server: { host: "peers.test", path: "/psi/" },
+      role: "acceptor",
+      invitation_relay: INVITATION_RELAY,
+      allowed_relays: ["relay.test:3478"],
+    });
+  });
+
+  test("refuses allowed relays beside a run of the opened configuration, leaving nothing on disk", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+    const { sharedSecret: _secret, ...opened } = validWebrtcIntent({
+      side: "acceptor",
+      mountedConfigurationOpened: true,
+      allowedRelays: ["relay.test"],
+    });
+    const response = await postJob(opened);
+    expect(response.status).toBe(400);
+    // The schema's refusal, an empty body, before the opened file is read.
+    expect(await response.text()).toBe("");
+    expect(fs.readdirSync(root)).toEqual([]);
+    expect(manager.occupiedSlotId()).toBeNull();
+  });
+
   test("composes an inviter's run with the console's own relay as url-only turn entries and its registrar", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({
