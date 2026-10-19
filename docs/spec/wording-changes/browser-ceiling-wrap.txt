@@ -1,0 +1,38 @@
+- That measurement was taken without the application wrap the web application applies, which allocates transient copies of a frame while it encrypts or decrypts it, and the ceiling has not been re-measured with the wrap. -> That measurement was taken without the application wrap the web application applies, which allocates transient copies of a frame while it encrypts or decrypts it.
+- - -> In the development container a partner's set at the ceiling crossed the wrap in both roles, and a same-size round at the ceiling with the browser as the starter completed through it; the wrap's copies were ArrayBuffers, which the page's heap limit does not bind ([What a browser tab can match](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap").
+- - -> On the host the ceiling was measured on, the ceiling has not been re-measured with the wrap.
+- - -> **Rounds at the ceiling through the wrap.**
+- - -> `apps/web/test/bench/browserWrappedRound.ts` runs one round of core's participant on each side over a PeerJS data channel in the application wrap, as the web application's exchange runs one: the part framing, the element scan, the receive ceiling and the wrap's copies of each frame all run.
+- - -> The browser's engine is the web app's worker, and the partner's participant runs in a second Chromium on a Node engine on the native addon.
+- - -> Each engine operation is recorded as the bench above records a step, and the page's heap is sampled through the whole round.
+- - -> Measured 2026-10-18 in the development container (aarch64 Linux, 10 CPUs, 23 GB of memory) in Playwright 1.64.0's Chrome for Testing 156.0.8078.4 run headless, identifier-revealing, with 1,000 values shared.
+- - -> In two rounds the partner's set was 8,388,608 values and the browser's 65,536, one round in each role.
+- - -> In the third the browser was the starter with 8,388,608 values a side, the role whose answer failed at 10,000,000 a side above.
+- - -> In every round each set at the ceiling crossed the channel in two parts, and every round matched the known overlap.
+- - -> Other work ran in the container beside them: the one-minute load reached 7.3, 15.3 and 22.7 in the three rounds, in the table's order, and the container's available memory fell to 12.8 GB, 6.4 GB and 5.6 GB.
+- - -> Browser's role and sets | The sets at the ceiling | Wall time | Page's `usedJSHeapSize` peak | Page's V8 heap peak | Worker V8 heap peak | Peak renderer RSS
+- - -> Joiner, 65,536 against 8,388,608 | the partner's setup, received | 170.2 s | 1,285 MiB, receiving the first part | 11 MiB | 25 MiB, creating the request | 1,323 MB
+- - -> Starter, 65,536 against 8,388,608 | the partner's request, received; the response, sent | 3,285.3 s | 1,231 MiB from the request's receive through the answer; 2,535 MiB sending the response | 16 MiB | 3,455 MiB, answering the request in 3,052.0 s | 6,383 MB answering; 7,590 MB sending the response
+- - -> Starter, 8,388,608 a side | the browser's setup, sent; the partner's request, received; the response, sent | 7,477.0 s | 735 MiB creating the setup; 2,747 MiB from the request's receive through the answer; 3,526 MiB sending the response | 580 MiB, creating the setup | 2,765 MiB creating the setup in 4,069.0 s; 3,455 MiB answering the request in 3,136.5 s | 5,373 MB creating the setup; 7,157 MB answering; 8,606 MB sending the response
+- - -> The page's and the worker's heap limits were each 4,395,630,592 bytes (4,192 MiB).
+- - -> `usedJSHeapSize` is the page's `performance.memory` figure, sampled in the page every 100 ms; on this build it counts the bytes of every live ArrayBuffer beside the V8 heap.
+- - -> The V8 heap peaks are read from V8's collection trace, as above.
+- - -> **The wrap's copies are ArrayBuffers.**
+- - -> The frame reassembled from the channel, the wrap's copies of it and the joined set are each an ArrayBuffer.
+- - -> With the browser's set at 65,536 the page's V8 heap stayed at 16 MiB or under while `usedJSHeapSize` reached 2,535 MiB, 60% of the limit.
+- - -> At 8,388,608 a side the page's V8 heap, which holds the browser's own values, peaked at 580 MiB, against 561 MiB in the unwrapped starter's round at 2^23 above, while `usedJSHeapSize` reached 3,526 MiB, 84% of the limit.
+- - -> **The heap limit does not bind ArrayBuffers.**
+- - -> In the same build a page held ten 512 MiB ArrayBuffers, a `usedJSHeapSize` of 5,369,351,736 bytes against its 4,395,630,592-byte limit, without a failure.
+- - -> What the wrap moves is the renderer's resident set: sending the starter's response took it 1.2 GB past its peak in the answer at 65,536 and 1.4 GB past it at 8,388,608 a side.
+- - -> **The worker's peaks match the unwrapped round's.**
+- - -> The starter's answer, the step the round at 10,000,000 a side failed in, peaked at 3,455 MiB in the worker in both starter rounds, 82% of the limit and within 4 MiB of the 3,459 MiB the unwrapped round at 2^23 a side reached on the x86-64 host.
+- - -> Creating the setup at 8,388,608 peaked at 2,765 MiB, as it did there, and the engine's linear memory reached the same 766,377,984 bytes.
+- - -> The wrap runs on the page, not in the worker.
+- - -> **Not measured on the ceiling's host.**
+- - -> None of these rounds ran on the x86-64 host or the Chromium build the ceiling was measured on, and no same-size round with the browser as the joiner ran through the wrap.
+- **A round over the data channel at these sizes.** -> **A round over the data channel on the x86-64 host.**
+- The bench hands each set to the page directly, so no round above received a set in parts over WebRTC. -> The same-size bench hands each set to the page directly, so no round it ran received a set in parts over WebRTC; the rounds through the wrap above ran in the development container.
+- **The data channel at this size.** -> **The data channel at this size on the ceiling's host.**
+- The two-part receive of a set at the ceiling is the path two command-line parties run on WebRTC ([below](#the-receive-ceiling)); in a browser it is not measured at this size. -> The two-part receive of a set at the ceiling is the path two command-line parties run on WebRTC ([below](#the-receive-ceiling)); in a browser, through the application wrap, it was measured in the development container ([above](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap"), not on the host and Chromium build the ceiling was measured on.
+- The rounds handed each set to the tab directly rather than over the data channel, so the two-part receive at the ceiling is outside what they measured ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)). -> The rounds handed each set to the tab directly rather than over the data channel, so the two-part receive at the ceiling is outside what they measured.
+- - -> A partner's set at the ceiling, received in two parts through the application wrap, was measured in both roles in the development container, not on that host, as was a same-size round at the ceiling with the browser as the starter ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
