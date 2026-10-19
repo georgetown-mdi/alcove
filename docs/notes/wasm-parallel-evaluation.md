@@ -2,10 +2,14 @@
 
 Status: both arms measured, with the browser direction decided on 2026-09-16 --
 Web Worker sharding, with the pthreads/SIMD build declined
-([Decision](#decision-2026-09-16)). Nothing here is built into the production
-path -- the backend selector (`packages/core/src/psi/psiBackend.ts`) and the
-engine are untouched, and the prototype lives under two `test/bench`
-directories.
+([Decision](#decision-2026-09-16)) -- and the macOS bound decided on 2026-10-18
+([Decision](#decision-2026-10-18-the-macos-bound)). Two parts of the shipped arm
+are built: the engine that splits a round's request and response across engines
+holding one key (`packages/core/src/psi/shardedPsiEngine.ts`), and the browser
+shard count (`apps/web/src/psi/workers/psiShardPolicy.ts`). The web exchange
+runs one PSI worker until its worker engines are given one key, which is the
+key-distribution question below. The measurement prototype lives under two
+`test/bench` directories.
 
 The quantity being attacked is the masking cost the protocol spec sets the
 expectation for: one elliptic-curve scalar multiplication per distinct value,
@@ -340,3 +344,25 @@ renderer crash the sharding arm showed on the Mac reproduces on full Chrome at a
 low rate ([Renderer crash in the workers arm on the
 Mac](#renderer-crash-in-the-workers-arm-on-the-mac)), and shipping the arm
 bounds its pool on that result.
+
+## Decision (2026-10-18): the macOS bound
+
+The browser PSI run shards on every platform except macOS, where it runs one
+worker. A shard-count cap does not avoid the crash, which came at 4 and 6
+workers alike, and the alternative of falling back to one worker after a
+detected crash was declined because it would also hide crashes caused by
+defects in Alcove's own code.
+
+- **The check.** `browserRunsOnMacOs` in
+  `apps/web/src/psi/workers/psiShardPolicy.ts` treats the browser as macOS when
+  any of its platform reports names a Mac, so the bound errs toward one worker;
+  `apps/web/test/unit/psi/psiShardPolicy.test.ts` pins it against the user-agent
+  shapes Chrome, Safari and Firefox send on macOS and the ones other platforms
+  send.
+- **The cap elsewhere.** `BROWSER_PSI_SHARD_CAP`, 4 workers: the
+  [Recommendation](#recommendation)'s measured sweet spot, and short of the
+  logical core count of common SMT hardware, where the sibling threads cost
+  throughput.
+- **Lifting it.** The bound stays until a re-test on a newer Chrome shows the
+  crash gone. A search of Chromium's known issues across Chrome 151 to 156,
+  made on 2026-10-19, found no fix, so nothing schedules that re-test yet.

@@ -9,9 +9,10 @@ import { InternalConsistencyError } from "../errors";
 // Splitting one PSI crypto operation into chunks, and reassembling the chunk
 // results into the message a single call over the whole set produces. The
 // engine (psiEngine.ts) uses it to report a processed count part-way through an
-// operation the library would otherwise run as one blocking call; the worker
-// sharding bench (test/bench/shardedPsiWasmBench.ts) uses the same merges
-// across parallel engines built from one key.
+// operation the library would otherwise run as one blocking call; the sharded
+// engine (shardedPsiEngine.ts) and the worker sharding bench
+// (test/bench/shardedPsiWasmBench.ts) use the same merges across parallel
+// engines built from one key.
 //
 // The merge rules, established by driving the vendored engine rather than read
 // off its source, and pinned by test/psi/psiEngineChunkIdentity.test.ts on
