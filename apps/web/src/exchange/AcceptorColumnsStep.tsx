@@ -15,6 +15,7 @@ import {
   IconAlertCircle,
   IconAlertTriangle,
   IconCircleCheck,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 
 import {
@@ -29,6 +30,7 @@ import { MetadataGrid } from "@components/MetadataGrid";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
+import { DISCLOSURE_LABELS, disclosureOf } from "@psi/metadataEditing";
 import { overlongColumnsAlert, sanitizedColumnsAlert } from "@psi/columnNames";
 
 import styles from "@styles/app.module.css";
@@ -60,6 +62,7 @@ import type {
   SemanticType,
   Standardization,
 } from "@alcove/core";
+import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { ReactNode } from "react";
 
 /**
@@ -81,17 +84,36 @@ function MarkedColumnList({ names }: { names: Array<string> }) {
 }
 
 /**
- * The local remedy for columns marked to send that the partner does not take.
- * Three choices send a column, so it names the ones that do not.
+ * The choice that stops each sending column being sent while keeping its use:
+ * a matched column stays matched and the record identifier stays the
+ * identifier, so "Ignored" is offered only for a column sent for nothing else.
  */
-function UnsendRemedy({ count }: { count: number }) {
-  return (
-    <>
-      Set &quot;How it is used&quot; below to a choice that does not send{" "}
-      {count === 1 ? "it" : "them"} - one ending &quot;not sent&quot;, or
-      &quot;Ignored&quot; - for {count === 1 ? "that column" : "those columns"}
-    </>
-  );
+function unsendChoice(choice: DisclosureChoice): DisclosureChoice {
+  if (choice === "match-sent") return "match";
+  if (choice === "identifier-sent") return "identifier";
+  return "ignored";
+}
+
+/** The local remedy for columns marked to send that the partner does not take. */
+function UnsendRemedy({
+  metadata,
+  names,
+}: {
+  metadata: Metadata;
+  names: Array<string>;
+}) {
+  const labels = [
+    ...new Set(
+      metadata
+        .filter((column) => names.includes(column.name))
+        .map((column) => DISCLOSURE_LABELS[unsendChoice(disclosureOf(column))]),
+    ),
+  ].map((label) => `"${label}"`);
+  const choices =
+    labels.length <= 2
+      ? labels.join(" or ")
+      : `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
+  return <>Set &quot;How it is used&quot; below to {choices}</>;
 }
 
 /**
@@ -243,22 +265,10 @@ export function AcceptorColumnsStep({
   // resolves the same fact for the same viewer, with the same sentence core
   // provides.
   const partnerReceivesResult = linkageTerms.output.expectsOutput;
-  // How the marks below disagree with the payload set the invitation declares for
-  // this party: the exchange refuses to run on that pair, and every input the
-  // refusal reads is on this screen, so it is stated here rather than met after the
-  // operator has consented, chosen a file, and launched.
   const declarationConflict = acceptorPayloadDeclarationConflict(
     linkageTerms,
     editorState.metadata,
   );
-  // Which remedies the declared-but-unsent half even has: a column this file does
-  // not hold cannot be marked at all, so only the columns it does hold get the
-  // offer to widen the disclosure, and only the ones it lacks get "choose another
-  // file". Both sides count COLUMNS rather than declaration entries, which is what
-  // the model's declared-but-unsent set holds and what the sentences below are
-  // about: the columns the operator would set, or the ones they would go and find.
-  const expectedMissingFromFile =
-    declarationConflict?.declaredButNotSent.filter((gap) => !gap.inFile) ?? [];
   // The offer, read from the model over the whole declared set rather than the
   // names painted below, so the offer's choices are the ones the operator would
   // meet.
@@ -526,109 +536,87 @@ export function AcceptorColumnsStep({
           </Paper>
         )}
 
-        {/* The marks below and the payload set the invitation declares for this
-            party disagree: the exchange refuses that pair before any data moves,
-            so it is stated beside the marks that decide it. Both directions are
-            stated at once -- core refuses them in one message -- so clearing one
-            does not reveal the other on the next attempt. Not a live region: the
-            grid below already voices the disclosed set, and the launch button's
-            blocked-reason line speaks for the gate. */}
-        {declarationConflict !== undefined && (
+        {/* The invitation declares that this party sends no column while one is
+            marked: the run refuses that pair, so it is stated beside the marks
+            that decide it. Not a live region: the grid below already voices the
+            disclosed set, and the launch button's blocked-reason line speaks for
+            the gate. */}
+        {declarationConflict?.kind === "acceptsNothing" && (
           <Alert
             role="note"
             color="red"
             icon={<IconAlertCircle aria-hidden />}
             title={declarationConflict.title}
           >
-            {declarationConflict.kind === "acceptsNothing" ? (
+            The invitation says your partner accepts no columns from your file,
+            but{" "}
+            {declarationConflict.sentButNotDeclared.length === 1
+              ? "this one is"
+              : "these are"}{" "}
+            marked to send:
+            <MarkedColumnList names={declarationConflict.sentButNotDeclared} />
+            <UnsendRemedy
+              metadata={editorState.metadata}
+              names={declarationConflict.sentButNotDeclared}
+            />
+            , or ask your partner for an invitation that accepts{" "}
+            {declarationConflict.sentButNotDeclared.length === 1
+              ? "it"
+              : "them"}
+            .
+          </Alert>
+        )}
+        {/* The marks differ from a non-empty declaration. The partner is shown
+            the difference as a terms change before any data moves, so this
+            informs and does not hold the launch. */}
+        {declarationConflict?.kind === "setMismatch" && (
+          <Alert
+            role="note"
+            color="blue"
+            icon={<IconInfoCircle aria-hidden />}
+            title={declarationConflict.title}
+          >
+            {declarationConflict.sentButNotDeclared.length > 0 && (
               <>
-                The invitation says your partner accepts no columns from your
-                file, but{" "}
-                {declarationConflict.sentButNotDeclared.length === 1
-                  ? "this one is"
-                  : "these are"}{" "}
-                still marked to send:
+                {declarationConflict.declaredButNotSent.length > 0 && (
+                  <Text size="sm">Sent, but not in the invitation:</Text>
+                )}
                 <MarkedColumnList
                   names={declarationConflict.sentButNotDeclared}
                 />
-                The exchange cannot start while the two disagree.{" "}
-                <UnsendRemedy
-                  count={declarationConflict.sentButNotDeclared.length}
-                />
-                , or ask your partner for an invitation that accepts{" "}
-                {declarationConflict.sentButNotDeclared.length === 1
-                  ? "it"
-                  : "them"}
-                .
               </>
-            ) : (
+            )}
+            {declarationConflict.declaredButNotSent.length > 0 && (
               <>
-                The invitation lists exactly which columns your partner expects
-                from your file, and the exchange cannot start until your marks
-                match that list.
                 {declarationConflict.sentButNotDeclared.length > 0 && (
-                  <>
-                    <Text size="sm" mt="xs">
-                      Marked to send, but not on your partner&apos;s list:
-                    </Text>
-                    <MarkedColumnList
-                      names={declarationConflict.sentButNotDeclared}
-                    />
-                    {/* The direction with a remedy on this screen, so it leads
-                        with that remedy: the notice clears as the operator
-                        re-marks, without a new invitation. */}
-                    <UnsendRemedy
-                      count={declarationConflict.sentButNotDeclared.length}
-                    />
-                    , or ask your partner for an invitation that expects{" "}
-                    {declarationConflict.sentButNotDeclared.length === 1
-                      ? "it"
-                      : "them"}
-                    .
-                  </>
+                  <Text size="sm">In the invitation, but not sent:</Text>
                 )}
-                {declarationConflict.declaredButNotSent.length > 0 && (
-                  <>
-                    <Text size="sm" mt="xs">
-                      Expected by your partner, but not marked to send:
-                    </Text>
-                    {/* The invitation's OWN names, which the model has already
-                        escaped for this sink -- partner-controlled text, unlike
-                        the operator's headers above, and so also the half this
-                        screen bounds by count. Keyed by position: a static list,
-                        rebuilt whole, whose items hold no state of their own. */}
-                    <List size="sm" withPadding listStyleType="circle" my={4}>
-                      {shownDeclaredGaps.map((gap, index) => (
-                        <List.Item key={index}>
-                          {gap.displayName}
-                          {!gap.inFile && " - not a column in this file"}
-                        </List.Item>
-                      ))}
-                    </List>
-                    {unshownDeclaredCount > 0 && (
-                      <Text size="sm" mb={4}>
-                        {unshownDeclaredNamesLine(unshownDeclaredCount)}
-                      </Text>
-                    )}
-                    {/* The remedy here is mostly the partner's; the widening
-                        below is a secondary offer, made only where the column
-                        exists. Its cost is graded by the same verdict the
-                        launch gate runs, over the whole declaration rather
-                        than the (possibly capped) list painted above, so the
-                        caveat cannot understate what taking it would cost. */}
-                    Ask your partner for an invitation that expects what your
-                    file sends
-                    {expectedMissingFromFile.length > 0 &&
-                      `, or choose a file that has ${
-                        expectedMissingFromFile.length === 1
-                          ? "that column"
-                          : "those columns"
-                      }`}
-                    .{wideningOffer}
-                  </>
+                {/* The invitation's OWN names, which the model has already
+                    escaped for this sink, and bounded by count. Keyed by
+                    position: a static list, rebuilt whole. */}
+                <List size="sm" withPadding listStyleType="circle" my={4}>
+                  {shownDeclaredGaps.map((gap, index) => (
+                    <List.Item key={index}>
+                      {gap.displayName}
+                      {!gap.inFile && " - not a column in this file"}
+                    </List.Item>
+                  ))}
+                </List>
+                {unshownDeclaredCount > 0 && (
+                  <Text size="sm" mb={4}>
+                    {unshownDeclaredNamesLine(unshownDeclaredCount)}
+                  </Text>
                 )}
               </>
             )}
+            Your partner will be asked to accept{" "}
+            {declarationConflict.declaredButNotSent.length > 0
+              ? "the difference"
+              : declarationConflict.sentButNotDeclared.length === 1
+                ? "it"
+                : "them"}{" "}
+            before any data is sent.
+            {declarationConflict.declaredButNotSent.length > 0 && wideningOffer}
           </Alert>
         )}
 
@@ -671,10 +659,6 @@ export function AcceptorColumnsStep({
           caption="Your columns: type and use"
           partnerReceivesResult={partnerReceivesResult}
         />
-        <p className={`${styles.small} ${styles.sub}`}>
-          Only one column can be the record identifier. Choose a single column
-          that you can use to import the data back into your system.
-        </p>
 
         {!standardizationValid && (
           <Text size="xs" c="red" role="alert">

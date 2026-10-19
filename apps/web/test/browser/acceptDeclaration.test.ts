@@ -44,10 +44,10 @@ import type { LinkageTerms } from "@alcove/core";
 
 // The confirm-columns step under an invitation whose declared payload set for this
 // party is NON-EMPTY and disagrees with the operator's marks. The empty-declaration
-// notice on the same screen has its own coverage in accept.test.ts; what is
-// asserted here is the half that only rendering can show -- that both directions
-// reach the operator in one statement, and that the two provenances of the names in
-// it are treated differently at this sink.
+// notice on the same screen, the one that holds the launch, has its own coverage in
+// accept.test.ts; what is asserted here is that this notice informs without holding
+// the launch, that both directions reach the operator in one statement, and that
+// the two provenances of the names in it are treated differently at this sink.
 const app = createAppMount();
 
 afterEach(() => {
@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 // Two single-element keys, one per name field, so the file below satisfies both and
-// the declaration conflict is the only thing that can close the launch.
+// nothing but the declaration could close the launch.
 const acceptorTerms: LinkageTerms = {
   version: "1.0.0",
   identity: "County Health Department",
@@ -93,48 +93,40 @@ const NON_ASCII = "\u00E9";
 // times under the megabyte the same declaration would paint uncapped.
 const NOTICE_CEILING = 4_000;
 
-// The over-declared half's remedies as the notice states them: the partner's first,
-// then the local widening and what it keeps. Pinned once, since the two tests that
-// read it drive the offer over columns sitting at different uses.
-const PARTNER_REMEDY =
-  "Ask your partner for an invitation that expects what your file sends.";
+// What the notice says happens next where the declaration names a column the
+// marks do not send.
+const ASKED_TO_ACCEPT_DIFFERENCE =
+  "Your partner will be asked to accept the difference before any data is sent.";
 
-const WIDENING_OFFER =
-  PARTNER_REMEDY +
-  " Where your file does have such a column, you can set it to " +
-  '"Sent to your partner" below instead - that discloses more than you ' +
-  "have marked so far, and sending it replaces the use it has now.";
+// The offer to send a declared column the file has, by the use that column has.
+const WIDENING_OFFER = ' To send it, set it to "Sent to your partner" below.';
 
-// What the same half says where the column the partner expects is one this file
-// matches on: the offer sends it and keeps matching on it. Pinned in both numbers,
-// since the offer is one sentence over the whole declared list.
 const WIDENING_OFFER_MATCHED =
-  "Your file does have that column as one it matches on: you can set it to" +
-  ' "Used to match - sent to your partner" below instead - that discloses' +
-  " more than you have marked so far, and the column is still used to match.";
+  ' To send it, set it to "Used to match - sent to your partner" below.';
 
 const WIDENING_OFFER_MATCHED_PLURAL =
-  "Your file does have those columns as ones it matches on: you can set them" +
-  ' to "Used to match - sent to your partner" below instead - that discloses' +
-  " more than you have marked so far, and the columns are still used to match.";
+  ' To send them, set them to "Used to match - sent to your partner" below.';
 
-// The offer where a column it covers is the file's record identifier, alone and
-// beside a column the file matches on: each keeps its use and is sent, so the
-// offer names each one's own choice.
 const WIDENING_OFFER_IDENTIFIER =
-  PARTNER_REMEDY +
-  " Your file does have that column as its record identifier: you can set" +
-  ' it to "Unique record identifier - sent to your partner" below instead -' +
-  " that discloses more than you have marked so far, and the column stays" +
-  " your record identifier.";
+  ' To send it, set it to "Unique record identifier - sent to your partner"' +
+  " below.";
 
+// Where the declaration also names columns the file lacks, the offer names the
+// ones the file has.
 const WIDENING_OFFER_MATCHED_WITH_IDENTIFIER =
-  "Where your file does have such columns, you can set your record" +
-  ' identifier to "Unique record identifier - sent to your partner" and any' +
-  ' column used to match to "Used to match - sent to your partner" below' +
-  " instead - that discloses more than you have marked so far. Your record" +
-  " identifier keeps its use and a column used to match is still used to" +
-  " match.";
+  " To send the ones in your file, set your record identifier to" +
+  ' "Unique record identifier - sent to your partner" and the column used to' +
+  ' match to "Used to match - sent to your partner" below.';
+
+/** The launch is open and its reason line is empty. */
+async function expectLaunchOpen() {
+  const start = page.getByRole("button", { name: "Start the exchange" });
+  await expect.element(start).toBeEnabled();
+  expect(start.element().getAttribute("aria-describedby")).toBeNull();
+  expect(page.getByTestId("launch-blocked-reason").element().textContent).toBe(
+    "",
+  );
+}
 
 function mountStep(
   linkageTerms: LinkageTerms,
@@ -193,9 +185,7 @@ function declarationNotice(): HTMLElement {
 describe("acceptor columns step: a disagreeing non-empty declaration", () => {
   test("states both directions at once, escaping the declared name and isolating the operator's own", async () => {
     // The declaration names a column this file does not send, while the file sends
-    // one the declaration does not name: core refuses that pair in a single
-    // message, so the screen must state both halves at once rather than reveal the
-    // second after the first is cleared.
+    // one the declaration does not name: both halves are stated at once.
     const declaredName = `risk${RLO}score`;
     const ownHeader = `notes${RLO}evil`;
     mountStep(
@@ -205,22 +195,20 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
 
     await expect
       .element(
-        page.getByText("Your columns do not match what your partner expects"),
+        page.getByText("Your columns differ from your partner's invitation"),
       )
       .toBeInTheDocument();
+    const notice = declarationNotice();
+    expect(notice.textContent).toContain("Sent, but not in the invitation:");
+    expect(notice.textContent).toContain("In the invitation, but not sent:");
+    expect(notice.textContent).toContain(ASKED_TO_ACCEPT_DIFFERENCE);
 
-    // The operator's OWN header, named as the grid row they have to change names
-    // it: isolated, never escaped.
+    // The operator's OWN header, named as the grid row names it: isolated, never
+    // escaped.
     const marked = app.container.querySelector<HTMLElement>("li bdi");
     expect(marked?.textContent).toBe(ownHeader);
     expect(app.container.textContent).not.toContain(
       sanitizeForDisplay(ownHeader),
-    );
-    // Three choices send a column, so the remedy names the ones that do not.
-    expect(declarationNotice().textContent).toContain(
-      'Set "How it is used" below to a choice that does not send it - one' +
-        ' ending "not sent", or "Ignored" - for that column, or ask your' +
-        " partner for an invitation that expects it.",
     );
 
     // The declared name is the partner's text on this path, so it reaches the
@@ -230,24 +218,43 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     expect(app.container.textContent).not.toContain(declaredName);
 
-    // The gate, and what a keyboard/screen-reader user at the button hears: the
-    // sentence names the disagreement the notice above is titled with.
-    const start = page.getByRole("button", { name: "Start the exchange" });
-    await expect.element(start).toBeDisabled();
-    const reasonId = start.element().getAttribute("aria-describedby");
-    expect(reasonId).toBeTruthy();
-    expect(document.getElementById(reasonId!)?.textContent).toBe(
-      "Resolve the columns that do not match what your partner expects above before you can start.",
-    );
+    await expectLaunchOpen();
   });
 
-  // The file the two tests below both use: it satisfies every key and discloses
-  // exactly one column, so the declaration is the only thing closing the launch.
+  test("informs, without holding the launch, when the file sends its record identifier and the invitation does not list it", async () => {
+    // The grid starts an `id` column sent. An invitation from an established
+    // exchange that lists only `notes` does not name it: the partner is asked
+    // to accept it before any data is sent, so the launch stays open.
+    mountStep({ ...acceptorTerms, payload: { receive: [{ name: "notes" }] } }, [
+      "id",
+      "first_name",
+      "last_name",
+      "notes",
+    ]);
+    await expect
+      .element(
+        page.getByText("Your partner's invitation does not list this column"),
+      )
+      .toBeInTheDocument();
+    const notice = declarationNotice();
+    const painted = Array.from(notice.querySelectorAll("li")).map(
+      (item) => item.textContent,
+    );
+    expect(painted).toEqual(["id"]);
+    expect(notice.textContent).toContain(
+      "Your partner will be asked to accept it before any data is sent.",
+    );
+    expect(notice.textContent).not.toContain('"How it is used"');
+    await expectLaunchOpen();
+  });
+
+  // The file the tests below use: it satisfies every key and discloses exactly
+  // one column.
   const columns = ["first_name", "last_name", "notes"];
 
   test("says a declared column is absent from the file, and offers no local edit for it", async () => {
-    // A column this file does not contain cannot be marked at all, so the entry says
-    // so and the remedies stay the partner's or a different file's.
+    // A column this file does not contain cannot be marked at all, so the entry
+    // says so and no offer to send it is made.
     mountStep(
       {
         ...acceptorTerms,
@@ -257,23 +264,23 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(
+    const notice = declarationNotice();
+    expect(notice.textContent).toContain(
       "risk_score - not a column in this file",
     );
-    expect(app.container.textContent).toContain(
-      "or choose a file that has that column",
-    );
-    expect(app.container.textContent).not.toContain(
-      "Where your file does have such a column",
-    );
+    expect(notice.textContent).toContain(ASKED_TO_ACCEPT_DIFFERENCE);
+    expect(notice.textContent).not.toContain("To send");
+    await expectLaunchOpen();
   });
 
   test("offers to send a declared column the file matches on and keep matching on it", async () => {
-    // The same direction where the secondary remedy exists, over the column it is
-    // most often offered for: the declared column is in this file and used for
+    // The same direction where the offer exists, over the column it is most
+    // often offered for: the declared column is in this file and used for
     // matching, so the offer names the choice that sends it and keeps its keys.
     mountStep(
       {
@@ -284,11 +291,13 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      `${PARTNER_REMEDY} ${WIDENING_OFFER_MATCHED}`,
+      `${ASKED_TO_ACCEPT_DIFFERENCE}${WIDENING_OFFER_MATCHED}`,
     );
     expect(app.container.textContent).not.toContain(WIDENING_OFFER);
     expect(app.container.textContent).not.toContain(
@@ -314,7 +323,9 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     mountStep(terms, columns);
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
     const painted = Array.from(declarationNotice().querySelectorAll("li")).map(
@@ -322,7 +333,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     expect(painted).toEqual(["first_name"]);
     expect(app.container.textContent).toContain(
-      `${PARTNER_REMEDY} ${WIDENING_OFFER_MATCHED}`,
+      `${ASKED_TO_ACCEPT_DIFFERENCE}${WIDENING_OFFER_MATCHED}`,
     );
     expect(app.container.textContent).not.toContain(
       WIDENING_OFFER_MATCHED_PLURAL,
@@ -330,8 +341,8 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
   });
 
   test("speaks about an absent column the declaration names twice as the one column it is", async () => {
-    // The same repeat where the file does not have the column: the remedy is a
-    // different file, and it is one column that file has to have.
+    // The same repeat where the file does not have the column: one name listed,
+    // and a title that says one.
     const terms: LinkageTerms = {
       ...acceptorTerms,
       payload: {
@@ -346,19 +357,15 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     mountStep(terms, columns);
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
     const painted = Array.from(declarationNotice().querySelectorAll("li")).map(
       (item) => item.textContent,
     );
     expect(painted).toEqual(["risk_score - not a column in this file"]);
-    expect(app.container.textContent).toContain(
-      "or choose a file that has that column",
-    );
-    expect(app.container.textContent).not.toContain(
-      "or choose a file that has those columns",
-    );
   });
 
   test("offers to send a column the file keeps as its record identifier as that identifier", async () => {
@@ -372,10 +379,14 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(WIDENING_OFFER_IDENTIFIER);
+    expect(app.container.textContent).toContain(
+      `${ASKED_TO_ACCEPT_DIFFERENCE}${WIDENING_OFFER_IDENTIFIER}`,
+    );
     expect(app.container.textContent).not.toContain(WIDENING_OFFER);
 
     // The use the grid states for the column the offer names. The label contains
@@ -412,7 +423,9 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects columns you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists columns you are not sending",
+        ),
       )
       .toBeInTheDocument();
 
@@ -446,7 +459,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     // Two columns this file does have, at the two uses the offer covers: one it
     // matches on and one it keeps as its record identifier. The sentence names
-    // each column's choice and what each keeps.
+    // each column's choice.
     const held = ["first_name", "record_id"];
     mountStep(
       {
@@ -459,7 +472,9 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects columns you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists columns you are not sending",
+        ),
       )
       .toBeInTheDocument();
 
@@ -469,10 +484,8 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     expect(painted).toHaveLength(MAX_DECLARED_NAMES_SHOWN);
     for (const name of held) expect(painted).not.toContain(name);
-    // Still after the partner's remedy and the different-file one, which the
-    // absent names above make available here.
     expect(notice.textContent).toContain(
-      `or choose a file that has those columns. ${WIDENING_OFFER_MATCHED_WITH_IDENTIFIER}`,
+      `${ASKED_TO_ACCEPT_DIFFERENCE}${WIDENING_OFFER_MATCHED_WITH_IDENTIFIER}`,
     );
     expect(notice.textContent.length).toBeLessThanOrEqual(NOTICE_CEILING);
   });
@@ -491,7 +504,9 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     await expect
       .element(
-        page.getByText("Your partner expects a column you are not sending"),
+        page.getByText(
+          "Your partner's invitation lists a column you are not sending",
+        ),
       )
       .toBeInTheDocument();
 

@@ -563,8 +563,8 @@ describe("inviter screen", () => {
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("No values will be sent to your partner", {
-          exact: false,
+        page.getByText("No columns are sent to your partner", {
+          exact: true,
         }),
       )
       .toBeInTheDocument();
