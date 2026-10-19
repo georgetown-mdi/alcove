@@ -219,8 +219,9 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
       "A run also lists the relay named by an invitation you accept, after " +
         "yours. Exchanges run from this console follow the command-line " +
         "configuration: its connection.allowed_relays key decides which relays " +
-        "an exchange may use, and an invitation you accept sets it in the " +
-        "Allowed relays field on its first step. Each exchange signs in",
+        "an exchange may use, and a WebRTC invitation you accept that names a " +
+        "TURN server sets it in the Allowed relays field on its first step. " +
+        "Each exchange signs in",
     );
   });
 

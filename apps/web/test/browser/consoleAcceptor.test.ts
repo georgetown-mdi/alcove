@@ -289,6 +289,26 @@ describe("console acceptor of a webrtc invitation", () => {
     expect(allowedField().query()).toBeNull();
   });
 
+  test("offers no Allowed relays for a relay that names only STUN servers", async () => {
+    stubServerJobAccept();
+    window.location.hash = await encodeToken({
+      ...WEBRTC_ENDPOINT,
+      relay: { stun: ["stun:stun.example.org:3478"] },
+    });
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(
+        page.getByText("The run uses the relay your partner named", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByText("unless the Allowed relays", { exact: false }).query(),
+    ).toBeNull();
+    expect(allowedField().query()).toBeNull();
+  });
+
   test("dials over ws:// where the console already holds that server at ws://", async () => {
     stubServerJobAccept({
       signalingServer: {

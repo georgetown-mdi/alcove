@@ -105,7 +105,7 @@ export const ALLOWED_RELAYS_FIELD_DESCRIPTION = allowedRelaysFieldDescription(
 /** The Allowed relays field's description on the console, whose runs have
  * no relay of the site's. */
 export const CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION =
-  allowedRelaysFieldDescription("yours or the invitation's");
+  allowedRelaysFieldDescription("the invitation's");
 
 /**
  * What a saved exchange's own allowed relays decide, and what they do not,

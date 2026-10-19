@@ -596,7 +596,7 @@ describe("the review step's allowed relays", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
   });
 
-  test("are offered on a WebRTC accept, and on the console only where the invitation names a relay", () => {
+  test("are offered on a WebRTC accept, and on the console only where the invitation names a TURN server", () => {
     const relayed = {
       ...invitation.endpoint,
       relay: { turn: ["turn:relay.example.org"] },
@@ -604,6 +604,16 @@ describe("the review step's allowed relays", () => {
     expect(acceptOffersAllowedRelays(invitation.endpoint, false)).toBe(true);
     expect(acceptOffersAllowedRelays(invitation.endpoint, true)).toBe(false);
     expect(acceptOffersAllowedRelays(relayed, true)).toBe(true);
+    expect(
+      acceptOffersAllowedRelays(
+        {
+          channel: "webrtc",
+          host: "127.0.0.1",
+          relay: { stun: ["stun:stun.example.org"] },
+        },
+        true,
+      ),
+    ).toBe(false);
     expect(
       acceptOffersAllowedRelays({ channel: "filedrop", path: "/drop" }, false),
     ).toBe(false);
