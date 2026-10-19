@@ -24,8 +24,8 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
-import { InfoButton } from "@components/InfoButton";
 import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
+import { InfoButton } from "@components/InfoButton";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";

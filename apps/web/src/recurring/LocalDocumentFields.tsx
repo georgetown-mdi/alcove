@@ -10,8 +10,8 @@ import {
   MATCHING_KEY_STORED_WITHHELD_COPY,
 } from "@psi/matchingKeyModel";
 import { OWN_COLUMNS_LABELS, OWN_COLUMNS_ORDER } from "@psi/ownColumnsModel";
-import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 import { AllowedRelaysField } from "@components/AllowedRelaysField";
+import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 
 import styles from "@styles/app.module.css";
 

@@ -13,8 +13,8 @@ import { IconCircleCheck } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 
 import { InfoButton } from "@components/InfoButton";
-import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
+import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 import { probeManagedStoreOpen } from "@psi/managed/managedExchangeStore";
 
 import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
