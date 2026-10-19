@@ -362,6 +362,56 @@ describe("alcove-relay-websocket.service", () => {
     expect(directive("NoNewPrivileges")).toEqual(["true"]);
   });
 
+  // render-config.sh writes coturn's configuration, static-auth-secret
+  // included, under this directory, owned by the account the relay runs as.
+  it("cannot read the directory coturn's rendered configuration is in", () => {
+    const etc = /^ETC=(\S+)$/m.exec(read("render-config.sh"))[1];
+    expect(read("render-config.sh")).toContain(
+      'OUT="${ALCOVE_RELAY_CONF:-$ETC/turnserver.conf}"',
+    );
+    expect(directive("InaccessiblePaths")).toEqual([etc]);
+  });
+
+  describe("the image uid install.sh fills in", () => {
+    const STEP_START = "# The account the image runs as";
+    const STEP_END = "# --- the secrets table ---";
+
+    const probe = (uid) => {
+      const start = install.indexOf(STEP_START);
+      const end = install.indexOf(STEP_END);
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      const script = [
+        "set -euo pipefail",
+        `die() { printf 'ABORTING: %s\\n' "$*" >&2; exit 1; }`,
+        `log() { printf '%s\\n' "$*" >&2; }`,
+        `record_env_value() { printf 'recorded %s=%s\\n' "$1" "$2"; }`,
+        `podman() { case "$*" in *' -u') echo '${uid}' ;; *' -g') echo 1000 ;; esac; }`,
+        "RUNTIME=podman",
+        "IMAGE=alcove-relay",
+        install.slice(start, end),
+      ].join("\n");
+      return spawnSync(BASH, ["-c", script], { encoding: "utf8" });
+    };
+
+    it("is refused when the image reports root", () => {
+      for (const uid of ["0", "00"]) {
+        const r = probe(uid);
+        expect(r.status, uid).toBe(1);
+        expect(r.stderr).toContain(
+          "the image alcove-relay reports uid 0 (root), and the relay will not run as root.",
+        );
+        expect(r.stdout).toBe("");
+      }
+    });
+
+    it("is recorded when the image reports another account", () => {
+      const r = probe("65534");
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("recorded ALCOVE_RELAY_IMAGE_UID=65534\n");
+    });
+  });
+
   it("is started only where relay.env names the relay, and stopped otherwise", () => {
     const named = install.indexOf(
       'if [ -n "$WEBSOCKET_NAME" ]; then\n  systemctl enable alcove-relay-websocket.service',

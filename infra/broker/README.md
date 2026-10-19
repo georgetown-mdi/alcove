@@ -81,7 +81,12 @@ On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` 
    mkdir -p packages/core/dist
    tar -xzf "alcove-broker-core-${commit}.tar.gz" -C packages/core/dist
    (cd packages/core/dist && sha256sum -c SHA256SUMS)
+   diff <(sed -E 's/^[0-9a-f]{64} [ *]//' packages/core/dist/SHA256SUMS | sort) \
+     <(tar -tzf "alcove-broker-core-${commit}.tar.gz" | grep -v '/$' | grep -vx SHA256SUMS | sort)
    ```
+
+   `sha256sum -c` passes a file the manifest does not list, so `diff` then compares the archive's file names with the manifest's.
+   Refuse the build if it prints anything: a `>` line names a file the manifest does not list, a `<` line a listed file the archive does not hold.
 
    The identity names the publishing workflow on `main`, and `--certificate-github-workflow-sha` refuses a correctly signed build of any other commit.
    Measured on the relay host (Amazon Linux 2023, t4g.nano) on 2026-10-12, Cosign v3.0.6 verified a signed archive with no token or cloud credential in its environment, refused a bundle for another identity, another commit and an altered archive, and peaked at about 66 MB of memory.

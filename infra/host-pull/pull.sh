@@ -180,11 +180,38 @@ require_green() {
   esac
 }
 
+# archive, manifest. sha256sum -c passes a file its manifest does not name, so
+# this compares the archive's member names, directories and the manifest
+# itself aside, with the manifest's. Prints the first member not listed, else
+# the first listed name no member has, else nothing.
+manifest_gap() {
+  tar -tzf "$1" | awk -v manifest="$2" '
+    BEGIN {
+      while ((getline line < manifest) > 0) {
+        sub(/^[0-9a-f]+ [ *]/, "", line)
+        listed[line] = 1
+        order[++count] = line
+      }
+    }
+    {
+      sub(/^\.\//, "")
+      if ($0 == "" || $0 ~ /\/$/ || $0 == "SHA256SUMS") next
+      member[$0] = 1
+      if (!($0 in listed) && unlisted == "") unlisted = $0
+    }
+    END {
+      if (unlisted != "") { print "holds " unlisted ", which its SHA256SUMS does not list"; exit }
+      for (i = 1; i <= count; i++) {
+        if (!(order[i] in member)) { print "has no " order[i] ", which its SHA256SUMS lists"; exit }
+      }
+    }'
+}
+
 # Downloads and verifies the tip's build and stages its tree.
 stage() {
   local archive="alcove-broker-core-$TIP.tar.gz"
   local bundle="$archive.sigstore.json"
-  local name fetched dist tree replaced
+  local name fetched dist tree replaced gap
   for name in "$archive" "$bundle"; do
     download "$RELEASE_URL/$name" "$WORK/$name" || finish failed 1 "could not download $name"
     case "$CODE" in
@@ -220,6 +247,9 @@ stage() {
   tar -xzf "$WORK/$archive" --no-same-owner -C "$dist" || finish refused 1 "$archive does not unpack"
   (cd "$dist" && sha256sum --quiet -c SHA256SUMS) >&2 \
     || finish refused 1 "the files in $archive do not match its SHA256SUMS"
+  gap="$(manifest_gap "$WORK/$archive" "$dist/SHA256SUMS")" \
+    || finish refused 1 "the member names of $archive could not be read"
+  [ -z "$gap" ] || finish refused 1 "$archive $gap"
   [ -s "$dist/untrusted-text.esm.js" ] || finish refused 1 "$archive has no untrusted-text.esm.js"
 
   # No package's install script runs as root (README.md, What a run does).

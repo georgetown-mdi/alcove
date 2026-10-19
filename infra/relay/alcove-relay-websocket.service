@@ -8,6 +8,9 @@
 # the exchange keys from, under node with tsx's loader, from the Node workspace
 # tree infra/broker/README.md, Install, sets up. The sandbox is the broker's
 # (infra/broker/README.md, Exposure), with the whole file system read-only.
+# /etc/alcove-relay is hidden from it: that account owns the rendered
+# turnserver.conf, which can hold coturn's static-auth-secret, and the relay
+# reads nothing there.
 
 [Unit]
 Description=alcove WebSocket relay (loopback, behind the 443 front)
@@ -30,6 +33,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+InaccessiblePaths=/etc/alcove-relay
 PrivateDevices=yes
 DevicePolicy=closed
 ProtectKernelTunables=yes

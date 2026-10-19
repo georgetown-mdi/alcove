@@ -311,6 +311,9 @@ IMAGE_UID="$("$RUNTIME" run --rm --entrypoint id "$IMAGE" -u | tr -d '[:space:]'
 case "$IMAGE_UID" in
   ''|*[!0-9]*) die "could not read the image's uid; got '$IMAGE_UID'" ;;
 esac
+if [[ "$IMAGE_UID" =~ ^0+$ ]]; then
+  die "the image $IMAGE reports uid 0 (root), and the relay will not run as root. Build it from a base image whose USER is not root and run install.sh again."
+fi
 IMAGE_GID="$("$RUNTIME" run --rm --entrypoint id "$IMAGE" -g | tr -d '[:space:]')"
 case "$IMAGE_GID" in
   ''|*[!0-9]*) die "could not read the image's gid; got '$IMAGE_GID'" ;;

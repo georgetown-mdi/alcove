@@ -885,7 +885,12 @@ stops and disables it where that is unset.
   Exposure](../broker/README.md#exposure)): no capability, connections to and
   from loopback alone (`IPAddressDeny=any`, `IPAddressAllow=localhost`), and
   the whole file system read-only except a private `/tmp`, where tsx keeps
-  its cache. `systemd-analyze security` has not been run on it.
+  its cache. `/etc/alcove-relay` is hidden from it (`InaccessiblePaths=`):
+  the relay image's account owns the rendered `turnserver.conf`, which holds
+  coturn's static authentication secret where the host keeps one, and the
+  relay reads nothing there. `install.sh` refuses an image that reports uid
+  0, so the relay never runs as root. `systemd-analyze security` has not
+  been run on it.
 - **Quotas.** The relay's own, each on an exchange's key
   ([WEBSOCKET_RELAY.md, Quotas](../../docs/spec/WEBSOCKET_RELAY.md#quotas)).
   It counts nothing by client address, and every connection reaches it from
