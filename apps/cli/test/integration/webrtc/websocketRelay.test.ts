@@ -1,9 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 import {
+  ConnectionError,
   EncryptedMessageConnection,
+  PeerJsFrameEncoder,
   authenticateConnection,
   deriveRelayExchangeId,
   deriveRelayKey,
@@ -12,7 +14,10 @@ import {
 } from "@alcove/core";
 
 import { SEND_WINDOW_BYTES } from "../../../src/connection/webrtc/webrtcMessageConnection";
-import { openWebSocketRelayMessageConnection } from "../../../src/connection/webrtc/websocketRelayConnection";
+import {
+  openWebSocketRelayMessageConnection,
+  webSocketRelayHello,
+} from "../../../src/connection/webrtc/websocketRelayConnection";
 import { webSocketRelayDialFor } from "../../../src/connection/webrtc/websocketRelayDial";
 import { startWebSocketRelayProcess } from "../../signaling/websocketRelayProcess";
 
@@ -31,6 +36,7 @@ import type { MessageConnection, RendezvousRole } from "@alcove/core";
 
 const SECRET = generateSharedSecret();
 const UNENROLLED_SECRET = generateSharedSecret();
+const WRONG_KEY_SECRET = generateSharedSecret();
 
 /** The relay's own per-message cap (packages/websocket-relay/src/protocol.ts). */
 const RELAY_MAX_MESSAGE_BYTES = 16_384;
@@ -63,6 +69,56 @@ async function dialFor(
   );
   if (dial === undefined) throw new Error("no relay dial");
   return dial;
+}
+
+/** What sockets made through {@link recordingSockets} sent and received. */
+interface SocketRecord {
+  socketFactory: (url: string) => WebSocket;
+  /** Every binary message any of the sockets sent to the relay. */
+  binarySent: Array<Uint8Array>;
+  /** Every binary message the relay forwarded to any of the sockets. */
+  binaryForwarded: Array<Uint8Array>;
+  /** The code of each close the sockets saw. */
+  closeCodes: Array<number>;
+}
+
+/** A socket factory recording each socket's traffic, with an optional text rewrite. */
+function recordingSockets(
+  rewriteText: (text: string) => string = (text) => text,
+): SocketRecord {
+  const record: SocketRecord = {
+    socketFactory: (url) => {
+      const socket = new WebSocket(url);
+      const send = socket.send.bind(socket);
+      socket.send = (data) => {
+        if (typeof data === "string") {
+          send(rewriteText(data));
+          return;
+        }
+        if (ArrayBuffer.isView(data))
+          record.binarySent.push(
+            new Uint8Array(
+              data.buffer,
+              data.byteOffset,
+              data.byteLength,
+            ).slice(),
+          );
+        send(data);
+      };
+      socket.addEventListener("message", (event: MessageEvent) => {
+        if (event.data instanceof ArrayBuffer)
+          record.binaryForwarded.push(new Uint8Array(event.data.slice(0)));
+      });
+      socket.addEventListener("close", (event: CloseEvent) => {
+        record.closeCodes.push(event.code);
+      });
+      return socket;
+    },
+    binarySent: [],
+    binaryForwarded: [],
+    closeCodes: [],
+  };
+  return record;
 }
 
 /** Pair both parties through the relay and run the key exchange with the wrap requested. */
@@ -114,6 +170,42 @@ test("two parties pair through the relay, exchange wrapped frames, and the close
   await expect(inviter.receive()).rejects.toThrow("peer connection closed");
   await inviter.close().catch(() => {});
   await expect(closing).resolves.toBeUndefined();
+}, 60_000);
+
+// No CLI run dials this transport until the fallback selects it, so this test
+// wraps the connection the way authenticateRun does.
+test("a payload frame crosses the relay only inside the wrap", async () => {
+  const marker = `alcove-plaintext-marker-${randomBytes(8).toString("hex")}`;
+  const markerBytes = Buffer.from(marker);
+  const contains = (frame: Uint8Array): boolean =>
+    Buffer.from(frame).includes(markerBytes);
+  const record = { record: marker };
+  const bytes = new TextEncoder().encode(marker.repeat(2_000));
+  // The same frames framed without the wrap show the marker, so the search
+  // below would find it in an unwrapped frame.
+  const encoder = new PeerJsFrameEncoder();
+  expect(encoder.encode(record).some(contains)).toBe(true);
+  expect(encoder.encode(bytes).some(contains)).toBe(true);
+
+  const sockets = recordingSockets();
+  const { inviter, acceptor } = await authenticatedPair({
+    socketFactory: sockets.socketFactory,
+  });
+  const forwardedBeforePayload = sockets.binaryForwarded.length;
+  await inviter.send(record);
+  expect(await acceptor.receive()).toEqual(record);
+  await inviter.send(bytes);
+  expect(digest(await acceptor.receive())).toBe(digest(bytes));
+
+  const forwarded = sockets.binaryForwarded;
+  expect(forwarded.length - forwardedBeforePayload).toBeGreaterThan(1);
+  expect(forwarded.filter(contains)).toEqual([]);
+  expect(contains(Buffer.concat(forwarded))).toBe(false);
+
+  const closing = inviter.close();
+  await expect(acceptor.receive()).rejects.toThrow("peer connection closed");
+  await acceptor.close().catch(() => {});
+  await closing;
 }, 60_000);
 
 test("both parties closing at once each confirm delivery without waiting out the budget", async () => {
@@ -184,6 +276,51 @@ test("a relay that holds no key for the exchange refuses the hello with the enro
   ).rejects.toThrow(
     `the WebSocket relay at ${relay.url} holds no key for this exchange`,
   );
+});
+
+const PROOF_REFUSED_MESSAGE =
+  "holds a key for this exchange other than the one this side's shared " +
+  "secret derives";
+
+test("a proof made with a key other than the enrolled one is refused before any frame crosses", async () => {
+  const sockets = recordingSockets();
+  const dial = {
+    ...(await dialFor("inviter")),
+    relayKey: await deriveRelayKey(WRONG_KEY_SECRET),
+  };
+  expect(dial.exchangeId).toBe(await deriveRelayExchangeId(SECRET));
+  const refusal: unknown = await openWebSocketRelayMessageConnection(dial, {
+    socketFactory: sockets.socketFactory,
+  }).catch((err: unknown) => err);
+  expect(refusal).toBeInstanceOf(ConnectionError);
+  expect((refusal as Error).message).toContain(PROOF_REFUSED_MESSAGE);
+  expect(sockets.closeCodes).toEqual([4004]);
+  expect(sockets.binarySent).toEqual([]);
+  expect(sockets.binaryForwarded).toEqual([]);
+});
+
+test("a proof made for one role in a hello claiming the other is refused before any frame crosses", async () => {
+  const acceptorHello = JSON.parse(
+    await webSocketRelayHello(await dialFor("acceptor"), new Date()),
+  ) as Record<string, string>;
+  let rewritten = 0;
+  const sockets = recordingSockets((text) => {
+    const frame = JSON.parse(text) as Record<string, string>;
+    if (frame.type !== "hello") return text;
+    expect(frame.role).toBe("inviter");
+    rewritten++;
+    return JSON.stringify({ ...acceptorHello, role: "inviter" });
+  });
+  const refusal: unknown = await openWebSocketRelayMessageConnection(
+    await dialFor("inviter"),
+    { socketFactory: sockets.socketFactory },
+  ).catch((err: unknown) => err);
+  expect(rewritten).toBe(1);
+  expect(refusal).toBeInstanceOf(ConnectionError);
+  expect((refusal as Error).message).toContain(PROOF_REFUSED_MESSAGE);
+  expect(sockets.closeCodes).toEqual([4004]);
+  expect(sockets.binarySent).toEqual([]);
+  expect(sockets.binaryForwarded).toEqual([]);
 });
 
 test("a second socket in a role the relay already holds is refused as role taken", async () => {

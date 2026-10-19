@@ -14,7 +14,10 @@ import {
   parseWebSocketRelayProof,
   statesItsOwnNextStep,
 } from "@alcove/core";
-import { packValue } from "@alcove/core/testing";
+import {
+  boundedInboundFramesWithBounds,
+  packValue,
+} from "@alcove/core/testing";
 
 import {
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
@@ -36,6 +39,7 @@ import type {
   WebSocketRelayDial,
 } from "../../../src/connection/webrtc/websocketRelayConnection";
 import type { MessageConnection } from "@alcove/core";
+import type { InboundBoundOverrides } from "@alcove/core/testing";
 
 /**
  * A WebSocket stand-in with the surface the relay transport uses, standing in
@@ -462,6 +466,72 @@ test("a malformed frame from the partner fails the connection and ends the socke
     packValue({ __peerData: 7, n: 5, total: 2, data: new Uint8Array(1) }),
   );
   await expect(connection.receive()).rejects.toBeInstanceOf(ConnectionError);
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+/**
+ * A started connection whose reassembler has `overrides` lowered, with the
+ * kind of every outcome that reassembler returned.
+ */
+async function connectionWithBounds(overrides: InboundBoundOverrides) {
+  const outcomes: Array<string> = [];
+  const inboundFrames = (): BoundedInboundFrames => {
+    const bounds = boundedInboundFramesWithBounds(overrides);
+    const accept = bounds.accept.bind(bounds);
+    bounds.accept = (bytes) => {
+      const outcome = accept(bytes);
+      outcomes.push(outcome.kind);
+      return outcome;
+    };
+    return bounds;
+  };
+  return { ...(await startedConnection({ inboundFrames })), outcomes };
+}
+
+/** Forward `datagrams` in order, stopping at the first one the side refuses. */
+async function forwardUntilRefused(
+  socket: FakeRelaySocket,
+  datagrams: Array<Uint8Array>,
+): Promise<number | undefined> {
+  for (const [index, datagram] of datagrams.entries()) {
+    socket.binary(datagram);
+    await tick();
+    if (socket.closeCalls.length > 0) return index;
+  }
+  return undefined;
+}
+
+test("a frame larger than the receive bound is refused before its chunks are joined", async () => {
+  const { connection, socket, outcomes } = await connectionWithBounds({
+    maxFrameBytes: 40_000,
+  });
+  const datagrams = new PeerJsFrameEncoder().encode(new Uint8Array(100_000));
+  expect(datagrams.every((d) => d.byteLength < 40_000)).toBe(true);
+
+  const refusedAt = await forwardUntilRefused(socket, datagrams);
+  expect(refusedAt).toBeDefined();
+  expect(refusedAt).toBeLessThan(datagrams.length - 1);
+  expect(outcomes.every((kind) => kind === "pending")).toBe(true);
+  await expect(connection.receive()).rejects.toThrow(
+    "exceeds its 40000-byte size limit",
+  );
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a chunk sequence declaring more chunks than the cap is refused at its first chunk", async () => {
+  const { connection, socket, outcomes } = await connectionWithBounds({
+    maxChunks: 4,
+  });
+  const datagrams = new PeerJsFrameEncoder().encode(
+    new Uint8Array(6 * PEERJS_CHUNK_MTU),
+  );
+  expect(datagrams.length).toBeGreaterThan(4);
+
+  expect(await forwardUntilRefused(socket, datagrams)).toBe(0);
+  expect(outcomes).toEqual([]);
+  await expect(connection.receive()).rejects.toThrow(
+    "exceeds its 4-chunk reassembly limit",
+  );
   expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
 });
 
