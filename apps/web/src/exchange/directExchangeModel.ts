@@ -6,6 +6,7 @@ import {
   decideLinkageTermsVerdict,
   getDefaultLinkageTerms,
   inferMetadata,
+  inferredRecordIdentifierStatement,
   overlongDisclosedColumnPositions,
   precisionFloorSelectionStatement,
 } from "@alcove/core";
@@ -142,6 +143,13 @@ export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
 export const DIRECT_RULE_SELECTION_NOTICE = `Rules selected: ${precisionFloorSelectionStatement(
   DEFAULT_PRECISION_FLOOR_SELECTION,
 )}.`;
+
+/** The column a quick exchange on `metadata` indexes its records by, worded as
+ * the CLI's display before the run words it. `metadata` is the preview's
+ * inferred metadata ({@link previewInferredTerms}). */
+export function directRecordIdentifierNotice(metadata: Metadata): string {
+  return `Record identifier: ${inferredRecordIdentifierStatement(metadata)}.`;
+}
 
 /** What the quick exchange's confirm step tells the reader of a key marked
  * less certain to do to leave such keys out: a quick exchange writes every

@@ -51,6 +51,7 @@ import {
   DIRECT_RECOGNIZED_COLUMNS_NOTICE,
   DIRECT_RULE_SELECTION_NOTICE,
   directBothSidedDeduplicateNotice,
+  directRecordIdentifierNotice,
   previewInferredTerms,
 } from "./directExchangeModel";
 
@@ -342,6 +343,9 @@ export function DirectConfirmSection({
       </section>
 
       <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {directRecordIdentifierNotice(preview.metadata)}
+        </Text>
         <Text size="sm" c="dimmed">
           {DIRECT_RULE_SELECTION_NOTICE}
         </Text>
