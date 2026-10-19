@@ -15,6 +15,10 @@ import {
   referencedLinkageFieldNames,
 } from "@alcove/core";
 
+import {
+  cleaningSettingsOf,
+  transformationWithCleaningSettings,
+} from "../standardizationAuthoring";
 import { encodeKeyForComparison } from "../linkageComparison";
 import { normalizeForEditor } from "../metadataEditing";
 
@@ -814,12 +818,7 @@ type CleaningOf = Pick<
 function cleaningOf(transformation: Standardization[number]): CleaningOf {
   return {
     steps: transformation.steps ?? [],
-    ...(transformation.maxPeoplePerValue === undefined
-      ? {}
-      : { maxPeoplePerValue: transformation.maxPeoplePerValue }),
-    ...(transformation.nullIfLastName === undefined
-      ? {}
-      : { nullIfLastName: transformation.nullIfLastName }),
+    ...cleaningSettingsOf(transformation),
   };
 }
 
@@ -1326,7 +1325,8 @@ export type CleaningNotLoaded = { output: string; input: string } & (
  * Load a configuration's `standardization` block onto a draft just built by
  * {@link draftFromTerms}, as the CLI reads the same block: a transformation
  * binds its declared field to its `input` column with its steps, and a field
- * the block does not name is cleaned with no steps.
+ * the block does not name is cleaned with no steps, shared-value limit or
+ * last-name rule.
  *
  * A transformation binds only a `role: linkage` column of a type its field
  * may read (`fieldSourceColumnTypes`): its own, or the type the CLI derives
@@ -1372,7 +1372,10 @@ export function draftWithConfigurationCleaning(
       loaded.get(transformation.output) ??
       (named.has(transformation.output)
         ? transformation
-        : { ...transformation, steps: [] }),
+        : transformationWithCleaningSettings(
+            { ...transformation, steps: [] },
+            {},
+          )),
   );
   const present = new Set(cleaned.map(({ output }) => output));
   const next = [

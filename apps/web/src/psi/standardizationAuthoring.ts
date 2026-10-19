@@ -13,6 +13,7 @@ import {
   FAN_OUT_FUNCTION_NAMES,
   OperatorConfigError,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
+  StandardizationSchema,
   UsageError,
   assertFanOutImplemented,
   coalesceSubstitutesConstant,
@@ -640,4 +641,77 @@ export function isStepValid(step: StandardizationStep): boolean {
     if (field.optional && isEmpty) return true;
     return validateParamValue(descriptor, field.key, value).ok;
   });
+}
+
+// --- Settings beside the steps ----------------------------------------------
+
+/**
+ * The two settings of a field's cleaning that are not steps: the shared-value
+ * limit and the last-name rule (docs/spec/DEFAULT_STANDARDIZATION.md,
+ * Shared-value screens and First name beside a listed last name). An absent key
+ * is a setting the field does not state.
+ */
+export type CleaningSettings = Pick<
+  Standardization[number],
+  "maxPeoplePerValue" | "nullIfLastName"
+>;
+
+/** The last-name rule's shape, as the configuration states it. */
+export type NullIfLastNameRule = NonNullable<
+  CleaningSettings["nullIfLastName"]
+>;
+
+/** The settings `transformation` states, leaving an unstated one absent. */
+export function cleaningSettingsOf(
+  transformation: Standardization[number],
+): CleaningSettings {
+  return {
+    ...(transformation.maxPeoplePerValue === undefined
+      ? {}
+      : { maxPeoplePerValue: transformation.maxPeoplePerValue }),
+    ...(transformation.nullIfLastName === undefined
+      ? {}
+      : { nullIfLastName: transformation.nullIfLastName }),
+  };
+}
+
+/** `transformation` stating exactly `settings`: a setting absent from
+ * `settings` is removed from it. */
+export function transformationWithCleaningSettings(
+  transformation: Standardization[number],
+  settings: CleaningSettings,
+): Standardization[number] {
+  const {
+    maxPeoplePerValue: _limit,
+    nullIfLastName: _rule,
+    ...binding
+  } = transformation;
+  return { ...binding, ...cleaningSettingsOf({ ...binding, ...settings }) };
+}
+
+/**
+ * Whether `value` is a shared-value limit the configuration schema accepts,
+ * judged by that schema itself so the editor admits exactly what the
+ * command line reads. An unset limit is accepted: the field has no screen.
+ */
+export function isMaxPeoplePerValueValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  return StandardizationSchema.safeParse([
+    { output: "field", input: "column", maxPeoplePerValue: value },
+  ]).success;
+}
+
+/** What the editor tells an author about a limit {@link isMaxPeoplePerValueValid}
+ * refuses. */
+export const MAX_PEOPLE_PER_VALUE_REFUSAL =
+  "Enter a whole number of 1 or more, or leave it empty to keep shared values.";
+
+/** The last-name rule two lists state, or none when both are empty. */
+export function nullIfLastNameFromLists(
+  values: Array<string>,
+  lastNames: Array<string>,
+): NullIfLastNameRule | undefined {
+  return values.length === 0 && lastNames.length === 0
+    ? undefined
+    : { values, lastNames };
 }

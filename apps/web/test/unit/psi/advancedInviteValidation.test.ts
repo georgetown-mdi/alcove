@@ -26,9 +26,12 @@ import {
   inertCoalesceNotice,
   validateAdvancedInvite,
 } from "../../../src/psi/authoring/advancedInviteValidation.js";
+import {
+  isStepValid,
+  transformationWithCleaningSettings,
+} from "../../../src/psi/standardizationAuthoring.js";
 import { SEMANTIC_TYPE_LABELS } from "../../../src/psi/metadataEditing.js";
 import { buildAdvancedTerms } from "../../../src/psi/authoring/advancedInviteTerms.js";
-import { isStepValid } from "../../../src/psi/standardizationAuthoring.js";
 
 import type {
   LinkageStrategy,
@@ -885,6 +888,33 @@ describe("a key-element transform core cannot build", () => {
       expect(result.canGenerate).toBe(false);
       expect(result.errors.standardization).toMatch(
         /Finish, fix, or remove the highlighted cleaning steps/,
+      );
+    },
+  );
+
+  test.each([0, 2.5])(
+    "blocks Generate on a limit of %j people sharing one value",
+    (limit) => {
+      const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+      const withLimit = (maxPeoplePerValue: number | undefined) => ({
+        ...draft,
+        standardization: draft.standardization.map((transformation, index) =>
+          index === 0
+            ? transformationWithCleaningSettings(transformation, {
+                maxPeoplePerValue,
+              })
+            : transformation,
+        ),
+      });
+      const refused = validateAdvancedInvite(withLimit(limit), seed, now);
+      expect(refused.canGenerate).toBe(false);
+      expect(refused.errors.standardization).toMatch(
+        /limit on people sharing one value/,
+      );
+      const unset = validateAdvancedInvite(withLimit(undefined), seed, now);
+      expect(unset.errors.standardization).toBeUndefined();
+      expect(validateAdvancedInvite(withLimit(1), seed, now).canGenerate).toBe(
+        unset.canGenerate,
       );
     },
   );

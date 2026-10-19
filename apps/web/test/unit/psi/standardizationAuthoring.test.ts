@@ -20,14 +20,18 @@ import {
   applyInputOverrides,
   applyStepOverrides,
   authorableFunctionNames,
+  cleaningSettingsOf,
   declaresBothNullIfValues,
   describeParamFields,
   descriptorFor,
   expertFunctionNames,
   functionDisplay,
   inertCoalesceCause,
+  isMaxPeoplePerValueValid,
   isStepValid,
+  nullIfLastNameFromLists,
   pipelineHasInertCoalesce,
+  transformationWithCleaningSettings,
   validateParamValue,
 } from "../../../src/psi/standardizationAuthoring.js";
 
@@ -591,6 +595,82 @@ describe("a coalesce that substitutes nothing where it sits", () => {
       "Move this step",
     );
     expect(INERT_COALESCE_ADVICE["no-text-default"]).toContain("text default");
+  });
+});
+
+describe("the settings beside a field's steps", () => {
+  test.each([undefined, 1, 5, Number.MAX_SAFE_INTEGER])(
+    "a limit of %j is one the configuration schema reads",
+    (limit) => {
+      expect(isMaxPeoplePerValueValid(limit)).toBe(true);
+      expect(
+        safeParseStandardization([
+          { output: "ssn", input: "ssn", max_people_per_value: limit },
+        ]).success,
+      ).toBe(true);
+    },
+  );
+
+  test.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, "3", null])(
+    "a limit of %j is one the configuration schema refuses",
+    (limit) => {
+      expect(isMaxPeoplePerValueValid(limit)).toBe(false);
+      expect(
+        safeParseStandardization([
+          { output: "ssn", input: "ssn", max_people_per_value: limit },
+        ]).success,
+      ).toBe(false);
+    },
+  );
+
+  test("two empty lists state no last-name rule, and either list alone states one", () => {
+    expect(nullIfLastNameFromLists([], [])).toBeUndefined();
+    expect(nullIfLastNameFromLists(["JOHN"], [])).toEqual({
+      values: ["JOHN"],
+      lastNames: [],
+    });
+    expect(nullIfLastNameFromLists([], ["DOE"])).toEqual({
+      values: [],
+      lastNames: ["DOE"],
+    });
+  });
+
+  const stated: Standardization[number] = {
+    output: "first_name",
+    input: "fname",
+    steps: [{ function: "to_upper_case" }],
+    maxPeoplePerValue: 2,
+    nullIfLastName: { values: ["JOHN"], lastNames: ["DOE"] },
+  };
+
+  test("the settings a transformation states are read without its binding or steps", () => {
+    expect(cleaningSettingsOf(stated)).toEqual({
+      maxPeoplePerValue: 2,
+      nullIfLastName: { values: ["JOHN"], lastNames: ["DOE"] },
+    });
+    expect(
+      cleaningSettingsOf({ output: "dob", input: "dob", steps: [] }),
+    ).toEqual({});
+  });
+
+  test("replacing the settings keeps the binding and steps and removes what is left out", () => {
+    expect(
+      transformationWithCleaningSettings(stated, { maxPeoplePerValue: 4 }),
+    ).toEqual({
+      output: "first_name",
+      input: "fname",
+      steps: [{ function: "to_upper_case" }],
+      maxPeoplePerValue: 4,
+    });
+    const cleared = transformationWithCleaningSettings(stated, {});
+    expect(cleared).not.toHaveProperty("maxPeoplePerValue");
+    expect(cleared).not.toHaveProperty("nullIfLastName");
+    expect(
+      transformationWithCleaningSettings(stated, {
+        maxPeoplePerValue: undefined,
+        nullIfLastName: undefined,
+      }),
+    ).toEqual(cleared);
   });
 });
 

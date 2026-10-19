@@ -69,6 +69,7 @@ import {
   editorWithColumnType,
   editorWithDeduplicate,
   editorWithFieldAdded,
+  editorWithFieldCleaningSettings,
   editorWithFieldInput,
   editorWithFieldRemoved,
   editorWithFieldSteps,
@@ -2043,6 +2044,11 @@ export function InviterScreen() {
               coverageRefusedColumns={coverageRefusedColumns}
               onFieldSteps={(output, fieldSteps) =>
                 applyEditor(editorWithFieldSteps(editor, output, fieldSteps))
+              }
+              onFieldCleaningSettings={(output, settings) =>
+                applyEditor(
+                  editorWithFieldCleaningSettings(editor, output, settings),
+                )
               }
               onFieldInput={(output, input) =>
                 applyEditor(editorWithFieldInput(editor, output, input))

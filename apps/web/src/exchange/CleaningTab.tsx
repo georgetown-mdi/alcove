@@ -17,6 +17,7 @@ import { declaredFieldsFor } from "@psi/inviterEditor";
 import styles from "@styles/app.module.css";
 
 import type { LinkageField, StandardizationStep } from "@alcove/core";
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 import type { ColumnSamples } from "@psi/columnSamples";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { InviterEditor } from "@psi/inviterEditor";
@@ -37,6 +38,7 @@ export function CleaningTab({
   coverageUnavailable,
   coverageRefusedColumns,
   onFieldSteps,
+  onFieldCleaningSettings,
   onFieldInput,
   onFieldAdded,
   onFieldRemoved,
@@ -71,6 +73,7 @@ export function CleaningTab({
    * runs in the browser under no such bound. */
   coverageRefusedColumns: ReadonlyArray<OverlongColumnName>;
   onFieldSteps: (output: string, steps: Array<StandardizationStep>) => void;
+  onFieldCleaningSettings: (output: string, settings: CleaningSettings) => void;
   onFieldInput: (output: string, input: string) => void;
   onFieldAdded: (type: LinkageField["type"]) => void;
   onFieldRemoved: (output: string) => void;
@@ -177,6 +180,7 @@ export function CleaningTab({
             return rate !== undefined && isSilentEmpty(rate);
           }}
           onMissingField="skip"
+          onCleaningSettingsChange={onFieldCleaningSettings}
         />
       </CleaningErrorBoundary>
     </>

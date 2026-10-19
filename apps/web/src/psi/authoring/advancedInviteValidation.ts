@@ -31,6 +31,7 @@ import {
 import {
   descriptorFor,
   functionDisplay,
+  isMaxPeoplePerValueValid,
   isStepValid,
   pipelineHasInertCoalesce,
   refusedCleaningFanOut,
@@ -652,6 +653,13 @@ export function validateAdvancedInvite(
   ) {
     errors.standardization =
       "Finish, fix, or remove the highlighted cleaning steps before generating.";
+  } else if (
+    !draft.standardization.every((transformation) =>
+      isMaxPeoplePerValueValid(transformation.maxPeoplePerValue),
+    )
+  ) {
+    errors.standardization =
+      "Fix or clear the highlighted limit on people sharing one value before generating.";
   }
 
   // The cleaning fan-out gate, core's own refusal; the key-transform half is

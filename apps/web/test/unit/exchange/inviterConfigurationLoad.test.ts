@@ -45,6 +45,8 @@ import {
   editorWithAuthoredDraft,
   editorWithBuiltInKeys,
   editorWithColumnDisclosure,
+  editorWithFieldCleaningSettings,
+  editorWithFieldSteps,
   editorWithImportedTerms,
   editorWithIncludeMatchingKey,
   editorWithIncludeOwnColumns,
@@ -1083,6 +1085,60 @@ describe("a loaded configuration reaches the editor once a file is read", () => 
     );
     expect(cleaned?.input).toBe("first_name");
     expect(cleaned?.steps).toEqual(steps);
+  });
+
+  test("the document's limit and last-name rule load unchanged and hold across a step edit", () => {
+    const transformation = {
+      output: "first_name",
+      input: "first_name",
+      steps: [{ function: "trim_whitespace" }],
+      maxPeoplePerValue: 3,
+      nullIfLastName: { values: ["MARY"], lastNames: ["ROE", "DOE"] },
+    };
+    const applied = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({ standardization: [transformation] }),
+      ),
+    );
+    if (applied.editor === undefined) throw new Error("expected an editor");
+    const firstName = (editor: InviterEditor) =>
+      editor.draft.standardization.find(
+        (candidate) => candidate.output === "first_name",
+      );
+    expect(firstName(applied.editor)).toEqual(transformation);
+
+    const restepped = editorWithFieldSteps(applied.editor, "first_name", []);
+    expect(firstName(restepped)).toEqual({ ...transformation, steps: [] });
+
+    const cleared = editorWithFieldCleaningSettings(
+      applied.editor,
+      "first_name",
+      {},
+    );
+    expect(firstName(cleared)).toEqual({
+      output: "first_name",
+      input: "first_name",
+      steps: transformation.steps,
+    });
+  });
+
+  test("a field the document's cleaning does not name takes no last-name rule", () => {
+    const applied = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          standardization: [
+            { output: "last_name", input: "last_name", steps: [] },
+          ],
+        }),
+      ),
+    );
+    expect(
+      applied.editor?.draft.standardization.find(
+        (transformation) => transformation.output === "first_name",
+      ),
+    ).toEqual({ output: "first_name", input: "first_name", steps: [] });
   });
 
   // The CLI cleans an ssn4 field from an ssn column with the configuration's
