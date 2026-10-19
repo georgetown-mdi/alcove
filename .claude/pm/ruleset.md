@@ -515,20 +515,6 @@ Ratified by the owner:
   are read-only with a re-invite as the one way to change them and its label,
   schedule and age policy edit in place, and deleted in one step that leaves
   nothing of it in the browser. Closed 2026-10-18.
-- **Linkage bench redesign** (board 9) -- Done is: every primary route of the
-  web app serves a screen built to the redesign in `design/web-redesign` -- a
-  lobby offering invite, accept and verify-a-receipt, the inviter and acceptor
-  steps, downloadable command-line exchange files, sample data -- each holding
-  at 400 px with the step strip, the folded Customize group and the "What you
-  will share" bar, with the pre-redesign components removed and the browser,
-  contrast and accessibility suites passing on the new screens.
-- **Progressive web app** (board 9) -- Done is: the web app installs from a
-  supporting browser with a complete manifest, its shell and recurring-exchange
-  list render with no network from the browser's own store, each way of starting
-  an exchange is held while the device reports offline and says why (a transport
-  that only saves a file excepted), and a new deployment reaches an open tab as
-  an update the operator can decline and apply later, from any tab, with no
-  control left inert.
 - **X25519 Key Exchange** (board 9) -- Done is: no SPAKE2 code, export or
   `pake_token` name remains; every authenticated exchange, CLI and browser,
   derives its session key from the one handshake modeled on Noise NNpsk0, the
@@ -540,7 +526,24 @@ Ratified by the owner:
 
 Drafted, pending the owner's ratification:
 
-None at present.
+- **Linkage bench redesign** (board 9) -- Done is: every primary route of the
+  web app serves a screen built to the redesign in `design/web-redesign` -- a
+  lobby offering invite, accept and verify-a-receipt, the inviter and acceptor
+  steps, downloadable command-line exchange files, sample data -- each holding
+  at 400 px with the step strip, the folded Customize group and the "What you
+  will share" bar, with the pre-redesign components removed and the browser,
+  contrast and accessibility suites passing on the new screens.
+  Open: whether Web Exchange Rework's line, closed, already covers these
+  screens, in which case this epic needs no line of its own.
+- **Progressive web app** (board 9) -- Done is: the web app installs from a
+  supporting browser with a complete manifest, its shell and recurring-exchange
+  list render with no network from the browser's own store, each way of starting
+  an exchange is held while the device reports offline and says why (a transport
+  that only saves a file excepted), and a new deployment reaches an open tab as
+  an update the operator can decline and apply later, from any tab, with no
+  control left inert.
+  Open: installing from a real browser was not checked; the rest is met with
+  every item Done.
 
 ## What the PM does NOT do
 
