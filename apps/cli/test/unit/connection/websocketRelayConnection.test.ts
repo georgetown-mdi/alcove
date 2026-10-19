@@ -355,6 +355,105 @@ test("the partner's sentinel drains queued frames and is answered with a normal 
   expect(await connection.receive()).toBe("final");
   await expect(connection.receive()).rejects.toThrow("peer connection closed");
   expect(socket.closeCalls).toEqual([1000]);
+  await connection.close();
+  expect(socket.binarySent()).toEqual([]);
+});
+
+test("the partner's sentinel read while a clean close drains is answered with this side's sentinel and a wait", async () => {
+  const { connection, socket } = await startedConnection({
+    sendWindowBytes: 1_000,
+    sendWindowLowBytes: 200,
+    sendWindowPollMs: 1,
+  });
+  socket.bufferedAmount = 5_000;
+  void connection.send("held").catch(() => {});
+  let resolved = false;
+  const closing = connection.close().then(() => {
+    resolved = true;
+  });
+  await tick();
+  socket.binary(packCloseSentinel());
+  socket.bufferedAmount = 0;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(socket.binarySent().at(-1)).toEqual(
+    new Uint8Array(packCloseSentinel()),
+  );
+  expect(socket.closeCalls).toEqual([]);
+  expect(resolved).toBe(false);
+  socket.closedByRelay(1000);
+  await closing;
+});
+
+/**
+ * Joins two started sockets as the relay does: a binary message is forwarded
+ * to the partner, and a close is answered with its own code and closes the
+ * partner behind every message already forwarded to it, with 1000 for a 1000
+ * and 4000 for any other code. A socket that is not open drops a message, as
+ * a WebSocket does.
+ */
+function relayBetween(a: FakeRelaySocket, b: FakeRelaySocket): void {
+  const join = (from: FakeRelaySocket, to: FakeRelaySocket): void => {
+    const send = from.send.bind(from);
+    from.send = (data) => {
+      send(data);
+      if (typeof data === "string") return;
+      const copy = new Uint8Array(data);
+      setTimeout(() => {
+        if (to.readyState === 1) to.binary(copy);
+      }, 0);
+    };
+    const close = from.close.bind(from);
+    from.close = (code) => {
+      close(code);
+      setTimeout(() => {
+        if (from.readyState !== 3) from.closedByRelay(code ?? 1005);
+        if (to.readyState !== 3) to.closedByRelay(code === 1000 ? 1000 : 4000);
+      }, 0);
+    };
+  };
+  join(a, b);
+  join(b, a);
+}
+
+test("both parties closing at once each confirm delivery without waiting out the budget", async () => {
+  const options = { closeFlushTimeoutMs: 60_000 };
+  const [inviter, acceptor] = await Promise.all([
+    startedConnection(options),
+    startedConnection(options),
+  ]);
+  relayBetween(inviter.socket, acceptor.socket);
+  await inviter.connection.send("inviter's last");
+  await acceptor.connection.send("acceptor's last");
+  expect(await inviter.connection.receive()).toBe("acceptor's last");
+  expect(await acceptor.connection.receive()).toBe("inviter's last");
+
+  const started = Date.now();
+  await Promise.all([inviter.connection.close(), acceptor.connection.close()]);
+  expect(Date.now() - started).toBeLessThan(1_000);
+  for (const { socket } of [inviter, acceptor]) {
+    expect(socket.binarySent().at(-1)).toEqual(
+      new Uint8Array(packCloseSentinel()),
+    );
+    expect(socket.closeCalls).toEqual([1000]);
+  }
+});
+
+test("a clean close one partner answers on reading the sentinel confirms both sides", async () => {
+  const [closer, answerer] = await Promise.all([
+    startedConnection({ closeFlushTimeoutMs: 60_000 }),
+    startedConnection(),
+  ]);
+  relayBetween(closer.socket, answerer.socket);
+  await closer.connection.send("final");
+  const closing = closer.connection.close();
+  expect(await answerer.connection.receive()).toBe("final");
+  await expect(answerer.connection.receive()).rejects.toThrow(
+    "peer connection closed",
+  );
+  await closing;
+  expect(closer.socket.closeCalls).toEqual([]);
+  expect(answerer.socket.closeCalls).toEqual([1000]);
+  expect(answerer.socket.binarySent()).toEqual([]);
 });
 
 test("a malformed frame from the partner fails the connection and ends the socket abnormally", async () => {
@@ -434,7 +533,7 @@ test("a proof refused as expired is made again once on the relay's clock", async
   await expect(opening).resolves.toBeDefined();
 });
 
-test("a proof refused as expired twice is refused naming the clock", async () => {
+test("a proof refused as expired twice is refused naming the relay's clock, not this computer's", async () => {
   const { sockets, options } = harness();
   const opening = openWebSocketRelayMessageConnection(
     await relayDial(),
@@ -446,8 +545,32 @@ test("a proof refused as expired twice is refused naming the clock", async () =>
   const second = await socketDialed(sockets, 2);
   second.open();
   second.closedByRelay(4005, String(NOW_SECONDS + 7_200));
-  await expect(opening).rejects.toThrow("Correct this computer's clock");
+  const error = await opening.catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect((error as Error).message).toBe(
+    "the WebSocket relay at wss://relay.example.org/relay refused this " +
+      "side's proof as expired twice, the second time with a proof made on " +
+      "the relay's own clock. Run the exchange again, and if the relay " +
+      "refuses it the same way, check the relay and the exchange's " +
+      "enrollment at its registrar.",
+  );
+  expect(statesItsOwnNextStep(error)).toBe(true);
   expect(sockets).toHaveLength(2);
+});
+
+test("a proof refused as expired with a relay clock past any date is not made again", async () => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4005, "9999999999999999");
+  const error = await opening.catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect((error as Error).message).toContain("Correct this computer's clock");
+  expect(sockets).toHaveLength(1);
 });
 
 test("a proof refused as expired with no relay clock is not made again", async () => {

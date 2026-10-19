@@ -116,6 +116,32 @@ test("two parties pair through the relay, exchange wrapped frames, and the close
   await expect(closing).resolves.toBeUndefined();
 }, 60_000);
 
+test("both parties closing at once each confirm delivery without waiting out the budget", async () => {
+  const closeCodes: Array<number | undefined> = [];
+  const socketFactory = (url: string): WebSocket => {
+    const socket = new WebSocket(url);
+    const close = socket.close.bind(socket);
+    socket.close = (code) => {
+      closeCodes.push(code);
+      close(code);
+    };
+    return socket;
+  };
+  const { inviter, acceptor } = await authenticatedPair({
+    socketFactory,
+    closeFlushTimeoutMs: 60_000,
+  });
+  await inviter.send({ last: "inviter" });
+  await acceptor.send({ last: "acceptor" });
+  expect(await inviter.receive()).toEqual({ last: "acceptor" });
+  expect(await acceptor.receive()).toEqual({ last: "inviter" });
+
+  const started = Date.now();
+  await Promise.all([inviter.close(), acceptor.close()]);
+  expect(Date.now() - started).toBeLessThan(10_000);
+  expect(closeCodes).toEqual([1000, 1000]);
+}, 60_000);
+
 test("a sender the relay paces keeps its socket's buffer within the send window", async () => {
   let largestBuffered = 0;
   const socketFactory = (url: string): WebSocket => {

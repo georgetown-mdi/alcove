@@ -1,0 +1,2 @@
+# The CLI's relay transport, the relay's close code a party sends.
+- - -> A party closes with 1000 only on a clean close, so its partner never takes a failure for delivery.

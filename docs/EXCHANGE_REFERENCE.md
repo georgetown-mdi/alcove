@@ -939,7 +939,7 @@ connection:
 *Required:* no  
 *Applies to:* `webrtc`
 
-The `wss://` address of a [WebSocket relay](DESIGN.md#websocket-relay) your side runs: a relay for networks whose inspection stops WebRTC and TURN, which pairs the two parties of one exchange and forwards their messages unread. It holds no credential: each run proves the exchange's relay key to the relay with a proof made from the shared secret, so a run with no shared secret refuses it before dialing (exit 64).
+The `wss://` address of a [WebSocket relay](DESIGN.md#websocket-relay) your side runs: a relay for networks whose inspection stops WebRTC and TURN, which pairs the two parties of one exchange and forwards their messages unread. It holds no credential: each run proves the exchange's relay key to the relay with a proof made from the shared secret, so, once the fallback dials it, a run with no shared secret will refuse it before dialing (exit 64).
 
 - **Form.** A `wss://` url naming a host, an optional port and the relay's path, such as `/relay`. A user, a query, a fragment, port 0 or another scheme is a usage error (exit 64).
 - **The exchange id.** The relay looks the exchange's key up by the id it is enrolled under: the `exchange_id` of [`relay_registrar`](#connectionrelay_registrar) where that is set, and otherwise the id derived from the shared secret that an enrollment without a token uses ([PROTOCOL.md](spec/PROTOCOL.md#enrolling-without-a-token)). The relay reads the key table that enrollment wrote ([WEBSOCKET_RELAY.md](spec/WEBSOCKET_RELAY.md#the-key-table)).

@@ -41,10 +41,14 @@ import type { MessageConnection, RendezvousRole } from "@alcove/core";
  *
  * A clean close sends the sentinel and waits for the partner's close to reach
  * this socket through the relay: TCP acknowledges a message to the relay, not
- * to the partner, so that close is the one delivery signal there is. The
- * relay forwards a party's close code 1000 as 1000, so this side closes with
- * 1000 only on a clean close and with {@link RELAY_ABANDON_CLOSE_CODE} on any
- * other end, and a partner never reads a failure as delivery.
+ * to the partner, so that close is the one delivery signal there is. When
+ * both parties close at once, each reads the other's sentinel after sending
+ * its own and closes with 1000 then, and the side whose close the relay reads
+ * first ends its wait on the relay's answer to that close, not the
+ * partner's. The relay forwards a party's close code 1000 as 1000, so this
+ * side closes with 1000 only on a clean close and with
+ * {@link RELAY_ABANDON_CLOSE_CODE} on any other end, and a partner never
+ * reads a failure as delivery.
  */
 
 /** What a relay socket is dialed with, resolved before anything is dialed. */
@@ -330,8 +334,30 @@ export async function openWebSocketRelayMessageConnection(
       err.relayNowSeconds === undefined
     )
       throw err;
-    return dialRelayOnce(dial, options, new Date(err.relayNowSeconds * 1000));
+    const relayNow = new Date(err.relayNowSeconds * 1000);
+    if (Number.isNaN(relayNow.getTime())) throw err;
+    try {
+      return await dialRelayOnce(dial, options, relayNow);
+    } catch (retryErr) {
+      if (retryErr instanceof ProofExpiredRefusal)
+        throw proofExpiredOnRelayClockError(dial.url);
+      throw retryErr;
+    }
   }
+}
+
+/**
+ * The failure a second expired refusal becomes: that proof was made on the
+ * relay's own clock, so this computer's clock is not the cause.
+ */
+function proofExpiredOnRelayClockError(url: string): ConnectionError {
+  return withNextStep(
+    `the WebSocket relay at ${url} refused this side's proof as expired ` +
+      "twice, the second time with a proof made on the relay's own clock. " +
+      "Run the exchange again, and if the relay refuses it the same way, " +
+      "check the relay and the exchange's enrollment at its registrar.",
+    "transport",
+  );
 }
 
 type RelayPhase =
@@ -491,6 +517,7 @@ function relayMessageConnection(
       const encoder = new PeerJsFrameEncoder();
       const bounds = options.inboundFrames?.() ?? new BoundedInboundFrames();
       let peerCloseRead = false;
+      let sentinelSent = false;
       let sendStopped = false;
       let tearingDown = false;
       let sendQueue: Promise<void> = Promise.resolve();
@@ -553,6 +580,10 @@ function relayMessageConnection(
           if (outcome.kind === "pending") return;
           if (outcome.kind === "close") {
             peerCloseRead = true;
+            // Both sides are in a clean close, each waiting on the other's
+            // close, so this side closes now; the wait in `close` then ends
+            // on the relay's answer.
+            if (sentinelSent && socketOpen()) socket.close(RELAY_CLOSE.normal);
             // `finish`: the sentinel follows every frame the partner sent, so
             // a frame still queued here is drained before the close.
             controls.finish(
@@ -580,7 +611,10 @@ function relayMessageConnection(
               closed(Math.max(0, deadline - Date.now())),
             ]);
             sendStopped = true;
-            if (socketOpen()) socket.send(Buffer.from(packCloseSentinel()));
+            if (socketOpen()) {
+              socket.send(Buffer.from(packCloseSentinel()));
+              sentinelSent = true;
+            }
             const code = socketOpen()
               ? await closed(Math.max(0, deadline - Date.now()))
               : closeCode;

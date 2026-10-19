@@ -847,7 +847,7 @@ connection:
 ```
 
 - **No run dials it yet.** A run takes the relay only when no WebRTC path opens, and that fallback is not built, so a run with the setting connects over WebRTC as one without it.
-- **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. A run with no shared secret refuses the relay before dialing (exit 64).
+- **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. Once the fallback dials the relay, a run with no shared secret will refuse it before dialing (exit 64).
 
 #### When a WebRTC exchange does not connect
 
