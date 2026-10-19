@@ -39,19 +39,19 @@ This is design rationale. Nothing here binds an implementation.
 
 The built-in rules are two artifacts with two names and two versions.
 
-`baseline-pii` names the **linkage fields**: the five PII elements the built-in
-rules work from -- `ssn`, `ssn4`, `first_name`, `last_name`,
-`date_of_birth` -- each in its standardized form and with the constraints it
-has. It is a substrate: it fixes what can be matched on and how each
-element is cleaned and bounded, and says nothing about what constitutes a
-match.
+`baseline-pii` names the **linkage fields**: the eleven PII elements the
+built-in rules work from, each in its standardized form and with the
+constraints it has. The elements are `ssn`, `ssn4`, `first_name`, `last_name`,
+`date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`,
+`county` and `street_number`. It is a substrate: it fixes what can be matched
+on and how each element is cleaned and bounded, and says nothing about what
+constitutes a match.
 
-The key set names the **linkage keys**: the fourteen combinations built from
+The key set names the **linkage keys**: the thirty-six combinations built from
 those fields, applied in the order the set lists them. It is the specific
 artifact -- which combinations count as a match, and in what cascade order.
-That order is not a precision order: two keys with no SSN run above
-SSN-bearing keys. The precision order the catalog proposes for the same keys
-is in [linkage-rule-catalog.md](linkage-rule-catalog.md#order).
+That order is the catalog's precision order, the 99% band before the 95% band;
+the keys and their bands are in [linkage-rule-catalog.md](linkage-rule-catalog.md#order).
 
 Every built-in key is built from the fields of `baseline-pii`, so a citation of
 the key set cites the field set with it. The reverse does not hold: the same
@@ -124,7 +124,7 @@ that trust is in with no visible trace, and a user relying on "the defaults" a
 year apart would be relying on two different things with no way to tell.
 
 **Nothing else is citable.** Without a name, a data-governance reviewer asking
-which rules a linkage matched on can be answered only by quoting fourteen key
+which rules a linkage matched on can be answered only by quoting the key
 combinations out of a config file, or by the unhelpfully circular "the
 product's defaults". A name and a version is the artifact that fits in an
 agreement, a review memo, or a disclosure log line.
@@ -276,7 +276,7 @@ The rule for editing, one per artifact:
   tightened -- bumps the field set's version.
 - An edit to the keys bumps the key set's version. A reorder counts: the order
   is the order the keys are applied in, so moving one changes which key claims a
-  record that more than one would match, even though the same fourteen keys are
+  record that more than one would match, even though the same keys are
   present.
 
 The recorded validation attaches to a name and a version together, so an edited
