@@ -7,8 +7,7 @@
 // packages/core/src/defaults/builtInLinkageTerms.ts declares, not the default
 // alone, and fails unless, for each element of each key:
 //
-//   A. its `field` names a field its own set declares, so a key over
-//      `phone_number`, `email_address` or `zip_code` fails; and
+//   A. its `field` names a field its own set declares; and
 //   B. that field's `name` equals its `type`, since the satisfiability filter
 //      matches an element's `field` against the semantic types a file supplies.
 //

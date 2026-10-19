@@ -209,7 +209,9 @@ scopes the guarantee against. And a contact value is a shared value in
 program-application data -- one phone number or email address is shared across a
 household, and across the people an organization files for -- so a key over one
 alone reports different people as the same person. The web app's guided key
-list states that caveat beside the phone, email and ZIP keys it shows.
+list states that caveat beside the keys it shows over a phone, email, street
+number, ZIP, state or county field, adding that a location column must hold
+each person's own, never a site's.
 
 The email shape `FN + EMAIL` has no band, since no source measures it, and is
 in no built-in set. An operator reaches it, or any other combination nothing
