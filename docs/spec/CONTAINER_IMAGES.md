@@ -211,12 +211,12 @@ it pins beyond that, and the second OS-package inventory that comes with it.
 
 | Pin | Value | How it is held |
 | --- | --- | --- |
-| Release snapshot | `--releasever=2023.12.20260930` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
+| Release snapshot | `--releasever=2023.12.20261016` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
 | Provider package and version | `openssl-fips-provider-certified` at `3.2.2-1.amzn2023` | `rpm -qf` on the installed `fips.so`, asserted in the build |
 | Module version string | `3.2.2-799901ad7ab41d45` | `openssl list -providers` read back, asserted in the build |
-| Base image | `amazonlinux:2023@sha256:8ed3c0a996841537f75607e7d1de2114d8150391f75792e8da9268738547e73f`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `x64` | `ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `arm64` | `7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5` | as above |
+| Base image | `public.ecr.aws/amazonlinux/amazonlinux@sha256:c07ab0773eddf9449c0994a87d8148300db98bdf8d8dad672a9dc26321c104fc`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Node runtime tarball, `x64` | `fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Node runtime tarball, `arm64` | `fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5` | as above |
 
 All three certificate pins are build `ARG`s, so what the assertions catch is a
 package layer that drifts under the committed values rather than an operator who
@@ -275,7 +275,7 @@ its module is unmeasured. The package name determines nothing:
     3.2.2-1.amzn2023.0.1 -> 3.2.2-799901ad7ab41d45   <- the one certificate 5438 names
     3.2.2-1.amzn2023.0.2 -> 3.2.2-6a2d04a6952ab14a
     3.5.5-1.amzn2023.0.5 -> 3.5.5-f06cf76f53649b34
-    3.5.8-1.amzn2023.0.1 -> module version unmeasured as of 2026-10-09   <- stock in the amazonlinux:2023 20260930 rootfs
+    3.5.8-1.amzn2023.0.3 -> module version unmeasured as of 2026-10-19   <- stock in the Amazon Linux 20261016 rootfs
 
 The `-certified` name this image uses is a different package, which is what
 leaves `openssl-libs` free to float beside the pin, and the snapshot above
@@ -303,7 +303,7 @@ names no package this image installs. Its installation, administrator-guidance
 and end-of-life sections (11.1, 11.2 and 11.4, p. 65) all name
 `openssl-3.2.2-1.amzn2023.0.1`, an NVR of the distribution's `openssl` package
 rather than of either `-certified` package -- and one this image does not carry
-under that name either, its `openssl` being `3.5.8-1.amzn2023.0.1`. What the
+under that name either, its `openssl` being `3.5.8-1.amzn2023.0.3`. What the
 policy is consistent about is the module version string, given in section 11.2
 (p. 65) as the value the Crypto Officer reads back and in all six rows of
 Tables 2 and 3 (p. 8), which is the value the build's second assertion
@@ -315,12 +315,18 @@ coupled: a base far newer than the pinned snapshot can put that snapshot's
 packages in conflict with what the base already holds. The digest in the table
 above closes that. It is the multi-arch index digest, which is what a
 multi-platform build can resolve -- a platform-specific manifest digest names one
-architecture and fails on the other -- and it was resolved on 2026-10-09 (UTC)
-with `docker buildx imagetools inspect amazonlinux:2023`, both of whose per-arch
-manifests were created on 2026-10-05. The rootfs at that digest reports
-`system-release` version `2023.12.20260930` on `amd64` and `arm64` alike, which
-is the release `AL2023_RELEASEVER` names, so the base and the packages are the
-same snapshot rather than two compatible ones.
+architecture and fails on the other -- and it was resolved on 2026-10-19 (UTC)
+with `docker buildx imagetools inspect public.ecr.aws/amazonlinux/amazonlinux:2023`,
+both of whose per-arch manifests were created on 2026-10-16. The rootfs at that
+digest reports `system-release` version `2023.12.20261016` on `amd64` and
+`arm64` alike, which is the release `AL2023_RELEASEVER` names, so the base and
+the packages are the same snapshot rather than two compatible ones.
+
+The digest names Amazon's own registry, ECR Public, rather than Docker Hub's
+`amazonlinux:2023`. The two registries publish the same releases under
+different digests, so a digest read from one cannot be carried to the other. On
+2026-10-19 Docker Hub's newest rootfs was `2023.12.20260930`, older than the
+release this pin needed.
 
 That equality is asserted in the build rather than left to the bumper: the
 `nodebase` stage reads `system-release`'s version out of the rootfs and fails
@@ -368,10 +374,11 @@ Ed25519, and that Node's key generation for them throws
 (package `3.2.2-1.amzn2023`). In that build Node's linked OpenSSL is 3.5.7
 (`process.versions.openssl`) and the image's own `openssl` library and command
 are 3.5.8, two components that are both right for what each names. The
-`x86_64` build was not measured. That build ran Node v26.7.0; the
-v26.10.0 the image pins links OpenSSL 3.5.8 (nodejs.org release index), so
-the 3.5.7 and the two-component split above describe the earlier build, and
-the reading has not been re-taken on the current one.
+`x86_64` build was not measured. That build ran Node v26.7.0. The v26.12.0
+the image pins reports linked OpenSSL 3.5.9 (`process.versions.openssl`) beside
+an `openssl` library of 3.5.8, read on 2026-10-19 in `linux/amd64` and
+`linux/arm64` builds at the pins above. The X25519 and Ed25519 reading has not
+been re-taken on that build.
 
 ## What certificate 5438 attests
 
@@ -684,9 +691,10 @@ difference in either direction.
 | `Dockerfile` | empty -- no setuid or setgid file |
 | `Dockerfile.fips` | empty -- no setuid or setgid file |
 
-For the FIPS variant the inventory was also measured on 2026-10-09, on
+For the FIPS variant the inventory was also measured on 2026-10-19, on
 `linux/amd64` and `linux/arm64` builds without a layer cache, with
-`find / -xdev -perm /6000 -type f` run as root: both results were empty.
+`find / -xdev -type f \( -perm -2000 -o -perm -4000 \)` run as root: both
+results were empty.
 
 Both inventories are empty because each runtime stage takes off every bit its
 own OS install brings in, and neither stage's base has another. Both images
@@ -790,7 +798,7 @@ closure their helper scripts were written against.
 > audit had no Docker and could not reach the image registries, so none of it was
 > re-run; a figure here may be out of date. The FIPS variant's attribution list,
 > package count, GPL-3.0/LGPL-3.0 count, image size, comparison between
-> architectures and setuid and setgid inventory were measured on 2026-10-09
+> architectures and setuid and setgid inventory were measured on 2026-10-19
 > (UTC) at the base pinned above, on `linux/amd64` (emulated on Docker Desktop on
 > an Apple Silicon Mac) and `linux/arm64` builds without a layer cache.
 
@@ -833,7 +841,7 @@ tag.
   version and license on both architectures; the listing is what the generator
   parses.
 - FIPS variant: `rpm -qa --qf "%{NAME}\t...\t%{LICENSE}\n"`, RPM 4.16.1.3 with
-  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20260930. The variant's
+  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20261016. The variant's
   fips-only OpenSSL configuration does not reach rpm, which reads its database
   in C; what it breaks is dnf's own Python, which hashes with blake2s.
 - Neither Dockerfile names its final stage, so a `--target` query cannot reach
@@ -846,7 +854,7 @@ tag.
   architectures of an image disagree on.
 
 **What was measured.** Both images built without a layer cache at both
-architectures, the FIPS variant on 2026-10-09 and the default image on
+architectures, the FIPS variant on 2026-10-19 and the default image on
 2026-09-24. A first attempt with a warm cache reported an architecture
 difference that was a stale layer rather than a property of the image, so a
 re-measurement builds with `--no-cache` or it measures the cache.
@@ -901,7 +909,7 @@ re-measurement builds with `--no-cache` or it measures the cache.
   resolves against whatever the Alpine mirror holds at build time, so its list
   can go stale with nothing in this repository changing, and the remedy is to
   regenerate it. The FIPS variant has no such exposure: its dnf transactions pin
-  `--releasever=2023.12.20260930`.
+  `--releasever=2023.12.20261016`.
 - The drift check fails on a package added or removed and on a license string
   that moved; a version that moved it reports without failing. That install
   resolves its dependency versions against the live index, which moves patch
@@ -1007,12 +1015,12 @@ installs. At this pin the 37 is counted from the rows of that list whose license
 holds a GPL-3.0 or LGPL-3.0 term. Five of the 170 -- `libselinux-utils`,
 `policycoreutils`, `rpm-plugin-selinux`, `selinux-policy` and
 `selinux-policy-targeted` -- are dependencies the build's `samba-client` and
-`openssl` install resolves at snapshot `2023.12.20260930`; none holds a v3 term,
+`openssl` install resolves at snapshot `2023.12.20261016`; none holds a v3 term,
 and none adds a setuid or setgid file.
 
-The image weighs 652,573,417 bytes (653 MB) on `x86_64` and 806,470,282 bytes
-(806 MB) on `aarch64`, as `docker image inspect --format '{{.Size}}'` reports
-it, measured on 2026-10-09 on builds without a layer cache (`x86_64` emulated
+The image weighs 658,068,804 bytes (658 MB) on `x86_64` and 811,627,447 bytes
+(812 MB) on `aarch64`, as `docker image inspect --format '{{.Size}}'` reports
+it, measured on 2026-10-19 on builds without a layer cache (`x86_64` emulated
 on Docker Desktop on an Apple Silicon Mac, `aarch64` native).
 
 The table below is the older one-off reference build `Dockerfile.fips` was

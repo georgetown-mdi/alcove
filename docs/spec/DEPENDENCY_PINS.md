@@ -813,6 +813,11 @@ inert and an `amazonlinux` pull request that arrives is closed unmerged -- what
 the entry removes is a filing, and the digest freeze plus the procedure below is
 what holds the base either way.
 
+The entry names `amazonlinux`, Docker Hub's name for the image, while
+`Dockerfile.fips` names ECR Public's `public.ecr.aws/amazonlinux/amazonlinux`.
+Whether Dependabot matches the entry against that reference has not been
+observed. A pull request that arrives for it is closed unmerged, as above.
+
 **What shows a base worth moving to**, in the absence of a filed bump:
 
 - The Trivy scan the release workflow runs over the built variant,
@@ -827,9 +832,12 @@ what holds the base either way.
 all; the first four are verified against one release:
 
 1. The digest in `Dockerfile.fips`'s `FROM`, resolved as the multi-arch index
-   digest -- `docker buildx imagetools inspect amazonlinux:2023` -- because a
-   platform-specific manifest digest names one architecture and fails on the
-   other.
+   digest -- `docker buildx imagetools inspect public.ecr.aws/amazonlinux/amazonlinux:2023`
+   -- because a platform-specific manifest digest names one architecture and
+   fails on the other. The digest is ECR Public's: Docker Hub's
+   `amazonlinux:2023` copies the same releases days later or not at all, and
+   under different digests, so the digest is resolved on the registry the
+   `FROM` names.
 2. The `FIPS_BASE` literal in `scripts/dockerfile-freeze.test.mjs`.
    `npm run test:scripts` stays red until it matches, so the reconciliation is
    forced rather than remembered.

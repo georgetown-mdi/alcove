@@ -54,7 +54,7 @@ installed by that distribution's package manager:
 
 - Default image: the pinned `node:26-alpine` base ships every package but the
   `samba-client` closure, which one `apk add --no-cache samba-client` installs.
-- FIPS variant: the pinned `amazonlinux:2023` base ships the rest, and the
+- FIPS variant: the pinned Amazon Linux 2023 base ships the rest, and the
   `dnf install` transactions add `tar`, `gzip`, `xz`, `findutils`,
   `libatomic`, `samba-client` and `openssl`, followed by one `dnf swap` onto
   the certified OpenSSL FIPS provider package. Every transaction resolves

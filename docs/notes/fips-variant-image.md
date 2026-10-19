@@ -579,6 +579,25 @@ That scan gates, on the schedule and on a pull request alike, so a finding
 against a pin nothing has touched reddens the weekly run rather than waiting for
 a release to refuse it.
 
+## Why the base comes from ECR Public
+
+Amazon publishes the Amazon Linux 2023 rootfs on its own registry,
+`public.ecr.aws/amazonlinux/amazonlinux`, and Docker Hub's `amazonlinux:2023`
+copies it later. Read on 2026-10-19 from both registries' tag lists, Docker Hub
+received the `2023.12.20260831.0`, `2023.12.20260918.0` and
+`2023.12.20260930.0` rootfs 18, 10 and 5 days after ECR Public did, and skipped
+some releases ECR Public published. When this was decided, the base's scan
+exceptions were dated to expire on 2026-11-09, and the first release clearing
+them reached ECR Public on 2026-10-12 and had not reached Docker Hub by
+2026-10-19. So the base is pinned from ECR Public: a fix the snapshot serves
+reaches a pinnable rootfs sooner.
+
+What moves with it: the digest is ECR Public's own, since the two registries
+give one release different digests, and the procedure resolves it there
+([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image)).
+The Dependabot entry above names Docker Hub's image, and whether it matches the
+ECR Public reference is unobserved; the digest freeze holds the base either way.
+
 ## What it costs
 
 The variant installs far more OS packages than the default image, is larger
@@ -618,7 +637,17 @@ key the base image holds.
 trust was placed in the bytes at pin time, so the signature is checked by hand
 when the values are resolved. No build runs any of this.
 
-The committed pair is v26.10.0, checked on 2026-10-17. Its
+The committed pair is v26.12.0, checked on 2026-10-19. Its
+`SHASUMS256.txt.sig` is an RSA signature made 2026-10-14 by
+`C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C` (Richard Lau), a fingerprint listed
+under the Node.js releasers in `nodejs/node`'s README. The key came from the
+`nodejs/release-keys` repository on GitHub and the signature verified as
+`Good signature` in a throwaway `GNUPGHOME`; both hashes also match `sha256sum`
+over the downloaded tarballs, and both architectures' image builds passed the
+committed `sha256sum -c`. `keys.openpgp.org` was not reachable from where the
+check ran, so this record also has one channel.
+
+The pair before it, v26.10.0, was checked on 2026-10-17. Its
 `SHASUMS256.txt.sig` is an EdDSA signature made 2026-09-22 by the same key as
 below, `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` (Antoine du Hamel). The key
 came from the `nodejs/release-keys` repository on GitHub and the signature
@@ -660,8 +689,9 @@ manifest and a key fetched from `nodejs/release-keys`: the manifest verified
 `Good signature` and both literals matched it. Two environments agreeing rules
 out a transcription slip between resolution and commit, which is the failure a
 pinned hash cannot otherwise show. The base-image digest has no such second
-reading -- Docker Hub is not reachable from the development container and no
-`docker` is installed there -- so it rests on the resolving host alone.
+reading -- neither ECR Public nor Docker Hub is reachable from the development
+container and no `docker` is installed there -- so it rests on the resolving
+host alone.
 
 ## What is not settled
 
