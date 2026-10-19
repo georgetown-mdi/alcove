@@ -834,6 +834,21 @@ connection:
 - **The next run** confirms the registration before it contacts your partner. When the registrar already holds the current key -- the registration landed and its answer was lost -- the run goes ahead. When the registrar does not answer, the run exits 69 with the shared secret unchanged; run it again later.
 - **When the registrar holds a key no run has any more** -- a registration that never landed, or a run stopped between its rotation and its registration -- the next run exits 77 before it contacts your partner, naming the registrar and the exchange id. Run `alcove enroll-relay --replace-relay-key` with the relay-owner token, then run the exchange again. Your partner does nothing: the shared secret is unchanged.
 
+#### A WebSocket relay of your own
+
+A [WebSocket relay](DESIGN.md#websocket-relay) carries an exchange over one `wss://` connection from each party, for a network whose inspection stops WebRTC and TURN. Name yours in [`connection.websocket_relay`](EXCHANGE_REFERENCE.md#connectionwebsocket_relay):
+
+```yaml
+connection:
+  relay_registrar:
+    url: https://registrar.example.org
+    exchange_id: q3-linkage-7f2c
+  websocket_relay: wss://wsrelay.example.org/relay
+```
+
+- **No run dials it yet.** A run takes the relay only when no WebRTC path opens, and that fallback is not built, so a run with the setting connects over WebRTC as one without it.
+- **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. Once the fallback dials the relay, a run with no shared secret will refuse it before dialing (exit 64).
+
 #### When a WebRTC exchange does not connect
 
 A rendezvous that ends without a data channel names what ICE found, so the failures that look alike from the outside can be told apart:

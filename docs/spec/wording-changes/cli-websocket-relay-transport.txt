@@ -1,0 +1,4 @@
+# The CLI's relay transport, the relay's close code a party sends.
+- - -> A party closes with 1000 only on a clean close, so its partner never takes a failure for delivery.
+- - -> When both parties close at once, the party whose close the relay reads first receives the relay's own close in answer.
+- - -> Its confirmation states that the relay received its frames and forwarded them in order, not that the partner read them; the other party's confirmation is the partner's close, as stated.

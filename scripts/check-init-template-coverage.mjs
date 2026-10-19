@@ -59,6 +59,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "Only for a relay running the reference registrar; infra/relay/README.md sets it up.",
   ],
   [
+    "connection.websocket_relay",
+    "Only for a party running a WebSocket relay of its own beside its TURN relay; the reference sets it up.",
+  ],
+  [
     "connection.invitation_relay",
     "Written by alcove accept from the invitation; not authored by hand.",
   ],

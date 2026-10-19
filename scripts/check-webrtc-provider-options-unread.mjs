@@ -41,6 +41,8 @@ export const CLI_FILES = [
   "apps/cli/src/connection/webrtc/iceDiagnostics.ts",
   "apps/cli/src/connection/webrtc/signalingTls.ts",
   "apps/cli/src/connection/webrtc/webrtcMessageConnection.ts",
+  "apps/cli/src/connection/webrtc/websocketRelayConnection.ts",
+  "apps/cli/src/connection/webrtc/websocketRelayDial.ts",
   "apps/cli/src/connection/webrtc/weriftPeer.ts",
 ];
 

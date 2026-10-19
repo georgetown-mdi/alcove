@@ -138,7 +138,8 @@ That is the browser's WebRTC reading of the peer's close applied to a relayed so
 A sender whose process or tab ends the instant its close returns keeps its final frame only if the close waited: a close that returned once the sentinel was queued lost the frame in 8 of 10 runs from a Node process and in 6 and 8 of 10 from a closed Chromium tab, and the wait for the relayed peer close lost it in none of 10 from either ([S5](#the-spikes)).
 
 **Keepalive.** A PSI step can hold a party silent for the parked-receive budget of an hour ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)), and any TLS front in the path has an idle timeout -- the broker's is 300 s.
-The CLI client sends a WebSocket ping on a short interval while a receive is parked; the relay answers and forwards nothing.
+A client that can send a WebSocket ping may send one while a receive is parked; the relay answers and forwards nothing.
+The CLI's client is Node's own `WebSocket`, which, like a browser's, has no ping method and answers the relay's (measured on Node 26.12.0), so it adds no dependency and relies on the relay's ping below.
 A browser's `WebSocket` cannot send a ping but answers one (measured on Chromium 156, [S6](#the-spikes)), so the browser's keepalive is a ping the relay sends its socket on the same interval.
 
 **Quotas.** The relay bounds what one key can use, as coturn's `user-quota`, `total-quota` and `max-bps` do ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#quotas-against-one-exchange)): one pairing a key, a cap on concurrent pairings, a per-pairing byte rate at the same 2,000,000 bytes a second each direction, and an idle bound at the parked-receive budget.
@@ -148,10 +149,10 @@ Each is a working value reviewed against the largest exchange, as the relay's ar
 Two steps, the second designed with the first so the first does not foreclose it:
 
 1. **Explicit.** The inviter's relay locator in the invitation gains the relay's `wss` url beside its TURN and STUN urls ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)); the browser's Relay settings page and the CLI's connection block each gain the same entry for a party's own relay, listed beside the invitation's as `selectRunRelay` lists TURN and STUN (`packages/core/src/relayCredential.ts`).
-   A per-party setting names the relay as the only path: a party whose network is known to stop TURN sets it once, and the invitation tells the partner where the relay is.
-   Both parties must take the relay path for the pairing to form; a mismatch fails at the rendezvous budget with a message naming the setting.
+   No setting names the relay as the only path: by the maintainer's ruling of 2026-10-17, no relay-only mode is assumed, and a party reaches the relay only through the fallback of step 2, where work that shortens the wait before it falls back is in scope.
+   The entry names where the relay is; the CLI's is `connection.websocket_relay` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionwebsocket_relay)).
 2. **Automatic fallback.** Each party opens its relay socket as it starts the WebRTC rendezvous and sends its hello; the relay pairs the two sockets and forwards nothing until both have sent a start frame.
-   A party sends start when its data channel fails to open within the channel-open budget, or at once under that setting; a party that receives the partner's start abandons its WebRTC attempt and sends its own.
+   A party sends start when its data channel fails to open within the channel-open budget; a party that receives the partner's start abandons its WebRTC attempt and sends its own.
    A data channel that opens closes both relay sockets.
    The relay then learns of every exchange that names it, whether or not it carries one, which is what a TURN allocation already discloses ([COMMUNICATION.md](../COMMUNICATION.md#stunturn), "What a relay's operator learns"), and a party behind a network that blocks the broker outright still reaches its partner.
 
@@ -532,6 +533,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: explicit first with the start frame in the wire from the first cut, fallback as the next item ([How the parties choose it](#the-websocket-relay-as-recommended)).
    Ruling (2026-10-09): "Use your recommendation for this item."
    Reading: the explicit relay path first, with the start message in the wire from the first cut, and automatic fallback as the next item.
+   The maintainer's ruling of 2026-10-17 supersedes it for the transports: no relay-only path is built, and the fallback is the only way onto the relay ([How the parties choose it](#the-websocket-relay-as-recommended)).
 3. **Chunk size on the relay path**: PeerJS's 16,300 bytes, or a larger chunk since no SCTP ceiling applies.
    Larger means fewer messages and less relay overhead; the same size means one framing and one set of fixtures.
    Recommendation: the same size until S3 shows the overhead matters ([How the relay fits the existing bounds](#how-the-relay-fits-the-existing-bounds)).

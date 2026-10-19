@@ -102,9 +102,9 @@ The quotas key on the exchange's relay key, not on a client's address: behind th
 ## Close
 
 - **Order.** One party's close closes its partner behind every message already queued for the partner.
-- **The code.** A close with code 1000, or with no code, closes the partner with 1000. Any other end of a party's socket, a refusal included, closes the partner with 4000.
+- **The code.** A close with code 1000, or with no code, closes the partner with 1000. Any other end of a party's socket, a refusal included, closes the partner with 4000. A party closes with 1000 only on a clean close, so its partner never takes a failure for delivery.
 - **The wait.** A partner closed this way has 300 seconds, the close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), to read what is queued for it and answer the close, and is then dropped (`RELAY_CLOSE_WAIT_MS`). A socket the relay refuses has 10 seconds (`RELAY_REFUSAL_CLOSE_WAIT_MS`).
-- **Delivery.** TCP acknowledges a message to the relay, not to the partner, so a party knows its last message reached the partner only when the partner's close reaches it through the relay ([COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown)).
+- **Delivery.** TCP acknowledges a message to the relay, not to the partner, so a party knows its last message reached the partner only when the partner's close reaches it through the relay ([COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown)). When both parties close at once, the party whose close the relay reads first receives the relay's own close in answer. Its confirmation states that the relay received its frames and forwarded them in order, not that the partner read them; the other party's confirmation is the partner's close, as stated.
 
 ## Close codes
 
