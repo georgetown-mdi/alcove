@@ -103,6 +103,8 @@ interface Pairing {
   key: string;
   parties: Partial<Record<RendezvousRole, Party>>;
   forwarding: boolean;
+  /** The sockets this pairing admitted that have not yet closed. */
+  openSockets: number;
   /** When a message last crossed the pairing either way. */
   activeAt: number;
 }
@@ -183,6 +185,9 @@ export function attachWebSocketRelay(
   // closes: a refused socket counts while the relay waits on its close.
   const unverified = new Set<Party>();
   const pairings = new Map<string, Pairing>();
+  // Pairings that still hold an open socket, which outlive `pairings` entries:
+  // a closed side's partner can stay open for the close wait.
+  const pairingsHoldingSockets = new Set<Pairing>();
   let keyTableFailing = false;
   // Only the operator's table can hold a malformed key, so its report is kept
   // to one a window for each exchange id; any other failure is kept to one a
@@ -299,17 +304,20 @@ export function attachWebSocketRelay(
       return refuse(party, RelayCloseCode.roleTaken);
     }
     if (pairing === undefined) {
-      if (pairings.size >= maxPairings) {
+      if (pairingsHoldingSockets.size >= maxPairings) {
         return refuse(party, RelayCloseCode.relayFull);
       }
       pairing = {
         key,
         parties: {},
         forwarding: false,
+        openSockets: 0,
         activeAt: performance.now(),
       };
       pairings.set(key, pairing);
+      pairingsHoldingSockets.add(pairing);
     }
+    pairing.openSockets += 1;
     pairing.activeAt = performance.now();
     pairing.parties[role] = party;
     party.pairing = pairing;
@@ -492,6 +500,12 @@ export function attachWebSocketRelay(
     });
     socket.on("close", (code) => {
       unverified.delete(party);
+      if (party.pairing !== undefined) {
+        party.pairing.openSockets -= 1;
+        if (party.pairing.openSockets === 0) {
+          pairingsHoldingSockets.delete(party.pairing);
+        }
+      }
       end(
         party,
         NORMAL_CLOSE_CODES.has(code)

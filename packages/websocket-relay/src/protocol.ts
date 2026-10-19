@@ -36,7 +36,8 @@ export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 
 /**
  * The most pairings the relay holds at once, a pairing counting from its
- * first verified hello: coturn's 40 concurrent allocations at two an
+ * first verified hello until every socket it admitted has closed, the close
+ * wait included: coturn's 40 concurrent allocations at two an
  * exchange (docs/notes/webrtc-relay-deployment.md, Quotas against one
  * exchange).
  */

@@ -155,6 +155,41 @@ describe("the concurrent-pairing cap", () => {
   });
 });
 
+describe("the cap and a pairing's close wait", () => {
+  it("counts a pairing until the socket that ignores the relay's close has closed", async () => {
+    const { url } = await relay({
+      keyTable: keyTableOf(manyExchanges(2)),
+      testing: { maxPairings: 1, closeWaitMs: 400 },
+    });
+    const { inviter, acceptor } = await pairUnder(url, 0);
+    acceptor.socket.pause();
+    inviter.socket.close(1000);
+    await inviter.closed;
+
+    const tryHello = async (): Promise<number | undefined> => {
+      const hello = await connect(url);
+      hello.send(
+        await helloFrame({
+          role: "inviter",
+          exchangeId: "exchange-1",
+          relayKey: keyOf(1),
+        }),
+      );
+      const outcome = await Promise.race([
+        hello.closed.then((closed) => closed.code),
+        new Promise<undefined>((resolve) =>
+          setTimeout(() => resolve(undefined), 100),
+        ),
+      ]);
+      return outcome;
+    };
+    expect(await tryHello()).toBe(RelayCloseCode.relayFull);
+    expect(acceptor.socket.readyState).toBe(WebSocket.OPEN);
+
+    await eventually(async () => (await tryHello()) === undefined);
+  });
+});
+
 describe("the per-pairing byte rate", () => {
   it("paces a party sending above the rate and does not disconnect it", async () => {
     const events: string[] = [];
