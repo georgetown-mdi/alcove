@@ -532,9 +532,7 @@ Drafted, pending the owner's ratification:
   steps, downloadable command-line exchange files, sample data -- each holding
   at 400 px with the step strip, the folded Customize group and the "What you
   will share" bar, with the pre-redesign components removed and the browser,
-  contrast and accessibility suites passing on the new screens.
-  Open: whether Web Exchange Rework's line, closed, already covers these
-  screens, in which case this epic needs no line of its own.
+  contrast and accessibility suites passing on the new screens. Closed 2026-10-19.
 - **Progressive web app** (board 9) -- Done is: the web app installs from a
   supporting browser with a complete manifest, its shell and recurring-exchange
   list render with no network from the browser's own store, each way of starting
