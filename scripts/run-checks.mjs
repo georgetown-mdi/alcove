@@ -329,7 +329,7 @@ export const CHECKS = [
     group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
-      "The built-in field set and key set match the pin recorded for the version each declares, cascade order included.",
+      "The built-in field set and key set match the pin recorded for the version each declares, cascade order and each rule's band included.",
   },
   {
     script: "check:spec-sentences",

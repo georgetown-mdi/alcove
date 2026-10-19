@@ -502,12 +502,31 @@ would stop it there, and the catalog adopts none by default.
 
 ## Rule features the evidence calls for
 
-These are requirements, not designs. None exists in Alcove.
+These are requirements, not designs, sorted by whether Alcove builds them.
 
-- **A date expansion of one day either side** (`adjacent_days`). linkja,
-  through its matching component, and Cook County use one, and Cook County's
-  largest spike in date differences was at one day (Trick et al. 2019). Rule
-  18 needs it.
+### Built
+
+- **A date expansion of one day either side: the `adjacent_days` comparison
+  (#2275).** linkja, through its matching component, and Cook County use one,
+  and Cook County's largest spike in date differences was at one day (Trick et
+  al. 2019). Rule 18 needs it.
+- **Address and area elements: the `street_number` type (#2299), and the
+  `zip3` key-element transform over a ZIP and the `state` and `county` types
+  (#2297).** They serve a street number (rule 21), a three-digit ZIP (rule 27),
+  and state and county (rule 30).
+- **A shared-contact screen: the shared-value screen (#2280), defaulting to
+  five people per phone or email value** (spec:
+  [DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#shared-value-screens)).
+  Without it, a shelter's, clinic's or case manager's number on many clients
+  gives each client one unique first-name-plus-phone value, which the
+  one-to-one rule cannot catch. Rule 36a is offered only with it, and it
+  shrinks the sharing floor of every phone and email rule. No source states a
+  count cap for contact values: Cao et al. (2026) caught placeholder SSNs with
+  a name-DOB consistency rule, not a count, and Culbertson et al. (2017) count
+  999-9999 as a default rather than a value.
+
+### Not built
+
 - **A per-side missing-field condition**: a rule that fires only where a named
   field is absent on one side. It is not called a conflict veto: a veto
   implies comparing the two sides' values per pair, which exact equality of
@@ -519,23 +538,12 @@ These are requirements, not designs. None exists in Alcove.
   needs it, and counts a filler date as absent. So do rules 35, 36, 36a, 38
   and 39, the contact rules with no date of birth, as a missing-date condition;
   see [Name suffixes](#name-suffixes).
-- **Address and area types**: a street number (rule 21), a three-digit ZIP
-  (rule 27), and state and county (rule 30).
-- **A shared-contact screen.** The default cleaning drops a phone or email held
-  by more than five distinct people in a party's file. Without it, a shelter's,
-  clinic's or case manager's number on many clients gives each client one
-  unique first-name-plus-phone value, which the one-to-one rule cannot catch.
-  Rule 36a is offered only with it, and it shrinks the sharing floor of every
-  phone and email rule. No source states a count cap for contact values: Cao et
-  al. (2026) caught placeholder SSNs with a name-DOB consistency rule, not a
-  count, and Culbertson et al. (2017) count 999-9999 as a default rather than a
-  value.
-- **Phone type.** The Sequoia Project (2018) had to tag numbers so work and
+- **A phone type.** The Sequoia Project (2018) had to tag numbers so work and
   mobile phones were not compared. `phone_number` is one untyped field. No
   rule depends on it.
-
-Two features are not built:
-
+- **A name suffix field, by decision.** No suffix rule ships; the contact
+  rules with no date of birth wait on the missing-date condition instead. See
+  [Name suffixes](#name-suffixes).
 - **A name-frequency condition**, which `FN3 + LN + DOB` for uncommon names
   would need: a frequency score for the first and last name combination with a
   cut point, as The Link King computes (Campbell et al. 2006). A general tool
