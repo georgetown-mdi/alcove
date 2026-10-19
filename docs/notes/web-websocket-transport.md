@@ -141,7 +141,7 @@ A sender whose process or tab ends the instant its close returns keeps its final
 The CLI client sends a WebSocket ping on a short interval while a receive is parked; the relay answers and forwards nothing.
 A browser's `WebSocket` cannot send a ping but answers one (measured on Chromium 156, [S6](#the-spikes)), so the browser's keepalive is a ping the relay sends its socket on the same interval.
 
-**Quotas.** The relay bounds what one key and one address can use, as coturn's `user-quota`, `total-quota` and `max-bps` do ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#quotas-against-one-exchange)): one pairing a key, a cap on concurrent pairings, a per-pairing byte rate at the same 2,000,000 bytes a second each direction, and an idle bound at the parked-receive budget.
+**Quotas.** The relay bounds what one key can use, as coturn's `user-quota`, `total-quota` and `max-bps` do ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#quotas-against-one-exchange)): one pairing a key, a cap on concurrent pairings, a per-pairing byte rate at the same 2,000,000 bytes a second each direction, and an idle bound at the parked-receive budget.
 Each is a working value reviewed against the largest exchange, as the relay's are.
 
 **How the parties choose it.**
@@ -189,8 +189,8 @@ The owner's choice (2026-10-04) is one proxy on 443, and the relay reference bui
 - **Where it runs.** It is installed on the project's relay host, routing the broker's name to the broker's front ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs)).
   TURN allocations and a signaling WebSocket passed through it there; a relayed exchange from a client admitted to 443 only is not yet measured ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
 - **What the relay adds.** One more route, its own name to its loopback port, with a certificate for that name and no listener of its own ([infra/relay/README.md, The 443 front](../../infra/relay/README.md#the-443-front), The WebSocket relay).
-- **What the relay loses.** Behind the front every connection arrives from `127.0.0.1`, so the relay cannot read a client's address for the per-address quota above.
-  Whether the front passes the address on to the relay's route alone (the PROXY protocol; unverified for nginx's stream module per route, which a run of the front would verify), or the relay's quotas key on the exchange alone, is open.
+- **What the relay loses.** Behind the front every connection arrives from `127.0.0.1`, so the relay cannot read a client's address, and its quotas key on the exchange alone ([WEBSOCKET_RELAY.md, Quotas](../spec/WEBSOCKET_RELAY.md#quotas)).
+  Whether to add a per-address quota, with the front passing the address on to the relay's route alone (the PROXY protocol; unverified for nginx's stream module per route, which a run of the front would verify), is open.
   A per-address limit on enrollment without a token ([fork 1](#the-forks-and-their-rulings)) meets the same question at the registrar.
 
 A second public address on the relay instance is the deployment record's fallback should a TURN client fail through the front, at about $3.60 a month ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#one-listener-on-443)); this path does not plan for it.
@@ -447,7 +447,7 @@ Relay path, in order:
   Built: `packages/core/src/websocketRelayProof.ts`, specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
   Built: `packages/websocket-relay`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
-- **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
+- **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front should a per-address quota be added, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
@@ -508,7 +508,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    What the two rulings leave open, for the maintainer:
 
    - Whether a key enrolled for a short lifetime outlasts a relayed exchange, since the relay checks the proof at the hello.
-   - How the relay's per-address quota reads a client's address behind the 443 front ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+   - Whether the relay adds a per-address quota beside its quotas on the exchange, and how it would read a client's address behind the 443 front ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
 
 2. **Explicit relay path first, or automatic fallback first**: the explicit policy is smaller and verifiable alone; the fallback is the experience a party wants.
    Recommendation: explicit first with the start frame in the wire from the first cut, fallback as the next item ([How the parties choose it](#the-websocket-relay-as-recommended)).
