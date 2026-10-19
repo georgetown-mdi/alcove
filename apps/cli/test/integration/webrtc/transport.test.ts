@@ -425,6 +425,21 @@ test("a configured iceServers list suppresses werift's built-in Google STUN defa
   expect([...withConfigured]).not.toContain(BUILT_IN_STUN.host);
 }, 60_000);
 
+test("a list holding only a turn url still resolves werift's built-in Google STUN default", async () => {
+  // Only a `stun` url replaces the default, so an operator who sets `turn` alone
+  // still discloses their public IP to it.
+  const turnOnly = await stunHostsLookedUp({
+    iceServers: [
+      {
+        urls: "turn:127.0.0.1:3478",
+        username: "user",
+        credential: "credential",
+      },
+    ],
+  });
+  expect([...turnOnly]).toContain(BUILT_IN_STUN.host);
+}, 60_000);
+
 /**
  * Every STUN binding request a peer built with no `iceServers` sends to the
  * endpoint {@link WERIFT_BUILT_IN_STUN_URI} names, observed on a loopback socket

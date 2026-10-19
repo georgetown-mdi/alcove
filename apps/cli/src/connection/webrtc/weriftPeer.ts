@@ -71,9 +71,10 @@ import type {
  * registration under that id and a fresh peer connection.
  *
  * Two measured werift behaviours shape this module -- local candidates are
- * queued until this side's description is sent to the broker, and a configured
- * `iceServers` list replaces rather than extends werift's built-in STUN
- * default -- and one measured PeerJS behaviour: a second `OFFER` for a
+ * queued until this side's description is sent to the broker, and an
+ * `iceServers` list holding a `stun` url replaces rather than extends werift's
+ * built-in STUN default, while a list with no `stun` url, `turn` alone
+ * included, still uses it -- and one measured PeerJS behaviour: a second `OFFER` for a
  * connection id a browser peer holds replaces that connection. Each has its
  * assumptions and re-verification in docs/spec/DEPENDENCY_PINS.md. The broker's hold and expiry of frames for an
  * unregistered peer, which decides when the dialer offers again, is in
