@@ -1849,8 +1849,7 @@ describe("acceptor columns step: the send summary is gated on the inviting party
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(noPayloadSentence);
     expect(app.container.textContent).not.toContain("For each matched row:");
-    // The step's own lead-in drops its "except the columns you mark as shared"
-    // clause with the disclosure it would have promised.
+    // The step's own lead-in drops its "except the columns ..." clause with the disclosure it would have promised.
     expect(app.container.textContent).toContain(
       "Nothing here is sent to your partner.",
     );
@@ -1882,7 +1881,7 @@ describe("acceptor columns step: the send summary is gated on the inviting party
       .element(page.getByText("For each matched row:", { exact: false }))
       .toMatchTextContent("risk_score");
     expect(app.container.textContent).toContain(
-      "Nothing here is sent to your partner except the columns you mark as shared.",
+      'Nothing here is sent to your partner except the columns set to a use ending "sent to your partner".',
     );
   });
 
@@ -1911,20 +1910,20 @@ describe("acceptor columns step: the send summary is gated on the inviting party
   });
 });
 
-describe("acceptor columns step: the columns the invitation will not accept", () => {
+describe("acceptor columns step: an invitation that lists no columns to receive", () => {
   // An invitation holding a present-but-empty `payload.receive` is the inviting
-  // party declaring it takes no column; core mirrors that onto this party as an
-  // empty `payload.send` and refuses the run against disclosed metadata, so the
-  // conflict is stated on this screen, where the marks that decide it are set.
+  // party listing no column to receive. Core offers the marked columns to that
+  // party's run as a terms change, so the step states them and leaves the
+  // launch open.
   const acceptsNoColumns: LinkageTerms = {
     ...acceptorTerms,
     payload: { receive: [] },
   };
 
   // The name fields satisfy both keys and the unrecognized column is marked to
-  // send, so this conflict is the only thing that can close the launch. That
-  // column has a bidi override (U+202E) because the alert names it beside the
-  // grid row the operator has to change, and the two must name it alike.
+  // send, so nothing else can close the launch. That column has a bidi override
+  // (U+202E) because the notice names it beside the grid row it describes, and
+  // the two must name it alike.
   const bidiColumn = "notes\u202Eevil";
 
   function mountStep(linkageTerms: LinkageTerms) {
@@ -1954,15 +1953,17 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
     );
   }
 
-  test("names the column as the grid does, disables launch, and says why at the button", async () => {
+  test("names the column as the grid does and leaves the launch open", async () => {
     mountStep(acceptsNoColumns);
     await expect
-      .element(page.getByText("Your partner will not accept this column"))
+      .element(
+        page.getByText("Your partner's invitation lists no columns to receive"),
+      )
       .toBeInTheDocument();
 
-    // The alert tells the operator which grid row to change, so it names the
-    // column exactly as that row does -- isolated, never escaped. An entry
-    // reading differently from the row it points at is the failure here.
+    // The notice names the column exactly as its grid row does -- isolated,
+    // never escaped. An entry reading differently from the row it points at is
+    // the failure here.
     const item = app.container.querySelector<HTMLElement>("li bdi");
     expect(item?.textContent).toBe(bidiColumn);
     const rowHeaders = [
@@ -1972,34 +1973,28 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
     expect(app.container.textContent).not.toContain(
       sanitizeForDisplay(bidiColumn),
     );
-    // The remedy names the choice that stops this column being sent.
     expect(app.container.textContent).toContain(
-      'Set "How it is used" below to "Ignored", or ask your partner for an' +
-        " invitation that accepts it.",
+      "Before any data is sent, your partner's run is asked to accept the " +
+        "difference; a partner that cannot answer stops the exchange there.",
     );
 
-    // The gate itself, and the reason a keyboard/screen-reader user at the button
-    // hears: resolved through the button's own description, so a reason rendered
-    // but never associated fails here.
     const start = page.getByRole("button", { name: "Start the exchange" });
-    await expect.element(start).toBeDisabled();
-    const reasonId = start.element().getAttribute("aria-describedby");
-    expect(reasonId).toBeTruthy();
-    expect(document.getElementById(reasonId!)?.textContent).toBe(
-      "Resolve the columns your partner will not accept above before you can start.",
-    );
+    await expect.element(start).toBeEnabled();
+    expect(start.element().getAttribute("aria-describedby")).toBeNull();
+    expect(app.container.textContent).not.toContain("before you can start");
   });
 
-  test("an invitation that declares no payload set leaves the launch open", async () => {
-    // The declaration is the whole of the gate: the same file and marks under an
-    // invitation that names no payload set render no panel and no reason, and the
-    // launch stays available.
+  test("an invitation that declares no payload set shows no notice", async () => {
+    // The same file and marks under an invitation that names no payload set
+    // render no notice and no reason, and the launch stays available.
     mountStep(acceptorTerms);
     await expect
       .element(page.getByRole("button", { name: "Start the exchange" }))
       .toBeEnabled();
     expect(
-      page.getByText("Your partner will not accept this column").query(),
+      page
+        .getByText("Your partner's invitation lists no columns to receive")
+        .query(),
     ).toBeNull();
     expect(app.container.textContent).not.toContain("before you can start");
     // Silent, not absent: the region stands ready for a reason arising later.

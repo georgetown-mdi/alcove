@@ -1084,11 +1084,10 @@ describe("a marked column whose name is too long to include", () => {
 
 describe("the invitation's declared payload set against the marks", () => {
   // A file covering both keys plus one unrecognized column marked to send -- so
-  // the file discloses exactly one column and every other gate is clear, leaving
-  // this comparison as the only thing that can close the launch.
+  // the file discloses exactly one column and every other gate is clear.
   // `record_id` infers to the identifier role (unsent, unmatched), so marking it
-  // adds a disclosure without costing a key -- which lets the conflict sentences be
-  // pinned at the gate without the linkage clause above them firing too.
+  // adds a disclosure without costing a key -- which lets an open launch be
+  // pinned beside each conflict without the linkage clause firing.
   const columns = ["first_name", "last_name", "notes", "record_id"];
 
   /** Every invitation shape this describe drives, named once. The equivalence
@@ -1153,7 +1152,9 @@ describe("the invitation's declared payload set against the marks", () => {
     }
   }
 
-  test("names the disclosed columns when the invitation accepts none and the inviting party receives the result", () => {
+  test("names the disclosed columns without holding the launch when the invitation accepts none and the inviting party receives the result", () => {
+    // Core offers an empty declaration's difference as a terms change, as it
+    // does any other, so the notice informs and the launch stays open.
     const terms = invitation("acceptsNothingAndTakesTheResult");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
@@ -1161,26 +1162,22 @@ describe("the invitation's declared payload set against the marks", () => {
       terms,
       editorState.metadata,
     );
-    expect(conflict?.kind).toBe("acceptsNothing");
     expect(conflict?.sentButNotDeclared).toEqual(["notes"]);
     expect(conflict?.declaredButNotSent).toEqual([]);
-    expect(conflict?.title).toBe("Your partner will not accept this column");
-    // Every other gate is clear, so the conflict alone closes the launch -- and
-    // the sentence the button is described by is the conflict's own.
+    expect(conflict?.title).toBe(
+      "Your partner's invitation lists no columns to receive",
+    );
     const verdict = acceptorVerdict(columns, terms, editorState);
     expect(verdict.kind).toBe("allClear");
     expect(acceptorHasIdentifierConflict(editorState.metadata)).toBe(false);
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      conflict?.launchBlockedReason,
-    );
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      "Resolve the columns your partner will not accept above before you can start.",
-    );
+    expect(
+      acceptorLaunchBlockedReason(verdict, editorState, terms),
+    ).toBeUndefined();
   });
 
   test("says nothing when the inviting party is entitled to no result", () => {
-    // Nothing is transmitted to a party that receives no result, so the run does
-    // not refuse this pair -- and the panel beside the grid already states that no
+    // Nothing is transmitted to a party that receives no result, so there is no
+    // difference to state -- and the panel beside the grid already states that no
     // column leaves whatever these marks say.
     const terms = invitation("acceptsNothingAndTakesNoResult");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
@@ -1225,7 +1222,7 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBeUndefined();
   });
 
-  test("clears as the operator re-marks every disclosed column, re-enabling launch", () => {
+  test("clears as the operator re-marks every disclosed column", () => {
     const terms = invitation("acceptsNothingAndTakesTheResult");
     // A matched column additionally marked sent, so the edit that clears the
     // conflict is exercised on both routes off that mark: back to matching for a
@@ -1276,7 +1273,7 @@ describe("the invitation's declared payload set against the marks", () => {
 
   test("a non-empty declaration that omits a marked column names it without holding the launch, and a re-mark here clears it", () => {
     // Under-declaration against a NON-EMPTY declaration: the declaration names one
-    // of the two columns the marks send. The partner is asked to accept the
+    // of the two columns the marks send. The partner's run is offered the
     // difference before any data moves, so the notice informs and the launch
     // stays open.
     const terms = invitation("acceptsTheDisclosedColumn");
@@ -1287,13 +1284,11 @@ describe("the invitation's declared payload set against the marks", () => {
       terms,
       marked.editorState.metadata,
     );
-    expect(conflict?.kind).toBe("setMismatch");
     expect(conflict?.sentButNotDeclared).toEqual(["record_id"]);
     expect(conflict?.declaredButNotSent).toEqual([]);
     expect(conflict?.title).toBe(
       "Your partner's invitation does not list this column",
     );
-    expect(conflict?.launchBlockedReason).toBeUndefined();
     const verdict = acceptorVerdict(columns, terms, marked.editorState);
     expect(verdict.fullySatisfied).toBe(true);
     expect(
@@ -1328,7 +1323,6 @@ describe("the invitation's declared payload set against the marks", () => {
       terms,
       editorState.metadata,
     );
-    expect(conflict?.kind).toBe("setMismatch");
     expect(conflict?.sentButNotDeclared).toEqual([]);
     expect(conflict?.declaredButNotSent).toEqual([
       { displayName: "risk_score", inFile: false },
@@ -1835,10 +1829,11 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBe(false);
   });
 
-  test("fires exactly when core's comparison finds a difference, and holds the launch only for an empty declaration", () => {
+  test("fires exactly when core's comparison finds a difference, and never holds the launch", () => {
     // Every shape this describe drives, in every mark state, through core's real
-    // mirror and real comparison. Only the empty declaration is refused by the
-    // run, so only that kind closes the launch.
+    // mirror and real comparison. Core offers every difference, an empty
+    // declaration included, as a terms change, so the launch gate reads the
+    // same with the declaration removed.
     for (const shape of Object.keys(shapes) as Array<keyof typeof shapes>)
       for (const marks of Object.keys(markStates) as Array<
         keyof typeof markStates
@@ -1854,10 +1849,13 @@ describe("the invitation's declared payload set against the marks", () => {
         expect(conflict !== undefined, `${shape} / ${marks}`).toBe(
           coreFindsDifference(terms, editorState.metadata),
         );
+        const undeclared: LinkageTerms = { ...terms };
+        delete undeclared.payload;
+        const verdict = acceptorVerdict(columns, terms, editorState);
         expect(
-          conflict?.launchBlockedReason !== undefined,
+          acceptorLaunchBlockedReason(verdict, editorState, terms),
           `${shape} / ${marks}`,
-        ).toBe(conflict?.kind === "acceptsNothing");
+        ).toBe(acceptorLaunchBlockedReason(verdict, editorState, undeclared));
       }
   });
 });

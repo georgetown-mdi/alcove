@@ -96,8 +96,8 @@ export const PREFLIGHT_INVENTORY: Record<PreflightId, PreflightRow> = {
       kind: "authored",
       how:
         "the acceptor's columns step names the conflict against the " +
-        "invitation's own declaration; the console blocks the launch where " +
-        "the CLI warns and proceeds",
+        "invitation's own declaration and, like the CLI, does not hold the " +
+        "launch",
     },
   },
   valueConstraints: {

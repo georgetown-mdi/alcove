@@ -391,23 +391,20 @@ const NO_STEP_BLOCKS: AcceptorLaunchStepBlocks = {
  * blocks, which is what the step disables on. Widened to core's own grading: the
  * file cannot be run under the adopted terms (`verdict.fullySatisfied` is false),
  * a count-only invitation meets a marked column
- * ({@link countOnlyTransmitsColumn}), the invitation declares that this party sends
- * no column while one is marked ({@link acceptorPayloadDeclarationConflict}), a
- * marked column's name is too long to fit in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
+ * ({@link countOnlyTransmitsColumn}), a marked column's name is too long to fit
+ * in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
  * more than one identifier column, an authored cleaning step is invalid,
  * mid-edit, or splits a value under terms that refuse one
  * ({@link refusedCleaningFanOut}), or one of the step's own blocks holds.
  *
  * The gate and the explanation are ONE derivation, so a state that disables the
- * button while telling a screen-reader operator nothing is unrepresentable. The
- * declaration conflict's title and the button's reason are chosen in a single
- * place.
+ * button while telling a screen-reader operator nothing is unrepresentable.
  *
  * Checks run in the step's own reading order, with the three nothing on this
  * screen clears first: offline, then the refused duplicate-matching pair and a
  * duplicate-matching setting moved since consent, whose control is back on the
- * review step. Then the verdict, the count-only refusal, the declaration
- * conflict, the over-long name notice, the identifier rule, the cleaning steps,
+ * review step. Then the verdict, the count-only refusal, the over-long name
+ * notice, the identifier rule, the cleaning steps,
  * the connection, the split rendezvous's retain-mode requirement, and the
  * file-handling and connection-tuning cards -- so an operator working down the
  * screen is sent to the first unresolved card. The signing-identity divergence
@@ -447,21 +444,12 @@ export function acceptorLaunchBlockedReason(
       "it can never match."
     );
   }
-  // A count-only invitation answers the payload question outright, ahead of the
-  // declaration conflict below: the algorithm holds no data column in either
-  // direction whichever party the terms entitle to the count, so a marked column
-  // is refused here rather than compared against a declaration -- and an
-  // invitation with no `payload.receive` at all leaves that comparison nothing to
-  // compare against. Core's own refusal at accept enforces the same fact
-  // (`assertCountOnlyTransmitsNoColumn`).
+  // A count-only exchange holds no data column in either direction whichever
+  // party the terms entitle to the count, so a marked column is refused here
+  // whatever the invitation's expected list says. Core's own refusal at accept
+  // enforces the same fact (`assertCountOnlyTransmitsNoColumn`).
   if (countOnlyTransmitsColumn(invitationTerms.algorithm, editorState.metadata))
     return "Unmark the columns you send above before you can start: a count-only exchange sends none.";
-  const declarationConflict = acceptorPayloadDeclarationConflict(
-    invitationTerms,
-    editorState.metadata,
-  );
-  if (declarationConflict?.launchBlockedReason !== undefined)
-    return declarationConflict.launchBlockedReason;
   const overlong = acceptorOverlongDisclosedColumns(
     invitationTerms,
     editorState.metadata,
@@ -589,28 +577,15 @@ interface AcceptorDeclaredColumnGap {
 }
 
 /**
- * Whether the invitation declares no payload column at all for this party
- * (`acceptsNothing`) or declares a set that disagrees with the marks
- * (`setMismatch`). Only the empty declaration stops the run, which refuses a
- * disclosure the partner declared it takes none of. A differing set is shown to
- * the partner as a terms change to accept before any data moves.
- */
-type AcceptorPayloadDeclarationConflictKind = "acceptsNothing" | "setMismatch";
-
-/**
  * The disagreement between the payload set the invitation declares for this party
- * and the columns the operator's marks disclose.
+ * and the columns the operator's marks disclose. Core offers the difference to
+ * the inviting party as a terms change at run start, an empty declaration
+ * included, and an inviter with no way to answer refuses it there before any
+ * payload is sent, so the step informs and never holds the launch on it.
  */
 interface AcceptorPayloadDeclarationConflict {
-  kind: AcceptorPayloadDeclarationConflictKind;
   /** The notice's visible title, naming the direction(s) that hold. */
   title: string;
-  /**
-   * The launch gate's sentence, held beside the title so the button's reason and
-   * the notice it points at are chosen in one place. Set only for
-   * `acceptsNothing`, the one kind the run refuses.
-   */
-  launchBlockedReason: string | undefined;
   /**
    * Columns the marks disclose that the declaration does not name -- core's
    * UNDER-declaration. The operator's OWN CSV headers, raw: the step renders them
@@ -651,9 +626,8 @@ function declaredNotSentNames(
 
 /**
  * The disagreement between the invitation's declared payload set for this party and
- * the operator's marks, or `undefined` when there is nothing to state. The notice
- * and the launch gate read this one derivation, so they cannot disagree, and it
- * clears as the operator re-marks.
+ * the operator's marks, or `undefined` when there is nothing to state. It clears
+ * as the operator re-marks.
  *
  * An exact-set comparison in both directions, read from the INVITATION's own
  * perspective. An ABSENT `payload.receive` is reconciled against this party's own
@@ -689,7 +663,7 @@ export function acceptorPayloadDeclarationConflict(
   if (sentButNotDeclared.length === 0 && declaredButNotSent.length === 0)
     return undefined;
   return {
-    ...declarationConflictWording(
+    title: declarationConflictTitle(
       declaredNames.length === 0,
       sentButNotDeclared.length,
       declaredButNotSent.length,
@@ -699,52 +673,23 @@ export function acceptorPayloadDeclarationConflict(
   };
 }
 
-/**
- * The title and the launch sentence for a conflict, chosen together so the button's
- * reason is always the words of the notice it points at. Each title names the
- * direction(s) that actually hold.
- */
-function declarationConflictWording(
+/** The conflict notice's title, naming the direction(s) that actually hold. */
+function declarationConflictTitle(
   declaresNothing: boolean,
   sentButNotDeclaredCount: number,
   declaredButNotSentCount: number,
-): Pick<
-  AcceptorPayloadDeclarationConflict,
-  "kind" | "title" | "launchBlockedReason"
-> {
+): string {
   if (declaresNothing)
-    return {
-      kind: "acceptsNothing",
-      title:
-        sentButNotDeclaredCount === 1
-          ? "Your partner will not accept this column"
-          : "Your partner will not accept these columns",
-      launchBlockedReason:
-        "Resolve the columns your partner will not accept above before you can start.",
-    };
+    return "Your partner's invitation lists no columns to receive";
   if (declaredButNotSentCount === 0)
-    return {
-      kind: "setMismatch",
-      title:
-        sentButNotDeclaredCount === 1
-          ? "Your partner's invitation does not list this column"
-          : "Your partner's invitation does not list these columns",
-      launchBlockedReason: undefined,
-    };
+    return sentButNotDeclaredCount === 1
+      ? "Your partner's invitation does not list this column"
+      : "Your partner's invitation does not list these columns";
   if (sentButNotDeclaredCount === 0)
-    return {
-      kind: "setMismatch",
-      title:
-        declaredButNotSentCount === 1
-          ? "Your partner's invitation lists a column you are not sending"
-          : "Your partner's invitation lists columns you are not sending",
-      launchBlockedReason: undefined,
-    };
-  return {
-    kind: "setMismatch",
-    title: "Your columns differ from your partner's invitation",
-    launchBlockedReason: undefined,
-  };
+    return declaredButNotSentCount === 1
+      ? "Your partner's invitation lists a column you are not sending"
+      : "Your partner's invitation lists columns you are not sending";
+  return "Your columns differ from your partner's invitation";
 }
 
 /**

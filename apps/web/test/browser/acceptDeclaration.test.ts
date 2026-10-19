@@ -93,10 +93,10 @@ const NON_ASCII = "\u00E9";
 // times under the megabyte the same declaration would paint uncapped.
 const NOTICE_CEILING = 4_000;
 
-// What the notice says happens next where the declaration names a column the
-// marks do not send.
+// What the notice says happens next, for every kind of difference.
 const ASKED_TO_ACCEPT_DIFFERENCE =
-  "Your partner will be asked to accept the difference before any data is sent.";
+  "Before any data is sent, your partner's run is asked to accept the " +
+  "difference; a partner that cannot answer stops the exchange there.";
 
 // The offer to send a declared column the file has, by the use that column has.
 const WIDENING_OFFER = ' To send it, set it to "Sent to your partner" below.';
@@ -223,8 +223,9 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
 
   test("informs, without holding the launch, when the file sends its record identifier and the invitation does not list it", async () => {
     // The grid starts an `id` column sent. An invitation from an established
-    // exchange that lists only `notes` does not name it: the partner is asked
-    // to accept it before any data is sent, so the launch stays open.
+    // exchange that lists only `notes` does not name it: the partner's run is
+    // offered it as a terms change before any data is sent, so the launch stays
+    // open.
     mountStep({ ...acceptorTerms, payload: { receive: [{ name: "notes" }] } }, [
       "id",
       "first_name",
@@ -241,9 +242,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
       (item) => item.textContent,
     );
     expect(painted).toEqual(["id"]);
-    expect(notice.textContent).toContain(
-      "Your partner will be asked to accept it before any data is sent.",
-    );
+    expect(notice.textContent).toContain(ASKED_TO_ACCEPT_DIFFERENCE);
     expect(notice.textContent).not.toContain('"How it is used"');
     await expectLaunchOpen();
   });

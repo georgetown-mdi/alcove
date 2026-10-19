@@ -30,7 +30,6 @@ import { MetadataGrid } from "@components/MetadataGrid";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
-import { DISCLOSURE_LABELS, disclosureOf } from "@psi/metadataEditing";
 import { overlongColumnsAlert, sanitizedColumnsAlert } from "@psi/columnNames";
 
 import styles from "@styles/app.module.css";
@@ -62,7 +61,6 @@ import type {
   SemanticType,
   Standardization,
 } from "@alcove/core";
-import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { ReactNode } from "react";
 
 /**
@@ -81,39 +79,6 @@ function MarkedColumnList({ names }: { names: Array<string> }) {
       ))}
     </List>
   );
-}
-
-/**
- * The choice that stops each sending column being sent while keeping its use:
- * a matched column stays matched and the record identifier stays the
- * identifier, so "Ignored" is offered only for a column sent for nothing else.
- */
-function unsendChoice(choice: DisclosureChoice): DisclosureChoice {
-  if (choice === "match-sent") return "match";
-  if (choice === "identifier-sent") return "identifier";
-  return "ignored";
-}
-
-/** The local remedy for columns marked to send that the partner does not take. */
-function UnsendRemedy({
-  metadata,
-  names,
-}: {
-  metadata: Metadata;
-  names: Array<string>;
-}) {
-  const labels = [
-    ...new Set(
-      metadata
-        .filter((column) => names.includes(column.name))
-        .map((column) => DISCLOSURE_LABELS[unsendChoice(disclosureOf(column))]),
-    ),
-  ].map((label) => `"${label}"`);
-  const choices =
-    labels.length <= 2
-      ? labels.join(" or ")
-      : `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
-  return <>Set &quot;How it is used&quot; below to {choices}</>;
 }
 
 /**
@@ -359,7 +324,7 @@ export function AcceptorColumnsStep({
             disclosure the run does not make, on the screen where those marks are
             being set. The panel below states the same bound with its reason. */}
         {partnerReceivesResult
-          ? "Nothing here is sent to your partner except the columns you mark as shared."
+          ? 'Nothing here is sent to your partner except the columns set to a use ending "sent to your partner".'
           : "Nothing here is sent to your partner."}
       </p>
 
@@ -536,40 +501,11 @@ export function AcceptorColumnsStep({
           </Paper>
         )}
 
-        {/* The invitation declares that this party sends no column while one is
-            marked: the run refuses that pair, so it is stated beside the marks
-            that decide it. Not a live region: the grid below already voices the
-            disclosed set, and the launch button's blocked-reason line speaks for
-            the gate. */}
-        {declarationConflict?.kind === "acceptsNothing" && (
-          <Alert
-            role="note"
-            color="red"
-            icon={<IconAlertCircle aria-hidden />}
-            title={declarationConflict.title}
-          >
-            The invitation says your partner accepts no columns from your file,
-            but{" "}
-            {declarationConflict.sentButNotDeclared.length === 1
-              ? "this one is"
-              : "these are"}{" "}
-            marked to send:
-            <MarkedColumnList names={declarationConflict.sentButNotDeclared} />
-            <UnsendRemedy
-              metadata={editorState.metadata}
-              names={declarationConflict.sentButNotDeclared}
-            />
-            , or ask your partner for an invitation that accepts{" "}
-            {declarationConflict.sentButNotDeclared.length === 1
-              ? "it"
-              : "them"}
-            .
-          </Alert>
-        )}
-        {/* The marks differ from a non-empty declaration. The partner is shown
-            the difference as a terms change before any data moves, so this
-            informs and does not hold the launch. */}
-        {declarationConflict?.kind === "setMismatch" && (
+        {/* The marks differ from the invitation's expected list. The partner's
+            run is offered the difference as a terms change before any data
+            moves, so this informs and does not hold the launch. Not a live
+            region: the grid below already voices the disclosed set. */}
+        {declarationConflict !== undefined && (
           <Alert
             role="note"
             color="blue"
@@ -609,13 +545,9 @@ export function AcceptorColumnsStep({
                 )}
               </>
             )}
-            Your partner will be asked to accept{" "}
-            {declarationConflict.declaredButNotSent.length > 0
-              ? "the difference"
-              : declarationConflict.sentButNotDeclared.length === 1
-                ? "it"
-                : "them"}{" "}
-            before any data is sent.
+            Before any data is sent, your partner&apos;s run is asked to accept
+            the difference; a partner that cannot answer stops the exchange
+            there.
             {declarationConflict.declaredButNotSent.length > 0 && wideningOffer}
           </Alert>
         )}
