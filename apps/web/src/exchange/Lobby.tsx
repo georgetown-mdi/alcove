@@ -23,9 +23,9 @@ import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
+import { INSTALLED_VERSION_URL, userGuideUrl } from "./userGuide";
 import { FILE_ASSURANCE_LINE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
-import { userGuideUrl } from "./userGuide";
 
 /**
  * The quick path's screen: two primary actions side by side -- invite someone to a
@@ -131,6 +131,23 @@ export function Lobby() {
           Find records you have in common without sharing PII, then exchange
           data about those records.
         </p>
+        {!isConsoleBuild() && (
+          <p className={`${styles.sub} ${styles.small}`}>
+            This is the browser version: nothing to install, and data for
+            matching is encrypted locally in your browser. To exchange through
+            your own SFTP server or a shared folder, or to run exchanges on a
+            schedule from your own systems, use the{" "}
+            <Anchor
+              inherit
+              href={INSTALLED_VERSION_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              installed version
+            </Anchor>
+            .
+          </p>
+        )}
         {FILE_ASSURANCE_LINE !== undefined && (
           <p className={`${styles.sub} ${styles.small}`}>
             {FILE_ASSURANCE_LINE}
