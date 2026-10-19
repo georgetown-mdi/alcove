@@ -9,8 +9,9 @@ register and revoke each exchange's relay key, an optional HTTPS registrar that
 enrolls an exchange under the relay-owner token, or without one where the
 operator turns that on, and rotates or revokes it under
 a proof of holding its key, a sweep that revokes
-lapsed keys, and a verification script that asks the deployed relay whether it
-is doing its job.
+lapsed keys, an optional [WebSocket relay](#the-websocket-relay) behind the
+same front for a network that stops TURN, and a verification script that asks
+the deployed relay whether it is doing its job.
 
 The relay runs on a **dedicated instance**, provisioned from this reference
 rather than configured by hand. [`aws/provision.md`](aws/provision.md) is how one
@@ -66,6 +67,14 @@ your own environment:
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
   [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
+- [The WebSocket relay](#the-websocket-relay), its unit, its route on the
+  front and its `verify.sh` probe are not yet installed on the project's
+  relay host, so its memory there, the front terminating its TLS, and the
+  probe through the front are not yet measured. `nginx -t` has not checked
+  the front's WebSocket relay server. The tests drive `websocket-pair.py`
+  against the relay itself, started as its unit starts it, behind a TLS
+  server the test runs in the front's place, with keys
+  `register-exchange.sh` wrote.
 - [The counts publisher and the alarms](#monitoring) ran on the project's
   relay host on 2026-10-15; [the runbook's block
   command](#when-an-alarm-fires) has not yet run there. The tests drive the
@@ -77,11 +86,12 @@ the delivery decision is in
 [`docs/notes/standing-relay-delivery.md`](../../docs/notes/standing-relay-delivery.md).
 Neither is restated here.
 
-Nothing in this directory runs a relay in CI. Tests under `scripts/` drive
+Nothing in this directory runs coturn in CI. Tests under `scripts/` drive
 `certs/deploy-hook.sh`, `relay_table.py`, the key scripts, the sweep, the
 registrar, `verify.sh`'s cleanup and registrar probe, and `render-config.sh`
 against a fixture host whose `turndb` is a real SQLite file holding coturn's
-`turn_secret` table. `scripts/relay-host-schedule.test.mjs` holds every daily
+`turn_secret` table. `scripts/relay-websocket.test.mjs` runs the WebSocket
+relay itself against such a file, for `websocket-pair.py`. `scripts/relay-host-schedule.test.mjs` holds every daily
 timer on the host to [the daily schedule](#the-daily-schedule) and each daily
 unit's `ExecStart` to the maintenance lock's shape.
 `scripts/relay-turn-secret-schema.test.mjs` holds that
@@ -95,8 +105,10 @@ other repository-level coupling is the docker Dependabot entry for
 ## Order of operations
 
 1. Hold an elastic address, create the DNS A record for the relay's name, and
-   one for the registrar's name where it gets one, and launch the instance --
-   [`aws/provision.md`](aws/provision.md).
+   one for the registrar's name and the WebSocket relay's where each gets one,
+   and launch the instance -- [`aws/provision.md`](aws/provision.md). A host
+   that runs the WebSocket relay also needs the Node workspace tree
+   [The WebSocket relay](#the-websocket-relay) names.
 2. Put `/etc/alcove-relay/relay.env` on the host from
    [`relay.env.example`](relay.env.example) and set the realm, and the names
    [the 443 front](#the-443-front) routes. Every script refuses to run without
@@ -109,8 +121,9 @@ other repository-level coupling is the docker Dependabot entry for
    renders the configuration, installs the unit and the three timers, on
    Amazon Linux 2023 the [OS update](#os-updates) timer, where `relay.env`
    names a metrics region the [counts publisher](#monitoring)'s timer,
-   starts the relay, starts the registrar where the host holds its token, and
-   runs `verify.sh`.
+   starts the relay, starts the registrar where the host holds its token,
+   starts the WebSocket relay where `relay.env` names it, and runs
+   `verify.sh`.
 5. Read `verify.sh`'s output. A relay that starts and cannot allocate looks
    identical from the console.
 6. Per exchange: `register-exchange.sh <exchange-id> <max-age-days|none>`
@@ -152,7 +165,9 @@ when its operator runs `install.sh` from that commit's checkout.
 | `import-legacy-mapping.sh` | Carries the text mapping an install from before the secrets table's own mapping kept into the table, and deletes it once the table reads back every row; `install.sh` runs it. See [Per-exchange keys](#per-exchange-keys), The mapping |
 | `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, every ten minutes. See [Per-exchange keys](#per-exchange-keys), Lifetime |
 | `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, or for any caller where enrollment without a token is on, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
-| `verify.sh` | Drives a real TURNS handshake, a Binding through the front that coturn must answer with the client's own address rather than a loopback one, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front, and then a Binding through it to coturn, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
+| `alcove-relay-websocket.service` | The optional [WebSocket relay](#the-websocket-relay) on `127.0.0.1`, from the host's Node workspace tree, as the relay image's account; `install.sh` fills in that account and the relay's port and starts it only where `relay.env` names the relay |
+| `websocket-pair.py` | Two sockets at the WebSocket relay over TLS, paired under one exchange's key and passing one message and the close; `verify.sh` runs it through the front |
+| `verify.sh` | Drives a real TURNS handshake, a Binding through the front that coturn must answer with the client's own address rather than a loopback one, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Where `relay.env` names the WebSocket relay it runs `websocket-pair.py` through the front at that name: two sockets pair under a key registered for the run, and one message and the close cross; with no name it says it skipped the WebSocket relay. Its exchanges are under the ids `alcove-verify-a`, `-b`, `-registrar`, and `-websocket`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front, and then a Binding through it to coturn, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
@@ -663,7 +678,9 @@ One listener holds 443/tcp on every address: nginx's stream module in a
 container of its own, `alcove-relay-front.service`. It reads the server name
 from a connection's TLS ClientHello. A connection for the registrar or a
 routed service passes on, its bytes unchanged, to that service on loopback,
-which presents its own certificate. Every other connection is TURN: the front
+which presents its own certificate. A connection for the WebSocket relay has
+its TLS terminated by the front, which passes the upgrade to the relay on
+loopback. Every other connection is TURN: the front
 terminates its TLS under the relay's certificate and passes plain TURN over
 TCP to coturn on loopback, which opens no TLS listener and holds no key.
 
@@ -672,6 +689,7 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   | the connection asks for | it goes to |
   | --- | --- |
   | `ALCOVE_RELAY_REGISTRAR_NAME` | the registrar, on `127.0.0.1` at `ALCOVE_RELAY_REGISTRAR_FRONT_PORT`, with a PROXY header naming the client |
+  | `ALCOVE_RELAY_WEBSOCKET_NAME` | the front's WebSocket relay server on `127.0.0.1:5351`, which terminates the TLS, then the WebSocket relay on `127.0.0.1` at `ALCOVE_RELAY_WEBSOCKET_PORT`, with no PROXY header |
   | a name in `ALCOVE_RELAY_FRONT_ROUTES` (`name=port` pairs) | that port on `127.0.0.1`, through the route hop |
   | the realm, any other name, no name, or bytes that are not TLS | the front's TURN server on `127.0.0.1:5347`, then coturn's proxy port, `127.0.0.1:5350` |
 
@@ -690,7 +708,7 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   configuration, so a front that fails either leaves coturn as it was. A
   first install has no certificate yet at that point, so it checks against a
   throwaway one.
-- **Three servers.** The client's address is needed in two places: the
+- **Three servers, and a fourth for the WebSocket relay.** The client's address is needed in two places: the
   registrar's rate limit counts by it, and coturn reports it to a TURN client
   as the address the client connected from. A browser that is told a
   loopback address there may refuse the allocation: Firefox 157 gathered no
@@ -707,10 +725,15 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
     refuses a connection that opens without one;
   - the route hop, on `127.0.0.1:5348`, reads and drops the header and
     passes the connection, TLS unopened, to the routed service, which never
-    sees it.
+    sees it;
+  - where `relay.env` names the WebSocket relay, the WebSocket relay
+    server, on `127.0.0.1:5351`, reads the header, terminates the TLS at
+    the TURN server's settings, and passes the connection to the relay with
+    no header ([The WebSocket relay](#the-websocket-relay), Quotas).
+    `render-front.sh` leaves it out of a host that names no relay.
 
-  The ports 5347 and 5348 are fixed in `front.conf.tmpl` and
-  `render-front.sh` (`TURN_PORT`, `HOP_PORT`), and 5350 in
+  The ports 5347, 5348 and 5351 are fixed in `front.conf.tmpl` and
+  `render-front.sh` (`TURN_PORT`, `HOP_PORT`, `WEBSOCKET_TLS_PORT`), and 5350 in
   `turnserver.conf.tmpl` and `render-front.sh` (`COTURN_PORT`);
   `scripts/relay-front.test.mjs` holds them equal.
 - **TLS for TURN.** The TURN server serves `/etc/alcove-relay/certs`, the
@@ -730,24 +753,31 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   the PROXY header, and coturn from the TURN server's. A connection through
   the route hop arrives at its service from `127.0.0.1`, so the broker
   front's access log lines for a connection through 443 name that address.
-  `verify.sh` asks coturn, through the front, which address it sees, and
-  fails on a loopback one.
+  So does every connection the WebSocket relay takes. `verify.sh` asks
+  coturn, through the front, which address it sees, and fails on a loopback
+  one.
 - **Bounds.** A connection's first bytes must arrive within 10 s
   (`preread_timeout`), the TURN server's TLS handshake must finish within 10 s
   (`ssl_handshake_timeout`), and the service behind must accept within 5 s.
   An established connection idle for 900 s is closed, longer than coturn's
   `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
-  not cut. Each server applies the same bounds.
+  not cut. Each server applies the same bounds, except that the WebSocket
+  relay server closes a connection idle for 300 s, ten times the relay's
+  30 s ping ([The WebSocket relay](#the-websocket-relay), Its route).
 - **Connections and memory.** One worker (`worker_processes 1`) holds at
   most 1024 connections at once (`worker_connections`), a client's side and
   the service's side of each hop counting one. A TURN client counts four
   (the server on 443's two sides, the TURN server's two sides), and so does
   a client of a routed service (the server on 443's two sides, the route
-  hop's two sides). A registrar client counts two. So 1024 is 256 TURN
+  hop's two sides), or of the WebSocket relay (the server on 443's two
+  sides, the WebSocket relay server's two sides). A registrar client counts
+  two. So 1024 is 256 TURN
   clients, six times coturn's `total-quota` of 40 allocations, 256 clients
   of routed services, twice the 128 WebSocket clients the broker's front
   admits (`worker_connections 256` in `infra/broker/nginx.conf.tmpl`, two
-  per client), or 512 registrar clients. That is the bound on the front's
+  per client), 256 sockets of the WebSocket relay, above the 120 it holds at
+  once (80 awaiting a hello and 20 pairings of two, `docs/spec/WEBSOCKET_RELAY.md`),
+  or 512 registrar clients. That is the bound on the front's
   memory: each TURN client holds the TURN server's TLS session and a buffer
   each way on two hops, which the host run reads under load
   (below). The instance has 412 MB and no headroom (a full `npm ci` there
@@ -762,12 +792,12 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   `memory.peak` there, with `docker stats --no-stream alcove-relay-front`,
   idle and while a batch of `stun-binding.py --hold` probes holds connections
   open through the front, and `free -m` before and after.
-- **One limit for all three services.** The 1024 connections are shared by
-  TURN, the registrar and every routed service, and the front sets no limit
-  per client address. One host that opens that many connections, and holds
-  them or replaces each as the 10 s or 900 s bound closes it, keeps every
-  other client from TURN, the registrar and the broker on 443 for as long as
-  it does so.
+- **One limit for every service.** The 1024 connections are shared by
+  TURN, the registrar, the WebSocket relay and every routed service, and the
+  front sets no limit per client address. One host that opens that many
+  connections, and holds them or replaces each as the 10 s or idle bound
+  closes it, keeps every other client from TURN, the registrar, the
+  WebSocket relay and the broker on 443 for as long as it does so.
 - **What it logs.** No access log: one line per connection would record which
   client asked for which service. Its error log, warnings and above, goes to
   the journal. When coturn or a routed service refuses a connection, does
@@ -784,9 +814,9 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
   under its own name. The registrar then needs another port, such as the 8444
   `relay.env.example` sets.
-- **The WebSocket relay.** It runs on this host when it is built
-  ([docs/notes/web-websocket-transport.md](../../docs/notes/web-websocket-transport.md)),
-  under a name of its own, and its route is one more `name=port` pair.
+- **The WebSocket relay.** Under a name of its own, with its TLS terminated
+  by the front rather than passed through, since the relay has no
+  certificate: [The WebSocket relay](#the-websocket-relay).
 
 What was measured on the project's relay host on 2026-10-12, and what has
 not been -- the registrar behind the front, the TURN server, and a relayed
@@ -794,6 +824,101 @@ exchange from a 443-only client -- is in
 [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
 with the alternative if the front fails a TURN client: a second public
 address on the instance.
+
+## The WebSocket relay
+
+The WebSocket relay ([`packages/websocket-relay`](../../packages/websocket-relay/README.md))
+is the path an exchange takes for two parties whose network stops TURN but
+passes a WebSocket on 443. Each party opens one socket at `wss://<name>/relay` and
+proves it holds the exchange's relay key; the relay pairs the two sockets of
+one exchange and forwards their frames unread. Its wire and bounds are in
+[WEBSOCKET_RELAY.md](../../docs/spec/WEBSOCKET_RELAY.md), the design in
+[web-websocket-transport.md](../../docs/notes/web-websocket-transport.md).
+`install.sh` runs it where `relay.env` sets `ALCOVE_RELAY_WEBSOCKET_NAME`, and
+stops and disables it where that is unset.
+
+- **Its name.** A DNS name of its own, whose record points at this host and
+  is DNS-only; nothing defaults it. It cannot be the realm or the
+  registrar's name. The relay's certificate is issued for it beside the
+  realm ([Certificates](#certificates)), so a certificate issued before the
+  name was set needs a forced renewal, and `verify.sh`'s probe fails until
+  then.
+- **Its route.** The front sends a connection asking for the name to its
+  WebSocket relay server, which terminates the TLS at the TURN server's
+  settings and passes the connection to the relay on `127.0.0.1` at
+  `ALCOVE_RELAY_WEBSOCKET_PORT`, 8446 where unset
+  ([The 443 front](#the-443-front)). The relay terminates no TLS and listens
+  on loopback alone. The front's WebSocket relay server closes an
+  established connection idle for 300 s, the timeout
+  [WEBSOCKET_RELAY.md, Keepalive](../../docs/spec/WEBSOCKET_RELAY.md#keepalive)
+  sets the relay's ping against; the relay pings each socket every 30 s, so
+  a pairing whose parties are silent stays open until the relay's own idle
+  bound.
+- **Its keys.** It reads the exchange keys from the secrets table coturn
+  reads ([Per-exchange keys](#per-exchange-keys)), read-only, so an exchange
+  `register-exchange.sh` or [the registrar](#the-registrar) enrolled is
+  admitted here as by coturn, and a revoked or swept one is not. It opens no
+  connection of its own.
+- **The unit.** `alcove-relay-websocket.service` runs
+  `/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts`
+  as the relay image's account, which owns the table, from the Node
+  workspace tree at `/opt/alcove-broker/src`: the tree
+  [`infra/broker/README.md`, Install](../broker/README.md#install), steps 1
+  to 6, sets up, which [the host pull](../host-pull/README.md) keeps at
+  `main` on the project's host. The broker workspace's install there has
+  every package the relay imports (measured on 2026-10-19 against a scoped
+  `npm ci` of that workspace alone). The tree also needs core's
+  `websocket-relay.esm.js`, with the chunks it imports, in
+  `packages/core/dist`, which the broker core build
+  ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) includes
+  beside the broker's entry, under the same `SHA256SUMS` manifest and
+  signature. `install.sh` checks for them and for `/usr/local/bin/node` where
+  the name is set, and stops before it changes anything when one is missing;
+  a tree whose core build predates the relay's entry is refused with that
+  cause. After the start it waits up to 120 s, each probe at most 2 s, for
+  the relay to answer a plain request on `/relay` with `404`.
+- **One process.** The unit runs `node` with tsx's loader rather than
+  `npm start`, which runs npm, tsx's own process and then node; why, and
+  what was measured:
+  [webrtc-relay-deployment.md, The WebSocket relay's unit](../../docs/notes/webrtc-relay-deployment.md#the-websocket-relays-unit).
+- **The sandbox.** The broker's ([`infra/broker/README.md`,
+  Exposure](../broker/README.md#exposure)): no capability, connections to and
+  from loopback alone (`IPAddressDeny=any`, `IPAddressAllow=localhost`), and
+  the whole file system read-only except a private `/tmp`, where tsx keeps
+  its cache. `/etc/alcove-relay` is hidden from it (`InaccessiblePaths=`):
+  the relay image's account owns the rendered `turnserver.conf`, which holds
+  coturn's static authentication secret where the host keeps one, and the
+  relay reads nothing there. `install.sh` refuses an image that reports uid
+  0, so the relay never runs as root. `systemd-analyze security` has not
+  been run on it.
+- **Quotas.** The relay's own, each on an exchange's key
+  ([WEBSOCKET_RELAY.md, Quotas](../../docs/spec/WEBSOCKET_RELAY.md#quotas)).
+  It counts nothing by client address, and every connection reaches it from
+  `127.0.0.1`: the front sends it no PROXY header, because the relay, a Node
+  HTTP server, answers an upgrade that opens with one `400` (measured against
+  the standalone runner on 2026-10-19). A quota for each client address
+  needs the relay to read that header first. The front's own limit is
+  shared with every other service on 443 ([The 443 front](#the-443-front),
+  One limit for every service).
+- **Logs.** Its standard output and error go to the journal, under the
+  retention `journald-alcove-relay.conf` sets: the line
+  `alcove-websocket-relay <port>` at each start, and on its error stream a
+  warning when the key table cannot be read and the faults
+  [WEBSOCKET_RELAY.md, The key table](../../docs/spec/WEBSOCKET_RELAY.md#the-key-table)
+  names, each limited to one a minute; a fault about one exchange's key
+  names that exchange's id.
+- **Memory.** Not yet measured on the project's host, which has 412 MB and
+  about 130 MB available before the relay starts ([The 443 front](#the-443-front),
+  Connections and memory). The relay's resident set peaked at 77 MB on one
+  pairing at its full byte rate in the development container
+  ([web-websocket-transport.md, S3](../../docs/notes/web-websocket-transport.md#the-spikes)).
+- **Restarts.** Every `install.sh` run on a host that names the relay
+  restarts it, the host pull's among them, and a certificate change restarts
+  the front; either drops the pairings in progress.
+- **`verify.sh`.** Registers `alcove-verify-websocket` under a key of its
+  own and runs `websocket-pair.py` through the front at the relay's name:
+  the two sockets must pair and one message and the close must cross. The
+  run's key is revoked on exit.
 
 ## Supervision and the container runtime
 
@@ -872,7 +997,7 @@ its maximum run time:
   sized to (its header). The OS update's hour is more than twice the 23-minute
   upgrade measured under [OS updates](#os-updates). The verification's 30
   minutes are above the sum of `verify.sh`'s own timeouts, about 23 minutes
-  with one front route. The renewals' 10 minutes are a working value, not a
+  with one front route and a minute more with the WebSocket relay. The renewals' 10 minutes are a working value, not a
   measured one: neither `renew.sh` bounds its ACME client.
 - **A host that was down** at a job's start runs the renewals and the
   verification when it boots, under the lock below; the OS update and the pull
@@ -917,13 +1042,14 @@ rejects) or `acme.sh`. DNS-01 rather than HTTP-01 because the relay already
 terminates TLS on 443 for TURNS -- an HTTP-01 challenge would need a second
 service on 80 whose only job is to answer it.
 
-The certificate names the realm, and `ALCOVE_RELAY_REGISTRAR_NAME` beside it
-where that is set, since the registrar presents the same certificate under its
-own name. A certificate issued before the name was set covers the realm alone
-until a forced renewal reissues it:
+The certificate names the realm, and `ALCOVE_RELAY_REGISTRAR_NAME` and
+`ALCOVE_RELAY_WEBSOCKET_NAME` beside it where each is set, since the
+registrar presents the same certificate under its own name and the front
+presents it under the WebSocket relay's. A certificate issued before a name
+was set does not cover that name until a forced renewal reissues it:
 `ALCOVE_RELAY_RENEW_FORCE=1 /opt/alcove-relay/certs/renew.sh`, which widens
 lego's window to 365 days or passes acme.sh `--force`. Until then `verify.sh`'s
-registrar probe fails on the name. Each forced renewal counts against Let's
+probe of that service fails on the name. Each forced renewal counts against Let's
 Encrypt's limit of five duplicate certificates a week.
 
 The provider is a variable, and the credential lives in `/etc/alcove-relay/acme.env`
@@ -932,8 +1058,8 @@ at mode 600. `certs/env.example` carries the Cloudflare shape (a token scoped to
 provider's variables in the same file.
 
 Two services read the certificate: [the 443 front](#the-443-front), which
-terminates TLS for TURN, and [the registrar](#the-registrar). coturn reads
-none.
+terminates TLS for TURN and the WebSocket relay, and
+[the registrar](#the-registrar). coturn and the WebSocket relay read none.
 
 **The deploy hook gives the files to root.** The front's nginx master reads
 the key as root with every capability dropped, so it can read only a key root
@@ -1199,8 +1325,8 @@ The responses:
   ```
 
   Use `ip6tables` for an IPv6 address. A new connection from it is dropped; an
-  open one gets nothing more through, and the front closes it after 900 s
-  idle ([The 443 front](#the-443-front), Bounds). The rules last until a
+  open one gets nothing more through, and the front closes it after at most
+  900 s idle ([The 443 front](#the-443-front), Bounds). The rules last until a
   reboot. `iptables -L INPUT -n --line-numbers` lists them with their numbers;
   `iptables -D INPUT <number>` removes one. On a host that has `nft` instead,
   `nft add rule` into an `input` chain with `ip saddr <address> tcp dport 443

@@ -1,8 +1,9 @@
 name: Broker Core Build
 run-name: ${{ github.event_name == 'push' && format('Broker core build {0}', github.sha) || format('Broker core build dry run on {0}', github.ref_name) }}
 
-# Builds the part of @alcove/core the standalone signaling broker runs, signs
-# it keylessly with Cosign, and on a push to main publishes it as assets of the
+# Builds the part of @alcove/core the broker's host runs, the standalone
+# signaling broker's entry and the WebSocket relay's, signs it keylessly with
+# Cosign, and on a push to main publishes it as assets of the
 # one `broker-core-build` prerelease, named by commit. The broker's host cannot
 # build core itself; infra/broker/README.md, Install, is how it takes and
 # verifies this build, and docs/RELEASES.md says why the prerelease is not a
@@ -60,7 +61,7 @@ jobs:
 
       # Owner, group and times fixed, so a rebuild of one commit packs the same
       # archive bytes whenever the built files are the same.
-      - name: Pack the entry point and the chunks it imports
+      - name: Pack the entry points and the chunks they import
         id: pack
         run: |
           set -euo pipefail

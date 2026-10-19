@@ -20,7 +20,7 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 3. Downloads `alcove-broker-core-<commit>.tar.gz` and its Sigstore bundle from the `broker-core-build` prerelease ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) and verifies the signature with the command in [`infra/broker/README.md`, Install](../broker/README.md#install), step 5.
    The identity is the publishing workflow on `refs/heads/main`, and `--certificate-github-workflow-sha` is the tip from step 1, so a correctly signed build of any other commit is refused.
 4. Fetches `main` into a new tree, `/opt/alcove-broker/trees/<commit>`, and refuses it unless the fetched commit is the tip from step 1.
-   It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
+   It unpacks the build, the broker's and the WebSocket relay's core entries with the chunks they import, into the tree's `packages/core/dist`, checks the files against the archive's `SHA256SUMS` and refuses a member it does not list or a name it lists that no member has, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
    No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, and `tsx`'s optional, darwin-only `fsevents` (which Linux skips) declare one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
    When both pass, it writes the tip to the deployed marker and trees are removed as step 7 says.
@@ -52,7 +52,7 @@ A host that is down at 09:30 skips the day rather than pulling at boot.
 | --- | --- | --- |
 | `unchanged` | 0 | the tip of `main` is the deployed commit |
 | `skipped` | 0 | a push-triggered workflow run has not completed, none has started yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
-| `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` |
+| `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` or the names it lists |
 | `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, a precondition below, the installs at the tip when there was no deployed commit to roll back to, or the run was stopped by a signal, such as `timeout`'s at the run's one-hour maximum |
 | `rolled-back` | 1 | the installs at the tip failed, and both install scripts and `verify.sh` passed again on the deployed commit |
 | `rollback-failed` | 1 | the installs at the tip failed, and so did those on the deployed commit; the units are as far as the second attempt got |

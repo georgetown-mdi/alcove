@@ -19,7 +19,10 @@ import {
   parseFile,
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
-import { BROKER_CORE_ENTRY, brokerCoreFiles } from "./pack-broker-core.mjs";
+import {
+  SIGNALING_BROKER_ENTRY,
+  brokerCoreFiles,
+} from "./pack-broker-core.mjs";
 
 // What the standalone signaling broker can reach at run time. It is the one
 // process here that listens on the internet with no application around it, so
@@ -362,12 +365,12 @@ describe("the built @alcove/core/untrusted-text closure", () => {
     );
   });
 
-  it("is the file set the published broker core archive packs", () => {
+  it("is the file set the published broker core archive packs for the broker", () => {
     // pack-broker-core.mjs walks the same graph with its own parser. An import
     // form one follows and the other does not would ship a closure this suite
     // never measured.
-    expect(closureFiles(requireBuiltDist(BROKER_CORE_ENTRY))).toEqual(
-      brokerCoreFiles(coreDist),
+    expect(closureFiles(requireBuiltDist(SIGNALING_BROKER_ENTRY))).toEqual(
+      brokerCoreFiles(coreDist, [SIGNALING_BROKER_ENTRY]),
     );
   });
 

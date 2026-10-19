@@ -181,31 +181,47 @@ const TREE_STUBS = {
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
-/** A core build archive: the entry point, one chunk and the manifest. */
-const buildArchive = (root, path, { corrupt = false } = {}) => {
+const BUILD_FILES = {
+  "untrusted-text.esm.js": 'import "./shared2.esm.js";\nexport {};\n',
+  "shared2.esm.js": "export const shared = 1;\n",
+};
+
+/**
+ * A core build archive: the entry point, one chunk and the manifest. `unlisted`
+ * adds a member the manifest does not name; `unarchived` leaves a listed file
+ * out of the archive.
+ */
+const buildArchive = (
+  root,
+  path,
+  { corrupt = false, unlisted = undefined, unarchived = undefined } = {},
+) => {
   const dir = join(root, "build");
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir);
-  const files = {
-    "untrusted-text.esm.js": 'import "./shared2.esm.js";\nexport {};\n',
-    "shared2.esm.js": "export const shared = 1;\n",
-  };
-  for (const [name, text] of Object.entries(files)) {
+  for (const [name, text] of Object.entries(BUILD_FILES)) {
     writeFileSync(join(dir, name), text);
   }
   writeFileSync(
     join(dir, "SHA256SUMS"),
-    Object.entries(files)
+    Object.entries(BUILD_FILES)
       .map(([name, text]) => `${sha256(text)}  ${name}\n`)
       .join(""),
   );
   if (corrupt) writeFileSync(join(dir, "shared2.esm.js"), "tampered\n");
+  const members = Object.keys(BUILD_FILES).filter(
+    (name) => name !== unarchived,
+  );
+  if (unlisted) {
+    writeFileSync(join(dir, unlisted), "export const extra = 1;\n");
+    members.push(unlisted);
+  }
   const tar = spawnSync("tar", [
     "-czf",
     path,
     "-C",
     dir,
-    ...Object.keys(files),
+    ...members,
     "SHA256SUMS",
   ]);
   expect(tar.status).toBe(0);
@@ -685,6 +701,36 @@ describeOnScriptHost("pull.sh", () => {
     h.archive({ corrupt: true });
     const r = outcome(h, "refused", 1);
     expect(r.record.reason).toContain("SHA256SUMS");
+    expect(named(r.calls, "npm")).toEqual([]);
+    untouched(h);
+  });
+
+  it("refuses a build holding a member its SHA256SUMS does not list", () => {
+    const h = host();
+    h.archive({ unlisted: "extra.esm.js" });
+    const r = outcome(h, "refused", 1);
+    expect(r.record.reason).toBe(
+      `${ARCHIVE} holds extra.esm.js, which its SHA256SUMS does not list`,
+    );
+    expect(named(r.calls, "npm")).toEqual([]);
+    untouched(h);
+  });
+
+  // The fetched tree already has the listed file with its listed content, so
+  // sha256sum -c passes and only the member names show the gap.
+  it("refuses a build missing a file its SHA256SUMS lists", () => {
+    const h = host();
+    const checkedOut = join(h.root, "remote/packages/core/dist");
+    mkdirSync(checkedOut, { recursive: true });
+    writeFileSync(
+      join(checkedOut, "shared2.esm.js"),
+      BUILD_FILES["shared2.esm.js"],
+    );
+    h.archive({ unarchived: "shared2.esm.js" });
+    const r = outcome(h, "refused", 1);
+    expect(r.record.reason).toBe(
+      `${ARCHIVE} has no shared2.esm.js, which its SHA256SUMS lists`,
+    );
     expect(named(r.calls, "npm")).toEqual([]);
     untouched(h);
   });

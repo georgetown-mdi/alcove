@@ -49,20 +49,22 @@ EMAIL="${ALCOVE_RELAY_ACME_EMAIL:-}"
 PROVIDER="${ALCOVE_RELAY_DNS_PROVIDER:-cloudflare}"
 CLIENT="${ALCOVE_RELAY_ACME_CLIENT:-lego}"
 
-# The registrar's own name, where the host's 443 front routes one to it, is a
-# second name on the same certificate. The realm stays the first, which names
-# the client's stored files. A certificate issued before the name was set
-# covers the realm alone until a forced renewal (ALCOVE_RELAY_RENEW_FORCE=1)
-# reissues it; verify.sh's registrar probe fails until then.
-REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
+# The registrar's own name and the WebSocket relay's, where the host's 443
+# front routes each, are further names on the same certificate. The realm
+# stays the first, which names the client's stored files. A certificate issued
+# before a name was set does not cover it until a forced renewal
+# (ALCOVE_RELAY_RENEW_FORCE=1) reissues it; verify.sh's probe of that service
+# fails until then.
 LEGO_DOMAINS=(--domains "$REALM")
 ACMESH_DOMAINS=(-d "$REALM")
 NAMES="$REALM"
-if [ -n "$REGISTRAR_NAME" ] && [ "$REGISTRAR_NAME" != "$REALM" ]; then
-  LEGO_DOMAINS+=(--domains "$REGISTRAR_NAME")
-  ACMESH_DOMAINS+=(-d "$REGISTRAR_NAME")
-  NAMES="$REALM and $REGISTRAR_NAME"
-fi
+for name in "${ALCOVE_RELAY_REGISTRAR_NAME:-}" "${ALCOVE_RELAY_WEBSOCKET_NAME:-}"; do
+  if [ -n "$name" ] && [ "$name" != "$REALM" ]; then
+    LEGO_DOMAINS+=(--domains "$name")
+    ACMESH_DOMAINS+=(-d "$name")
+    NAMES="$NAMES and $name"
+  fi
+done
 case "${ALCOVE_RELAY_RENEW_FORCE:-}" in
   '') RENEW_DAYS=30; ACMESH_FORCE=() ;;
   1) RENEW_DAYS=365; ACMESH_FORCE=(--force) ;;

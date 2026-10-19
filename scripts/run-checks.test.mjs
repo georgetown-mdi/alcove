@@ -312,6 +312,7 @@ describe("the script tests against the shared paths", () => {
     "scripts/check-protocol-version-bump.test.mjs",
     "scripts/check-vectors-generators.test.mjs",
     "scripts/pack-broker-core.test.mjs",
+    "scripts/relay-websocket.test.mjs",
   ];
 
   // Tests that name a shared path only inside a fixture, a message or a

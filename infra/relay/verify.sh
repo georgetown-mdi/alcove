@@ -8,7 +8,7 @@
 # shapes assumed in advance. Fix what a later run gets wrong rather than
 # loosening a probe until it passes.
 #
-# Seven probes, in the order a failure matters:
+# Eight probes, in the order a failure matters:
 #
 #   handshake     a real TLS handshake on 443/tcp, and the certificate the relay
 #                 serves for its own realm
@@ -37,6 +37,11 @@
 #                 registered id is answered 409, and one naming its key 200.
 #                 Skipped, and said
 #                 so, where the host holds no token
+#   WebSocket relay
+#                 where relay.env names one: two sockets through the front, at
+#                 the relay's name, pair under a key registered for this run,
+#                 and one message and the close cross from one to the other.
+#                 Skipped, and said so, where the host names none
 #
 # internal-peer is the one that cannot be inferred from allocation: a relay that
 # allocates is working, and a relay that allocates toward its own VPC and the
@@ -228,15 +233,17 @@ done
 VERIFY_A=alcove-verify-a
 VERIFY_B=alcove-verify-b
 VERIFY_R=alcove-verify-registrar
+VERIFY_W=alcove-verify-websocket
 KEY_A="$(openssl rand -hex 32)"
 KEY_B="$(openssl rand -hex 32)"
 KEY_R="$(openssl rand -hex 32)"
+KEY_W="$(openssl rand -hex 32)"
 KEY_UNREGISTERED="$(openssl rand -hex 32)"
 # Cleanup revokes each id, which removes its row and its mapping in one
 # transaction; an id already gone is not a failure.
 cleanup() {
   local id out status
-  for id in "$VERIFY_A" "$VERIFY_B" "$VERIFY_R"; do
+  for id in "$VERIFY_A" "$VERIFY_B" "$VERIFY_R" "$VERIFY_W"; do
     status=0
     out="$("$HERE/revoke-exchange.sh" "$id" 2>&1)" || status=$?
     case "$status" in
@@ -518,6 +525,30 @@ else
       report fail "after the revocation the mapping or the secrets table still holds the key"
     fi
   fi
+fi
+
+# --- the WebSocket relay ---------------------------------------------------------
+# Configured where relay.env names the relay. Both sockets go through the front
+# on 443 under the relay's name, and the key reaches the probe on stdin.
+WEBSOCKET_NAME="${ALCOVE_RELAY_WEBSOCKET_NAME:-}"
+WEBSOCKET_NAME="${WEBSOCKET_NAME%.}"
+if [ -z "$WEBSOCKET_NAME" ]; then
+  printf '  SKIP     the WebSocket relay is not configured on this host (no ALCOVE_RELAY_WEBSOCKET_NAME)\n'
+elif ! WS_REG_OUT="$(printf '%s\n' "$KEY_W" | ALCOVE_RELAY_VERIFY_RUN=1 "$HERE/register-exchange.sh" "$VERIFY_W" none 2>&1)"; then
+  report unclear "could not register $VERIFY_W, so the WebSocket relay was not probed" \
+    "$(printf '%s' "$WS_REG_OUT" | tr '\n' ' ' | cut -c1-160)"
+else
+  WS_OUT="$(printf '%s\n' "$KEY_W" | bounded 60 python3 -B "$HERE/websocket-pair.py" "$CONNECT" 443 "$WEBSOCKET_NAME" "$VERIFY_W" 2>&1)"
+  WS_STATUS=$?
+  WS_DETAIL="$(printf '%s' "$WS_OUT" | tr '\n' ' ' | cut -c1-200)"
+  case "$WS_STATUS" in
+    0) report pass "two sockets paired at the WebSocket relay through the front and a message crossed" "$WS_DETAIL" ;;
+    5) report fail "the front did not serve a certificate for $WEBSOCKET_NAME" \
+         "$WS_DETAIL; a certificate issued before ALCOVE_RELAY_WEBSOCKET_NAME was set needs ALCOVE_RELAY_RENEW_FORCE=1 /opt/alcove-relay/certs/renew.sh" ;;
+    4|6) report fail "the WebSocket relay did not pair two sockets and forward a message" "$WS_DETAIL" ;;
+    *) report unclear "could not ask the WebSocket relay through the front" \
+         "$WS_DETAIL; is alcove-relay-websocket.service running? journalctl -u alcove-relay-websocket.service" ;;
+  esac
 fi
 
 printf '\n%s pass, %s fail, %s unclear\n' "$PASS" "$FAIL" "$UNCLEAR"
