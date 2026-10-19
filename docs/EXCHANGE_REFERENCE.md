@@ -69,7 +69,7 @@ What the names do and do not cover:
 
 Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_termslinkage_rule_set) field below, so the citation travels with the exchange: it is in the invitation, on the wire, on the accepting party's terms review, and in each party's exchange record.
 
-Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches only a first name of at least two letters. The default cleaning keeps a first name of one letter, and a [`filter_regex`](#string-transformation) step with the pattern `^.{2,}$` on each of those rules' first-name element drops it there, so a record holding only an initial matches through the rules on part of the first name, such as `SSN + LN + FN1`. The key lists on the acceptance screens show that step under each such rule.
+Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches only a first name of at least two letters. The default cleaning keeps a first name of one letter, and each of those rules drops it with a [`filter_regex`](#string-transformation) step on its first-name element (see [`first_name`](spec/DEFAULT_STANDARDIZATION.md#first_name)), so a record holding only an initial matches through the rules on part of the first name, such as `SSN + LN + FN1`. The key lists on the acceptance screens show that step under each such rule.
 
 #### Choosing rules by precision floor
 
