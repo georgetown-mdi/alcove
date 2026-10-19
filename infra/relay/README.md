@@ -68,10 +68,12 @@ your own environment:
   exchange through this relay covers is in
   [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
 - [The WebSocket relay](#the-websocket-relay), its unit, its route on the
-  front and its `verify.sh` probe are not yet installed on the project's
-  relay host, so its memory there, the front terminating its TLS, and the
-  probe through the front are not yet measured. `nginx -t` has not checked
-  the front's WebSocket relay server. The tests drive `websocket-pair.py`
+  front and its `verify.sh` probe ran on the project's relay host on
+  2026-10-19, installed from the promoted `main` by the host pull and
+  `install.sh`. The probe passed through the front (25 checks, none
+  failing): two sockets paired and a 32-byte message crossed. nginx loaded
+  the front's WebSocket relay server there, and from the public internet the
+  upgrade at `/relay` was answered 101 and at another path 404. The tests drive `websocket-pair.py`
   against the relay itself, started as its unit starts it, behind a TLS
   server the test runs in the front's place, with keys
   `register-exchange.sh` wrote.
@@ -907,10 +909,14 @@ stops and disables it where that is unset.
   [WEBSOCKET_RELAY.md, The key table](../../docs/spec/WEBSOCKET_RELAY.md#the-key-table)
   names, each limited to one a minute; a fault about one exchange's key
   names that exchange's id.
-- **Memory.** Not yet measured on the project's host, which has 412 MB and
-  about 130 MB available before the relay starts ([The 443 front](#the-443-front),
-  Connections and memory). The relay's resident set peaked at 77 MB on one
-  pairing at its full byte rate in the development container
+- **Memory.** On the project's host, which has 412 MB, the relay's
+  resident set peaked at about 81 MB and its cgroup at about 94 MiB through
+  `verify.sh` on 2026-10-19. Available memory was 129 MB before the relay
+  started and 103 MB at the lowest, 24 seconds after the start, against the
+  installer's 64 MB floor ([The 443 front](#the-443-front), Connections and
+  memory). The resident set falls once the relay is idle, because the kernel
+  swaps part of it, so the peak is the figure. In the development container
+  its resident set peaked at 77 MB on one pairing at its full byte rate
   ([web-websocket-transport.md, S3](../../docs/notes/web-websocket-transport.md#the-spikes)).
 - **Restarts.** Every `install.sh` run on a host that names the relay
   restarts it, the host pull's among them, and a certificate change restarts
