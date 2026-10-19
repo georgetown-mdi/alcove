@@ -145,9 +145,10 @@ jobs:
       - name: Verify vendored native tarball integrity
         run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
 
-      # The builder's own image and each base image come from Docker Hub,
-      # which limits anonymous pulls per source IP, and hosted runners share
-      # theirs. A run without the token, a fork's, pulls anonymously.
+      # The builder's own image and the default image's base come from Docker
+      # Hub, which limits anonymous pulls per source IP, and hosted runners
+      # share theirs. A run without the token, a fork's, pulls anonymously. The
+      # FIPS variant's base comes from ECR Public, pulled anonymously either way.
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
         uses: docker/login-action@v4

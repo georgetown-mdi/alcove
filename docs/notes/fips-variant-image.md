@@ -595,8 +595,9 @@ reaches a pinnable rootfs sooner.
 What moves with it: the digest is ECR Public's own, since the two registries
 give one release different digests, and the procedure resolves it there
 ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image)).
-The Dependabot entry above names Docker Hub's image, and whether it matches the
-ECR Public reference is unobserved; the digest freeze holds the base either way.
+The Dependabot block ignores both Docker Hub's name and ECR Public's, and which
+of the two it matches against the ECR Public reference has not been observed;
+the digest freeze pins the base either way.
 
 ## What it costs
 

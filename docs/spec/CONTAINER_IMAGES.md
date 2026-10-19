@@ -324,9 +324,7 @@ the packages are the same snapshot rather than two compatible ones.
 
 The digest names Amazon's own registry, ECR Public, rather than Docker Hub's
 `amazonlinux:2023`. The two registries publish the same releases under
-different digests, so a digest read from one cannot be carried to the other. On
-2026-10-19 Docker Hub's newest rootfs was `2023.12.20260930`, older than the
-release this pin needed.
+different digests, so a digest read from one cannot be carried to the other.
 
 That equality is asserted in the build rather than left to the bumper: the
 `nodebase` stage reads `system-release`'s version out of the rootfs and fails
