@@ -14,6 +14,7 @@ import {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   DEFAULT_LINKAGE_RULE_SET,
   inferMetadata,
+  inferredRecordIdentifierStatement,
   LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
@@ -504,6 +505,80 @@ test("a quick exchange names its rule selection above the keys, and a configured
   )}`;
   expect(shown(true)).toContain(`${line}\n  linkage keys (`);
   expect(shown(false)).not.toContain("rules selected");
+});
+
+/** The lines a quick exchange over `columns` shows, its metadata inferred as
+ * the quick exchange infers it. */
+function quickExchangeLines(columns: string[]): string[] {
+  const metadata = inferMetadata(columns, [], { mode: "direct" });
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    localTerms,
+    metadata,
+    columns,
+    undefined,
+    "quickExchange",
+  );
+  return lines;
+}
+
+test("a quick exchange names the first id column as the record identifier, above the rule selection", () => {
+  const lines = quickExchangeLines([
+    "first_name",
+    "last_name",
+    "case_id",
+    "id",
+  ]);
+  const at = lines.indexOf(
+    "  record identifier: case_id, the first id column in your file",
+  );
+  expect(at).toBeGreaterThan(-1);
+  // The console confirm renders the same core statement
+  // (directExchangeModel.test.ts).
+  expect(lines[at]).toBe(
+    `  record identifier: ${inferredRecordIdentifierStatement(
+      inferMetadata(["first_name", "last_name", "case_id", "id"], [], {
+        mode: "direct",
+      }),
+    )}`,
+  );
+  expect(lines[at + 1]).toMatch(/^ {2}rules selected: /);
+  expect(lines).toContain("    - case_id");
+  expect(lines).toContain("    - id");
+});
+
+test("a quick exchange with no id column says the result numbers rows by position", () => {
+  expect(quickExchangeLines(["first_name", "last_name", "notes"])).toContain(
+    "  record identifier: none found; the result's row_id column identifies " +
+      "your rows by their position in the file, counting from 0",
+  );
+});
+
+test("the record identifier line escapes a control or text-direction character in the header", () => {
+  const line = quickExchangeLines([
+    "first_name",
+    "last_name",
+    "case\u202E\u0007_id",
+  ]).find((entry) => entry.startsWith("  record identifier: "));
+  expect(line).toBe(
+    "  record identifier: case\\u202e\\x07_id, the first id column in your file",
+  );
+});
+
+test("a configured run shows no record identifier line", () => {
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    localTerms,
+    inferMetadata(["first_name", "last_name", "case_id"], [], {
+      mode: "direct",
+    }),
+    ["first_name", "last_name", "case_id"],
+    undefined,
+    "configuredExchange",
+  );
+  expect(lines.join("\n")).not.toContain("record identifier");
 });
 
 const lessCertainTerms: LinkageTerms = {

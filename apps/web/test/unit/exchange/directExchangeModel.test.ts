@@ -6,6 +6,7 @@ import {
   decideLinkageTermsVerdict,
   getDefaultLinkageTerms,
   inferMetadata,
+  inferredRecordIdentifierStatement,
   precisionFloorSelectionStatement,
 } from "@alcove/core";
 
@@ -32,6 +33,7 @@ import {
   directFileRefusal,
   directFileSanitizedNotice,
   directLinkageStrategyIntentFields,
+  directRecordIdentifierNotice,
   directServerBlockedReason,
   previewInferredTerms,
 } from "@exchange/directExchangeModel";
@@ -248,6 +250,34 @@ describe("previewInferredTerms", () => {
       `Rules selected: ${precisionFloorSelectionStatement(
         DEFAULT_PRECISION_FLOOR_SELECTION,
       )}.`,
+    );
+  });
+
+  test("names the preview's first id column as the record identifier, in the CLI display's words", () => {
+    const { metadata } = previewInferredTerms(
+      [...LINKABLE_COLUMNS, "case_id", "id"],
+      "x",
+      DIRECT_LINKAGE_STRATEGY_DEFAULT,
+      DIRECT_DEDUPLICATE_DEFAULT,
+    );
+    expect(inferredRecordIdentifierStatement(metadata)).toBe(
+      "case_id, the first id column in your file",
+    );
+    expect(directRecordIdentifierNotice(metadata)).toBe(
+      `Record identifier: ${inferredRecordIdentifierStatement(metadata)}.`,
+    );
+  });
+
+  test("with no id column, says the result numbers rows by position", () => {
+    const { metadata } = previewInferredTerms(
+      LINKABLE_COLUMNS,
+      "x",
+      DIRECT_LINKAGE_STRATEGY_DEFAULT,
+      DIRECT_DEDUPLICATE_DEFAULT,
+    );
+    expect(directRecordIdentifierNotice(metadata)).toBe(
+      "Record identifier: none found; the result's row_id column identifies " +
+        "your rows by their position in the file, counting from 0.",
     );
   });
 

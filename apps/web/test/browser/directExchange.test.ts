@@ -453,6 +453,13 @@ describe("direct exchange confirm and run", () => {
         page.getByText("Your partner runs the same step", { exact: false }),
       )
       .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "Record identifier: client_id, the first id column in your file.",
+        ),
+      )
+      .toBeInTheDocument();
     // The disclosure record is shown positively.
     await expect
       .element(page.getByText("writes a disclosure record", { exact: false }))

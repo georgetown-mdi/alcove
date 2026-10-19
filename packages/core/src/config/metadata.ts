@@ -4,7 +4,10 @@ import {
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   sanitizeForDisplay,
 } from "../utils/sanitizeForDisplay.js";
-import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
+import {
+  redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
+} from "../utils/sanitizeErrorForDisplay.js";
 
 import { OperatorConfigError, UsageError } from "../errors.js";
 import { SEMANTIC_TYPES } from "../types";
@@ -115,6 +118,31 @@ export function isDisclosedToPartner(column: ColumnMetadata): boolean {
  */
 export function disclosedColumnNames(metadata: Metadata): Array<string> {
   return metadata.filter(isDisclosedToPartner).map((column) => column.name);
+}
+
+/**
+ * Which column a run on inferred metadata indexes its records by, as both
+ * quick exchange displays word it: the CLI's display before the run and the
+ * console's confirm step. Reads the `role: identifier` column the result's
+ * first column takes its value from ({@link buildOutputTable}); inference gives
+ * that role to the first identifier-typed column in header order
+ * ({@link inferMetadata}). With none, the result heads its first column
+ * `row_id` and writes each record's 0-based row index there.
+ *
+ * The column name is redacted and escaped here. Starts lowercase, for use
+ * after a label.
+ */
+export function inferredRecordIdentifierStatement(metadata: Metadata): string {
+  const identifier = metadata.find((column) => column.role === "identifier");
+  if (identifier === undefined)
+    return (
+      "none found; the result's row_id column identifies your rows by " +
+      "their position in the file, counting from 0"
+    );
+  return (
+    `${redactAndSanitizeForDisplay(identifier.name)}, ` +
+    "the first id column in your file"
+  );
 }
 
 /**

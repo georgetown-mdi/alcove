@@ -17,6 +17,7 @@ import {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   disclosedColumnNames,
   heldBackColumnNames,
+  inferredRecordIdentifierStatement,
   matchedFieldColumns,
   matchedFieldsWithColumns,
   InternalConsistencyError,
@@ -220,8 +221,9 @@ function displayContradictedRuleSetCitation(
  * header the run read, in input order, which the held back line lists from.
  *
  * `run` names the command the display is for. A quick exchange's display
- * states which built-in rules the run selected for its keys, on a line above
- * them, since no file lists them; the remedy under a key marked less certain
+ * states which column inference took as the record identifier, and which
+ * built-in rules the run selected for its keys, on lines above them, since no
+ * file declares either; the remedy under a key marked less certain
  * is that command's own ({@link LESS_CERTAIN_REMEDY}).
  */
 export function renderExchangeDisclosure(
@@ -374,11 +376,13 @@ export function renderExchangeDisclosure(
       `  ${marked("held back", "heldBackColumnsSelfAuthored")}: ` +
         heldBack.map((name) => redactAndSanitizeForDisplay(name)).join(", "),
     );
-  if (run === "quickExchange")
+  if (run === "quickExchange") {
+    emit(`  record identifier: ${inferredRecordIdentifierStatement(metadata)}`);
     emit(
       "  rules selected: " +
         precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
     );
+  }
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   // One line per key: its name and the fields it combines, both already escaped
   // by the summary. The full element and transform detail stays in the

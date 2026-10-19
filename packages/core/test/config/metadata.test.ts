@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   identifierTypedColumnNames,
+  inferredRecordIdentifierStatement,
   inferMetadata,
   inferMetadataForEveryColumn,
   METADATA_NAME_SHAPE_MESSAGE,
@@ -11,6 +12,7 @@ import {
   disclosedColumnNames,
 } from "../../src/config/metadata";
 import { UsageError } from "../../src/errors";
+import { buildOutputTable } from "../../src/payloadExchange";
 
 import type { Metadata } from "../../src/config/metadata";
 
@@ -662,6 +664,78 @@ test("ownResultColumnNames: 'all' writes the undeclared columns after the declar
   expect(
     ownResultColumnNames(ownColumnsMeta, "all", ["notes", "code"]),
   ).toEqual(["ssn", "dose", "internal", "notes", "code"]);
+});
+
+// --- inferredRecordIdentifierStatement ---------------------------------------
+
+const NO_IDENTIFIER_STATEMENT =
+  "none found; the result's row_id column identifies your rows by their " +
+  "position in the file, counting from 0";
+
+/** The first header and first-column cells of the result for `metadata`, with
+ * rows 1 and 2 of `rows` matched. */
+function resultFirstColumn(
+  metadata: Metadata,
+  rows: Array<Record<string, string>>,
+): Array<string> {
+  const { headers, rows: out } = buildOutputTable(
+    [
+      [1, 2],
+      [0, 1],
+    ],
+    rows,
+    metadata,
+    { columns: [], rowIndices: [], rows: [] },
+  );
+  return [headers[0], ...out.map((row) => row[0])];
+}
+
+test.each([
+  [["ssn", "record_id", "dob"], "record_id"],
+  [["ssn", "case_id", "id"], "case_id"],
+  [["Identifier", "ssn"], "Identifier"],
+])(
+  "inferredRecordIdentifierStatement names the first id column of %j",
+  (columns, expected) => {
+    const metadata = inferMetadata(columns, [], { mode: "direct" });
+    expect(inferredRecordIdentifierStatement(metadata)).toBe(
+      `${expected}, the first id column in your file`,
+    );
+    const rows = [0, 1, 2].map((index) =>
+      Object.fromEntries(columns.map((name) => [name, `${name}-${index}`])),
+    );
+    expect(resultFirstColumn(metadata, rows)).toEqual([
+      expected,
+      `${expected}-1`,
+      `${expected}-2`,
+    ]);
+  },
+);
+
+test("inferredRecordIdentifierStatement with no id column says the result numbers rows from 0", () => {
+  const columns = ["ssn", "dob", "notes"];
+  const metadata = inferMetadata(columns, [], { mode: "direct" });
+  expect(inferredRecordIdentifierStatement(metadata)).toBe(
+    NO_IDENTIFIER_STATEMENT,
+  );
+  const rows = [0, 1, 2].map((index) =>
+    Object.fromEntries(columns.map((name) => [name, `${name}-${index}`])),
+  );
+  expect(resultFirstColumn(metadata, rows)).toEqual(["row_id", "1", "2"]);
+});
+
+test("inferredRecordIdentifierStatement escapes a control or text-direction character in the name", () => {
+  const metadata: Metadata = [
+    {
+      name: "a\u202Eid\u0007",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+  ];
+  const statement = inferredRecordIdentifierStatement(metadata);
+  expect(statement).not.toMatch(/[\u202E\u0007]/);
+  expect(statement).toBe("a\\u202eid\\x07, the first id column in your file");
 });
 
 test("ownResultColumnNames: with no identifier column every declared column stands", () => {

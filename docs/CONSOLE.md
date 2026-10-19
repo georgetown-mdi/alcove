@@ -214,6 +214,8 @@ Alongside the invitation flows, the console lobby offers a third path, "Quick ex
 - **Trust rests entirely on the transport.** It has no shared secret and no application-layer encryption, so the SSH/SFTP connection or the shared folder's own access controls -- and whoever administers them -- are what protect the exchange. That is the same posture the CLI's quick exchange mode has on the command line, in contrast to the shared-secret model an invitation establishes (see [Bootstrapping a shared secret](SECURITY_DESIGN.md#bootstrapping-a-shared-secret)).
 - **Each party still writes its own self-attested exchange record** of what it disclosed, exactly as an invitation-driven run does.
 
+The confirm step also names your record identifier, in the words the command line's display uses: the first column of your file whose name Alcove reads as an identifier (such as `id`, `client_id` or `Client ID`), whose value heads each row of the result. Where your file has none, it says so, and the result's first column is `row_id`, numbering your rows by their position in the file from 0 ([The result file](CLI.md#the-result-file)).
+
 The wire-level intent and the argv the server drives the CLI with are specified in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-zero-setup-intent).
 
 ## Authoring the SFTP connection

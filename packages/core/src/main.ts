@@ -579,6 +579,7 @@ export {
   describeUndeclaredColumns,
   disclosedColumnNames,
   identifierTypedColumnNames,
+  inferredRecordIdentifierStatement,
   inferMetadata,
   inferMetadataForEveryColumn,
   isDisclosedToPartner,
