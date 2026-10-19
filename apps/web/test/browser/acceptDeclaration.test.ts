@@ -94,9 +94,8 @@ const NON_ASCII = "\u00E9";
 const NOTICE_CEILING = 4_000;
 
 // The over-declared half's remedies as the notice states them: the partner's first,
-// then the local widening and what it costs. Pinned once, since the two tests that
-// read it drive the offer over columns sitting at different uses -- what it costs
-// must be one true sentence for both, naming no role.
+// then the local widening and what it keeps. Pinned once, since the two tests that
+// read it drive the offer over columns sitting at different uses.
 const PARTNER_REMEDY =
   "Ask your partner for an invitation that expects what your file sends.";
 
@@ -104,29 +103,24 @@ const WIDENING_OFFER =
   PARTNER_REMEDY +
   " Where your file does have such a column, you can set it to " +
   '"Sent to your partner" below instead - that discloses more than you ' +
-  "have marked so far, and each column has a single use, so sending it " +
-  "replaces the use it has now.";
+  "have marked so far, and sending it replaces the use it has now.";
 
-// What the same half says instead where taking that widening would cost an agreed
-// linkage key: the column the partner expects is one this file matches on, and a
-// column has a single use, so sending it leaves the run short of a key both parties
-// agreed to match on. Pinned in both numbers, since the offer is one sentence over
-// the whole declared list and its columns can sit at different uses.
-const WIDENING_COSTS_A_KEY =
-  'Setting the column your file does have to "Sent to your partner" below' +
-  " will not start the exchange: that column is used to match, and each" +
-  " column has a single use, so sending it would leave an agreed linkage" +
-  " key with no column to match on.";
+// What the same half says where the column the partner expects is one this file
+// matches on: the offer sends it and keeps matching on it. Pinned in both numbers,
+// since the offer is one sentence over the whole declared list.
+const WIDENING_OFFER_MATCHED =
+  "Your file does have that column as one it matches on: you can set it to" +
+  ' "Used to match - sent to your partner" below instead - that discloses' +
+  " more than you have marked so far, and the column is still used to match.";
 
-const WIDENING_COSTS_A_KEY_PLURAL =
-  'Setting the columns your file does have to "Sent to your partner" below' +
-  " will not start the exchange: at least one of them is used to match, and" +
-  " each column has a single use, so sending them would leave an agreed" +
-  " linkage key with no column to match on.";
+const WIDENING_OFFER_MATCHED_PLURAL =
+  "Your file does have those columns as ones it matches on: you can set them" +
+  ' to "Used to match - sent to your partner" below instead - that discloses' +
+  " more than you have marked so far, and the columns are still used to match.";
 
-// The same two sentences where a column the offer covers is the file's record
-// identifier: that column keeps its use and is sent, so the offer names its own
-// choice for it.
+// The offer where a column it covers is the file's record identifier, alone and
+// beside a column the file matches on: each keeps its use and is sent, so the
+// offer names each one's own choice.
 const WIDENING_OFFER_IDENTIFIER =
   PARTNER_REMEDY +
   " Your file does have that column as its record identifier: you can set" +
@@ -134,13 +128,13 @@ const WIDENING_OFFER_IDENTIFIER =
   " that discloses more than you have marked so far, and the column stays" +
   " your record identifier.";
 
-const WIDENING_COSTS_A_KEY_WITH_IDENTIFIER =
-  "Setting your record identifier to " +
-  '"Unique record identifier - sent to your partner" and the other columns' +
-  ' your file does have to "Sent to your partner" below will not start the' +
-  " exchange: at least one of them is used to match, and each column has a" +
-  " single use, so sending them would leave an agreed linkage key with no" +
-  " column to match on.";
+const WIDENING_OFFER_MATCHED_WITH_IDENTIFIER =
+  "Where your file does have such columns, you can set your record" +
+  ' identifier to "Unique record identifier - sent to your partner" and any' +
+  ' column used to match to "Used to match - sent to your partner" below' +
+  " instead - that discloses more than you have marked so far. Your record" +
+  " identifier stays your record identifier and a column used to match is" +
+  " still used to match.";
 
 function mountStep(
   linkageTerms: LinkageTerms,
@@ -271,11 +265,10 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
   });
 
-  test("states the linkage cost where the declared column the file has is one it matches on", async () => {
+  test("offers to send a declared column the file matches on and keep matching on it", async () => {
     // The same direction where the secondary remedy exists, over the column it is
     // most often offered for: the declared column is in this file and used for
-    // matching. Sending it would leave the run short of an agreed key, so the offer
-    // states that rather than the single-use cost, which reads as a way out.
+    // matching, so the offer names the choice that sends it and keeps its keys.
     mountStep(
       {
         ...acceptorTerms,
@@ -289,7 +282,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
       )
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      `${PARTNER_REMEDY} ${WIDENING_COSTS_A_KEY}`,
+      `${PARTNER_REMEDY} ${WIDENING_OFFER_MATCHED}`,
     );
     expect(app.container.textContent).not.toContain(WIDENING_OFFER);
     expect(app.container.textContent).not.toContain(
@@ -323,10 +316,10 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     );
     expect(painted).toEqual(["first_name"]);
     expect(app.container.textContent).toContain(
-      `${PARTNER_REMEDY} ${WIDENING_COSTS_A_KEY}`,
+      `${PARTNER_REMEDY} ${WIDENING_OFFER_MATCHED}`,
     );
     expect(app.container.textContent).not.toContain(
-      WIDENING_COSTS_A_KEY_PLURAL,
+      WIDENING_OFFER_MATCHED_PLURAL,
     );
   });
 
@@ -436,18 +429,18 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     expect(notice.textContent.length).toBeLessThanOrEqual(NOTICE_CEILING);
   });
 
-  test("states the linkage cost over a declaration longer than the list it paints", async () => {
-    // The bound above paints names, not remedies: the column whose sending would
-    // cost a key sits past it here, so a cost read per painted name would say
-    // nothing at all. The offer is one sentence over the whole declaration, and it
-    // is the whole declaration it is read from.
+  test("states the offer over a declaration longer than the list it paints", async () => {
+    // The bound above paints names, not remedies: the columns the offer sets sit
+    // past it here, so an offer read per painted name would say nothing at all.
+    // The offer is one sentence over the whole declaration, and it is the whole
+    // declaration it is read from.
     const unpainted = Array.from(
       { length: MAX_DECLARED_NAMES_SHOWN + 1 },
       (_, index) => `absent_${index}`,
     );
     // Two columns this file does have, at the two uses the offer covers: one it
-    // matches on and one it keeps as its record identifier. Only the first costs a
-    // key, which is what the plural sentence states, naming each column's choice.
+    // matches on and one it keeps as its record identifier. The sentence names
+    // each column's choice and what each keeps.
     const held = ["first_name", "record_id"];
     mountStep(
       {
@@ -473,7 +466,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
     // Still after the partner's remedy and the different-file one, which the
     // absent names above make available here.
     expect(notice.textContent).toContain(
-      `or choose a file that has those columns. ${WIDENING_COSTS_A_KEY_WITH_IDENTIFIER}`,
+      `or choose a file that has those columns. ${WIDENING_OFFER_MATCHED_WITH_IDENTIFIER}`,
     );
     expect(notice.textContent.length).toBeLessThanOrEqual(NOTICE_CEILING);
   });

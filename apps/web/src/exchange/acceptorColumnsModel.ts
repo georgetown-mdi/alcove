@@ -780,29 +780,31 @@ function widenableDeclaredColumns(
 }
 
 /**
- * The choice the notice's widening offer sets a column to: the file's one
- * record identifier takes `identifier-sent`, so it stays the identifier its own
- * result file begins with, and any other column takes `payload`. While the
- * marks hold more than one identifier ({@link hasMultipleIdentifiers}) no
- * column is the record identifier, so every column takes `payload`.
+ * The choice the notice's widening offer sets a column to: a column the file
+ * matches on takes `match-sent`, so it keeps the agreed keys it feeds; the
+ * file's one record identifier takes `identifier-sent`, so it stays the
+ * identifier its own result file begins with; any other column takes
+ * `payload`. While the marks hold more than one identifier
+ * ({@link hasMultipleIdentifiers}) no column is the record identifier, so an
+ * identifier column takes `payload`.
  */
 function widenedDisclosure(
   metadata: Metadata,
   name: string,
-): "identifier-sent" | "payload" {
-  if (hasMultipleIdentifiers(metadata)) return "payload";
-  return metadata.some(
-    (column) => column.name === name && column.role === "identifier",
-  )
-    ? "identifier-sent"
-    : "payload";
+): "match-sent" | "identifier-sent" | "payload" {
+  const role = metadata.find((column) => column.name === name)?.role;
+  if (role === "linkage") return "match-sent";
+  if (role === "identifier" && !hasMultipleIdentifiers(metadata))
+    return "identifier-sent";
+  return "payload";
 }
 
 /** The marks after the notice's widening offer is taken: every
  * {@link widenableDeclaredColumns} column set to its {@link widenedDisclosure},
  * through the grid's own edit. At most one column takes `identifier-sent`, and
- * only when it is the sole identifier, so no edit demotes another identifier
- * and no column outside the declared set changes. */
+ * only when it is the sole identifier, so no edit demotes another identifier,
+ * no column the file matches on stops matching, and no column outside the
+ * declared set changes. */
 export function acceptorWidenedMetadata(
   linkageTerms: LinkageTerms,
   metadata: Metadata,
@@ -821,10 +823,10 @@ export function acceptorWidenedMetadata(
  * Counts columns, not declaration entries: a declaration naming one held
  * column twice offers one column.
  * Names the choice {@link acceptorWidenedMetadata} applies to each column, read
- * from the marks it returns -- the record identifier's own sending choice for
- * that column, "Sent to your partner" for the rest -- and, where taking it would cost an agreed linkage key
- * ({@link acceptorSendingExpectedColumnsCostsKey}), states that instead. A
- * column that costs a key is one used to match, never the record identifier.
+ * from the marks it returns -- the matched column's and the record
+ * identifier's own sending choices, "Sent to your partner" for the rest -- and
+ * what each keeps. Where taking it would still cost an agreed linkage key
+ * ({@link acceptorSendingExpectedColumnsCostsKey}), it states that instead.
  */
 export function acceptorWideningOfferSentence(
   columns: Array<string>,
@@ -833,37 +835,62 @@ export function acceptorWideningOfferSentence(
 ): string | undefined {
   const widenable = widenableDeclaredColumns(linkageTerms, state.metadata);
   if (widenable.length === 0) return undefined;
-  const sent = `"${DISCLOSURE_LABELS.payload}"`;
-  const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
-  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
-  const identifierCount = widened.filter(
-    (column) =>
-      widenable.includes(column.name) &&
-      disclosureOf(column) === "identifier-sent",
-  ).length;
   if (acceptorSendingExpectedColumnsCostsKey(columns, linkageTerms, state)) {
-    if (widenable.length === 1)
-      return ` Setting the column your file does have to ${sent} below will not start the exchange: that column is used to match, and each column has a single use, so sending it would leave an agreed linkage key with no column to match on.`;
-    const setting =
-      identifierCount === 0
-        ? `Setting the columns your file does have to ${sent} below`
-        : `Setting your record identifier to ${identifierSent} and the other columns your file does have to ${sent} below`;
-    return ` ${setting} will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.`;
+    const held =
+      widenable.length === 1
+        ? "the column your file does have"
+        : "the columns your file does have";
+    return ` Setting ${held} to send below will not start the exchange: that would leave an agreed linkage key with no column to match on.`;
   }
-  if (identifierCount === 0)
-    return ` Where your file does have such a column, you can set it to ${sent} below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`;
-  if (widenable.length === identifierCount)
-    return ` Your file does have that column as its record identifier: you can set it to ${identifierSent} below instead - that discloses more than you have marked so far, and the column stays your record identifier.`;
-  return ` Where your file does have such a column, you can set your record identifier to ${identifierSent} below, and any other to ${sent}, instead - that discloses more than you have marked so far, and each other column has a single use, so sending it replaces the use it has now.`;
+  const sent = `"${DISCLOSURE_LABELS.payload}"`;
+  const matchSent = `"${DISCLOSURE_LABELS["match-sent"]}"`;
+  const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
+  const choices = acceptorWidenedMetadata(linkageTerms, state.metadata)
+    .filter((column) => widenable.includes(column.name))
+    .map(disclosureOf);
+  const matchedCount = choices.filter((c) => c === "match-sent").length;
+  const identifierCount = choices.filter((c) => c === "identifier-sent").length;
+  const otherCount = choices.length - matchedCount - identifierCount;
+  const disclosesMore = "that discloses more than you have marked so far";
+  if (matchedCount === 0 && identifierCount === 0)
+    return ` Where your file does have such a column, you can set it to ${sent} below instead - ${disclosesMore}, and sending it replaces the use it has now.`;
+  if (identifierCount === choices.length)
+    return ` Your file does have that column as its record identifier: you can set it to ${identifierSent} below instead - ${disclosesMore}, and the column stays your record identifier.`;
+  if (matchedCount === choices.length)
+    return matchedCount === 1
+      ? ` Your file does have that column as one it matches on: you can set it to ${matchSent} below instead - ${disclosesMore}, and the column is still used to match.`
+      : ` Your file does have those columns as ones it matches on: you can set them to ${matchSent} below instead - ${disclosesMore}, and the columns are still used to match.`;
+  const settings: Array<string> = [];
+  const consequences: Array<string> = [];
+  if (identifierCount > 0) {
+    settings.push(`your record identifier to ${identifierSent}`);
+    consequences.push("your record identifier stays your record identifier");
+  }
+  if (matchedCount > 0) {
+    settings.push(`any column used to match to ${matchSent}`);
+    consequences.push("a column used to match is still used to match");
+  }
+  if (otherCount > 0) {
+    settings.push(`any other to ${sent}`);
+    consequences.push("sending any other column replaces the use it has now");
+  }
+  const consequence = joinClauses(consequences);
+  return ` Where your file does have such columns, you can set ${joinClauses(settings)} below instead - ${disclosesMore}. ${consequence.charAt(0).toUpperCase()}${consequence.slice(1)}.`;
+}
+
+/** Two or three clauses joined as one list: "a and b", "a, b, and c". */
+function joinClauses(clauses: Array<string>): string {
+  if (clauses.length <= 2) return clauses.join(" and ");
+  return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
 }
 
 /**
  * Whether taking the notice's widening offer would cost an agreed linkage key:
  * the marks {@link acceptorWidenedMetadata} leaves satisfy fewer keys than the
- * current marks do. Each column has a single use, so a column
- * the file matches on stops matching once it is sent, and the run is then refused
- * for a key the input can no longer satisfy -- the offer would move the operator
- * from one refusal to the next.
+ * current marks do, so the run would be refused for a key the input can no
+ * longer satisfy and the offer would move the operator from one refusal to the
+ * next. The offer sends a column the file matches on as `match-sent`, which
+ * keeps the keys that column feeds.
  *
  * Measured over the WHOLE declared-but-unsent set, not the names the notice paints,
  * so the cost is the one the operator can actually take on under a declaration

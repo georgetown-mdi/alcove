@@ -145,7 +145,7 @@ export function applyDisclosure(
  * `isPayload` re-derived from its choice, so a `payload` or `ignored` column
  * sends exactly when its role does. A linkage or identifier column keeps the
  * `isPayload` it has, so an inferred `id` record identifier starts sent, as
- * a command-line run with no metadata block sends it.
+ * a configuration or invitation with no metadata block sends it.
  */
 export function normalizeForEditor(metadata: Metadata): Metadata {
   return metadata.map((column) =>
