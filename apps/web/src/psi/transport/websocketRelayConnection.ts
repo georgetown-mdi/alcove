@@ -151,10 +151,11 @@ function relaySocketUrl(url: string): string {
     );
   // `hash` is empty for a bare trailing `#`, which the WebSocket constructor
   // also refuses; `href` keeps it, and the first `#` in `href` starts the
-  // fragment.
+  // fragment. The message names the origin alone: the address can come from
+  // the partner's invitation, and its path, query and fragment are free text.
   if (parsed.href.includes("#"))
     throw new ConnectionError(
-      `The WebSocket relay address ${url} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
+      `The WebSocket relay address for ${parsed.origin} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
       "usage",
     );
   return parsed.href;

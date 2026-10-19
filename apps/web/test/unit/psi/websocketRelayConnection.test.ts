@@ -179,9 +179,16 @@ describe("the hello", () => {
     expect(createSocket).not.toHaveBeenCalled();
   });
 
-  test.each(["wss://relay.example/relay#part", "wss://relay.example/relay#"])(
-    "refuses the address %s, which has a fragment, before opening a socket",
-    async (url) => {
+  test.each([
+    ["wss://relay.example/relay#part", "wss://relay.example"],
+    ["wss://relay.example/relay#", "wss://relay.example"],
+    [
+      "wss://user:pw@relay.example:8443/relay?q=1#Call 555-0100 for help",
+      "wss://relay.example:8443",
+    ],
+  ])(
+    "refuses the address %s, which has a fragment, naming only its origin, before opening a socket",
+    async (url, origin) => {
       const createSocket = vi.fn();
       const error = await openWebSocketRelayConnection({
         url,
@@ -193,7 +200,7 @@ describe("the hello", () => {
       expect(error).toBeInstanceOf(ConnectionError);
       expect(error).toMatchObject({
         kind: "usage",
-        message: `The WebSocket relay address ${url} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
+        message: `The WebSocket relay address for ${origin} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
       });
       expect(createSocket).not.toHaveBeenCalled();
     },
@@ -234,14 +241,23 @@ describe("the hello", () => {
     });
   });
 
-  test("refuses exchange data the relay passes on before both starts", async () => {
-    const { socket, pending } = await startOpening();
-    socket.open();
-    socket.fromRelay(PAIRED);
-    socket.fromRelay(partnerFrames("early")[0]);
-    await expect(pending).rejects.toMatchObject({ kind: "protocol" });
-    expect(socket.closedWith).toBe(4000);
-  });
+  test.each([
+    ["before the pairing", []],
+    ["after the pairing, before the partner's start", [PAIRED]],
+  ])(
+    "refuses exchange data the relay passes on %s",
+    async (_label, controlFrames) => {
+      const { socket, pending } = await startOpening();
+      socket.open();
+      for (const frame of controlFrames) socket.fromRelay(frame);
+      socket.fromRelay(partnerFrames("early")[0]);
+      await expect(pending).rejects.toMatchObject({
+        kind: "protocol",
+        message: /passed on exchange data before both parties had started/,
+      });
+      expect(socket.closedWith).toBe(4000);
+    },
+  );
 
   test("refuses a start before the pairing", async () => {
     const { socket, pending } = await startOpening();
@@ -419,7 +435,7 @@ describe("a refused hello", () => {
 });
 
 describe("pacing", () => {
-  test("stops at the 1 MiB window and resumes once the buffer is at 256 KiB", async () => {
+  test("checks the 1 MiB window before each datagram, passing it by under one datagram, and resumes once the buffer is at 256 KiB", async () => {
     const { socket, mc } = await openStarted();
     // Two frames of four chunks each; the window fills inside the first.
     const frame = new Uint8Array(60_000).fill(7);
@@ -427,6 +443,9 @@ describe("pacing", () => {
     const sends = Promise.all([mc.send(frame), mc.send(frame)]);
 
     await vi.waitFor(() => expect(socket.binarySent()).toHaveLength(2));
+    const overshoot = socket.bufferedAmount - 1024 * 1024;
+    expect(overshoot).toBeGreaterThan(0);
+    expect(overshoot).toBeLessThan(socket.binarySent()[1].byteLength);
     await new Promise((resolve) => setTimeout(resolve, 120));
     expect(socket.binarySent()).toHaveLength(2);
 
@@ -446,6 +465,15 @@ describe("pacing", () => {
     socket.closeFromRelay(4000);
     await expect(send).rejects.toBeInstanceOf(ConnectionError);
     expect(socket.binarySent()).toHaveLength(0);
+  });
+
+  test("a send the socket throws on fails the connection and closes with 4000", async () => {
+    const { socket, mc } = await openStarted();
+    socket.send = () => {
+      throw new Error("send failed");
+    };
+    await expect(mc.send("lost")).rejects.toMatchObject({ kind: "transport" });
+    expect(socket.closedWith).toBe(4000);
   });
 });
 
@@ -472,10 +500,43 @@ describe("the inbound path", () => {
     expect(socket.closedWith).toBe(4000);
   });
 
-  test("refuses a text message once forwarding has started", async () => {
+  test("refuses a chunk repeated past the chunk limit before the frame is joined", async () => {
+    const { socket, mc } = await openStarted({
+      inboundFrames: () => boundedInboundFramesWithBounds({ maxChunks: 4 }),
+    });
+    const chunks = partnerFrames(new Uint8Array(20_000).fill(3));
+    expect(chunks).toHaveLength(2);
+    const [first, last] = chunks;
+    // Repeats past the declared two chunks are charged against the limit of
+    // four, and the fifth arrival is refused.
+    for (let i = 0; i < 4; i++) socket.fromRelay(first);
+    expect(socket.closedWith).toBeUndefined();
+    socket.fromRelay(first);
+    expect(socket.closedWith).toBe(4000);
+    socket.fromRelay(last);
+    await expect(mc.receive()).rejects.toMatchObject({
+      kind: "protocol",
+      message: /exceeds its 4-chunk reassembly limit/,
+    });
+  });
+
+  test("refuses a text message once forwarding has started and closes with 4000", async () => {
     const { socket, mc } = await openStarted();
     socket.fromRelay(START);
-    await expect(mc.receive()).rejects.toMatchObject({ kind: "protocol" });
+    await expect(mc.receive()).rejects.toMatchObject({
+      kind: "protocol",
+      message: /sent a control message after the exchange started/,
+    });
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("a receive that waits past the inactivity budget closes with 4000", async () => {
+    const { socket, mc } = await openStarted({ inactivityTimeoutMs: 30 });
+    await expect(mc.receive()).rejects.toMatchObject({
+      kind: "transport",
+      message: /no message arrived within 30 ms/,
+    });
+    expect(socket.closedWith).toBe(4000);
   });
 
   test("the partner's sentinel drains its final frame and closes cleanly", async () => {
@@ -549,13 +610,15 @@ describe("the close", () => {
     expect(socket.closedWith).toBe(4000);
   });
 
-  test("an abort ends the wait", async () => {
+  test("an abort ends the wait and closes without a clean close", async () => {
     const controller = new AbortController();
-    const { outcomes, closing } = await flushingClose({
+    const { socket, outcomes, closing } = await flushingClose({
       signal: controller.signal,
     });
+    expect(socket.closedWith).toBeUndefined();
     controller.abort();
     await closing;
     expect(outcomes).toEqual(["run-aborted"]);
+    expect(socket.closedWith).toBe(4000);
   });
 });
