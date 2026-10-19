@@ -8,8 +8,7 @@
 //   node find-rulings.mjs <word> [word ...]
 //
 // A hit holds every given word, case-insensitively, each starting at a word
-// start: `identifier` matches `identifiers`, and `sent` does not match
-// `consent`. Pass the decision's 2-3 most specific subject words. Sections, in
+// start: `poll` matches `polling`, and `sent` does not match `consent`. Pass the decision's 2-3 most specific subject words. Sections, in
 // order:
 //
 //   - Board items: every item on boards 9 and 10, Done included, whose title or
@@ -31,23 +30,25 @@
 //   - scratch/ session records (gitignored, host-local), when the directory
 //     exists: the paths of the markdown files holding every word.
 //
+// Output is capped at 20 board items per section, 8 ruling lines per item, 40
+// repo hits per section, and 30 scratch paths; a cut prints "... and N more".
+//
 // origin/staging is fetched first; when the fetch fails the local ref is
 // searched and a note says so. Exits 0 whether or not anything matched, and 1
 // when a source could not be searched, so a partial search is not mistaken for
 // an empty one.
 //
-// Worked example, the question of whether an inferred identifier column is sent
-// by default, which the owner had already ruled twice:
+// Worked example, a made-up question of whether the default poll interval is
+// 5 seconds, which the owner had already ruled twice:
 //
-//   node .claude/scripts/find-rulings.mjs identifier sent
+//   node .claude/scripts/find-rulings.mjs poll interval
 //
-// lists the Done item "Send non-key and identifier columns by default in direct
-// mode" among the first board items, with its Ruling lines (owner,
-// 2026-10-13); the Done item "Disclose what a zero-setup run transmits before it
-// runs" under the cited rulings, with its 2026-09-12 ruling "Not to be
-// re-raised as a default change" (its body says "transmit", not "sent");
-// docs/CLI.md and docs/EXCHANGE_REFERENCE.md among the documented behavior; and
-// docs/notes/payload-as-agreed-terms.md among the design records.
+// lists the Done item "Set the default poll interval" among the first board
+// items, with its Ruling lines (owner, 2026-01-05: "keep 5 seconds; not to be
+// re-raised"); the Done item "Explain the wait between checks" under the cited
+// rulings, with its 2026-01-12 ruling (its body says "wait", not "poll");
+// docs/CLI.md among the documented behavior; and docs/notes/poll-timing.md
+// among the design records.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -63,6 +64,25 @@ const BOARDS = [9, 10];
 const STAGING_REF = "origin/staging";
 const LINE_LIMIT = 240;
 const COMMIT_LIMIT = 10;
+const ITEM_CAP = 20;
+const ITEM_LINE_CAP = 8;
+const REPO_HIT_CAP = 40;
+const SCRATCH_PATH_CAP = 30;
+
+/**
+ * The first `limit` entries of `list` and the number cut off, so a section
+ * prints a bounded list and one "... and N more" line for the rest.
+ */
+export function capList(list, limit) {
+  return {
+    shown: list.slice(0, limit),
+    more: Math.max(0, list.length - limit),
+  };
+}
+
+function moreLine(more, indent = "") {
+  return more > 0 ? `${indent}... and ${more} more\n` : "";
+}
 
 const RULING_MARKERS = [
   /\brul(?:ing|ings|ed)\b/i,
@@ -75,8 +95,8 @@ const RULING_MARKERS = [
 
 /**
  * A case-insensitive pattern for `word` starting at a word start, so a suffix
- * still matches (`identifier` in `identifiers`) while a word ending in it does
- * not (`sent` in `consent`).
+ * still matches (`poll` in `polling`) while a word ending in it does not
+ * (`sent` in `consent`).
  */
 function wordStartPattern(word) {
   const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -376,7 +396,19 @@ async function main() {
     process.stdout.write(
       `${item.board}/${item.id} [${item.status}] ${item.title}${suffix}\n`,
     );
-    for (const line of item.lines) process.stdout.write(`    ${line}\n`);
+    const lines = capList(item.lines, ITEM_LINE_CAP);
+    for (const line of lines.shown) process.stdout.write(`    ${line}\n`);
+    process.stdout.write(moreLine(lines.more, "    "));
+  };
+  const printItems = (list) => {
+    const items = capList(list, ITEM_CAP);
+    for (const item of items.shown) {
+      printItem(
+        item,
+        item.citedBy ? ` (cited by ${item.citedBy.join(", ")})` : "",
+      );
+    }
+    process.stdout.write(moreLine(items.more));
   };
   heading(
     `Board items holding every word (boards ${BOARDS.join(", ")}, every status)`,
@@ -387,12 +419,10 @@ async function main() {
   }
   if (hits.length === 0 && failures.length === 0)
     process.stdout.write("none\n");
-  for (const hit of hits) printItem(hit);
+  printItems(hits);
   if (cited.length > 0) {
     heading("Rulings those items' ruling lines cite");
-    for (const item of cited) {
-      printItem(item, ` (cited by ${item.citedBy.join(", ")})`);
-    }
+    printItems(cited);
   }
 
   let repoHits = [];
@@ -406,11 +436,13 @@ async function main() {
     !hit.path.startsWith("docs/") || hit.path.startsWith("docs/notes/");
   const printRepo = (list) => {
     if (list.length === 0) process.stdout.write("none\n");
-    for (const hit of list) {
+    const hits = capList(list, REPO_HIT_CAP);
+    for (const hit of hits.shown) {
       process.stdout.write(
         `${hit.path}:${hit.line}: ${excerpt(hit.text, firstWordIndex(hit.text, words))}\n`,
       );
     }
+    process.stdout.write(moreLine(hits.more));
   };
   heading(
     `Documented behavior in docs/ and docs/spec/ at ${STAGING_REF}: ratified rulings (PR review ratified them)`,
@@ -439,9 +471,11 @@ async function main() {
       .flatMap((dir) => markdownFiles(dir))
       .filter((path) => holdsAllWords(readFileSync(path, "utf8"), words))
       .map((path) => relative(process.cwd(), path) || path);
+    const capped = capList(paths, SCRATCH_PATH_CAP);
     process.stdout.write(
-      paths.length === 0 ? "none\n" : `${paths.join("\n")}\n`,
+      paths.length === 0 ? "none\n" : `${capped.shown.join("\n")}\n`,
     );
+    process.stdout.write(moreLine(capped.more));
   }
 
   process.exit(incomplete ? 1 : 0);

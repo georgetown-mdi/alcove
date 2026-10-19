@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  capList,
   citedItemIds,
   citedRulings,
   excerpt,
@@ -12,23 +13,19 @@ import {
 describe("holdsAllWords", () => {
   it("matches every word case-insensitively, a suffix included", () => {
     expect(
-      holdsAllWords("Send Identifiers by default; the id is sent.", [
-        "identifier",
-        "sent",
+      holdsAllWords("Polling Intervals default to five seconds.", [
+        "poll",
+        "interval",
       ]),
     ).toBe(true);
   });
 
   it("refuses when one word is missing", () => {
-    expect(holdsAllWords("an identifier column", ["identifier", "sent"])).toBe(
-      false,
-    );
+    expect(holdsAllWords("a poll timer", ["poll", "interval"])).toBe(false);
   });
 
   it("does not match a word that only ends another word", () => {
-    expect(
-      holdsAllWords("consent to the identifier", ["identifier", "sent"]),
-    ).toBe(false);
+    expect(holdsAllWords("consent to the poll", ["poll", "sent"])).toBe(false);
   });
 
   it("treats regex characters in a word literally", () => {
@@ -44,15 +41,15 @@ describe("holdsAllWords", () => {
 
 describe("rulingMarkerIndex", () => {
   it.each([
-    "## Ruling (2026-09-12)",
-    "Ruled 2026-10-13; see Ruling.",
+    "## Ruling (2026-01-05)",
+    "Ruled 2026-01-05; see Ruling.",
     "The owner decided both questions.",
     "The placement question is settled.",
     "Decision 3 is ratified.",
-    "Not to be re-raised as a default change.",
-    "Owner, 2026-10-13, verbatim:",
-    'the owner said "keep the derivation"',
-    "the owner said \u201ckeep the derivation\u201d",
+    "Keep it. Not to be re-raised.",
+    "Owner, 2026-01-05, verbatim:",
+    'the owner said "keep five seconds"',
+    "the owner said “keep five seconds”",
   ])("finds a marker in %j", (line) => {
     expect(rulingMarkerIndex(line)).toBeGreaterThanOrEqual(0);
   });
@@ -90,35 +87,35 @@ describe("rulingLines", () => {
   it("returns only the marker lines", () => {
     const body = [
       "## Summary",
-      "Send identifiers.",
-      "## Ruling (2026-09-12)",
-      "Keep sending. Not to be re-raised as a default change.",
+      "Poll every five seconds.",
+      "## Ruling (2026-01-05)",
+      "Keep five seconds. Not to be re-raised.",
     ].join("\n");
     expect(rulingLines(body)).toEqual([
-      "## Ruling (2026-09-12)",
-      "Keep sending. Not to be re-raised as a default change.",
+      "## Ruling (2026-01-05)",
+      "Keep five seconds. Not to be re-raised.",
     ]);
   });
 
   it("brings a marker heading's section and a colon line's next line", () => {
     const body = [
-      "## Ruling (2026-09-12)",
+      "## Ruling (2026-01-05)",
       "",
-      "Keep transmitting inferred columns by default. Not to be",
-      "re-raised as a default change.",
+      "Keep the five second wait between checks. Not to be",
+      "re-raised.",
       "## Notes",
       "Unrelated.",
-      "Owner, 2026-10-13, verbatim:",
+      "Owner, 2026-01-05, verbatim:",
       "",
-      '"Any column that matches an identifier is sent."',
+      '"Any wait under two seconds is refused."',
       "Trailing line.",
     ].join("\n");
     expect(rulingLines(body)).toEqual([
-      "## Ruling (2026-09-12)",
-      "Keep transmitting inferred columns by default. Not to be",
-      "re-raised as a default change.",
-      "Owner, 2026-10-13, verbatim:",
-      '"Any column that matches an identifier is sent."',
+      "## Ruling (2026-01-05)",
+      "Keep the five second wait between checks. Not to be",
+      "re-raised.",
+      "Owner, 2026-01-05, verbatim:",
+      '"Any wait under two seconds is refused."',
     ]);
   });
 
@@ -154,9 +151,9 @@ describe("cited rulings", () => {
   });
 
   it("adds a cited item holding a ruling, once, naming every citer", () => {
-    const earlier = item(100000002, "Earlier", ["## Ruling (2026-09-12)"]);
+    const earlier = item(100000002, "Earlier", ["## Ruling (2026-01-05)"]);
     const hits = [
-      item(100000003, "Later", ["the 2026-09-12 ruling on 9/100000002"]),
+      item(100000003, "Later", ["the 2026-01-05 ruling on 9/100000002"]),
       item(100000004, "Other", ["the ruling on 100000002 set the remedy"]),
     ];
     const noRuling = item(111111111, "Plain", []);
@@ -176,15 +173,26 @@ describe("cited rulings", () => {
 });
 
 describe("hitRank", () => {
-  const words = ["identifier", "sent"];
+  const words = ["poll", "interval"];
   it("puts a title holding every word above a ruling line", () => {
-    const titled = { title: "Identifier column is sent", lines: [] };
-    const ruled = { title: "Other", lines: ["ruling: identifier stays"] };
+    const titled = { title: "Set the poll interval", lines: [] };
+    const ruled = { title: "Other", lines: ["ruling: poll stays"] };
     const plain = { title: "Other", lines: ["settled"] };
     expect(hitRank(titled, words)).toBeGreaterThan(hitRank(ruled, words));
     expect(hitRank(ruled, words)).toBeGreaterThan(hitRank(plain, words));
     expect(hitRank(plain, words)).toBeGreaterThan(
       hitRank({ title: "Other", lines: [] }, words),
     );
+  });
+});
+
+describe("capList", () => {
+  it("keeps the first entries and counts the rest", () => {
+    expect(capList([1, 2, 3, 4, 5], 3)).toEqual({ shown: [1, 2, 3], more: 2 });
+  });
+
+  it("cuts nothing at or under the limit", () => {
+    expect(capList([1, 2, 3], 3)).toEqual({ shown: [1, 2, 3], more: 0 });
+    expect(capList([], 3)).toEqual({ shown: [], more: 0 });
   });
 });

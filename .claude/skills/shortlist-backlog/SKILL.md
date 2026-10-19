@@ -103,7 +103,7 @@ it. Take every action line in this session: write the handoff brief or file
 the Decision item, as `.claude/orchestration/ruleset.md`, Decisions, briefs
 and reporting, sets out, then record it on the candidate item with
 `.claude/scripts/edit-issue.mjs` -- a dated line, added to the body read in
-full, naming the brief's path or the Decision item's id. The next shortlist
+full, naming the brief's path or the Decision item's id; a "ruled --" line is no action, but record its board item id or doc path the same way. The next shortlist
 keys off a body citing it, so it does not emit the action again. Fetch only
 the chosen items' bodies yourself (`node .claude/scripts/fetch-issues.mjs
 <board> <itemId>`) or hand an item id straight to /start-issue. Do not

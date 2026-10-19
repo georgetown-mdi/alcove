@@ -39,8 +39,11 @@ Run only when the owner invokes this command; never start the docket unasked.
    `node .claude/scripts/find-rulings.mjs <the decision's 2-3 subject words>`
    and read every hit's body section in full: a ruling found there, a "not to
    be re-raised" line above all, drops the item and is cited on the originating
-   item instead. A default or behavior the user docs (`docs/`, `docs/spec/`)
-   document is a ratified ruling, not an open question. As a second net, fetch
+   item instead. A default or behavior the user docs (`docs/` outside `docs/notes/`, and `docs/spec/`)
+   document is the ruling on what the behavior is, so an item asking that
+   question is answered and not filed; a proposal to change a documented
+   default is presented only with that ruling cited, and only on a changed
+   assumption or a new driver the item names. As a second net, fetch
    the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
    body names (`node .claude/scripts/fetch-issues.mjs <project> <itemId> ...`),
