@@ -91,6 +91,7 @@ const playwrightDisabledFeatures = [
   "PaintHolding",
   "ThirdPartyStoragePartitioning",
   "BlockOriginHeaderModificationOnRedirect",
+  "AvoidCorsURLLoaderRestartOnRedirect",
   "Translate",
   "AutoDeElevate",
   "OptimizationHints",
