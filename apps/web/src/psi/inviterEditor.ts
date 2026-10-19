@@ -445,7 +445,9 @@ export function editorWithLegalAgreement(
  * `metadata` is the column set the import binds against and the draft opens
  * on, for a caller holding roles the file's headers alone do not give -- a
  * configuration opened from the console's mount. The seed's own inference is
- * the default, and stays the grid's reset anchor either way. */
+ * the default, and stays the grid's reset anchor either way. Count-only terms
+ * open the draft with the record identifier not sent
+ * ({@link withIdentifiersNotSent}). */
 export function editorWithImportedTerms(
   editor: InviterEditor,
   csv: AcquiredCsv,
@@ -457,7 +459,13 @@ export function editorWithImportedTerms(
     ...editor,
     draft: draftFromTerms(
       terms,
-      { ...editor.seed, metadata },
+      {
+        ...editor.seed,
+        metadata:
+          terms.algorithm === "psi-c"
+            ? withIdentifiersNotSent(metadata)
+            : metadata,
+      },
       editor.draft.lifetimeSeconds,
       seedRows(csv),
       csv.dateInputFormats,
