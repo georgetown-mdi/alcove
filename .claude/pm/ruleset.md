@@ -523,18 +523,14 @@ Ratified by the owner:
   vectors; a mismatched secret or a tampered handshake field fails before any
   exchange frame moves; and the handshake, not a fixed rule, decides whether the
   connection is wrapped in application encryption. Closed 2026-10-18.
-
-Drafted, pending the owner's ratification:
-
 - **Linkage bench redesign** (board 9) -- Done is: every primary route of the
   web app serves a screen built to the redesign in `design/web-redesign` -- a
   lobby offering invite, accept and verify-a-receipt, the inviter and acceptor
   steps, downloadable command-line exchange files, sample data -- each holding
   at 400 px with the step strip, the folded Customize group and the "What you
   will share" bar, with the pre-redesign components removed and the browser,
-  contrast and accessibility suites passing on the new screens.
-  Open: whether Web Exchange Rework's line, closed, already covers these
-  screens, in which case this epic needs no line of its own.
+  contrast and accessibility suites passing on the new screens. Closed
+  2026-10-19.
 - **Progressive web app** (board 9) -- Done is: the web app installs from a
   supporting browser with a complete manifest, its shell and recurring-exchange
   list render with no network from the browser's own store, each way of starting
@@ -544,6 +540,10 @@ Drafted, pending the owner's ratification:
   control left inert.
   Open: installing from a real browser was not checked; the rest is met with
   every item Done.
+
+Drafted, pending the owner's ratification:
+
+None at present.
 
 ## What the PM does NOT do
 
