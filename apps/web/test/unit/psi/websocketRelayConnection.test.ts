@@ -179,13 +179,68 @@ describe("the hello", () => {
     expect(createSocket).not.toHaveBeenCalled();
   });
 
+  test.each(["wss://relay.example/relay#part", "wss://relay.example/relay#"])(
+    "refuses the address %s, which has a fragment, before opening a socket",
+    async (url) => {
+      const createSocket = vi.fn();
+      const error = await openWebSocketRelayConnection({
+        url,
+        exchangeId: "exchange-1",
+        role: "inviter",
+        relayKey: RELAY_KEY,
+        createSocket,
+      }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConnectionError);
+      expect(error).toMatchObject({
+        kind: "usage",
+        message: `The WebSocket relay address ${url} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
+      });
+      expect(createSocket).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a socket the browser refuses to open is a usage failure naming the address", async () => {
+    const refusal = new DOMException("blocked port", "SecurityError");
+    const error = await openWebSocketRelayConnection({
+      url: "wss://relay.example:6000/relay",
+      exchangeId: "exchange-1",
+      role: "inviter",
+      relayKey: RELAY_KEY,
+      createSocket: () => {
+        throw refusal;
+      },
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(error).toMatchObject({
+      kind: "usage",
+      message:
+        "The browser refused to open a connection to the WebSocket relay at wss://relay.example:6000/relay. Check the relay address, then start the exchange again.",
+      cause: refusal,
+    });
+  });
+
+  test("a relay key no proof can be built from is a usage failure", async () => {
+    const error = await openWebSocketRelayConnection({
+      url: RELAY_URL,
+      exchangeId: "exchange-1",
+      role: "inviter",
+      relayKey: "not-a-key",
+      createSocket: vi.fn(),
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(error).toMatchObject({
+      kind: "usage",
+      message: /^Could not build this side's proof for the WebSocket relay/,
+    });
+  });
+
   test("refuses exchange data the relay passes on before both starts", async () => {
     const { socket, pending } = await startOpening();
     socket.open();
     socket.fromRelay(PAIRED);
     socket.fromRelay(partnerFrames("early")[0]);
     await expect(pending).rejects.toMatchObject({ kind: "protocol" });
-    expect(socket.closedWith).toBe(1000);
+    expect(socket.closedWith).toBe(4000);
   });
 
   test("refuses a start before the pairing", async () => {
@@ -202,7 +257,7 @@ describe("the hello", () => {
       kind: "transport",
       message: /did not reach the WebSocket relay within 1 minute\./,
     });
-    expect(socket.closedWith).toBe(1000);
+    expect(socket.closedWith).toBe(4000);
   });
 
   test("gives up when a paired partner does not start", async () => {
@@ -220,7 +275,7 @@ describe("the hello", () => {
     socket.open();
     controller.abort();
     await expect(pending).rejects.toMatchObject({ kind: "closed" });
-    expect(socket.closedWith).toBe(1000);
+    expect(socket.closedWith).toBe(4000);
   });
 });
 

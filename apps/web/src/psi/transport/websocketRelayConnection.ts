@@ -149,7 +149,50 @@ function relaySocketUrl(url: string): string {
       "The WebSocket relay address does not start with wss://. Check the relay address, then start the exchange again.",
       "usage",
     );
+  // `hash` is empty for a bare trailing `#`, which the WebSocket constructor
+  // also refuses; `href` keeps it, and the first `#` in `href` starts the
+  // fragment.
+  if (parsed.href.includes("#"))
+    throw new ConnectionError(
+      `The WebSocket relay address ${url} has a fragment, a part starting with #. Remove the fragment from the relay address, then start the exchange again.`,
+      "usage",
+    );
   return parsed.href;
+}
+
+async function buildRelayProof(
+  options: WebSocketRelayConnectionOptions,
+  now: () => Date,
+): Promise<WebSocketRelayProof> {
+  try {
+    return await buildWebSocketRelayProof({
+      relayKey: options.relayKey,
+      role: options.role,
+      ttlSeconds: WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
+      now: now(),
+    });
+  } catch (err) {
+    throw new ConnectionError(
+      "Could not build this side's proof for the WebSocket relay from the exchange's relay key. Check that both parties use the current invitation, then start the exchange again.",
+      "usage",
+      { cause: err },
+    );
+  }
+}
+
+function openRelaySocket(
+  url: string,
+  options: WebSocketRelayConnectionOptions,
+): WebSocket {
+  try {
+    return (options.createSocket ?? ((at) => new WebSocket(at)))(url);
+  } catch (err) {
+    throw new ConnectionError(
+      `The browser refused to open a connection to the WebSocket relay at ${url}. Check the relay address, then start the exchange again.`,
+      "usage",
+      { cause: err },
+    );
+  }
 }
 
 /** A text frame the relay sends before forwarding starts. */
@@ -325,7 +368,9 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
  * receive is kept alive by the relay's own pings, which the browser answers.
  *
  * @throws {ConnectionError} of kind `usage` for an address that is not a
- *         `wss` URL; of kind `transport` or `protocol` when the relay refuses
+ *         `wss` URL or has a fragment, a relay key no proof can be built
+ *         from, or an address the browser refuses to open a socket to; of
+ *         kind `transport` or `protocol` when the relay refuses
  *         the hello, the partner does not arrive within the budgets, or the
  *         relay sends something out of order.
  */
@@ -335,15 +380,10 @@ export async function openWebSocketRelayConnection(
   const url = relaySocketUrl(options.url);
   const now = options.now ?? (() => new Date());
   if (options.signal?.aborted) throw setupCancelled();
-  const proof = await buildWebSocketRelayProof({
-    relayKey: options.relayKey,
-    role: options.role,
-    ttlSeconds: WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
-    now: now(),
-  });
+  const proof = await buildRelayProof(options, now);
   if (options.signal?.aborted) throw setupCancelled();
   const hello = helloFrame(options.exchangeId, proof);
-  const socket = (options.createSocket ?? ((at) => new WebSocket(at)))(url);
+  const socket = openRelaySocket(url, options);
   socket.binaryType = "arraybuffer";
 
   return new Promise<MessageConnection>((resolve, reject) => {
@@ -375,7 +415,7 @@ export async function openWebSocketRelayConnection(
         socket.readyState === SOCKET_OPEN ||
         socket.readyState === SOCKET_CONNECTING
       )
-        socket.close(CLOSE_NORMAL);
+        socket.close(CLOSE_ABNORMAL);
       reject(error);
     };
     const onAbort = () => failSetup(setupCancelled());

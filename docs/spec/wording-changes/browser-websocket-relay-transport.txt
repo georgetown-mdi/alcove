@@ -6,6 +6,7 @@
 - - -> Its values are working values, as the relay's are.
 - - -> **The hello.**
 - - -> It opens the relay's `wss` url and, on open, sends its hello and then its start, with no wait between them.
+- - -> It refuses a url that has a fragment, which a WebSocket url cannot have, before opening a socket.
 - - -> Its proof expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
 - - -> **The waits.**
 - - -> It waits 10 minutes for `paired`, the WebRTC rendezvous budget, and then 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)).
