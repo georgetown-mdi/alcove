@@ -67,8 +67,10 @@ jobs:
       # lists cannot be one because of that difference.
       #
       # packages/peerjs-broker/** is here because the web dev loop and suites
-      # run the standalone broker from that workspace, and packages/testkit/**
-      # because the web unit suite is driven by fixtures it holds, and
+      # run the standalone broker from that workspace,
+      # packages/websocket-relay/** because the web unit suite runs the relay
+      # transport through that workspace's relay, packages/testkit/** because
+      # the web unit suite is driven by fixtures it holds, and
       # packages/cli-contract/** because the console imports the event schema
       # it declares. pages_deploy.yaml is here because the deploy-trigger
       # coverage step reads its push filter, and narrowing that filter is the
@@ -89,6 +91,7 @@ jobs:
             packages/core/**
             packages/cli-contract/**
             packages/peerjs-broker/**
+            packages/websocket-relay/**
             packages/testkit/**
             .github/actions/setup/**
             .github/actions/path-scope/**
@@ -100,6 +103,7 @@ jobs:
             !packages/core/**/*.md
             !packages/cli-contract/**/*.md
             !packages/peerjs-broker/**/*.md
+            !packages/websocket-relay/**/*.md
             !packages/testkit/**/*.md
             !.github/actions/setup/**/*.md
 
