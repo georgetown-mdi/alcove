@@ -10,6 +10,7 @@ import { startInProcessSftpServer } from "../sftpServer";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
 import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
+import { waitFor } from "../support";
 
 // A partner-side drop tears every operation the adapter has on the wire, not
 // just the one whose recovery re-dial runs. The adapter issues concurrent
@@ -894,6 +895,7 @@ inProcessOnly(
       const targets = await plantFanOut(party);
       const controls = party.srv.sessionControls;
       controls.resetHandshakeCount();
+      controls.requests.reset();
 
       const outcomes = await withCapturedLogs(
         async () => {
@@ -910,16 +912,23 @@ inProcessOnly(
       expect(outcomes.settled.map(describeSettlement)).toEqual(
         targets.map(() => ({ status: "fulfilled", detail: "undefined" })),
       );
-      expect(
-        (await fsp.readdir(party.localDir)).filter((name) =>
-          name.startsWith("victim-"),
-        ),
-      ).toEqual([]);
-      // Neither assertion above can see what the client saw: safeDelete swallows
-      // every error by its contract, and the server unlinks the whole fan in the
-      // turn before the cut, so both stand even for a member left riding its
-      // liveness deadline. The ceiling is the only thing here that separates a fan
-      // settled by its tear from one settled by a deadline apiece.
+      // Every REMOVE reached the server before the cut, but each unlink finishes
+      // on the server's thread pool, which under load can still be working when
+      // the tear has already settled the client.
+      expect(controls.requests.read().receivedByOp.REMOVE).toBe(FAN_OUT_FILES);
+      await waitFor(
+        async () =>
+          !(await fsp.readdir(party.localDir)).some((name) =>
+            name.startsWith("victim-"),
+          ),
+        { what: "every fan-out target unlinked at the server" },
+      );
+      // None of the assertions above can see what the client saw: safeDelete
+      // swallows every error by its contract, and the server takes the whole fan
+      // in the turn before the cut, so they all pass even for a member still
+      // waiting on its liveness deadline. The ceiling is the only thing here
+      // that separates a fan settled by its tear from one settled by a deadline
+      // apiece.
       expect(outcomes.elapsedMs).toBeLessThan(TORN_FAN_CEILING_MS);
       expect(controls.handshakeCount()).toBe(0);
       expect(party.dials).toHaveLength(0);

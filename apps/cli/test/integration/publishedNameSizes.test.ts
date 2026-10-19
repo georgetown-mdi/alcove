@@ -12,7 +12,7 @@ import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
-import { preparedFor } from "../support";
+import { preparedFor, waitFor } from "../support";
 
 // The rule an operator's external mover applies to a file an exchange put in
 // the folder: a name ending in a byte count is complete only when the file's
@@ -95,12 +95,22 @@ async function runPair(
         loggerName: `${tag}-b`,
       }),
     );
-    if (bFirst)
-      await expect
-        .poll(() =>
+    if (bFirst) {
+      // B's hello follows an SSH dial and the lock round trips, 250-335 ms at a
+      // load average of 20 and slower under more, so a fixed wait fails on load
+      // alone. B's run ends on its own if it never posts one, so the wait ends
+      // on whichever comes first.
+      let bEnded = false;
+      void runB.then(() => {
+        bEnded = true;
+      });
+      await waitFor(
+        () =>
+          bEnded ||
           fs.readdirSync(folder).some((n) => /-hello-[0-9]+\.json$/.test(n)),
-        )
-        .toBe(true);
+        { what: "party B's hello in the folder, or B's run ending" },
+      );
+    }
     const runA = settle(
       runProtocol({
         connection: connection(srv.handle.usera),
