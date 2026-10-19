@@ -56,7 +56,7 @@ export function AcceptorSignalingServerNotice({
           {accepted.signalingServer.relay !== undefined
             ? "The run uses the relay your partner named, shown with the terms above" +
               (relayNamesTurnServer(accepted.signalingServer.relay)
-                ? ", unless the Allowed relays below leave it out."
+                ? ", unless the Allowed relays below leave out its TURN servers."
                 : ".")
             : "The run connects directly to your partner's computer, so a network that blocks direct connections on either side stops the exchange from connecting."}
         </Text>
