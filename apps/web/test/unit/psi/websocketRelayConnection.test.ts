@@ -206,10 +206,10 @@ describe("the hello", () => {
     },
   );
 
-  test("a socket the browser refuses to open is a usage failure naming the address", async () => {
+  test("a socket the browser refuses to open is a usage failure naming only the address's origin", async () => {
     const refusal = new DOMException("blocked port", "SecurityError");
     const error = await openWebSocketRelayConnection({
-      url: "wss://relay.example:6000/relay",
+      url: "wss://user:pw@relay.example:6000/relay/secret-path?q=secret-query",
       exchangeId: "exchange-1",
       role: "inviter",
       relayKey: RELAY_KEY,
@@ -221,9 +221,13 @@ describe("the hello", () => {
     expect(error).toMatchObject({
       kind: "usage",
       message:
-        "The browser refused to open a connection to the WebSocket relay at wss://relay.example:6000/relay. Check the relay address, then start the exchange again.",
+        "The browser refused to open a connection to the WebSocket relay at wss://relay.example:6000. Check the relay address, then start the exchange again.",
       cause: refusal,
     });
+    const { message } = error as ConnectionError;
+    expect(message).not.toContain("secret-path");
+    expect(message).not.toContain("secret-query");
+    expect(message).not.toContain("user:pw");
   });
 
   test("a relay key no proof can be built from is a usage failure", async () => {

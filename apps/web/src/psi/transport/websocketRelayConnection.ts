@@ -189,7 +189,7 @@ function openRelaySocket(
     return (options.createSocket ?? ((at) => new WebSocket(at)))(url);
   } catch (err) {
     throw new ConnectionError(
-      `The browser refused to open a connection to the WebSocket relay at ${url}. Check the relay address, then start the exchange again.`,
+      `The browser refused to open a connection to the WebSocket relay at ${new URL(url).origin}. Check the relay address, then start the exchange again.`,
       "usage",
       { cause: err },
     );
