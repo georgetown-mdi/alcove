@@ -337,8 +337,8 @@ marker the stored record held, the secret it attests being unchanged.
 For the browser path the document's connection block is the `webrtc` channel
 restricted to its credential-free locator subset: `server` locator fields only
 (`host`/`port`/`path` -- no `server.username`, no PeerJS `key`), the
-`invitation_relay` the invitation named (TURN and STUN urls and a registrar
-url only, see
+`invitation_relay` the invitation named (TURN and STUN urls, a WebSocket
+relay url and a registrar url only, see
 [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), and no
 `turn`, `ice_provision`, or `provider_options` entries (a TURN entry holds
 relay credentials, and the provider map is opaque and `@`-file-pathed). An

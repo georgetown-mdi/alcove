@@ -134,8 +134,9 @@ export function requireHostedSignalingServer({
 
 /**
  * Refuses a `vite build` whose default relay variables the page would refuse
- * at load ({@link defaultRelayConfigProblems}): one set without the other, or
- * either not a url of its kind.
+ * at load ({@link defaultRelayConfigProblems}): the TURN url or the registrar
+ * set without the other, the WebSocket relay set without both, or any of them
+ * not a url of its kind.
  */
 export function requireValidDefaultRelay({
   command,
@@ -146,6 +147,7 @@ export function requireValidDefaultRelay({
   const problems = defaultRelayConfigProblems(
     (env["VITE_DEFAULT_RELAY_TURN_URL"] ?? "").trim(),
     (env["VITE_DEFAULT_RELAY_REGISTRAR_URL"] ?? "").trim(),
+    (env["VITE_DEFAULT_RELAY_WEBSOCKET_URL"] ?? "").trim(),
   );
   if (problems.length > 0)
     throw new Error(

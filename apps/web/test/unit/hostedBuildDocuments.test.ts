@@ -135,6 +135,34 @@ describe("the build's default relay control", () => {
     vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
     expect(check).toThrow(/VITE_DEFAULT_RELAY_REGISTRAR_URL is not set/);
   });
+
+  test("builds with a WebSocket relay beside the default relay, and refuses one alone or not a wss url", () => {
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
+      "wss://wsrelay.example.org/relay",
+    );
+    vi.stubEnv("VITE_DEFAULT_RELAY_TURN_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
+    expect(check).toThrow(
+      /VITE_DEFAULT_RELAY_WEBSOCKET_URL is set without the default relay/,
+    );
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_TURN_URL",
+      "turns:turn.example.org:443?transport=tcp",
+    );
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_REGISTRAR_URL",
+      "https://registrar.example.org",
+    );
+    expect(check).not.toThrow();
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
+      "ws://wsrelay.example.org/relay",
+    );
+    expect(check).toThrow(
+      /VITE_DEFAULT_RELAY_WEBSOCKET_URL must be one wss:\/\/ url/,
+    );
+  });
 });
 
 describe("the Start build's signaling control", () => {

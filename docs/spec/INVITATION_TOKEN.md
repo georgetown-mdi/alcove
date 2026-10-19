@@ -92,7 +92,7 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
   Port 0 is refused, which is stricter than the connection configuration, since an OS-assigned port is never a connect target.
 - `path`, `inboundPath` and `outboundPath` are each a string of 1 to `MAX_ENDPOINT_PATH_LENGTH` (**4096**) UTF-16 code units.
   They are not checked to be absolute here: the accepting party remaps the inviter's paths, and `packages/core/src/config/connection.ts` checks its own final configuration.
-- `relay` is the inviting party's relay locator, TURN and STUN urls and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator).
+- `relay` is the inviting party's relay locator, TURN and STUN urls, a WebSocket relay url and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator).
 
 `ConnectionEndpointSchema` then applies four rules to the `sftp` and `filedrop` endpoints, each at both encode and decode:
 

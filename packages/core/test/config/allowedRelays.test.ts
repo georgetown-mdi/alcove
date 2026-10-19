@@ -5,6 +5,8 @@ import {
   parseConnectionConfig,
   turnUrlIsAllowed,
   turnUrlRelay,
+  webSocketRelayUrlIsAllowed,
+  webSocketRelayUrlRelay,
 } from "../../src/config/connection";
 import {
   allowedRelaysLeaveOutInvitationRelay,
@@ -164,5 +166,98 @@ describe("the relays a run lists under allowed_relays", () => {
     });
     expect(selection.turn).toEqual([]);
     expect(selection.turnLeftOut).toHaveLength(2);
+  });
+});
+
+describe("matching a WebSocket relay url against allowed_relays", () => {
+  test("a url names its host and its port, 443 where it names none", () => {
+    expect(webSocketRelayUrlRelay("wss://wsrelay.example.org/relay")).toEqual({
+      host: "wsrelay.example.org",
+      port: 443,
+    });
+    expect(webSocketRelayUrlRelay("wss://WSRelay.example.org/relay")).toBe(
+      undefined,
+    );
+    expect(
+      webSocketRelayUrlRelay("wss://evil.example\\@wsrelay.example.org/relay"),
+    ).toBe(undefined);
+    expect(webSocketRelayUrlRelay("wss://wsrelay.example.org./relay")).toEqual({
+      host: "wsrelay.example.org",
+      port: 443,
+    });
+    expect(webSocketRelayUrlRelay("wss://[2001:db8::1]:8443/relay")).toEqual({
+      host: "[2001:db8::1]",
+      port: 8443,
+    });
+    expect(webSocketRelayUrlRelay("ws://wsrelay.example.org/relay")).toBe(
+      undefined,
+    );
+  });
+
+  test("an entry matches the url's host, and its port where it names one", () => {
+    const url = "wss://wsrelay.example.org/relay";
+    expect(webSocketRelayUrlIsAllowed(url, ["wsrelay.example.org"])).toBe(true);
+    expect(webSocketRelayUrlIsAllowed(url, ["wsrelay.example.org:443"])).toBe(
+      true,
+    );
+    expect(webSocketRelayUrlIsAllowed(url, ["wsrelay.example.org:8443"])).toBe(
+      false,
+    );
+    expect(webSocketRelayUrlIsAllowed(url, ["example.org"])).toBe(false);
+    expect(
+      webSocketRelayUrlIsAllowed("wss://wsrelay.example.org:8443/relay", [
+        "wsrelay.example.org:8443",
+      ]),
+    ).toBe(true);
+  });
+
+  test("unset allows every url, and an empty list none", () => {
+    const url = "wss://wsrelay.example.org/relay";
+    expect(webSocketRelayUrlIsAllowed(url, undefined)).toBe(true);
+    expect(webSocketRelayUrlIsAllowed(url, [])).toBe(false);
+  });
+});
+
+describe("the WebSocket relays a run lists", () => {
+  const own = "wss://own.example.org/relay";
+  const partner = "wss://partner.example.net/relay";
+
+  test("the connection's own is listed before the invitation's", () => {
+    const selection = selectRunRelay({
+      websocketRelay: own,
+      invitationRelay: { websocket: partner },
+    });
+    expect(selection.websocket).toEqual([
+      { source: "own", url: own },
+      { source: "invitation", url: partner },
+    ]);
+    expect(selection).not.toHaveProperty("websocketLeftOut");
+  });
+
+  test("a url both sides name is listed once, as the connection's own", () => {
+    expect(
+      selectRunRelay({
+        websocketRelay: own,
+        invitationRelay: { websocket: own },
+      }).websocket,
+    ).toEqual([{ source: "own", url: own }]);
+  });
+
+  test("neither side naming one lists none", () => {
+    const selection = selectRunRelay({ invitationRelay: { stun: ["stun:s"] } });
+    expect(selection).not.toHaveProperty("websocket");
+    expect(selection).not.toHaveProperty("websocketLeftOut");
+  });
+
+  test("allowed_relays leaves out every url no entry names, in order", () => {
+    const selection = selectRunRelay({
+      websocketRelay: own,
+      invitationRelay: { websocket: partner },
+      allowedRelays: ["partner.example.net"],
+    });
+    expect(selection.websocket).toEqual([
+      { source: "invitation", url: partner },
+    ]);
+    expect(selection.websocketLeftOut).toEqual([{ source: "own", url: own }]);
   });
 });

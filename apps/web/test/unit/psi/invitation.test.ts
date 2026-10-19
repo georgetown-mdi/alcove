@@ -276,6 +276,7 @@ describe("generateInvitation", () => {
     function stubOwnRelay(ownRelay: {
       turn: Array<string>;
       stun: Array<string>;
+      websocket?: string;
     }) {
       const values = new Map<string, string>();
       vi.stubGlobal("localStorage", {
@@ -327,6 +328,34 @@ describe("generateInvitation", () => {
         relay: {
           turn: [...ownRelay.turn, DEFAULT_RELAY.turnUrl],
           stun: ownRelay.stun,
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
+      });
+    });
+
+    test("names the default WebSocket relay, or this browser's own in its place", async () => {
+      const withWebSocket = () => ({
+        ...DEFAULT_RELAY,
+        websocketUrl: "wss://wsrelay.example.org/relay",
+      });
+      expect(await mintedEndpoint(withWebSocket)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: {
+          turn: [DEFAULT_RELAY.turnUrl],
+          websocket: "wss://wsrelay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
+      });
+      stubOwnRelay({
+        turn: [],
+        stun: [],
+        websocket: "wss://own-relay.example.org/relay",
+      });
+      expect(await mintedEndpoint(withWebSocket)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: {
+          turn: [DEFAULT_RELAY.turnUrl],
+          websocket: "wss://own-relay.example.org/relay",
           registrar: DEFAULT_RELAY.registrarUrl,
         },
       });

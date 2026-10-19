@@ -20,7 +20,7 @@ import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 import { defaultRelaySetting } from "@utils/clientConfig";
 
 import { invitationLocation } from "../invitationLocation";
-import { relayForRun } from "../transport/ownRelaySetting";
+import { ownRelayForInvitation } from "../transport/ownRelaySetting";
 
 import { composeManagedReinvite } from "./managedReinvite";
 import { managedAllowedRelays } from "./managedExchangeRecord";
@@ -64,7 +64,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
   registerRelayKey: (replaced, written) =>
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
-  ownRelay: (allowedRelays) => relayForRun(undefined, allowedRelays),
+  ownRelay: (allowedRelays) => ownRelayForInvitation(allowedRelays),
   defaultRelay: () => defaultRelaySetting(),
 };
 

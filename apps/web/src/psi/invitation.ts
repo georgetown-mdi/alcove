@@ -27,7 +27,7 @@ import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
 import { matchingKeyField } from "./matchingKeyModel";
 import { ownColumnsField } from "./ownColumnsModel";
-import { relayForRun } from "./transport/ownRelaySetting";
+import { ownRelayForInvitation } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
 import { invitationRelayWithDefault } from "./transport/defaultRelay";
@@ -282,7 +282,7 @@ export type ConnectionEndpointRequest =
 
 /**
  * Resolve a request to the token's endpoint. This app's own webrtc locator
- * names this browser's own relay ({@link relayForRun}) and the build's
+ * names this browser's own relay ({@link ownRelayForInvitation}) and the build's
  * default relay with its registrar, where the locator has room for it
  * ({@link invitationRelayWithDefault}); no registrar is contacted. A webrtc
  * endpoint naming its host is taken as given.
@@ -297,7 +297,7 @@ function resolveConnectionEndpoint(
     return invitationWebrtcEndpoint(
       location,
       invitationRelayWithDefault(
-        relayForRun(undefined, allowedRelays),
+        ownRelayForInvitation(allowedRelays),
         readDefaultRelay(),
         allowedRelays,
       ),

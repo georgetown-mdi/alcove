@@ -4,7 +4,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; of it, the relay proof derivation, the relay service and the browser's relay transport are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
+_Status: design only; of it, the relay proof derivation, the relay service, the browser's relay transport, and the relay locator and settings are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
@@ -472,6 +472,7 @@ Relay path, in order:
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
 - **Relay locator and settings** -- the `wss` url on the invitation locator, the Relay settings page, and the CLI's connection block, selected per kind.
+  Built: the locator's `websocket` url ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)), the Relay server page's WebSocket relay field on the hosted build (`apps/web/src/exchange/RelaySettingsScreen.tsx`), a build's default WebSocket relay (`VITE_DEFAULT_RELAY_WEBSOCKET_URL`), and the per-kind listing under the allowed relays (`selectRunRelay` in `packages/core/src/relayCredential.ts`, `webSocketRelaysForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`); no run dials a listed relay until the fallback.
 - **Automatic fallback** -- the start frame, the parked relay socket during the WebRTC rendezvous, and the hand-over.
 - **Disclosure documents** -- PRIVACY and SHARED_RESPONSIBILITY rows, the SECURITY_DESIGN channel-security paragraph, the wrap table row and its "no such transport exists" sentence in CHANNEL_SECURITY, COMMUNICATION's supporting services, DEPLOYMENT, CLI.md, the planned `connect-src` allowlist ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)).
 - **Tests** -- relay unit tests with the shared refusal fixtures, a relayed exchange in the browser suite, a CLI-to-browser relayed run in the interop suite ([TESTING.md](../TESTING.md#cross-runtime-interop-suite)), and a stress-tier run at the largest size.

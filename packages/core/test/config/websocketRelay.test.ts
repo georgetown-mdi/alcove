@@ -28,7 +28,11 @@ const FORM =
 test.each([
   ["wss://relay.example.org/relay"],
   ["wss://relay.example.org:8443/relay"],
-  ["wss://[2001:db8::1]:443/relay"],
+  ["wss://[2001:db8::1]:8443/relay"],
+  ["wss://relay.example"],
+  ["wss://relay.example/"],
+  ["wss://relay.example:8446"],
+  ["wss://relay.example:8446/path"],
 ])("the relay url %s parses as written", (url) => {
   const result = webrtc(url);
   expect(result.success).toBe(true);
@@ -67,6 +71,25 @@ test.each([
   ["wss://relay.example.org/relay#x", "has a query or fragment"],
 ])("the relay url %s is refused", (url, expected) => {
   expect(messages(webrtc(url))).toContain(`websocket_relay ${expected}`);
+});
+
+test.each([
+  [
+    "wss://evil.example\\@good.example/relay",
+    "wss://evil.example/@good.example/relay",
+  ],
+  ["wss://relay.exa\tmple/relay", "wss://relay.example/relay"],
+  ["wss://relay.example/re\nlay", "wss://relay.example/relay"],
+  ["wss://%72elay.example/", "wss://relay.example/"],
+  ["wss:///relay", "wss://relay/"],
+  ["wss://Relay.Example/", "wss://relay.example/"],
+  ["wss://[2001:DB8:0::1]/relay", "wss://[2001:db8::1]/relay"],
+  ["wss://relay.example.org:443/relay", "wss://relay.example.org/relay"],
+  ["wss://relay.example.org/a/../relay", "wss://relay.example.org/relay"],
+])("the relay url %j is refused, naming %s", (url, canonical) => {
+  expect(messages(webrtc(url))).toContain(
+    `websocket_relay is not in canonical form; write it as ${canonical}`,
+  );
 });
 
 test("a relay url holding a user is refused without repeating it", () => {

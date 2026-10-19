@@ -13,6 +13,7 @@ describe("parseClientConfig", () => {
       SIGNALING_SERVER_URL: undefined,
       DEFAULT_RELAY_TURN_URL: "",
       DEFAULT_RELAY_REGISTRAR_URL: "",
+      DEFAULT_RELAY_WEBSOCKET_URL: "",
     });
   });
 
@@ -38,6 +39,7 @@ describe("parseClientConfig", () => {
       },
       DEFAULT_RELAY_TURN_URL: "",
       DEFAULT_RELAY_REGISTRAR_URL: "",
+      DEFAULT_RELAY_WEBSOCKET_URL: "",
     });
   });
 
@@ -240,7 +242,30 @@ describe("parseClientConfig", () => {
       },
       /VITE_DEFAULT_RELAY_REGISTRAR_URL: must be an https:\/\/ url naming only a host and an optional port from 1 to 65535, for example https:\/\/registrar\.example\.org/,
     ],
+    [
+      { DEFAULT_RELAY_WEBSOCKET_URL: "wss://wsrelay.example.org/relay" },
+      /VITE_DEFAULT_RELAY_WEBSOCKET_URL: is set without the default relay/,
+    ],
+    [
+      {
+        DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+        DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org",
+        DEFAULT_RELAY_WEBSOCKET_URL: "wss://wsrelay.example.org/relay?x",
+      },
+      /VITE_DEFAULT_RELAY_WEBSOCKET_URL: must be one wss:\/\/ url/,
+    ],
   ])("refuses the default relay %j", (data, message) => {
     expect(() => parseClientConfig(data)).toThrow(message);
+  });
+
+  test("reads the default WebSocket relay beside the default relay", () => {
+    const config = parseClientConfig({
+      DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+      DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org",
+      DEFAULT_RELAY_WEBSOCKET_URL: " wss://wsrelay.example.org/relay ",
+    });
+    expect(config.DEFAULT_RELAY_WEBSOCKET_URL).toBe(
+      "wss://wsrelay.example.org/relay",
+    );
   });
 });

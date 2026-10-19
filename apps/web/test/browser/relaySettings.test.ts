@@ -177,6 +177,59 @@ describe("RelaySettingsScreen", () => {
   });
 });
 
+describe("RelaySettingsScreen: the WebSocket relay", () => {
+  const WEBSOCKET_URL = "wss://wsrelay.example.org/relay";
+  const websocketField = () =>
+    page.getByRole("textbox", { name: "WebSocket relay url" });
+
+  test("a save is kept across a reload, and removing clears it", async () => {
+    await mountScreen();
+
+    await userEvent.fill(websocketField(), WEBSOCKET_URL);
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent(
+        "Saved. Exchanges started from now on use this relay.",
+      );
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { turn: [], stun: [], websocket: WEBSOCKET_URL },
+    });
+
+    await mountScreen();
+    await expect.element(websocketField()).toHaveValue(WEBSOCKET_URL);
+
+    await userEvent.click(removeButton());
+    await expect.element(websocketField()).toHaveValue("");
+    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+  });
+
+  test("an invalid url is reported on its field alone and nothing is saved", async () => {
+    await mountScreen();
+
+    await userEvent.fill(turnField(), TURN_URL);
+    await userEvent.fill(websocketField(), "ws://wsrelay.example.org/relay");
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(websocketField())
+      .toHaveAccessibleDescription(/the WebSocket relay url must be a wss:/);
+    await expect
+      .element(turnField())
+      .not.toHaveAttribute("aria-invalid", "true");
+    expect(page.getByRole("alert").all()).toHaveLength(1);
+    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+  });
+
+  test("the console build offers no WebSocket relay field", async () => {
+    build.console = true;
+    await mountScreen();
+    expect(websocketField().query()).toBeNull();
+  });
+});
+
 /** What an earlier build stored as this browser's allowed relays, under the
  * key it used: no migration removes it. */
 const EARLIER_ALLOWED_RELAYS_KEY = "alcove-relay-restriction";

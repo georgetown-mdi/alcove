@@ -1515,6 +1515,53 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     }
   });
 
+  test("displayInvitation: a WebSocket relay the invitation names is shown escaped, and marked under allowed_relays", () => {
+    const log = getLogger("accept-display-websocket-relay-test");
+    log.setLevel("silent");
+    const infoSpy = vi.spyOn(log, "info");
+    const escaped = "wss://wsrelay.example.org/\u001b[31mrelay";
+    const canonical = "wss://wsrelay.example.org/relay";
+    const show = (
+      websocket: string,
+      allowedRelays: ReadonlyArray<string> | undefined,
+    ) => {
+      infoSpy.mockClear();
+      displayInvitation({
+        token: sampleToken(FUTURE(), {
+          channel: "webrtc",
+          host: "peer.example.org",
+          relay: { websocket },
+        }),
+        ownOutboundSend: undefined,
+        emit: (line) => {
+          log.info(line);
+        },
+        promptFollows: true,
+        ...(allowedRelays !== undefined && { allowedRelays }),
+      });
+      const lines = infoSpy.mock.calls.map((c) => String(c[0]));
+      const heading = lines.indexOf("  relay your partner named (enforced):");
+      return lines[heading + 1];
+    };
+    try {
+      expect(show(escaped, undefined)).toBe(
+        "    WebSocket relay wss://wsrelay.example.org/\\x1b[31mrelay",
+      );
+      expect(show(escaped, ["wsrelay.example.org"])).toBe(
+        "    WebSocket relay wss://wsrelay.example.org/\\x1b[31mrelay " +
+          "(left out by connection.allowed_relays)",
+      );
+      expect(show(canonical, ["wsrelay.example.org"])).toBe(
+        `    WebSocket relay ${canonical} (kept by connection.allowed_relays)`,
+      );
+      expect(show(canonical, ["relay.example.org"])).toBe(
+        `    WebSocket relay ${canonical} (left out by connection.allowed_relays)`,
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
   test("displayInvitation: a registrar written in a typed form is shown as its origin", async () => {
     const log = getLogger("accept-display-relay-registrar-typed-test");
     log.setLevel("silent");

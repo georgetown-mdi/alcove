@@ -2,9 +2,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MAX_RELAY_URLS,
+  ownRelayForInvitation,
   parseRelayUrlLines,
+  parseWebSocketRelayUrl,
   readOwnRelaySetting,
   relayForRun,
+  webSocketRelaysForRun,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
 
@@ -225,5 +228,107 @@ describe("relayForRun", () => {
     expect(
       relayForRun(undefined, NO_RESTRICTION, () => ({ kind: "unreadable" })),
     ).toBeUndefined();
+  });
+});
+
+describe("the own WebSocket relay", () => {
+  const WEBSOCKET = "wss://wsrelay.example.org/relay";
+  const PARTNER = "wss://partner.example.net/relay";
+
+  test("is stored beside the TURN and STUN urls and reads back", () => {
+    const values = stubStorage();
+    writeOwnRelaySetting({ ...OWN, websocket: WEBSOCKET });
+    expect(JSON.parse(values.get(STORAGE_KEY) ?? "")).toStrictEqual({
+      version: 1,
+      turn: OWN.turn,
+      stun: OWN.stun,
+      websocket: WEBSOCKET,
+    });
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { ...OWN, websocket: WEBSOCKET },
+    });
+  });
+
+  test("is a setting on its own", () => {
+    stubStorage();
+    writeOwnRelaySetting({ turn: [], stun: [], websocket: WEBSOCKET });
+    expect(readOwnRelaySetting()).toEqual({
+      kind: "set",
+      relay: { turn: [], stun: [], websocket: WEBSOCKET },
+    });
+  });
+
+  test("a url outside the grammar is not written, and a stored one is refused", () => {
+    const values = stubStorage();
+    expect(() =>
+      writeOwnRelaySetting({ ...OWN, websocket: "ws://wsrelay.example.org" }),
+    ).toThrow();
+    expect(values.has(STORAGE_KEY)).toBe(false);
+    values.set(
+      STORAGE_KEY,
+      JSON.stringify({ version: 1, turn: [], stun: [], websocket: "x" }),
+    );
+    expect(readOwnRelaySetting()).toEqual({ kind: "unreadable" });
+  });
+
+  test("parseWebSocketRelayUrl reads one url, blank as none, with core's message for a refusal", () => {
+    expect(parseWebSocketRelayUrl("  ")).toEqual({ ok: true });
+    expect(parseWebSocketRelayUrl(` ${WEBSOCKET} `)).toEqual({
+      ok: true,
+      url: WEBSOCKET,
+    });
+    const refused = parseWebSocketRelayUrl(`${WEBSOCKET}?token=x`);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok)
+      expect(refused.message).toMatch(
+        /^the WebSocket relay url has a query or fragment/,
+      );
+  });
+
+  test("a run lists its own before the invitation's, each once, less those the allowed relays leave out", () => {
+    const own = () => ({
+      kind: "set" as const,
+      relay: { ...OWN, websocket: WEBSOCKET },
+    });
+    expect(
+      webSocketRelaysForRun({ websocket: PARTNER }, undefined, own),
+    ).toEqual([WEBSOCKET, PARTNER]);
+    expect(
+      webSocketRelaysForRun({ websocket: WEBSOCKET }, undefined, own),
+    ).toEqual([WEBSOCKET]);
+    expect(
+      webSocketRelaysForRun(
+        { websocket: PARTNER },
+        ["partner.example.net"],
+        own,
+      ),
+    ).toEqual([PARTNER]);
+    expect(
+      webSocketRelaysForRun({ websocket: PARTNER }, undefined, () => ({
+        kind: "unreadable",
+      })),
+    ).toEqual([PARTNER]);
+  });
+
+  test("an invitation names it beside the own TURN and STUN urls where the allowed relays keep it", () => {
+    const own = () => ({
+      kind: "set" as const,
+      relay: { ...OWN, websocket: WEBSOCKET },
+    });
+    expect(ownRelayForInvitation(undefined, own)).toEqual({
+      ...OWN,
+      websocket: WEBSOCKET,
+    });
+    expect(ownRelayForInvitation(["relay.example.org"], own)).toEqual({
+      turn: OWN.turn,
+      stun: OWN.stun,
+    });
+    expect(
+      ownRelayForInvitation(undefined, () => ({
+        kind: "set",
+        relay: { turn: [], stun: [], websocket: WEBSOCKET },
+      })),
+    ).toEqual({ websocket: WEBSOCKET });
   });
 });

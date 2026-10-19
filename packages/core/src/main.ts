@@ -347,6 +347,9 @@ export {
   statesServerHost,
   turnUrlIsAllowed,
   turnUrlRelay,
+  webSocketRelayUrlIsAllowed,
+  webSocketRelayUrlRelay,
+  webSocketRelayUrlSchema,
   withRetainModeImplications,
 } from "./config/connection";
 export {
@@ -904,6 +907,7 @@ export type {
   RunRelayConnection,
   RunRelaySelection,
   RunTurnServer,
+  RunWebSocketRelay,
 } from "./relayCredential";
 export {
   enrollRelayKey,

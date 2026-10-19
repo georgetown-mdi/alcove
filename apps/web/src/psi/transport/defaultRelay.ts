@@ -1,7 +1,9 @@
 /**
- * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL` and
- * `VITE_DEFAULT_RELAY_REGISTRAR_URL`). An invitation this build creates names
- * it and its registrar, and every browser run lists it beside any relay the invitation or this
+ * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL`,
+ * `VITE_DEFAULT_RELAY_REGISTRAR_URL` and, optionally,
+ * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`). An invitation this build creates names
+ * it, its registrar and its WebSocket relay, and every browser run lists its
+ * TURN url beside any relay the invitation or this
  * browser's own setting names, once the run has enrolled its relay key at the
  * relay's registrar without a token (`enrollRelayKeyWithinWait` in core),
  * right before it connects. The key and the exchange id it is enrolled under
@@ -13,6 +15,7 @@ import {
   enrollRelayKeyWithinWait,
   getLogger,
   turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
 } from "@alcove/core";
 
 import { defaultRelaySetting } from "@utils/clientConfig";
@@ -53,8 +56,10 @@ export interface DefaultRelayDependencies {
  * TURN url when the build names one and `allowedRelays` keeps it, once, and
  * only where the locator has room for it under {@link MAX_RELAY_LOCATOR_URLS}.
  * Where the result names that url, it also names the default relay's
- * registrar, where a command-line party enrolls without a token. A new
- * invitation and a managed re-invite both name it this way.
+ * registrar, where a command-line party enrolls without a token. Where
+ * `ownRelay` names no WebSocket relay, the result names the default relay's
+ * when the build names one and `allowedRelays` keeps it. A new invitation and
+ * a managed re-invite both name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
@@ -62,16 +67,38 @@ export function invitationRelayWithDefault(
   allowedRelays: ReadonlyArray<string> | undefined,
 ): RelayUrls | undefined {
   if (defaultRelay === undefined) return ownRelay;
-  if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return ownRelay;
-  const turn = ownRelay?.turn ?? [];
+  const relay = withDefaultWebSocketRelay(
+    ownRelay,
+    defaultRelay,
+    allowedRelays,
+  );
+  if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return relay;
+  const turn = relay?.turn ?? [];
   if (turn.includes(defaultRelay.turnUrl))
-    return { ...ownRelay, registrar: defaultRelay.registrarUrl };
-  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return ownRelay;
+    return { ...relay, registrar: defaultRelay.registrarUrl };
+  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return relay;
   return {
-    ...ownRelay,
+    ...relay,
     turn: [...turn, defaultRelay.turnUrl],
     registrar: defaultRelay.registrarUrl,
   };
+}
+
+// `relay` naming the default WebSocket relay where it names none of its own,
+// the build names one and `allowedRelays` keeps it.
+function withDefaultWebSocketRelay(
+  relay: RelayUrls | undefined,
+  defaultRelay: DefaultRelaySetting,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): RelayUrls | undefined {
+  const websocket = defaultRelay.websocketUrl;
+  if (
+    relay?.websocket !== undefined ||
+    websocket === undefined ||
+    !webSocketRelayUrlIsAllowed(websocket, allowedRelays)
+  )
+    return relay;
+  return { ...relay, websocket };
 }
 
 /**
