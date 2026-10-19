@@ -41,11 +41,8 @@ import type { MessageConnection, RendezvousRole } from "@alcove/core";
  *
  * A clean close sends the sentinel and waits for the partner's close to reach
  * this socket through the relay: TCP acknowledges a message to the relay, not
- * to the partner, so that close is the one delivery signal there is. When
- * both parties close at once, each reads the other's sentinel after sending
- * its own and closes with 1000 then, and the side whose close the relay reads
- * first ends its wait on the relay's answer to that close, not the
- * partner's. The relay forwards a party's close code 1000 as 1000, so this
+ * to the partner, so that close is the one delivery signal there is (the
+ * limit when both close at once: the spec's Delivery bullet). The relay forwards a party's close code 1000 as 1000, so this
  * side closes with 1000 only on a clean close and with
  * {@link RELAY_ABANDON_CLOSE_CODE} on any other end, and a partner never
  * reads a failure as delivery.
