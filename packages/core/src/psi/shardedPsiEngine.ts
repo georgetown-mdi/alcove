@@ -10,7 +10,10 @@ import {
   mergeCountOnlyResponseChunks,
   serializeResponse,
 } from "./psiChunks";
-import { valuesContributedExactlyOnce } from "./psiEngine";
+import {
+  partnerRequestModeError,
+  valuesContributedExactlyOnce,
+} from "./psiEngine";
 
 import type { PsiChunkRange } from "./psiChunks";
 import type {
@@ -52,12 +55,15 @@ export interface ShardedPsiEngineOptions {
  * key: a shard under another key masks its part to different bytes, and the
  * merged message is then wrong without any engine failing. The engines must
  * not be shared with another caller, since each sees its own lockstep calls.
+ * A partner request in the other mode is refused before any engine sees it,
+ * with the message one engine named `id` refuses it with.
  *
  * `library` builds and parses the merged messages on the calling thread; it
  * creates no key and masks nothing.
  */
 export class ShardedPsiEngine implements PsiEngine {
   private readonly library: PSILibrary;
+  private readonly id: string;
   private readonly revealsIdentifiers: boolean;
   private readonly engines: ReadonlyArray<PsiEngine>;
   private readonly minShardElements: number;
@@ -69,12 +75,14 @@ export class ShardedPsiEngine implements PsiEngine {
 
   constructor(
     library: PSILibrary,
+    id: string,
     mode: PsiEngineMode,
     primary: PsiEngine,
     helpers: ReadonlyArray<PsiEngine>,
     options: ShardedPsiEngineOptions = {},
   ) {
     this.library = library;
+    this.id = id;
     this.revealsIdentifiers = mode === "identifier-revealing";
     this.engines = [primary, ...helpers];
     this.minShardElements = options.minShardElements ?? PSI_SHARD_MIN_ELEMENTS;
@@ -164,18 +172,26 @@ export class ShardedPsiEngine implements PsiEngine {
       // The primary refuses a malformed request as one engine does.
       return this.primary.processClientRequest(requestBytes);
     }
-    const ranges = this.shardRangesFor(declared);
-    if (ranges.length === 1)
-      return this.primary.processClientRequest(requestBytes);
     let request;
     try {
       request = this.library.request.deserializeBinary(requestBytes);
     } catch (error) {
       throw markPsiLibraryFailure(error);
     }
+    // The merge below follows this wrapper's mode, so a request in the other
+    // mode is refused here even if every shard would serve it.
+    const revealFlag = request.getRevealIntersection();
+    if (revealFlag !== this.revealsIdentifiers)
+      throw partnerRequestModeError(
+        this.id,
+        revealFlag,
+        this.revealsIdentifiers,
+      );
+    const ranges = this.shardRangesFor(declared);
+    if (ranges.length === 1)
+      return this.primary.processClientRequest(requestBytes);
     // Each part keeps the partner's own reveal flag, so every shard applies
     // the mode check one engine applies to the whole request.
-    const revealFlag = request.getRevealIntersection();
     const inbound = request.getEncryptedElementsList_asU8();
     const parts = await this.overShards(ranges, async (engine, range) =>
       this.library.response

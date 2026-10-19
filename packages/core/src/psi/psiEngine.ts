@@ -79,6 +79,23 @@ function modeName(revealsIdentifiers: boolean): PsiEngineMode {
   return revealsIdentifiers ? "identifier-revealing" : "count-only";
 }
 
+/**
+ * The refusal of a partner's PSI request whose reveal flag disagrees with the
+ * mode the engine `engineId` serves it in, naming both modes.
+ */
+export function partnerRequestModeError(
+  engineId: string,
+  requestRevealsIdentifiers: boolean,
+  engineRevealsIdentifiers: boolean,
+): Error {
+  // Fixed literals only: the request is partner-supplied.
+  return new Error(
+    `${engineId} protocol error: the partner's PSI request ran the ` +
+      `${modeName(requestRevealsIdentifiers)} mode, where this ` +
+      `exchange runs ${modeName(engineRevealsIdentifiers)}`,
+  );
+}
+
 // Runs a PSI library call over a partner's frame, tagging what it throws as
 // the library's failure: the one failure the frame boundary above reports as
 // the frame failing to decode (decodePsiBinaryFrame, psi/psiBinaryFrame.ts).
@@ -458,12 +475,12 @@ export class InProcessPsiEngine implements PsiEngine {
     // under -- the wire-enforced mode agreement (docs/spec/PROTOCOL.md,
     // PSI-C). Read the flag and name both modes here, rather than leave the
     // library's refusal, which the frame boundary reports as a request that
-    // failed to decode. Fixed literals only: the request is partner-supplied.
+    // failed to decode.
     if (request.getRevealIntersection() !== this.revealsIdentifiers)
-      throw new Error(
-        `${this.id} protocol error: the partner's PSI request ran the ` +
-          `${modeName(request.getRevealIntersection())} mode, where this ` +
-          `exchange runs ${modeName(this.revealsIdentifiers)}`,
+      throw partnerRequestModeError(
+        this.id,
+        request.getRevealIntersection(),
+        this.revealsIdentifiers,
       );
     const ranges = this.rangesFor(
       request.getEncryptedElementsList().length,

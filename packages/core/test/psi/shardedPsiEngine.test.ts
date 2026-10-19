@@ -53,6 +53,7 @@ function shardedEngine(
 ): ShardedPsiEngine {
   return new ShardedPsiEngine(
     library,
+    role,
     mode,
     keyedEngine(library, role, mode),
     Array.from({ length: engines - 1 }, () => keyedEngine(library, role, mode)),
@@ -161,6 +162,7 @@ describe("the sharded engine's split", () => {
     const helper = fakeEngine();
     const engine = new ShardedPsiEngine(
       wasm,
+      "joiner",
       "identifier-revealing",
       keyedEngine(wasm, "joiner", "identifier-revealing"),
       [helper],
@@ -194,9 +196,13 @@ describe("the sharded engine's split", () => {
 
   test("an operation on the primary alone passes its count through", async () => {
     const primary = fakeEngine();
-    const engine = new ShardedPsiEngine(wasm, "identifier-revealing", primary, [
-      fakeEngine(),
-    ]);
+    const engine = new ShardedPsiEngine(
+      wasm,
+      "joiner",
+      "identifier-revealing",
+      primary,
+      [fakeEngine()],
+    );
     const reported: Array<number> = [];
     engine.observeProcessedElements((processed) => reported.push(processed));
     primary.report?.(7);
@@ -215,6 +221,7 @@ describe("the sharded engine's split", () => {
     );
     const engine = new ShardedPsiEngine(
       wasm,
+      "joiner",
       "identifier-revealing",
       primary,
       [helper],
@@ -231,10 +238,41 @@ describe("the sharded engine's split", () => {
     expect(reported).toStrictEqual([]);
   });
 
+  test.for<[PsiEngineMode, PsiEngineMode]>([
+    ["count-only", "identifier-revealing"],
+    ["identifier-revealing", "count-only"],
+  ])(
+    "a wrapper in %s mode refuses a request in %s mode before any engine sees it",
+    async ([wrapperMode, requestMode]) => {
+      const joiner = keyedEngine(wasm, "joiner", requestMode);
+      const engines = [fakeEngine(), fakeEngine(), fakeEngine()];
+      const engine = new ShardedPsiEngine(
+        wasm,
+        "starter",
+        wrapperMode,
+        engines[0]!,
+        engines.slice(1),
+        { minShardElements: MIN_SHARD_ELEMENTS },
+      );
+      try {
+        const request = await joiner.createClientRequest(clientValues);
+        await expect(engine.processClientRequest(request)).rejects.toThrow(
+          "starter protocol error: the partner's PSI request ran the " +
+            `${requestMode} mode, where this exchange runs ${wrapperMode}`,
+        );
+        for (const each of engines)
+          expect(each.processClientRequest).not.toHaveBeenCalled();
+      } finally {
+        joiner.dispose();
+      }
+    },
+  );
+
   test("a stop reaches every engine", () => {
     const engines = [fakeEngine(false), fakeEngine(true), fakeEngine(false)];
     const engine = new ShardedPsiEngine(
       wasm,
+      "joiner",
       "identifier-revealing",
       engines[0]!,
       engines.slice(1),
@@ -252,6 +290,7 @@ describe("the sharded engine's split", () => {
     const engines = [fakeEngine(), failing, fakeEngine()];
     const engine = new ShardedPsiEngine(
       wasm,
+      "joiner",
       "identifier-revealing",
       engines[0]!,
       engines.slice(1),
@@ -263,6 +302,7 @@ describe("the sharded engine's split", () => {
 });
 
 type FakeEngine = PsiEngine & {
+  processClientRequest: Mock<(requestBytes: Uint8Array) => Promise<Uint8Array>>;
   createClientRequest: Mock<
     (values: ReadonlyArray<string>) => Promise<Uint8Array>
   >;
@@ -276,7 +316,7 @@ function fakeEngine(stops = false): FakeEngine {
     Promise.reject(new Error("not expected in this test"));
   const engine: FakeEngine = {
     createServerSetup: refuse,
-    processClientRequest: refuse,
+    processClientRequest: vi.fn(refuse),
     createClientRequest: vi.fn(refuse),
     receiveServerSetup: refuse,
     receiveServerSetupPiece: refuse,
