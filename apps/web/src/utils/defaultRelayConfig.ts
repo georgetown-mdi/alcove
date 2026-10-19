@@ -1,28 +1,44 @@
 /**
- * The rule for the two build variables naming a default relay,
- * `VITE_DEFAULT_RELAY_TURN_URL` and `VITE_DEFAULT_RELAY_REGISTRAR_URL`, shared
- * by the client's configuration (`./clientConfig.ts`) and the build's own
- * refusal (`vite.config.ts`), so a value the page would refuse at load also
- * stops the build.
+ * The rule for the build variables naming a default relay,
+ * `VITE_DEFAULT_RELAY_TURN_URL`, `VITE_DEFAULT_RELAY_REGISTRAR_URL` and
+ * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`, shared by the client's configuration
+ * (`./clientConfig.ts`) and the build's own refusal (`vite.config.ts`), so a
+ * value the page would refuse at load also stops the build.
  */
 
-import { RelayRegistrarSchema, TurnUrlSchema } from "@alcove/core";
+import {
+  RelayRegistrarSchema,
+  TurnUrlSchema,
+  webSocketRelayUrlSchema,
+} from "@alcove/core";
 
-/** The default relay a build names, read from its two build variables. */
+/** The default relay a build names, read from its build variables. */
 export interface DefaultRelaySetting {
   turnUrl: string;
   registrarUrl: string;
+  /**
+   * The `wss://` url of the default WebSocket relay, which reads the key
+   * table the registrar enrolls into; absent when the build names none.
+   */
+  websocketUrl?: string;
 }
 
 /** One refused default relay variable, by its unprefixed name. */
 export interface DefaultRelayConfigProblem {
-  variable: "DEFAULT_RELAY_TURN_URL" | "DEFAULT_RELAY_REGISTRAR_URL";
+  variable:
+    | "DEFAULT_RELAY_TURN_URL"
+    | "DEFAULT_RELAY_REGISTRAR_URL"
+    | "DEFAULT_RELAY_WEBSOCKET_URL";
   message: string;
 }
 
 const PAIRING =
   "set both VITE_DEFAULT_RELAY_TURN_URL and VITE_DEFAULT_RELAY_REGISTRAR_URL, " +
   "or neither";
+
+const WebSocketUrlSchema = webSocketRelayUrlSchema(
+  "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
+);
 
 /**
  * The trimmed registrar build variable as the origin core's registrar rule
@@ -40,13 +56,16 @@ export function defaultRelayRegistrarOrigin(registrarUrl: string): string {
 }
 
 /**
- * What is wrong with the two trimmed values, empty when nothing is: each set
- * value must be one `turn:` / `turns:` url and an `https://` url naming only a
- * host and an optional port, and the two are set together or not at all.
+ * What is wrong with the trimmed values, empty when nothing is: each set
+ * value must be one `turn:` / `turns:` url, an `https://` url naming only a
+ * host and an optional port, and a `wss://` url; the first two are set
+ * together or not at all, and the third only beside them, since the
+ * WebSocket relay admits only the keys that registrar enrolls.
  */
 export function defaultRelayConfigProblems(
   turnUrl: string,
   registrarUrl: string,
+  websocketUrl = "",
 ): Array<DefaultRelayConfigProblem> {
   const problems: Array<DefaultRelayConfigProblem> = [];
   if (turnUrl !== "" && !TurnUrlSchema.safeParse(turnUrl).success)
@@ -69,5 +88,22 @@ export function defaultRelayConfigProblems(
           : "DEFAULT_RELAY_REGISTRAR_URL",
       message: `is not set; ${PAIRING}`,
     });
+  if (websocketUrl !== "") {
+    if (!WebSocketUrlSchema.safeParse(websocketUrl).success)
+      problems.push({
+        variable: "DEFAULT_RELAY_WEBSOCKET_URL",
+        message:
+          "must be one wss:// url naming a host, an optional port and the " +
+          "relay's path, with no user, query or fragment, for example " +
+          "wss://relay.example.org/relay",
+      });
+    if (turnUrl === "" || registrarUrl === "")
+      problems.push({
+        variable: "DEFAULT_RELAY_WEBSOCKET_URL",
+        message:
+          "is set without the default relay; set it only beside " +
+          "VITE_DEFAULT_RELAY_TURN_URL and VITE_DEFAULT_RELAY_REGISTRAR_URL",
+      });
+  }
   return problems;
 }

@@ -103,6 +103,12 @@ export interface ClientConfig {
    * has none.
    */
   DEFAULT_RELAY_REGISTRAR_URL: string;
+  /**
+   * The `wss://` url of the default relay's WebSocket relay, which an
+   * invitation this build creates names. Set only beside the two above;
+   * empty, the build names none.
+   */
+  DEFAULT_RELAY_WEBSOCKET_URL: string;
 }
 
 export type { DefaultRelaySetting };
@@ -196,11 +202,13 @@ const clientConfigSchema: ZodType<ClientConfig> = z
       .transform(parseSignalingServerUrl),
     DEFAULT_RELAY_TURN_URL: z.string().trim().default(""),
     DEFAULT_RELAY_REGISTRAR_URL: z.string().trim().default(""),
+    DEFAULT_RELAY_WEBSOCKET_URL: z.string().trim().default(""),
   })
   .superRefine((value, context) => {
     for (const problem of defaultRelayConfigProblems(
       value.DEFAULT_RELAY_TURN_URL,
       value.DEFAULT_RELAY_REGISTRAR_URL,
+      value.DEFAULT_RELAY_WEBSOCKET_URL,
     ))
       context.addIssue({
         code: "custom",
@@ -296,6 +304,9 @@ export function defaultRelaySetting(): DefaultRelaySetting | undefined {
   return {
     turnUrl: config.DEFAULT_RELAY_TURN_URL,
     registrarUrl: config.DEFAULT_RELAY_REGISTRAR_URL,
+    ...(config.DEFAULT_RELAY_WEBSOCKET_URL !== "" && {
+      websocketUrl: config.DEFAULT_RELAY_WEBSOCKET_URL,
+    }),
   };
 }
 

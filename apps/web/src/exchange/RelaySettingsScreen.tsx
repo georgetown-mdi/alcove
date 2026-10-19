@@ -1,11 +1,20 @@
 import { useState } from "react";
 
-import { Alert, Anchor, Button, Group, Stack, Textarea } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Button,
+  Group,
+  Stack,
+  TextInput,
+  Textarea,
+} from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
 import { defaultRelaySetting, isConsoleBuild } from "@utils/clientConfig";
 import {
   parseRelayUrlLines,
+  parseWebSocketRelayUrl,
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
@@ -43,6 +52,12 @@ export const RELAY_KEY_NOTICE =
   "exchange through your relay needs its key registered with the relay again " +
   "after each run.";
 
+/** The WebSocket relay field's description. */
+export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
+  "A relay for networks that block connections through a TURN relay. An " +
+  "invitation you send names it. Exchanges do not connect through a " +
+  "WebSocket relay yet. For example: wss://relay.example.org/relay";
+
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(lines: RelayUrlLines): string | undefined {
   if (lines.ok) return undefined;
@@ -63,12 +78,13 @@ type SaveStatus =
   | { kind: "failed" };
 
 /**
- * The relay settings page: this browser's own TURN and STUN urls, kept in
- * browser storage for this site, with what the relay's operator learns stated
- * beside them, and a test of the relays a browser run lists that the user
- * starts. The hosted app and a console each hold their own. The relays an
- * exchange may use are that exchange's own, set where it is authored, so
- * none is set here.
+ * The relay settings page: this browser's own TURN and STUN urls and, on the
+ * hosted app, its WebSocket relay url, kept in browser storage for this site,
+ * with what the relay's operator learns stated beside them, and a test of the
+ * relays a browser run lists that the user starts. The hosted app and a
+ * console each hold their own; a console runs no exchange over a WebSocket
+ * relay, so it offers no WebSocket relay field. The relays an exchange may
+ * use are that exchange's own, set where it is authored, so none is set here.
  */
 export function RelaySettingsScreen({
   defaultRelay = defaultRelaySetting,
@@ -84,6 +100,9 @@ export function RelaySettingsScreen({
   const [stunText, setStunText] = useState(
     initial.kind === "set" ? initial.relay.stun.join("\n") : "",
   );
+  const [websocketText, setWebsocketText] = useState(
+    initial.kind === "set" ? (initial.relay.websocket ?? "") : "",
+  );
   const [attempted, setAttempted] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
   const [testTargets, setTestTargets] = useState(() =>
@@ -95,8 +114,13 @@ export function RelaySettingsScreen({
 
   const turnLines = parseRelayUrlLines(turnText, "turn");
   const stunLines = parseRelayUrlLines(stunText, "stun");
+  const websocketEntry = parseWebSocketRelayUrl(
+    consoleBuild ? "" : websocketText,
+  );
   const turnError = attempted ? fieldError(turnLines) : undefined;
   const stunError = attempted ? fieldError(stunLines) : undefined;
+  const websocketError =
+    attempted && !websocketEntry.ok ? websocketEntry.message : undefined;
   const unsavedTurnChanges =
     !turnLines.ok || turnLines.urls.join("\n") !== savedTurn.join("\n");
 
@@ -107,12 +131,17 @@ export function RelaySettingsScreen({
 
   function save() {
     setAttempted(true);
-    if (!turnLines.ok || !stunLines.ok) {
+    if (!turnLines.ok || !stunLines.ok || !websocketEntry.ok) {
       setStatus({ kind: "idle" });
       return;
     }
+    const websocket = websocketEntry.url;
     try {
-      writeOwnRelaySetting({ turn: turnLines.urls, stun: stunLines.urls });
+      writeOwnRelaySetting({
+        turn: turnLines.urls,
+        stun: stunLines.urls,
+        ...(websocket !== undefined && { websocket }),
+      });
     } catch {
       const stored = readOwnRelaySetting();
       refreshTestTargets(stored.kind === "set" ? stored.relay.turn : []);
@@ -122,7 +151,10 @@ export function RelaySettingsScreen({
     refreshTestTargets(turnLines.urls);
     setStatus({
       kind:
-        turnLines.urls.length + stunLines.urls.length > 0 ? "saved" : "removed",
+        turnLines.urls.length + stunLines.urls.length > 0 ||
+        websocket !== undefined
+          ? "saved"
+          : "removed",
     });
   }
 
@@ -132,6 +164,7 @@ export function RelaySettingsScreen({
       refreshTestTargets([]);
       setTurnText("");
       setStunText("");
+      setWebsocketText("");
       setAttempted(false);
       setStatus({ kind: "removed" });
     } catch {
@@ -192,6 +225,19 @@ export function RelaySettingsScreen({
             setStatus({ kind: "idle" });
           }}
         />
+        {!consoleBuild && (
+          <TextInput
+            label="WebSocket relay url"
+            description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
+            value={websocketText}
+            error={websocketError}
+            errorProps={{ role: "alert" }}
+            onChange={(event) => {
+              setWebsocketText(event.currentTarget.value);
+              setStatus({ kind: "idle" });
+            }}
+          />
+        )}
       </Stack>
 
       <div className={styles.workFoot}>

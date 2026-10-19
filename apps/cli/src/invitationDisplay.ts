@@ -16,6 +16,7 @@ import {
   ruleSetCitation,
   summarizeInvitation,
   turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
   UNRECOGNIZED_TRANSFORM_NOTE,
   unshownDeclaredNamesLine,
 } from "@alcove/core";
@@ -133,14 +134,20 @@ export function invitationRelayRegistrarLine(registrar: Displayable): string {
   );
 }
 
-// The mark a TURN url of the invitation takes in the review under the kept
-// configuration's `allowed_relays`; none where that setting is unset.
+// The mark a TURN or WebSocket relay url of the invitation takes in the review
+// under the kept configuration's `allowed_relays`; none where that setting is
+// unset.
 function allowedRelaysMark(
+  kind: "turn" | "websocket",
   url: string,
   allowedRelays: ReadonlyArray<string> | undefined,
 ): string {
   if (allowedRelays === undefined) return "";
-  return turnUrlIsAllowed(url, allowedRelays)
+  const allowed =
+    kind === "turn"
+      ? turnUrlIsAllowed(url, allowedRelays)
+      : webSocketRelayUrlIsAllowed(url, allowedRelays);
+  return allowed
     ? ` (${KEPT_BY_ALLOWED_RELAYS})`
     : ` (${LEFT_OUT_BY_ALLOWED_RELAYS})`;
 }
@@ -875,16 +882,26 @@ export function displayInvitation(params: {
   if (summary.relay !== undefined) {
     emit(`  ${marked("relay your partner named", "invitationRelay")}:`);
     // The summary's urls are the endpoint's, escaped, in the endpoint's order.
-    const rawTurn =
+    const rawRelay =
       token.connectionEndpoint?.channel === "webrtc"
-        ? (token.connectionEndpoint.relay?.turn ?? [])
-        : [];
+        ? token.connectionEndpoint.relay
+        : undefined;
+    const rawTurn = rawRelay?.turn ?? [];
     summary.relay.turn.forEach((url, index) =>
       emit(
-        `    TURN ${url}${allowedRelaysMark(rawTurn[index] ?? "", allowedRelays)}`,
+        `    TURN ${url}${allowedRelaysMark("turn", rawTurn[index] ?? "", allowedRelays)}`,
       ),
     );
     for (const url of summary.relay.stun) emit(`    STUN ${url}`);
+    if (summary.relay.websocket !== undefined)
+      emit(
+        `    WebSocket relay ${summary.relay.websocket}` +
+          allowedRelaysMark(
+            "websocket",
+            rawRelay?.websocket ?? "",
+            allowedRelays,
+          ),
+      );
     if (summary.relay.registrar !== undefined)
       emit(`    ${invitationRelayRegistrarLine(summary.relay.registrar)}`);
     emit(`    ${CONSENT_FACTS.invitationRelay.note}`);

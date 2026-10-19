@@ -145,6 +145,8 @@ jobs:
           # The default relay; unset, the site lists none. Set both or neither.
           VITE_DEFAULT_RELAY_TURN_URL: ${{ vars.VITE_DEFAULT_RELAY_TURN_URL }}
           VITE_DEFAULT_RELAY_REGISTRAR_URL: ${{ vars.VITE_DEFAULT_RELAY_REGISTRAR_URL }}
+          # The default WebSocket relay, set only beside the two above.
+          VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
         run: npm run build -w apps/web
       - name: Upload artifact
         uses: actions/upload-artifact@v7

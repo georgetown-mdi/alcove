@@ -366,4 +366,54 @@ describe("invitationRelayWithDefault", () => {
       invitationRelayWithDefault(full, DEFAULT_RELAY, NO_RESTRICTION),
     ).toBe(full);
   });
+
+  describe("the default WebSocket relay", () => {
+    const WEBSOCKET = "wss://wsrelay.example.org/relay";
+    const withWebSocket = { ...DEFAULT_RELAY, websocketUrl: WEBSOCKET };
+
+    test("is named beside the default relay's TURN url and registrar", () => {
+      expect(
+        invitationRelayWithDefault(undefined, withWebSocket, NO_RESTRICTION),
+      ).toEqual({
+        turn: [DEFAULT_RELAY.turnUrl],
+        websocket: WEBSOCKET,
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
+    });
+
+    test("gives way to a WebSocket relay of this browser's own", () => {
+      const own = { ...OWN, websocket: "wss://own.example.org/relay" };
+      expect(
+        invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
+      ).toMatchObject({ websocket: own.websocket });
+    });
+
+    test("is named or left out by the allowed relays apart from the TURN url", () => {
+      expect(
+        invitationRelayWithDefault(undefined, withWebSocket, [
+          "wsrelay.example.org",
+        ]),
+      ).toEqual({ websocket: WEBSOCKET });
+      expect(
+        invitationRelayWithDefault(undefined, withWebSocket, [
+          "turn.example.org",
+        ]),
+      ).toEqual({
+        turn: [DEFAULT_RELAY.turnUrl],
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
+    });
+
+    test("is named when the locator's TURN list is full", () => {
+      const full = {
+        turn: Array.from(
+          { length: MAX_RELAY_LOCATOR_URLS },
+          (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
+        ),
+      };
+      expect(
+        invitationRelayWithDefault(full, withWebSocket, NO_RESTRICTION),
+      ).toEqual({ ...full, websocket: WEBSOCKET });
+    });
+  });
 });

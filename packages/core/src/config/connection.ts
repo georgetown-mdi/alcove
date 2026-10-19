@@ -1116,13 +1116,72 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     path: ["retainFiles"],
   });
 
+// --- WebSocket relay ---------------------------------------------------------
+
+/**
+ * Upper bound on a WebSocket relay's address, in UTF-16 code units: on
+ * {@link WebRTCConnectionConfig.websocketRelay} and on a relay locator.
+ */
+export const MAX_WEBSOCKET_RELAY_URL_LENGTH = 1024;
+
+const WEBSOCKET_RELAY_URL_FORM =
+  "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+  "relay's path, for example wss://relay.example.org/relay";
+
+// Why `url` cannot name a WebSocket relay, or undefined when it can. The url
+// is never repeated, since one holding a user may hold a password.
+function webSocketRelayUrlProblem(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `is not a url; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  }
+  if (parsed.protocol !== "wss:") return `must be ${WEBSOCKET_RELAY_URL_FORM}`;
+  if (parsed.username !== "" || parsed.password !== "")
+    return `names a user; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  if (parsed.port === "0")
+    return `names port 0; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  // `search` and `hash` are empty for an empty `?` or `#`, so the text is read.
+  if (url.includes("?") || url.includes("#"))
+    return `has a query or fragment; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  return undefined;
+}
+
+/**
+ * The grammar of a WebSocket relay's address: a `wss://` url naming a host, an
+ * optional port and a path, with no user, query or fragment, at most
+ * {@link MAX_WEBSOCKET_RELAY_URL_LENGTH} UTF-16 code units. Each refusal
+ * starts with `name`, the field as the reader of the message knows it.
+ */
+export function webSocketRelayUrlSchema(name: string): z.ZodType<string> {
+  return z
+    .string()
+    .trim()
+    .check(
+      maxCodeUnits(
+        MAX_WEBSOCKET_RELAY_URL_LENGTH,
+        `${name} is longer than ${MAX_WEBSOCKET_RELAY_URL_LENGTH} characters`,
+      ),
+    )
+    .superRefine((url, ctx) => {
+      const problem = webSocketRelayUrlProblem(url);
+      if (problem !== undefined)
+        ctx.addIssue({ code: "custom", message: `${name} ${problem}` });
+    });
+}
+
+const WebSocketRelayUrlSchema = webSocketRelayUrlSchema("websocket_relay");
+
 // --- Relay locator -----------------------------------------------------------
 
 /**
  * Where a relay is reached, and nothing that authenticates to it: TURN and
  * STUN urls under the grammar of the connection block's own `turn` and `stun`
- * entries, and the address of a registrar that enrolls the exchange's relay
- * key without a token. An invitation's webrtc endpoint may name one, and the
+ * entries, a WebSocket relay's address under the grammar of its own
+ * `websocket_relay`, and the address of a registrar that enrolls the
+ * exchange's relay key without a token. An invitation's webrtc endpoint may
+ * name one, and the
  * accepting side keeps it on its connection as
  * {@link WebRTCConnectionConfig.invitationRelay}. Each party mints the TURN
  * credential from the exchange's shared secret (docs/spec/PROTOCOL.md, "Relay
@@ -1133,6 +1192,11 @@ export interface RelayLocator {
   turn?: string[];
   /** STUN urls; non-empty when present. */
   stun?: string[];
+  /**
+   * The `wss://` address of a WebSocket relay (docs/spec/WEBSOCKET_RELAY.md),
+   * which a run proves the exchange's relay key to.
+   */
+  websocket?: string;
   /**
    * The `https://` address of a registrar, naming only a host and an optional
    * port, where a run enrolls the exchange's relay key without a token before
@@ -1187,13 +1251,18 @@ const relayLocatorRegistrarSchema = z
   })
   .transform(relayRegistrarOrigin);
 
+const relayLocatorWebSocketSchema = webSocketRelayUrlSchema(
+  "a relay locator's websocket url",
+);
+
 /**
  * Build the strict {@link RelayLocator} schema. Every key outside
- * `turn`/`stun`/`registrar`, a `username` or `credential` included, is refused
- * rather than stripped, with `unknownKeysMessage` naming the keys; a locator
- * naming no url, and one naming a registrar beside no TURN url, are refused
- * too. The invitation endpoint and the connection block each supply their own
- * message: one names keys a partner wrote, the other keys the operator wrote.
+ * `turn`/`stun`/`websocket`/`registrar`, a `username` or `credential`
+ * included, is refused rather than stripped, with `unknownKeysMessage` naming
+ * the keys; a locator naming no url, and one naming a registrar beside no
+ * TURN url, are refused too. The invitation endpoint and the connection block
+ * each supply their own message: one names keys a partner wrote, the other
+ * keys the operator wrote.
  */
 export function relayLocatorSchema(
   unknownKeysMessage: (keys: ReadonlyArray<string>) => string,
@@ -1203,6 +1272,7 @@ export function relayLocatorSchema(
       {
         turn: relayUrlList(TurnUrlSchema, "turn").optional(),
         stun: relayUrlList(StunUrlSchema, "stun").optional(),
+        websocket: relayLocatorWebSocketSchema.optional(),
         registrar: relayLocatorRegistrarSchema.optional(),
       },
       {
@@ -1212,11 +1282,17 @@ export function relayLocatorSchema(
             : undefined,
       },
     )
-    .refine((relay) => relay.turn !== undefined || relay.stun !== undefined, {
-      message:
-        "a relay locator must name at least one turn or stun url; omit it " +
-        "when there is no relay to name",
-    })
+    .refine(
+      (relay) =>
+        relay.turn !== undefined ||
+        relay.stun !== undefined ||
+        relay.websocket !== undefined,
+      {
+        message:
+          "a relay locator must name at least one turn, stun or websocket " +
+          "url; omit it when there is no relay to name",
+      },
+    )
     .refine(
       (relay) => relay.registrar === undefined || relay.turn !== undefined,
       {
@@ -1231,8 +1307,8 @@ export function relayLocatorSchema(
 const ConnectionRelayLocatorSchema = relayLocatorSchema(
   (keys) =>
     `invitation_relay has no ${keys.length === 1 ? "key" : "keys"} ` +
-    `${keys.join(", ")}; it holds only turn and stun url lists and a ` +
-    "registrar url",
+    `${keys.join(", ")}; it holds only turn and stun url lists, a ` +
+    "websocket url and a registrar url",
 );
 
 // --- Allowed relays ----------------------------------------------------------
@@ -1297,6 +1373,13 @@ export function turnUrlIsAllowed(
   if (allowedRelays === undefined) return true;
   const relay = turnUrlRelay(url);
   if (relay === undefined) return false;
+  return relayIsAllowed(relay, allowedRelays);
+}
+
+function relayIsAllowed(
+  relay: RelayHostAndPort,
+  allowedRelays: ReadonlyArray<string>,
+): boolean {
   return allowedRelays.some((entry) => {
     const allowed = parseRelayHostAndPort(entry);
     return (
@@ -1305,6 +1388,42 @@ export function turnUrlIsAllowed(
       (allowed.port === undefined || allowed.port === relay.port)
     );
   });
+}
+
+const WSS_DEFAULT_PORT = 443;
+
+/**
+ * The relay a WebSocket relay url names: its host, lowercase with no trailing
+ * dot, and its port, 443 where the url names none. `undefined` for a url
+ * {@link webSocketRelayUrlSchema} does not admit.
+ */
+export function webSocketRelayUrlRelay(
+  url: string,
+): RelayHostAndPort | undefined {
+  if (webSocketRelayUrlProblem(url) !== undefined) return undefined;
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+  if (host === "") return undefined;
+  return {
+    host,
+    port: parsed.port === "" ? WSS_DEFAULT_PORT : Number(parsed.port),
+  };
+}
+
+/**
+ * Whether a run may use the WebSocket relay at `url` under `allowedRelays`,
+ * by the rule {@link turnUrlIsAllowed} applies to a TURN url: every url when
+ * the setting is unset, else a url whose host an entry names, on the entry's
+ * port when it names one. No name is resolved.
+ */
+export function webSocketRelayUrlIsAllowed(
+  url: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): boolean {
+  if (allowedRelays === undefined) return true;
+  const relay = webSocketRelayUrlRelay(url);
+  if (relay === undefined) return false;
+  return relayIsAllowed(relay, allowedRelays);
 }
 
 /**
@@ -1448,54 +1567,6 @@ export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
   },
 );
 
-// --- WebSocket relay ---------------------------------------------------------
-
-/** Upper bound on {@link WebRTCConnectionConfig.websocketRelay}, in UTF-16 code units. */
-export const MAX_WEBSOCKET_RELAY_URL_LENGTH = 1024;
-
-const WEBSOCKET_RELAY_URL_FORM =
-  "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
-  "relay's path, for example wss://relay.example.org/relay";
-
-// Why `url` cannot name a WebSocket relay, or undefined when it can. The url
-// is never repeated, since one holding a user may hold a password.
-function webSocketRelayUrlProblem(url: string): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return `is not a url; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
-  }
-  if (parsed.protocol !== "wss:") return `must be ${WEBSOCKET_RELAY_URL_FORM}`;
-  if (parsed.username !== "" || parsed.password !== "")
-    return `names a user; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
-  if (parsed.port === "0")
-    return `names port 0; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
-  // `search` and `hash` are empty for an empty `?` or `#`, so the text is read.
-  if (url.includes("?") || url.includes("#"))
-    return `has a query or fragment; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
-  return undefined;
-}
-
-/**
- * The grammar of a WebSocket relay's address: a `wss://` url naming a host, an
- * optional port and a path, with no user, query or fragment.
- */
-const WebSocketRelayUrlSchema = z
-  .string()
-  .trim()
-  .check(
-    maxCodeUnits(
-      MAX_WEBSOCKET_RELAY_URL_LENGTH,
-      `websocket_relay is longer than ${MAX_WEBSOCKET_RELAY_URL_LENGTH} characters`,
-    ),
-  )
-  .superRefine((url, ctx) => {
-    const problem = webSocketRelayUrlProblem(url);
-    if (problem !== undefined)
-      ctx.addIssue({ code: "custom", message: `websocket_relay ${problem}` });
-  });
-
 /**
  * Whether `turn` holds an entry whose credential a run mints from the shared
  * secret: one that sets no username or credential.
@@ -1538,13 +1609,16 @@ export interface WebRTCConnectionConfig {
    * and enrolls at its `registrar`, when it names one, before it dials if the
    * relay it allocates on is one this locator names and takes the minted
    * credential (`runEnrollsAtInvitationRegistrar` in relayCredential.ts).
+   * Its `websocket` url is listed after {@link websocketRelay}.
    */
   invitationRelay?: RelayLocator;
   /**
-   * The TURN relays a run may use, each a host and an optional port. A run
-   * allocates on, enrolls at the registrar of, and names in the invitations
-   * it creates only the {@link turn} and {@link invitationRelay} TURN urls
-   * an entry names (`turnUrlIsAllowed`). Unset, every listed relay is used.
+   * The TURN and WebSocket relays a run may use, each a host and an optional
+   * port. A run allocates on, enrolls at the registrar of, and names in the
+   * invitations it creates only the {@link turn} and {@link invitationRelay}
+   * TURN urls an entry names (`turnUrlIsAllowed`), and lists and names only
+   * the {@link websocketRelay} and invitation WebSocket relay urls an entry
+   * names (`webSocketRelayUrlIsAllowed`). Unset, every listed relay is used.
    */
   allowedRelays?: string[];
   /**
@@ -1560,7 +1634,8 @@ export interface WebRTCConnectionConfig {
    * key to with a proof made from the shared secret, under
    * {@link relayRegistrar}'s exchange id when one is set and otherwise the id
    * derived from the secret (docs/spec/PROTOCOL.md, "The WebSocket relay
-   * proof").
+   * proof"). An invitation this party creates names it as its relay
+   * locator's `websocket` where {@link allowedRelays} keeps it.
    */
   websocketRelay?: string;
   /**

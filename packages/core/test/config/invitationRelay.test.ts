@@ -102,7 +102,7 @@ describe("the invitation's relay locator", () => {
       await expect(
         decodeInvitation(await encodeRawInvitation(token)),
       ).rejects.toThrow(
-        /relay may hold only turn and stun url lists and a registrar url/,
+        /relay may hold only turn and stun url lists, a websocket url and a registrar url/,
       );
       await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
     },
@@ -607,5 +607,208 @@ describe("the accepting side's connection", () => {
         invitation_relay: { ...relay, registrar: `${REGISTRAR}/` },
       }),
     ).toMatchObject({ invitationRelay: relay });
+  });
+});
+
+describe("the relay locator's WebSocket relay", () => {
+  const WEBSOCKET = "wss://wsrelay.example.org/relay";
+  const WEBSOCKET_FORM =
+    "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+    "relay's path, for example wss://relay.example.org/relay";
+
+  test.each([
+    ["beside turn and stun urls", { ...RELAY, websocket: WEBSOCKET }],
+    ["alone", { websocket: WEBSOCKET }],
+    [
+      "beside a registrar",
+      { turn: RELAY.turn, websocket: WEBSOCKET, registrar: REGISTRAR },
+    ],
+  ])("a locator naming one %s round-trips", async (_, relay) => {
+    const endpoint = { channel: "webrtc", host: "signal.example", relay };
+    const decoded = await decodeInvitation(
+      await encodeInvitation(tokenWithEndpoint(endpoint)),
+    );
+    expect(decoded.connectionEndpoint).toEqual(endpoint);
+  });
+
+  test.each([
+    [
+      "a ws: url",
+      "ws://wsrelay.example.org/relay",
+      `must be ${WEBSOCKET_FORM}`,
+    ],
+    [
+      "an https url",
+      "https://wsrelay.example.org/relay",
+      `must be ${WEBSOCKET_FORM}`,
+    ],
+    [
+      "a url with a query",
+      `${WEBSOCKET}?token=x`,
+      `has a query or fragment; write it as ${WEBSOCKET_FORM}`,
+    ],
+    [
+      "a url with an empty fragment",
+      `${WEBSOCKET}#`,
+      `has a query or fragment; write it as ${WEBSOCKET_FORM}`,
+    ],
+    [
+      "a url naming port 0",
+      "wss://wsrelay.example.org:0/relay",
+      `names port 0; write it as ${WEBSOCKET_FORM}`,
+    ],
+    [
+      "text that is not a url",
+      "wsrelay",
+      `is not a url; write it as ${WEBSOCKET_FORM}`,
+    ],
+  ])("%s is refused at decode and at mint", async (_, websocket, problem) => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { websocket },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(`a relay locator's websocket url ${problem}`);
+    await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+  });
+
+  test("a url naming a user is refused without repeating it", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { websocket: "wss://user:hunter2@wsrelay.example.org/relay" },
+    });
+    const refusal = decodeInvitation(await encodeRawInvitation(token));
+    await expect(refusal).rejects.toThrow(
+      `a relay locator's websocket url names a user; write it as ${WEBSOCKET_FORM}`,
+    );
+    await expect(refusal).rejects.not.toThrow(/hunter2/);
+  });
+
+  test("a list of WebSocket relay urls is refused", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { websocket: [WEBSOCKET] },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(ZodError);
+  });
+
+  test("a url of exactly the length bound decodes, and one code unit over is refused", async () => {
+    const prefix = "wss://wsrelay.example.org/";
+    const atBound =
+      prefix + "a".repeat(MAX_RELAY_LOCATOR_URL_LENGTH - prefix.length);
+    const decoded = await decodeInvitation(
+      await encodeInvitation(
+        tokenWithEndpoint({
+          channel: "webrtc",
+          host: "signal.example",
+          relay: { websocket: atBound },
+        }),
+      ),
+    );
+    expect(decoded.connectionEndpoint).toHaveProperty("relay", {
+      websocket: atBound,
+    });
+    await expect(
+      decodeInvitation(
+        await encodeRawInvitation(
+          tokenWithEndpoint({
+            channel: "webrtc",
+            host: "signal.example",
+            relay: { websocket: `${atBound}a` },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      `a relay locator's websocket url is longer than ${MAX_RELAY_LOCATOR_URL_LENGTH} characters`,
+    );
+  });
+
+  test("a locator with an unknown key beside a WebSocket relay is still refused", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { websocket: WEBSOCKET, websocketProof: "x" },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(/Remove unexpected field\(s\): websocketProof/);
+  });
+
+  test("the consent summary names the WebSocket relay, escaped", () => {
+    const summary = summarizeInvitation(
+      tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { websocket: "wss://wsrelay.example.org/\u001b[31mrelay" },
+      }),
+    );
+    expect(summary.relay).toEqual({
+      turn: [],
+      stun: [],
+      websocket: "wss://wsrelay.example.org/\\x1b[31mrelay",
+    });
+  });
+
+  test("relayLocatorFromOwnRelay names the WebSocket relay given", () => {
+    expect(relayLocatorFromOwnRelay({ websocket: WEBSOCKET })).toEqual({
+      websocket: WEBSOCKET,
+    });
+    expect(
+      relayLocatorFromOwnRelay({ ...RELAY, websocket: WEBSOCKET }),
+    ).toEqual({ ...RELAY, websocket: WEBSOCKET });
+  });
+
+  test("the inviter's endpoint names its websocket_relay where allowed_relays keeps it", () => {
+    const base: WebRTCConnectionConfig = {
+      channel: "webrtc",
+      server: { host: "signal.example", path: "/" },
+      websocketRelay: WEBSOCKET,
+    };
+    expect(endpointFromConnection(base)).toHaveProperty("relay", {
+      websocket: WEBSOCKET,
+    });
+    expect(
+      endpointFromConnection({
+        ...base,
+        allowedRelays: ["wsrelay.example.org:443"],
+      }),
+    ).toHaveProperty("relay", { websocket: WEBSOCKET });
+    expect(
+      endpointFromConnection({
+        ...base,
+        allowedRelays: ["relay.example.org"],
+      }),
+    ).not.toHaveProperty("relay");
+  });
+
+  test("the accepting side keeps the invitation's WebSocket relay on invitation_relay, and parses it back", () => {
+    const relay = { ...RELAY, websocket: WEBSOCKET };
+    expect(
+      connectionFromLocator({
+        channel: "webrtc",
+        host: "signal.example",
+        relay,
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: relay,
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(() =>
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: { websocket: "ws://wsrelay.example.org/relay" },
+      }),
+    ).toThrow(/a relay locator's websocket url must be a wss:\/\/ url/);
   });
 });

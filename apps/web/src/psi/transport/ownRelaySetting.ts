@@ -1,9 +1,10 @@
 /**
- * This browser's own relay: the TURN and STUN urls an operator sets for their
- * side of a WebRTC exchange, kept in localStorage and so held per origin -- the
- * hosted app and a console each keep their own. The urls follow core's
- * `connection.turn` / `connection.stun` grammar. No credential is stored: each
- * run mints its own from the exchange's shared secret (`buildIceServers` in
+ * This browser's own relay: the TURN and STUN urls and the WebSocket relay url
+ * an operator sets for their side of a WebRTC exchange, kept in localStorage
+ * and so held per origin -- the hosted app and a console each keep their own.
+ * The urls follow core's `connection.turn` / `connection.stun` /
+ * `connection.websocket_relay` grammar. No credential is stored: each run
+ * mints its own from the exchange's shared secret (`buildIceServers` in
  * `./rendezvous.ts`).
  */
 
@@ -16,6 +17,8 @@ import {
   maxCodeUnits,
   parseBoundedJson,
   turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
+  webSocketRelayUrlSchema,
 } from "@alcove/core";
 
 import type { RelayLocator } from "./rendezvous";
@@ -41,21 +44,35 @@ const StunListSchema = z
   .array(StunUrlSchema.check(maxCodeUnits(MAX_RELAY_URL_LENGTH)))
   .max(MAX_RELAY_URLS);
 
+const WebSocketUrlSchema = webSocketRelayUrlSchema("the WebSocket relay url");
+
+// `websocket` is written only when set, so a value naming none stays
+// readable by a build that predates the key.
 const StoredOwnRelaySchema = z
   .strictObject({
     version: z.literal(SETTING_VERSION),
     turn: TurnListSchema,
     stun: StunListSchema,
+    websocket: WebSocketUrlSchema.optional(),
   })
-  .refine((value) => value.turn.length + value.stun.length > 0, {
-    message: "a stored relay names no url",
-  });
+  .refine(
+    (value) =>
+      value.turn.length + value.stun.length > 0 ||
+      value.websocket !== undefined,
+    { message: "a stored relay names no url" },
+  );
+
+/** This browser's own relay: its TURN and STUN urls and its WebSocket relay. */
+export interface OwnRelay extends RelayLocator {
+  /** The `wss://` url of a WebSocket relay; absent when none is set. */
+  websocket?: string;
+}
 
 /** How reading the stored setting turned out. */
 export type OwnRelayRead =
   /** Nothing is stored, or storage is unreachable: no relay. */
   | { kind: "none" }
-  | { kind: "set"; relay: RelayLocator }
+  | { kind: "set"; relay: OwnRelay }
   /** A value is stored that this build refuses; no relay is used. */
   | { kind: "unreadable" };
 
@@ -81,7 +98,14 @@ export function readOwnRelaySetting(): OwnRelayRead {
   if (raw === null || raw === undefined) return { kind: "none" };
   try {
     const parsed = StoredOwnRelaySchema.parse(parseBoundedJson(raw));
-    return { kind: "set", relay: { turn: parsed.turn, stun: parsed.stun } };
+    return {
+      kind: "set",
+      relay: {
+        turn: parsed.turn,
+        stun: parsed.stun,
+        ...(parsed.websocket !== undefined && { websocket: parsed.websocket }),
+      },
+    };
   } catch {
     return { kind: "unreadable" };
   }
@@ -94,11 +118,14 @@ export function readOwnRelaySetting(): OwnRelayRead {
  * @throws if `relay` fails the url grammar or the list bounds, or storage
  *   refuses the write.
  */
-export function writeOwnRelaySetting(relay: RelayLocator): void {
+export function writeOwnRelaySetting(relay: OwnRelay): void {
   const store = storage();
   if (store === undefined)
     throw new Error("this browser's storage is not available");
-  if (relay.turn.length + relay.stun.length === 0) {
+  if (
+    relay.turn.length + relay.stun.length === 0 &&
+    relay.websocket === undefined
+  ) {
     store.removeItem(STORAGE_KEY);
     return;
   }
@@ -106,8 +133,30 @@ export function writeOwnRelaySetting(relay: RelayLocator): void {
     version: SETTING_VERSION,
     turn: [...relay.turn],
     stun: [...relay.stun],
+    ...(relay.websocket !== undefined && { websocket: relay.websocket }),
   });
   store.setItem(STORAGE_KEY, JSON.stringify(value));
+}
+
+/** What {@link parseWebSocketRelayUrl} made of the entered text. */
+export type WebSocketRelayUrlEntry =
+  /** `url` absent where the text is blank: no WebSocket relay. */
+  { ok: true; url?: string } | { ok: false; message: string };
+
+/**
+ * Read the WebSocket relay url from `text` under core's
+ * `connection.websocket_relay` grammar, with core's own message for a
+ * refusal. Blank text names none.
+ */
+export function parseWebSocketRelayUrl(text: string): WebSocketRelayUrlEntry {
+  if (text.trim() === "") return { ok: true };
+  const result = WebSocketUrlSchema.safeParse(text);
+  return result.success
+    ? { ok: true, url: result.data }
+    : {
+        ok: false,
+        message: result.error.issues[0]?.message ?? "not a valid url",
+      };
 }
 
 /** A refusal of the entered text: why, and the 1-based line it is about when
@@ -156,14 +205,15 @@ export function parseRelayUrlLines(
 }
 
 /**
- * A relay's TURN and STUN urls with each list optional, and the registrar a
- * command-line party enrolls at: the shape of core's `RelayLocator`, which an
- * invitation endpoint and a stored connection's `invitationRelay` hold, and
- * of the relay an inviter names.
+ * A relay's TURN and STUN urls with each list optional, its WebSocket relay
+ * url, and the registrar a command-line party enrolls at: the shape of core's
+ * `RelayLocator`, which an invitation endpoint and a stored connection's
+ * `invitationRelay` hold, and of the relay an inviter names.
  */
 export interface RelayUrls {
   turn?: ReadonlyArray<string>;
   stun?: ReadonlyArray<string>;
+  websocket?: string;
   registrar?: string;
 }
 
@@ -195,4 +245,50 @@ export function relayForRun(
     ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
   ];
   return turn.length + stun.length === 0 ? undefined : { turn, stun };
+}
+
+/**
+ * The WebSocket relays a run lists, by the rule {@link relayForRun} lists
+ * TURN urls by: this browser's own followed by the invitation's, each listed
+ * once, less every one `allowedRelays` leaves out. A stored setting this
+ * build cannot read adds nothing. The command line lists them the same way
+ * (`selectRunRelay` in core).
+ */
+export function webSocketRelaysForRun(
+  invitationRelay: RelayUrls | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
+): Array<string> {
+  const own = readOwn();
+  const listed = [
+    ...(own.kind === "set" && own.relay.websocket !== undefined
+      ? [own.relay.websocket]
+      : []),
+    ...(invitationRelay?.websocket !== undefined
+      ? [invitationRelay.websocket]
+      : []),
+  ];
+  return [...new Set(listed)].filter((url) =>
+    webSocketRelayUrlIsAllowed(url, allowedRelays),
+  );
+}
+
+/**
+ * The relay an invitation this browser creates names of its own: the TURN
+ * and STUN urls {@link relayForRun} lists with no invitation, and this
+ * browser's WebSocket relay where `allowedRelays` keeps it.
+ */
+export function ownRelayForInvitation(
+  allowedRelays: ReadonlyArray<string> | undefined,
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
+): RelayUrls | undefined {
+  const own = readOwn();
+  const urls = relayForRun(undefined, allowedRelays, () => own);
+  const websocket = webSocketRelaysForRun(
+    undefined,
+    allowedRelays,
+    () => own,
+  ).at(0);
+  if (websocket === undefined) return urls;
+  return { ...(urls ?? {}), websocket };
 }

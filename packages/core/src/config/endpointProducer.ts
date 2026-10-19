@@ -5,7 +5,7 @@ import {
   relayLocatorFromOwnRelay,
 } from "./invitation.js";
 import type { ConnectionEndpoint } from "./invitation.js";
-import { turnUrlIsAllowed } from "./connection.js";
+import { turnUrlIsAllowed, webSocketRelayUrlIsAllowed } from "./connection.js";
 import type { ConnectionConfig } from "./connection.js";
 
 /**
@@ -59,12 +59,12 @@ export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
  * host/port/path -- where the acceptor's signaling socket goes -- and the
  * connection's own relay as urls: the `url` of each `turn` entry whose
  * credential is minted from the shared secret (no `username` or
- * `credential`), and the `stun` list, composed by
+ * `credential`), the `stun` list and the `websocketRelay` url, composed by
  * {@link relayLocatorFromOwnRelay}. A `turn` entry with a static username and
  * credential is left out whole: the partner cannot authenticate to it, so
  * naming it would only show the partner's address to that relay's operator.
- * A `turn` entry the connection's `allowedRelays` does not name is left out
- * too. Everything else (`key`, `username`, `secure`, `provision`,
+ * A `turn` entry or a `websocketRelay` the connection's `allowedRelays` does
+ * not name is left out too. Everything else (`key`, `username`, `secure`, `provision`,
  * `invitationRelay`) is left behind: those are either not a public locator or
  * have no endpoint-schema field, so a plaintext-broker locator is unreachable
  * here by construction.
@@ -151,6 +151,14 @@ export function endpointFromConnection(
         )
         .map((entry) => entry.url),
       stun: connection.stun,
+      websocket:
+        connection.websocketRelay !== undefined &&
+        webSocketRelayUrlIsAllowed(
+          connection.websocketRelay,
+          connection.allowedRelays,
+        )
+          ? connection.websocketRelay
+          : undefined,
     });
     return {
       channel: "webrtc",

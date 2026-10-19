@@ -212,6 +212,24 @@ describe("InvitationTerms: the invitation's relays under the exchange's allowed 
     expect(text).toContain(CONSENT_FACTS.invitationRelay.note);
   });
 
+  test("the hosted build names the invitation's WebSocket relay escaped, and marks it kept or left out", async () => {
+    const endpoint: ConnectionEndpoint = {
+      channel: "webrtc",
+      host: "peer.example.org",
+      relay: { websocket: "wss://wsrelay.example.net/\u001b[31mrelay" },
+    };
+    const shown = "WebSocket relay wss://wsrelay.example.net/\\x1b[31mrelay";
+    expect(await producesText(endpoint)).toContain(shown);
+    app.unmount();
+    expect(await producesText(endpoint, ["wsrelay.example.net"])).toContain(
+      `${shown} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+    app.unmount();
+    expect(await producesText(endpoint, ["partner.example.net"])).toContain(
+      `${shown} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+    );
+  });
+
   test("the console build with the list unset marks nothing and says nothing about it", async () => {
     build.console = true;
     const text = await producesText(relayEndpoint);

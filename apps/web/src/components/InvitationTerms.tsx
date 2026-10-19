@@ -37,6 +37,7 @@ import {
   summarizeInvitation,
   turnUrlIsAllowed,
   unshownDeclaredNamesLine,
+  webSocketRelayUrlIsAllowed,
 } from "@alcove/core";
 
 import { ColumnChips } from "@components/ColumnChips";
@@ -154,15 +155,20 @@ function invitationRelayRegistrarLine(registrar: Displayable): string {
 }
 
 /**
- * The mark a TURN url of the invitation takes under the exchange's allowed
- * relays: none where they are unset.
+ * The mark a TURN or WebSocket relay url of the invitation takes under the
+ * exchange's allowed relays: none where they are unset.
  */
 function allowedRelaysMark(
+  kind: "turn" | "websocket",
   url: string,
   allowedRelays: ReadonlyArray<string> | undefined,
 ): string {
   if (allowedRelays === undefined) return "";
-  return turnUrlIsAllowed(url, allowedRelays)
+  const allowed =
+    kind === "turn"
+      ? turnUrlIsAllowed(url, allowedRelays)
+      : webSocketRelayUrlIsAllowed(url, allowedRelays);
+  return allowed
     ? ` (${KEPT_BY_ALLOWED_RELAYS})`
     : ` (${LEFT_OUT_BY_ALLOWED_RELAYS})`;
 }
@@ -566,8 +572,9 @@ export function InvitationTerms({
    * renders as the proposing preview does. Fixed, caller-supplied copy, never
    * partner text. */
   framing?: { heading: string; intro: string };
-  /** The relays an accepted invitation's run may use, marking each TURN url of
-   * the invitation's relay kept or left out (`turnUrlIsAllowed` in core). Unset
+  /** The relays an accepted invitation's run may use, marking each TURN and
+   * WebSocket relay url of the invitation's relay kept or left out
+   * (`turnUrlIsAllowed` and `webSocketRelayUrlIsAllowed` in core). Unset
    * restricts nothing and marks nothing. A console run lists the same relays
    * from the configuration it writes. Required, so a caller holding a list
    * cannot drop it by leaving the prop out. */
@@ -589,10 +596,11 @@ export function InvitationTerms({
   const allowedRelaysScope = isConsoleBuild()
     ? CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE
     : ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE;
-  const rawRelayTurn =
+  const rawRelay =
     connectionEndpoint?.channel === "webrtc"
-      ? (connectionEndpoint.relay?.turn ?? [])
-      : [];
+      ? connectionEndpoint.relay
+      : undefined;
+  const rawRelayTurn = rawRelay?.turn ?? [];
   // This party's own side WHERE THE INVITATION ADMITS ONE: a sole-receiver
   // invitation mirrors the accepting party to expectsOutput false, which the
   // schema takes no deduplicate from, so that accept gets no control and no
@@ -1105,7 +1113,11 @@ export function InvitationTerms({
             {summary.relay.turn.map((url, index) => (
               <Text size="sm" key={`turn-${index}`}>
                 TURN {url}
-                {allowedRelaysMark(rawRelayTurn[index] ?? "", allowedRelays)}
+                {allowedRelaysMark(
+                  "turn",
+                  rawRelayTurn[index] ?? "",
+                  allowedRelays,
+                )}
               </Text>
             ))}
             {summary.relay.stun.map((url, index) => (
@@ -1113,6 +1125,16 @@ export function InvitationTerms({
                 STUN {url}
               </Text>
             ))}
+            {summary.relay.websocket !== undefined && (
+              <Text size="sm">
+                WebSocket relay {summary.relay.websocket}
+                {allowedRelaysMark(
+                  "websocket",
+                  rawRelay?.websocket ?? "",
+                  allowedRelays,
+                )}
+              </Text>
+            )}
             {summary.relay.registrar !== undefined && (
               <Text size="sm">
                 {invitationRelayRegistrarLine(summary.relay.registrar)}

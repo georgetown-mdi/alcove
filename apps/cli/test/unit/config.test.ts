@@ -1718,7 +1718,7 @@ describe("persistInvitationRelay", () => {
     });
   });
 
-  test("writes the relay's registrar beside its urls, and it parses back", () => {
+  test("writes the relay's WebSocket relay and registrar beside its urls, and they parse back", () => {
     const configPath = path.join(dir, "alcove.yaml");
     fs.writeFileSync(
       configPath,
@@ -1728,6 +1728,7 @@ describe("persistInvitationRelay", () => {
     );
     const relay = {
       turn: ["turns:relay.example.org:443"],
+      websocket: "wss://wsrelay.example.org/relay",
       registrar: "https://registrar.example.org",
     };
     expect(persistInvitationRelay(configPath, relay)).toBe("set");

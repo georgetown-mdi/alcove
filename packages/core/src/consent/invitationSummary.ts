@@ -522,6 +522,7 @@ export interface InvitationSummary {
   relay?: {
     turn: Array<Displayable>;
     stun: Array<Displayable>;
+    websocket?: Displayable;
     registrar?: Displayable;
   };
 }
@@ -1335,6 +1336,9 @@ export function summarizeInvitation(
       stun: (endpoint.relay.stun ?? []).map((url) =>
         redactAndSanitizeForDisplay(url),
       ),
+      ...(endpoint.relay.websocket !== undefined && {
+        websocket: redactAndSanitizeForDisplay(endpoint.relay.websocket),
+      }),
       ...(endpoint.relay.registrar !== undefined && {
         registrar: redactAndSanitizeForDisplay(endpoint.relay.registrar),
       }),

@@ -5,7 +5,11 @@ import {
   hmacSha1,
   toHex,
 } from "./utils/crypto.js";
-import { SHARED_SECRET_REGEX, turnUrlIsAllowed } from "./config/connection.js";
+import {
+  SHARED_SECRET_REGEX,
+  turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
+} from "./config/connection.js";
 import type { WebRTCConnectionConfig } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
 
@@ -209,12 +213,36 @@ export interface RunRelaySelection {
    * they would have been listed; absent when it left out none.
    */
   turnLeftOut?: RunTurnServer[];
+  /**
+   * The connection's own `websocketRelay` followed by the invitation's
+   * WebSocket relay url, an invitation url the connection already names left
+   * out, and then every url `allowedRelays` does not name left out; absent
+   * when neither side names one.
+   */
+  websocket?: RunWebSocketRelay[];
+  /**
+   * The WebSocket relay urls `allowedRelays` left out of {@link websocket},
+   * in the order they would have been listed; absent when it left out none.
+   */
+  websocketLeftOut?: RunWebSocketRelay[];
+}
+
+/**
+ * One WebSocket relay a webrtc run lists. A relay's `source` decides the
+ * exchange id its proof is made under: the connection's own is enrolled
+ * under `relayRegistrar`'s exchange id where one is set, the invitation's
+ * under the id derived from the secret.
+ */
+export interface RunWebSocketRelay {
+  /** Whether the url is the connection's own `websocketRelay` or the invitation's. */
+  source: "own" | "invitation";
+  url: string;
 }
 
 /** The connection fields that decide a run's relay servers. */
 export type RunRelayConnection = Pick<
   WebRTCConnectionConfig,
-  "stun" | "turn" | "invitationRelay" | "allowedRelays"
+  "stun" | "turn" | "invitationRelay" | "allowedRelays" | "websocketRelay"
 >;
 
 /**
@@ -259,6 +287,24 @@ export function selectRunRelay(
       (server) => !turnUrlIsAllowed(server.url, connection.allowedRelays),
     );
     if (leftOut.length > 0) selection.turnLeftOut = leftOut;
+  }
+  const websocket: RunWebSocketRelay[] = [];
+  if (connection.websocketRelay !== undefined)
+    websocket.push({ source: "own", url: connection.websocketRelay });
+  if (
+    invitation?.websocket !== undefined &&
+    invitation.websocket !== connection.websocketRelay
+  )
+    websocket.push({ source: "invitation", url: invitation.websocket });
+  if (websocket.length > 0) {
+    selection.websocket = websocket.filter((relay) =>
+      webSocketRelayUrlIsAllowed(relay.url, connection.allowedRelays),
+    );
+    const leftOut = websocket.filter(
+      (relay) =>
+        !webSocketRelayUrlIsAllowed(relay.url, connection.allowedRelays),
+    );
+    if (leftOut.length > 0) selection.websocketLeftOut = leftOut;
   }
   return selection;
 }
