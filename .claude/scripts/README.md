@@ -6,6 +6,10 @@ push:
 - the project-board tooling every board read and write goes through
   (`fetch-issues.mjs`, `edit-issue.mjs`, `list-issues.mjs`, `list-epic.mjs`,
   `lint-issues.mjs`), and `lib/projectItems.mjs` under them
+- `find-rulings.mjs`, run before a Decision item is filed or docketed: it
+  searches both boards in every status, the docs and rules at
+  `origin/staging`, the staging log, and `scratch/` for a standing owner
+  ruling on the question's subject words
 - `worktree-init.sh`, which places a fresh worktree on its branching base and
   provisions its `node_modules`
 - `host-build.sh`, which a host session runs from a hand-off brief to build a

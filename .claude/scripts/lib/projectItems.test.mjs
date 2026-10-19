@@ -118,6 +118,31 @@ describe("fetchAllItems pagination", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(199240250);
   });
+
+  it("selects and returns each body only under withBody", async () => {
+    const node = fakeNode(9, 100000001, {
+      status: "Done",
+      epic: "Epic A",
+      order: 1,
+      title: "With body",
+    });
+    node.content.body = "## Ruling\nowner 2026-10-13: keep it.";
+    const queries = [];
+    const serve = pagedRunQuery([node], PAGE_SIZE);
+    const runQuery = (query) => {
+      queries.push(query);
+      return serve();
+    };
+
+    const [withBody] = await fetchAllItems(9, { runQuery, withBody: true });
+    expect(queries[0]).toContain("DraftIssue { title body }");
+    expect(withBody.body).toBe(node.content.body);
+
+    const [titleOnly] = await fetchAllItems(9, {
+      runQuery: pagedRunQuery([node], PAGE_SIZE),
+    });
+    expect(titleOnly).not.toHaveProperty("body");
+  });
 });
 
 describe("mapFetchedNode cross-project guard", () => {

@@ -506,13 +506,16 @@ async function runQueryViaFetch(query) {
  * others). Pages through the items connection with a cursor until hasNextPage is
  * false, so no item is dropped however large the board grows -- the silent
  * truncation a single `gh project item-list --limit N` would cause is impossible
- * here. Shared by list-epic.mjs (filter to one Epic) and list-issues.mjs (whole
- * board). `runQuery(query) -> data` is injectable for tests; it defaults to fetch.
+ * here. Shared by list-epic.mjs (filter to one Epic), list-issues.mjs (whole
+ * board) and find-rulings.mjs, which passes `withBody` to add each item's `body`
+ * to the result. `runQuery(query) -> data` is injectable for tests; it defaults
+ * to fetch.
  */
 export async function fetchAllItems(
   projectNumber,
-  { runQuery = runQueryViaFetch } = {},
+  { runQuery = runQueryViaFetch, withBody = false } = {},
 ) {
+  const contentFields = withBody ? "title body" : "title";
   const nodes = [];
   let cursor = null;
   do {
@@ -520,7 +523,7 @@ export async function fetchAllItems(
     // GitHub's endCursor is an opaque base64 token with no quote/backslash chars
     // to escape. Omit `after` entirely on the first page.
     const after = cursor === null ? "" : `, after: "${cursor}"`;
-    const query = `{ organization(login: "${OWNER}") { projectV2(number: ${projectNumber}) { items(first: ${PAGE_SIZE}${after}) { pageInfo { hasNextPage endCursor } nodes { id ${FIELD_VALUES_FRAGMENT} content { __typename ... on DraftIssue { title } ... on Issue { title } } } } } } }`;
+    const query = `{ organization(login: "${OWNER}") { projectV2(number: ${projectNumber}) { items(first: ${PAGE_SIZE}${after}) { pageInfo { hasNextPage endCursor } nodes { id ${FIELD_VALUES_FRAGMENT} content { __typename ... on DraftIssue { ${contentFields} } ... on Issue { ${contentFields} } } } } } } }`;
     const data = await runQuery(query);
     const project = data?.organization?.projectV2;
     if (!project) {
@@ -536,6 +539,7 @@ export async function fetchAllItems(
     id: numericIdFromNodeId(node.id),
     nodeId: node.id,
     title: node.content?.title ?? null,
+    ...(withBody ? { body: node.content?.body ?? null } : {}),
     fields: extractFields(node.fieldValues),
   }));
 }
