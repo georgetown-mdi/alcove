@@ -908,8 +908,14 @@ describe("a key-element transform core cannot build", () => {
       });
       const refused = validateAdvancedInvite(withLimit(limit), seed, now);
       expect(refused.canGenerate).toBe(false);
-      expect(refused.errors.standardization).toMatch(
-        /limit on people sharing one value/,
+      const limited = withLimit(limit);
+      const fieldType = buildAdvancedTerms(limited).linkageFields.find(
+        (field) => field.name === limited.standardization[0]?.output,
+      )?.type;
+      if (fieldType === undefined) throw new Error("expected a declared field");
+      expect(refused.errors.standardization).toBe(
+        "Fix or clear the highlighted limit on people sharing one value in " +
+          `the ${SEMANTIC_TYPE_LABELS[fieldType]} cleaning before generating.`,
       );
       const unset = validateAdvancedInvite(withLimit(undefined), seed, now);
       expect(unset.errors.standardization).toBeUndefined();

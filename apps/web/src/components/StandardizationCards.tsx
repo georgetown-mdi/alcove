@@ -332,6 +332,7 @@ function StandardizationCard({
           {onCleaningSettingsChange !== undefined && (
             <CleaningSettingsEditor
               settings={cleaningSettings}
+              steps={steps}
               onChange={onCleaningSettingsChange}
             />
           )}

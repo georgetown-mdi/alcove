@@ -26,9 +26,12 @@ import {
   descriptorFor,
   expertFunctionNames,
   functionDisplay,
+  halfFilledLastNameRuleNotice,
   inertCoalesceCause,
   isMaxPeoplePerValueValid,
   isStepValid,
+  lastNameRuleEntryCleaned,
+  lastNameRuleEntryNotice,
   nullIfLastNameFromLists,
   pipelineHasInertCoalesce,
   transformationWithCleaningSettings,
@@ -633,6 +636,53 @@ describe("the settings beside a field's steps", () => {
       values: [],
       lastNames: ["DOE"],
     });
+  });
+
+  test("a rule with exactly one list filled is noted as dropping nothing", () => {
+    expect(halfFilledLastNameRuleNotice([], [])).toBeUndefined();
+    expect(halfFilledLastNameRuleNotice(["JOHN"], ["DOE"])).toBeUndefined();
+    expect(halfFilledLastNameRuleNotice(["JOHN"], [])).toBe(
+      "Add at least one last name, or this rule drops nothing.",
+    );
+    expect(halfFilledLastNameRuleNotice([], ["DOE"])).toBe(
+      "Add at least one value, or this rule drops nothing.",
+    );
+  });
+
+  test("a value entry the field's cleaning changes is reported with what it becomes", () => {
+    const upper = [{ function: "to_upper_case" }];
+    expect(lastNameRuleEntryCleaned("JOHN", upper)).toBeUndefined();
+    expect(lastNameRuleEntryCleaned("john", [])).toBeUndefined();
+    expect(lastNameRuleEntryCleaned("john", upper)).toBe("JOHN");
+    expect(lastNameRuleEntryNotice("john", "JOHN")).toBe(
+      'This field\'s cleaning turns "john" into "JOHN", so it never matches. Enter "JOHN" instead.',
+    );
+
+    const dropped = lastNameRuleEntryCleaned("NONE", [
+      { function: "null_if", params: { value: "NONE" } },
+    ]);
+    expect(dropped).toBeNull();
+    expect(lastNameRuleEntryNotice("NONE", null)).toBe(
+      'This field\'s cleaning drops "NONE", so it never matches. Remove it.',
+    );
+
+    const split = lastNameRuleEntryCleaned("ANN-MARIE", [
+      { function: "split_on", params: { delimiter: "-" } },
+    ]);
+    expect(split).toEqual(new Set(["ANN", "MARIE"]));
+    if (split === undefined) throw new Error("expected a split entry");
+    expect(lastNameRuleEntryNotice("ANN-MARIE", split)).toBe(
+      'This field\'s cleaning splits "ANN-MARIE" into "ANN", "MARIE", so it never matches. Enter each part on its own instead.',
+    );
+  });
+
+  test("a value entry is not checked against a step that cannot run yet", () => {
+    expect(
+      lastNameRuleEntryCleaned("john", [
+        { function: "to_upper_case" },
+        { function: "pad_left" },
+      ]),
+    ).toBeUndefined();
   });
 
   const stated: Standardization[number] = {

@@ -264,6 +264,79 @@ describe("StandardizationCards: the limit and last-name rule beside the steps", 
     });
   });
 
+  test("a rule with one list empty says it drops nothing until both are filled", async () => {
+    renderStateful(unruled);
+    await expandFieldCards();
+    await userEvent.click(valuesInput());
+    await userEvent.keyboard("JANE{Enter}");
+    const lastNameNote = page.getByText(
+      "Add at least one last name, or this rule drops nothing.",
+    );
+    await expect.element(lastNameNote).toBeInTheDocument();
+    await userEvent.click(
+      page.getByPlaceholder("Type a last name and press Enter"),
+    );
+    await userEvent.keyboard("DOE{Enter}");
+    await expect.element(lastNameNote).not.toBeInTheDocument();
+    expect(
+      page
+        .getByText("Add at least one value, or this rule drops nothing.")
+        .elements(),
+    ).toHaveLength(0);
+  });
+
+  test("a value the field's cleaning changes is flagged with its cleaned form", async () => {
+    renderStateful([
+      {
+        output: "first_name",
+        input: "maiden_col",
+        steps: [{ function: "to_upper_case" }],
+      },
+    ]);
+    await expandFieldCards();
+    await userEvent.click(valuesInput());
+    await userEvent.keyboard("john{Enter}JANE{Enter}");
+    await expect
+      .element(
+        page.getByText(
+          'This field\'s cleaning turns "john" into "JOHN", so it never matches. Enter "JOHN" instead.',
+        ),
+      )
+      .toBeInTheDocument();
+    expect(page.getByText(/turns "JANE"/).elements()).toHaveLength(0);
+  });
+
+  test("the limit cannot be stepped below one person", async () => {
+    renderStateful([
+      {
+        output: "first_name",
+        input: "maiden_col",
+        steps: [],
+        maxPeoplePerValue: 2,
+      },
+    ]);
+    await expandFieldCards();
+    const down = page.getByRole("button", {
+      name: "One fewer person of shared-value limit",
+    });
+    await expect.element(down).toBeEnabled();
+    await userEvent.click(down);
+    await expect.element(limitInput()).toHaveValue("1");
+    await expect.element(down).toBeDisabled();
+  });
+
+  test("the controls say coverage counts are taken before they apply", async () => {
+    renderStateful(unruled);
+    await expandFieldCards();
+    await expect
+      .element(
+        page.getByText(
+          "Coverage counts on this screen are taken before the limit and the last-name rule apply.",
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
   test("no settings controls when the host does not edit them (the acceptor case)", async () => {
     render(ruled);
     await expandFieldCards();

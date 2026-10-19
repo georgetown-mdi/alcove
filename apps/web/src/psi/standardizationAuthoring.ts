@@ -18,12 +18,14 @@ import {
   assertFanOutImplemented,
   coalesceSubstitutesConstant,
   derivedFieldSteps,
+  runPipeline,
   sanitizeForDisplay,
   stepCanEmptyRealizedValue,
 } from "@alcove/core";
 
 import type {
   ColumnMetadata,
+  FieldValue,
   LinkageField,
   LinkageTerms,
   Standardization,
@@ -714,4 +716,62 @@ export function nullIfLastNameFromLists(
   return values.length === 0 && lastNames.length === 0
     ? undefined
     : { values, lastNames };
+}
+
+/**
+ * The note for a last-name rule with exactly one of its two lists empty, which
+ * drops nothing; `undefined` for an absent or complete rule.
+ */
+export function halfFilledLastNameRuleNotice(
+  values: ReadonlyArray<string>,
+  lastNames: ReadonlyArray<string>,
+): string | undefined {
+  if (values.length > 0 && lastNames.length === 0)
+    return "Add at least one last name, or this rule drops nothing.";
+  if (values.length === 0 && lastNames.length > 0)
+    return "Add at least one value, or this rule drops nothing.";
+  return undefined;
+}
+
+/**
+ * What `steps` make of a value entry of the last-name rule, or `undefined`
+ * when the entry comes through unchanged or a step cannot run yet. The rule
+ * compares its entries, NFC-normalized, with the field's cleaned values, so an
+ * entry the cleaning changes never matches.
+ */
+export function lastNameRuleEntryCleaned(
+  entry: string,
+  steps: ReadonlyArray<StandardizationStep>,
+): FieldValue | undefined {
+  if (!steps.every(isStepValid)) return undefined;
+  const normalized = entry.normalize("NFC");
+  let cleaned: FieldValue;
+  try {
+    cleaned = runPipeline(normalized, [...steps]);
+  } catch {
+    return undefined;
+  }
+  if (cleaned === normalized) return undefined;
+  if (cleaned instanceof Set && cleaned.size === 1 && cleaned.has(normalized))
+    return undefined;
+  return cleaned;
+}
+
+/** The warning beside a value entry the field's cleaning changes, given what
+ * {@link lastNameRuleEntryCleaned} made of it. */
+export function lastNameRuleEntryNotice(
+  entry: string,
+  cleaned: FieldValue,
+): string {
+  const shown = `"${sanitizeForDisplay(entry)}"`;
+  if (cleaned === null)
+    return `This field's cleaning drops ${shown}, so it never matches. Remove it.`;
+  if (cleaned instanceof Set) {
+    const parts = [...cleaned]
+      .map((part) => `"${sanitizeForDisplay(part)}"`)
+      .join(", ");
+    return `This field's cleaning splits ${shown} into ${parts}, so it never matches. Enter each part on its own instead.`;
+  }
+  const result = `"${sanitizeForDisplay(cleaned)}"`;
+  return `This field's cleaning turns ${shown} into ${result}, so it never matches. Enter ${result} instead.`;
 }
