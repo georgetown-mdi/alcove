@@ -327,6 +327,11 @@ arrive as fast as old ones close, because nothing defines it as finished.
 - The line names an end state someone can observe, not an aim. "Done is: the
   checks cover every display site" can be observed; "Done is: the surface is
   hardened" cannot.
+- An epic whose terminal line is met and whose items are all Done is closed by
+  the owner. Its line stays in the list, marked `Closed <date>`. A filing that
+  would go under a closed epic is DECLINED for that epic and routed to an open
+  epic, left unparented per the placement rule, or a new epic is drafted with
+  its own line for the owner to ratify.
 - Each line is written plainly: no coined compound or metaphor where a domain
   word exists (`CONTRIBUTING.md`, Code Conventions, Plain language).
 
@@ -359,7 +364,7 @@ Ratified by the owner:
   and what delivery remains unconfirmed.
 - **Web Exchange Rework** (board 9) -- Done is: the reworked screens carry a
   full invite-to-result exchange in the browser with the interop suite green,
-  and no screen remains on the pre-rework flow.
+  and no screen remains on the pre-rework flow. Closed 2026-10-18.
 - **Agency security review readiness** (board 10) -- Done is: one agency
   completes a security review from the published assurance package alone, every
   claim in it naming the check that keeps it true.
@@ -394,7 +399,7 @@ Ratified by the owner:
   the CLI conducts from the one mounted working directory, and each run's
   outcome reaches its caller as a classified event rather than as log text, and
   every route, refusal, and disclosure the job API exposes is described in
-  docs/spec/SERVER_JOB_API.md, with no claim the deployment does not exhibit.
+  docs/spec/SERVER_JOB_API.md, with no claim the deployment does not exhibit. Closed 2026-10-18.
 - **Recurring Exchange Setup** (board 9) -- Done is: an operator configures and
   re-runs a recurring exchange from the commands' own output -- channel,
   connection block, options, and credentials all established by the provisioning
@@ -412,7 +417,7 @@ Ratified by the owner:
   and a check fails when the image's provider drifts from that pin.
 - **Split-on Fan-out** (board 9) -- Done is: every multi-value key shape the
   schema admits matches with fan-out under every linkage strategy the schema
-  admits.
+  admits. Closed 2026-10-18.
 - **Exchange-provisioned infrastructure** (board 9) -- Done is: an Alcove
   exchange reaches its peer-coordination and relay endpoints at a deployment
   separate from the web app's, with credentials minted per exchange; a primary
@@ -457,7 +462,7 @@ Ratified by the owner:
 - **Recurring web exchanges** (board 9) -- Done is: every configuration
   artifact the app exports for a recurring exchange can be brought back into
   it, its own backup envelope and the command-line pair alike, or the app
-  names at the point it offers the export what restores the exchange instead.
+  names at the point it offers the export what restores the exchange instead. Closed 2026-10-18.
 - **Project infrastructure under code** (board 10) -- Done is: every resource
   in the AWS account, in every region, and every record and setting in the
   Cloudflare zone has one recorded owner -- an OpenTofu root, a document, or
