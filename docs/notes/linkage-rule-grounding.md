@@ -329,10 +329,9 @@ Running rules in precision order means the rule that claims a record is the most
 precise one that could, and a less precise rule sees only what every more
 precise rule left (reasoning). Each band is information a party consents to, so
 the order is what makes a rule's band describe the pairs it actually claims.
-The shipped built-in key set's order is not a precision order: its two rules
-with no SSN run above SSN-bearing rules, as the comment on
-`DEFAULT_LINKAGE_KEYS` in `packages/core/src/defaults/builtInLinkageTerms.ts`
-records, and three of its rules are in the catalog's 95% band.
+The shipped built-in key set runs in precision order, the 99% band before the 95%
+band, as the comment on `DEFAULT_LINKAGE_KEYS` in
+`packages/core/src/defaults/builtInLinkageTerms.ts` records.
 
 Published practice is split. NCHS orders strictest first. Cook County and Ong
 put name + DOB first, but their later rules are not stricter forms of it: Cook
