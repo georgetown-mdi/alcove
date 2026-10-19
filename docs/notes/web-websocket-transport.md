@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; of it, the relay proof derivation and the relay service are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3 and S5 passed with Node and Chromium parties on 2026-10-18, and S6 passed on 2026-10-18 through the 443 front on a host run (each [below](#the-spikes)).
+What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
@@ -441,7 +441,13 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   | Chromium, relay pings every 30 s | 960 s | Survived; the second frame arrived |
   | Chromium, no pings | 960 s | Cut at 899.945 s; close 1006 at the browser, and the relay passed 4000 to the surviving sender |
 
-  Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match, and S6 runs the browser with the relay's pings.
+  In the Node arms both parties sent the pings, at the harness's `--ping-ms` interval of 30 s, and the no-ping arm ran the parties with that interval set to 0.
+  In the Chromium runs the Node sender pinged its own socket at `--node-ping-ms 30000`, and the browser's socket was pinged by the relay at `--relay-ping-ms 30000`, since a browser cannot send one; the no-ping run set `--relay-ping-ms 0`.
+  The parked-receive budget arm ran with Node parties only; the Chromium runs tested survival and the cut at the front's idle bound.
+
+  Harness: `node s6.mjs --repo <checkout> --out <dir> --url wss://127.0.0.1:8443/relay --servername wsrelay.test` for the three Node arms, and `node browser-leg.mjs --repo <checkout> --out <dir> --leg s6 --browser-url wss://wsrelay.test:8443/relay --node-url wss://127.0.0.1:8443/relay --servername wsrelay.test --silence-ms 960000 --node-ping-ms 30000 --relay-ping-ms 30000`, with `--relay-ping-ms 0` for the control.
+
+  Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match.
 - **S7. The raw SFTP relay.**
   From the earlier note: a candidate proxy in front of the SFTP test server, backpressure, close mapping and the `Origin` refusal ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), run only after the relay work above.
 - **S8. The browser SSH client with an external signer.**
