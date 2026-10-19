@@ -235,6 +235,10 @@ settled in the session that raised it becomes an item -- filed under the cap
 above, or listed as a potential follow-up for the end-of-session triage --
 and a decision becomes an item in Decision status. None is held only in a PR
 follow-on line, a report tail, or a chat aside.
+Before drafting a Decision item, run
+`node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>`:
+a question a standing ruling, or a default the user docs document, already
+answers is DECLINED, citing that ruling.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.

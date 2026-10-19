@@ -77,8 +77,11 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    A candidate a "Part of" PR partly delivered says so: "partly delivered by
    #N". A candidate waiting on a host step ends "action: handoff -- <the
    step>", one waiting on the owner's call "action: decision -- <the
-   question>". An item whose body already cites its brief or Decision item is
-   listed with that citation and no action tag.
+   question>". Before emitting a decision tag, run
+   node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>
+   and when a ruling answers the question, emit "ruled -- <board>/<itemId> or
+   <doc path>" instead. An item whose body already cites its brief or Decision
+   item is listed with that citation and no action tag.
 2. Delivered, owner closes: every item the check above found delivered, one
    line each, never among the candidates:
    <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:

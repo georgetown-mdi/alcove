@@ -35,7 +35,13 @@ Run only when the owner invokes this command; never start the docket unasked.
    session cannot do something itself requires. An item is a decision only when
    its options differ in their effect on users or the product.
 2. Drop any item the owner has already ruled on, in this session or in a board
-   item or repository file. To find such a ruling, fetch the item's epic siblings
+   item or repository file. To find such a ruling, run
+   `node .claude/scripts/find-rulings.mjs <the decision's 2-3 subject words>`
+   and read every hit's body section in full: a ruling found there, a "not to
+   be re-raised" line above all, drops the item and is cited on the originating
+   item instead. A default or behavior the user docs (`docs/`, `docs/spec/`)
+   document is a ratified ruling, not an open question. As a second net, fetch
+   the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
    body names (`node .claude/scripts/fetch-issues.mjs <project> <itemId> ...`),
    and cite the ruling in the item's background when one bears on it. A
