@@ -83,6 +83,8 @@ export type {
   PsiProcessedElementsReporter,
 } from "./psi/psiEngine";
 export { psiEngineOptionsForBackend } from "./psi/psiWasmBudget";
+export { ShardedPsiEngine } from "./psi/shardedPsiEngine";
+export type { ShardedPsiEngineOptions } from "./psi/shardedPsiEngine";
 export { WorkerPsiEngine, servePsiWorker } from "./psi/psiWorkerEngine";
 export type {
   PsiWorkerHandle,
