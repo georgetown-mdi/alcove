@@ -474,7 +474,7 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
       "This replaces the keys, fields and cleaning with the ones a new " +
         "invitation starts with for your file, all turned on, and sets " +
-        "Built-in rules to Highest certainty, followed by others. The " +
+        'Built-in rules to "Highest certainty, followed by others". The ' +
         "invitation will cite the built-in rules. Your " +
         "columns and other settings stay. This cannot be undone.",
     );

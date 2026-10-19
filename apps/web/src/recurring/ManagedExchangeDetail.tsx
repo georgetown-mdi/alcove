@@ -684,9 +684,9 @@ function LocalFieldsEditor({
       </InfoButton>
       {maxAgeEnabled && (
         <NamedStepNumberInput
-          label="Maximum age in days"
+          label="Expiration time in days"
           stepUnit="day"
-          fieldName="maximum age"
+          fieldName="expiration time"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -703,7 +703,7 @@ function LocalFieldsEditor({
       {cadenceProblem !== undefined && (
         <Alert
           color="yellow"
-          title="This cadence outruns the maximum age"
+          title="This cadence outruns the expiration time"
           mt="sm"
           mb="sm"
         >
@@ -711,11 +711,11 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        Shortening the maximum age applies now. Turning the bound off applies
-        now too and removes the age lapse entirely, so the stored secret no
-        longer lapses by age. A longer maximum age takes effect the next time
-        this exchange runs, so an edit never extends the stored secret&apos;s
-        life on its own.
+        Shortening the expiration time applies now. Turning the bound off
+        applies now too and removes the expiration entirely, so the stored
+        secret no longer expires by time. A longer expiration time takes effect
+        the next time this exchange runs, so an edit never extends the stored
+        secret&apos;s life on its own.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined

@@ -550,7 +550,7 @@ export function cadenceAgainstTokenBound(
     tokenMaxAgeDays === 1 ? "1 day" : `${String(tokenMaxAgeDays)} days`;
   const cadence =
     intervalDays === 1 ? "every day" : `every ${String(intervalDays)} days`;
-  return `This exchange must run or be renewed within ${bound}, but a run window opens only ${cadence}. The stored secret lapses before the next window arrives, and recovering it means re-inviting your partner. Shorten the cadence, or lengthen the maximum age above it.`;
+  return `This exchange must run or be renewed within ${bound}, but a run window opens only ${cadence}. The stored secret stops working before the next window arrives, and recovering it means re-inviting your partner. Shorten the cadence, or lengthen the expiration time above it.`;
 }
 
 /**

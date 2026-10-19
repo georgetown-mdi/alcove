@@ -310,7 +310,7 @@ export const AUTHORED_KEYS_FLOOR_NOTE =
 export const USE_BUILT_IN_RULES_STATEMENT =
   "This replaces the keys, fields and cleaning with the ones a new " +
   "invitation starts with for your file, all turned on, and sets Built-in " +
-  `rules to ${precisionFloorLabel(DEFAULT_PRECISION_FLOOR_SELECTION.floor)}. ` +
+  `rules to "${precisionFloorLabel(DEFAULT_PRECISION_FLOOR_SELECTION.floor)}". ` +
   "The invitation will cite the built-in rules. Your columns and other " +
   "settings stay. This cannot be undone.";
 

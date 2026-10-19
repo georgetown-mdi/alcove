@@ -252,7 +252,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     ).toBeNull();
     expect(document.body.textContent).toContain(
       "The allowed relays an exchange sets on its review, or a saved " +
-        "exchange on its own page, can leave out any of these.",
+        "exchange on its own page, can leave out any of the relays saved here.",
     );
     expect(document.body.textContent).not.toContain(
       "connection.allowed_relays",

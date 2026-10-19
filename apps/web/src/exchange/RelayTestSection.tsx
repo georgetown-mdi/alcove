@@ -22,7 +22,7 @@ import type {
 
 /** What the test does and proves, shown above the relays it contacts. */
 export const RELAY_TEST_INTRO =
-  "Checks that this browser can reach each relay below. It does not check " +
+  "The test checks that this browser can reach each relay below. It does not check " +
   "that an exchange's traffic will pass through it. Each relay's operator " +
   "sees this browser's network address.";
 

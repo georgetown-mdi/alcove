@@ -208,7 +208,7 @@ export function ManageExchangeOffer({
       </InfoButton>
       {maxAgeEnabled && (
         <NumberInput
-          label="Maximum age in days"
+          label="Expiration time in days"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}

@@ -469,7 +469,7 @@ describe("managed exchange detail local fields", () => {
     );
 
     // Anchored so it targets the derived readback line, not the cadence note,
-    // which also contains "stored secret lapses".
+    // which also contains "stored secret stops working".
     await expect
       .element(page.getByText(/^Stored secret lapses /))
       .toBeInTheDocument();
@@ -981,10 +981,10 @@ describe("managed exchange detail schedule entry", () => {
         name: "Set an expiration time for the secret",
       })
       .click();
-    await page.getByLabelText("Maximum age in days").fill("7");
+    await page.getByLabelText("Expiration time in days").fill("7");
 
     await expect
-      .element(page.getByText("This cadence outruns the maximum age"))
+      .element(page.getByText("This cadence outruns the expiration time"))
       .toBeInTheDocument();
     // The bound's own terms, and the cadence it is weighed against.
     await expect
@@ -1015,13 +1015,13 @@ describe("managed exchange detail schedule entry", () => {
         name: "Set an expiration time for the secret",
       })
       .click();
-    await page.getByLabelText("Maximum age in days").fill("30");
+    await page.getByLabelText("Expiration time in days").fill("30");
 
     await expect
-      .element(page.getByLabelText("Maximum age in days"))
+      .element(page.getByLabelText("Expiration time in days"))
       .toHaveValue("30");
     expect(
-      page.getByText("This cadence outruns the maximum age").query(),
+      page.getByText("This cadence outruns the expiration time").query(),
     ).toBeNull();
   });
 });

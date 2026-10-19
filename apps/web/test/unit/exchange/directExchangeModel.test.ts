@@ -7,7 +7,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
   inferredRecordIdentifierStatement,
-  precisionFloorSelectionStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import { disclosedColumnNames } from "@psi/metadataEditing";
@@ -247,8 +247,8 @@ describe("previewInferredTerms", () => {
 
   test("names the rule selection in core's words, as the CLI display does", () => {
     expect(DIRECT_RULE_SELECTION_NOTICE).toBe(
-      `Rules selected: ${precisionFloorSelectionStatement(
-        DEFAULT_PRECISION_FLOOR_SELECTION,
+      `Rules selected: ${precisionFloorLabel(
+        DEFAULT_PRECISION_FLOOR_SELECTION.floor,
       )}.`,
     );
   });

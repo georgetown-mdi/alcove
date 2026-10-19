@@ -241,7 +241,7 @@ export function maxAgeCadenceNote(
 ): string | undefined {
   if (tokenMaxAgeDays === undefined) return undefined;
   const days = tokenMaxAgeDays === 1 ? "1 day" : `${tokenMaxAgeDays} days`;
-  return `This exchange must run or be renewed within ${days}, or its stored secret lapses and you re-invite your partner.`;
+  return `This exchange must run or be renewed within ${days}, or its stored secret stops working and you re-invite your partner.`;
 }
 
 /** The label of the control that opts in to a stored secret's maximum age. */
