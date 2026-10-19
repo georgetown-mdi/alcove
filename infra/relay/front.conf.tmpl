@@ -17,22 +17,29 @@
 # set_real_ip_from takes the client's address from the first server's header,
 # so the header it sends coturn names the client rather than 127.0.0.1, and
 # coturn reports that address to the client.
+#
+# Where the host runs the WebSocket relay, a connection asking for its name
+# goes to the front's WebSocket relay server on 127.0.0.1:5351, which
+# terminates its TLS under the relay's certificate and passes the upgrade to
+# the relay on loopback.
 # scripts/relay-front.test.mjs holds the two files to the same port, and holds
 # this file to writing no access log.
 worker_processes 1;
 error_log /dev/stderr warn;
 pid /tmp/nginx.pid;
-# Each side of each hop counts one. A TURN client or a routed-service client
-# counts four (the 443 server's two sides, then the 5347 or 5348 server's), a
-# registrar client two, so 1024 is 256 clients of TURN or a routed service:
-# six times coturn's total-quota of 40 allocations, twice the broker front's
-# 128 WebSocket clients. The bound on the front's memory.
+# Each side of each hop counts one. A TURN, routed-service or WebSocket relay
+# client counts four (the 443 server's two sides, then the 5347, 5348 or 5351
+# server's), a registrar client two, so 1024 is 256 such clients: six times
+# coturn's total-quota of 40 allocations, twice the broker front's 128
+# WebSocket clients, and above the WebSocket relay's 120 sockets (80 awaiting
+# a hello, 20 pairings of two). The bound on the front's memory.
 events { worker_connections 1024; }
 stream {
   access_log off;
   map $ssl_preread_server_name $alcove_hop {
     default 127.0.0.1:5347;
     __REGISTRAR_ROUTE__
+    __WEBSOCKET_ROUTE__
     __ROUTE_HOPS__
   }
   # Only the names listed here reach the route hop from 443. A connection to
@@ -78,4 +85,23 @@ stream {
     proxy_timeout 900s;
     proxy_pass $alcove_route;
   }
+  # __WEBSOCKET_SERVER_BEGIN__
+  # The WebSocket relay's server, written only where the host names the
+  # relay. It sends the relay no PROXY header, which the relay answers 400, so
+  # every connection reaches the relay from 127.0.0.1. The relay pings each
+  # socket every 30 s, inside proxy_timeout.
+  server {
+    listen 127.0.0.1:5351 ssl proxy_protocol;
+    set_real_ip_from 127.0.0.1;
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_handshake_timeout 10s;
+    proxy_connect_timeout 5s;
+    proxy_timeout 900s;
+    proxy_pass 127.0.0.1:__WEBSOCKET_PORT__;
+  }
+  # __WEBSOCKET_SERVER_END__
 }

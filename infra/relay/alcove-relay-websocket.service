@@ -1,0 +1,61 @@
+# The WebSocket relay (packages/websocket-relay), on 127.0.0.1 behind the 443
+# front, which terminates its TLS (README.md, The WebSocket relay). install.sh
+# renders this to /etc/systemd/system/, filling in the relay image's uid and
+# gid and the relay's port, and enables it only where relay.env sets
+# ALCOVE_RELAY_WEBSOCKET_NAME.
+#
+# It runs as the relay image's account, which owns the secrets table it reads
+# the exchange keys from, under node with tsx's loader, from the Node workspace
+# tree infra/broker/README.md, Install, sets up. The sandbox is the broker's
+# (infra/broker/README.md, Exposure), with the whole file system read-only.
+
+[Unit]
+Description=alcove WebSocket relay (loopback, behind the 443 front)
+Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
+After=network-online.target alcove-relay.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__ALCOVE_RELAY_IMAGE_UID__
+Group=__ALCOVE_RELAY_IMAGE_GID__
+WorkingDirectory=/opt/alcove-broker/src
+ExecStart=/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+PrivateUsers=yes
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

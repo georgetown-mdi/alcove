@@ -12,8 +12,9 @@
 # coturn's configuration, installs the units and the three timers, on Amazon
 # Linux 2023 the OS update timer too, where relay.env names a metrics region
 # the counts publisher's timer, and starts the relay, the front,
-# and the registrar where the host holds its token. It then runs verify.sh,
-# which is the only step that says whether the result carries an exchange.
+# the registrar where the host holds its token, and the WebSocket relay where
+# relay.env names it. It then runs verify.sh, which is the only step that says
+# whether the result carries an exchange.
 #
 # The runtime is podman where the distribution carries it and docker where it
 # does not, and that decides one thing: which file defines alcove-relay.service.
@@ -81,6 +82,24 @@ if [ ! -s "$ETC/certs/fullchain.pem" ] && [ ! -f "${ALCOVE_RELAY_ACME_ENV:-$ETC/
 fi
 "$HERE/render-front.sh" > /dev/null \
   || die "the front's routes in $ENV_FILE are refused (above); nothing was installed or restarted"
+
+# The WebSocket relay runs from the Node workspace tree infra/broker/README.md,
+# Install, sets up, with core's websocket-relay entry built into it; a literal
+# path, as alcove-relay-websocket.service names it. render-front.sh above has
+# checked the name and the port.
+WEBSOCKET_NAME="${ALCOVE_RELAY_WEBSOCKET_NAME:-}"
+WEBSOCKET_PORT="${ALCOVE_RELAY_WEBSOCKET_PORT:-8446}"
+NODE_TREE=/opt/alcove-broker/src
+if [ -n "$WEBSOCKET_NAME" ]; then
+  [ -x /usr/local/bin/node ] \
+    || die "ALCOVE_RELAY_WEBSOCKET_NAME is set and alcove-relay-websocket.service runs /usr/local/bin/node, which this host does not have; see infra/broker/README.md, Install. Nothing was installed or restarted"
+  for needed in node_modules/tsx/package.json node_modules/ws/package.json \
+    node_modules/@alcove/peerjs-broker/package.json \
+    packages/websocket-relay/src/standalone.ts packages/core/dist/websocket-relay.esm.js; do
+    [ -e "$NODE_TREE/$needed" ] \
+      || die "ALCOVE_RELAY_WEBSOCKET_NAME is set and $NODE_TREE has no $needed, which the WebSocket relay runs from; see The WebSocket relay in infra/relay/README.md. Nothing was installed or restarted"
+  done
+fi
 
 # --- the swapfile -------------------------------------------------------------
 # Disk swap below the distribution's own (zram on Amazon Linux 2023, at priority
@@ -314,7 +333,7 @@ install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
   "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/stun-binding.py" \
-  "$HERE/render-front.sh" "$LIBEXEC/"
+  "$HERE/websocket-pair.py" "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$HERE/aws/publish-metrics.sh" "$LIBEXEC/aws/"
@@ -384,9 +403,11 @@ if [ -r /etc/os-release ] && (. /etc/os-release && [ "${ID:-}" = amzn ] && [ "${
   OS_UPDATES=1
   install -m 644 "$HERE/alcove-relay-os-update.service" "$HERE/alcove-relay-os-update.timer" "$UNIT_DIR/"
 fi
-# The two units that run as the image's account, with its uid and gid filled in.
-for unit in alcove-relay-sweep.service alcove-relay-registrar.service; do
+# The three units that run as the image's account, with its uid and gid filled
+# in, and the WebSocket relay's port, digits render-front.sh has checked.
+for unit in alcove-relay-sweep.service alcove-relay-registrar.service alcove-relay-websocket.service; do
   sed -e "s/__ALCOVE_RELAY_IMAGE_UID__/$IMAGE_UID/g" -e "s/__ALCOVE_RELAY_IMAGE_GID__/$IMAGE_GID/g" \
+    -e "s/__ALCOVE_RELAY_WEBSOCKET_PORT__/$WEBSOCKET_PORT/g" \
     "$HERE/$unit" > "$UNIT_DIR/$unit.tmp"
   chmod 644 "$UNIT_DIR/$unit.tmp"
   mv "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
@@ -488,6 +509,25 @@ if [ "$REGISTRAR" = 1 ]; then
 else
   systemctl disable --now alcove-relay-registrar.service 2>/dev/null || true
   log "no $REGISTRAR_TOKEN_FILE, so the registrar is not running"
+fi
+
+if [ -n "$WEBSOCKET_NAME" ]; then
+  systemctl enable alcove-relay-websocket.service \
+    || die "alcove-relay-websocket.service could not be enabled; the WebSocket relay would not come back after a reboot"
+  systemctl restart alcove-relay-websocket.service \
+    || die "alcove-relay-websocket.service did not start; journalctl -u alcove-relay-websocket.service"
+  # The relay answers a plain request on its path 404 once it listens.
+  websocket_answer() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$WEBSOCKET_PORT/relay" || true; }
+  for _ in $(seq 60); do
+    [ "$(websocket_answer)" = 404 ] && break
+    sleep 1
+  done
+  [ "$(websocket_answer)" = 404 ] \
+    || die "the WebSocket relay did not answer on 127.0.0.1 port $WEBSOCKET_PORT within 60 s; journalctl -u alcove-relay-websocket.service"
+  log "alcove-relay-websocket.service started on 127.0.0.1 port $WEBSOCKET_PORT, and on 443 as wss://$WEBSOCKET_NAME/relay through the front"
+else
+  systemctl disable --now alcove-relay-websocket.service 2>/dev/null || true
+  log "ALCOVE_RELAY_WEBSOCKET_NAME is unset in $ENV_FILE, so the WebSocket relay is not running"
 fi
 
 if [ "$SKIP_VERIFY" = 1 ]; then

@@ -85,12 +85,20 @@ const mapEntries = (rendered, variable) => {
 const hopEntries = (rendered) => mapEntries(rendered, "$alcove_hop");
 const routeEntries = (rendered) => mapEntries(rendered, "$alcove_route");
 
-// render-front.sh's ports: the front's TURN server, its route hop, and
-// coturn's tcp-proxy-port.
+// render-front.sh's ports: the front's TURN server, its route hop, its
+// WebSocket relay server, and coturn's tcp-proxy-port.
 const portOf = (name) =>
   new RegExp(`^${name}=(\\d+)$`, "m").exec(read("render-front.sh"))[1];
 const TURN = `127.0.0.1:${portOf("TURN_PORT")}`;
 const HOP = `127.0.0.1:${portOf("HOP_PORT")}`;
+const WEBSOCKET_TLS = `127.0.0.1:${portOf("WEBSOCKET_TLS_PORT")}`;
+
+/** A configuration's server blocks, each as its setting lines. */
+const renderedServerBlocks = (text) =>
+  text
+    .split(/^ {2}server \{$/m)
+    .slice(1)
+    .map((block) => settings(block.slice(0, block.indexOf("\n  }"))));
 
 describe("render-front.sh", () => {
   it("sends every connection to the TURN server when the host routes no name", () => {
@@ -101,6 +109,108 @@ describe("render-front.sh", () => {
     expect(result.stdout).not.toContain("__ROUTES__");
     expect(result.stdout).not.toContain("__ROUTE_HOPS__");
     expect(result.stdout).not.toContain("__REGISTRAR_ROUTE__");
+    expect(result.stdout).not.toContain("__WEBSOCKET");
+    expect(renderedServerBlocks(result.stdout)).toHaveLength(3);
+    expect(
+      settings(result.stdout).some((line) => line.includes(WEBSOCKET_TLS)),
+    ).toBe(false);
+  });
+
+  it("routes the WebSocket relay's name to the front's WebSocket relay server, which passes it to the relay's port", () => {
+    const result = render([
+      "ALCOVE_RELAY_WEBSOCKET_NAME=WSrelay.example.org.",
+      "ALCOVE_RELAY_WEBSOCKET_PORT=9600",
+      'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(hopEntries(result.stdout)).toEqual([
+      ["default", TURN],
+      ["wsrelay.example.org", WEBSOCKET_TLS],
+      ["signal.example.org", HOP],
+    ]);
+    expect(routeEntries(result.stdout)).toEqual([
+      ["default", TURN],
+      ["signal.example.org", "127.0.0.1:8443"],
+    ]);
+    const servers = renderedServerBlocks(result.stdout);
+    expect(servers).toHaveLength(4);
+    expect(servers[3]).toContain(`listen ${WEBSOCKET_TLS} ssl proxy_protocol;`);
+    expect(servers[3]).toContain("proxy_pass 127.0.0.1:9600;");
+    expect(result.stdout).not.toContain("__WEBSOCKET");
+  });
+
+  it("passes the WebSocket relay's connections to 8446 when its port is unset", () => {
+    const result = render(["ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(renderedServerBlocks(result.stdout)[3]).toContain(
+      "proxy_pass 127.0.0.1:8446;",
+    );
+  });
+
+  it.each([
+    [
+      [`ALCOVE_RELAY_WEBSOCKET_NAME=${REALM}`],
+      "ALCOVE_RELAY_WEBSOCKET_NAME routes the realm",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        "ALCOVE_RELAY_WEBSOCKET_NAME=registrar.example.org",
+      ],
+      "ALCOVE_RELAY_WEBSOCKET_NAME routes registrar.example.org, which another route already claims",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        'ALCOVE_RELAY_FRONT_ROUTES="wsrelay.example.org=9000"',
+      ],
+      "ALCOVE_RELAY_FRONT_ROUTES routes wsrelay.example.org, which another route already claims",
+    ],
+    [
+      ["ALCOVE_RELAY_WEBSOCKET_NAME=ws_relay.example.org"],
+      "not a lowercase DNS name",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        "ALCOVE_RELAY_WEBSOCKET_PORT=x",
+      ],
+      "ALCOVE_RELAY_WEBSOCKET_NAME routes wsrelay.example.org to 'x', which is not a port number",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        "ALCOVE_RELAY_WEBSOCKET_PORT=8443",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+      ],
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8443, which wsrelay.example.org also uses",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        "ALCOVE_RELAY_WEBSOCKET_PORT=5351",
+      ],
+      "ALCOVE_RELAY_WEBSOCKET_NAME routes wsrelay.example.org to port 5351, which the front's WebSocket relay server also uses",
+    ],
+    [
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=5351"',
+      ],
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 5351, which the front's WebSocket relay server also uses",
+    ],
+  ])("refuses the WebSocket relay's route %j", (envLines, message) => {
+    const result = render(envLines);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(message);
+    expect(result.stdout).toBe("");
+  });
+
+  it("leaves the front's WebSocket relay server's port to a route where the host names no relay", () => {
+    const result = render([
+      'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=5351"',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it("routes the registrar's name to its front port from 443 and each listed name through the route hop to its own", () => {
@@ -390,11 +500,7 @@ describe("render-front.sh", () => {
 });
 
 /** The template's server blocks, each as its setting lines. */
-const serverBlocks = () =>
-  read("front.conf.tmpl")
-    .split(/^ {2}server \{$/m)
-    .slice(1)
-    .map((block) => settings(block.slice(0, block.indexOf("\n  }"))));
+const serverBlocks = () => renderedServerBlocks(read("front.conf.tmpl"));
 
 /** coturn's settings, from the template render-config.sh fills in. */
 const coturnSettings = () => settings(read("turnserver.conf.tmpl"));
@@ -406,13 +512,42 @@ const coturnProxyPort = () =>
 describe("front.conf.tmpl", () => {
   const template = settings(read("front.conf.tmpl"));
 
-  it("has three servers: 443, the TURN server and the route hop", () => {
+  it("has four servers: 443, the TURN server, the route hop and the WebSocket relay server", () => {
     const servers = serverBlocks();
-    expect(servers).toHaveLength(3);
+    expect(servers).toHaveLength(4);
     expect(servers[0]).toContain("listen 443;");
     expect(servers[1]).toContain(`listen ${TURN} ssl proxy_protocol;`);
     expect(servers[2]).toContain(`listen ${HOP} proxy_protocol;`);
+    expect(servers[3]).toContain(`listen ${WEBSOCKET_TLS} ssl proxy_protocol;`);
     expect(template.some((line) => /^http\b/.test(line))).toBe(false);
+  });
+
+  it("writes the WebSocket relay server alone between the lines render-front.sh drops it by", () => {
+    const text = read("front.conf.tmpl");
+    const begin = text.indexOf("\n  # __WEBSOCKET_SERVER_BEGIN__\n");
+    const end = text.indexOf("\n  # __WEBSOCKET_SERVER_END__\n");
+    expect(begin).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(begin);
+    const between = renderedServerBlocks(text.slice(begin, end));
+    expect(between).toEqual([serverBlocks()[3]]);
+  });
+
+  // The relay is a Node HTTP server that reads no PROXY header; one ahead of
+  // the upgrade is answered 400, so its server takes the header from 443 and
+  // sends none on.
+  it("terminates the WebSocket relay's TLS as TURN's and sends the relay no PROXY header", () => {
+    const [, turn, , websocket] = serverBlocks();
+    const tlsSettings = (server) =>
+      server.filter((line) =>
+        /^(ssl_|set_real_ip_from|proxy_connect_timeout|proxy_timeout)/.test(
+          line,
+        ),
+      );
+    expect(tlsSettings(websocket)).toEqual(tlsSettings(turn));
+    expect(websocket.some((line) => line.startsWith("proxy_protocol "))).toBe(
+      false,
+    );
+    expect(websocket).toContain("proxy_pass 127.0.0.1:__WEBSOCKET_PORT__;");
   });
 
   it("reads the server name on 443 and terminates no TLS there or at the route hop", () => {
@@ -480,11 +615,11 @@ describe("front.conf.tmpl", () => {
   });
 
   it("bounds a connection's wait for its first bytes and its idle time at every server", () => {
-    const [first, turn, hop] = serverBlocks();
+    const [first, turn, hop, websocket] = serverBlocks();
     for (const server of [first, hop]) {
       expect(server).toContain("preread_timeout 10s;");
     }
-    for (const server of [first, turn, hop]) {
+    for (const server of [first, turn, hop, websocket]) {
       expect(server).toContain("proxy_connect_timeout 5s;");
       expect(server).toContain("proxy_timeout 900s;");
     }
@@ -801,6 +936,21 @@ describe("certs/renew.sh names", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(argv).toContain(
       `--domains ${REALM} --domains registrar.example.org --path`,
+    );
+  });
+
+  it("asks for the WebSocket relay's name beside the realm and the registrar's", () => {
+    const { result, argv } = renew([
+      "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+      "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(argv).toContain(
+      `--domains ${REALM} --domains registrar.example.org --domains wsrelay.example.org --path`,
+    );
+    const alone = renew(["ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org"]);
+    expect(alone.argv).toContain(
+      `--domains ${REALM} --domains wsrelay.example.org --path`,
     );
   });
 

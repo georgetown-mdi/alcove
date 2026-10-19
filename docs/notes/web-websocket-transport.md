@@ -188,9 +188,9 @@ The owner's choice (2026-10-04) is one proxy on 443, and the relay reference bui
   Every connection no route claims is TURN: the front terminates its TLS under the relay's certificate and passes plain TURN to coturn on loopback.
 - **Where it runs.** It is installed on the project's relay host, routing the broker's name to the broker's front ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs)).
   TURN allocations and a signaling WebSocket passed through it there; a relayed exchange from a client admitted to 443 only is not yet measured ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
-- **What the relay adds.** One more route, its own name to its loopback port, with a certificate for that name and no listener of its own ([infra/relay/README.md, The 443 front](../../infra/relay/README.md#the-443-front), The WebSocket relay).
+- **What the relay adds.** One more route, its own name to a server of the front that terminates its TLS under the relay's certificate, issued for that name too, and passes the upgrade to the relay on loopback; the relay has no certificate and opens no public listener ([infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay)).
 - **What the relay loses.** Behind the front every connection arrives from `127.0.0.1`, so the relay cannot read a client's address, and its quotas key on the exchange alone ([WEBSOCKET_RELAY.md, Quotas](../spec/WEBSOCKET_RELAY.md#quotas)).
-  Whether to add a per-address quota, with the front passing the address on to the relay's route alone (the PROXY protocol; unverified for nginx's stream module per route, which a run of the front would verify), is open.
+  Whether to add a per-address quota is open. The front's server for the relay could send a PROXY header naming the client, as its server for TURN does, but the relay answers an upgrade that opens with one `400` (measured 2026-10-19), so the relay would first have to read it.
   A per-address limit on enrollment without a token ([fork 1](#the-forks-and-their-rulings)) meets the same question at the registrar.
 
 A second public address on the relay instance is the deployment record's fallback should a TURN client fail through the front, at about $3.60 a month ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#one-listener-on-443)); this path does not plan for it.
@@ -465,6 +465,7 @@ Relay path, in order:
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
   Built: `packages/websocket-relay`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front should a per-address quota be added, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
+  Built, not yet installed on the project's host: [infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay); the client's address is not passed on.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.

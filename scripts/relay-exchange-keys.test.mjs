@@ -4040,6 +4040,49 @@ describe.skipIf(runningAsRoot)(
   },
 );
 
+// websocket-pair.py itself is driven against the relay in
+// scripts/relay-websocket.test.mjs; no front answers on 443 here.
+describe.skipIf(runningAsRoot)(
+  "verify.sh WebSocket relay probe",
+  { timeout: 60000 },
+  () => {
+    it("says it skipped the WebSocket relay on a host that names none", () => {
+      const result = fixtureHost().verify();
+      expect(result.stdout).toContain(
+        "SKIP     the WebSocket relay is not configured on this host (no ALCOVE_RELAY_WEBSOCKET_NAME)",
+      );
+      expect(result.stdout).not.toContain("websocket-pair.py");
+    });
+
+    it("asks through the front on 443 under the relay's name, key on stdin, and revokes the run's key", () => {
+      const host = fixtureHost();
+      const result = host.verify({
+        ALCOVE_RELAY_WEBSOCKET_NAME: "wsrelay.example.",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  could not ask the WebSocket relay through the front",
+      );
+      expect(result.stdout).toContain("could not connect to 127.0.0.1:443");
+      expect(result.stdout).not.toContain("SKIP     the WebSocket relay");
+      const probeRuns = host
+        .pythonArgv()
+        .split("\n")
+        .filter((line) => line.includes("websocket-pair.py"));
+      expect(probeRuns).toHaveLength(1);
+      expect(probeRuns[0]).toMatch(
+        /websocket-pair\.py 127\.0\.0\.1 443 wsrelay\.example alcove-verify-websocket$/,
+      );
+      for (const stream of [result.stdout, result.stderr, probeRuns[0]]) {
+        expect(stream).not.toMatch(HEX64);
+      }
+      expect(result.stderr).not.toContain("WARNING");
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+    });
+  },
+);
+
 describe.skipIf(runningAsRoot)("verify.sh cleanup", { timeout: 60000 }, () => {
   it("removes every key the run registered from the table", () => {
     const host = fixtureHost();
