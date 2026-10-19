@@ -3,6 +3,9 @@ import {
   encodePsiWorkerInit,
 } from "../../src/psi/workers/psiCryptoController";
 
+import { download, upload } from "./benchSetTransfer";
+import { partyValues } from "./partyValues";
+
 import type { PsiEngine, PsiEngineMode } from "@alcove/core";
 import type { PsiCryptoWorker } from "../../src/psi/workers/psiCryptoController";
 
@@ -33,43 +36,6 @@ function requireEngine(): PsiEngine {
   return engine;
 }
 
-// The values the bench gives the browser party: the first `overlap` are the
-// ones the Node partner holds too, so the expected match is known.
-function partyValues(elements: number, overlap: number): Array<string> {
-  return Array.from({ length: elements }, (_, index) =>
-    index < overlap ? `shared-${index}` : `browser-${index}`,
-  );
-}
-
-async function download(name: string): Promise<Uint8Array> {
-  const response = await fetch(`/set/${name}`);
-  if (!response.ok)
-    throw new Error(`the bench has no ${name} set (${response.status})`);
-  return new Uint8Array(await response.arrayBuffer());
-}
-
-// Chromium hands the DevTools client every request body it sends, and a
-// body past a few hundred MB overflows the string Playwright decodes it into,
-// so a set goes up in pieces the bench server joins.
-const UPLOAD_PIECE_BYTES = 8 * 1024 * 1024;
-
-async function upload(name: string, bytes: Uint8Array): Promise<number> {
-  const count = Math.max(1, Math.ceil(bytes.byteLength / UPLOAD_PIECE_BYTES));
-  for (let piece = 0; piece < count; piece++) {
-    const last = piece === count - 1 ? "&last" : "";
-    const response = await fetch(`/set/${name}?piece=${piece}${last}`, {
-      method: "POST",
-      body: bytes.subarray(
-        piece * UPLOAD_PIECE_BYTES,
-        (piece + 1) * UPLOAD_PIECE_BYTES,
-      ) as Uint8Array<ArrayBuffer>,
-    });
-    if (!response.ok)
-      throw new Error(`the bench refused the ${name} set (${response.status})`);
-  }
-  return bytes.byteLength;
-}
-
 const probe: RoundProbe = {
   makeEngine(role, mode) {
     engine = createBrowserPsiEngineFactory(
@@ -82,7 +48,7 @@ const probe: RoundProbe = {
   },
   async createServerSetup(elements, overlap) {
     const built = await requireEngine().createServerSetup(
-      partyValues(elements, overlap),
+      partyValues(elements, overlap, "browser"),
     );
     permutation = built.permutation;
     return upload("setup", built.setup);
@@ -90,7 +56,9 @@ const probe: RoundProbe = {
   async createClientRequest(elements, overlap) {
     return upload(
       "request",
-      await requireEngine().createClientRequest(partyValues(elements, overlap)),
+      await requireEngine().createClientRequest(
+        partyValues(elements, overlap, "browser"),
+      ),
     );
   },
   async processClientRequest() {
