@@ -44,12 +44,23 @@ import { waitFor } from "../support";
 // 60 s these cases would wait a minute longer for the same rejection.
 const STALL_DEADLINE_MS = 3_000;
 
-// Elapsed time is read with performance.now(), the monotonic clock the
-// deadline's setTimeout runs on: under load the wall clock behind Date.now()
-// moved 27 ms against it within two minutes. The margin absorbs the timer's
-// millisecond-granular start; 1500 3 s timers under a load average of 17,
-// measured 2026-10-16, fired at most 1.03 ms short.
-const STALL_DEADLINE_MEASUREMENT_MARGIN_MS = 4;
+// Whether an operation paid the whole deadline, judged on the deadline's own
+// clock: Node arms a setTimeout on libuv's millisecond clock, which lagged
+// performance.now() by up to 6 ms at a load average of 17. Node fires
+// equal-length timers in arming order, so this one, armed before the operation
+// starts, has fired by the time a stalled operation settles, and has not if the
+// operation settled early.
+function armStallDeadlineReference(): () => boolean {
+  let fired = false;
+  const timer = setTimeout(() => {
+    fired = true;
+  }, STALL_DEADLINE_MS);
+  timer.unref();
+  return () => {
+    clearTimeout(timer);
+    return fired;
+  };
+}
 
 // How long a case watches a vanished session with nothing outstanding before
 // calling it silent. Nothing schedules server traffic inside it -- see the
@@ -339,21 +350,19 @@ inProcessOnly(
           expect(sessionReadsEstablished(adapter)).toBe(true);
 
           // The next operation is what meets it, and pays the full deadline.
-          const started = performance.now();
+          const deadlineReferenceFired = armStallDeadlineReference();
           const error = await adapter.list(remote).then(
             () => undefined,
             (err: unknown) => err,
           );
-          return { error, elapsedMs: performance.now() - started };
+          return { error, paidDeadline: deadlineReferenceFired() };
         },
         (level) => level === "WARN" || level === "ERROR",
       );
       census.stop();
 
       expect(rejection.error).toBeInstanceOf(TransportOperationStalledError);
-      expect(rejection.elapsedMs).toBeGreaterThanOrEqual(
-        STALL_DEADLINE_MS - STALL_DEADLINE_MEASUREMENT_MARGIN_MS,
-      );
+      expect(rejection.paidDeadline).toBe(true);
       expect(census.heard).toEqual([]);
       expect(census.bytesFromServer()).toBe(0);
       expect(adapter.reconnectCount).toBe(0);
@@ -746,12 +755,12 @@ for (const withheld of WITHHELD_REPLY_CASES)
         const [outcome, logs] = await withCapturedLogs(
           async () => {
             srv.inject.withholdOn = withheld.opcode;
-            const started = performance.now();
+            const deadlineReferenceFired = armStallDeadlineReference();
             const error = await withheld.drive(adapter, remote).then(
               () => undefined,
               (err: unknown) => err,
             );
-            return { error, elapsedMs: performance.now() - started };
+            return { error, paidDeadline: deadlineReferenceFired() };
           },
           (level) => level === "WARN" || level === "ERROR",
         );
@@ -762,9 +771,7 @@ for (const withheld of WITHHELD_REPLY_CASES)
         const rendered = sanitizeErrorForDisplay(outcome.error);
         expect(rendered).toContain(`SFTP ${withheld.operation} stalled`);
         expect(rendered).toContain(withheld.detail);
-        expect(outcome.elapsedMs).toBeGreaterThanOrEqual(
-          STALL_DEADLINE_MS - STALL_DEADLINE_MEASUREMENT_MARGIN_MS,
-        );
+        expect(outcome.paidDeadline).toBe(true);
 
         // The server did receive the request and did not answer it, so the
         // rejection is over a request left outstanding rather than one
