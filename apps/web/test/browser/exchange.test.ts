@@ -563,8 +563,8 @@ describe("inviter screen", () => {
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("No values will be sent to your partner", {
-          exact: false,
+        page.getByText("No columns are sent to your partner", {
+          exact: true,
         }),
       )
       .toBeInTheDocument();
@@ -621,7 +621,7 @@ describe("inviter screen", () => {
       .toMatchTextContent("Matching & sharing");
     await expect
       .element(page.getByLabelText(usedLabel("id")))
-      .toHaveValue("identifier");
+      .toHaveValue("identifier-sent");
     await expect
       .element(page.getByLabelText(usedLabel("identifier")))
       .toHaveValue("ignored");

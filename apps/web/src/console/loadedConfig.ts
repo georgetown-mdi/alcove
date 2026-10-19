@@ -419,18 +419,17 @@ function withColumnDescription(
  * as ({@link isDisclosedToPartner}) rather than from its `role` alone, so the
  * merged draft sends exactly the columns the document sends.
  *
- * The columns step holds `role` and `isPayload` as one collapsed choice, so a
- * pair core admits off that diagonal has no choice of its own: a `role: payload`
- * column with `is_payload: false` sends nothing and takes `ignored`, while a
- * `role: linkage` column with `is_payload: true` does send, so it takes
- * `payload` and loses its matching half. Each such pair is reported by the
- * merge rather than passed over as applied. A `role: identifier` column takes
- * `identifier` or `identifier-sent` as its `is_payload` states.
+ * The columns step holds `role` and `isPayload` as one collapsed choice. A
+ * `role: linkage` or `role: identifier` column takes the choice its
+ * `is_payload` states. Two pairs core admits have no choice of their own: a
+ * `role: payload` column with `is_payload: false` sends nothing and takes
+ * `ignored`, as does a `role: ignored` column with `is_payload: true`. Each
+ * such pair is reported by the merge rather than passed over as applied.
  */
 function loadedDisclosureOf(column: ColumnMetadata): DisclosureChoice {
-  if (column.role === "identifier") return disclosureOf(column);
-  if (isDisclosedToPartner(column)) return "payload";
-  return column.role === "payload" ? "ignored" : disclosureOf(column);
+  if (column.role === "identifier" || column.role === "linkage")
+    return disclosureOf(column);
+  return isDisclosedToPartner(column) ? "payload" : "ignored";
 }
 
 /**

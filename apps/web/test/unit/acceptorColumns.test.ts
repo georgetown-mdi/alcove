@@ -22,7 +22,6 @@ import {
   acceptorOverlongDisclosedColumns,
   acceptorPartnerNote,
   acceptorPayloadDeclarationConflict,
-  acceptorSendingExpectedColumnsCostsKey,
   acceptorUnsatisfiedTypes,
   acceptorVerdict,
   acceptorWidenedMetadata,
@@ -122,7 +121,7 @@ function rows(columns: Array<string>): Array<CSVRow> {
 function seededWithSent(columns: Array<string>, sent: Array<string>): Metadata {
   return sent.reduce(
     (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,
-    acceptorInitialColumnsState(columns).metadata,
+    acceptorInitialColumnsState(columns, "psi").metadata,
   );
 }
 
@@ -134,12 +133,32 @@ function editorFor(
   overrides: Partial<AcceptorColumnsState> = {},
 ) {
   const state: AcceptorColumnsState = {
-    ...acceptorInitialColumnsState(columns),
+    ...acceptorInitialColumnsState(columns, terms.algorithm),
     ...overrides,
   };
   return {
     state,
     editorState: acceptorColumnsEditorState(state, terms, rows(columns)),
+  };
+}
+
+/** How many agreed keys the current marks leave satisfiable, and how many
+ * taking the notice's widening offer does, graded by the launch gate's own
+ * derivation. */
+function satisfiableKeysAroundOffer(
+  columns: Array<string>,
+  terms: LinkageTerms,
+  state: AcceptorColumnsState,
+): { before: number; after: number } {
+  const count = (metadata: Metadata) =>
+    acceptorVerdict(
+      columns,
+      terms,
+      acceptorColumnsEditorState({ ...state, metadata }, terms, rows(columns)),
+    ).satisfiableKeyCount;
+  return {
+    before: count(state.metadata),
+    after: count(acceptorWidenedMetadata(terms, state.metadata)),
   };
 }
 
@@ -149,7 +168,7 @@ function seedWithSecondIdentifier(
   columns: Array<string>,
   isPayload = true,
 ): Metadata {
-  return acceptorInitialColumnsState(columns).metadata.map((column) =>
+  return acceptorInitialColumnsState(columns, "psi").metadata.map((column) =>
     column.name === "identifier"
       ? { ...column, role: "identifier", isPayload }
       : column,
@@ -158,13 +177,34 @@ function seedWithSecondIdentifier(
 
 describe("acceptor columns editor state", () => {
   test("seeds metadata from the file's columns and starts with empty override layers", () => {
-    const state = acceptorInitialColumnsState(["first_name", "last_name"]);
+    const state = acceptorInitialColumnsState(
+      ["first_name", "last_name"],
+      "psi",
+    );
     expect(state.metadata.map((c) => c.name)).toEqual([
       "first_name",
       "last_name",
     ]);
     expect(state.inputOverrides.size).toBe(0);
     expect(state.stepOverrides.size).toBe(0);
+  });
+
+  test("an inferred id column starts sent, and unsent under a count-only invitation", () => {
+    const columns = ["id", "first_name", "last_name"];
+    const idChoice = (algorithm: "psi" | "psi-c") => {
+      const id = acceptorInitialColumnsState(columns, algorithm).metadata.find(
+        (column) => column.name === "id",
+      );
+      if (id === undefined) throw new Error("the seed lists no id column");
+      return disclosureOf(id);
+    };
+    expect(idChoice("psi")).toBe("identifier-sent");
+    expect(idChoice("psi-c")).toBe("identifier");
+    expect(
+      acceptorDisclosedColumns(
+        acceptorInitialColumnsState(columns, "psi-c").metadata,
+      ),
+    ).toEqual([]);
   });
 
   test("the effective standardization has one transformation per satisfiable field", () => {
@@ -253,7 +293,7 @@ describe("the acceptor's date-of-birth format follows the bound column", () => {
       { dob: "12/25/1985", birth_date: "1985-12-25" },
     ];
     const formats = dateInputFormatsForColumns(columns, csvRows);
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const retyped: AcceptorColumnsState = {
       ...seed,
       metadata: setColumnTypeForMatching(
@@ -443,7 +483,7 @@ describe("acceptor quick-fix mapper", () => {
     // Both columns infer to role: payload (unrecognized). setColumnTypeForMatching
     // must re-role the chosen column to linkage, not merely retype it.
     const columns = ["alpha", "beta"];
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     // Sanity: a bare retype path is exactly what setColumnTypeForMatching guards
     // against; here we assert the matching helper produces a role: linkage column.
     const remapped = setColumnTypeForMatching(
@@ -562,7 +602,7 @@ describe("acceptor launch gates", () => {
       linkageKeys: [{ name: "d", elements: [{ field: "dob" }] }],
     };
     const columns = ["date_of_birth"];
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const base = acceptorColumnsEditorState(seed, dobTerms, rows(columns));
     const dobTransform = base.standardization[0];
     // Author an invalid parse_date (empty inputFormat) against the same input.
@@ -1065,11 +1105,10 @@ describe("a marked column whose name is too long to include", () => {
 
 describe("the invitation's declared payload set against the marks", () => {
   // A file covering both keys plus one unrecognized column marked to send -- so
-  // the file discloses exactly one column and every other gate is clear, leaving
-  // this comparison as the only thing that can close the launch.
+  // the file discloses exactly one column and every other gate is clear.
   // `record_id` infers to the identifier role (unsent, unmatched), so marking it
-  // adds a disclosure without costing a key -- which lets the conflict sentences be
-  // pinned at the gate without the linkage clause above them firing too.
+  // adds a disclosure without costing a key -- which lets an open launch be
+  // pinned beside each conflict without the linkage clause firing.
   const columns = ["first_name", "last_name", "notes", "record_id"];
 
   /** Every invitation shape this describe drives, named once. The equivalence
@@ -1117,11 +1156,14 @@ describe("the invitation's declared payload set against the marks", () => {
       .metadata,
   } satisfies Record<string, Metadata>;
 
-  /** Whether core itself refuses to run this pair, driven through the real
-   * functions rather than a second model of them: the invitation mirrored onto
-   * this party by {@link deriveAcceptedLinkageTerms}, checked by the
-   * {@link assertPayloadSendDisclosed} call `prepareForExchange` makes. */
-  function coreRefuses(terms: LinkageTerms, metadata: Metadata): boolean {
+  /** Whether core's own comparison finds the marks differ from the declaration,
+   * driven through the real functions rather than a second model of them: the
+   * invitation mirrored onto this party by {@link deriveAcceptedLinkageTerms},
+   * checked by {@link assertPayloadSendDisclosed}. */
+  function coreFindsDifference(
+    terms: LinkageTerms,
+    metadata: Metadata,
+  ): boolean {
     const accepted = deriveAcceptedLinkageTerms(terms, "Sam Alvarez");
     try {
       assertPayloadSendDisclosed(accepted.payload, metadata, accepted.output);
@@ -1131,7 +1173,9 @@ describe("the invitation's declared payload set against the marks", () => {
     }
   }
 
-  test("names the disclosed columns when the invitation accepts none and the inviting party receives the result", () => {
+  test("names the disclosed columns without holding the launch when the invitation accepts none and the inviting party receives the result", () => {
+    // Core offers an empty declaration's difference as a terms change, as it
+    // does any other, so the notice informs and the launch stays open.
     const terms = invitation("acceptsNothingAndTakesTheResult");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
@@ -1139,26 +1183,22 @@ describe("the invitation's declared payload set against the marks", () => {
       terms,
       editorState.metadata,
     );
-    expect(conflict?.kind).toBe("acceptsNothing");
     expect(conflict?.sentButNotDeclared).toEqual(["notes"]);
     expect(conflict?.declaredButNotSent).toEqual([]);
-    expect(conflict?.title).toBe("Your partner will not accept this column");
-    // Every other gate is clear, so the conflict alone closes the launch -- and
-    // the sentence the button is described by is the conflict's own.
+    expect(conflict?.title).toBe(
+      "Your partner's invitation lists no columns to receive",
+    );
     const verdict = acceptorVerdict(columns, terms, editorState);
     expect(verdict.kind).toBe("allClear");
     expect(acceptorHasIdentifierConflict(editorState.metadata)).toBe(false);
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      conflict?.launchBlockedReason,
-    );
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      "Resolve the columns your partner will not accept above before you can start.",
-    );
+    expect(
+      acceptorLaunchBlockedReason(verdict, editorState, terms),
+    ).toBeUndefined();
   });
 
   test("says nothing when the inviting party is entitled to no result", () => {
-    // Nothing is transmitted to a party that receives no result, so the run does
-    // not refuse this pair -- and the panel beside the grid already states that no
+    // Nothing is transmitted to a party that receives no result, so there is no
+    // difference to state -- and the panel beside the grid already states that no
     // column leaves whatever these marks say.
     const terms = invitation("acceptsNothingAndTakesNoResult");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
@@ -1203,7 +1243,7 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBeUndefined();
   });
 
-  test("clears as the operator re-marks every disclosed column, re-enabling launch", () => {
+  test("clears as the operator re-marks every disclosed column", () => {
     const terms = invitation("acceptsNothingAndTakesTheResult");
     // A matched column additionally marked sent, so the edit that clears the
     // conflict is exercised on both routes off that mark: back to matching for a
@@ -1252,10 +1292,11 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBeUndefined();
   });
 
-  test("a non-empty declaration that omits a marked column names it, and a re-mark here clears it", () => {
+  test("a non-empty declaration that omits a marked column names it without holding the launch, and a re-mark here clears it", () => {
     // Under-declaration against a NON-EMPTY declaration: the declaration names one
-    // of the two columns the marks send. The remedy is entirely local, so the
-    // notice leads with it and the gate re-opens on the edit alone.
+    // of the two columns the marks send. The partner's run is offered the
+    // difference before any data moves, so the notice informs and the launch
+    // stays open.
     const terms = invitation("acceptsTheDisclosedColumn");
     const marked = editorFor(columns, terms, {
       metadata: markStates.recordIdAlsoSent,
@@ -1264,17 +1305,16 @@ describe("the invitation's declared payload set against the marks", () => {
       terms,
       marked.editorState.metadata,
     );
-    expect(conflict?.kind).toBe("setMismatch");
     expect(conflict?.sentButNotDeclared).toEqual(["record_id"]);
     expect(conflict?.declaredButNotSent).toEqual([]);
-    expect(conflict?.title).toBe("Your partner does not expect this column");
+    expect(conflict?.title).toBe(
+      "Your partner's invitation does not list this column",
+    );
     const verdict = acceptorVerdict(columns, terms, marked.editorState);
     expect(verdict.fullySatisfied).toBe(true);
     expect(
       acceptorLaunchBlockedReason(verdict, marked.editorState, terms),
-    ).toBe(
-      "Resolve the columns your partner does not expect above before you can start.",
-    );
+    ).toBeUndefined();
 
     const reMarked = editorFor(columns, terms, {
       metadata: setColumnDisclosure(
@@ -1295,28 +1335,29 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBeUndefined();
   });
 
-  test("a declared column the file does not have is named as absent, and no local edit is offered", () => {
+  test("a declared column the file does not have is named as absent, no local edit is offered, and the launch stays open", () => {
     // Over-declaration with no local remedy at all: the operator cannot mark a
-    // column their file does not have, so the entry says so and the notice's copy
-    // leads with the corrected invitation.
+    // column their file does not have, so the entry says so.
     const terms = invitation("acceptsTheDisclosedColumnAndOneTheFileLacks");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     const conflict = acceptorPayloadDeclarationConflict(
       terms,
       editorState.metadata,
     );
-    expect(conflict?.kind).toBe("setMismatch");
     expect(conflict?.sentButNotDeclared).toEqual([]);
     expect(conflict?.declaredButNotSent).toEqual([
       { displayName: "risk_score", inFile: false },
     ]);
     expect(conflict?.title).toBe(
-      "Your partner expects a column you are not sending",
+      "Your partner's invitation lists a column you are not sending",
+    );
+    expect(acceptorWideningOfferSentence(terms, editorState.metadata)).toBe(
+      undefined,
     );
     const verdict = acceptorVerdict(columns, terms, editorState);
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      "Resolve the columns your partner expects above before you can start.",
-    );
+    expect(
+      acceptorLaunchBlockedReason(verdict, editorState, terms),
+    ).toBeUndefined();
   });
 
   test("a declared column the file does have is flagged as one the operator could mark, and marking it clears the conflict", () => {
@@ -1379,8 +1420,8 @@ describe("the invitation's declared payload set against the marks", () => {
     const recordId = widened.find((column) => column.name === "record_id")!;
     expect(disclosureOf(recordId)).toBe("identifier-sent");
     expect(acceptorDisclosedColumns(widened)).toEqual(["record_id"]);
-    expect(acceptorWideningOfferSentence(identifierColumns, terms, state)).toBe(
-      ` Your file does have that column as its record identifier: you can set it to "${DISCLOSURE_LABELS["identifier-sent"]}" below instead - that discloses more than you have marked so far, and the column stays your record identifier.`,
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send it, set it to "${DISCLOSURE_LABELS["identifier-sent"]}" below.`,
     );
   });
 
@@ -1401,22 +1442,39 @@ describe("the invitation's declared payload set against the marks", () => {
       ["notes", "payload"],
       ["record_id", "identifier-sent"],
     ]);
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
-      ` Where your file does have such a column, you can set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" below, and any other to "${DISCLOSURE_LABELS.payload}", instead - that discloses more than you have marked so far, and each other column has a single use, so sending it replaces the use it has now.`,
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send them, set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and the other column to "${DISCLOSURE_LABELS.payload}" below.`,
     );
   });
 
-  test("the offer that costs a key names the identifier's own choice beside the others", () => {
+  test("the offer names the matched column's own choice beside the identifier's, and costs no key", () => {
     const terms: LinkageTerms = {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "first_name" }] },
     };
     const { state } = editorFor(columns, terms);
-    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
-      true,
+    const keys = satisfiableKeysAroundOffer(columns, terms, state);
+    expect(keys.before).toBeGreaterThan(0);
+    expect(keys.after).toBe(keys.before);
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send them, set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and the column used to match to "${DISCLOSURE_LABELS["match-sent"]}" below.`,
     );
-    expect(acceptorWideningOfferSentence(columns, terms, state)).toBe(
-      ` Setting your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}" and the other columns your file does have to "${DISCLOSURE_LABELS.payload}" below will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.`,
+  });
+
+  test("the offer over all three uses names each one's choice", () => {
+    const terms: LinkageTerms = {
+      ...nameTerms,
+      payload: {
+        receive: [
+          { name: "record_id" },
+          { name: "first_name" },
+          { name: "notes" },
+        ],
+      },
+    };
+    const { state } = editorFor(columns, terms);
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send them, set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}", the column used to match to "${DISCLOSURE_LABELS["match-sent"]}", and the other column to "${DISCLOSURE_LABELS.payload}" below.`,
     );
   });
 
@@ -1433,21 +1491,18 @@ describe("the invitation's declared payload set against the marks", () => {
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
     ).toEqual([{ displayName: "record_id", inFile: true }]);
-    expect(
-      acceptorWideningOfferSentence(identifierColumns, terms, state),
-    ).toContain("Your file does have that column");
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send it, set it to "${DISCLOSURE_LABELS["identifier-sent"]}" below.`,
+    );
   });
 
-  test.each([
-    { receive: ["id"], sent: ["id"] },
-    { receive: ["id", "identifier"], sent: ["id", "identifier"] },
-  ])(
-    "with two record identifiers, the offer sends $receive as payload and changes no other column",
-    ({ receive, sent }) => {
-      // The metadata declares both `id` and `identifier` as unsent identifiers,
-      // so the file has no one record identifier: the offer marks no column
-      // identifier-and-sent, demotes no identifier, and does not use the
-      // identifier wording.
+  test.each([{ receive: ["identifier"] }, { receive: ["id", "identifier"] }])(
+    "with two record identifiers, the offer sends the unsent one of $receive as payload and changes no other column",
+    ({ receive }) => {
+      // The grid's own default: `id` starts sent, and the second identifier is
+      // seeded unsent, so the file has no one record identifier. The offer marks
+      // no column identifier-and-sent, demotes no identifier, and leaves the
+      // already-sent `id` as it is.
       const twoIdentifierColumns = [
         "id",
         "identifier",
@@ -1464,32 +1519,31 @@ describe("the invitation's declared payload set against the marks", () => {
       expect(
         state.metadata
           .filter((column) => column.role === "identifier")
-          .map((column) => column.name),
-      ).toEqual(["id", "identifier"]);
+          .map((column) => [column.name, disclosureOf(column)]),
+      ).toEqual([
+        ["id", "identifier-sent"],
+        ["identifier", "identifier"],
+      ]);
 
       const widened = acceptorWidenedMetadata(terms, state.metadata);
       for (const column of widened) {
         const before = state.metadata.find((c) => c.name === column.name)!;
-        if (receive.includes(column.name))
+        if (column.name === "identifier")
           expect(disclosureOf(column), column.name).toBe("payload");
         else expect(column, column.name).toEqual(before);
       }
-      expect(acceptorDisclosedColumns(widened)).toEqual(sent);
+      expect(acceptorDisclosedColumns(widened)).toEqual(["id", "identifier"]);
       expect(
-        acceptorPayloadDeclarationConflict(terms, widened),
-      ).toBeUndefined();
-      expect(
-        acceptorWideningOfferSentence(twoIdentifierColumns, terms, state),
-      ).toBe(
-        ` Where your file does have such a column, you can set it to "${DISCLOSURE_LABELS.payload}" below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`,
+        acceptorPayloadDeclarationConflict(terms, widened)
+          ?.declaredButNotSent ?? [],
+      ).toEqual([]);
+      expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+        ` To send it, set it to "${DISCLOSURE_LABELS.payload}" below.`,
       );
     },
   );
 
-  test("the offer costs an agreed key when a declared column is one this file matches on", () => {
-    // The case the offer is unusable in: the column the partner expects is one this
-    // file matches on, so taking the offer trades the key for the disclosure and the
-    // run is refused for a key the input can no longer satisfy.
+  test("a widened column this file matches on keeps its role and is sent", () => {
     const terms = invitation(
       "acceptsTheDisclosedColumnAndOneMarkedForMatching",
     );
@@ -1500,8 +1554,49 @@ describe("the invitation's declared payload set against the marks", () => {
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
     ).toEqual([{ displayName: "first_name", inFile: true }]);
-    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
-      true,
+
+    const widenedMetadata = acceptorWidenedMetadata(terms, state.metadata);
+    const firstName = widenedMetadata.find(
+      (column) => column.name === "first_name",
+    )!;
+    expect(firstName.role).toBe("linkage");
+    expect(firstName.isPayload).toBe(true);
+    expect(disclosureOf(firstName)).toBe("match-sent");
+    expect(acceptorDisclosedColumns(widenedMetadata)).toEqual([
+      "first_name",
+      "notes",
+    ]);
+    expect(coreFindsDifference(terms, widenedMetadata)).toBe(false);
+
+    const keys = satisfiableKeysAroundOffer(columns, terms, state);
+    expect(keys.after).toBe(keys.before);
+    const widened = editorFor(columns, terms, { metadata: widenedMetadata });
+    expect(
+      acceptorLaunchBlockedReason(
+        acceptorVerdict(columns, terms, widened.editorState),
+        widened.editorState,
+        terms,
+      ),
+    ).toBeUndefined();
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send it, set it to "${DISCLOSURE_LABELS["match-sent"]}" below.`,
+    );
+  });
+
+  test("the offer over several columns this file matches on names them together", () => {
+    const terms: LinkageTerms = {
+      ...nameTerms,
+      payload: {
+        receive: [
+          { name: "notes" },
+          { name: "first_name" },
+          { name: "last_name" },
+        ],
+      },
+    };
+    const { state } = editorFor(columns, terms, { metadata: notesSent });
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send them, set them to "${DISCLOSURE_LABELS["match-sent"]}" below.`,
     );
   });
 
@@ -1531,17 +1626,15 @@ describe("the invitation's declared payload set against the marks", () => {
           ?.declaredButNotSent,
         use,
       ).toEqual([{ displayName: declaredName, inFile: true }]);
-      expect(
-        acceptorSendingExpectedColumnsCostsKey(columns, terms, state),
-        use,
-      ).toBe(false);
+      const keys = satisfiableKeysAroundOffer(columns, terms, state);
+      expect(keys.after, use).toBe(keys.before);
     }
   });
 
-  test("the cost is read from the whole declaration, past the names a notice paints", () => {
-    // A surface paints at most MAX_DECLARED_NAMES_SHOWN of these names, so a cost
-    // read per painted name would go quiet exactly where the declaration is long.
-    // The column that costs the key sits past that bound here.
+  test("the offer is read from the whole declaration, past the names a notice paints", () => {
+    // A surface paints at most MAX_DECLARED_NAMES_SHOWN of these names, so an
+    // offer read per painted name would go quiet exactly where the declaration is
+    // long. The column it offers sits past that bound here.
     const absent = Array.from(
       { length: MAX_DECLARED_NAMES_SHOWN + 1 },
       (_, index) => `absent_${index}`,
@@ -1562,16 +1655,16 @@ describe("the invitation's declared payload set against the marks", () => {
     expect(
       gaps.slice(0, MAX_DECLARED_NAMES_SHOWN).some((gap) => gap.inFile),
     ).toBe(false);
-    expect(acceptorSendingExpectedColumnsCostsKey(columns, terms, state)).toBe(
-      true,
+    expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
+      ` To send the one in your file, set it to "${DISCLOSURE_LABELS["match-sent"]}" below.`,
     );
   });
 
-  test("the cost the offer states is the one taking it charges", () => {
-    // The cost is a prediction about a state one edit away, so it is checked
-    // against that state as the console derives it: the operator's own re-mark,
-    // over the file's real rows -- which the prediction does not read, so a file
-    // whose rows fix the date-of-birth format is among the offers driven here.
+  test("taking the offer costs no agreed key and clears the screen", () => {
+    // The offer names no cost, so taking it must leave every key it found
+    // satisfiable. Checked against the state one edit away as the console derives
+    // it: the operator's own re-mark over the file's real rows, a file whose rows
+    // fix the date-of-birth format among them.
     const dobColumns = ["date_of_birth", "first_name", "notes"];
     const dobTerms: LinkageTerms = {
       ...nameTerms,
@@ -1603,7 +1696,7 @@ describe("the invitation's declared payload set against the marks", () => {
         rows: rows(columns),
         sent: ["notes"],
         offered: ["first_name"],
-        choice: "payload",
+        choice: "match-sent",
       },
       {
         use: "the file's record identifier",
@@ -1621,13 +1714,13 @@ describe("the invitation's declared payload set against the marks", () => {
         rows: [{ date_of_birth: "1980-01-02", first_name: "Ann", notes: "x" }],
         sent: ["notes"],
         offered: ["date_of_birth"],
-        choice: "payload",
+        choice: "match-sent",
       },
     ];
     for (const offer of offers) {
       expect(safeParseLinkageTerms(offer.terms).success, offer.use).toBe(true);
       const state: AcceptorColumnsState = {
-        ...acceptorInitialColumnsState(offer.columns),
+        ...acceptorInitialColumnsState(offer.columns, offer.terms.algorithm),
         metadata: seededWithSent(offer.columns, offer.sent),
       };
       const before = acceptorColumnsEditorState(state, offer.terms, offer.rows);
@@ -1652,19 +1745,12 @@ describe("the invitation's declared payload set against the marks", () => {
         offer.terms,
         offer.rows,
       );
-      const charged =
-        acceptorVerdict(offer.columns, offer.terms, after).satisfiableKeyCount <
-        acceptorVerdict(offer.columns, offer.terms, before).satisfiableKeyCount;
       expect(
-        acceptorSendingExpectedColumnsCostsKey(
-          offer.columns,
-          offer.terms,
-          state,
-        ),
+        acceptorVerdict(offer.columns, offer.terms, after).satisfiableKeyCount,
         offer.use,
-      ).toBe(charged);
-      // Where it is charged, the operator who takes the offer meets the linkage
-      // gate rather than a started exchange; where it is not, the screen clears.
+      ).toBe(
+        acceptorVerdict(offer.columns, offer.terms, before).satisfiableKeyCount,
+      );
       expect(
         acceptorLaunchBlockedReason(
           acceptorVerdict(offer.columns, offer.terms, after),
@@ -1672,19 +1758,11 @@ describe("the invitation's declared payload set against the marks", () => {
           offer.terms,
         ),
         offer.use,
-      ).toBe(
-        charged
-          ? "Cover the remaining agreed linkage keys above before you can start, " +
-              "or agree terms with your partner over the keys both files can supply."
-          : undefined,
-      );
+      ).toBeUndefined();
     }
   });
 
   test("both directions at once are stated together, and clearing one leaves the other named", () => {
-    // Core reports both directions in one refusal, so both are held in one
-    // statement: an operator who clears the marked column must not meet an
-    // unmentioned second problem on the next attempt.
     const terms = invitation("acceptsOnlyAColumnNotDisclosed");
     const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     const conflict = acceptorPayloadDeclarationConflict(
@@ -1696,15 +1774,13 @@ describe("the invitation's declared payload set against the marks", () => {
       { displayName: "risk_score", inFile: false },
     ]);
     expect(conflict?.title).toBe(
-      "Your columns do not match what your partner expects",
+      "Your columns differ from your partner's invitation",
     );
     const verdict = acceptorVerdict(columns, terms, editorState);
-    expect(acceptorLaunchBlockedReason(verdict, editorState, terms)).toBe(
-      "Resolve the columns that do not match what your partner expects above before you can start.",
-    );
+    expect(
+      acceptorLaunchBlockedReason(verdict, editorState, terms),
+    ).toBeUndefined();
 
-    // Re-marking the one column the operator controls leaves the launch closed on
-    // the direction they cannot fix, which the same statement already named.
     const reMarked = editorFor(columns, terms, {
       metadata: setColumnDisclosure(notesSent, "notes", "ignored").metadata,
     });
@@ -1716,14 +1792,8 @@ describe("the invitation's declared payload set against the marks", () => {
     expect(remaining?.declaredButNotSent).toEqual([
       { displayName: "risk_score", inFile: false },
     ]);
-    expect(
-      acceptorLaunchBlockedReason(
-        acceptorVerdict(columns, terms, reMarked.editorState),
-        reMarked.editorState,
-        terms,
-      ),
-    ).toBe(
-      "Resolve the columns your partner expects above before you can start.",
+    expect(remaining?.title).toBe(
+      "Your partner's invitation lists a column you are not sending",
     );
   });
 
@@ -1768,11 +1838,9 @@ describe("the invitation's declared payload set against the marks", () => {
   });
 
   test("a non-empty declaration cannot arrive alongside an inviting party entitled to no result", () => {
-    // Why the non-empty comparison is ungated in both directions, exactly as core
-    // leaves it, without contradicting the panel that says nothing is sent: the
-    // pair those two statements would need is not a parseable invitation. Gating
-    // the comparison on the output direction as the empty case does would instead
-    // silence a refusal that does happen.
+    // Why the non-empty comparison is not gated on the output direction without
+    // contradicting the panel that says nothing is sent: the pair those two
+    // statements would need is not a parseable invitation.
     expect(
       safeParseLinkageTerms({
         ...nameTerms,
@@ -1782,12 +1850,11 @@ describe("the invitation's declared payload set against the marks", () => {
     ).toBe(false);
   });
 
-  test("fires exactly when core's own enforcement refuses the pair", () => {
-    // The web predicate states in this package a condition core enforces in its
-    // own, so a change to core's gate would leave the notice quietly wrong -- the
-    // operator told the exchange can start, and refused at launch. Every shape this
-    // describe drives, in every mark state, through core's real mirror and real
-    // assertion: the notice and the refusal agree, or this fails.
+  test("fires exactly when core's comparison finds a difference, and never holds the launch", () => {
+    // Every shape this describe drives, in every mark state, through core's real
+    // mirror and real comparison. Core offers every difference, an empty
+    // declaration included, as a terms change, so the launch gate reads the
+    // same with the declaration removed.
     for (const shape of Object.keys(shapes) as Array<keyof typeof shapes>)
       for (const marks of Object.keys(markStates) as Array<
         keyof typeof markStates
@@ -1796,11 +1863,20 @@ describe("the invitation's declared payload set against the marks", () => {
         const { editorState } = editorFor(columns, terms, {
           metadata: markStates[marks],
         });
+        const conflict = acceptorPayloadDeclarationConflict(
+          terms,
+          editorState.metadata,
+        );
+        expect(conflict !== undefined, `${shape} / ${marks}`).toBe(
+          coreFindsDifference(terms, editorState.metadata),
+        );
+        const undeclared: LinkageTerms = { ...terms };
+        delete undeclared.payload;
+        const verdict = acceptorVerdict(columns, terms, editorState);
         expect(
-          acceptorPayloadDeclarationConflict(terms, editorState.metadata) !==
-            undefined,
+          acceptorLaunchBlockedReason(verdict, editorState, terms),
           `${shape} / ${marks}`,
-        ).toBe(coreRefuses(terms, editorState.metadata));
+        ).toBe(acceptorLaunchBlockedReason(verdict, editorState, undeclared));
       }
   });
 });
@@ -1907,7 +1983,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   const columns = ["given_name", "nickname"];
 
   test("a live input override rebinds the field to the target column", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",
@@ -1930,7 +2006,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("a stale input override (target no longer role: linkage of that type) is dropped", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     // Only given_name is role: linkage; nickname is left at its inferred role
     // (payload, an unrecognized header), so an override pointing at it is stale.
     const onlyGivenNameLinkage = setColumnTypeForMatching(
@@ -1948,7 +2024,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("layering order: an input rebind stales a step override authored against the old input", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",

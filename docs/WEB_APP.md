@@ -25,8 +25,8 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
 1. **Your file.** Enter your name or your organization's name, which your partner sees on the invitation, and choose your CSV.
 2. **Matching & sharing.** For each column, confirm its type and how it is used. A column sent to your partner is sent only for rows that match; your partner never receives the values in rows that do not match.
-   - **Used to match - not sent.**
-   - **Unique record identifier - not sent**, or **Unique record identifier - sent to your partner.** Either way your result file begins with this column, so you can find each matched record in your own data. A record identifier column set to **Sent to your partner** instead is sent but is not your identifier, and your result file then begins with each match's row position in your file.
+   - **Used to match - not sent**, or **Used to match - sent to your partner.** Either way the column is used to match. A column set to **Sent to your partner** instead is sent but is not used to match.
+   - **Unique record identifier - not sent**, or **Unique record identifier - sent to your partner.** Either way your result file begins with this column, so you can find each matched record in your own data. A column named `id` or `identifier` starts as sent; choose **not sent** to keep it from your partner. Choosing a count-only exchange, or loading or pasting count-only terms, which send no column, sets it to not sent. A record identifier column set to **Sent to your partner** instead is sent but is not your identifier, and your result file then begins with each match's row position in your file.
    - **Sent to your partner.**
    - **Ignored.**
 
@@ -61,7 +61,7 @@ You received a link from a partner. Open it in your browser, or paste the whole 
 
 1. **Review the terms.** The page shows who sent the invitation, what you would disclose, what the exchange produces, what you receive, and how records are matched. The sender's name is what your partner typed; Alcove does not verify it. If the invitation names a legal agreement, check its reference, purpose, and expiration against the agreement you signed. A matching key marked **(less certain)** is built only from first name, last name and date of birth fields. A line under the fields matched on says that some keys are marked, and its info button, like the one beside each marked key under **Matching strategies**, says why and that to leave such keys out you ask your partner for an invitation without them. Below the terms, **Allowed relays** limits the relay servers this exchange may use to the hosts you list, one per line, and the terms mark each relay the invitation names as kept or left out. Left empty, as it starts, it allows every relay the run lists ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 2. **Consent & your file.** Tick the box to consent to the terms, enter your name or your organization's name, and choose your CSV.
-3. **Confirm your columns.** Check how each column is used. Only the columns you mark as shared are sent to your partner. Then choose **Start the exchange**.
+3. **Confirm your columns.** Check how each column is used. Only the columns set to a use ending "sent to your partner" are sent to your partner. Then choose **Start the exchange**.
 
 **Keep this tab open** while the exchange runs: closing or reloading it stops the exchange for both of you. If your partner's page does not answer within about 10 minutes, the screen says so. Ask your partner to open their invitation page again and choose **Keep waiting**, or ask them for a new invitation.
 

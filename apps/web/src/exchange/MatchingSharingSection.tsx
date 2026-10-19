@@ -114,13 +114,12 @@ export function MatchingSharingSection({
     return () => clearTimeout(handle);
   }, [summary]);
 
-  // The two-identifier conflict's visible surfaces are the standing hint and the
-  // work column's Problems entry; this deferred region is its audible half, voiced
-  // even when a seed mounts already in conflict.
+  // The two-identifier conflict's visible surfaces are the hint under the table
+  // and the work column's Problems entry; this deferred region is its audible
+  // half, voiced even when a seed mounts already in conflict.
+  const multipleIdentifiers = hasMultipleIdentifiers(metadata);
   const conflictAnnouncement = useDeferredAnnouncement(
-    hasMultipleIdentifiers(metadata)
-      ? "Problem: choose a single record identifier."
-      : "",
+    multipleIdentifiers ? "Problem: choose a single record identifier." : "",
   );
   return (
     <>
@@ -187,10 +186,12 @@ export function MatchingSharingSection({
           </tbody>
         </table>
       </div>
-      <p className={`${styles.small} ${styles.sub}`}>
-        Only one column can be the record identifier. Choose a single column
-        that you can use to import the data back into your system.
-      </p>
+      {multipleIdentifiers && (
+        <p className={`${styles.small} ${styles.sub}`}>
+          Only one column can be the record identifier. Choose a single column
+          that you can use to import the data back into your system.
+        </p>
+      )}
       {/* Always mounted so assistive tech observes content changes; kept
           separate from the hint above so clearing a notice never re-announces
           the hint. */}
@@ -229,11 +230,10 @@ export function MatchingSharingSection({
       ) : (
         <div className={styles.stateInset}>
           <p className={styles.stateLabel}>
-            No columns marked &quot;sent to your partner&quot;
+            No columns are sent to your partner
           </p>
           <p className={styles.small} style={{ margin: 0 }}>
-            No values will be sent to your partner. Your file&apos;s columns are
-            used only to find matches.
+            Your file&apos;s columns are used only to find matches.
           </p>
         </div>
       )}

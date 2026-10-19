@@ -40,6 +40,7 @@ import {
   hasMultipleIdentifiers,
   setColumnDisclosure,
   setColumnType,
+  withIdentifiersNotSent,
 } from "./metadataEditing";
 import { transformationWithCleaningSettings } from "./standardizationAuthoring";
 
@@ -447,7 +448,9 @@ export function editorWithLegalAgreement(
  * `metadata` is the column set the import binds against and the draft opens
  * on, for a caller holding roles the file's headers alone do not give -- a
  * configuration opened from the console's mount. The seed's own inference is
- * the default, and stays the grid's reset anchor either way. */
+ * the default, and stays the grid's reset anchor either way. Count-only terms
+ * open the draft with the record identifier not sent
+ * ({@link withIdentifiersNotSent}). */
 export function editorWithImportedTerms(
   editor: InviterEditor,
   csv: AcquiredCsv,
@@ -459,7 +462,13 @@ export function editorWithImportedTerms(
     ...editor,
     draft: draftFromTerms(
       terms,
-      { ...editor.seed, metadata },
+      {
+        ...editor.seed,
+        metadata:
+          terms.algorithm === "psi-c"
+            ? withIdentifiersNotSent(metadata)
+            : metadata,
+      },
       editor.draft.lifetimeSeconds,
       seedRows(csv),
       csv.dateInputFormats,
@@ -616,13 +625,20 @@ export function editorWithFieldAdded(
 
 /** Set the matching algorithm. Ungated -- the exchange honors both members -- so
  * the built terms hold it as authored; a count-only draft outside the shape a
- * count-only run admits blocks generation at {@link validateAdvancedInvite}. */
+ * count-only run admits blocks generation at {@link validateAdvancedInvite}.
+ * Choosing count-only sets the record identifier not sent
+ * ({@link withIdentifiersNotSent}), and choosing `psi` again leaves it not
+ * sent; any other column still marked to send blocks generation. */
 export function editorWithAlgorithm(
   editor: InviterEditor,
   algorithm: AdvancedInviteDraft["algorithm"],
 ): InviterEditor {
   if (editor.sealed === true) return editor;
-  return { ...editor, draft: { ...editor.draft, algorithm } };
+  const metadata =
+    algorithm === "psi-c"
+      ? withIdentifiersNotSent(editor.draft.metadata)
+      : editor.draft.metadata;
+  return { ...editor, draft: { ...editor.draft, algorithm, metadata } };
 }
 
 /** Set which of this party's own input columns its result file holds beside the

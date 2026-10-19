@@ -1434,6 +1434,112 @@ describe("customize tabs", () => {
     expect(validation.terms).toBeUndefined();
   });
 
+  test("choosing count-only stops sending the seeded id column", () => {
+    const withId: AcquiredCsv = {
+      ...csv,
+      columns: ["id", "first_name", "last_name", "dob"],
+      rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
+    };
+    const seeded = editorFromCsv("Dana", withId);
+    const idColumn = (editor: typeof seeded) =>
+      editor.draft.metadata.find((column) => column.name === "id");
+    expect(idColumn(seeded)).toMatchObject({
+      role: "identifier",
+      isPayload: true,
+    });
+
+    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    expect(idColumn(countOnly)).toMatchObject({
+      role: "identifier",
+      isPayload: false,
+    });
+    expect(reviewValidation(countOnly).errors.payload).toBeUndefined();
+    // Leaving count-only sends nothing the operator did not choose again.
+    expect(idColumn(editorWithAlgorithm(countOnly, "psi"))).toMatchObject({
+      isPayload: false,
+    });
+
+    // A column the operator marks under count-only still blocks generation.
+    const remarked = editorWithColumnDisclosure(
+      countOnly,
+      withId,
+      "id",
+      "identifier-sent",
+    ).editor;
+    expect(reviewValidation(remarked).errors.payload).toMatch(
+      /^A count-only exchange sends no data columns/,
+    );
+  });
+
+  describe("loading terms over a file with an id column", () => {
+    const withId: AcquiredCsv = {
+      ...csv,
+      columns: ["id", "first_name", "last_name", "dob"],
+      rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
+    };
+    const idColumn = (editor: ReturnType<typeof editorFromCsv>) =>
+      editor.draft.metadata.find((column) => column.name === "id");
+
+    /** The terms of a one-key draft that matches on the named algorithm. */
+    function donorTerms(algorithm: "psi" | "psi-c") {
+      let donor = editorWithAlgorithm(editorFromCsv("Dana", withId), algorithm);
+      const enabled = donor.draft.keys.flatMap((key, index) =>
+        key.enabled ? [index] : [],
+      );
+      for (const index of enabled.slice(1))
+        donor = editorWithKeyEnabled(donor, index, false);
+      return buildAdvancedTerms(donor.draft);
+    }
+
+    test("psi-c terms leave the record identifier not sent", () => {
+      const terms = donorTerms("psi-c");
+      expect(terms.algorithm).toBe("psi-c");
+      const fresh = editorFromCsv("Dana", withId);
+      expect(idColumn(fresh)).toMatchObject({ isPayload: true });
+
+      const loaded = editorWithImportedTerms(fresh, withId, terms);
+      expect(idColumn(loaded)).toMatchObject({
+        role: "identifier",
+        isPayload: false,
+      });
+      const validation = reviewValidation(loaded);
+      expect(validation.canGenerate).toBe(true);
+      expect(validation.terms?.payload).toBeUndefined();
+    });
+
+    test("pasting psi-c terms leaves the record identifier not sent", () => {
+      const fresh = editorFromCsv("Dana", withId);
+      const { editor: loaded } = editorWithPastedConfiguration(
+        fresh,
+        withId,
+        donorTerms("psi-c"),
+        undefined,
+      );
+      expect(idColumn(loaded)).toMatchObject({
+        role: "identifier",
+        isPayload: false,
+      });
+      const validation = reviewValidation(loaded);
+      expect(validation.canGenerate).toBe(true);
+      expect(validation.terms?.payload).toBeUndefined();
+    });
+
+    test("pasting psi terms leaves the record identifier sent", () => {
+      const fresh = editorFromCsv("Dana", withId);
+      const { editor: loaded } = editorWithPastedConfiguration(
+        fresh,
+        withId,
+        donorTerms("psi"),
+        undefined,
+      );
+      expect(loaded.draft.algorithm).toBe("psi");
+      expect(idColumn(loaded)).toMatchObject({
+        role: "identifier",
+        isPayload: true,
+      });
+    });
+  });
+
   test("adding a same-typed field binds the free column uniquely", () => {
     const seeded = editorFromCsv("Dana", csv);
     // Retype the payload column to a second first_name, then bind it: the new

@@ -68,13 +68,6 @@ export const QUIET_ERROR_ALERTS = [
   {
     file: "apps/web/src/exchange/AcceptorColumnsStep.tsx",
     component: "AcceptorColumnsStep",
-    title: "{declarationConflict.title}",
-    reason:
-      "a standing note beside the marks; the launch button's blocked-reason line announces the block",
-  },
-  {
-    file: "apps/web/src/exchange/AcceptorColumnsStep.tsx",
-    component: "AcceptorColumnsStep",
     title: "{overlongAlert.title}",
     reason:
       "a standing note above the grid; the launch button's blocked-reason line announces the block",

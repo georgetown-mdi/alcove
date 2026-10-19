@@ -17,6 +17,7 @@ import {
   hasMultipleIdentifiers,
   normalizeForEditor,
   setColumnDisclosure,
+  withIdentifiersNotSent,
 } from "@psi/metadataEditing";
 
 import {
@@ -34,6 +35,7 @@ import { isSilentEmpty } from "@psi/workers/nonEmptyAggregate";
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 
 import type {
+  Algorithm,
   CSVRow,
   Displayable,
   LinkageField,
@@ -45,6 +47,7 @@ import type {
 } from "@alcove/core";
 
 import type { AcceptorDataEdits } from "@psi/acceptInvitation";
+import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { FieldStepOverride } from "@psi/standardizationAuthoring";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { ProfiledDateInputFormats } from "@psi/authoring/advancedInvite";
@@ -112,16 +115,21 @@ export interface AcceptorColumnsState {
  * {@link inferMetadataForEveryColumn} over the file's columns, so a column
  * inference does not recognize is listed as ignored for the operator to declare,
  * normalized for the editor so the collapsed disclosure control is faithful (see
- * {@link normalizeForEditor}). "Reset to defaults" restores exactly
+ * {@link normalizeForEditor}). An inferred record identifier starts sent,
+ * except under a count-only `algorithm`, which sends no column
+ * ({@link withIdentifiersNotSent}). "Reset to defaults" restores exactly
  * this, and the override layers start empty.
  */
 export function acceptorInitialColumnsState(
   columns: Array<string>,
+  algorithm: Algorithm,
 ): AcceptorColumnsState {
+  // Columns the file step already committed: it read the header, holds the
+  // sanitized positions, and refuses an empty name before this seeds.
+  const inferred = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   return {
-    // Columns the file step already committed: it read the header, holds the
-    // sanitized positions, and refuses an empty name before this seeds.
-    metadata: normalizeForEditor(inferMetadataForEveryColumn(columns, [])),
+    metadata:
+      algorithm === "psi-c" ? withIdentifiersNotSent(inferred) : inferred,
     inputOverrides: new Map(),
     stepOverrides: new Map(),
   };
@@ -390,24 +398,20 @@ const NO_STEP_BLOCKS: AcceptorLaunchStepBlocks = {
  * blocks, which is what the step disables on. Widened to core's own grading: the
  * file cannot be run under the adopted terms (`verdict.fullySatisfied` is false),
  * a count-only invitation meets a marked column
- * ({@link countOnlyTransmitsColumn}), the marked columns disagree with the payload
- * set the invitation declares for this party
- * ({@link acceptorPayloadDeclarationConflict}), a marked column's name is too long
- * to fit in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
+ * ({@link countOnlyTransmitsColumn}), a marked column's name is too long to fit
+ * in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
  * more than one identifier column, an authored cleaning step is invalid,
  * mid-edit, or splits a value under terms that refuse one
  * ({@link refusedCleaningFanOut}), or one of the step's own blocks holds.
  *
  * The gate and the explanation are ONE derivation, so a state that disables the
- * button while telling a screen-reader operator nothing is unrepresentable. The
- * declaration conflict holds that shape across its own variants too: its title and
- * the button's reason are chosen in a single place.
+ * button while telling a screen-reader operator nothing is unrepresentable.
  *
  * Checks run in the step's own reading order, with the three nothing on this
  * screen clears first: offline, then the refused duplicate-matching pair and a
  * duplicate-matching setting moved since consent, whose control is back on the
- * review step. Then the verdict, the count-only refusal, the declaration
- * conflict, the over-long name notice, the identifier rule, the cleaning steps,
+ * review step. Then the verdict, the count-only refusal, the over-long name
+ * notice, the identifier rule, the cleaning steps,
  * the connection, the split rendezvous's retain-mode requirement, and the
  * file-handling and connection-tuning cards -- so an operator working down the
  * screen is sent to the first unresolved card. The signing-identity divergence
@@ -447,21 +451,12 @@ export function acceptorLaunchBlockedReason(
       "it can never match."
     );
   }
-  // A count-only invitation answers the payload question outright, ahead of the
-  // declaration conflict below: the algorithm holds no data column in either
-  // direction whichever party the terms entitle to the count, so a marked column
-  // is refused here rather than compared against a declaration -- and an
-  // invitation with no `payload.receive` at all leaves that comparison nothing to
-  // compare against. Core's own refusal at accept enforces the same fact
-  // (`assertCountOnlyTransmitsNoColumn`).
+  // A count-only exchange holds no data column in either direction whichever
+  // party the terms entitle to the count, so a marked column is refused here
+  // whatever the invitation's expected list says. Core's own refusal at accept
+  // enforces the same fact (`assertCountOnlyTransmitsNoColumn`).
   if (countOnlyTransmitsColumn(invitationTerms.algorithm, editorState.metadata))
     return "Unmark the columns you send above before you can start: a count-only exchange sends none.";
-  const declarationConflict = acceptorPayloadDeclarationConflict(
-    invitationTerms,
-    editorState.metadata,
-  );
-  if (declarationConflict !== undefined)
-    return declarationConflict.launchBlockedReason;
   const overlong = acceptorOverlongDisclosedColumns(
     invitationTerms,
     editorState.metadata,
@@ -568,8 +563,7 @@ export function acceptorOverlongDisclosedColumns(
 
 /**
  * One column the invitation's declared payload set names that this party's marks do
- * not send -- core's OVER-declaration. The remedy for it is mostly the partner's, so
- * the entry includes what decides which remedies exist rather than the name alone.
+ * not send -- core's OVER-declaration.
  */
 interface AcceptorDeclaredColumnGap {
   /**
@@ -590,45 +584,26 @@ interface AcceptorDeclaredColumnGap {
 }
 
 /**
- * Whether the invitation declares no payload column at all for this party
- * (`acceptsNothing`) or declares a set that disagrees with the marks
- * (`setMismatch`). The two are one refusal in core but not one remedy: an empty
- * declaration cannot be satisfied locally by disclosing more, since widening the
- * marks cannot make the partner accept a column it declared it takes none of.
- */
-type AcceptorPayloadDeclarationConflictKind = "acceptsNothing" | "setMismatch";
-
-/**
  * The disagreement between the payload set the invitation declares for this party
- * and the columns the operator's marks disclose: the pair
- * `assertPayloadSendDisclosed` refuses inside `prepareForExchange`, shown before
- * the operator launches into it. Both directions can hold at once -- core reports
- * them in one refusal -- so both are held here and stated together, rather than
- * one being revealed after the other is cleared.
+ * and the columns the operator's marks disclose. Core offers the difference to
+ * the inviting party as a terms change at run start, an empty declaration
+ * included, and an inviter with no way to answer refuses it there before any
+ * payload is sent, so the step informs and never holds the launch on it.
  */
 interface AcceptorPayloadDeclarationConflict {
-  kind: AcceptorPayloadDeclarationConflictKind;
   /** The notice's visible title, naming the direction(s) that hold. */
   title: string;
-  /**
-   * The launch gate's sentence for this conflict, held beside the title so the
-   * button's reason and the notice it points at are chosen in one place.
-   */
-  launchBlockedReason: string;
   /**
    * Columns the marks disclose that the declaration does not name -- core's
    * UNDER-declaration. The operator's OWN CSV headers, raw: the step renders them
    * through `ColumnName`, the isolation every column-name sink on that screen uses.
-   * Non-empty is the direction with a local remedy, cleared by re-marking those
-   * columns on this screen.
    */
   sentButNotDeclared: Array<string>;
   /**
    * Columns the declaration names that the marks do not send -- core's
    * OVER-declaration, distinct and in the order the declaration first lists them
    * ({@link declaredNotSentNames}). Partner-controlled names
-   * ({@link AcceptorDeclaredColumnGap}), whose remedy leads with a corrected
-   * invitation or a different file.
+   * ({@link AcceptorDeclaredColumnGap}).
    */
   declaredButNotSent: Array<AcceptorDeclaredColumnGap>;
 }
@@ -637,9 +612,9 @@ interface AcceptorPayloadDeclarationConflict {
  * The declaration's column names this party's marks do not send, raw and in
  * declaration order -- partner-controlled text, escaped by whichever sink paints it
  * ({@link AcceptorDeclaredColumnGap}). The one derivation of that set: the notice's
- * list, its remedies and the cost of taking its widening offer
- * ({@link acceptorSendingExpectedColumnsCostsKey}) read the same names, whole,
- * whatever the notice paints.
+ * list, its remedies and its widening offer
+ * ({@link acceptorWideningOfferSentence}) read the same names, whole, whatever
+ * the notice paints.
  *
  * DISTINCT, keeping each name's first position: a declaration may name the same
  * column twice, which is still one column to list, one to mark and one to speak
@@ -658,24 +633,18 @@ function declaredNotSentNames(
 
 /**
  * The disagreement between the invitation's declared payload set for this party and
- * the operator's marks, or `undefined` when there is nothing to state. The notice
- * and the launch gate read this one derivation, so they cannot disagree, and it
- * clears as the operator re-marks.
+ * the operator's marks, or `undefined` when there is nothing to state. It clears
+ * as the operator re-marks.
  *
- * Mirrors {@link assertPayloadSendDisclosed}: an exact-set comparison in both
- * directions, read from the INVITATION's own perspective. An ABSENT
- * `payload.receive` is reconciled against this party's own disclosure when the
- * exchange runs, never held to equality; a PRESENT one mirrors onto this party as
- * the `payload.send` core enforces (`deriveAcceptedLinkageTerms`).
+ * An exact-set comparison in both directions, read from the INVITATION's own
+ * perspective. An ABSENT `payload.receive` is reconciled against this party's own
+ * disclosure when the exchange runs, never compared here.
  *
- * The EMPTY declaration is gated only when the inviting party expects output
+ * The EMPTY declaration is stated only when the inviting party expects output
  * (`output.expectsOutput`, core's `shareWithPartner` on the mirrored side):
  * when it does not, the run transmits nothing whatever the operator marks, so
- * there is nothing to conflict with. A NON-EMPTY declaration is always gated,
- * since it is an accuracy control over a dictionary that is exchanged and
- * written into the exchange record regardless of output direction;
- * `LinkageTermsSchema` refuses a non-empty `payload.receive` alongside
- * `expectsOutput: false`
+ * there is nothing to conflict with. `LinkageTermsSchema` refuses a non-empty
+ * `payload.receive` alongside `expectsOutput: false`
  * (packages/core/test/config/linkageTermsSchema.test.ts), so that combination
  * never reaches this step.
  */
@@ -701,7 +670,7 @@ export function acceptorPayloadDeclarationConflict(
   if (sentButNotDeclared.length === 0 && declaredButNotSent.length === 0)
     return undefined;
   return {
-    ...declarationConflictWording(
+    title: declarationConflictTitle(
       declaredNames.length === 0,
       sentButNotDeclared.length,
       declaredButNotSent.length,
@@ -711,58 +680,23 @@ export function acceptorPayloadDeclarationConflict(
   };
 }
 
-/**
- * The title and the launch sentence for a conflict, chosen together so the button's
- * reason is always the words of the notice it points at. Each variant names the
- * direction(s) that actually hold, since they send the operator to different
- * remedies: an empty declaration is the partner's to widen, an unexpected column is
- * the operator's to re-mark here, and a column the partner expects but this file
- * does not send may have no local remedy at all.
- */
-function declarationConflictWording(
+/** The conflict notice's title, naming the direction(s) that actually hold. */
+function declarationConflictTitle(
   declaresNothing: boolean,
   sentButNotDeclaredCount: number,
   declaredButNotSentCount: number,
-): Pick<
-  AcceptorPayloadDeclarationConflict,
-  "kind" | "title" | "launchBlockedReason"
-> {
+): string {
   if (declaresNothing)
-    return {
-      kind: "acceptsNothing",
-      title:
-        sentButNotDeclaredCount === 1
-          ? "Your partner will not accept this column"
-          : "Your partner will not accept these columns",
-      launchBlockedReason:
-        "Resolve the columns your partner will not accept above before you can start.",
-    };
+    return "Your partner's invitation lists no columns to receive";
   if (declaredButNotSentCount === 0)
-    return {
-      kind: "setMismatch",
-      title:
-        sentButNotDeclaredCount === 1
-          ? "Your partner does not expect this column"
-          : "Your partner does not expect these columns",
-      launchBlockedReason:
-        "Resolve the columns your partner does not expect above before you can start.",
-    };
+    return sentButNotDeclaredCount === 1
+      ? "Your partner's invitation does not list this column"
+      : "Your partner's invitation does not list these columns";
   if (sentButNotDeclaredCount === 0)
-    return {
-      kind: "setMismatch",
-      title:
-        declaredButNotSentCount === 1
-          ? "Your partner expects a column you are not sending"
-          : "Your partner expects columns you are not sending",
-      launchBlockedReason:
-        "Resolve the columns your partner expects above before you can start.",
-    };
-  return {
-    kind: "setMismatch",
-    title: "Your columns do not match what your partner expects",
-    launchBlockedReason:
-      "Resolve the columns that do not match what your partner expects above before you can start.",
-  };
+    return declaredButNotSentCount === 1
+      ? "Your partner's invitation lists a column you are not sending"
+      : "Your partner's invitation lists columns you are not sending";
+  return "Your columns differ from your partner's invitation";
 }
 
 /**
@@ -780,29 +714,31 @@ function widenableDeclaredColumns(
 }
 
 /**
- * The choice the notice's widening offer sets a column to: the file's one
- * record identifier takes `identifier-sent`, so it stays the identifier its own
- * result file begins with, and any other column takes `payload`. While the
- * marks hold more than one identifier ({@link hasMultipleIdentifiers}) no
- * column is the record identifier, so every column takes `payload`.
+ * The choice the notice's widening offer sets a column to: a column the file
+ * matches on takes `match-sent`, so it keeps the agreed keys it feeds; the
+ * file's one record identifier takes `identifier-sent`, so it stays the
+ * identifier its own result file begins with; any other column takes
+ * `payload`. While the marks hold more than one identifier
+ * ({@link hasMultipleIdentifiers}) no column is the record identifier, so an
+ * identifier column takes `payload`.
  */
 function widenedDisclosure(
   metadata: Metadata,
   name: string,
-): "identifier-sent" | "payload" {
-  if (hasMultipleIdentifiers(metadata)) return "payload";
-  return metadata.some(
-    (column) => column.name === name && column.role === "identifier",
-  )
-    ? "identifier-sent"
-    : "payload";
+): "match-sent" | "identifier-sent" | "payload" {
+  const role = metadata.find((column) => column.name === name)?.role;
+  if (role === "linkage") return "match-sent";
+  if (role === "identifier" && !hasMultipleIdentifiers(metadata))
+    return "identifier-sent";
+  return "payload";
 }
 
 /** The marks after the notice's widening offer is taken: every
  * {@link widenableDeclaredColumns} column set to its {@link widenedDisclosure},
  * through the grid's own edit. At most one column takes `identifier-sent`, and
- * only when it is the sole identifier, so no edit demotes another identifier
- * and no column outside the declared set changes. */
+ * only when it is the sole identifier, so no edit demotes another identifier,
+ * no column the file matches on stops matching, and no column outside the
+ * declared set changes. */
 export function acceptorWidenedMetadata(
   linkageTerms: LinkageTerms,
   metadata: Metadata,
@@ -821,92 +757,48 @@ export function acceptorWidenedMetadata(
  * Counts columns, not declaration entries: a declaration naming one held
  * column twice offers one column.
  * Names the choice {@link acceptorWidenedMetadata} applies to each column, read
- * from the marks it returns -- the record identifier's own sending choice for
- * that column, "Sent to your partner" for the rest -- and, where taking it would cost an agreed linkage key
- * ({@link acceptorSendingExpectedColumnsCostsKey}), states that instead. A
- * column that costs a key is one used to match, never the record identifier.
+ * from the marks it returns.
  */
 export function acceptorWideningOfferSentence(
-  columns: Array<string>,
   linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
+  metadata: Metadata,
 ): string | undefined {
-  const widenable = widenableDeclaredColumns(linkageTerms, state.metadata);
+  const widenable = widenableDeclaredColumns(linkageTerms, metadata);
   if (widenable.length === 0) return undefined;
-  const sent = `"${DISCLOSURE_LABELS.payload}"`;
-  const identifierSent = `"${DISCLOSURE_LABELS["identifier-sent"]}"`;
-  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
-  const identifierCount = widened.filter(
-    (column) =>
-      widenable.includes(column.name) &&
-      disclosureOf(column) === "identifier-sent",
-  ).length;
-  if (acceptorSendingExpectedColumnsCostsKey(columns, linkageTerms, state)) {
-    if (widenable.length === 1)
-      return ` Setting the column your file does have to ${sent} below will not start the exchange: that column is used to match, and each column has a single use, so sending it would leave an agreed linkage key with no column to match on.`;
-    const setting =
-      identifierCount === 0
-        ? `Setting the columns your file does have to ${sent} below`
-        : `Setting your record identifier to ${identifierSent} and the other columns your file does have to ${sent} below`;
-    return ` ${setting} will not start the exchange: at least one of them is used to match, and each column has a single use, so sending them would leave an agreed linkage key with no column to match on.`;
-  }
-  if (identifierCount === 0)
-    return ` Where your file does have such a column, you can set it to ${sent} below instead - that discloses more than you have marked so far, and each column has a single use, so sending it replaces the use it has now.`;
-  if (widenable.length === identifierCount)
-    return ` Your file does have that column as its record identifier: you can set it to ${identifierSent} below instead - that discloses more than you have marked so far, and the column stays your record identifier.`;
-  return ` Where your file does have such a column, you can set your record identifier to ${identifierSent} below, and any other to ${sent}, instead - that discloses more than you have marked so far, and each other column has a single use, so sending it replaces the use it has now.`;
+  const label = (choice: DisclosureChoice) => `"${DISCLOSURE_LABELS[choice]}"`;
+  const choices = acceptorWidenedMetadata(linkageTerms, metadata)
+    .filter((column) => widenable.includes(column.name))
+    .map(disclosureOf);
+  const one = widenable.length === 1;
+  const pronoun = one ? "it" : "them";
+  const allInFile =
+    declaredNotSentNames(linkageTerms, metadata).length === widenable.length;
+  const target = allInFile
+    ? pronoun
+    : `the ${one ? "one" : "ones"} in your file`;
+  const distinct = [...new Set(choices)];
+  if (distinct.length === 1)
+    return ` To send ${target}, set ${pronoun} to ${label(distinct[0])} below.`;
+  const count = (choice: DisclosureChoice) =>
+    choices.filter((c) => c === choice).length;
+  const settings: Array<string> = [];
+  if (count("identifier-sent") > 0)
+    settings.push(`your record identifier to ${label("identifier-sent")}`);
+  if (count("match-sent") > 0)
+    settings.push(
+      `${count("match-sent") === 1 ? "the column" : "the columns"} used to match to ${label("match-sent")}`,
+    );
+  if (count("payload") > 0)
+    settings.push(
+      `${count("payload") === 1 ? "the other column" : "the other columns"} to ${label("payload")}`,
+    );
+  return ` To send ${target}, set ${joinClauses(settings)} below.`;
 }
 
-/**
- * Whether taking the notice's widening offer would cost an agreed linkage key:
- * the marks {@link acceptorWidenedMetadata} leaves satisfy fewer keys than the
- * current marks do. Each column has a single use, so a column
- * the file matches on stops matching once it is sent, and the run is then refused
- * for a key the input can no longer satisfy -- the offer would move the operator
- * from one refusal to the next.
- *
- * Measured over the WHOLE declared-but-unsent set, not the names the notice paints,
- * so the cost is the one the operator can actually take on under a declaration
- * longer than the notice's list bound.
- *
- * The hypothetical marks are the operator's own edit ({@link setColumnDisclosure},
- * the call the grid's "How it is used" control makes) and are graded by the same
- * derivation the gate runs ({@link acceptorColumnsEditorState} then
- * {@link acceptorVerdict}), so the caveat cannot state a cost the run does not
- * charge. Both gradings read no rows: rows fix only the date-of-birth input format
- * the cleaning parses with, which grades a key dead rather than unsatisfiable, and
- * the count compared here is of satisfiable keys. The prediction is held to the
- * operator's real post-edit state, rows included, in
- * apps/web/test/unit/acceptorColumns.test.ts.
- */
-export function acceptorSendingExpectedColumnsCostsKey(
-  columns: Array<string>,
-  linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
-): boolean {
-  if (widenableDeclaredColumns(linkageTerms, state.metadata).length === 0)
-    return false;
-  const widened = acceptorWidenedMetadata(linkageTerms, state.metadata);
-  return (
-    satisfiableKeysUnderMarks(columns, linkageTerms, {
-      ...state,
-      metadata: widened,
-    }) < satisfiableKeysUnderMarks(columns, linkageTerms, state)
-  );
-}
-
-/** How many agreed keys the marks in `state` leave satisfiable, through the
- * derivation the step's own verdict runs. */
-function satisfiableKeysUnderMarks(
-  columns: Array<string>,
-  linkageTerms: LinkageTerms,
-  state: AcceptorColumnsState,
-): number {
-  return acceptorVerdict(
-    columns,
-    linkageTerms,
-    acceptorColumnsEditorState(state, linkageTerms, []),
-  ).satisfiableKeyCount;
+/** Two or three clauses joined as one list: "a and b", "a, b, and c". */
+function joinClauses(clauses: Array<string>): string {
+  if (clauses.length <= 2) return clauses.join(" and ");
+  return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
 }
 
 /** Whether the metadata has more than one identifier column, shown as the
