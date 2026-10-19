@@ -222,12 +222,12 @@ const BUILT_IN_STUN_USE =
 /** The warning line emitted when no ICE servers are configured (see below). */
 export const NO_ICE_SERVERS_WARNING =
   `no ICE servers are configured for this webrtc connection, so ${BUILT_IN_STUN_USE} ` +
-  "Set `stun` (or `turn`) " +
-  "on the connection to use your own server instead, or set a single " +
-  "unreachable `stun` entry to gather host candidates only, which costs about " +
-  "five seconds of gathering and works only where both parties share a network.";
+  "Set `stun` on the connection to use your own server instead, or set a " +
+  "single unreachable `stun` entry to gather host candidates only, which " +
+  "costs about five seconds of gathering and works only where both parties " +
+  "share a network. Setting `turn` alone still uses the built-in default.";
 
-/** {@link NO_ICE_SERVERS_WARNING}'s disclosure, less its advice to set `turn`. */
+/** {@link NO_ICE_SERVERS_WARNING}'s disclosure and its advice to set `stun`. */
 const BUILT_IN_STUN_DISCLOSURE =
   `With no \`stun\` url listed, ${BUILT_IN_STUN_USE} ` +
   "Set `stun` on the connection to use your own server instead.";
@@ -235,10 +235,9 @@ const BUILT_IN_STUN_DISCLOSURE =
 /**
  * The warning line for a run whose every TURN url `allowed_relays` left out,
  * in place of {@link NO_ICE_SERVERS_WARNING} when the list is empty as well,
- * whose advice to set `turn` the operator already followed. Where the list
- * holds no `stun` url (`builtInStun`), werift uses its built-in default, so
- * the warning gives that disclosure too. Escaped by the caller, which holds the
- * urls.
+ * since the operator did set `turn`. Where the list holds no `stun` url
+ * (`builtInStun`), werift uses its built-in default, so the warning gives that
+ * disclosure too. Escaped by the caller, which holds the urls.
  */
 export function relaysLeftOutWarning(
   leftOut: ReadonlyArray<string>,

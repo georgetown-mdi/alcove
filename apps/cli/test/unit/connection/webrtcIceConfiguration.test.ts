@@ -485,7 +485,12 @@ test("the warning names the default, what it discloses, and how to override", ()
   expect(NO_ICE_SERVERS_WARNING).toContain(WERIFT_BUILT_IN_STUN_URI);
   expect(NO_ICE_SERVERS_WARNING).toContain("public address");
   expect(NO_ICE_SERVERS_WARNING).toContain("`stun`");
-  expect(NO_ICE_SERVERS_WARNING).toContain("`turn`");
+  // werift uses its default whenever the list holds no STUN url, so `turn`
+  // alone is not a remedy.
+  expect(NO_ICE_SERVERS_WARNING).not.toContain("(or `turn`)");
+  expect(NO_ICE_SERVERS_WARNING).toContain(
+    "Setting `turn` alone still uses the built-in default.",
+  );
   expect(NO_ICE_SERVERS_WARNING).toContain("unreachable");
   // And it must not overstate the disclosure: connection metadata, not content.
   expect(NO_ICE_SERVERS_WARNING).toContain("no exchange content is");
