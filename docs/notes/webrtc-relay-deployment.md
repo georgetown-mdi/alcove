@@ -537,7 +537,10 @@ memory on a host of 412 MB:
 - the `npm start` chain held about 213 MB resident in all;
 - the unit's form held about 82 MB, tsx's esbuild service included.
 
-Not yet measured on the project's host.
+On the project's host, through `verify.sh` on 2026-10-19, the relay's
+resident set peaked at about 81 MB and its cgroup at about 94 MiB. Available
+memory fell from 129 MB to 103 MB at the lowest, of the host's 412 MB, and the
+installer's 64 MB floor passed.
 
 ## The proposed epic
 
