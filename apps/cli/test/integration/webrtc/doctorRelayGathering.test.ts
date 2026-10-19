@@ -71,10 +71,14 @@ afterEach(async () => {
 });
 
 /**
- * Bind a UDP socket on an ephemeral loopback port. With `refuse`, it answers
- * every allocate request with a 401; without it, it answers nothing.
+ * Bind a UDP socket on loopback `port`, an ephemeral one when it is 0. With
+ * `refuse`, it answers every allocate request with a 401; without it, it
+ * answers nothing.
  */
-async function startTurnSocket(refuse: boolean): Promise<LoopbackTurnSocket> {
+async function startTurnSocket(
+  refuse: boolean,
+  port = 0,
+): Promise<LoopbackTurnSocket> {
   const socket = createSocket("udp4");
   openSockets.push(socket);
   let allocateRequests = 0;
@@ -98,7 +102,7 @@ async function startTurnSocket(refuse: boolean): Promise<LoopbackTurnSocket> {
   });
   await new Promise<void>((resolve, reject) => {
     socket.once("error", reject);
-    socket.bind(0, "127.0.0.1", () => {
+    socket.bind(port, "127.0.0.1", () => {
       socket.off("error", reject);
       resolve();
     });
@@ -109,13 +113,18 @@ async function startTurnSocket(refuse: boolean): Promise<LoopbackTurnSocket> {
   };
 }
 
+/** A loopback TCP listener standing in for a TURN server's TCP side. */
+interface LoopbackTurnListener {
+  port: number;
+  connected: Promise<void>;
+  connections: () => number;
+}
+
 /**
- * Listen for TCP on `port`, closing each connection at once, and resolve
- * `connected` on the first one.
+ * Listen for TCP on an ephemeral loopback port, closing each connection at
+ * once, and resolve `connected` on the first one.
  */
-async function listenTcp(
-  port: number,
-): Promise<{ connected: Promise<void>; connections: () => number }> {
+async function listenTcp(): Promise<LoopbackTurnListener> {
   let connections = 0;
   let onConnection = (): void => undefined;
   const connected = new Promise<void>((resolve) => {
@@ -130,12 +139,29 @@ async function listenTcp(
   openServers.push(server);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
+    server.listen(0, "127.0.0.1", () => {
       server.off("error", reject);
       resolve();
     });
   });
-  return { connected, connections: () => connections };
+  const address = server.address();
+  if (address === null || typeof address === "string")
+    throw new Error("the TCP listener has no port");
+  return { port: address.port, connected, connections: () => connections };
+}
+
+/**
+ * A TURN stand-in listening for UDP and TCP on one loopback port. TCP takes
+ * the port the OS assigns and UDP binds that number: a TCP client's port,
+ * open or in TIME_WAIT, refuses a TCP listen on it but not a UDP bind, so a
+ * TCP listen on a port a UDP bind was given can collide.
+ */
+async function startTurnStandIn(
+  refuse: boolean,
+): Promise<{ relay: LoopbackTurnSocket; tcp: LoopbackTurnListener }> {
+  const tcp = await listenTcp();
+  const relay = await startTurnSocket(refuse, tcp.port);
+  return { relay, tcp };
 }
 
 function ownPlan(...urls: Array<string>) {
@@ -181,8 +207,7 @@ test("a relay that never answers is reported not reached when the bound expires,
 test.each(["", "?transport=udp"])(
   "a turn: url naming %j retries a refused UDP allocation over TCP to the same port",
   async (query) => {
-    const relay = await startTurnSocket(true);
-    const tcp = await listenTcp(relay.port);
+    const { relay, tcp } = await startTurnStandIn(true);
     const bound = new AbortController();
     const ceiling = setTimeout(() => bound.abort(), 10_000);
     void tcp.connected.then(() => bound.abort());
@@ -204,8 +229,7 @@ test.each(["", "?transport=udp"])(
 );
 
 test("a turn: url naming transport=tcp asks over TCP alone", async () => {
-  const relay = await startTurnSocket(true);
-  const tcp = await listenTcp(relay.port);
+  const { relay, tcp } = await startTurnStandIn(true);
   const bound = new AbortController();
   const ceiling = setTimeout(() => bound.abort(), 10_000);
   void tcp.connected.then(() => bound.abort());
@@ -224,11 +248,10 @@ test("a turn: url naming transport=tcp asks over TCP alone", async () => {
 }, 15_000);
 
 test("a configuration listing two relays sends requests to the first alone, and reports the second skipped", async () => {
-  const [first, second] = await Promise.all([
+  const [first, { relay: second, tcp: secondTcp }] = await Promise.all([
     startTurnSocket(true),
-    startTurnSocket(true),
+    startTurnStandIn(true),
   ]);
-  const secondTcp = await listenTcp(second.port);
   const firstUrl = `turn:127.0.0.1:${first.port}?transport=udp`;
   const secondUrl = `turn:127.0.0.1:${second.port}?transport=udp`;
 
