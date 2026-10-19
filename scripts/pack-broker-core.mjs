@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Packs the part of a built @alcove/core the standalone signaling broker runs:
-// `untrusted-text.esm.js` and every chunk it imports, found by following the
-// built files' relative imports rather than named here. Copies them into an
-// output directory beside a `sha256sum -c` manifest, for
-// broker_core_build.yaml to archive, sign and publish.
+// Packs the part of a built @alcove/core the broker's host runs: the
+// standalone signaling broker's entry, `untrusted-text.esm.js`, the WebSocket
+// relay's, `websocket-relay.esm.js`, and every chunk either imports, found by
+// following the built files' relative imports rather than named here. Copies
+// them into an output directory beside a `sha256sum -c` manifest covering
+// every file, for broker_core_build.yaml to archive, sign and publish.
 //
 //   node scripts/pack-broker-core.mjs <core-dist-dir> <out-dir>
 //
@@ -27,7 +28,16 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 /** The built entry point `@alcove/core/untrusted-text` resolves to on import. */
-export const BROKER_CORE_ENTRY = "untrusted-text.esm.js";
+export const SIGNALING_BROKER_ENTRY = "untrusted-text.esm.js";
+
+/** The built entry point `@alcove/core/websocket-relay` resolves to on import. */
+export const WEBSOCKET_RELAY_ENTRY = "websocket-relay.esm.js";
+
+/** Every entry point the archive packs, with the chunks each imports. */
+export const BROKER_CORE_ENTRIES = [
+  SIGNALING_BROKER_ENTRY,
+  WEBSOCKET_RELAY_ENTRY,
+];
 
 /** The manifest's file name, inside the output directory. */
 export const MANIFEST_NAME = "SHA256SUMS";
@@ -45,12 +55,12 @@ export function moduleSpecifiers(source) {
 const toPosix = (path) => path.split(sep).join("/");
 
 /**
- * The files, relative to `distDir` and sorted, that the module graph rooted at
- * `entry` reaches through relative imports. `node:` builtins are skipped; any
- * other bare specifier, a path resolving outside `distDir` or a missing file
- * throws.
+ * The files, relative to `distDir` and sorted, that the module graphs rooted
+ * at `entries` reach through relative imports, each file once. `node:`
+ * builtins are skipped; any other bare specifier, a path resolving outside
+ * `distDir` or a missing file throws.
  */
-export function brokerCoreFiles(distDir, entry = BROKER_CORE_ENTRY) {
+export function brokerCoreFiles(distDir, entries = BROKER_CORE_ENTRIES) {
   const root = resolve(distDir);
   const found = new Set();
   const visit = (relativePath, importedFrom) => {
@@ -86,7 +96,7 @@ export function brokerCoreFiles(distDir, entry = BROKER_CORE_ENTRY) {
       visit(toPosix(target), relativePath);
     }
   };
-  visit(toPosix(entry), undefined);
+  for (const entry of entries) visit(toPosix(entry), undefined);
   return [...found].sort();
 }
 
@@ -106,7 +116,7 @@ export function sha256Manifest(distDir, files) {
 }
 
 /**
- * Copies the broker's closure of `distDir` into `outDir`, which must not
+ * Copies the closure of every entry in `distDir` into `outDir`, which must not
  * exist, with the manifest beside it. Returns every name written, the
  * manifest last.
  */

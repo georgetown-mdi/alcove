@@ -524,6 +524,21 @@ Not measured, and so owed before the front is called deployed:
   on a network admitting outbound TCP to 443 only, which needs a registrar to
   register the exchange's key.
 
+### The WebSocket relay's unit
+
+`alcove-relay-websocket.service` runs the relay as one process, `node` with
+tsx's loader, rather than `npm start`, which runs npm, tsx's own process and
+then node ([`infra/relay/README.md`, The WebSocket
+relay](../../infra/relay/README.md#the-websocket-relay)). The reason is
+memory on a host of 412 MB:
+
+- idle, three starts of each in the development container on 2026-10-19
+  (x86-64, Node 26.12.0);
+- the `npm start` chain held about 213 MB resident in all;
+- the unit's form held about 82 MB, tsx's esbuild service included.
+
+Not yet measured on the project's host.
+
 ## The proposed epic
 
 **A proposal for the owner to ratify.** Nothing in this section is filed,

@@ -277,7 +277,35 @@ describe("websocket-pair.py against the relay", { timeout: 60000 }, () => {
     expect(read("install.sh")).toContain(
       `"http://127.0.0.1:$WEBSOCKET_PORT/relay"`,
     );
-    expect(read("install.sh")).toContain("= 404 ] && break");
+    expect(read("install.sh")).toContain(
+      '[ "$(websocket_answer)" = 404 ] && { websocket_answered=1; break; }',
+    );
+  });
+
+  it("bounds install.sh's wait for that answer inside the host pull's cutoff for an install script", () => {
+    const install = read("install.sh");
+    const wait = Number(
+      /^ {2}websocket_deadline=\$\(\(SECONDS \+ (\d+)\)\)$/m.exec(install)[1],
+    );
+    const probe = Number(
+      /^ {2}websocket_answer\(\) \{ curl [^\n]*--max-time (\d+) /m.exec(
+        install,
+      )[1],
+    );
+    expect(install).toContain(
+      'while [ "$SECONDS" -lt "$websocket_deadline" ]; do',
+    );
+    expect(install).toContain(
+      `did not answer on 127.0.0.1 port $WEBSOCKET_PORT within ${wait} s;`,
+    );
+    const pull = readFileSync(join(ROOT, "infra/host-pull/pull.sh"), "utf8");
+    const share = Number(/^INSTALL_SHARE=(\d+)$/m.exec(pull)[1]);
+    const killAfter = Number(
+      /^INSTALL_KILL_AFTER_DEFAULT=(\d+)$/m.exec(pull)[1],
+    );
+    // The last probe can start just before the deadline, then the sleep; the
+    // wait leaves the rest of install.sh at least half the cutoff.
+    expect(wait + probe + 1).toBeLessThan((share - killAfter) / 2);
   });
 });
 
@@ -348,19 +376,33 @@ describe("alcove-relay-websocket.service", () => {
   });
 
   it("is checked for before anything is installed or restarted", () => {
-    const check = install.indexOf('[ -e "$NODE_TREE/$needed" ]');
-    expect(check).toBeGreaterThan(0);
-    expect(check).toBeGreaterThan(
-      install.indexOf('"$HERE/render-front.sh" > /dev/null'),
-    );
-    for (const change of [
-      "dnf -y install",
-      "systemctl ",
-      " build ",
-      "install -d ",
-    ]) {
-      expect(install.indexOf(change), change).toBeGreaterThan(check);
+    const checks = [
+      install.indexOf('[ -e "$NODE_TREE/$needed" ]'),
+      install.indexOf(
+        '[ -e "$NODE_TREE/packages/core/dist/websocket-relay.esm.js" ]',
+      ),
+    ];
+    for (const check of checks) {
+      expect(check).toBeGreaterThan(
+        install.indexOf('"$HERE/render-front.sh" > /dev/null'),
+      );
+      for (const change of [
+        "dnf -y install",
+        "systemctl ",
+        " build ",
+        "install -d ",
+      ]) {
+        expect(install.indexOf(change), change).toBeGreaterThan(check);
+      }
     }
+  });
+
+  // The host pull unpacks only the signed broker core build into a tree, so a
+  // build packed before it included the relay's entry is the likely cause.
+  it("names a broker core build without the relay's entry as the cause when it is missing", () => {
+    expect(install).toContain(
+      "has no websocket-relay.esm.js: the broker core build unpacked there predates the WebSocket relay's entry.",
+    );
   });
 
   it("installs the probe verify.sh runs", () => {

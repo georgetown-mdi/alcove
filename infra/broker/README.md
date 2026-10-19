@@ -67,7 +67,7 @@ On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` 
 
    The checksums file comes from the same release as the binary, so it catches a damaged download, not a replaced release.
 5. Take core's build for that commit from the `broker-core-build` prerelease ([docs/RELEASES.md, The broker core build](../../docs/RELEASES.md#the-broker-core-build)): `alcove-broker-core-<commit>.tar.gz` and its bundle `alcove-broker-core-<commit>.tar.gz.sigstore.json`, `<commit>` being the full commit the clone is at.
-   The archive holds `untrusted-text.esm.js`, the chunks it imports and a `SHA256SUMS` manifest; that entry point is the whole of the broker's reach into core.
+   The archive holds `untrusted-text.esm.js`, the WebSocket relay's `websocket-relay.esm.js` ([`infra/relay/README.md`, The WebSocket relay](../relay/README.md#the-websocket-relay)), the chunks either imports and a `SHA256SUMS` manifest of all of them; the first entry point is the whole of the broker's reach into core.
    Verify its signature with Cosign, which needs no credential on the host, then unpack it into the clone and check the manifest:
 
    ```sh

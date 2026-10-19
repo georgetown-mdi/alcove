@@ -95,10 +95,12 @@ if [ -n "$WEBSOCKET_NAME" ]; then
     || die "ALCOVE_RELAY_WEBSOCKET_NAME is set and alcove-relay-websocket.service runs /usr/local/bin/node, which this host does not have; see infra/broker/README.md, Install. Nothing was installed or restarted"
   for needed in node_modules/tsx/package.json node_modules/ws/package.json \
     node_modules/@alcove/peerjs-broker/package.json \
-    packages/websocket-relay/src/standalone.ts packages/core/dist/websocket-relay.esm.js; do
+    packages/websocket-relay/src/standalone.ts; do
     [ -e "$NODE_TREE/$needed" ] \
       || die "ALCOVE_RELAY_WEBSOCKET_NAME is set and $NODE_TREE has no $needed, which the WebSocket relay runs from; see The WebSocket relay in infra/relay/README.md. Nothing was installed or restarted"
   done
+  [ -e "$NODE_TREE/packages/core/dist/websocket-relay.esm.js" ] \
+    || die "ALCOVE_RELAY_WEBSOCKET_NAME is set and $NODE_TREE/packages/core/dist has no websocket-relay.esm.js: the broker core build unpacked there predates the WebSocket relay's entry. Bring the tree to a commit of main whose broker core build includes it, by the host pull or infra/broker/README.md, Install, steps 1 to 6. Nothing was installed or restarted"
 fi
 
 # --- the swapfile -------------------------------------------------------------
@@ -516,14 +518,20 @@ if [ -n "$WEBSOCKET_NAME" ]; then
     || die "alcove-relay-websocket.service could not be enabled; the WebSocket relay would not come back after a reboot"
   systemctl restart alcove-relay-websocket.service \
     || die "alcove-relay-websocket.service did not start; journalctl -u alcove-relay-websocket.service"
-  # The relay answers a plain request on its path 404 once it listens.
-  websocket_answer() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$WEBSOCKET_PORT/relay" || true; }
-  for _ in $(seq 60); do
-    [ "$(websocket_answer)" = 404 ] && break
+  # The relay answers a plain request on its path 404 once it listens. The
+  # wait is bounded by elapsed time, each probe's own --max-time included, so
+  # a relay that accepts and never answers ends it a few seconds past the
+  # bound; scripts/relay-websocket.test.mjs holds the bound to the daily
+  # pull's cutoff for one install script.
+  websocket_answer() { curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$WEBSOCKET_PORT/relay" || true; }
+  websocket_answered=0
+  websocket_deadline=$((SECONDS + 120))
+  while [ "$SECONDS" -lt "$websocket_deadline" ]; do
+    [ "$(websocket_answer)" = 404 ] && { websocket_answered=1; break; }
     sleep 1
   done
-  [ "$(websocket_answer)" = 404 ] \
-    || die "the WebSocket relay did not answer on 127.0.0.1 port $WEBSOCKET_PORT within 60 s; journalctl -u alcove-relay-websocket.service"
+  [ "$websocket_answered" = 1 ] \
+    || die "the WebSocket relay did not answer on 127.0.0.1 port $WEBSOCKET_PORT within 120 s; journalctl -u alcove-relay-websocket.service"
   log "alcove-relay-websocket.service started on 127.0.0.1 port $WEBSOCKET_PORT, and on 443 as wss://$WEBSOCKET_NAME/relay through the front"
 else
   systemctl disable --now alcove-relay-websocket.service 2>/dev/null || true

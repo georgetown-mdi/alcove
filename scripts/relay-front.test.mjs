@@ -539,9 +539,7 @@ describe("front.conf.tmpl", () => {
     const [, turn, , websocket] = serverBlocks();
     const tlsSettings = (server) =>
       server.filter((line) =>
-        /^(ssl_|set_real_ip_from|proxy_connect_timeout|proxy_timeout)/.test(
-          line,
-        ),
+        /^(ssl_|set_real_ip_from|proxy_connect_timeout)/.test(line),
       );
     expect(tlsSettings(websocket)).toEqual(tlsSettings(turn));
     expect(websocket.some((line) => line.startsWith("proxy_protocol "))).toBe(
@@ -621,8 +619,29 @@ describe("front.conf.tmpl", () => {
     }
     for (const server of [first, turn, hop, websocket]) {
       expect(server).toContain("proxy_connect_timeout 5s;");
+    }
+    for (const server of [first, turn, hop]) {
       expect(server).toContain("proxy_timeout 900s;");
     }
+    expect(websocket).toContain("proxy_timeout 300s;");
+  });
+
+  // docs/spec/WEBSOCKET_RELAY.md, Keepalive: the relay's ping is a tenth of
+  // the idle timeout of the front's WebSocket relay server.
+  it("closes an idle WebSocket relay connection at ten of the relay's ping intervals", () => {
+    const websocket = serverBlocks()[3];
+    const idle = websocket.find((line) => line.startsWith("proxy_timeout "));
+    const pingMs = Number(
+      /^export const RELAY_PING_INTERVAL_MS = ([\d_]+);$/m
+        .exec(
+          readFileSync(
+            resolve(here, "..", "packages/websocket-relay/src/protocol.ts"),
+            "utf8",
+          ),
+        )[1]
+        .replaceAll("_", ""),
+    );
+    expect(Number.parseInt(idle.split(/\s+/)[1], 10) * 1000).toBe(10 * pingMs);
   });
 
   it("runs one worker with a bounded number of connections", () => {

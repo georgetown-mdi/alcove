@@ -13,8 +13,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  BROKER_CORE_ENTRY,
+  BROKER_CORE_ENTRIES,
   MANIFEST_NAME,
+  SIGNALING_BROKER_ENTRY,
+  WEBSOCKET_RELAY_ENTRY,
   brokerCoreFiles,
   moduleSpecifiers,
   packBrokerCore,
@@ -70,40 +72,65 @@ describe("moduleSpecifiers", () => {
 describe("brokerCoreFiles", () => {
   it("follows chunk imports transitively, each file once, and skips builtins", () => {
     const dist = distOf({
-      [BROKER_CORE_ENTRY]:
+      [SIGNALING_BROKER_ENTRY]:
         "export { a } from './shared2.esm.js';\nimport './sub/deep.esm.js';\n",
       "shared2.esm.js":
         "import { createHash } from 'node:crypto';\nexport * from './sub/deep.esm.js';\nexport const a = createHash;\n",
       "sub/deep.esm.js": "import '../shared2.esm.js';\nexport const d = 1;\n",
       "core.esm.js": "import 'zod';\n",
     });
-    expect(brokerCoreFiles(dist)).toEqual([
+    expect(brokerCoreFiles(dist, [SIGNALING_BROKER_ENTRY])).toEqual([
       "shared2.esm.js",
       "sub/deep.esm.js",
-      BROKER_CORE_ENTRY,
+      SIGNALING_BROKER_ENTRY,
+    ]);
+  });
+
+  it("follows the signaling broker's and the WebSocket relay's entries by default, a shared chunk once", () => {
+    expect(BROKER_CORE_ENTRIES).toEqual([
+      SIGNALING_BROKER_ENTRY,
+      WEBSOCKET_RELAY_ENTRY,
+    ]);
+    const dist = distOf({
+      [SIGNALING_BROKER_ENTRY]: "export * from './shared2.esm.js';\n",
+      [WEBSOCKET_RELAY_ENTRY]:
+        "export * from './shared2.esm.js';\nexport * from './shared4.esm.js';\n",
+      "shared2.esm.js": "export const s = 1;\n",
+      "shared4.esm.js": "export const r = 1;\n",
+      "core.esm.js": "import 'zod';\n",
+    });
+    expect(brokerCoreFiles(dist)).toEqual([
+      "shared2.esm.js",
+      "shared4.esm.js",
+      SIGNALING_BROKER_ENTRY,
+      WEBSOCKET_RELAY_ENTRY,
     ]);
   });
 
   it("refuses a package import anywhere in the closure", () => {
     const dist = distOf({
-      [BROKER_CORE_ENTRY]: "export * from './shared2.esm.js';\n",
+      [SIGNALING_BROKER_ENTRY]: "export * from './shared2.esm.js';\n",
       "shared2.esm.js": "import { z } from 'zod';\nexport const s = z;\n",
     });
-    expect(() => brokerCoreFiles(dist)).toThrow(/imports "zod"/);
+    expect(() => brokerCoreFiles(dist, [SIGNALING_BROKER_ENTRY])).toThrow(
+      /imports "zod"/,
+    );
   });
 
   it("refuses an import resolving outside the dist directory", () => {
     const dist = distOf({
-      [BROKER_CORE_ENTRY]: "export * from '../src/x.js';\n",
+      [SIGNALING_BROKER_ENTRY]: "export * from '../src/x.js';\n",
     });
-    expect(() => brokerCoreFiles(dist)).toThrow(/resolves outside/);
+    expect(() => brokerCoreFiles(dist, [SIGNALING_BROKER_ENTRY])).toThrow(
+      /resolves outside/,
+    );
   });
 
   it("refuses a chunk the entry imports that is missing", () => {
     const dist = distOf({
-      [BROKER_CORE_ENTRY]: "export * from './gone.esm.js';\n",
+      [SIGNALING_BROKER_ENTRY]: "export * from './gone.esm.js';\n",
     });
-    expect(() => brokerCoreFiles(dist)).toThrow(
+    expect(() => brokerCoreFiles(dist, [SIGNALING_BROKER_ENTRY])).toThrow(
       /gone\.esm\.js, imported by untrusted-text\.esm\.js, is not a file/,
     );
   });
@@ -114,49 +141,65 @@ describe("brokerCoreFiles", () => {
     );
   });
 
-  it("finds the entry and at least one chunk in the real build", () => {
+  it("refuses a build without the WebSocket relay's entry", () => {
+    const dist = distOf({
+      [SIGNALING_BROKER_ENTRY]: "export const s = 1;\n",
+    });
+    expect(() => brokerCoreFiles(dist)).toThrow(
+      /^websocket-relay\.esm\.js is not a file under /,
+    );
+  });
+
+  it("finds both entries and at least one chunk in the real build", () => {
     const files = brokerCoreFiles(coreDist);
-    expect(files).toContain(BROKER_CORE_ENTRY);
-    expect(files.length).toBeGreaterThan(1);
+    expect(files).toContain(SIGNALING_BROKER_ENTRY);
+    expect(files).toContain(WEBSOCKET_RELAY_ENTRY);
+    expect(files.length).toBeGreaterThan(2);
   });
 });
 
 describe("packBrokerCore", () => {
   const dist = distOf({
-    [BROKER_CORE_ENTRY]: "export * from './shared2.esm.js';\n",
+    [SIGNALING_BROKER_ENTRY]: "export * from './shared2.esm.js';\n",
+    [WEBSOCKET_RELAY_ENTRY]:
+      "export * from './shared2.esm.js';\nexport * from './shared4.esm.js';\n",
     "shared2.esm.js": "export const s = 1;\n",
+    "shared4.esm.js": "export const r = 1;\n",
     "core.esm.js": "export const unrelated = 1;\n",
   });
+  const packed = [
+    "shared2.esm.js",
+    "shared4.esm.js",
+    SIGNALING_BROKER_ENTRY,
+    WEBSOCKET_RELAY_ENTRY,
+  ];
 
-  it("copies the closure alone, with a manifest sha256sum accepts", () => {
+  it("copies both closures alone, with a manifest sha256sum accepts for every file", () => {
     const out = join(scratch(), "out");
-    expect(packBrokerCore(dist, out)).toEqual([
-      "shared2.esm.js",
-      BROKER_CORE_ENTRY,
-      MANIFEST_NAME,
-    ]);
-    expect(readdirSync(out).sort()).toEqual(
-      [MANIFEST_NAME, "shared2.esm.js", BROKER_CORE_ENTRY].sort(),
-    );
+    expect(packBrokerCore(dist, out)).toEqual([...packed, MANIFEST_NAME]);
+    expect(readdirSync(out).sort()).toEqual([...packed, MANIFEST_NAME].sort());
     expect(
       execFileSync("sha256sum", ["-c", MANIFEST_NAME], {
         cwd: out,
         encoding: "utf8",
       }),
-    ).toBe(`shared2.esm.js: OK\n${BROKER_CORE_ENTRY}: OK\n`);
+    ).toBe(packed.map((file) => `${file}: OK\n`).join(""));
   });
 
-  it("writes a manifest sha256sum rejects once a file changes", () => {
-    const out = join(scratch(), "out");
-    packBrokerCore(dist, out);
-    writeFileSync(join(out, "shared2.esm.js"), "export const s = 2;\n");
-    expect(() =>
-      execFileSync("sha256sum", ["--quiet", "-c", MANIFEST_NAME], {
-        cwd: out,
-        stdio: "pipe",
-      }),
-    ).toThrow();
-  });
+  it.each(["shared2.esm.js", "shared4.esm.js", WEBSOCKET_RELAY_ENTRY])(
+    "writes a manifest sha256sum rejects once %s changes",
+    (file) => {
+      const out = join(scratch(), "out");
+      packBrokerCore(dist, out);
+      writeFileSync(join(out, file), "export const changed = 2;\n");
+      expect(() =>
+        execFileSync("sha256sum", ["--quiet", "-c", MANIFEST_NAME], {
+          cwd: out,
+          stdio: "pipe",
+        }),
+      ).toThrow();
+    },
+  );
 
   it("refuses an output directory that already exists", () => {
     const out = scratch();
@@ -165,7 +208,8 @@ describe("packBrokerCore", () => {
 
   it("refuses a closure holding the manifest's own name", () => {
     const clash = distOf({
-      [BROKER_CORE_ENTRY]: `export * from './${MANIFEST_NAME}';\n`,
+      [SIGNALING_BROKER_ENTRY]: `export * from './${MANIFEST_NAME}';\n`,
+      [WEBSOCKET_RELAY_ENTRY]: "export const r = 1;\n",
       [MANIFEST_NAME]: "export const s = 1;\n",
     });
     expect(() => packBrokerCore(clash, join(scratch(), "out"))).toThrow(
@@ -180,11 +224,9 @@ describe("packBrokerCore", () => {
       [join(here, "pack-broker-core.mjs"), dist, out],
       { encoding: "utf8" },
     );
-    expect(printed).toBe(
-      `shared2.esm.js\n${BROKER_CORE_ENTRY}\n${MANIFEST_NAME}\n`,
-    );
+    expect(printed).toBe([...packed, MANIFEST_NAME, ""].join("\n"));
     expect(readFileSync(join(out, MANIFEST_NAME), "utf8")).toMatch(
-      /^[0-9a-f]{64} {2}shared2\.esm\.js\n[0-9a-f]{64} {2}untrusted-text\.esm\.js\n$/,
+      /^[0-9a-f]{64} {2}shared2\.esm\.js\n[0-9a-f]{64} {2}shared4\.esm\.js\n[0-9a-f]{64} {2}untrusted-text\.esm\.js\n[0-9a-f]{64} {2}websocket-relay\.esm\.js\n$/,
     );
   });
 

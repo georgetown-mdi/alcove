@@ -761,7 +761,9 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   (`ssl_handshake_timeout`), and the service behind must accept within 5 s.
   An established connection idle for 900 s is closed, longer than coturn's
   `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
-  not cut. Each server applies the same bounds.
+  not cut. Each server applies the same bounds, except that the WebSocket
+  relay server closes a connection idle for 300 s, ten times the relay's
+  30 s ping ([The WebSocket relay](#the-websocket-relay), Its route).
 - **Connections and memory.** One worker (`worker_processes 1`) holds at
   most 1024 connections at once (`worker_connections`), a client's side and
   the service's side of each hop counting one. A TURN client counts four
@@ -793,7 +795,7 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
 - **One limit for every service.** The 1024 connections are shared by
   TURN, the registrar, the WebSocket relay and every routed service, and the
   front sets no limit per client address. One host that opens that many
-  connections, and holds them or replaces each as the 10 s or 900 s bound
+  connections, and holds them or replaces each as the 10 s or idle bound
   closes it, keeps every other client from TURN, the registrar, the
   WebSocket relay and the broker on 443 for as long as it does so.
 - **What it logs.** No access log: one line per connection would record which
@@ -846,9 +848,11 @@ stops and disables it where that is unset.
   settings and passes the connection to the relay on `127.0.0.1` at
   `ALCOVE_RELAY_WEBSOCKET_PORT`, 8446 where unset
   ([The 443 front](#the-443-front)). The relay terminates no TLS and listens
-  on loopback alone. An established connection idle for 900 s is closed, as
-  at every server of the front; the relay pings each socket every 30 s, so a
-  pairing whose parties are silent stays open until the relay's own idle
+  on loopback alone. The front's WebSocket relay server closes an
+  established connection idle for 300 s, the timeout
+  [WEBSOCKET_RELAY.md, Keepalive](../../docs/spec/WEBSOCKET_RELAY.md#keepalive)
+  sets the relay's ping against; the relay pings each socket every 30 s, so
+  a pairing whose parties are silent stays open until the relay's own idle
   bound.
 - **Its keys.** It reads the exchange keys from the secrets table coturn
   reads ([Per-exchange keys](#per-exchange-keys)), read-only, so an exchange
@@ -865,18 +869,18 @@ stops and disables it where that is unset.
   every package the relay imports (measured on 2026-10-19 against a scoped
   `npm ci` of that workspace alone). The tree also needs core's
   `websocket-relay.esm.js`, with the chunks it imports, in
-  `packages/core/dist`, which the broker's core build does not include: build
-  core at the tree's commit on another machine and copy that entry's files
-  in, as the broker's Install step 5 does for a commit the prerelease does
-  not have. `install.sh` checks for them and for `/usr/local/bin/node` where
-  the name is set, and stops before it changes anything when one is missing.
-  After the start it waits up to 60 s for the relay to answer a plain
-  request on `/relay` with `404`.
-- **One process.** `node` with tsx's loader rather than `npm start`, which
-  runs npm, tsx's own process and then node. Idle, three starts of each in
-  the development container on 2026-10-19 (x86-64, Node 26.12.0), the
-  `npm start` chain held about 213 MB resident in all and the unit's form
-  about 82 MB, tsx's esbuild service included.
+  `packages/core/dist`, which the broker core build
+  ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) includes
+  beside the broker's entry, under the same `SHA256SUMS` manifest and
+  signature. `install.sh` checks for them and for `/usr/local/bin/node` where
+  the name is set, and stops before it changes anything when one is missing;
+  a tree whose core build predates the relay's entry is refused with that
+  cause. After the start it waits up to 120 s, each probe at most 2 s, for
+  the relay to answer a plain request on `/relay` with `404`.
+- **One process.** The unit runs `node` with tsx's loader rather than
+  `npm start`, which runs npm, tsx's own process and then node; why, and
+  what was measured:
+  [webrtc-relay-deployment.md, The WebSocket relay's unit](../../docs/notes/webrtc-relay-deployment.md#the-websocket-relays-unit).
 - **The sandbox.** The broker's ([`infra/broker/README.md`,
   Exposure](../broker/README.md#exposure)): no capability, connections to and
   from loopback alone (`IPAddressDeny=any`, `IPAddressAllow=localhost`), and
@@ -1316,8 +1320,8 @@ The responses:
   ```
 
   Use `ip6tables` for an IPv6 address. A new connection from it is dropped; an
-  open one gets nothing more through, and the front closes it after 900 s
-  idle ([The 443 front](#the-443-front), Bounds). The rules last until a
+  open one gets nothing more through, and the front closes it after at most
+  900 s idle ([The 443 front](#the-443-front), Bounds). The rules last until a
   reboot. `iptables -L INPUT -n --line-numbers` lists them with their numbers;
   `iptables -D INPUT <number>` removes one. On a host that has `nft` instead,
   `nft add rule` into an `input` chain with `ip saddr <address> tcp dport 443
