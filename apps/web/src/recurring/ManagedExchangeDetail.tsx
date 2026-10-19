@@ -24,6 +24,7 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { InfoButton } from "@components/InfoButton";
 import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
@@ -36,6 +37,9 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
+  SECRET_EXPIRATION_EXPLANATION,
+  SECRET_EXPIRATION_INFO_LABEL,
+  SECRET_EXPIRATION_LABEL,
   maxAgeCadenceNote,
 } from "@exchange/manageOfferModel";
 import styles from "@styles/app.module.css";
@@ -667,13 +671,17 @@ function LocalFieldsEditor({
           {resultSizeWarning}
         </Alert>
       )}
-      <Checkbox
-        label="Set a maximum age for the stored secret"
-        description="Off by default. When set, the stored secret lapses if the exchange is not run or renewed within the age you choose."
-        checked={maxAgeEnabled}
-        onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
+      <InfoButton
+        label={SECRET_EXPIRATION_INFO_LABEL}
+        explanation={SECRET_EXPIRATION_EXPLANATION}
         mt="sm"
-      />
+      >
+        <Checkbox
+          label={SECRET_EXPIRATION_LABEL}
+          checked={maxAgeEnabled}
+          onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
+        />
+      </InfoButton>
       {maxAgeEnabled && (
         <NamedStepNumberInput
           label="Maximum age in days"

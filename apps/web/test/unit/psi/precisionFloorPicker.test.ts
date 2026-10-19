@@ -37,7 +37,6 @@ import {
   editorWithKeyMoved,
   editorWithPastedConfiguration,
   editorWithPrecisionFloorSelection,
-  emptyGuidedKeysNotice,
   enabledKeys,
   guidedKeysAnnouncement,
   keyOrderHelp,
@@ -700,14 +699,15 @@ describe("the announcement after a floor choice", () => {
     );
   });
 
-  test("reads the empty-list note for an empty list", () => {
+  test("states an empty list", () => {
     const empty = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", namesAndDate),
       AT_99,
     );
     expect(empty.draft.keys).toHaveLength(0);
-    expect(guidedKeysAnnouncement(empty)).toBe(emptyGuidedKeysNotice(empty));
-    expect(guidedKeysAnnouncement(empty)).not.toContain("0 built-in");
+    expect(guidedKeysAnnouncement(empty)).toBe(
+      "The key list shows no built-in rules.",
+    );
   });
 });
 
@@ -918,29 +918,5 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
     const drop = editorCitationDrop(rewritten, false);
     expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
     expect(drop?.notice).toContain(USE_BUILT_IN_RULES_LABEL);
-  });
-});
-
-describe("an empty guided key list", () => {
-  test("names the wider choice that supplies rules", () => {
-    const seeded = editorFromCsv("Dana", namesAndDate);
-    expect(emptyGuidedKeysNotice(seeded)).toBeUndefined();
-    const empty = editorWithPrecisionFloorSelection(seeded, AT_99);
-    expect(empty.draft.keys).toHaveLength(0);
-    expect(emptyGuidedKeysNotice(empty)).toBe(
-      "Your file's columns supply none of the built-in rules this choice " +
-        "selects. To use rules your file supplies, choose Highest " +
-        "certainty, followed by others.",
-    );
-  });
-
-  test("says nothing where no choice supplies a rule", () => {
-    const unmatchable = csvOf({ client_id: "1", program_code: "A" });
-    const at99 = editorWithPrecisionFloorSelection(
-      editorFromCsv("Dana", unmatchable),
-      AT_99,
-    );
-    expect(at99.draft.keys).toHaveLength(0);
-    expect(emptyGuidedKeysNotice(at99)).toBeUndefined();
   });
 });

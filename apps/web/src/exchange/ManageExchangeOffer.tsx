@@ -12,11 +12,8 @@ import {
 import { IconCircleCheck } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 
-import {
-  RETENTION_NOTE_LABEL,
-  RETENTION_NOTE_NOTICE_WEB,
-  RETENTION_NOTE_PLACEHOLDER,
-} from "@psi/receiptsModel";
+import { InfoButton } from "@components/InfoButton";
+import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { probeManagedStoreOpen } from "@psi/managed/managedExchangeStore";
 
@@ -29,7 +26,9 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
-  SAVE_OFFER_SCHEDULE_NOTE,
+  SECRET_EXPIRATION_EXPLANATION,
+  SECRET_EXPIRATION_INFO_LABEL,
+  SECRET_EXPIRATION_LABEL,
   labelWithinCap,
   maxAgeCadenceNote,
   maxAgeDaysError,
@@ -174,11 +173,15 @@ export function ManageExchangeOffer({
     <div className={styles.callout}>
       <p className={styles.calloutLead}>Save as a recurring exchange</p>
       <p className={styles.small}>
-        Store this exchange&apos;s terms and secret in this browser so you can
-        run it again with the same partner, without re-inviting. Skip this to
-        keep the exchange one-off: nothing is stored.
+        Save this exchange&apos;s terms and secret in this browser to run it
+        again with the same partner, without a new invitation. Skip this for a
+        one-off exchange: nothing is saved.
       </p>
-      <p className={styles.small}>{SAVE_OFFER_SCHEDULE_NOTE}</p>
+      <p className={`${styles.small} ${styles.sub}`}>
+        {workingDirectoryGrantSupported()
+          ? `Each later run reads its input from ${MANAGED_INPUT_FILE_NAME} in a folder you choose on this exchange's page after you save it. On that page you can run it yourself or set it to run on a schedule.`
+          : "You will choose your input file for each run. This browser cannot give a site a folder to read it from."}
+      </p>
       <TextInput
         label="Label"
         description={LABEL_GUIDANCE}
@@ -192,13 +195,17 @@ export function ManageExchangeOffer({
         onChange={(event) => setLabel(event.currentTarget.value)}
         mt="sm"
       />
-      <Checkbox
-        label="Set a maximum age for the stored secret"
-        description="Off by default. When set, the stored secret lapses if the exchange is not run or renewed within the age you choose."
-        checked={maxAgeEnabled}
-        onChange={(event) => setMaxAgeEnabled(event.currentTarget.checked)}
+      <InfoButton
+        label={SECRET_EXPIRATION_INFO_LABEL}
+        explanation={SECRET_EXPIRATION_EXPLANATION}
         mt="sm"
-      />
+      >
+        <Checkbox
+          label={SECRET_EXPIRATION_LABEL}
+          checked={maxAgeEnabled}
+          onChange={(event) => setMaxAgeEnabled(event.currentTarget.checked)}
+        />
+      </InfoButton>
       {maxAgeEnabled && (
         <NumberInput
           label="Maximum age in days"
@@ -217,8 +224,6 @@ export function ManageExchangeOffer({
       )}
       <Textarea
         label={RETENTION_NOTE_LABEL}
-        description={RETENTION_NOTE_NOTICE_WEB}
-        placeholder={RETENTION_NOTE_PLACEHOLDER}
         autosize
         minRows={2}
         maxRows={5}
@@ -227,11 +232,6 @@ export function ManageExchangeOffer({
         onChange={(event) => setRetentionNote(event.currentTarget.value)}
         mt="sm"
       />
-      <p className={`${styles.small} ${styles.sub}`}>
-        {workingDirectoryGrantSupported()
-          ? `Each later run reads its input from ${MANAGED_INPUT_FILE_NAME} in a folder you choose on this exchange's page.`
-          : "You will choose your input file for each run; this browser cannot give a site a folder to read it from."}
-      </p>
       {status === "error" && (
         <Alert
           role="alert"

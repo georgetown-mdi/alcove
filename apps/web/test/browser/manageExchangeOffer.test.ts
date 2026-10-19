@@ -107,7 +107,7 @@ describe("manage-exchange offer store gate", () => {
     await expect
       .element(
         page.getByRole("checkbox", {
-          name: "Set a maximum age for the stored secret",
+          name: "Set an expiration time for the secret",
         }),
       )
       .toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("manage-exchange offer store gate", () => {
     expect(
       page
         .getByRole("checkbox", {
-          name: "Set a maximum age for the stored secret",
+          name: "Set an expiration time for the secret",
         })
         .query(),
     ).toBeNull();

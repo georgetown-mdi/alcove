@@ -128,8 +128,8 @@ export function Lobby() {
       <main className={styles.lobby}>
         <h1>Alcove - encrypted matching and sharing</h1>
         <p className={styles.tagline}>
-          Find the records you both hold - without either of you seeing the
-          other&apos;s data.
+          Find records you have in common without sharing PII, then exchange
+          data about those records.
         </p>
         {FILE_ASSURANCE_LINE !== undefined && (
           <p className={`${styles.sub} ${styles.small}`}>

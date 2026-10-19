@@ -46,7 +46,6 @@ import {
   declaredFieldsFor,
   editorCitationDrop,
   editorOffersUseBuiltInRules,
-  emptyGuidedKeysNotice,
   keyOrderHelp,
   keySatisfiabilityFor,
   seedRows,
@@ -189,10 +188,6 @@ export function KeysTab({
     () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
     [editor, keysFromOpenedConfiguration, currentTerms],
   );
-  const emptyGuidedKeys = useMemo(
-    () => emptyGuidedKeysNotice(editor),
-    [editor],
-  );
   const keysAuthored = editor.keysAuthored === true;
   const offersUseBuiltInRules = useMemo(
     () => editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
@@ -324,11 +319,6 @@ export function KeysTab({
           );
         })}
       </ol>
-      {emptyGuidedKeys !== undefined && (
-        <Alert variant="light" color="gray" role="note" my="sm">
-          {emptyGuidedKeys}
-        </Alert>
-      )}
       {showsSharedValueKey && (
         <Alert variant="light" color="gray" role="note" my="sm">
           {SHARED_VALUE_CAVEAT}

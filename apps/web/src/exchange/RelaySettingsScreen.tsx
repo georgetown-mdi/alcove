@@ -28,18 +28,17 @@ import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
 /**
- * What the relay's operator learns, shown beside the setting and stated in
- * docs/COMMUNICATION.md and docs/SHARED_RESPONSIBILITY.md.
+ * What the relay's operator learns, shown at the end of the relay settings page
+ * and in `DefaultRelayNotice`, and stated in docs/COMMUNICATION.md and
+ * docs/SHARED_RESPONSIBILITY.md.
  */
 export const RELAY_OPERATOR_DISCLOSURE =
-  "Whoever runs the relay learns the network address of each party to every " +
-  "exchange that uses it, whether or not any traffic is relayed: your browser " +
-  "reserves an address on the relay while it gathers connection candidates, " +
-  "before it knows whether a direct connection will work. The relay forwards " +
-  "encrypted traffic only and cannot read the exchange.";
+  "The relay's operator sees each party's network address for every exchange " +
+  "that uses it, even when no traffic is relayed. The relay passes only " +
+  "encrypted traffic and cannot read the exchange.";
 
 /**
- * What the relay must hold for each run's credential, shown in the page's
+ * What the relay must hold for each run's credential, shown under the page's
  * opening paragraph and stated in docs/COMMUNICATION.md.
  */
 export const RELAY_KEY_NOTICE =
@@ -80,11 +79,11 @@ type SaveStatus =
 /**
  * The relay settings page: this browser's own TURN and STUN urls and, on the
  * hosted app, its WebSocket relay url, kept in browser storage for this site,
- * with what the relay's operator learns stated beside them, and a test of the
- * relays a browser run lists that the user starts. The hosted app and a
- * console each hold their own; a console runs no exchange over a WebSocket
- * relay, so it offers no WebSocket relay field. The relays an exchange may
- * use are that exchange's own, set where it is authored, so none is set here.
+ * a test of the relays a browser run lists that the user starts, and what the
+ * relay's operator learns. The hosted app and a console each hold their own; a
+ * console runs no exchange over a WebSocket relay, so it offers no WebSocket
+ * relay field. The relays an exchange may use are that exchange's own, set
+ * where it is authored, so none is set here.
  */
 export function RelaySettingsScreen({
   defaultRelay = defaultRelaySetting,
@@ -176,20 +175,17 @@ export function RelaySettingsScreen({
     <WorkShell>
       <h1>Relay server</h1>
       <p className={`${styles.small} ${styles.sub}`}>
-        When a direct connection to your partner cannot be made, your browser
-        can connect through a TURN relay your side runs. Enter the relay&apos;s
-        addresses here. They are kept in this browser for this site only. An
-        invitation you send names these addresses so your partner connects
-        through the same relay. A run also lists the relay named by an
-        invitation you accept, after yours.
+        When network permissions prevent a direct connection to your partner,
+        both sides can connect through a TURN relay. Whichever partner sets up
+        the relay should use this page and create the invitation for the
+        exchange.
+      </p>
+      <p className={`${styles.small} ${styles.sub}`}>
         {consoleBuild
-          ? " Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."
-          : " The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of these."}{" "}
+          ? "Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."
+          : "The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of these."}{" "}
         {RELAY_KEY_NOTICE}
       </p>
-
-      <h2>What the relay&apos;s operator learns</h2>
-      <p>{RELAY_OPERATOR_DISCLOSURE}</p>
 
       {initial.kind === "unreadable" && status.kind === "idle" && (
         <Alert color="yellow" title="The saved relay could not be read">
@@ -262,6 +258,9 @@ export function RelaySettingsScreen({
         targets={testTargets}
         unsavedChanges={unsavedTurnChanges}
       />
+
+      <h2>What the relay&apos;s operator learns</h2>
+      <p>{RELAY_OPERATOR_DISCLOSURE}</p>
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">

@@ -468,8 +468,8 @@ describe("managed exchange detail local fields", () => {
       }),
     );
 
-    // Anchored so it targets the derived readback line, not the checkbox description
-    // or the cadence note, which also contain "stored secret lapses".
+    // Anchored so it targets the derived readback line, not the cadence note,
+    // which also contains "stored secret lapses".
     await expect
       .element(page.getByText(/^Stored secret lapses /))
       .toBeInTheDocument();
@@ -978,7 +978,7 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("30");
     await page
       .getByRole("checkbox", {
-        name: "Set a maximum age for the stored secret",
+        name: "Set an expiration time for the secret",
       })
       .click();
     await page.getByLabelText("Maximum age in days").fill("7");
@@ -1012,7 +1012,7 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("7");
     await page
       .getByRole("checkbox", {
-        name: "Set a maximum age for the stored secret",
+        name: "Set an expiration time for the secret",
       })
       .click();
     await page.getByLabelText("Maximum age in days").fill("30");

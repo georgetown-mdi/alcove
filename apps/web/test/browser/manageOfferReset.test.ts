@@ -20,7 +20,7 @@ import { minimalPreparedExchange } from "@alcove/core/testing";
 
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
-import { SAVE_OFFER_SCHEDULE_NOTE } from "@exchange/manageOfferModel";
+import { SECRET_EXPIRATION_LABEL } from "@exchange/manageOfferModel";
 import { stagesFor } from "@exchange/exchangeRun";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -281,7 +281,7 @@ describe("the recurring-save offer appears at completion", () => {
 
     await completeRun(1);
     await expect
-      .element(page.getByText(SAVE_OFFER_SCHEDULE_NOTE))
+      .element(page.getByRole("checkbox", { name: SECRET_EXPIRATION_LABEL }))
       .toBeInTheDocument();
   });
 
@@ -292,7 +292,7 @@ describe("the recurring-save offer appears at completion", () => {
 
     await completeRun(1);
     await expect
-      .element(page.getByText(SAVE_OFFER_SCHEDULE_NOTE))
+      .element(page.getByRole("checkbox", { name: SECRET_EXPIRATION_LABEL }))
       .toBeInTheDocument();
   });
 });
