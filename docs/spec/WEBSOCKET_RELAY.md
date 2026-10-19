@@ -4,7 +4,7 @@ title: "WebSocket Relay"
 
 # WebSocket relay
 
-This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, and its bounds.
+This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, its bounds, and the web application's client.
 It is the implementation-level complement to [WebSocket relay](../DESIGN.md#websocket-relay) in DESIGN.md, which says what the relay is for and what its operator is in a position to see.
 It does not cover the proof a hello presents (see [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)) or the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)).
 The design and the rulings behind it are in [web-websocket-transport.md](../notes/web-websocket-transport.md).
@@ -126,3 +126,15 @@ Every close reason is empty except 4005's.
 | 4007 | the sender | No hello within 10 seconds of the upgrade |
 | 4008 | the sender of a hello | The relay holds as many pairings as its cap |
 | 4009 | both parties | No message crossed the pairing within the idle bound |
+
+## The web application's client
+
+The web application's relay transport (`apps/web/src/psi/transport/websocketRelayConnection.ts`) is one party's side of this wire.
+Its values are working values, as the relay's are.
+
+- **The hello.** It opens the relay's `wss` url and, on open, sends its hello and then its start, with no wait between them. Its proof expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- **The waits.** It waits 10 minutes for `paired`, the WebRTC rendezvous budget, and then 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)). It refuses a binary message before the partner's start, a start before `paired`, and any text message after the partner's start.
+- **The framing.** Each binary message is one datagram of the WebRTC framing, written by core's encoder and read through core's bounded reassembler with its caps ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
+- **Pacing.** It stops handing a frame's datagrams to the socket while the socket's `bufferedAmount` is at or above 1 MiB, and resumes once it is at or below 256 KiB, the CLI's window ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#outbound-pacing)). A browser `WebSocket` raises no event as its buffer drains, so a waiting send reads `bufferedAmount` every 50 milliseconds.
+- **The clean close.** It sends the close sentinel behind its last frame and waits up to 5 minutes, the close drain budget, for the partner's close to reach it through the relay or for the partner's own sentinel. On reading the partner's sentinel it closes its socket with 1000, the signal the partner's own close waits for. Any other end of its socket, an error or a wait that ran out, closes with 4000.
+- **Keepalive.** It sends no ping, since a browser `WebSocket` cannot; the relay's pings keep its socket open through a parked receive ([Keepalive](#keepalive)).
