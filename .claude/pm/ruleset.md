@@ -477,10 +477,73 @@ Ratified by the owner:
   every run states its outcome; the same failure reads the same, with its
   remedy, in every application; and moving an exchange from one application
   to another loses nothing the person agreed to or configured.
+- **Connection Close** (board 9) -- Done is: on the shared message queue, the
+  file-based channels and the browser's WebRTC channel, a party's teardown never
+  destroys a final frame its peer has not yet read, every close wait ends on the
+  peer's signal, the run's abort or a fixed bound and holds back neither the
+  run's outputs nor its lock, and no close exit without a delivery signal is
+  reported as delivered -- the operator of a one-off and a recurring run alike
+  is told when the partner may not have received the final frame. Closed
+  2026-10-18.
+- **Console SFTP credential authoring** (board 9) -- Done is: an operator
+  inviting or accepting on the console authors the exchange's SFTP connection in
+  the console itself, each credential a reference to a file the CLI child reads
+  or a pasted value the server keeps only as a file outside the data, rendezvous
+  and secrets mounts and sweeps at boot; the invitation supplies host, port and
+  path for review and never a credential or host-key fingerprint; and every
+  authored connection holds a literal host-key pin, verified before any
+  credential is presented. Closed 2026-10-18.
+- **Console work inputs** (board 9) -- Done is: the console's inviter and
+  acceptor each choose their input file from the mounted working directory, the
+  browser receives a profile of it (columns, row count, samples) and never its
+  rows, the run reads the file in place, a synced-folder exchange runs over the
+  mounted rendezvous directory, and an input or rendezvous listing that fails
+  names one of a fixed set of states with no path, raw error or row bytes in the
+  response. Closed 2026-10-18.
+- **Exchange Records** (board 9) -- Done is: every run whose payload crossed, in
+  the CLI and the browser alike, writes -- unless the operator turned the record
+  off -- a self-attested record of what this party disclosed and received, in
+  the one format `docs/spec/EXCHANGE_RECORD.md` specifies over a canonical
+  encoding a second implementation reproduces byte for byte, holding no matched
+  data outside the result file, and no record states a disclosure -- algorithm,
+  payload columns, exposed count, outcome -- that the run did not make. Closed
+  2026-10-18.
+- **Exchange management interface** (board 9) -- Done is: in the hosted web app
+  the recurring exchanges the browser holds are the home screen once one exists,
+  with the one-off path still offered; an exchange of either side is added from
+  the invite or the accept flow, opened to a detail view where its agreed terms
+  are read-only with a re-invite as the one way to change them and its label,
+  schedule and age policy edit in place, and deleted in one step that leaves
+  nothing of it in the browser. Closed 2026-10-18.
+- **X25519 Key Exchange** (board 9) -- Done is: no SPAKE2 code, export or
+  `pake_token` name remains; every authenticated exchange, CLI and browser,
+  derives its session key from the one handshake modeled on Noise NNpsk0, the
+  shared secret and both ephemeral keys bound into the key and its explicit,
+  role-asymmetric confirmation tags and pinned by checked-in known-answer
+  vectors; a mismatched secret or a tampered handshake field fails before any
+  exchange frame moves; and the handshake, not a fixed rule, decides whether the
+  connection is wrapped in application encryption. Closed 2026-10-18.
 
 Drafted, pending the owner's ratification:
 
-None at present.
+- **Linkage bench redesign** (board 9) -- Done is: every primary route of the
+  web app serves a screen built to the redesign in `design/web-redesign` -- a
+  lobby offering invite, accept and verify-a-receipt, the inviter and acceptor
+  steps, downloadable command-line exchange files, sample data -- each holding
+  at 400 px with the step strip, the folded Customize group and the "What you
+  will share" bar, with the pre-redesign components removed and the browser,
+  contrast and accessibility suites passing on the new screens.
+  Open: whether Web Exchange Rework's line, closed, already covers these
+  screens, in which case this epic needs no line of its own.
+- **Progressive web app** (board 9) -- Done is: the web app installs from a
+  supporting browser with a complete manifest, its shell and recurring-exchange
+  list render with no network from the browser's own store, each way of starting
+  an exchange is held while the device reports offline and says why (a transport
+  that only saves a file excepted), and a new deployment reaches an open tab as
+  an update the operator can decline and apply later, from any tab, with no
+  control left inert.
+  Open: installing from a real browser was not checked; the rest is met with
+  every item Done.
 
 ## What the PM does NOT do
 
