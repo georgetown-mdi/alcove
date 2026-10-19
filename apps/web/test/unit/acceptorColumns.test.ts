@@ -1459,7 +1459,10 @@ describe("the invitation's declared payload set against the marks", () => {
         payload: { receive: receive.map((name) => ({ name })) },
       };
       const { state } = editorFor(twoIdentifierColumns, terms, {
-        metadata: seedWithSecondIdentifier(twoIdentifierColumns, false),
+        metadata: seedWithSecondIdentifier(twoIdentifierColumns, false).map(
+          (column) =>
+            column.name === "id" ? { ...column, isPayload: false } : column,
+        ),
       });
       expect(
         state.metadata

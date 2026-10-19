@@ -143,19 +143,14 @@ export function applyDisclosure(
 /**
  * The grid's starting metadata for a file just read: every column's
  * `isPayload` re-derived from its choice, so a `payload` or `ignored` column
- * sends exactly when its role does, and an inferred
- * sent identifier (`inferMetadata` marks an `id` column so) starts as
- * `identifier`, not sent. The grid sends no record identifier until the
- * operator chooses `identifier-sent`.
+ * sends exactly when its role does. A linkage or identifier column keeps the
+ * `isPayload` it has, so an inferred `id` record identifier starts sent, as
+ * a command-line run with no metadata block sends it.
  */
 export function normalizeForEditor(metadata: Metadata): Metadata {
-  return metadata.map((column) => {
-    const choice = disclosureOf(column);
-    return applyDisclosure(
-      column,
-      choice === "identifier-sent" ? "identifier" : choice,
-    );
-  });
+  return metadata.map((column) =>
+    applyDisclosure(column, disclosureOf(column)),
+  );
 }
 
 /**
@@ -292,10 +287,6 @@ export function hasMultipleIdentifiers(metadata: Metadata): boolean {
  * inviter's quick-path exchange runs on -- {@link inferMetadata} filtered by
  * {@link disclosedColumnNames} -- so this cannot drift from what the quick
  * path actually transmits.
- *
- * Does not apply {@link normalizeForEditor}: the quick path does not
- * normalize, so an inferred record identifier it sends shows as sent here,
- * where the grid's seed starts it as not sent.
  */
 export function quickInviteDisclosedColumns(
   columns: Array<string>,

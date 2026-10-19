@@ -68,23 +68,35 @@ describe("disclosure choice <-> {role, isPayload}", () => {
 });
 
 describe("normalizeForEditor seeds the grid's choices", () => {
-  test("an inferred identifier starts as not sent, until it is chosen as sent", () => {
-    // inferMetadata marks the `id` alias role:identifier with isPayload:true,
-    // which preparePayload would transmit; the grid starts it as not sent.
-    const inferred = inferMetadata(["id", "first_name", "notes"], []);
-    expect(disclosedColumnNames(inferred)).toContain("id");
+  test("the grid starts each column sent exactly when a run with no metadata block sends it", () => {
+    for (const columns of [
+      ["id", "first_name", "notes"],
+      ["identifier", "ssn"],
+      ["patient_id", "last_name"],
+      ["case_id", "id", "dob"],
+    ]) {
+      const declared = inferMetadata(columns, []);
+      const seeded = normalizeForEditor(
+        inferMetadataForEveryColumn(columns, []),
+      );
+      expect(disclosedColumnNames(seeded), columns.join()).toEqual(
+        disclosedColumnNames(declared),
+      );
+    }
+  });
 
-    const normalized = normalizeForEditor(inferred);
-    expect(disclosedColumnNames(normalized)).not.toContain("id");
+  test("an inferred id identifier starts sent, until it is chosen as not sent", () => {
+    const normalized = normalizeForEditor(
+      inferMetadata(["id", "first_name", "notes"], []),
+    );
     const idCol = normalized.find((c) => c.name === "id")!;
-    expect(idCol.role).toBe("identifier");
-    expect(idCol.isPayload).toBe(false);
-    expect(disclosureOf(idCol)).toBe("identifier");
+    expect(disclosureOf(idCol)).toBe("identifier-sent");
+    expect(disclosedColumnNames(normalized)).toEqual(["id"]);
     expect(
       disclosedColumnNames(
-        setColumnDisclosure(normalized, "id", "identifier-sent").metadata,
+        setColumnDisclosure(normalized, "id", "identifier").metadata,
       ),
-    ).toEqual(["id"]);
+    ).toEqual([]);
   });
 
   test("a role: identifier, is_payload: true column keeps its choice through the grid", () => {
