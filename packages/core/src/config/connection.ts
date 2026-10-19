@@ -1448,6 +1448,54 @@ export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
   },
 );
 
+// --- WebSocket relay ---------------------------------------------------------
+
+/** Upper bound on {@link WebRTCConnectionConfig.websocketRelay}, in UTF-16 code units. */
+export const MAX_WEBSOCKET_RELAY_URL_LENGTH = 1024;
+
+const WEBSOCKET_RELAY_URL_FORM =
+  "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+  "relay's path, for example wss://relay.example.org/relay";
+
+// Why `url` cannot name a WebSocket relay, or undefined when it can. The url
+// is never repeated, since one holding a user may hold a password.
+function webSocketRelayUrlProblem(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `is not a url; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  }
+  if (parsed.protocol !== "wss:") return `must be ${WEBSOCKET_RELAY_URL_FORM}`;
+  if (parsed.username !== "" || parsed.password !== "")
+    return `names a user; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  if (parsed.port === "0")
+    return `names port 0; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  // `search` and `hash` are empty for an empty `?` or `#`, so the text is read.
+  if (url.includes("?") || url.includes("#"))
+    return `has a query or fragment; write it as ${WEBSOCKET_RELAY_URL_FORM}`;
+  return undefined;
+}
+
+/**
+ * The grammar of a WebSocket relay's address: a `wss://` url naming a host, an
+ * optional port and a path, with no user, query or fragment.
+ */
+const WebSocketRelayUrlSchema = z
+  .string()
+  .trim()
+  .check(
+    maxCodeUnits(
+      MAX_WEBSOCKET_RELAY_URL_LENGTH,
+      `websocket_relay is longer than ${MAX_WEBSOCKET_RELAY_URL_LENGTH} characters`,
+    ),
+  )
+  .superRefine((url, ctx) => {
+    const problem = webSocketRelayUrlProblem(url);
+    if (problem !== undefined)
+      ctx.addIssue({ code: "custom", message: `websocket_relay ${problem}` });
+  });
+
 /**
  * Whether `turn` holds an entry whose credential a run mints from the shared
  * secret: one that sets no username or credential.
@@ -1506,6 +1554,15 @@ export interface WebRTCConnectionConfig {
    * Requires a `turn` entry that sets no username or credential.
    */
   relayRegistrar?: RelayRegistrar;
+  /**
+   * The `wss://` address of this party's own WebSocket relay
+   * (docs/spec/WEBSOCKET_RELAY.md), which a run proves the exchange's relay
+   * key to with a proof made from the shared secret, under
+   * {@link relayRegistrar}'s exchange id when one is set and otherwise the id
+   * derived from the secret (docs/spec/PROTOCOL.md, "The WebSocket relay
+   * proof").
+   */
+  websocketRelay?: string;
   /**
    * ICE credential API returning combined STUN + TURN servers.
    * Mutually exclusive with `stun` and `turn`.
@@ -1645,6 +1702,7 @@ const WebRTCConnectionConfigSchema = z.strictObject(
     invitationRelay: ConnectionRelayLocatorSchema.optional(),
     allowedRelays: z.array(AllowedRelaySchema).optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
+    websocketRelay: WebSocketRelayUrlSchema.optional(),
     iceProvision: IceProvisionSchema.optional(),
     options: SharedOptionsSchema.optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),

@@ -111,9 +111,11 @@ const SENTINEL_HANDOFF_TIMEOUT_MS = 2_000;
  */
 const CHANNEL_CLOSE_TIMEOUT_MS = 2_000;
 
-/** The send window's high and low marks: docs/spec/WEBRTC_TRANSPORT.md, Outbound pacing. */
-const SEND_WINDOW_BYTES = 1024 * 1024;
-const SEND_WINDOW_LOW_BYTES = 256 * 1024;
+/** The send window's high mark: docs/spec/WEBRTC_TRANSPORT.md, Outbound pacing. */
+export const SEND_WINDOW_BYTES = 1024 * 1024;
+
+/** The send window's low mark: docs/spec/WEBRTC_TRANSPORT.md, Outbound pacing. */
+export const SEND_WINDOW_LOW_BYTES = 256 * 1024;
 
 /**
  * How often a send waiting on the window re-reads the channel even without a

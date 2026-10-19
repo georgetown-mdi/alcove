@@ -1,0 +1,595 @@
+import { expect, test } from "vitest";
+
+import {
+  BoundedInboundFrames,
+  ConnectionError,
+  PEERJS_CHUNK_MTU,
+  PeerJsFrameEncoder,
+  UsageError,
+  checkWebSocketRelayProof,
+  deriveRelayExchangeId,
+  deriveRelayKey,
+  deriveWebSocketRelayProofKey,
+  packCloseSentinel,
+  parseWebSocketRelayProof,
+  statesItsOwnNextStep,
+} from "@alcove/core";
+import { packValue } from "@alcove/core/testing";
+
+import {
+  FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  FinalFrameUnconfirmedError,
+} from "../../../src/connection/webrtc/webrtcMessageConnection";
+import {
+  RELAY_ABANDON_CLOSE_CODE,
+  openWebSocketRelayMessageConnection,
+  relayRefusalError,
+} from "../../../src/connection/webrtc/websocketRelayConnection";
+import {
+  webSocketRelayDialFor,
+  websocketRelayNeedsSecretMessage,
+} from "../../../src/connection/webrtc/websocketRelayDial";
+
+import type {
+  WebSocketRelayConnectionOptions,
+  WebSocketRelayDial,
+} from "../../../src/connection/webrtc/websocketRelayConnection";
+import type { MessageConnection } from "@alcove/core";
+
+/**
+ * A WebSocket stand-in with the surface the relay transport uses, standing in
+ * for the relay's side of one socket. The real relay is driven end to end in
+ * test/integration/webrtc/websocketRelay.test.ts; this exercises the orderings
+ * that are hard to provoke there.
+ */
+class FakeRelaySocket {
+  readyState = 0;
+  binaryType = "blob";
+  bufferedAmount = 0;
+  readonly sent: Array<string | Uint8Array> = [];
+  /** The code each `close` call passed, in order. */
+  readonly closeCalls: Array<number | undefined> = [];
+  private readonly listeners = new Map<string, Set<(event: never) => void>>();
+
+  constructor(readonly url: string) {}
+
+  addEventListener(type: string, handler: (event: never) => void): void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(handler);
+    this.listeners.set(type, set);
+  }
+
+  removeEventListener(type: string, handler: (event: never) => void): void {
+    this.listeners.get(type)?.delete(handler);
+  }
+
+  /** Set to make each binary send add to `bufferedAmount`. */
+  buffers = false;
+
+  send(data: string | Uint8Array): void {
+    this.sent.push(typeof data === "string" ? data : new Uint8Array(data));
+    if (this.buffers && typeof data !== "string")
+      this.bufferedAmount += data.byteLength;
+  }
+
+  close(code?: number): void {
+    this.closeCalls.push(code);
+    if (this.readyState === 1) this.readyState = 2;
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.emit("open", {});
+  }
+
+  /** A control frame from the relay. */
+  control(type: string): void {
+    this.emit("message", { data: JSON.stringify({ type }) });
+  }
+
+  /** A message the relay forwards, as Node's client delivers it. */
+  binary(bytes: Uint8Array): void {
+    const copy = new Uint8Array(bytes);
+    this.emit("message", { data: copy.buffer });
+  }
+
+  text(data: string): void {
+    this.emit("message", { data });
+  }
+
+  /** The relay closes the socket. */
+  closedByRelay(code: number, reason = ""): void {
+    this.readyState = 3;
+    this.emit("close", { code, reason });
+  }
+
+  textSent(): Array<string> {
+    return this.sent.filter((data): data is string => typeof data === "string");
+  }
+
+  binarySent(): Array<Uint8Array> {
+    return this.sent.filter(
+      (data): data is Uint8Array => typeof data !== "string",
+    );
+  }
+
+  private emit(type: string, event: unknown): void {
+    for (const handler of [...(this.listeners.get(type) ?? [])])
+      (handler as (event: unknown) => void)(event);
+  }
+}
+
+const SECRET = Buffer.from(
+  Array.from({ length: 32 }, (_, index) => index),
+).toString("base64url");
+
+const NOW = new Date("2026-01-01T00:00:00Z");
+const NOW_SECONDS = NOW.getTime() / 1000;
+
+async function relayDial(
+  role: WebSocketRelayDial["role"] = "acceptor",
+): Promise<WebSocketRelayDial> {
+  const dial = await webSocketRelayDialFor(
+    { websocketRelay: "wss://relay.example.org/relay" },
+    SECRET,
+    role,
+  );
+  if (dial === undefined) throw new Error("no relay dial");
+  return dial;
+}
+
+function harness(options: WebSocketRelayConnectionOptions = {}) {
+  const sockets: Array<FakeRelaySocket> = [];
+  const socketFactory = (url: string): WebSocket => {
+    const socket = new FakeRelaySocket(url);
+    sockets.push(socket);
+    return socket as unknown as WebSocket;
+  };
+  return {
+    sockets,
+    options: { socketFactory, now: () => NOW, ...options },
+  };
+}
+
+const tick = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
+async function socketDialed(sockets: Array<FakeRelaySocket>, count = 1) {
+  for (let i = 0; i < 100 && sockets.length < count; i++) await tick();
+  const socket = sockets[count - 1];
+  if (socket === undefined) throw new Error("no socket was dialed");
+  return socket;
+}
+
+/** Dial, open, pair and start: a connection in its forwarding phase. */
+async function startedConnection(
+  options: WebSocketRelayConnectionOptions = {},
+): Promise<{ connection: MessageConnection; socket: FakeRelaySocket }> {
+  const { sockets, options: dialOptions } = harness(options);
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    dialOptions,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  socket.control("start");
+  return { connection: await opening, socket };
+}
+
+test("the hello proves the relay key for this side's role, and the start follows it", async () => {
+  const { sockets, options } = harness();
+  const dial = await relayDial("inviter");
+  void openWebSocketRelayMessageConnection(dial, options).catch(() => {});
+  const socket = await socketDialed(sockets);
+  expect(socket.url).toBe("wss://relay.example.org/relay");
+  expect(socket.sent).toEqual([]);
+  socket.open();
+
+  const [helloText, startText, ...rest] = socket.textSent();
+  expect(rest).toEqual([]);
+  expect(socket.binarySent()).toEqual([]);
+  expect(JSON.parse(startText)).toEqual({ type: "start" });
+  const hello = JSON.parse(helloText) as Record<string, string>;
+  expect(Object.keys(hello).sort()).toEqual(
+    ["exchangeId", "proof", "role", "tag", "type"].sort(),
+  );
+  expect(hello.type).toBe("hello");
+  expect(hello.role).toBe("inviter");
+  expect(hello.exchangeId).toBe(await deriveRelayExchangeId(SECRET));
+  expect(hello.tag).toMatch(/^[0-9a-f]{64}$/);
+
+  const proof = parseWebSocketRelayProof(
+    new TextEncoder().encode(hello.proof),
+    Buffer.from(hello.tag, "hex"),
+  );
+  expect(proof.expiresAtSeconds).toBe(NOW_SECONDS + 300);
+  await checkWebSocketRelayProof({
+    proofKey: await deriveWebSocketRelayProofKey(await deriveRelayKey(SECRET)),
+    proof,
+    role: "inviter",
+    now: NOW,
+  });
+  socket.closedByRelay(1001);
+});
+
+test("a frame the relay forwards directly behind the partner's start is delivered", async () => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  socket.control("start");
+  socket.binary(packValue({ first: 1 }));
+  const connection = await opening;
+  expect(await connection.receive()).toEqual({ first: 1 });
+  expect(socket.binaryType).toBe("arraybuffer");
+});
+
+test("a frame larger than one chunk crosses as chunk envelopes the reassembler takes", async () => {
+  const { connection, socket } = await startedConnection();
+  const frame = new Uint8Array(3 * PEERJS_CHUNK_MTU).map((_, i) => i % 251);
+  await connection.send(frame);
+  const datagrams = socket.binarySent();
+  expect(datagrams.length).toBeGreaterThan(1);
+  const reassembler = new BoundedInboundFrames();
+  const outcomes = datagrams.map((datagram) => reassembler.accept(datagram));
+  const last = outcomes.at(-1);
+  expect(outcomes.slice(0, -1).every((o) => o.kind === "pending")).toBe(true);
+  expect(last?.kind === "frame" && last.value).toEqual(frame);
+});
+
+test("a send waits while the socket's buffer is at the window, and resumes at the low mark", async () => {
+  const { connection, socket } = await startedConnection({
+    sendWindowBytes: 1_000,
+    sendWindowLowBytes: 200,
+    sendWindowPollMs: 1,
+  });
+  await connection.send("under the window");
+  expect(socket.binarySent()).toHaveLength(1);
+
+  socket.bufferedAmount = 1_000;
+  let sent = false;
+  const sending = connection.send("over the window").then(() => {
+    sent = true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(socket.binarySent()).toHaveLength(1);
+
+  socket.bufferedAmount = 500;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(sent).toBe(false);
+  expect(socket.binarySent()).toHaveLength(1);
+
+  socket.bufferedAmount = 200;
+  await sending;
+  expect(socket.binarySent()).toHaveLength(2);
+});
+
+test("each chunk of a large frame waits on the window on its own", async () => {
+  const { connection, socket } = await startedConnection({
+    sendWindowBytes: 1_000,
+    sendWindowLowBytes: 0,
+    sendWindowPollMs: 1,
+  });
+  socket.buffers = true;
+  let sent = false;
+  const sending = connection
+    .send(new Uint8Array(3 * PEERJS_CHUNK_MTU))
+    .then(() => {
+      sent = true;
+    });
+  const total = new PeerJsFrameEncoder().encode(
+    new Uint8Array(3 * PEERJS_CHUNK_MTU),
+  ).length;
+  for (let chunk = 1; chunk <= total; chunk++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(socket.binarySent()).toHaveLength(chunk);
+    socket.bufferedAmount = 0;
+  }
+  await sending;
+  expect(sent).toBe(true);
+});
+
+test("a send waiting on the window fails when the socket closes", async () => {
+  const { connection, socket } = await startedConnection({
+    sendWindowBytes: 1_000,
+    sendWindowLowBytes: 200,
+    sendWindowPollMs: 1,
+  });
+  socket.bufferedAmount = 5_000;
+  const sending = connection.send("never sent");
+  socket.closedByRelay(4000);
+  await expect(sending).rejects.toBeInstanceOf(ConnectionError);
+  expect(socket.binarySent()).toEqual([]);
+});
+
+test("a clean close sends the sentinel and resolves on the partner's relayed close", async () => {
+  const { connection, socket } = await startedConnection();
+  await connection.send("last");
+  let resolved = false;
+  const closing = connection.close().then(() => {
+    resolved = true;
+  });
+  await tick();
+  const datagrams = socket.binarySent();
+  expect(datagrams.at(-1)).toEqual(new Uint8Array(packCloseSentinel()));
+  expect(resolved).toBe(false);
+  socket.closedByRelay(1000);
+  await closing;
+  expect(socket.closeCalls).toEqual([]);
+});
+
+test("a clean close the partner's abnormal end answers rejects as unconfirmed", async () => {
+  const { connection, socket } = await startedConnection();
+  const closing = connection.close();
+  await tick();
+  socket.closedByRelay(4000);
+  const error = await closing.catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((error as Error).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  );
+});
+
+test("a clean close no answer reaches within its budget ends the socket abnormally", async () => {
+  const { connection, socket } = await startedConnection({
+    closeFlushTimeoutMs: 20,
+  });
+  const error = await connection.close().catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((error as Error).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  );
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("the partner's sentinel drains queued frames and is answered with a normal close", async () => {
+  const { connection, socket } = await startedConnection();
+  socket.binary(packValue("final"));
+  socket.binary(packCloseSentinel());
+  expect(await connection.receive()).toBe("final");
+  await expect(connection.receive()).rejects.toThrow("peer connection closed");
+  expect(socket.closeCalls).toEqual([1000]);
+});
+
+test("a malformed frame from the partner fails the connection and ends the socket abnormally", async () => {
+  const { connection, socket } = await startedConnection();
+  socket.binary(
+    packValue({ __peerData: 7, n: 5, total: 2, data: new Uint8Array(1) }),
+  );
+  await expect(connection.receive()).rejects.toBeInstanceOf(ConnectionError);
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a text message once the exchange has started fails the connection", async () => {
+  const { connection, socket } = await startedConnection();
+  socket.text(JSON.stringify({ type: "start" }));
+  await expect(connection.receive()).rejects.toMatchObject({
+    kind: "protocol",
+  });
+});
+
+test.each([
+  [4000, "ended without a clean close"],
+  [4009, "within its idle limit"],
+  [1001, "shut down"],
+  [1006, "was lost (close code 1006)"],
+])("a relay close %i once started fails the connection", async (code, text) => {
+  const { connection, socket } = await startedConnection();
+  socket.closedByRelay(code);
+  await expect(connection.receive()).rejects.toThrow(text);
+});
+
+test.each([
+  [4003, "holds no key for this exchange", "alcove enroll-relay"],
+  [4004, "other than the one", "--replace-relay-key"],
+  [4006, "already holds a connection in this side's role", "connection.role"],
+  [4008, "as many exchanges as it allows", "again later"],
+  [1011, "could not check this side's proof", "key table"],
+  [1001, "shut down", "once it is back"],
+  [4000, "partner left the WebSocket relay", "Agree a time"],
+  [4007, "refused a message this side sent (close code 4007)", "names an"],
+  [1006, "closed before the exchange started (close code 1006)", "reach"],
+])(
+  "a relay close %i before the start is refused with its cause and next step",
+  async (code, what, next) => {
+    const { sockets, options } = harness();
+    const opening = openWebSocketRelayMessageConnection(
+      await relayDial(),
+      options,
+    );
+    const socket = await socketDialed(sockets);
+    socket.open();
+    socket.closedByRelay(code);
+    const error = await opening.catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toContain(what);
+    expect((error as Error).message).toContain(next);
+    expect(statesItsOwnNextStep(error)).toBe(true);
+  },
+);
+
+test("a proof refused as expired is made again once on the relay's clock", async () => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const first = await socketDialed(sockets);
+  first.open();
+  const relaySeconds = NOW_SECONDS + 3_600;
+  first.closedByRelay(4005, String(relaySeconds));
+
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  const hello = JSON.parse(second.textSent()[0]) as Record<string, string>;
+  expect(hello.proof.split("\n")[2]).toBe(String(relaySeconds + 300));
+  second.control("paired");
+  second.control("start");
+  await expect(opening).resolves.toBeDefined();
+});
+
+test("a proof refused as expired twice is refused naming the clock", async () => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4005, String(NOW_SECONDS + 3_600));
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  second.closedByRelay(4005, String(NOW_SECONDS + 7_200));
+  await expect(opening).rejects.toThrow("Correct this computer's clock");
+  expect(sockets).toHaveLength(2);
+});
+
+test("a proof refused as expired with no relay clock is not made again", async () => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4005, "soon");
+  await expect(opening).rejects.toThrow("Correct this computer's clock");
+  expect(sockets).toHaveLength(1);
+});
+
+test("a partner that never arrives ends the wait at the rendezvous budget", async () => {
+  const { sockets, options } = harness({ rendezvousTimeoutMs: 20 });
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  await expect(opening).rejects.toThrow(
+    "did not reach the WebSocket relay at wss://relay.example.org/relay in time",
+  );
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a paired partner that never starts ends the wait at the channel-open budget", async () => {
+  const { sockets, options } = harness({ channelOpenTimeoutMs: 20 });
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  await expect(opening).rejects.toThrow("did not start the exchange in time");
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a relay that does not open the socket in time is abandoned", async () => {
+  const { sockets, options } = harness({ openTimeoutMs: 20 });
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  await expect(opening).rejects.toThrow("did not answer in time");
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+  socket.open();
+  expect(socket.sent).toEqual([]);
+});
+
+test.each([
+  ["a start before the pairing", (s: FakeRelaySocket) => s.control("start")],
+  [
+    "a binary message before the start",
+    (s: FakeRelaySocket) => {
+      s.control("paired");
+      s.binary(packValue("early"));
+    },
+  ],
+  [
+    "a control frame with another key",
+    (s: FakeRelaySocket) => s.text(JSON.stringify({ type: "paired", x: 1 })),
+  ],
+  ["text that is not JSON", (s: FakeRelaySocket) => s.text("paired")],
+])("%s is refused as a protocol fault", async (_, deliver) => {
+  const { sockets, options } = harness();
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  deliver(socket);
+  await expect(opening).rejects.toMatchObject({ kind: "protocol" });
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("an abort before the start closes the socket and stops the dial", async () => {
+  const controller = new AbortController();
+  const { sockets, options } = harness({ signal: controller.signal });
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  controller.abort();
+  await expect(opening).rejects.toMatchObject({ kind: "closed" });
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a run with no shared secret refuses the relay before dialing", async () => {
+  const dialing = webSocketRelayDialFor(
+    { websocketRelay: "wss://relay.example.org/relay" },
+    undefined,
+    "inviter",
+  );
+  await expect(dialing).rejects.toBeInstanceOf(UsageError);
+  await expect(dialing).rejects.toThrow(
+    websocketRelayNeedsSecretMessage("wss://relay.example.org/relay"),
+  );
+});
+
+test("a connection naming no relay resolves no dial, secret or not", async () => {
+  expect(await webSocketRelayDialFor({}, undefined, "inviter")).toBeUndefined();
+  expect(await webSocketRelayDialFor({}, SECRET, "inviter")).toBeUndefined();
+});
+
+test("the dial names relay_registrar's exchange id when one is set", async () => {
+  const dial = await webSocketRelayDialFor(
+    {
+      websocketRelay: "wss://relay.example.org/relay",
+      relayRegistrar: {
+        url: "https://registrar.example.org",
+        exchangeId: "acme-weekly",
+      },
+    },
+    SECRET,
+    "acceptor",
+  );
+  expect(dial).toEqual({
+    url: "wss://relay.example.org/relay",
+    exchangeId: "acme-weekly",
+    relayKey: await deriveRelayKey(SECRET),
+    role: "acceptor",
+  });
+});
+
+test("an unknown relay close code before the start names the code", () => {
+  const error = relayRefusalError("wss://relay.example.org/relay", 4999, "");
+  expect(error.message).toContain("(close code 4999)");
+  expect(error.kind).toBe("transport");
+});
+
+test("the frame encoder the transport uses chunks at the relay's chunk size", () => {
+  const datagrams = new PeerJsFrameEncoder().encode(
+    new Uint8Array(2 * PEERJS_CHUNK_MTU),
+  );
+  expect(datagrams.every((d) => d.byteLength <= 16_384)).toBe(true);
+});
