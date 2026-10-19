@@ -574,10 +574,11 @@ the form the list is compared with.
 A one-letter first name is kept, unlike a one-letter last name (see
 [`last_name`](#last_name)). The built-in keys `SSN + LN + FN1` and
 `SSN + LN3 + FN1` match on the first initial beside a full SSN, so a record
-holding only an initial matches through them. The limit is that a one-letter
-first name also takes part in the keys on the whole first name and a date of
-birth, such as `LN + FN + DOB`, where an initial written in place of a name
-agrees with any record holding the same initial, surname and date.
+holding only an initial matches through them. Every built-in key on the whole
+first name, such as `LN + FN + DOB`, drops a one-letter first name with a
+`filter_regex` step on its own first-name element, so a record holding only an
+initial matches through keys on part of the first name, such as
+`SSN + LN + FN1`, and not through these.
 
 Digits are not punctuation and are not removed: a value containing one keeps
 it.

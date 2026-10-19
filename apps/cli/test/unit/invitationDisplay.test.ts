@@ -576,7 +576,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     // measures today, so a copy edit elsewhere on the prompt does not trip it, and
     // stays far under what the same declaration paints uncapped -- the difference
     // between scrolling past the terms and never reaching the question.
-    const PROMPT_CEILING = 20_000;
+    const PROMPT_CEILING = 24_000;
 
     const base = sampleToken(FUTURE());
     const send = floodedDeclaration("send");

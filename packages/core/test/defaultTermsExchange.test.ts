@@ -36,6 +36,7 @@ const fieldsByName = new Map(defaultFields.map((field) => [field.name, field]));
 // Transforms of the whole value: two equal values agree on what each reads.
 // A fuzzy expansion likewise keeps the exact value among its candidates.
 const WHOLE_VALUE_TRANSFORMS: ReadonlySet<string> = new Set([
+  "filter_regex",
   "phonetic",
   "split_on",
 ]);

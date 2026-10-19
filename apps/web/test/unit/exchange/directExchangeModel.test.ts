@@ -138,7 +138,7 @@ describe("previewInferredTerms", () => {
     ]);
     expect(terms.linkageRuleSet).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
     });
     expect(preview.refusal).toBeUndefined();
   });
@@ -182,7 +182,7 @@ describe("previewInferredTerms", () => {
     ]);
     expect(terms.linkageRuleSet).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.3.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
     });
     expect(preview.refusal).toBeUndefined();
   });
