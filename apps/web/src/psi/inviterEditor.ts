@@ -12,8 +12,7 @@ import {
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
-  precisionFloorSelectionStatement,
-  precisionFloorStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -311,10 +310,10 @@ export const AUTHORED_KEYS_FLOOR_NOTE =
 /** What the confirm before {@link editorWithBuiltInKeys} states. */
 export const USE_BUILT_IN_RULES_STATEMENT =
   "This replaces the keys, fields and cleaning with the ones a new " +
-  "invitation starts with for your file: " +
-  `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
-  "all turned on. The invitation will cite the built-in rules. Your " +
-  "columns and other settings stay. This cannot be undone.";
+  "invitation starts with for your file, all turned on, and sets Built-in " +
+  `rules to ${precisionFloorLabel(DEFAULT_PRECISION_FLOOR_SELECTION.floor)}. ` +
+  "The invitation will cite the built-in rules. Your columns and other " +
+  "settings stay. This cannot be undone.";
 
 /** What Matching keys shows in place of the precision floor
  * control on the console, for keys a run of an opened configuration
@@ -355,13 +354,10 @@ export function keyOrderHelp(
   const lead =
     "Records are matched on these keys, tried in order, and earlier keys " +
     "match first.";
-  const [highest, ...lower] = PRECISION_FLOORS.filter(
-    (band) => band >= selection.floor,
-  ).map((band) => `${String(band)}%`);
-  return lower.length === 0
-    ? `${lead} The built-in keys are only the rules at ${highest} precision.`
-    : `${lead} The built-in keys come with the rules at ${highest} ` +
-        `precision first, then the rules at ${lower.join(", ")}.`;
+  return selection.floor === PRECISION_FLOORS[0]
+    ? `${lead} The built-in keys are only the highest-certainty rules.`
+    : `${lead} The built-in keys list the highest-certainty rules first, ` +
+        "then the others.";
 }
 
 /** The note for a guided key list the precision floor leaves empty while a
@@ -380,8 +376,8 @@ export function emptyGuidedKeysNotice(
     return undefined;
   return (
     "Your file's columns supply none of the built-in rules this choice " +
-    `selects. ${precisionFloorStatement(widest.floor).label} include rules ` +
-    "your file supplies."
+    "selects. To use rules your file supplies, choose " +
+    `${precisionFloorLabel(widest.floor)}.`
   );
 }
 

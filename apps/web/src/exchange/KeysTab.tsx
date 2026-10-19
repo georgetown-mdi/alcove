@@ -19,7 +19,7 @@ import {
   LinkageStrategySchema,
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
-  precisionFloorStatement,
+  precisionFloorLabel,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -243,7 +243,7 @@ export function KeysTab({
         <>
           <Radio.Group
             label="Built-in rules"
-            description="Changing this lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
+            description="Changing this lists the rules it selects, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
             value={String(selection.floor)}
             onChange={(value) => {
               const floor = PRECISION_FLOORS.find(
@@ -253,18 +253,14 @@ export function KeysTab({
                 onPrecisionFloorSelection({ ...selection, floor });
             }}
           >
-            {PRECISION_FLOORS.map((floor) => {
-              const statement = precisionFloorStatement(floor);
-              return (
-                <Radio
-                  key={floor}
-                  value={String(floor)}
-                  label={statement.label}
-                  description={statement.description}
-                  mt="xs"
-                />
-              );
-            })}
+            {PRECISION_FLOORS.map((floor) => (
+              <Radio
+                key={floor}
+                value={String(floor)}
+                label={precisionFloorLabel(floor)}
+                mt="xs"
+              />
+            ))}
           </Radio.Group>
         </>
       )}

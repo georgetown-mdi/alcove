@@ -4,7 +4,7 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
   linkageTermsFromRuleSet,
-  precisionFloorSelectionStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import {
@@ -474,8 +474,8 @@ describe("replacing authored keys with the built-in rules", () => {
   test("states in its confirm what replaces the keys", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
       "This replaces the keys, fields and cleaning with the ones a new " +
-        "invitation starts with for your file: the built-in rules at 95% " +
-        "precision and above that your file supplies, all turned on. The " +
+        "invitation starts with for your file, all turned on, and sets " +
+        "Built-in rules to Highest certainty, followed by others. The " +
         "invitation will cite the built-in rules. Your " +
         "columns and other settings stay. This cannot be undone.",
     );
@@ -659,18 +659,18 @@ describe("the built-in rules as a reset to a new invitation's keys, fields and c
 describe("the key order help", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 
-  test("at 95% names the 99% rules first, then the 95% rules", () => {
+  test("at 95% names the highest-certainty rules first, then the others", () => {
     expect(keyOrderHelp(seeded)).toBe(
       "Records are matched on these keys, tried in order, and earlier keys " +
-        "match first. The built-in keys come with the rules at 99% precision " +
-        "first, then the rules at 95%.",
+        "match first. The built-in keys list the highest-certainty rules " +
+        "first, then the others.",
     );
   });
 
-  test("at 99% names the 99% rules only", () => {
+  test("at 99% names the highest-certainty rules only", () => {
     expect(keyOrderHelp(editorWithPrecisionFloorSelection(seeded, AT_99))).toBe(
       "Records are matched on these keys, tried in order, and earlier keys " +
-        "match first. The built-in keys are only the rules at 99% precision.",
+        "match first. The built-in keys are only the highest-certainty rules.",
     );
   });
 
@@ -714,18 +714,12 @@ describe("the announcement after a floor choice", () => {
 describe("Review & create", () => {
   test("names the floor the keys were selected with", () => {
     const seeded = editorFromCsv("Dana", withSsn);
-    const capitalized = (selection: PrecisionFloorSelection) => {
-      const statement = precisionFloorSelectionStatement(selection);
-      return statement.charAt(0).toUpperCase() + statement.slice(1);
-    };
     expect(rulesSelected(seeded, withSsn)).toBe(
-      capitalized(DEFAULT_PRECISION_FLOOR_SELECTION),
+      precisionFloorLabel(DEFAULT_PRECISION_FLOOR_SELECTION.floor),
     );
     expect(
       rulesSelected(editorWithPrecisionFloorSelection(seeded, AT_99), withSsn),
-    ).toBe(
-      "The built-in rules at 99% precision and above that your file supplies",
-    );
+    ).toBe("Highest certainty only");
   });
 });
 
@@ -935,8 +929,8 @@ describe("an empty guided key list", () => {
     expect(empty.draft.keys).toHaveLength(0);
     expect(emptyGuidedKeysNotice(empty)).toBe(
       "Your file's columns supply none of the built-in rules this choice " +
-        "selects. The built-in rules at 95% precision and above include " +
-        "rules your file supplies.",
+        "selects. To use rules your file supplies, choose Highest " +
+        "certainty, followed by others.",
     );
   });
 

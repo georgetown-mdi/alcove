@@ -8,7 +8,7 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { getDefaultLinkageTerms, precisionFloorStatement } from "@alcove/core";
+import { getDefaultLinkageTerms, precisionFloorLabel } from "@alcove/core";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
@@ -1122,9 +1122,7 @@ describe("the review step of an opened configuration's run", () => {
     await page.getByRole("button", { name: /Matching on/ }).click();
     await expect.element(openedNote).toBeInTheDocument();
     expect(
-      page
-        .getByRole("radio", { name: precisionFloorStatement(95).label })
-        .query(),
+      page.getByRole("radio", { name: precisionFloorLabel(95) }).query(),
     ).toBeNull();
     expect(useBuiltInRules.query()).toBeNull();
 

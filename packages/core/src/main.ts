@@ -391,8 +391,8 @@ export {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorLabel,
   precisionFloorSelectionStatement,
-  precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {

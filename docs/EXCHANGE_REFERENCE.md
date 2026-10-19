@@ -56,7 +56,7 @@ Not every exchange authors its own linkage fields and keys. A quick exchange, an
 The built-in rules are two named artifacts, versioned separately:
 
 - **`baseline-pii`, version `1.3.0`** -- the linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.4.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in a precision band of 99% or 95%, applied in the catalog's order: the 99% rules, then the 95% rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
+- **`precision-ranked-rules`, version `2.4.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in band `99` or band `95`, applied in the catalog's order: the band `99` rules, then the band `95` rules. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which the accepting party's terms review and each exchange record mark as unchecked.
 
 For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
@@ -73,17 +73,20 @@ Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches on
 
 #### Choosing rules by precision floor
 
-A rule's band is the share of the pairs it accepts that are the same person: 99% and above, or 95% to 99%. A precision floor selects every rule whose band is at or above it, in the catalog's order: `99` selects the 99% rules, and `95` selects them all.
+Each rule is in one of two bands: `99` for the rules of highest certainty, and `95` for the others. The evidence placing each rule is in the [linkage rule catalog](notes/linkage-rule-catalog.md#bands). A precision floor selects every rule whose band is at or above it, in the catalog's order. The screens name each floor by a label:
+
+- **Highest certainty only**: the floor `99`, which selects the band `99` rules.
+- **Highest certainty, followed by others**: the floor `95`, which selects them all.
 
 No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected, and the citation names the set and its version. Where each path takes it from:
 
-- A quick exchange and `alcove init` write the keys for the 95% floor. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the 99% rules or to leave out the rules marked less certain.
+- A quick exchange and `alcove init` write the keys for the floor `95`. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the band `99` rules or to leave out the rules marked less certain.
 - The invitation editor of the web app and the console starts at the same floor and offers both floors on Customize > Matching keys; Review & create names the floor the keys were drawn with ([Choosing the matching keys](WEB_APP.md#choosing-the-matching-keys)).
 - The display a run shows before it connects lists the keys selected, and on a quick exchange names the selection ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
 #### Rules marked less certain
 
-Three rules in the 95% band match on a name and a date of birth with nothing else: as written, with the names swapped, or on one part of a compound last name. Different people share a name and a date of birth more often the more people the two files cover, so these rules can fall below 95% when the files cover many people. A file of one age group, such as one school class, counts as covering many people, because its members share birth years. They are selected at the 95% floor with the rest of the band, on every path above.
+Three rules in band `95` match on a name and a date of birth with nothing else: as written, with the names swapped, or on one part of a compound last name. Different people share a name and a date of birth more often the more people the two files cover, so these rules are less reliable when the files cover many people. A file of one age group, such as one school class, counts as covering many people, because its members share birth years. They are selected at the floor `95` with the rest of the band, on every path above.
 
 - Every list of keys marks them `(less certain)`: Matching keys and the acceptance screen in the web app and the console, the quick exchange confirm step, the CLI's acceptance and `alcove apply` displays, and the display a run shows before it starts. On the web screens an info button beside the mark says why and how to leave such keys out; the acceptance screen and the quick exchange confirm step also say, under the fields matched on, that some keys are marked, so a reader who leaves the key list closed still sees it. The CLI prints the same text once under the key list, labeled `why keys are marked less certain:`.
 - The mark is read from a key's fields: any key built only from first name, last name and date of birth fields is marked, including one written in Expert authoring or loaded from a document. A key with any other field, such as an SSN, a phone number or a ZIP code, is not. The mark does not rate other keys: a key you write on other weak fields, such as a first name and a county, is not marked and can be less precise still.

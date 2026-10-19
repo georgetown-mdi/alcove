@@ -282,6 +282,15 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
   expect(help).not.toMatch(/state or one|metropolitan|wider area/);
 });
 
+test("no field comment states a rule's precision", () => {
+  for (const { lines } of [
+    ...FIELD_DOCS,
+    ...SFTP_FIELD_DOCS,
+    ...FILEDROP_FIELD_DOCS,
+  ])
+    expect(lines.join(" ")).not.toMatch(/%|precision/i);
+});
+
 test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {
   const template = renderConfigTemplate(
     { linkageTerms: getDefaultLinkageTerms("Org") },

@@ -27,7 +27,7 @@ import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   LESS_CERTAIN_KEY_COPY,
   linkageKeyIsLessCertain,
-  precisionFloorStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import {
@@ -514,24 +514,22 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     });
   }
 
-  const at99 = precisionFloorStatement(99);
-  const at95 = precisionFloorStatement(95);
+  const at99 = precisionFloorLabel(99);
+  const at95 = precisionFloorLabel(95);
   const nameAndDateKey = {
     name: /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
   };
 
-  test("offers each floor in core's words, 95% chosen, and asks no coverage question", async () => {
+  test("offers each floor by its label alone, 95 chosen, and asks no coverage question", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
 
-    const floor99 = page.getByRole("radio", { name: at99.label });
-    const floor95 = page.getByRole("radio", { name: at95.label });
+    const floor99 = page.getByRole("radio", { name: at99 });
+    const floor95 = page.getByRole("radio", { name: at95 });
     await expect.element(floor95).toBeChecked();
     await expect.element(floor99).not.toBeChecked();
-    await expect.element(page.getByText(at99.description)).toBeInTheDocument();
-    await expect.element(page.getByText(at95.description)).toBeInTheDocument();
-    expect(at95.description).toContain("except rules marked less certain");
+    expect(document.body.textContent).not.toContain("in 100");
     expect(document.body.textContent).not.toMatch(/tier/i);
 
     expect(page.getByRole("radiogroup").elements()).toHaveLength(2);
@@ -554,10 +552,8 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .element(page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }))
       .toBeInTheDocument();
 
-    await page.getByRole("radio", { name: at99.label }).click();
-    await expect
-      .element(page.getByRole("radio", { name: at99.label }))
-      .toBeChecked();
+    await page.getByRole("radio", { name: at99 }).click();
+    await expect.element(page.getByRole("radio", { name: at99 })).toBeChecked();
     expect(nameAndDate.query()).toBeNull();
     expect(
       page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }).query(),
@@ -566,7 +562,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
       .toBeChecked();
 
-    await page.getByRole("radio", { name: at95.label }).click();
+    await page.getByRole("radio", { name: at95 }).click();
     await expect.element(nameAndDate).toBeChecked();
   });
 
@@ -609,7 +605,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
         page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
       )
       .toBeInTheDocument();
-    expect(page.getByRole("radio", { name: at99.label }).query()).toBeNull();
+    expect(page.getByRole("radio", { name: at99 }).query()).toBeNull();
   });
 
   test("keeps a key turned off across a floor change and back", async () => {
@@ -621,9 +617,9 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await kept.click();
     await expect.element(kept).not.toBeChecked();
 
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     await expect.element(kept).not.toBeChecked();
-    await page.getByRole("radio", { name: at95.label }).click();
+    await page.getByRole("radio", { name: at95 }).click();
     await expect.element(kept).not.toBeChecked();
     await expect
       .element(page.getByRole("checkbox", nameAndDateKey))
@@ -678,7 +674,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       LESS_CERTAIN_KEY_COPY.acceptorRemedy,
     );
 
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     expect(infoButtons.elements()).toHaveLength(0);
   });
 
@@ -841,7 +837,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect
       .element(keyList)
       .toHaveAccessibleDescription(keyOrderHelp(seeded));
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     await expect
       .element(keyList)
       .toHaveAccessibleDescription(
@@ -871,9 +867,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .getByRole("button", { name: USE_BUILT_IN_RULES_LABEL })
       .click();
 
-    await expect
-      .element(page.getByRole("radio", { name: at95.label }))
-      .toBeChecked();
+    await expect.element(page.getByRole("radio", { name: at95 })).toBeChecked();
     expect(
       page
         .getByRole("note")
@@ -961,7 +955,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     const openedNote = page
       .getByRole("note")
       .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE });
-    const floor95 = page.getByRole("radio", { name: at95.label });
+    const floor95 = page.getByRole("radio", { name: at95 });
     await expect.element(openedNote).toBeInTheDocument();
     expect(
       document.getElementById("key-order-help")!.textContent,

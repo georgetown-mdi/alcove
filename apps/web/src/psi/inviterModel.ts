@@ -8,7 +8,7 @@ import {
   authoredLinkageFields,
   disclosedColumnNames,
   formatCount,
-  precisionFloorSelectionStatement,
+  precisionFloorLabel,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -128,8 +128,7 @@ function rulesSelectedFact(editor: InviterEditor): string {
   const selection = editor.draft.precisionFloorSelection;
   if (editor.keysAuthored === true || selection === undefined)
     return "Keys written in Expert authoring or loaded from a document";
-  const statement = precisionFloorSelectionStatement(selection);
-  return statement.charAt(0).toUpperCase() + statement.slice(1);
+  return precisionFloorLabel(selection.floor);
 }
 
 /**
