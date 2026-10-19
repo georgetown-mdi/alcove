@@ -48,7 +48,7 @@ function editorFor(
   terms: LinkageTerms,
   sent: Array<string> = [],
 ) {
-  const seeded = acceptorInitialColumnsState(columns);
+  const seeded = acceptorInitialColumnsState(columns, terms.algorithm);
   const state = {
     ...seeded,
     metadata: sent.reduce(
@@ -83,6 +83,30 @@ describe("the count-only launch gate (the acceptor's own marked columns)", () =>
       countOnlyTerms,
     );
     expect(reason).toBe(
+      "Unmark the columns you send above before you can start: a count-only exchange sends none.",
+    );
+  });
+
+  test("a file with an id column arrives launchable, and marking the id blocks", () => {
+    const columns = ["id", "first_name"];
+    const { editorState, verdict } = editorFor(columns, countOnlyTerms);
+    expect(acceptorDisclosedColumns(editorState.metadata)).toEqual([]);
+    expect(
+      editorState.metadata.find((column) => column.name === "id"),
+    ).toMatchObject({ role: "identifier", isPayload: false });
+    expect(
+      acceptorLaunchBlockedReason(verdict, editorState, countOnlyTerms),
+    ).toBeUndefined();
+
+    const marked = {
+      ...editorState,
+      metadata: setColumnDisclosure(
+        editorState.metadata,
+        "id",
+        "identifier-sent",
+      ).metadata,
+    };
+    expect(acceptorLaunchBlockedReason(verdict, marked, countOnlyTerms)).toBe(
       "Unmark the columns you send above before you can start: a count-only exchange sends none.",
     );
   });

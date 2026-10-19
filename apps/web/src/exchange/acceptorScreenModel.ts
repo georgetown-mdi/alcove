@@ -417,6 +417,20 @@ export function acceptOffersAllowedRelays(
   );
 }
 
+/** The column seed for `columns` under the decoded invitation's algorithm. With
+ * no decoded invitation it seeds as count-only, so no column starts sent. */
+function seedColumns(
+  state: AcceptorScreenState,
+  columns: Array<string>,
+): AcceptorColumnsState {
+  return acceptorInitialColumnsState(
+    columns,
+    state.decode.status === "ready"
+      ? state.decode.invitation.token.linkageTerms.algorithm
+      : "psi-c",
+  );
+}
+
 /** Apply one action to the acceptor console's state. */
 export function acceptorScreenReducer(
   state: AcceptorScreenState,
@@ -503,7 +517,7 @@ export function acceptorScreenReducer(
         ...(columnsUnchanged
           ? {}
           : {
-              columnsState: acceptorInitialColumnsState(action.source.columns),
+              columnsState: seedColumns(state, action.source.columns),
             }),
       };
     }
@@ -543,7 +557,7 @@ export function acceptorScreenReducer(
         committedCsvDelimiter: action.csvDelimiter,
         acceptedFile: action.file,
         acquired: action.acquired,
-        columnsState: acceptorInitialColumnsState(action.acquired.columns),
+        columnsState: seedColumns(state, action.acquired.columns),
       };
     case "parse-failed":
       return { ...state, parseAlert: action.alert };
@@ -605,7 +619,7 @@ export function acceptorScreenReducer(
         ? state
         : {
             ...state,
-            columnsState: acceptorInitialColumnsState(state.acquired.columns),
+            columnsState: seedColumns(state, state.acquired.columns),
           };
     case "exchange-launched":
       return {

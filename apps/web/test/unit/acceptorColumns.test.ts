@@ -121,7 +121,7 @@ function rows(columns: Array<string>): Array<CSVRow> {
 function seededWithSent(columns: Array<string>, sent: Array<string>): Metadata {
   return sent.reduce(
     (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,
-    acceptorInitialColumnsState(columns).metadata,
+    acceptorInitialColumnsState(columns, "psi").metadata,
   );
 }
 
@@ -133,7 +133,7 @@ function editorFor(
   overrides: Partial<AcceptorColumnsState> = {},
 ) {
   const state: AcceptorColumnsState = {
-    ...acceptorInitialColumnsState(columns),
+    ...acceptorInitialColumnsState(columns, terms.algorithm),
     ...overrides,
   };
   return {
@@ -168,7 +168,7 @@ function seedWithSecondIdentifier(
   columns: Array<string>,
   isPayload = true,
 ): Metadata {
-  return acceptorInitialColumnsState(columns).metadata.map((column) =>
+  return acceptorInitialColumnsState(columns, "psi").metadata.map((column) =>
     column.name === "identifier"
       ? { ...column, role: "identifier", isPayload }
       : column,
@@ -177,13 +177,34 @@ function seedWithSecondIdentifier(
 
 describe("acceptor columns editor state", () => {
   test("seeds metadata from the file's columns and starts with empty override layers", () => {
-    const state = acceptorInitialColumnsState(["first_name", "last_name"]);
+    const state = acceptorInitialColumnsState(
+      ["first_name", "last_name"],
+      "psi",
+    );
     expect(state.metadata.map((c) => c.name)).toEqual([
       "first_name",
       "last_name",
     ]);
     expect(state.inputOverrides.size).toBe(0);
     expect(state.stepOverrides.size).toBe(0);
+  });
+
+  test("an inferred id column starts sent, and unsent under a count-only invitation", () => {
+    const columns = ["id", "first_name", "last_name"];
+    const idChoice = (algorithm: "psi" | "psi-c") => {
+      const id = acceptorInitialColumnsState(columns, algorithm).metadata.find(
+        (column) => column.name === "id",
+      );
+      if (id === undefined) throw new Error("the seed lists no id column");
+      return disclosureOf(id);
+    };
+    expect(idChoice("psi")).toBe("identifier-sent");
+    expect(idChoice("psi-c")).toBe("identifier");
+    expect(
+      acceptorDisclosedColumns(
+        acceptorInitialColumnsState(columns, "psi-c").metadata,
+      ),
+    ).toEqual([]);
   });
 
   test("the effective standardization has one transformation per satisfiable field", () => {
@@ -272,7 +293,7 @@ describe("the acceptor's date-of-birth format follows the bound column", () => {
       { dob: "12/25/1985", birth_date: "1985-12-25" },
     ];
     const formats = dateInputFormatsForColumns(columns, csvRows);
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const retyped: AcceptorColumnsState = {
       ...seed,
       metadata: setColumnTypeForMatching(
@@ -462,7 +483,7 @@ describe("acceptor quick-fix mapper", () => {
     // Both columns infer to role: payload (unrecognized). setColumnTypeForMatching
     // must re-role the chosen column to linkage, not merely retype it.
     const columns = ["alpha", "beta"];
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     // Sanity: a bare retype path is exactly what setColumnTypeForMatching guards
     // against; here we assert the matching helper produces a role: linkage column.
     const remapped = setColumnTypeForMatching(
@@ -581,7 +602,7 @@ describe("acceptor launch gates", () => {
       linkageKeys: [{ name: "d", elements: [{ field: "dob" }] }],
     };
     const columns = ["date_of_birth"];
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const base = acceptorColumnsEditorState(seed, dobTerms, rows(columns));
     const dobTransform = base.standardization[0];
     // Author an invalid parse_date (empty inputFormat) against the same input.
@@ -1699,7 +1720,7 @@ describe("the invitation's declared payload set against the marks", () => {
     for (const offer of offers) {
       expect(safeParseLinkageTerms(offer.terms).success, offer.use).toBe(true);
       const state: AcceptorColumnsState = {
-        ...acceptorInitialColumnsState(offer.columns),
+        ...acceptorInitialColumnsState(offer.columns, offer.terms.algorithm),
         metadata: seededWithSent(offer.columns, offer.sent),
       };
       const before = acceptorColumnsEditorState(state, offer.terms, offer.rows);
@@ -1962,7 +1983,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   const columns = ["given_name", "nickname"];
 
   test("a live input override rebinds the field to the target column", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",
@@ -1985,7 +2006,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("a stale input override (target no longer role: linkage of that type) is dropped", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     // Only given_name is role: linkage; nickname is left at its inferred role
     // (payload, an unrecognized header), so an override pointing at it is stale.
     const onlyGivenNameLinkage = setColumnTypeForMatching(
@@ -2003,7 +2024,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("layering order: an input rebind stales a step override authored against the old input", () => {
-    const seed = acceptorInitialColumnsState(columns);
+    const seed = acceptorInitialColumnsState(columns, "psi");
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",

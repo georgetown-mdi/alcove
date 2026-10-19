@@ -40,6 +40,7 @@ import {
   hasMultipleIdentifiers,
   setColumnDisclosure,
   setColumnType,
+  withIdentifiersNotSent,
 } from "./metadataEditing";
 
 import { LIFETIME_CHOICES } from "./formatting";
@@ -592,13 +593,20 @@ export function editorWithFieldAdded(
 
 /** Set the matching algorithm. Ungated -- the exchange honors both members -- so
  * the built terms hold it as authored; a count-only draft outside the shape a
- * count-only run admits blocks generation at {@link validateAdvancedInvite}. */
+ * count-only run admits blocks generation at {@link validateAdvancedInvite}.
+ * Choosing count-only sets the record identifier not sent
+ * ({@link withIdentifiersNotSent}), and choosing `psi` again leaves it not
+ * sent; any other column still marked to send blocks generation. */
 export function editorWithAlgorithm(
   editor: InviterEditor,
   algorithm: AdvancedInviteDraft["algorithm"],
 ): InviterEditor {
   if (editor.sealed === true) return editor;
-  return { ...editor, draft: { ...editor.draft, algorithm } };
+  const metadata =
+    algorithm === "psi-c"
+      ? withIdentifiersNotSent(editor.draft.metadata)
+      : editor.draft.metadata;
+  return { ...editor, draft: { ...editor.draft, algorithm, metadata } };
 }
 
 /** Set which of this party's own input columns its result file holds beside the

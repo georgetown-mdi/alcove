@@ -138,7 +138,7 @@ function mountStep(
   unsent: ReadonlyArray<string> = [],
 ) {
   const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
-  const inferred = acceptorInitialColumnsState(columns);
+  const inferred = acceptorInitialColumnsState(columns, linkageTerms.algorithm);
   const columnsState = {
     ...inferred,
     metadata: inferred.metadata.map((column) => {

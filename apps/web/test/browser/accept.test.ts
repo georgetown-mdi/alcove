@@ -350,7 +350,7 @@ async function markSent(column: string) {
 function seededWithUnrecognizedSent(
   columns: Array<string>,
 ): AcceptorColumnsState {
-  const seeded = acceptorInitialColumnsState(columns);
+  const seeded = acceptorInitialColumnsState(columns, "psi");
   return {
     ...seeded,
     metadata: seeded.metadata.map((column) =>
@@ -1164,12 +1164,10 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     // Inference promotes one identifier and the grid's edits demote the previous
     // one, so the grid is mounted on metadata declaring both `id` and
     // `identifier` as identifiers, as an authored metadata block can.
-    const twoIdentifiers = acceptorInitialColumnsState([
-      "id",
-      "identifier",
-      "first_name",
-      "last_name",
-    ]).metadata.map((column) =>
+    const twoIdentifiers = acceptorInitialColumnsState(
+      ["id", "identifier", "first_name", "last_name"],
+      "psi",
+    ).metadata.map((column) =>
       column.name === "identifier"
         ? { ...column, role: "identifier" as const, isPayload: true }
         : column,
@@ -2007,6 +2005,76 @@ describe("acceptor columns step: an invitation that lists no columns to receive"
         .element()
         .getAttribute("aria-describedby"),
     ).toBeNull();
+  });
+});
+
+describe("acceptor columns step: the single record identifier hint", () => {
+  const hint =
+    "Only one column can be the record identifier. Choose a single column " +
+    "that you can use to import the data back into your system.";
+  const columns = ["id", "identifier", "first_name", "last_name"];
+
+  function mountStep(metadata: Metadata) {
+    const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
+    const columnsState: AcceptorColumnsState = {
+      ...acceptorInitialColumnsState(columns, acceptorTerms.algorithm),
+      metadata,
+    };
+    const editorState = acceptorColumnsEditorState(
+      columnsState,
+      acceptorTerms,
+      rows,
+    );
+    const noop = () => undefined;
+    app.render(
+      createElement(AcceptorColumnsStep, {
+        linkageTerms: acceptorTerms,
+        columns,
+        sanitizedColumnPositions: [],
+        columnsState,
+        editorState,
+        verdict: acceptorVerdict(columns, acceptorTerms, editorState),
+        onMetadataChange: noop,
+        onRemap: noop,
+        onReset: noop,
+        onLaunch: noop,
+        onBack: noop,
+      }),
+    );
+  }
+
+  test("shows beside the grid when two columns are the record identifier", async () => {
+    // Inference promotes one identifier, so the second is declared here, as an
+    // authored metadata block can.
+    mountStep(
+      acceptorInitialColumnsState(
+        columns,
+        acceptorTerms.algorithm,
+      ).metadata.map((column) =>
+        column.name === "identifier"
+          ? { ...column, role: "identifier" as const, isPayload: false }
+          : column,
+      ),
+    );
+    await expect
+      .element(page.getByTestId("identifier-conflict"))
+      .toHaveTextContent(hint);
+    await expect
+      .element(page.getByTestId("launch-blocked-reason"))
+      .toHaveTextContent(
+        "Choose a single record identifier column above before you can start.",
+      );
+  });
+
+  test("is absent with one record identifier", async () => {
+    mountStep(
+      acceptorInitialColumnsState(columns, acceptorTerms.algorithm).metadata,
+    );
+    await expect
+      .element(page.getByRole("button", { name: "Start the exchange" }))
+      .toBeEnabled();
+    expect(page.getByTestId("identifier-conflict").query()).toBeNull();
+    expect(app.container.textContent).not.toContain(hint);
   });
 });
 

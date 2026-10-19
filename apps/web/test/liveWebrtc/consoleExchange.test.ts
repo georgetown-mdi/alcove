@@ -260,7 +260,10 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
       const { rawRows, columns } = await readBrowserCsv(CLI_PARTY_CSV);
       const { edits } = acceptorLaunchPayload(
         acceptorColumnsEditorState(
-          acceptorInitialColumnsState(columns),
+          acceptorInitialColumnsState(
+            columns,
+            accepted.token.linkageTerms.algorithm,
+          ),
           accepted.token.linkageTerms,
           rawRows,
         ),

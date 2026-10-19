@@ -1434,6 +1434,43 @@ describe("customize tabs", () => {
     expect(validation.terms).toBeUndefined();
   });
 
+  test("choosing count-only stops sending the seeded id column", () => {
+    const withId: AcquiredCsv = {
+      ...csv,
+      columns: ["id", "first_name", "last_name", "dob"],
+      rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
+    };
+    const seeded = editorFromCsv("Dana", withId);
+    const idColumn = (editor: typeof seeded) =>
+      editor.draft.metadata.find((column) => column.name === "id");
+    expect(idColumn(seeded)).toMatchObject({
+      role: "identifier",
+      isPayload: true,
+    });
+
+    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    expect(idColumn(countOnly)).toMatchObject({
+      role: "identifier",
+      isPayload: false,
+    });
+    expect(reviewValidation(countOnly).errors.payload).toBeUndefined();
+    // Leaving count-only sends nothing the operator did not choose again.
+    expect(idColumn(editorWithAlgorithm(countOnly, "psi"))).toMatchObject({
+      isPayload: false,
+    });
+
+    // A column the operator marks under count-only still blocks generation.
+    const remarked = editorWithColumnDisclosure(
+      countOnly,
+      withId,
+      "id",
+      "identifier-sent",
+    ).editor;
+    expect(reviewValidation(remarked).errors.payload).toMatch(
+      /^A count-only exchange sends no data columns/,
+    );
+  });
+
   test("adding a same-typed field binds the free column uniquely", () => {
     const seeded = editorFromCsv("Dana", csv);
     // Retype the payload column to a second first_name, then bind it: the new

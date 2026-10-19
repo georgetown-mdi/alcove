@@ -207,6 +207,42 @@ describe("what the acceptor discloses", () => {
     expect(disclosedBy(state)).not.toContain("program_code");
   });
 
+  test("the seed sends the id column unless the decoded invitation is count-only", () => {
+    const withId: AcceptorAcquiredCsv = {
+      ...csv,
+      columns: ["id", ...csv.columns],
+      rawRows: csv.rawRows.map((row) => ({ id: "1", ...row })),
+    };
+    const seededUnder = (algorithm: LinkageTerms["algorithm"]) => {
+      const decoded = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+        type: "invitation-decoded",
+        invitation: {
+          ...invitation,
+          token: {
+            ...invitation.token,
+            linkageTerms: { ...linkageTerms, algorithm },
+          },
+        },
+        rendezvous: { configured: false },
+      });
+      const read = acceptorScreenReducer(decoded, {
+        type: "file-accepted",
+        name: "Sam Rivera",
+        deduplicate: false,
+        csvDelimiter: undefined,
+        positions: [],
+        file: new File(["id\n1\n"], withId.fileName, { type: "text/csv" }),
+        acquired: withId,
+      });
+      const reset = acceptorScreenReducer(read, { type: "columns-reset" });
+      return [read, reset].map((state) =>
+        acceptorDisclosedColumns(state.columnsState?.metadata ?? []),
+      );
+    };
+    expect(seededUnder("psi")).toEqual([["id"], ["id"]]);
+    expect(seededUnder("psi-c")).toEqual([[], []]);
+  });
+
   test("a disclosure edit is written to the metadata the launch reads", () => {
     const state = withProgramCodeSent(accepted());
     expect(disclosedBy(state)).toContain("program_code");
