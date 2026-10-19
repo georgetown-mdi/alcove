@@ -25,7 +25,7 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
 1. **Your file.** Enter your name or your organization's name, which your partner sees on the invitation, and choose your CSV.
 2. **Matching & sharing.** For each column, confirm its type and how it is used. A column sent to your partner is sent only for rows that match; your partner never receives the values in rows that do not match.
-   - **Used to match - not sent.**
+   - **Used to match - not sent**, or **Used to match - sent to your partner.** Either way the column is used to match.
    - **Unique record identifier - not sent**, or **Unique record identifier - sent to your partner.** Either way your result file begins with this column, so you can find each matched record in your own data. A record identifier column set to **Sent to your partner** instead is sent but is not your identifier, and your result file then begins with each match's row position in your file.
    - **Sent to your partner.**
    - **Ignored.**

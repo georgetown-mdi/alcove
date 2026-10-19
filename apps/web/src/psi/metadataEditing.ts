@@ -17,9 +17,9 @@ import type {
  *
  * Disclosure is expressed as ONE consequence-labeled choice ({@link DisclosureChoice})
  * rather than a raw `role` + `isPayload` pair, so an operator cannot land in a
- * state the control cannot show (e.g. `role: linkage` with `isPayload: true`,
- * which {@link isDisclosedToPartner} still transmits). The choice sets BOTH
- * fields deterministically -- only `payload` and `identifier-sent` send -- so the
+ * state the control cannot show (e.g. `role: ignored` with `isPayload: true`,
+ * which is never sent). The choice sets BOTH fields deterministically -- only
+ * `match-sent`, `identifier-sent` and `payload` send -- so the
  * grid's running disclosure summary ({@link disclosedColumnNames}, the same
  * predicate `preparePayload` uses) cannot drift from what actually leaves the
  * machine.
@@ -30,6 +30,8 @@ import type {
  * control the grid exposes instead of the underlying `{ role, isPayload }`:
  *
  * - `match` -- used to build linkage keys, NOT sent (`role: linkage`, not payload).
+ * - `match-sent` -- used to build linkage keys AND transmitted to the partner
+ *   for matched rows (`role: linkage`, payload).
  * - `identifier` -- indexes this party's own matched rows, NOT sent
  *   (`role: identifier`, not payload).
  * - `identifier-sent` -- indexes this party's own matched rows AND is
@@ -40,7 +42,12 @@ import type {
  * - `ignored` -- used for nothing: never matched, never indexed, never sent.
  */
 export type DisclosureChoice =
-  "match" | "identifier" | "identifier-sent" | "payload" | "ignored";
+  | "match"
+  | "match-sent"
+  | "identifier"
+  | "identifier-sent"
+  | "payload"
+  | "ignored";
 
 /** Human label for each {@link SemanticType}, so the grid never shows raw
  * snake_case; `other` is labeled as not used for matching, since no linkage
@@ -66,6 +73,7 @@ export const SEMANTIC_TYPE_LABELS: Record<SemanticType, string> = {
  * the label, not by color or by an opaque role name. */
 export const DISCLOSURE_LABELS: Record<DisclosureChoice, string> = {
   match: "Used to match - not sent",
+  "match-sent": "Used to match - sent to your partner",
   identifier: "Unique record identifier - not sent",
   "identifier-sent": "Unique record identifier - sent to your partner",
   payload: "Sent to your partner",
@@ -77,8 +85,8 @@ export const DISCLOSURE_LABELS: Record<DisclosureChoice, string> = {
  * pairing is unreachable rather than merely discouraged: an `identifier`-typed
  * column is offered `identifier` and `identifier-sent` (not `match`); an `other`
  * column, which cannot be matched, is offered neither `match` nor an identifier
- * choice; every linkage-typed column is offered `match`. Every type can always
- * be `payload` (sent) or `ignored`.
+ * choice; every linkage-typed column is offered `match` and `match-sent`. Every
+ * type can always be `payload` (sent) or `ignored`.
  */
 export function disclosureChoicesForType(
   type: SemanticType,
@@ -86,14 +94,14 @@ export function disclosureChoicesForType(
   if (type === "identifier")
     return ["identifier", "identifier-sent", "payload", "ignored"];
   if (type === "other") return ["payload", "ignored"];
-  return ["match", "payload", "ignored"];
+  return ["match", "match-sent", "payload", "ignored"];
 }
 
 /** The collapsed disclosure choice a column currently sits at, read from its
- * `role`, and for an identifier also from `isPayload`. Any other role's
- * `isPayload` is not consulted: after {@link normalizeForEditor} it is a pure
- * function of the role, which makes the control a faithful inverse of
- * {@link applyDisclosure}. */
+ * `role`, and for a linkage or identifier column also from `isPayload`. A
+ * `payload` or `ignored` column's `isPayload` is not consulted: after
+ * {@link normalizeForEditor} it is a pure function of the role, which makes
+ * the control a faithful inverse of {@link applyDisclosure}. */
 export function disclosureOf(column: ColumnMetadata): DisclosureChoice {
   switch (column.role) {
     case "identifier":
@@ -103,13 +111,13 @@ export function disclosureOf(column: ColumnMetadata): DisclosureChoice {
     case "ignored":
       return "ignored";
     case "linkage":
-      return "match";
+      return column.isPayload ? "match-sent" : "match";
   }
 }
 
 /** Apply a disclosure choice to a column, setting BOTH `role` and `isPayload`
- * deterministically. `isPayload` is `true` for exactly the two sending choices,
- * `payload` and `identifier-sent` -- the property that keeps
+ * deterministically. `isPayload` is `true` for exactly the three sending
+ * choices, `match-sent`, `identifier-sent` and `payload` -- the property that keeps
  * {@link disclosedColumnNames} (and so the disclosure summary) equal to what
  * `preparePayload` transmits. */
 export function applyDisclosure(
@@ -119,6 +127,8 @@ export function applyDisclosure(
   switch (choice) {
     case "match":
       return { ...column, role: "linkage", isPayload: false };
+    case "match-sent":
+      return { ...column, role: "linkage", isPayload: true };
     case "identifier":
       return { ...column, role: "identifier", isPayload: false };
     case "identifier-sent":
@@ -132,8 +142,8 @@ export function applyDisclosure(
 
 /**
  * The grid's starting metadata for a file just read: every column's
- * `isPayload` re-derived from its role, so a `linkage` column with
- * `isPayload: true`, which the grid cannot show, is not sent, and an inferred
+ * `isPayload` re-derived from its choice, so a `payload` or `ignored` column
+ * sends exactly when its role does, and an inferred
  * sent identifier (`inferMetadata` marks an `id` column so) starts as
  * `identifier`, not sent. The grid sends no record identifier until the
  * operator chooses `identifier-sent`.

@@ -172,6 +172,7 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
 interface CapturedLaunch {
   csvDelimiter?: string;
   allowedRelays?: ReadonlyArray<string>;
+  edits?: { metadata: Metadata };
 }
 const launchHarness = vi.hoisted(() => ({
   last: undefined as CapturedLaunch | undefined,
@@ -1256,6 +1257,35 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await expect
       .element(page.getByText("For each matched row: comment."))
       .toBeInTheDocument();
+  });
+
+  test("a column used to match can also be sent, and still matches", async () => {
+    await reachColumns("first_name,last_name\nAlice,Smith\n");
+    const control = page.getByRole("combobox", {
+      name: `How column ${isolatedColumnName("first_name")} is used`,
+      exact: true,
+    });
+    await userEvent.click(control);
+    await userEvent.click(
+      page.getByRole("option", {
+        name: "Used to match - sent to your partner",
+      }),
+    );
+    await expect
+      .element(control)
+      .toHaveValue("Used to match - sent to your partner");
+    await expect
+      .element(page.getByText("For each matched row: first_name."))
+      .toBeInTheDocument();
+    await userEvent.click(
+      page.getByRole("button", { name: "Start the exchange" }),
+    );
+    await vi.waitFor(() => expect(launchHarness.last).toBeDefined());
+    expect(
+      launchHarness.last?.edits?.metadata.find(
+        (column) => column.name === "first_name",
+      ),
+    ).toMatchObject({ role: "linkage", isPayload: true });
   });
 
   test("a header the strip emptied is refused by that cause, notice beside it", async () => {

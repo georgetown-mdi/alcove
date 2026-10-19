@@ -1262,30 +1262,38 @@ describe("a column whose is_payload does not follow its role", () => {
     expect(merged.notApplied).toBeUndefined();
   });
 
-  test("a matching column stated as sent is sent from here", () => {
-    const merged = mergedOver({
+  test("a matching column stated as sent is matched on, sent, and written back as stated", () => {
+    const stated: ColumnMetadata = {
       name: "dob",
       type: "date_of_birth",
       role: "linkage",
       isPayload: true,
-    });
+    };
+    const merged = mergedOver(stated);
     expect(merged.documentSends).toEqual(["dob"]);
     expect(merged.draftSends).toEqual(merged.documentSends);
-    expect(merged.notApplied).toContain("metadata");
+    expect(merged.role("dob")).toBe("linkage");
+    expect(merged.notApplied).toBeUndefined();
+
+    const metadata: Metadata = statedColumns().map((own) =>
+      own.name === stated.name ? stated : own,
+    );
+    const applied = withFileRead(
+      loadedInto(INVITER_SCREEN_INITIAL, sftpDocument({ metadata })),
+    );
+    if (applied.editor === undefined) throw new Error("expected an editor");
+    const handedBack = configurationHandBack({
+      editor: applied.editor,
+      terms: getDefaultLinkageTerms("County Health"),
+      csvDelimiter: undefined,
+      receipts: RECEIPTS_DEFAULT,
+    });
+    expect(handedBack.metadata).toEqual(metadata);
   });
 
   // The pairs docs/spec/EXCHANGE_FILE.md, "Writing a configuration back",
   // names as not loaded, and the pair the console writes back for each.
   test.each([
-    {
-      stated: {
-        name: "dob",
-        type: "date_of_birth",
-        role: "linkage",
-        isPayload: true,
-      },
-      written: { role: "payload", isPayload: true },
-    },
     {
       stated: {
         name: "program_code",

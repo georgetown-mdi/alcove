@@ -39,10 +39,11 @@ function col(over: Partial<ColumnMetadata> & { name: string }): ColumnMetadata {
 
 describe("disclosure choice <-> {role, isPayload}", () => {
   // The single security-relevant mapping: each choice sets BOTH fields, and only
-  // `payload` and `identifier-sent` send, so disclosedColumnNames (the
-  // preparePayload predicate) tracks the control exactly.
+  // `match-sent`, `identifier-sent` and `payload` send, so disclosedColumnNames
+  // (the preparePayload predicate) tracks the control exactly.
   const cases: Array<[DisclosureChoice, ColumnMetadata["role"], boolean]> = [
     ["match", "linkage", false],
+    ["match-sent", "linkage", true],
     ["identifier", "identifier", false],
     ["identifier-sent", "identifier", true],
     ["payload", "payload", true],
@@ -108,10 +109,19 @@ describe("normalizeForEditor seeds the grid's choices", () => {
     ).toEqual(loaded);
   });
 
-  test("a matching column marked sent, which the grid cannot show, is not sent", () => {
+  test("a matching column marked sent stays matched and sent", () => {
     const normalized = normalizeForEditor([
       col({ name: "dob", type: "date_of_birth", role: "linkage" }),
     ]);
+    expect(disclosureOf(normalized[0])).toBe("match-sent");
+    expect(disclosedColumnNames(normalized)).toEqual(["dob"]);
+  });
+
+  test("a column stated ignored and sent is not sent", () => {
+    const normalized = normalizeForEditor([
+      col({ name: "notes", role: "ignored", isPayload: true }),
+    ]);
+    expect(normalized[0]?.isPayload).toBe(false);
     expect(disclosedColumnNames(normalized)).toEqual([]);
   });
 
@@ -331,10 +341,11 @@ describe("single-identifier rule", () => {
 describe("setColumnDisclosure discloses only on an explicit sending choice", () => {
   // The disclosure-path counterpart to the setColumnType safety property: a
   // disclosure edit sends the edited column iff the operator explicitly chose
-  // `payload` or `identifier-sent`, and never raises a bystander column's
-  // disclosure.
+  // `match-sent`, `identifier-sent` or `payload`, and never raises a bystander
+  // column's disclosure.
   const CHOICES: Array<DisclosureChoice> = [
     "match",
+    "match-sent",
     "identifier",
     "identifier-sent",
     "payload",
@@ -353,7 +364,9 @@ describe("setColumnDisclosure discloses only on an explicit sending choice", () 
         const { metadata } = setColumnDisclosure([target, bystander], "x", to);
         expect(
           isDisclosedToPartner(metadata.find((c) => c.name === "x")!),
-        ).toBe(to === "payload" || to === "identifier-sent");
+        ).toBe(
+          to === "payload" || to === "identifier-sent" || to === "match-sent",
+        );
         expect(
           isDisclosedToPartner(metadata.find((c) => c.name === "y")!),
         ).toBe(false);
@@ -378,6 +391,15 @@ describe("setColumnType keeps disclosure intent", () => {
     expect(disclosureOf(next[0])).toBe("payload");
   });
 
+  test("a matched and sent column stays so when retyped to another linkage type", () => {
+    const md: Metadata = [
+      col({ name: "y", type: "first_name", role: "linkage", isPayload: true }),
+    ];
+    expect(disclosureOf(setColumnType(md, "y", "last_name").metadata[0])).toBe(
+      "match-sent",
+    );
+  });
+
   test("a sent column survives a retype to a matchable type (it is not demoted)", () => {
     // The highest-risk keep-branch case: retyping a column sent by design to a
     // linkage or identifier type must KEEP it sent, not drop it to a not-sent
@@ -400,6 +422,7 @@ describe("setColumnType keeps disclosure intent", () => {
   describe("a type change never starts disclosing a column", () => {
     const CHOICES: Array<DisclosureChoice> = [
       "match",
+      "match-sent",
       "identifier",
       "identifier-sent",
       "payload",
@@ -515,8 +538,13 @@ describe("disclosureChoicesForType gates nonsensical pairings", () => {
   test("other type can only be sent or ignored", () => {
     expect(disclosureChoicesForType("other")).toEqual(["payload", "ignored"]);
   });
-  test("a linkage type offers match", () => {
-    expect(disclosureChoicesForType("first_name")).toContain("match");
+  test("a linkage type offers match, sent or not", () => {
+    expect(disclosureChoicesForType("first_name")).toEqual([
+      "match",
+      "match-sent",
+      "payload",
+      "ignored",
+    ]);
   });
 });
 
