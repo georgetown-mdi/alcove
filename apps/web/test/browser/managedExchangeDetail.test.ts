@@ -471,7 +471,7 @@ describe("managed exchange detail local fields", () => {
     // Anchored so it targets the derived readback line, not the cadence note,
     // which also contains "stored secret stops working".
     await expect
-      .element(page.getByText(/^Stored secret lapses /))
+      .element(page.getByText(/^The secret expires /))
       .toBeInTheDocument();
   });
 
@@ -506,7 +506,7 @@ describe("managed exchange detail local fields", () => {
 
     await expect
       .element(
-        page.getByText("the stored secret does not lapse by age", {
+        page.getByText("the secret does not expire", {
           exact: false,
         }),
       )

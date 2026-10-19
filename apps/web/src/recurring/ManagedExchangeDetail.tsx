@@ -719,8 +719,8 @@ function LocalFieldsEditor({
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined
-          ? `Stored secret lapses ${dateLabel(new Date(record.expires))}.`
-          : "No age bound is set; the stored secret does not lapse by age."}
+          ? `The secret expires ${dateLabel(new Date(record.expires))}.`
+          : "No expiration time is set; the secret does not expire."}
       </p>
       <LocalDocumentFields
         draft={draft}

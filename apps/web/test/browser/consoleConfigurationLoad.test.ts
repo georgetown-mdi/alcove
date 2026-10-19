@@ -1065,10 +1065,10 @@ describe("the review step of an opened configuration's run", () => {
       .getByRole("button", { name: /Receipts and record keeping/ })
       .click();
     await expect
-      .element(page.getByLabelText("Set a maximum age for the shared secret"))
+      .element(page.getByLabelText("Set an expiration time for the secret"))
       .toBeChecked();
     await expect
-      .element(page.getByLabelText("Maximum age in days"))
+      .element(page.getByLabelText("Expiration time in days"))
       .toHaveValue("30");
   });
 

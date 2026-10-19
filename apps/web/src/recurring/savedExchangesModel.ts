@@ -182,7 +182,7 @@ function tierStatus(
 ): string {
   switch (tier) {
     case "expired":
-      return "Stored secret lapsed; re-invite to run again";
+      return "Stored secret expired; re-invite to run again";
     case "input":
       return `Last run could not use your input file (${at})`;
     case "terms-shortfall":

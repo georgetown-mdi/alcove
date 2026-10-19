@@ -197,7 +197,7 @@ export type ManagedRunFailure =
 function expiredFailure(expires: string): ManagedRunFailureAlert {
   return {
     kind: "expired",
-    title: "This exchange's stored secret has lapsed",
+    title: "This exchange's stored secret has expired",
     message:
       `The stored secret reached its expiration time ${dateTimeLabel(new Date(expires))} ` +
       "and can no longer be used, so this exchange cannot run again until you " +

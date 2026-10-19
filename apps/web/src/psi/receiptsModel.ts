@@ -595,8 +595,8 @@ export const RETENTION_NOTE_CONTROL_CHAR_PROBLEM =
  * The composed configuration's schema refuses the same value
  * (`authentication.token_max_age_days`). */
 export const MAX_AGE_PROBLEM =
-  "The shared secret's maximum age must be a whole number of days from 1 to " +
-  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the maximum age off.`;
+  "The secret's expiration time must be a whole number of days from 1 to " +
+  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the expiration time off.`;
 
 /**
  * Everything wrong with the draft, as messages to show beside the card --
@@ -839,7 +839,7 @@ export const RETENTION_NOTE_NOTICE =
   "never a name, an identifier, or any value from the data.";
 
 /** The maximum-age control's label. */
-export const MAX_AGE_LABEL = "Set a maximum age for the shared secret";
+export const MAX_AGE_LABEL = "Set an expiration time for the secret";
 
 /** The line under the maximum-age control: what turning it on does. */
 export const MAX_AGE_DESCRIPTION =
