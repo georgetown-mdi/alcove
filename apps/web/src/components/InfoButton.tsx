@@ -25,11 +25,16 @@ export type InfoButtonSubject =
  * label (a checkbox) holds no nested control. A collapsed explanation stays in
  * the document, and an `aria-describedby` reference reads hidden text, so the
  * id is handed to the control only while the explanation is open.
+ *
+ * Where the line is the label of a group of controls, the group goes in
+ * `controls`, under the line, so the button sits beside the label rather than
+ * after the group's widest line.
  */
 export function InfoButton({
   children,
   label,
   explanation,
+  controls,
   mt,
 }: {
   /** The line or control the button follows. */
@@ -38,17 +43,19 @@ export function InfoButton({
   label: string;
   /** The text the button shows. */
   explanation: ReactNode;
+  /** The controls the line labels, shown between it and the explanation, given
+   * the explanation's id as a `children` function is. */
+  controls?: (explanationId: string | undefined) => ReactNode;
   mt?: MantineSpacing;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const explanationId = useId();
+  const describedBy = open ? explanationId : undefined;
   return (
     <Box {...(mt !== undefined ? { mt } : {})}>
       <Group gap={4} wrap="nowrap" align="flex-start">
-        {typeof children === "function"
-          ? children(open ? explanationId : undefined)
-          : children}
+        {typeof children === "function" ? children(describedBy) : children}
         <ActionIcon
           variant="subtle"
           size="sm"
@@ -60,6 +67,7 @@ export function InfoButton({
           <IconInfoCircle size={15} aria-hidden />
         </ActionIcon>
       </Group>
+      {controls?.(describedBy)}
       <div id={panelId}>
         <Collapse expanded={open}>
           <Text id={explanationId} size="xs" mt={4}>

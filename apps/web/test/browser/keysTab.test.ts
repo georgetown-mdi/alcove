@@ -6,6 +6,8 @@ import { page } from "vitest/browser";
 
 import { Fragment, createElement, useState } from "react";
 
+import "@mantine/core/styles.css";
+
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
   BUILT_IN_RULES_INFO,
@@ -545,6 +547,53 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     expect(document.body.textContent).not.toMatch(
       /metropolitan|one state|answer below/i,
     );
+  });
+
+  test("places the button beside the Built-in rules label, which names the choice alone", async () => {
+    const { ssn4: _ssn4, ...namesAndDate } = csv.rawRows[0];
+    const file: AcquiredCsv = {
+      ...csv,
+      rawRows: [namesAndDate],
+      columns: Object.keys(namesAndDate),
+    };
+    app.render(
+      createElement(Harness, {
+        initial: editorFromCsv("Dana Okafor", file),
+        file,
+      }),
+    );
+
+    const info = page.getByRole("button", {
+      name: "About the built-in rules",
+      exact: true,
+    });
+    const group = page.getByRole("radiogroup", {
+      name: "Built-in rules",
+      exact: true,
+    });
+    await expect.element(group).toBeInTheDocument();
+    await expect
+      .element(group)
+      .toHaveAccessibleDescription(
+        "Changing this lists the rules it selects that your file supplies, " +
+          "in the built-in order. Keys you turned off stay off, and keys it " +
+          "adds are turned on.",
+      );
+    // Highest precision is unavailable here, so its reason widens the group.
+    await expect
+      .element(page.getByRole("radio", { name: at99 }))
+      .toBeDisabled();
+
+    const label = page.getByText("Built-in rules", { exact: true }).element();
+    const labelBox = label.getBoundingClientRect();
+    const infoBox = info.element().getBoundingClientRect();
+    const groupBox = group.element().getBoundingClientRect();
+    expect(infoBox.left - labelBox.right).toBeGreaterThanOrEqual(0);
+    expect(infoBox.left - labelBox.right).toBeLessThan(12);
+    const infoMiddle = (infoBox.top + infoBox.bottom) / 2;
+    expect(infoMiddle).toBeGreaterThan(labelBox.top);
+    expect(infoMiddle).toBeLessThan(labelBox.bottom);
+    expect(infoBox.right).toBeLessThan(groupBox.right / 2);
   });
 
   test("explains the choices behind one button, read with each choice while open", async () => {

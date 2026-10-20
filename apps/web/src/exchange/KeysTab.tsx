@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 import {
   ActionIcon,
   Alert,
   Anchor,
   Checkbox,
+  Input,
   NativeSelect,
   Radio,
   Switch,
@@ -213,6 +214,9 @@ export function KeysTab({
     () => highestPrecisionHeldWithoutRules(editor),
     [editor],
   );
+  const builtInRulesLabelId = useId();
+  const builtInRulesDescriptionId = useId();
+  const builtInRulesName = useId();
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -268,43 +272,52 @@ export function KeysTab({
               </Anchor>
             </>
           }
-        >
-          {(explanationId) => (
-            // Mantine builds the radiogroup's aria-describedby from its
-            // description prop alone, so each radio takes the explanation.
-            <Radio.Group
-              label="Built-in rules"
-              description="Changing this lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
-              value={String(selection.floor)}
-              onChange={(value) => {
-                const floor = PRECISION_FLOORS.find(
-                  (candidate) => String(candidate) === value,
-                );
-                if (floor !== undefined)
-                  onPrecisionFloorSelection({ ...selection, floor });
-              }}
-            >
-              {PRECISION_FLOORS.map((floor) => {
-                const unavailable =
-                  floor === PRECISION_FLOORS[0] && highestUnavailable;
-                return (
-                  <Radio
-                    key={floor}
-                    value={String(floor)}
-                    label={precisionFloorLabel(floor)}
-                    disabled={unavailable}
-                    description={
-                      unavailable
-                        ? HIGHEST_PRECISION_UNAVAILABLE_REASON
-                        : undefined
-                    }
-                    aria-describedby={explanationId}
-                    mt="xs"
-                  />
-                );
-              })}
-            </Radio.Group>
+          controls={(explanationId) => (
+            <>
+              <Input.Description id={builtInRulesDescriptionId}>
+                Changing this lists the rules it selects that your file
+                supplies, in the built-in order. Keys you turned off stay off,
+                and keys it adds are turned on.
+              </Input.Description>
+              {/* Not Radio.Group: the button beside the label would sit inside
+                  that label, and the group's name would take in the button's.
+                  Each radio takes the explanation. */}
+              <div
+                role="radiogroup"
+                aria-labelledby={builtInRulesLabelId}
+                aria-describedby={builtInRulesDescriptionId}
+              >
+                {PRECISION_FLOORS.map((floor) => {
+                  const unavailable =
+                    floor === PRECISION_FLOORS[0] && highestUnavailable;
+                  return (
+                    <Radio
+                      key={floor}
+                      name={builtInRulesName}
+                      value={String(floor)}
+                      checked={selection.floor === floor}
+                      onChange={() =>
+                        onPrecisionFloorSelection({ ...selection, floor })
+                      }
+                      label={precisionFloorLabel(floor)}
+                      disabled={unavailable}
+                      description={
+                        unavailable
+                          ? HIGHEST_PRECISION_UNAVAILABLE_REASON
+                          : undefined
+                      }
+                      aria-describedby={explanationId}
+                      mt="xs"
+                    />
+                  );
+                })}
+              </div>
+            </>
           )}
+        >
+          <Input.Label id={builtInRulesLabelId} labelElement="div">
+            Built-in rules
+          </Input.Label>
         </InfoButton>
       )}
       <p id="key-order-help">
