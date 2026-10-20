@@ -3,6 +3,7 @@ import { Anchor } from "@mantine/core";
 import styles from "@styles/app.module.css";
 
 import {
+  MDI_PETS_URL,
   PRIVACY_URL,
   SECURITY_URL,
   SOURCE_CODE_URL,
@@ -24,8 +25,11 @@ export function SiteFooter() {
   return (
     <footer className={styles.siteFooter}>
       <p>
-        Alcove is open-source software built by Georgetown&apos;s Massive Data
-        Institute.
+        Alcove is open-source software built by{" "}
+        <Anchor inherit href={MDI_PETS_URL} target="_blank" rel="noreferrer">
+          Georgetown&apos;s Massive Data Institute
+        </Anchor>
+        .
       </p>
       <div className={styles.siteFooterLinks}>
         {FOOTER_LINKS.map(({ label, href }) => (

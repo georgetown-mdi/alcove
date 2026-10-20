@@ -150,7 +150,6 @@ export function Lobby() {
               id={PASTE_INVITATION_FIELD_ID}
               ref={invitationFieldRef}
               aria-label="Invitation"
-              description="Paste the invitation your partner sent to you"
               placeholder="Paste the invitation link or text"
               rows={2}
               value={invitation}
@@ -169,7 +168,7 @@ export function Lobby() {
                 </Button>
               </p>
               <p className={`${styles.small} ${styles.sub}`}>
-                You will be able to review the exchange before starting it.
+                You can review the exchange before starting it.
               </p>
             </div>
           </div>

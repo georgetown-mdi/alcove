@@ -135,6 +135,12 @@ export const ALLOWLIST = [
     reason:
       "operator-clicked hyperlinks into this project's own repository documentation: user navigation, not app-initiated egress; a prefix because UI work adds these routinely, scoped to this repository so a link to any other host still fails",
   },
+  {
+    url: "https://mdi.georgetown.edu/pets/",
+    match: "exact",
+    reason:
+      "the operator-clicked footer link to the builder's own page: user navigation in a new tab, not app-initiated egress",
+  },
 ];
 
 // Extensions whose bytes are not text. Everything else is read and scanned.

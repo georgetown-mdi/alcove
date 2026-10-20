@@ -218,6 +218,15 @@ describe("the site footer", () => {
     app.render(createElement(Lobby));
     const footer = page.getByRole("contentinfo");
     await expect.element(footer.getByText(builtBy)).toBeInTheDocument();
+    const institute = footer.getByRole("link", {
+      name: "Georgetown's Massive Data Institute",
+      exact: true,
+    });
+    await expect
+      .element(institute)
+      .toHaveAttribute("href", "https://mdi.georgetown.edu/pets/");
+    await expect.element(institute).toHaveAttribute("target", "_blank");
+    await expect.element(institute).toHaveAttribute("rel", "noreferrer");
     const repository = "https://github.com/georgetown-mdi/alcove";
     for (const [name, href] of [
       ["Privacy", `${repository}/blob/main/PRIVACY.md`],
