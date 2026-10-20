@@ -1673,7 +1673,7 @@ function printInvitation(
 /** How a partner who uses the web app accepts a bare invitation. */
 const BROWSER_PARTNER_PASTE_INSTRUCTION =
   "A partner who uses the web app instead pastes the invitation under " +
-  '"Accept an invitation you were sent" on the app\'s start page, also ' +
+  '"Have an invitation? Paste it here" on the app\'s start page, also ' +
   "while this command is still waiting.";
 
 /**

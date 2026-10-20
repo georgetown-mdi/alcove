@@ -1,7 +1,7 @@
 ---
 title: "Alcove Deployment Model and Shared Responsibility"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-15"
+last_reviewed: "2026-10-20"
 ---
 
 # Deployment model and shared responsibility
@@ -28,7 +28,7 @@ One responsibility precedes both and is the same in each: the decision to disclo
 
 ### Container deployment (CLI and local console)
 
-This is the deployment supported for production use.
+Both deployments are suitable for real exchanges. This one runs every component on infrastructure you control.
 
 - **The project operates no part of it.** The container runs on hardware the agency controls, connects only to the SFTP server or shared folder the agency configured for the exchange, and no component of it reports back.
 - **No agency data is transmitted to, stored on, or accessible from project-operated infrastructure** -- the exchange touches none. The project receives no data, no metadata, and no record that an exchange took place.
@@ -38,7 +38,7 @@ The local console is part of this deployment rather than a hosted one: it rides 
 
 ### Hosted web application
 
-- **Status: evaluation and demonstration.** Real records belong in the container deployment.
+- **Status: suitable for real exchanges, including important one-off ones.** The project operates it on a best-effort basis, with no uptime commitment.
 - **This is the one deployment where the project operates infrastructure at all**: the coordination server the application connects through, on a host of the project's own. That is what makes the second table below differ from the first.
 - **What that infrastructure receives is rendezvous metadata:** the connection metadata the coordination server needs to introduce two browsers, logged on its host. [PRIVACY.md](../PRIVACY.md#hosted-web-application) enumerates the fields and how long each is kept.
 - **A third party serves the pages.** Cloudflare Pages delivers the application code and keeps its own request records under Cloudflare's retention rather than the project's ([PRIVACY.md](../PRIVACY.md#hosted-web-application)). It carries none of the coordination server's traffic.
@@ -102,7 +102,7 @@ The per-service detail is in [PRIVACY.md](../PRIVACY.md#what-supporting-services
 |----------------------|------------------------------------------|
 | Where is our data hosted? | Where you run it. In the container deployment the project operates nothing and receives nothing. In the hosted web application, data handling stays in the browser and the input file is never uploaded ([Two deployments](#the-two-deployments)). |
 | Who at your organization can access our data? | Nobody. The project receives no agency data in either deployment. Between the two partner agencies, what is disclosed is the intersection plus the payload columns each party designated ([SECURITY_DESIGN.md](SECURITY_DESIGN.md#data-handling)). |
-| What is your uptime commitment or disaster recovery plan? | The project operates nothing on your behalf in the container deployment, so availability is a property of your own host. The hosted web application is for evaluation and demonstration, not production exchanges of real records. |
+| What is your uptime commitment or disaster recovery plan? | The project operates nothing on your behalf in the container deployment, so availability is a property of your own host. The hosted web application is suitable for real exchanges and is operated on a best-effort basis, with no uptime commitment or disaster recovery plan. |
 | Are you FedRAMP or StateRAMP authorized? Do you have an ATO? | Alcove is software, not a service offering, and is not in scope for either on its own ([COMPLIANCE.md](COMPLIANCE.md#fedramp-and-stateramp)). An ATO is granted to a deployment in an authorizing environment, not to open-source software ([COMPLIANCE.md](COMPLIANCE.md#authority-to-operate)). |
 | Do you encrypt data at rest? | The software encrypts nothing on disk. It writes its artifacts owner-only, and at-rest confidentiality is the deploying agency's storage or full-disk encryption ([COMPLIANCE.md](COMPLIANCE.md#nist-sp-800-53), SC-28). |
 | Do you use FIPS 140-validated cryptography? | A scoped claim, with its conditions and the places an unqualified claim fails, is set out in full ([COMPLIANCE.md](COMPLIANCE.md#fips-140)). Constraining an SFTP exchange's SSH layer to approved algorithms is separate and available today ([FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md)). |

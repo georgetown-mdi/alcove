@@ -199,7 +199,7 @@ describe("share screen for a console WebRTC invitation", () => {
     expect(app.container.textContent).not.toContain("127.0.0.1:3000");
     expect(app.container.textContent).not.toContain("only works on");
     expect(app.container.textContent).toContain(
-      "Accept an invitation you were sent",
+      "Have an invitation? Paste it here",
     );
   });
 });

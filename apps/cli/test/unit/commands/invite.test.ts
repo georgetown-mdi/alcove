@@ -4017,7 +4017,7 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toContain("accepts and runs the exchange with:");
     expect(stderr).toContain(
-      'A partner who uses the web app instead pastes the invitation under "Accept an invitation you were sent"',
+      'A partner who uses the web app instead pastes the invitation under "Have an invitation? Paste it here"',
     );
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +

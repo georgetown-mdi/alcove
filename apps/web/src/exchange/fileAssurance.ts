@@ -1,12 +1,12 @@
 import { isConsoleBuild } from "@utils/clientConfig";
 
 /**
- * The browser-only file-processing claim, true only where the deployment never
- * sends the file anywhere.
+ * The browser-only file-processing claim, true only where the browser itself
+ * runs the exchange and encrypts what it sends.
  */
 export const BROWSER_ONLY_FILE_ASSURANCE =
-  "Your file is processed entirely in your browser and it is never " +
-  "uploaded to our server.";
+  "Data is encrypted locally in your browser before being sent to your " +
+  "partner.";
 
 /**
  * The file-assurance line for a console surface that reads input from the

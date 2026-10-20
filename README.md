@@ -134,7 +134,7 @@ The command line app also exchanges over WebRTC with a partner who uses the web 
 docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
 ```
 
-It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Accept an invitation you were sent** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
+It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Have an invitation? Paste it here** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
 
 ### Running it on a schedule
 

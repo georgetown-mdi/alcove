@@ -29,6 +29,7 @@ import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import { useHashTarget } from "@components/useHashTarget";
 
 import { dateLabel } from "@psi/formatting";
 
@@ -109,9 +110,11 @@ import {
   REPEATED_MISS_TITLE,
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
+
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { MANAGED_SCHEDULE_SECTION_ID } from "./managedSectionIds";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
@@ -1025,9 +1028,14 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
     Date.now(),
     inputModifiedAtMs,
   );
+  const sectionRef = useHashTarget<HTMLDivElement>(MANAGED_SCHEDULE_SECTION_ID);
   if (view === undefined) return null;
   return (
-    <div className={styles.callout}>
+    <div
+      className={styles.callout}
+      id={MANAGED_SCHEDULE_SECTION_ID}
+      ref={sectionRef}
+    >
       <h2 className={styles.eyebrow}>Run schedule</h2>
       <p className={styles.calloutLead}>{view.dueLine}</p>
       <p className={styles.small}>{view.cadence}</p>

@@ -58,6 +58,8 @@ import { CONSOLE_COVERAGE_PENDING_LABEL } from "@components/FieldCoverage";
 import { triggerBlobDownload } from "@components/blobDownload";
 import { unlinkableFileAlert } from "@components/UnlinkableFileAlert";
 
+import styles from "@styles/app.module.css";
+
 import {
   columnEditKeysAnnouncement,
   demotionNotice,
@@ -216,6 +218,11 @@ import { TopBar } from "./TopBar";
 import { YourFileSection } from "./YourFileSection";
 import { timelineSteps } from "./exchangeRun";
 import { useInviterExchange } from "./useInviterExchange";
+
+import {
+  RECURRING_SETUP_NOTE,
+  arrivedForRecurringSetup,
+} from "./recurringSetup";
 
 import {
   ResumeInvitationElsewhere,
@@ -1032,6 +1039,11 @@ export function InviterScreen() {
   // step-history integration (which lives in history.state, not the URL) alone.
   // The seed rides the same readFile intake a dropped file does, so the stale-
   // parse guard and every derived-terms path are shared, not forked.
+  // A console build saves no recurring exchange, so it never shows the note.
+  const [forRecurringSetup] = useState(
+    () => !isConsoleBuild() && arrivedForRecurringSetup(window.location.search),
+  );
+
   const seededDemo = useRef(false);
   useEffect(() => {
     if (seededDemo.current) return;
@@ -1767,6 +1779,9 @@ export function InviterScreen() {
     >
       <div ref={headingRef}>
         <Problems problems={problems} />
+        {section === "file" && forRecurringSetup && (
+          <p className={styles.sub}>{RECURRING_SETUP_NOTE}</p>
+        )}
         {/* The console's idle entry state (no file acquired): a way back to an
             exchange still running from a prior visit. Renders nothing when there
             is none to recover. */}

@@ -195,7 +195,7 @@ function mountDirectConfirmSection() {
 }
 
 describe("the lobby's two ways into an exchange", () => {
-  test("stay open offline under an advisory the connection clears", async () => {
+  test("stay open offline, leaving the offline notice to the app's banner", async () => {
     setConnectivity(false);
 
     app.render(createElement(Lobby));
@@ -211,18 +211,14 @@ describe("the lobby's two ways into an exchange", () => {
     const review = page.getByRole("button", { name: "Review invitation" });
     await expect.element(review).toBeEnabled();
 
-    // The screen still says what cannot happen, so the operator is not walked to
-    // a gate they meet only after choosing a file.
-    await expect
-      .element(page.getByText(OFFLINE_EXCHANGE_REASON, { exact: false }))
-      .toBeInTheDocument();
+    // The app shell's banner states being offline; the lobby does not repeat it.
+    expect(
+      page.getByText(OFFLINE_EXCHANGE_REASON, { exact: false }).query(),
+    ).toBeNull();
 
     setConnectivity(true);
 
     await expect.element(review).toBeEnabled();
-    await expect
-      .element(page.getByText(OFFLINE_EXCHANGE_REASON, { exact: false }))
-      .not.toBeInTheDocument();
   });
 });
 

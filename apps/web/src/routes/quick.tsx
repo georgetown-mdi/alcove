@@ -9,7 +9,7 @@ export const Route = createFileRoute("/quick")({
     meta: seo({
       title: "Alcove - encrypted matching and sharing",
       description:
-        "Find records you have in common while keeping your PII private, then exchange data about those records.",
+        "Match records with a partner using data that remains encrypted. Then exchange the fields you select for the records you have in common.",
     }),
   }),
 });

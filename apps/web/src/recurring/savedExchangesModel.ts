@@ -48,12 +48,12 @@ import type {
   ManagedSpentHandoff,
 } from "@psi/managed/managedLocalState";
 
-/** This party's side, as the run list names it: the operator recognizes "you
- * invite" / "you accept" more readily than the wire roles. Shared with the
+/** This party's side, as the run list names it: the operator recognizes who
+ * sent the invitation more readily than the wire roles. Shared with the
  * read-failed recovery listing so both surfaces name the side identically. */
 export const SIDE_LABEL: Record<ManagedExchangeSide, string> = {
-  inviter: "You invite",
-  acceptor: "You accept",
+  inviter: "You sent the invitation",
+  acceptor: "You accepted",
 };
 
 /** What a row names in the side position: this party's side, or the channel
@@ -82,9 +82,9 @@ type SavedExchangeBackup =
 interface SavedExchangeScheduleLines {
   /** Where the recurrence stands: a window open now, or the next one. */
   dueLine: string;
-  /** The escalated coordination line, once the record's consecutive-miss count
-   * reaches the threshold; absent below it. */
-  missLine?: string;
+  /** The escalated coordination lines, once the record's consecutive-miss
+   * count reaches the threshold; absent below it. */
+  miss?: { lead: string; detail: string };
 }
 
 /** One row in the saved-exchanges run list: everything the list renders for a
@@ -316,7 +316,9 @@ function scheduleLines(
   const coordination = repeatedMissCoordination(schedule);
   return {
     dueLine: scheduleDueLine(scheduleDueness(schedule, now)),
-    ...(coordination !== undefined ? { missLine: coordination.line } : {}),
+    ...(coordination !== undefined
+      ? { miss: { lead: coordination.rowLead, detail: coordination.rowDetail } }
+      : {}),
   };
 }
 

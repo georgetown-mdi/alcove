@@ -13,9 +13,6 @@ import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
-import { useOnlineStatus } from "@components/useOnlineStatus";
-
-import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 
 import { addSampleInputs } from "@psi/jobClient/workInputClient";
 
@@ -24,31 +21,23 @@ import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
+import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
 import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
-import { FILE_ASSURANCE_LINE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
 
 /**
- * The quick path's screen: two primary actions side by side -- invite someone to a
- * one-off exchange, or accept an invitation you were sent -- above the standing how-it-works
- * explanation. It has its own route at `/quick` and is also the home route's
- * first-run landing (an empty or unavailable managed store at `/` renders it
- * directly, with no redirect); the recurring-exchange list lives at `/saved`,
- * which this screen links to on a hosted build. A console build has no recurring
- * surface, so it omits that pointer.
+ * The quick path's screen: two primary actions side by side -- invite a partner to a
+ * one-off exchange, or paste an invitation you were sent -- then the first-visit
+ * help, the how-it-works explanation, and the restore and relay pointers. It has its
+ * own route at `/quick` and is also the home route's first-run landing (an empty or
+ * unavailable managed store at `/` renders it directly, with no redirect); the
+ * recurring-exchange list lives at `/saved`, which this screen links to on a hosted
+ * build. A console build has no recurring surface, so it omits that pointer.
  */
 export function Lobby() {
   const navigate = useNavigate();
   const [invitation, setInvitation] = useState("");
   const [invitationError, setInvitationError] = useState<string>();
-
-  // Advisory only. Every entry below navigates or reads -- authoring an exchange
-  // file for the command-line tool reaches no partner, and neither does reading
-  // an invitation -- so the block belongs to the create or run each flow ends in,
-  // which holds it. Saying so here spares an operator the walk to a gate they
-  // will meet after choosing a file. Only the offline direction is read: being
-  // online is no promise the partner is there (see @utils/networkStatus).
-  const online = useOnlineStatus();
 
   // Whether this browser already holds a saved recurring exchange, read once
   // on mount. Gates the "run it again" pointer below; the restore-from-backup
@@ -79,9 +68,7 @@ export function Lobby() {
   // "Review invitation" peels the token out of whatever was pasted -- a bare code
   // or a deep-link URL -- via the shared tokenFromInput helper, and routes to the
   // accept console with the token in the URL fragment, never a search param. An
-  // empty extraction shows the inline field error and does not navigate. The
-  // button itself is disabled until the field holds a usable token (see below),
-  // so this guard only covers a submit that slips past that disabled state.
+  // empty extraction shows the inline field error and does not navigate.
   function reviewInvitation() {
     const token = tokenFromInput(invitation);
     if (token === "") {
@@ -90,8 +77,6 @@ export function Lobby() {
     }
     void navigate({ to: "/accept", hash: token });
   }
-
-  const invitationToken = tokenFromInput(invitation);
 
   // Focus the field when the fragment names it.
   const invitationFieldRef = useRef<HTMLTextAreaElement>(null);
@@ -127,11 +112,8 @@ export function Lobby() {
   return (
     <AppPage>
       <main className={styles.lobby}>
-        <h1>Alcove - encrypted matching and sharing</h1>
-        <p className={styles.tagline}>
-          Find records you have in common while keeping your PII private, then
-          exchange data about those records.
-        </p>
+        <h1>{HOME_HEADLINE}</h1>
+        <p className={styles.tagline}>{HOME_TAGLINE}</p>
         {!isConsoleBuild() && !isInstalledRuntime() && (
           <p className={`${styles.sub} ${styles.small}`}>
             For SFTP, a shared folder, or scheduled runs on your own servers,
@@ -142,7 +124,7 @@ export function Lobby() {
               target="_blank"
               rel="noreferrer"
             >
-              other ways to use Alcove
+              other ways to use Alcove (on GitHub)
             </Anchor>
             .
           </p>
@@ -152,11 +134,9 @@ export function Lobby() {
         </VisuallyHidden>
         <div className={styles.lobbyActions}>
           <div className={styles.actionCard}>
-            <h3>Invite someone to exchange data</h3>
+            <h3>Invite a partner</h3>
             <p className={`${styles.small} ${styles.sub}`}>
               Choose a file, confirm what you disclose, and share an invitation.
-              Default configuration comes from your file and can be customized
-              if needed.
             </p>
             <p>
               <Button component={Link} to="/exchange">
@@ -165,13 +145,13 @@ export function Lobby() {
             </p>
           </div>
           <div className={styles.actionCard}>
-            <h3>Accept an invitation you were sent</h3>
+            <h3>Have an invitation? Paste it here</h3>
             <Textarea
               id={PASTE_INVITATION_FIELD_ID}
               ref={invitationFieldRef}
               aria-label="Invitation"
               description="Paste the invitation your partner sent to you"
-              placeholder="https://...#... or the invitation text"
+              placeholder="Paste the invitation link or text"
               rows={2}
               value={invitation}
               error={invitationError}
@@ -182,16 +162,16 @@ export function Lobby() {
                   setInvitationError(undefined);
               }}
             />
-            <p>
-              <Button
-                variant="outline"
-                mt="sm"
-                disabled={invitationToken === ""}
-                onClick={reviewInvitation}
-              >
-                Review invitation
-              </Button>
-            </p>
+            <div>
+              <p>
+                <Button variant="outline" mt="sm" onClick={reviewInvitation}>
+                  Review invitation
+                </Button>
+              </p>
+              <p className={`${styles.small} ${styles.sub}`}>
+                You will be able to review the exchange before starting it.
+              </p>
+            </div>
           </div>
           {/* The console's third path: a direct exchange the two parties arranged
               out of band (a shared server, no invitation). Console-only -- it drives
@@ -212,14 +192,6 @@ export function Lobby() {
             </div>
           )}
         </div>
-        {!online && (
-          <p className={`${styles.sub} ${styles.small}`}>
-            {OFFLINE_EXCHANGE_REASON} Reading an invitation and authoring an
-            exchange file for the command-line tool reach no partner, so those
-            stay open; each flow states this again at the create or run that
-            would start the exchange.
-          </p>
-        )}
         <p className={`${styles.sub} ${styles.small}`}>
           First time here? The{" "}
           <Anchor
@@ -228,7 +200,7 @@ export function Lobby() {
             target="_blank"
             rel="noreferrer"
           >
-            user guide
+            user guide (on GitHub)
           </Anchor>{" "}
           walks through running an exchange step by step.
         </p>
@@ -241,11 +213,13 @@ export function Lobby() {
             disabled={addingSamples}
             onClick={() => void loadSample()}
           >
-            Start with sample data
-          </Anchor>{" "}
+            {isConsoleBuild()
+              ? "Start with sample data"
+              : "See how it works with example data"}
+          </Anchor>
           {isConsoleBuild()
-            ? "writes two CSVs of synthetic records into your folder and starts an exchange, so you can choose one and practice both sides."
-            : "seeds an exchange with synthetic records and downloads the two CSVs so you can run both sides."}
+            ? " writes two CSVs of synthetic records into your folder and starts an exchange, so you can choose one and practice both sides."
+            : ". This downloads two sample files and opens the invite screen with the first one. To play your partner, open the invitation in another browser tab and accept it with the second file."}
         </p>
         {sampleFailure !== undefined && (
           <p className={`${styles.sub} ${styles.small}`} role="alert">
@@ -260,6 +234,19 @@ export function Lobby() {
             </Anchor>
           </p>
         )}
+        <div className={styles.howItWorks}>
+          <p>
+            <strong>How it works.</strong>{" "}
+            {isConsoleBuild()
+              ? "Alcove compares cryptographic fingerprints of the fields you match on - a private set intersection - so only the records you both hold are revealed, and only to the people the terms name. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
+              : "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. Data is encrypted locally in your browser before being sent to your partner. A coordination server only helps the two browsers find each other to establish a secure peer-to-peer connection."}
+          </p>
+        </div>
+        <h2 className={styles.lobbyHelpHeading}>
+          {isConsoleBuild()
+            ? "Trouble connecting?"
+            : "Trouble connecting or restoring?"}
+        </h2>
         {!isConsoleBuild() &&
           (hasSavedExchanges === undefined ? null : hasSavedExchanges ? (
             <p className={`${styles.sub} ${styles.small}`}>
@@ -273,32 +260,22 @@ export function Lobby() {
             </p>
           ) : (
             <p className={`${styles.sub} ${styles.small}`}>
-              Cleared this browser, or moving to a new device?{" "}
+              Have a backup file from a saved exchange? Restore it on the{" "}
               <Anchor inherit component={Link} to="/saved">
                 Recurring exchanges
               </Anchor>{" "}
-              is where you restore a saved exchange from a backup file.
+              page.
             </p>
           ))}
         <p className={`${styles.sub} ${styles.small}`}>
-          Can&apos;t connect to your partner? Your IT team can set a{" "}
+          Can&apos;t connect? Some workplace networks block the default
+          peer-to-peer approach. Your IT team can give you a relay server
+          address to enter in{" "}
           <Anchor inherit component={Link} to="/relay">
-            relay server
-          </Anchor>{" "}
-          for this browser to connect through.
+            relay settings
+          </Anchor>
+          .
         </p>
-        <div className={styles.howItWorks}>
-          <p>
-            <strong>How it works.</strong> Alcove compares cryptographic
-            fingerprints of the fields you match on - a private set intersection
-            - so only the records you both hold are revealed, and only to the
-            people the terms name.{" "}
-            {isConsoleBuild()
-              ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
-              : "Your browser connects directly to your partner's."}
-            {FILE_ASSURANCE_LINE !== undefined && ` ${FILE_ASSURANCE_LINE}`}
-          </p>
-        </div>
       </main>
     </AppPage>
   );

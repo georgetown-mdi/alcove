@@ -10,7 +10,7 @@ import { parseClientConfig } from "@utils/clientConfig";
 describe("BROWSER_ONLY_FILE_ASSURANCE", () => {
   test("is the exact copy the hosted, browser-only deployment states", () => {
     expect(BROWSER_ONLY_FILE_ASSURANCE).toBe(
-      "Your file is processed entirely in your browser and it is never uploaded to our server.",
+      "Data is encrypted locally in your browser before being sent to your partner.",
     );
   });
 });

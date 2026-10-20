@@ -47,7 +47,7 @@ function record(
 describe("savedExchangeRow", () => {
   test("names the side and a never-run status", () => {
     const row = savedExchangeRow(record({ side: "inviter" }), undefined, NOW);
-    expect(row.sideLabel).toBe("You invite");
+    expect(row.sideLabel).toBe("You sent the invitation");
     expect(row.status).toBe("Not run yet");
     expect(row.expired).toBe(false);
   });
@@ -55,7 +55,7 @@ describe("savedExchangeRow", () => {
   test("the acceptor side is named for the operator", () => {
     expect(
       savedExchangeRow(record({ side: "acceptor" }), undefined, NOW).sideLabel,
-    ).toBe("You accept");
+    ).toBe("You accepted");
   });
 
   test("a succeeded run names its date", () => {
@@ -322,7 +322,7 @@ describe("savedExchangeRow schedule lines", () => {
   test("an open window is named as open, with when it closes", () => {
     const row = savedExchangeRow(record({ schedule: daily }), undefined, NOW);
     expect(row.schedule?.dueLine).toMatch(/^Run window open now, until /);
-    expect(row.schedule?.missLine).toBeUndefined();
+    expect(row.schedule?.miss).toBeUndefined();
   });
 
   test("between windows the next one is named, not the one that passed", () => {
@@ -348,18 +348,19 @@ describe("savedExchangeRow schedule lines", () => {
       undefined,
       NOW,
     );
-    expect(once.schedule?.missLine).toBeUndefined();
+    expect(once.schedule?.miss).toBeUndefined();
 
     const twice = savedExchangeRow(
       record({ schedule: { ...daily, consecutiveMisses: 2 } }),
       undefined,
       NOW,
     );
-    // The list's quiet form of the coordination state: both checks named, the
-    // full prompt left to the exchange's own surface.
-    expect(twice.schedule?.missLine).toMatch(/partner/i);
-    expect(twice.schedule?.missLine).toMatch(/clock/i);
-    expect(twice.schedule?.missLine).not.toMatch(/attack|tamper|desync/i);
+    // The list's short form of the coordination state: the count and the likely
+    // cause, the steps left to the exchange's own surface.
+    expect(twice.schedule?.miss).toEqual({
+      lead: "2 scheduled runs were missed.",
+      detail: "Your schedule may not line up with your partner's.",
+    });
   });
 
   test("a lapsed secret keeps its window line beside the lapse", () => {

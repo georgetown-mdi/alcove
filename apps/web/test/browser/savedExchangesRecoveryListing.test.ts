@@ -162,9 +162,9 @@ describe("read-failed recovery listing", () => {
       .element(page.getByText("Unreadable record"))
       .toBeInTheDocument();
 
-    // Delete the unreadable record. Two Delete buttons in the listing (one per
+    // Delete the unreadable record. Two Remove buttons in the listing (one per
     // entry); the unreadable row is the second, seeded after the good one.
-    const deletes = page.getByRole("button", { name: "Delete" }).all();
+    const deletes = page.getByRole("button", { name: "Remove" }).all();
     await deletes[deletes.length - 1].click();
     await page
       .getByRole("dialog")
@@ -259,7 +259,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
       markManagedExchangeBackedUp(record.id, "2026-07-10T09:00:00.000Z"),
     );
 
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(
         page.getByText("A backup file you exported stays in your custody", {
@@ -272,7 +272,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
   test("marker absent -> the custody note is not shown on the recovery confirm", async () => {
     await mountReadFailedWith("Fresh partnership");
 
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(page.getByText("your partner is not notified", { exact: false }))
       .toBeInTheDocument();
@@ -301,7 +301,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
       .element(page.getByText("Doubtful partnership"))
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(
         page.getByText("A backup file you exported stays in your custody", {
@@ -326,7 +326,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     });
     expect(spend).toBe("spent");
 
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(
         page.getByText(
@@ -340,7 +340,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
   test("a live copy -> no hand-off note on the recovery confirm", async () => {
     await mountReadFailedWith("Live partnership");
 
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(page.getByText("your partner is not notified", { exact: false }))
       .toBeInTheDocument();
@@ -359,7 +359,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     await mountReadFailedWith("");
 
     // The good (unlabeled) record's row is first; open its confirm.
-    await page.getByRole("button", { name: "Delete" }).first().click();
+    await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(page.getByText("Delete this exchange?", { exact: false }))
       .toBeInTheDocument();

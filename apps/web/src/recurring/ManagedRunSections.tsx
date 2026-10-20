@@ -12,6 +12,7 @@ import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 import { retakeManagedExchange } from "@psi/managed/managedRetake";
 
 import styles from "@styles/app.module.css";
+import { useHashTarget } from "@components/useHashTarget";
 
 import {
   RETAKE_ACTION_LABEL,
@@ -27,6 +28,7 @@ import {
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
 } from "./scheduleEntryModel";
+import { MANAGED_BACKUP_SECTION_ID } from "./managedSectionIds";
 import { MANAGED_RUN_HANDED_OFF_ATTESTATION } from "./managedRunLaunchModel";
 import { ParkedResultsView } from "./ManagedExchangeDetail";
 import { RUN_IN_FLIGHT_HANDOFF_REASON } from "./managedHandoffGate";
@@ -85,8 +87,13 @@ export function BackupPanel({
   onMigrate,
 }: BackupPanelProps) {
   const state = deriveManagedBackupState(marker);
+  const sectionRef = useHashTarget<HTMLDivElement>(MANAGED_BACKUP_SECTION_ID);
   return (
-    <div className={styles.callout}>
+    <div
+      className={styles.callout}
+      id={MANAGED_BACKUP_SECTION_ID}
+      ref={sectionRef}
+    >
       {state.kind === "backed-up" ? (
         <p className={`${styles.small} ${styles.statusLineOk}`}>
           Backed up as of {dateLabel(new Date(state.backedUpAt))}

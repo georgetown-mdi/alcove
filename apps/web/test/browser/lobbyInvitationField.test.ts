@@ -160,7 +160,7 @@ describe.each([
 describe("lobby pointer to the other ways to use Alcove", () => {
   const line =
     "For SFTP, a shared folder, or scheduled runs on your own servers, see " +
-    "the other ways to use Alcove.";
+    "the other ways to use Alcove (on GitHub).";
   const pointer = () => page.getByText(/^For SFTP, a shared folder/);
 
   test("the hosted build in a browser tab shows it and links the README", async () => {
@@ -170,14 +170,17 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     await expect
       .element(
         page.getByText(
-          "Find records you have in common while keeping your PII private, " +
-            "then exchange data about those records.",
+          "Match records with a partner using data that remains encrypted. " +
+            "Then exchange the fields you select for the records you have " +
+            "in common.",
           { exact: true },
         ),
       )
       .toBeInTheDocument();
     await expect.element(pointer()).toHaveTextContent(line);
-    const link = page.getByRole("link", { name: "other ways to use Alcove" });
+    const link = page.getByRole("link", {
+      name: "other ways to use Alcove (on GitHub)",
+    });
     await expect
       .element(link)
       .toHaveAttribute(
@@ -202,5 +205,39 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     app.render(createElement(Lobby));
     await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
     await expect.element(pointer()).not.toBeInTheDocument();
+  });
+});
+
+describe("the site footer", () => {
+  const builtBy =
+    "Alcove is open-source software built by Georgetown's Massive Data " +
+    "Institute.";
+
+  test("the hosted build names who builds Alcove and links its project pages on GitHub", async () => {
+    build.console = false;
+    app.render(createElement(Lobby));
+    const footer = page.getByRole("contentinfo");
+    await expect.element(footer.getByText(builtBy)).toBeInTheDocument();
+    const repository = "https://github.com/georgetown-mdi/alcove";
+    for (const [name, href] of [
+      ["Privacy", `${repository}/blob/main/PRIVACY.md`],
+      ["Security", `${repository}/blob/main/SECURITY.md`],
+      ["Support", `${repository}/blob/main/SUPPORT.md`],
+      ["Source code", repository],
+    ] as const) {
+      const link = footer.getByRole("link", { name, exact: true });
+      await expect.element(link).toHaveAttribute("href", href);
+      await expect.element(link).toHaveAttribute("target", "_blank");
+    }
+    await expect
+      .element(footer.getByText("(all on GitHub)"))
+      .toBeInTheDocument();
+  });
+
+  test("the console build has no footer", async () => {
+    build.console = true;
+    app.render(createElement(Lobby));
+    await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
+    expect(page.getByText(builtBy).query()).toBeNull();
   });
 });

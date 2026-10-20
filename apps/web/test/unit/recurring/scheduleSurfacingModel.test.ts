@@ -195,6 +195,13 @@ describe("repeated-miss coordination", () => {
     const coordination = repeatedMissCoordination(withMisses(2));
     expect(coordination?.misses).toBe(2);
     expect(coordination?.line).toMatch(/^2 scheduled runs in a row/);
+    expect(coordination?.rowLead).toBe("2 scheduled runs were missed.");
+  });
+
+  test("the saved row's short form names the likely cause", () => {
+    expect(repeatedMissCoordination(withMisses(3))?.rowDetail).toBe(
+      "Your schedule may not line up with your partner's.",
+    );
   });
 
   test("both phrasings name a schedule mismatch as the likely cause and how to compare", () => {

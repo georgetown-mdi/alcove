@@ -168,7 +168,7 @@ const SCANNED_STATES: Array<ScannedState> = [
   {
     route: "/",
     state: "a saved exchange",
-    heading: "Recurring exchanges",
+    heading: "Alcove - encrypted matching and sharing",
     node: async () => {
       await savedExchangeId();
       return createElement(SavedExchangesHome);
@@ -225,7 +225,7 @@ const SCANNED_STATES: Array<ScannedState> = [
   {
     route: "/saved/",
     state: "a saved exchange",
-    heading: "Recurring exchanges",
+    heading: "Alcove - encrypted matching and sharing",
     node: async () => {
       await savedExchangeId();
       return createElement(SavedExchanges);

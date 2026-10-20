@@ -353,26 +353,29 @@ describe("quick path", () => {
       (heading) => heading.textContent,
     );
     expect(cardHeadings).toEqual([
-      "Invite someone to exchange data",
-      "Accept an invitation you were sent",
+      "Invite a partner",
+      "Have an invitation? Paste it here",
     ]);
 
-    // The in-browser processing assurance is a preserved invariant of the
-    // redesign; assert the exact copy so a rewording is an intentional change.
-    await expect
-      .element(
-        page.getByText(
-          "Your file is processed entirely in your browser and it is never uploaded to our server.",
-        ),
-      )
-      .toBeInTheDocument();
+    // How it works states what leaves the browser and in what form; assert the
+    // exact copy so a rewording is an intentional change.
+    expect(
+      page.getByText("How it works.", { exact: true }).element().parentElement,
+    ).toHaveTextContent(
+      "How it works. Alcove encrypts the fields you match on and compares " +
+        "them using a method called private set intersection, so neither " +
+        "of you sees the other's records that don't match. Data is " +
+        "encrypted locally in your browser before being sent to your " +
+        "partner. A coordination server only helps the two browsers find " +
+        "each other to establish a secure peer-to-peer connection.",
+    );
 
     const setUpLink = Array.from(document.querySelectorAll("a")).find(
       (anchor) => anchor.textContent === "Create an invitation",
     );
     expect(setUpLink?.getAttribute("href")).toBe("/exchange");
 
-    const guide = page.getByRole("link", { name: "user guide" });
+    const guide = page.getByRole("link", { name: "user guide (on GitHub)" });
     await expect.element(guide).toHaveAttribute("href", WEB_APP_GUIDE_URL);
     await expect.element(guide).toHaveAttribute("target", "_blank");
 
@@ -399,7 +402,7 @@ describe("quick path", () => {
     app.render(createElement(Lobby));
 
     const demoLink = page.getByRole("button", {
-      name: "Start with sample data",
+      name: "See how it works with example data",
     });
     await expect.element(demoLink).toBeInTheDocument();
 
@@ -1115,6 +1118,30 @@ describe("inviter screen", () => {
     );
     await expect.element(page.getByText("mine.csv")).toBeInTheDocument();
     expect(sampleEntry.query()).toBeNull();
+  });
+
+  test("?recurring=1 opens on the line saying where saving happens; a plain visit does not", async () => {
+    const note =
+      "You can save this exchange to run again when you share the invitation.";
+    const before = window.location.href;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      "/exchange?recurring=1",
+    );
+    try {
+      app.render(createElement(InviterScreen));
+      await expect.element(page.getByText(note)).toBeInTheDocument();
+    } finally {
+      app.unmount();
+      window.history.replaceState(window.history.state, "", before);
+    }
+
+    app.render(createElement(InviterScreen));
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your file");
+    expect(page.getByText(note).query()).toBeNull();
   });
 
   test("?demo=1 seeds the sample, strips the param, and walks through to a real mint", async () => {

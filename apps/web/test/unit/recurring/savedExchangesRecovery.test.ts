@@ -56,7 +56,7 @@ describe("recoveryRow", () => {
     expect(row.id).toBe("one");
     expect(row.label).toBe("Riverbend quarterly");
     expect(row.deleteLabel).toBe("Riverbend quarterly");
-    expect(row.sideLabel).toBe("You accept");
+    expect(row.sideLabel).toBe("You accepted");
     expect(row.lastRunAt).toBeDefined();
     expect(row.unreadable).toBe(false);
   });

@@ -1,7 +1,7 @@
 ---
 title: "Privacy Statement"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-15"
+last_reviewed: "2026-10-20"
 ---
 
 # Privacy statement
@@ -27,7 +27,7 @@ The answers below differ by deployment. Read the section matching what you are d
 
 ### Container deployment (CLI and local console)
 
-This is the deployment supported for production use.
+Both deployments are suitable for real exchanges. This one runs every component on infrastructure you control.
 
 - **What the project operates: nothing.** The container runs on your machine or in your infrastructure. No component of it reports to the project.
 - **What it connects to:** only the SFTP server or shared directory you configure for the exchange, or for a WebRTC exchange the coordination server, STUN and TURN servers, and relay registrar its configuration names (see [What supporting services can observe](#what-supporting-services-can-observe)). One more request is made when you invite at a web app's address (`alcove invite https://...`, or `http://...`, in which case the read is unencrypted): the CLI reads that app's public `/alcove.json` file, once, to learn which coordination server the app uses. The request sends nothing about the exchange; the app's host sees the request and your IP address, as for any page load. The container makes no other network connection.
@@ -37,7 +37,7 @@ This is the deployment supported for production use.
 
 ### Hosted web application
 
-- **Status: evaluation and demonstration.** The hosted deployment is not recommended for production exchanges of real records. Use the container deployment for those.
+- **Status: suitable for real exchanges, including important one-off ones.** The project operates it on a best-effort basis, with no uptime commitment.
 - **Where data is handled: entirely in your browser.** Cloudflare Pages delivers the application code. Your input file is read, matched, and written locally and is never uploaded. This is a reviewed property of the codebase rather than a browser-enforced one; the limits of that claim against an injected script are stated in [docs/SECURITY_DESIGN.md](docs/SECURITY_DESIGN.md#egress-hardening-and-its-limits).
 - **What the project operates, and what it can therefore observe** (verified 2026-10-07 on the Cloudflare account, the AWS account and the host):
   - **No server for the application's pages.** The pages are static files served by Cloudflare Pages with no server-side code, and the project keeps no log of page loads. Cloudflare's own records of those requests are covered below.

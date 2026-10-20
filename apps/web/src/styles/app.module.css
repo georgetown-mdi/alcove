@@ -1103,16 +1103,13 @@
   padding: 40px 32px 40px 32px;
 }
 
-/* Used by the /saved surfaces (the recurring list and the storage-unavailable
-   degrade), which still render the wordmark inside .lobby; the landing page
-   dropped its own wordmark but these keep the tighter gap. */
-.lobby .wordmark {
-  margin-bottom: 8px;
-}
-
 .tagline {
   font-size: 1.08rem;
-  max-width: 62ch;
+}
+
+/* One reading measure for every paragraph on the lobby screens. */
+.lobby p {
+  max-width: 72ch;
 }
 
 .lobbyActions {
@@ -1122,14 +1119,10 @@
   margin: 1.4rem 0 1rem 0;
 }
 
-/* Below-cards copy should read at the cards' width, not the standing
-   68ch prose measure (.page p): the general-sibling combinator only
-   reaches markup after .lobbyActions inside .lobby, so the tagline and
-   file-assurance line above the cards keep their narrower measure, and
-   no other .page using .sub/.small/.howItWorks is affected. */
-.lobby .lobbyActions ~ p,
-.lobby .lobbyActions ~ .howItWorks p {
-  max-width: none;
+/* Scoped under .page to outweigh the .page h2 size and margin. */
+.page .lobbyHelpHeading {
+  font-size: 15px;
+  margin: 1.6rem 0 0.3rem 0;
 }
 
 .actionCard {
@@ -1142,10 +1135,14 @@
 }
 
 /* The cards stretch to equal height in the grid; pushing each card's action
-   paragraph (its last child) to the bottom lines the two buttons up on one
-   baseline regardless of how much copy or field sits above them. */
-.actionCard > p:last-child {
+   block (its last child) to the bottom lines the buttons up on one baseline
+   regardless of how much copy or field sits above them. */
+.actionCard > :last-child {
   margin-top: auto;
+  margin-bottom: 0;
+}
+
+.actionCard > div:last-child p:last-child {
   margin-bottom: 0;
 }
 
@@ -1202,6 +1199,49 @@
   flex-shrink: 0;
 }
 
+.savedListActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0.5rem 0;
+}
+
+/* The repeated-miss line on a saved row: the caution color at body weight,
+   with only its lead sentence in bold. */
+.savedRowMiss {
+  color: var(--app-warn);
+}
+
+.importSection {
+  margin: 1.6rem 0 1.1rem 0;
+}
+
+.importSection p {
+  margin: 3px 0;
+}
+
+/* ---------- site footer ---------- */
+
+.siteFooter {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 32px 32px 32px;
+  color: var(--app-secondary);
+  font-size: 14px;
+}
+
+.siteFooter p {
+  margin: 0 0 6px 0;
+  max-width: 72ch;
+}
+
+.siteFooterLinks {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+  row-gap: 4px;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1080px) {
@@ -1211,10 +1251,6 @@
 
   .ledger {
     position: static;
-  }
-
-  .lobbyActions {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1227,6 +1263,48 @@
   .topBarNote {
     display: none;
   }
+}
+
+/* Phone widths: a 16px side margin, and saved rows stack their actions under
+   the row text rather than squeezing it. */
+@media (max-width: 600px) {
+  .lobby {
+    padding: 24px 16px 32px 16px;
+  }
+
+  .actionCard {
+    padding: 18px 16px 20px 16px;
+  }
+
+  .savedRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .savedRow .savedRowActions {
+    justify-content: flex-start;
+  }
+
+  .siteFooter {
+    padding: 8px 16px 32px 16px;
+  }
+}
+
+/* Text inputs take the field border token (3:1 against the card), except
+   where Mantine colors the border for an error or success state. Field
+   descriptions take the secondary text color and size. */
+.page
+  :global(
+    .mantine-Input-wrapper[data-variant="default"]:not([data-error]):not(
+        [data-success]
+      )
+  ) {
+  --input-bd: var(--app-field-border);
+}
+
+.page :global(.mantine-InputWrapper-description) {
+  color: var(--app-secondary);
+  font-size: 14px;
 }
 
 /* ---------- narrow-viewport information architecture ----------
