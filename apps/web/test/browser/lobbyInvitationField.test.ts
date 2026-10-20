@@ -178,6 +178,17 @@ describe("lobby pointer to the other ways to use Alcove", () => {
       )
       .toBeInTheDocument();
     await expect.element(pointer()).toHaveTextContent(line);
+    const heading = page.getByRole("heading", {
+      name: "Other connection options",
+    });
+    await expect.element(heading).toBeInTheDocument();
+    const headingEl = heading.element();
+    const pointerEl = pointer().element();
+    expect(
+      headingEl.compareDocumentPosition(pointerEl) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(headingEl.nextElementSibling).toBe(pointerEl);
     const link = page.getByRole("link", {
       name: "other ways to use Alcove (on GitHub)",
     });

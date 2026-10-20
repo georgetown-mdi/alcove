@@ -1155,6 +1155,10 @@
   font-size: 15px;
 }
 
+.howItWorks strong {
+  color: var(--app-ink);
+}
+
 /* ---------- saved exchanges ---------- */
 
 .savedList {
@@ -1224,16 +1228,18 @@
   padding: 8px 32px 32px 32px;
   color: var(--app-secondary);
   font-size: 14px;
+  text-align: center;
 }
 
 .siteFooter p {
-  margin: 0 0 6px 0;
+  margin: 0 auto 6px auto;
   max-width: 72ch;
 }
 
 .siteFooterLinks {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   column-gap: 18px;
   row-gap: 4px;
 }

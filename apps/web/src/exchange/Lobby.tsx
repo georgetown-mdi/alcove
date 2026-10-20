@@ -114,21 +114,6 @@ export function Lobby() {
       <main className={styles.lobby}>
         <h1>{HOME_HEADLINE}</h1>
         <p className={styles.tagline}>{HOME_TAGLINE}</p>
-        {!isConsoleBuild() && !isInstalledRuntime() && (
-          <p className={`${styles.sub} ${styles.small}`}>
-            For SFTP, a shared folder, or scheduled runs on your own servers,
-            see the{" "}
-            <Anchor
-              inherit
-              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              other ways to use Alcove (on GitHub)
-            </Anchor>
-            .
-          </p>
-        )}
         <VisuallyHidden component="h2">
           Start a private data exchange
         </VisuallyHidden>
@@ -241,21 +226,31 @@ export function Lobby() {
               : "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. Data is encrypted locally in your browser before being sent to your partner. A coordination server only helps the two browsers find each other to establish a secure peer-to-peer connection."}
           </p>
         </div>
-        <h2 className={styles.lobbyHelpHeading}>
-          {isConsoleBuild()
-            ? "Trouble connecting?"
-            : "Trouble connecting or restoring?"}
-        </h2>
+        <h2 className={styles.lobbyHelpHeading}>Other connection options</h2>
+        {!isConsoleBuild() && !isInstalledRuntime() && (
+          <p className={`${styles.sub} ${styles.small}`}>
+            For SFTP, a shared folder, or scheduled runs on your own servers,
+            see the{" "}
+            <Anchor
+              inherit
+              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              other ways to use Alcove (on GitHub)
+            </Anchor>
+            .
+          </p>
+        )}
         {!isConsoleBuild() &&
           (hasSavedExchanges === undefined ? null : hasSavedExchanges ? (
             <p className={`${styles.sub} ${styles.small}`}>
-              Saved an exchange to run again?{" "}
+              Saved an exchange to run again? Run it or restore it from a backup
+              file on the{" "}
               <Anchor inherit component={Link} to="/saved">
                 Recurring exchanges
               </Anchor>{" "}
-              lists the ones stored in this browser so you can run one without a
-              new invitation, and is where you restore one from a backup file if
-              this browser was cleared.
+              page.
             </p>
           ) : (
             <p className={`${styles.sub} ${styles.small}`}>
@@ -267,9 +262,8 @@ export function Lobby() {
             </p>
           ))}
         <p className={`${styles.sub} ${styles.small}`}>
-          Can&apos;t connect? Some workplace networks block the default
-          peer-to-peer approach. Your IT team can give you a relay server
-          address to enter in{" "}
+          Some workplace networks block the default peer-to-peer approach. Your
+          IT team can give you a relay server address to enter in{" "}
           <Anchor inherit component={Link} to="/relay">
             relay settings
           </Anchor>
