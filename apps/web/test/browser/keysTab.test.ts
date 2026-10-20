@@ -43,6 +43,7 @@ import { canonicalLinkageKeysAndFields } from "@console/loadedConfig";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 import { keysFromOpenedConfiguration as derivedKeysFromOpenedConfiguration } from "@exchange/inviterScreenModel";
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
+import { reviewValidation } from "@psi/inviterModel";
 
 import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
@@ -1010,5 +1011,67 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .toHaveAccessibleDescription(
         /Editing keys here replaces the choice of built-in rules above\.$/,
       );
+  });
+});
+
+describe("KeysTab: removing every key in Expert authoring", () => {
+  /** The tab with Expert authoring on over a live session, its key message
+   * read from the session's validation as the inviter screen reads it. */
+  function Harness({ initial }: { initial: InviterEditor }) {
+    const [editor, setEditor] = useState(initial);
+    return createElement(KeysTab, {
+      editor,
+      csv,
+      expertMode: true,
+      onExpertMode: () => undefined,
+      onPrecisionFloorSelection: (selection) =>
+        setEditor(editorWithPrecisionFloorSelection(editor, selection)),
+      onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, csv)),
+      onKeyEnabled: () => undefined,
+      onKeyMoved: () => undefined,
+      onAuthoredDraft: (draft) =>
+        setEditor(editorWithAuthoredDraft(editor, draft)),
+      onStrategy: () => undefined,
+      onAlgorithm: () => undefined,
+      onDeduplicate: () => undefined,
+      onImport: () => [],
+      keysError: reviewValidation(editor).errors.keys,
+      announce: () => undefined,
+      onBack: () => undefined,
+    });
+  }
+
+  test("asks for a key in place of the built-in choice, and offers the built-in rules back", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+    const floor95 = page.getByRole("radio", {
+      name: precisionFloorStatement(95).label,
+    });
+    await expect.element(floor95).toBeChecked();
+
+    await page.getByRole("button", { name: "Remove all keys" }).click();
+
+    await expect
+      .element(page.getByRole("alert"))
+      .toMatchTextContent(
+        /^There are no linkage keys\. Add a key in Expert authoring\.$/,
+      );
+    expect(document.body.textContent).not.toContain("cannot supply");
+    await expect
+      .element(
+        page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(floor95.query()).toBeNull();
+
+    await page.getByRole("button", { name: USE_BUILT_IN_RULES_LABEL }).click();
+    await page
+      .getByRole("dialog", { name: `${USE_BUILT_IN_RULES_LABEL}?` })
+      .getByRole("button", { name: USE_BUILT_IN_RULES_LABEL })
+      .click();
+
+    await expect.element(floor95).toBeChecked();
+    expect(page.getByRole("alert").query()).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import {
   draftFromTerms,
   draftWithKeyEnabled,
   inviterExchangeDataSpec,
+  removeAllKeys,
   removeElement,
   removeKey,
   seedAdvancedInvite,
@@ -193,6 +194,14 @@ describe("expert authoring round-trips", () => {
     // orphaning the "first_name" swap target.
     d = updateElementAt(d, 0, 0, (el) => ({ ...el, field: "ssn" }));
     expect(d.keys[0].key.swap).toBeUndefined();
+  });
+
+  test("removeAllKeys empties the key list and leaves the rest of the draft", () => {
+    const { draft } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    expect(draft.keys.length).toBeGreaterThan(1);
+    const emptied = removeAllKeys(draft);
+    expect(emptied.keys).toEqual([]);
+    expect({ ...emptied, keys: draft.keys }).toStrictEqual(draft);
   });
 
   test("removeKey and the element helpers keep the terms schema-valid", () => {

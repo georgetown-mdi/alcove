@@ -103,6 +103,11 @@ const UNSUPPLYABLE_KEY_MESSAGE =
   "authoring to see which field each key has no column for, then add a " +
   "column of that type or turn that key off.";
 
+/** Shown in place of {@link UNSUPPLYABLE_KEY_MESSAGE} when keys written in
+ * Expert authoring number none: no column is missing, and the remedy is a key. */
+const EMPTY_AUTHORED_KEYS_MESSAGE =
+  "There are no linkage keys. Add a key in Expert authoring.";
+
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
  * the `substring` and `pad_left` numeric params the element editor writes into the
@@ -414,11 +419,16 @@ function shortfallRemedy(verdict: LinkageTermsVerdict): string {
  * Schema errors are mapped back to the offending control by their issue path,
  * since the referential-integrity refines report at the array path, echoing no
  * value.
+ *
+ * `keysAuthored` marks keys written in Expert authoring or loaded from a
+ * document (`InviterEditor.keysAuthored`); an empty list of those asks for a
+ * key rather than a column.
  */
 export function validateAdvancedInvite(
   draft: AdvancedInviteDraft,
   seed: AdvancedInviteSeed,
   now: Date = new Date(),
+  { keysAuthored = false }: { keysAuthored?: boolean } = {},
 ): AdvancedValidation {
   const terms = buildAdvancedTerms(draft);
   const errors: Partial<Record<AdvancedField, string>> = {};
@@ -448,7 +458,9 @@ export function validateAdvancedInvite(
   // At least one key must be active. The schema's linkageKeys .min(1) also
   // catches the none-enabled case, but a dedicated message reads better against
   // the key list.
-  if (enabledKeys.length === 0) {
+  if (keysAuthored && draft.keys.length === 0) {
+    errors.keys = EMPTY_AUTHORED_KEYS_MESSAGE;
+  } else if (enabledKeys.length === 0) {
     // No key is active. Enabling one fixes it ONLY if a supplyable key exists --
     // checked across ALL keys, enabled or not, since the question is whether
     // enabling one COULD help. When none is supplyable (every key references a

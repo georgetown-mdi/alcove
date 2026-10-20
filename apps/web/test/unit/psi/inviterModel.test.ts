@@ -13,6 +13,7 @@ import { importLinkageTerms } from "@psi/linkageTermsIO";
 import {
   buildAdvancedTerms,
   importedConstraintDivergenceMessage,
+  removeAllKeys,
 } from "@psi/authoring/advancedInvite";
 
 import {
@@ -418,6 +419,45 @@ describe("review and create", () => {
 
     const resolved = editorWithOutputDirection(editor, "both");
     expect(spineProblems(resolved)).toEqual([]);
+  });
+
+  test("a key list emptied in Expert authoring asks for a key", () => {
+    const seeded = editorFromCsv("Dana", csv);
+    const emptied = editorWithAuthoredDraft(
+      seeded,
+      removeAllKeys(seeded.draft),
+    );
+    expect(emptied.keysAuthored).toBe(true);
+    const message = "There are no linkage keys. Add a key in Expert authoring.";
+    const validation = reviewValidation(emptied);
+    expect(validation.canGenerate).toBe(false);
+    expect(validation.errors.keys).toBe(message);
+    expect(spineProblems(emptied)).toContainEqual({ message, target: "keys" });
+  });
+
+  test("authored keys all turned off still ask for one turned on", () => {
+    const seeded = editorFromCsv("Dana", csv);
+    const allOff = editorWithAuthoredDraft(seeded, {
+      ...seeded.draft,
+      keys: seeded.draft.keys.map((entry) => ({ ...entry, enabled: false })),
+    });
+    expect(reviewValidation(allOff).errors.keys).toBe(
+      "Enable at least one linkage key.",
+    );
+  });
+
+  test("an empty guided key list keeps the message it had", () => {
+    const unmatchable: AcquiredCsv = {
+      ...csv,
+      columns: ["client_id", "program_code"],
+      rawRows: [{ client_id: "1", program_code: "A" }],
+    };
+    const guided = editorFromCsv("Dana", unmatchable);
+    expect(guided.keysAuthored).toBeUndefined();
+    expect(guided.draft.keys).toHaveLength(0);
+    expect(reviewValidation(guided).errors.keys).toMatch(
+      /^A linkage key needs a field your columns cannot supply\./,
+    );
   });
 
   test("the two-identifier conflict is a problem targeting step 2", () => {
