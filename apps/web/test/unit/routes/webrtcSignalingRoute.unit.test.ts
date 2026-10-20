@@ -27,6 +27,7 @@ import {
   TEST_SIGNALING_ADDRESS,
   TEST_SIGNALING_SERVER,
   VALID_SHARED_SECRET,
+  awaitChildSettled,
   tempDataRoot,
   validWebrtcIntent,
 } from "../../utils/jobFixtures";
@@ -920,7 +921,9 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     },
   );
 
-  test("refuses a fresh invitation over the files an earlier exchange on this console left", async () => {
+  test("refuses a fresh invitation over the files an earlier exchange on this console left", async ({
+    signal,
+  }) => {
     const { manager, root } = seedManager({
       STUB_KEY_FILE: JSON.stringify({ sharedSecret: "C".repeat(42) + "A" }),
       STUB_FD3_EVENTS: JSON.stringify([
@@ -932,9 +935,12 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const first = await postJob(validWebrtcIntent());
     const { id } = (await first.json()) as { id: string };
-    await vi.waitFor(() => expect(manager.getJob(id)?.terminal).not.toBeNull());
+    await awaitChildSettled(
+      () => manager.getJob(id)?.terminal !== null,
+      signal,
+    );
     await manager.deleteJob(id);
-    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+    await awaitChildSettled(() => manager.occupiedSlotId() === null, signal);
     expect(fs.existsSync(path.join(root, JOB_FILE_NAMES.key))).toBe(true);
 
     const fresh = await postJob(
@@ -966,13 +972,15 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     },
   );
 
-  test("a run discarded while it waits takes its unchanged files, so a retry writes them again", async () => {
+  test("a run discarded while it waits takes its unchanged files, so a retry writes them again", async ({
+    signal,
+  }) => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const first = await postJob(validWebrtcIntent());
     const { id } = (await first.json()) as { id: string };
     await manager.deleteJob(id);
-    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+    await awaitChildSettled(() => manager.occupiedSlotId() === null, signal);
     expect(fs.readdirSync(root)).toEqual([]);
     const retry = await postJob(validWebrtcIntent());
     expect(retry.status).toBe(201);
