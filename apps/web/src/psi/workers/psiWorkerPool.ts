@@ -1,6 +1,13 @@
 import { ShardedPsiEngine, WorkerPsiEngine } from "@alcove/core";
 
-import { createPsiCryptoWorkerHandle } from "./psiCryptoController";
+import {
+  BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
+  browserPsiShardCount,
+} from "./psiShardPolicy";
+import {
+  createBrowserPsiEngineFactory,
+  createPsiCryptoWorkerHandle,
+} from "./psiCryptoController";
 
 import type {
   PsiEngine,
@@ -10,9 +17,11 @@ import type {
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import type {
+  BrowserPsiEngineFactory,
   PsiCryptoWorker,
   SpawnPsiCryptoWorker,
 } from "./psiCryptoController";
+import type { BrowserPsiShardEnvironment } from "./psiShardPolicy";
 
 /**
  * Connect each helper to the primary by a MessageChannel and transfer both
@@ -232,4 +241,29 @@ export function startPsiWorkerPool(
     helpers,
     progressTimeoutMs,
   );
+}
+
+/**
+ * The {@link RunExchangeOptions.psiEngineFactory} of a web exchange: as many
+ * PSI workers as {@link browserPsiShardCount} gives for `environment`, one
+ * worker where it gives one. `library` builds and parses the merged messages
+ * on this thread; it holds no key.
+ */
+export function createPooledBrowserPsiEngineFactory(
+  spawn: SpawnPsiCryptoWorker,
+  library: PSILibrary,
+  environment: BrowserPsiShardEnvironment,
+): BrowserPsiEngineFactory {
+  const shardCount = browserPsiShardCount(environment);
+  if (shardCount === 1) return createBrowserPsiEngineFactory(spawn);
+  return (role, id, mode) =>
+    startPsiWorkerPool(
+      spawn,
+      library,
+      role,
+      id,
+      mode,
+      shardCount,
+      BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
+    );
 }

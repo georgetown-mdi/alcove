@@ -2,11 +2,19 @@
 
 import { describe, expect, test } from "vitest";
 
-import { classifyFailure, isPartnerProtocolRefusal } from "@alcove/core";
+import {
+  WorkerPsiEngine,
+  classifyFailure,
+  isPartnerProtocolRefusal,
+} from "@alcove/core";
 import { ProtocolRefusalError } from "@alcove/core/testing";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
+import {
+  PsiWorkerPoolEngine,
+  connectPsiWorkerKeys,
+} from "@psi/workers/psiWorkerPool";
 import {
   createBrowserPsiEngineFactory,
   createPsiCryptoWorkerHandle,
@@ -18,7 +26,7 @@ import type {
   PsiCryptoWorker,
   SpawnPsiCryptoWorker,
 } from "@psi/workers/psiCryptoController";
-import type { PsiEngine } from "@alcove/core";
+import type { PsiEngine, PsiEngineMode } from "@alcove/core";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
@@ -227,4 +235,95 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
       expect(terminations()).toBe(1);
     }, 30_000);
   });
+});
+
+// The pool's split masking against one engine under the same key, over real
+// workers: the reference is a third helper of the same primary, called whole,
+// so it holds the pool's key and runs each operation unsplit.
+describe("the PSI worker pool (real workers, real WASM)", () => {
+  const POOL_VALUES = Array.from({ length: 4096 }, (_, i) => `v-${i}`);
+  const STARTER_POOL_VALUES = POOL_VALUES.map((value, i) =>
+    i % 2 === 0 ? value : `starter-only-${i}`,
+  );
+
+  function poolWithReference(
+    library: PSILibrary,
+    role: "starter" | "joiner",
+    id: string,
+    mode: PsiEngineMode,
+  ): { pool: PsiEngine; reference: PsiEngine } {
+    const primary = defaultSpawnPsiCryptoWorker({
+      role,
+      id,
+      mode,
+      shard: "primary",
+      helpers: 3,
+    });
+    const helpers = [0, 1, 2].map(() =>
+      defaultSpawnPsiCryptoWorker({ role, id, mode, shard: "helper" }),
+    );
+    connectPsiWorkerKeys(primary, helpers);
+    const poolHelpers = helpers.slice(0, 2).map((worker) => {
+      let report: (ready: boolean) => void = () => undefined;
+      const ready = new Promise<boolean>((resolve) => {
+        report = resolve;
+      });
+      const engine = new WorkerPsiEngine(
+        createPsiCryptoWorkerHandle(worker, report),
+      );
+      return { engine, ready };
+    });
+    return {
+      pool: new PsiWorkerPoolEngine(
+        library,
+        id,
+        mode,
+        new WorkerPsiEngine(createPsiCryptoWorkerHandle(primary)),
+        poolHelpers,
+        60_000,
+      ),
+      reference: new WorkerPsiEngine(createPsiCryptoWorkerHandle(helpers[2])),
+    };
+  }
+
+  test.for<PsiEngineMode>(["identifier-revealing", "count-only"])(
+    "a %s round across three workers puts one engine's bytes on the wire",
+    { timeout: 60_000 },
+    async (mode) => {
+      const psi = await (PSI() as Promise<PSILibrary>);
+      const joiner = poolWithReference(psi, "joiner", "client", mode);
+      const starter = poolWithReference(psi, "starter", "server", mode);
+      try {
+        const { setup } =
+          await starter.pool.createServerSetup(STARTER_POOL_VALUES);
+        await joiner.pool.receiveServerSetup(setup);
+        const request = await joiner.pool.createClientRequest(POOL_VALUES);
+        expect(request).toEqual(
+          await joiner.reference.createClientRequest(POOL_VALUES),
+        );
+        const response = await starter.pool.processClientRequest(request);
+        expect(response).toEqual(
+          await starter.reference.processClientRequest(request),
+        );
+        if (mode === "count-only")
+          expect(
+            await joiner.pool.computeIntersectionCardinality(response),
+          ).toBe(2048);
+        else {
+          const [local] = await joiner.pool.computeAssociationTable(response);
+          expect([...local].sort((a, b) => a - b)).toEqual(
+            POOL_VALUES.flatMap((_, i) => (i % 2 === 0 ? [i] : [])),
+          );
+        }
+      } finally {
+        for (const engine of [
+          joiner.pool,
+          joiner.reference,
+          starter.pool,
+          starter.reference,
+        ])
+          engine.dispose();
+      }
+    },
+  );
 });

@@ -7,8 +7,11 @@ import {
   createBrowserPsiEngineFactory,
   encodePsiWorkerInit,
 } from "../../../src/psi/workers/psiCryptoController.js";
+import {
+  createPooledBrowserPsiEngineFactory,
+  startPsiWorkerPool,
+} from "../../../src/psi/workers/psiWorkerPool.js";
 import { runPsiCryptoWorker } from "../../../src/psi/workers/psiCryptoWorkerProgram.js";
-import { startPsiWorkerPool } from "../../../src/psi/workers/psiWorkerPool.js";
 
 import type {
   PsiEngine,
@@ -681,5 +684,51 @@ describe("the PSI worker pool's shards", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the web exchange's PSI engine factory", () => {
+  const chrome = (platform: string, agent: string) => ({
+    hardwareConcurrency: 8,
+    platform,
+    userAgent: `Mozilla/5.0 (${agent}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36`,
+  });
+
+  test("on macOS runs one worker, which shares its key with no one", () => {
+    const { spawn, workers } = fakeSpawner();
+    const mac = chrome("MacIntel", "Macintosh; Intel Mac OS X 10_15_7");
+    createPooledBrowserPsiEngineFactory(spawn, wasm, mac)(
+      "joiner",
+      "client",
+      "identifier-revealing",
+    ).dispose();
+    expect(workers.map((worker) => worker.seed)).toEqual([
+      {
+        role: "joiner",
+        id: "client",
+        mode: "identifier-revealing",
+        shard: "primary",
+        helpers: 0,
+      },
+    ]);
+    expect(workers[0].keyPorts).toEqual([]);
+  });
+
+  test("elsewhere runs the core count up to four, one primary and the rest helpers", () => {
+    const { spawn, workers } = fakeSpawner();
+    const linux = chrome("Linux x86_64", "X11; Linux x86_64");
+    createPooledBrowserPsiEngineFactory(spawn, wasm, linux)(
+      "starter",
+      "server",
+      "count-only",
+    ).dispose();
+    const seed = { role: "starter", id: "server", mode: "count-only" };
+    expect(workers.map((worker) => worker.seed)).toEqual([
+      { ...seed, shard: "primary", helpers: 3 },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
+    ]);
+    expect(workers[0].keyPorts[0]?.ports).toHaveLength(3);
   });
 });
