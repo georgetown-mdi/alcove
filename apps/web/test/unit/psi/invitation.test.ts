@@ -361,6 +361,28 @@ describe("generateInvitation", () => {
       });
     });
 
+    test("names the default WebSocket relay with its registrar where the allowed relays keep only its host", async () => {
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: () => ({
+          ...DEFAULT_RELAY,
+          websocketUrl: "wss://wsrelay.example.org/relay",
+        }),
+        allowedRelays: ["wsrelay.example.org"],
+      });
+      expect(
+        (await decodeInvitation(minted.encoded)).connectionEndpoint,
+      ).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: {
+          websocket: "wss://wsrelay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
+      });
+    });
+
     test("names only the TURN urls the allowed relays keep, and returns the list", async () => {
       const ownRelay = {
         turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -1980,7 +2002,7 @@ describe("invitationWebrtcEndpoint", () => {
     expect(decoded.connectionEndpoint).toStrictEqual(endpoint);
   });
 
-  test("names a registrar only beside a TURN url", () => {
+  test("names a registrar only beside a TURN or WebSocket relay url", () => {
     const registrar = "https://registrar.example.org";
     expect(
       invitationWebrtcEndpoint(location, {
@@ -1993,8 +2015,35 @@ describe("invitationWebrtcEndpoint", () => {
     });
     expect(
       invitationWebrtcEndpoint(location, {
+        websocket: "wss://wsrelay.example.org/relay",
+        registrar,
+      }).relay,
+    ).toStrictEqual({
+      websocket: "wss://wsrelay.example.org/relay",
+      registrar,
+    });
+    expect(
+      invitationWebrtcEndpoint(location, {
         stun: ["stun:relay.example.org:3478"],
         registrar,
+      }).relay,
+    ).toStrictEqual({ stun: ["stun:relay.example.org:3478"] });
+  });
+
+  test("names a WebSocket relay's exchange id beside its url only", () => {
+    expect(
+      invitationWebrtcEndpoint(location, {
+        websocket: "wss://wsrelay.example.org/relay",
+        websocketExchangeId: "q3-linkage-7f2c",
+      }).relay,
+    ).toStrictEqual({
+      websocket: "wss://wsrelay.example.org/relay",
+      websocketExchangeId: "q3-linkage-7f2c",
+    });
+    expect(
+      invitationWebrtcEndpoint(location, {
+        stun: ["stun:relay.example.org:3478"],
+        websocketExchangeId: "q3-linkage-7f2c",
       }).relay,
     ).toStrictEqual({ stun: ["stun:relay.example.org:3478"] });
   });

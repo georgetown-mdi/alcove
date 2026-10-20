@@ -563,6 +563,9 @@ export function persistInvitationRelay(
           ...(relay.websocket !== undefined
             ? { websocket: relay.websocket }
             : {}),
+          ...(relay.websocketExchangeId !== undefined
+            ? { websocket_exchange_id: relay.websocketExchangeId }
+            : {}),
           ...(relay.registrar !== undefined
             ? { registrar: relay.registrar }
             : {}),

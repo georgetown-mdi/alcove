@@ -59,7 +59,9 @@ export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
  * host/port/path -- where the acceptor's signaling socket goes -- and the
  * connection's own relay as urls: the `url` of each `turn` entry whose
  * credential is minted from the shared secret (no `username` or
- * `credential`), the `stun` list and the `websocketRelay` url, composed by
+ * `credential`), the `stun` list and the `websocketRelay` url, with
+ * `relayRegistrar`'s exchange id beside that url, the id the run proves to
+ * it under, composed by
  * {@link relayLocatorFromOwnRelay}. A `turn` entry with a static username and
  * credential is left out whole: the partner cannot authenticate to it, so
  * naming it would only show the partner's address to that relay's operator.
@@ -159,6 +161,7 @@ export function endpointFromConnection(
         )
           ? connection.websocketRelay
           : undefined,
+      websocketExchangeId: connection.relayRegistrar?.exchangeId,
     });
     return {
       channel: "webrtc",

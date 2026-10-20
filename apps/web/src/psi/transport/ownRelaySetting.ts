@@ -206,14 +206,17 @@ export function parseRelayUrlLines(
 
 /**
  * A relay's TURN and STUN urls with each list optional, its WebSocket relay
- * url, and the registrar a command-line party enrolls at: the shape of core's
- * `RelayLocator`, which an invitation endpoint and a stored connection's
- * `invitationRelay` hold, and of the relay an inviter names.
+ * url with the exchange id that relay holds the key under, and the registrar
+ * a command-line party enrolls at: the shape of core's `RelayLocator`, which
+ * an invitation endpoint and a stored connection's `invitationRelay` hold, and
+ * of the relay an inviter names.
  */
 export interface RelayUrls {
   turn?: ReadonlyArray<string>;
   stun?: ReadonlyArray<string>;
   websocket?: string;
+  /** Present only beside {@link websocket}. */
+  websocketExchangeId?: string;
   registrar?: string;
 }
 

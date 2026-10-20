@@ -147,6 +147,19 @@ function buildReinviteToken(
   };
 }
 
+// `ownRelay` naming, beside its WebSocket relay url, the exchange id a run of
+// the record proves to that relay under: the record's registrar's, where it
+// names one.
+function withOwnWebSocketExchangeId(
+  ownRelay: RelayUrls | undefined,
+  record: ManagedExchangeRecord,
+): RelayUrls | undefined {
+  const websocketExchangeId = record.relayRegistrar?.exchangeId;
+  if (ownRelay?.websocket === undefined || websocketExchangeId === undefined)
+    return ownRelay;
+  return { ...ownRelay, websocketExchangeId };
+}
+
 /** What a re-invite injects: fresh-secret generation and token encoding are
  * core's, and the setup lifetime is bounded here exactly as {@link generateInvitation}
  * bounds it, so none of these can mint an unbounded or effectively-permanent token. */
@@ -175,7 +188,8 @@ interface ManagedReinviteSeams {
  * the record rotation the host persists. The operator re-authors nothing -- the terms,
  * the committed send set, and the record's `id`/handle are all retained. The
  * invitation names no TURN url the record's allowed relays leave out
- * (`turnUrlIsAllowed` in core).
+ * (`turnUrlIsAllowed` in core), and names the record's registrar's exchange id
+ * beside this browser's own WebSocket relay url.
  *
  * @throws {Error} if the record is not the inviter side (only the inviter re-mints; an
  *   acceptor's recovery is to accept the partner's fresh invitation), or if the setup
@@ -212,7 +226,7 @@ export async function composeManagedReinvite(
     freshSecret,
     tokenExpires,
     invitationRelayWithDefault(
-      seams.ownRelay,
+      withOwnWebSocketExchangeId(seams.ownRelay, record),
       seams.defaultRelay,
       managedAllowedRelays(record.exchangeFile),
     ),

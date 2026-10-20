@@ -38,9 +38,11 @@ const SHORT_WAIT_MS = 50;
 
 const NO_RESTRICTION = undefined;
 
-const WITHOUT_DEFAULT = OWN;
+const WITHOUT_DEFAULT = { relay: OWN };
 
-const WITH_DEFAULT = { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] };
+const WITH_DEFAULT = {
+  relay: { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] },
+};
 
 function answering(enrollment: RelayEnrollmentWithinWait) {
   return vi.fn<typeof enrollRelayKeyWithinWait>(() =>
@@ -122,7 +124,7 @@ describe("relayWithDefaultForRun", () => {
         enroll: answering(ENROLLED),
       },
     );
-    expect(run).toEqual({ turn: [DEFAULT_RELAY.turnUrl], stun: [] });
+    expect(run).toEqual({ relay: { turn: [DEFAULT_RELAY.turnUrl], stun: [] } });
   });
 
   test("lists the default relay once, last, when the invitation already names it", async () => {
@@ -140,8 +142,7 @@ describe("relayWithDefaultForRun", () => {
       },
     );
     expect(run).toEqual({
-      turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
-      stun: invited.stun,
+      relay: { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: invited.stun },
     });
   });
 
@@ -207,7 +208,7 @@ describe("relayWithDefaultForRun", () => {
           onRunNotice,
         },
       ),
-    ).toBeUndefined();
+    ).toEqual({});
     expect(
       await relayWithDefaultForRun(
         generateSharedSecret(),
@@ -219,9 +220,69 @@ describe("relayWithDefaultForRun", () => {
           onRunNotice,
         },
       ),
-    ).toEqual(OWN);
+    ).toEqual({ relay: OWN });
     expect(enroll).not.toHaveBeenCalled();
     expect(onRunNotice).not.toHaveBeenCalled();
+  });
+
+  describe("the default WebSocket relay", () => {
+    const WEBSOCKET = "wss://wsrelay.example.org/relay";
+    const withWebSocket = () => ({ ...DEFAULT_RELAY, websocketUrl: WEBSOCKET });
+
+    test("is listed beside the TURN url once the enrollment confirms", async () => {
+      expect(
+        await relayWithDefaultForRun(
+          generateSharedSecret(),
+          OWN,
+          NO_RESTRICTION,
+          { setting: withWebSocket, enroll: answering(ENROLLED) },
+        ),
+      ).toEqual({ ...WITH_DEFAULT, defaultWebSocketRelay: WEBSOCKET });
+    });
+
+    test("is enrolled for and listed alone where the allowed relays keep only its host", async () => {
+      const enroll = answering(ENROLLED);
+      const run = await relayWithDefaultForRun(
+        generateSharedSecret(),
+        OWN,
+        ["wsrelay.example.org"],
+        { setting: withWebSocket, enroll },
+      );
+      expect(enroll).toHaveBeenCalledOnce();
+      expect(run.relay).toBe(OWN);
+      expect(run.defaultWebSocketRelay).toBe(WEBSOCKET);
+    });
+
+    test("is left out when the enrollment fails, which is said once", async () => {
+      const onRunNotice = vi.fn();
+      const run = await relayWithDefaultForRun(
+        generateSharedSecret(),
+        OWN,
+        ["wsrelay.example.org"],
+        {
+          setting: withWebSocket,
+          enroll: answering({ kind: "failed", detail: "HTTP 503" }),
+          onRunNotice,
+        },
+      );
+      expect(run).toEqual(WITHOUT_DEFAULT);
+      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+      );
+    });
+
+    test("is not enrolled for where the allowed relays leave out both its urls", async () => {
+      const enroll = answering(ENROLLED);
+      expect(
+        await relayWithDefaultForRun(
+          generateSharedSecret(),
+          OWN,
+          ["own-relay.example.org"],
+          { setting: withWebSocket, enroll },
+        ),
+      ).toEqual(WITHOUT_DEFAULT);
+      expect(enroll).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -388,12 +449,15 @@ describe("invitationRelayWithDefault", () => {
       ).toMatchObject({ websocket: own.websocket });
     });
 
-    test("is named or left out by the allowed relays apart from the TURN url", () => {
+    test("is named, with its registrar, or left out by the allowed relays apart from the TURN url", () => {
       expect(
         invitationRelayWithDefault(undefined, withWebSocket, [
           "wsrelay.example.org",
         ]),
-      ).toEqual({ websocket: WEBSOCKET });
+      ).toEqual({
+        websocket: WEBSOCKET,
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
       expect(
         invitationRelayWithDefault(undefined, withWebSocket, [
           "turn.example.org",
@@ -404,7 +468,7 @@ describe("invitationRelayWithDefault", () => {
       });
     });
 
-    test("is named when the locator's TURN list is full", () => {
+    test("is named with its registrar when the locator's TURN list is full", () => {
       const full = {
         turn: Array.from(
           { length: MAX_RELAY_LOCATOR_URLS },
@@ -413,7 +477,32 @@ describe("invitationRelayWithDefault", () => {
       };
       expect(
         invitationRelayWithDefault(full, withWebSocket, NO_RESTRICTION),
-      ).toEqual({ ...full, websocket: WEBSOCKET });
+      ).toEqual({
+        ...full,
+        websocket: WEBSOCKET,
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
+    });
+
+    test("a WebSocket relay of this browser's own names no registrar where the default TURN url is left out", () => {
+      const own = { websocket: "wss://own.example.org/relay" };
+      expect(
+        invitationRelayWithDefault(own, withWebSocket, ["own.example.org"]),
+      ).toEqual(own);
+    });
+
+    test("an exchange id beside this browser's own WebSocket relay is kept", () => {
+      const own = {
+        websocket: "wss://own.example.org/relay",
+        websocketExchangeId: "own-weekly",
+      };
+      expect(
+        invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
+      ).toEqual({
+        ...own,
+        turn: [DEFAULT_RELAY.turnUrl],
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
     });
   });
 });

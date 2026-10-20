@@ -1719,7 +1719,7 @@ describe("persistInvitationRelay", () => {
     });
   });
 
-  test("writes the relay's WebSocket relay and registrar beside its urls, and they parse back", () => {
+  test("writes the relay's WebSocket relay with its exchange id, and its registrar, beside its urls, and they parse back", () => {
     const configPath = path.join(dir, "alcove.yaml");
     fs.writeFileSync(
       configPath,
@@ -1730,13 +1730,21 @@ describe("persistInvitationRelay", () => {
     const relay = {
       turn: ["turns:relay.example.org:443"],
       websocket: "wss://wsrelay.example.org/relay",
+      websocketExchangeId: "q3-linkage-7f2c",
       registrar: "https://registrar.example.org",
     };
     expect(persistInvitationRelay(configPath, relay)).toBe("set");
     const raw = YAML.parse(fs.readFileSync(configPath, "utf8")) as {
       connection: Record<string, unknown>;
     };
-    expect(raw.connection).toMatchObject({ invitation_relay: relay });
+    expect(raw.connection).toMatchObject({
+      invitation_relay: {
+        turn: relay.turn,
+        websocket: relay.websocket,
+        websocket_exchange_id: relay.websocketExchangeId,
+        registrar: relay.registrar,
+      },
+    });
     expect(parseExchangeSpec(raw).connection).toMatchObject({
       invitationRelay: relay,
     });

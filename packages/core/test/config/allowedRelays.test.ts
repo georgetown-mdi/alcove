@@ -260,4 +260,91 @@ describe("the WebSocket relays a run lists", () => {
     ]);
     expect(selection.websocketLeftOut).toEqual([{ source: "own", url: own }]);
   });
+
+  const relayRegistrar = {
+    url: "https://registrar.own.example.org",
+    exchangeId: "own-weekly",
+  };
+
+  test("each relay names the exchange id the connection or the invitation names for it", () => {
+    expect(
+      selectRunRelay({
+        websocketRelay: own,
+        relayRegistrar,
+        invitationRelay: {
+          websocket: partner,
+          websocketExchangeId: "partner-weekly",
+        },
+      }).websocket,
+    ).toEqual([
+      { source: "own", url: own, exchangeId: "own-weekly" },
+      { source: "invitation", url: partner, exchangeId: "partner-weekly" },
+    ]);
+    expect(
+      selectRunRelay({
+        websocketRelay: own,
+        invitationRelay: { websocket: partner },
+      }).websocket,
+    ).toEqual([
+      { source: "own", url: own },
+      { source: "invitation", url: partner },
+    ]);
+  });
+
+  test("a url both sides name takes the invitation's exchange id, or none, by the url", () => {
+    expect(
+      selectRunRelay({
+        websocketRelay: own,
+        relayRegistrar,
+        invitationRelay: { websocket: own, websocketExchangeId: "partner-id" },
+      }).websocket,
+    ).toEqual([{ source: "own", url: own, exchangeId: "partner-id" }]);
+    expect(
+      selectRunRelay({
+        websocketRelay: own,
+        relayRegistrar,
+        invitationRelay: { websocket: own },
+      }).websocket,
+    ).toEqual([{ source: "own", url: own }]);
+  });
+
+  test("a run enrolls at the invitation's registrar when it lists the invitation's WebSocket relay", () => {
+    const invitationRelay = {
+      websocket: partner,
+      registrar: "https://registrar.partner.example.net",
+    };
+    expect(runEnrollsAtInvitationRegistrar({ invitationRelay })).toBe(true);
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        websocketRelay: partner,
+        invitationRelay,
+        allowedRelays: ["partner.example.net"],
+      }),
+    ).toBe(true);
+    const leftOut = { invitationRelay, allowedRelays: ["own.example.org"] };
+    expect(runEnrollsAtInvitationRegistrar(leftOut)).toBe(false);
+    expect(allowedRelaysLeaveOutInvitationRelay(leftOut)).toBe(true);
+    expect(allowedRelaysLeaveOutInvitationRelay({ invitationRelay })).toBe(
+      false,
+    );
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        invitationRelay: { websocket: partner },
+      }),
+    ).toBe(false);
+  });
+
+  test("a kept WebSocket relay of the invitation's enrolls where the setting leaves out its TURN url", () => {
+    const connection = {
+      turn: [{ url: "turns:own.example.org:443?transport=tcp" }],
+      invitationRelay: {
+        turn: ["turns:partner-turn.example.net:443?transport=tcp"],
+        websocket: partner,
+        registrar: "https://registrar.partner.example.net",
+      },
+      allowedRelays: ["own.example.org", "partner.example.net"],
+    };
+    expect(runEnrollsAtInvitationRegistrar(connection)).toBe(true);
+    expect(allowedRelaysLeaveOutInvitationRelay(connection)).toBe(false);
+  });
 });

@@ -788,14 +788,14 @@ const jobSftpExchangeIntentSchema = z
   .strict();
 
 /** An accepted invitation's relay: its TURN and STUN url lists, its
- * WebSocket relay url and its registrar under core's relay locator rule, and
- * nothing else. */
+ * WebSocket relay url with its exchange id, and its registrar under core's
+ * relay locator rule, and nothing else. */
 export const jobInvitationRelaySchema: z.ZodType<RelayLocator> =
   relayLocatorSchema(
     (keys) =>
       `the invitation's relay has no ${keys.length === 1 ? "key" : "keys"} ` +
       `${keys.join(", ")}; it holds only turn and stun url lists, a ` +
-      "websocket url and a registrar url",
+      "websocket url with its exchange id, and a registrar url",
   );
 
 const jobSignalingServerEndpointSchema: z.ZodType<JobSignalingServerEndpoint> =
