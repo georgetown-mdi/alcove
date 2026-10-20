@@ -1979,6 +1979,30 @@ describe("the acceptor's shared-value limit and last-name rule", () => {
     expect(withLimit(2.5)).toBe(withLimit(0));
     expect(withLimit(1)).toBeUndefined();
   });
+
+  test("a limit on a cleaning whose output names no linkage field reads as a field", () => {
+    const { editorState } = editorFor(columns, emailTerms, {
+      settingsOverrides: new Map([["email", { maxPeoplePerValue: 0 }]]),
+    });
+    const strayOutput = {
+      ...editorState,
+      standardization: editorState.standardization.map((transformation) =>
+        transformation.output === "email"
+          ? { ...transformation, output: "noSuchField" }
+          : transformation,
+      ),
+    };
+    expect(
+      acceptorLaunchBlockedReason(
+        acceptorVerdict(columns, emailTerms, strayOutput),
+        strayOutput,
+        emailTerms,
+      ),
+    ).toBe(
+      "Fix or clear the highlighted limit on people sharing one value in " +
+        "a field's cleaning above before you can start.",
+    );
+  });
 });
 
 describe("acceptor launch payload", () => {

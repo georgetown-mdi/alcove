@@ -32,6 +32,8 @@ import {
 
 import { defaultStandardizationForRows } from "@psi/authoring/advancedInvite";
 
+import { fieldCleaningCard } from "@psi/authoring/advancedInviteValidation";
+
 import { isSilentEmpty } from "@psi/workers/nonEmptyAggregate";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
@@ -494,13 +496,9 @@ export function acceptorLaunchBlockedReason(
     const fieldType = invitationTerms.linkageFields.find(
       (field) => field.name === overLimit.output,
     )?.type;
-    const card =
-      fieldType === undefined
-        ? "a field's"
-        : `the ${SEMANTIC_TYPE_LABELS[fieldType]}`;
     return (
       "Fix or clear the highlighted limit on people sharing one value in " +
-      `${card} cleaning above before you can start.`
+      `${fieldCleaningCard(fieldType)} above before you can start.`
     );
   }
   const refusedFanOut = refusedCleaningFanOut(

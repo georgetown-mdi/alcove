@@ -925,6 +925,28 @@ describe("a key-element transform core cannot build", () => {
     },
   );
 
+  test("a limit on a cleaning whose output names no linkage field reads as a field", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const strayOutput = {
+      ...draft,
+      standardization: draft.standardization.map((transformation, index) =>
+        index === 0
+          ? {
+              ...transformationWithCleaningSettings(transformation, {
+                maxPeoplePerValue: 0,
+              }),
+              output: "noSuchField",
+            }
+          : transformation,
+      ),
+    };
+    const result = validateAdvancedInvite(strayOutput, seed, now);
+    expect(result.errors.standardization).toBe(
+      "Fix or clear the highlighted limit on people sharing one value in " +
+        "a field's cleaning before generating.",
+    );
+  });
+
   test("costs a fraction of compiling the transforms the document declares", () => {
     // A document at the schema's key cap whose every element declares its own
     // `parse_date` format: each one generates a distinct pattern, so the
