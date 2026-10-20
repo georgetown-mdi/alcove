@@ -1397,6 +1397,64 @@ describe("inviter screen", () => {
     ).toContain("None");
   });
 
+  test("a column edit that empties the key list under highest precision announces why", async () => {
+    app.render(createElement(InviterScreen));
+
+    await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
+    await userEvent.fill(page.getByLabelText("Your name"), "Dana");
+    const fileInput = document.querySelector('input[type="file"]');
+    await userEvent.upload(
+      page.elementLocator(fileInput as HTMLElement),
+      new File(
+        [
+          "client_id,first_name,last_name,dob,ssn4\n" +
+            "1,Ann,Lee,01/02/1990,1234\n",
+        ],
+        "clients.csv",
+        { type: "text/csv" },
+      ),
+    );
+    await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Continue to matching & sharing" })
+      .click();
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Review & create");
+
+    await page.getByRole("button", { name: /Matching on/ }).click();
+    await page.getByRole("radio", { name: "Highest precision" }).click();
+    await expect
+      .element(page.getByRole("radio", { name: "Highest precision" }))
+      .toBeChecked();
+    await page.getByRole("button", { name: /Back to Review & create/ }).click();
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: /Matching & sharing/ })
+      .click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Matching & sharing");
+
+    const emptied = page.getByText(
+      "The key list shows no built-in rules. Highest precision needs " +
+        "stronger identifiers in your file, such as an SSN, ZIP code, or " +
+        "phone number.",
+      { exact: true },
+    );
+    await page.getByLabelText(usedLabel("ssn4")).selectOptions("ignored");
+    await expect.element(emptied).toBeInTheDocument();
+    expect(emptied.element().closest('[aria-live="polite"]')).not.toBeNull();
+
+    await page.getByLabelText(usedLabel("ssn4")).selectOptions("match");
+    await expect.element(emptied).not.toBeInTheDocument();
+    await page.getByLabelText(usedLabel("ssn4")).selectOptions("ignored");
+    await expect.element(emptied).toBeInTheDocument();
+  });
+
   test("intake reports rejections and gates on an in-flight parse", async () => {
     expectConsole("warn", 'rejected 1 file(s): ["file-invalid-type"]');
     app.render(createElement(InviterScreen));

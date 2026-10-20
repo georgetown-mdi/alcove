@@ -24,6 +24,7 @@ import {
 import {
   HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
   USE_BUILT_IN_RULES_STATEMENT,
+  columnEditKeysAnnouncement,
   editorCitationDrop,
   editorFromCsv,
   editorOffersBuiltInKeys,
@@ -803,6 +804,32 @@ describe("highest precision on columns that supply none of its rules", () => {
     expect(keyNames(refilled).length).toBeGreaterThan(0);
     expect(highestPrecisionHeldWithoutRules(refilled)).toBe(false);
     expect(reviewValidation(refilled).errors.keys).toBeUndefined();
+  });
+
+  test("a column edit that empties the list under it says why, and no other column edit speaks of the keys", () => {
+    const seeded = editorFromCsv("Dana", withSsn);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
+    const held = withSsnRole(at99, "ignored");
+    expect(columnEditKeysAnnouncement(at99, held)).toBe(
+      "The key list shows no built-in rules. Highest precision needs " +
+        "stronger identifiers in your file, such as an SSN, ZIP code, or " +
+        "phone number.",
+    );
+
+    const stillHeld = editorWithColumnDisclosure(
+      held,
+      withSsn,
+      "program_code",
+      "payload",
+    ).editor;
+    expect(highestPrecisionHeldWithoutRules(stillHeld)).toBe(true);
+    expect(columnEditKeysAnnouncement(held, stillHeld)).toBe("");
+    expect(columnEditKeysAnnouncement(held, withSsnRole(held, "match"))).toBe(
+      "",
+    );
+    expect(
+      columnEditKeysAnnouncement(seeded, withSsnRole(seeded, "ignored")),
+    ).toBe("");
   });
 
   test("keeps the Expert authoring message where no choice lists a rule", () => {

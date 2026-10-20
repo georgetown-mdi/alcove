@@ -383,8 +383,15 @@ export type InviterScreenAction =
   | { type: "editor-replaced"; editor: InviterEditor; announcement: string }
   /** A control announced something without changing the draft. */
   | { type: "editor-announced"; announcement: string }
-  /** A column's type or disclosure changed, with the demotion it forced. */
-  | { type: "column-edited"; editor: InviterEditor; announcement: string }
+  /** A column's type or disclosure changed, with the demotion it forced and
+   * what it did to the key list (`columnEditKeysAnnouncement` in
+   * `@psi/inviterEditor`). */
+  | {
+      type: "column-edited";
+      editor: InviterEditor;
+      announcement: string;
+      editorAnnouncement: string;
+    }
   /** A transport was chosen: a different transport is a different shared
    * folder, so any sweep confirmation is re-asked. */
   | { type: "transport-chosen"; editor: InviterEditor }
@@ -709,6 +716,7 @@ function applyAction(
         ...state,
         editor: action.editor,
         announcement: action.announcement,
+        editorAnnouncement: action.editorAnnouncement,
       };
     case "transport-chosen":
       return {

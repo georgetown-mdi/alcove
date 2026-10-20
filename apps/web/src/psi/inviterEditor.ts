@@ -436,6 +436,19 @@ export function guidedKeysAnnouncement(editor: InviterEditor): string {
   );
 }
 
+/** What a screen reader hears about the key list after a column edit: why the
+ * list is empty where the edit leaves Highest precision chosen over it
+ * ({@link highestPrecisionHeldWithoutRules}), and nothing otherwise. */
+export function columnEditKeysAnnouncement(
+  before: InviterEditor,
+  after: InviterEditor,
+): string {
+  return !highestPrecisionHeldWithoutRules(before) &&
+    highestPrecisionHeldWithoutRules(after)
+    ? guidedKeysAnnouncement(after)
+    : "";
+}
+
 /** Move the key at `index` one place earlier (`-1`) or later (`+1`); a move
  * past either end is a no-op. Key order is match order, so this is the guided
  * list's reorder control. */
