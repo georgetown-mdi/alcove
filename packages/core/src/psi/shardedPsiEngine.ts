@@ -54,20 +54,16 @@ export interface ShardedPsiEngineOptions {
 }
 
 /**
- * The failure of a split operation whose shard `shard` (zero-based) of
- * `shards` reported nothing for `timeoutMs`.
+ * The failure of a split operation one of whose shards reported nothing for
+ * `timeoutMs`.
  */
-export function shardStalledError(
-  shard: number,
-  shards: number,
-  timeoutMs: number,
-): Error {
+export function shardStalledError(timeoutMs: number): Error {
   const minutes = timeoutMs / 60_000;
   const span = Number.isInteger(minutes)
     ? `${String(minutes)} minute${minutes === 1 ? "" : "s"}`
     : `${String(Math.ceil(timeoutMs / 1000))} seconds`;
   return new Error(
-    `PSI worker ${String(shard + 1)} of ${String(shards)} made no progress for ${span}`,
+    `Encrypting the data made no progress for ${span}. Run the exchange again.`,
   );
 }
 
@@ -85,14 +81,12 @@ class ShardProgressWatch {
     this.stalled = new Promise<never>((_resolve, reject) => {
       this.fail = reject;
     });
-    this.timers = Array.from({ length: shards }, (_, shard) =>
-      this.start(shard),
-    );
+    this.timers = Array.from({ length: shards }, () => this.start());
   }
 
-  private start(shard: number): ReturnType<typeof setTimeout> {
+  private start(): ReturnType<typeof setTimeout> {
     return setTimeout(
-      () => this.fail(shardStalledError(shard, this.shards, this.timeoutMs)),
+      () => this.fail(shardStalledError(this.timeoutMs)),
       this.timeoutMs,
     );
   }
@@ -101,7 +95,7 @@ class ShardProgressWatch {
     const timer = this.timers[shard];
     if (timer === undefined) return;
     clearTimeout(timer);
-    this.timers[shard] = this.start(shard);
+    this.timers[shard] = this.start();
   }
 
   settled(shard: number): void {

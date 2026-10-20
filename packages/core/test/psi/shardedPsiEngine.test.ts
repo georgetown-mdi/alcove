@@ -452,7 +452,7 @@ describe("the shard progress timeout", () => {
     return engine;
   }
 
-  test("a shard silent past the timeout fails the split at once, naming the shard", async () => {
+  test("a shard silent past the timeout fails the split at once", async () => {
     vi.useFakeTimers();
     try {
       const primary = pendingEngine();
@@ -473,7 +473,9 @@ describe("the shard progress timeout", () => {
       primary.report?.(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(await outcome).toEqual(
-        new Error("PSI worker 2 of 2 made no progress for 1 minute"),
+        new Error(
+          "Encrypting the data made no progress for 1 minute. Run the exchange again.",
+        ),
       );
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -511,8 +513,8 @@ describe("the shard progress timeout", () => {
   });
 
   test("the message states a timeout that is not whole minutes in seconds", () => {
-    expect(shardStalledError(0, 3, 90_000).message).toBe(
-      "PSI worker 1 of 3 made no progress for 90 seconds",
+    expect(shardStalledError(90_000).message).toBe(
+      "Encrypting the data made no progress for 90 seconds. Run the exchange again.",
     );
   });
 });
