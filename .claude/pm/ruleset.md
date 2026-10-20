@@ -389,10 +389,10 @@ Ratified by the owner:
   constant, and where the broker's code comes from, how it is deployed, and
   what it exposes at runtime are decided rather than inherited from the
   vendored server.
-- **Linkage rule sets** (board 9) -- Done is: an operator selects built-in
-  linkage rules by precision floor in every application, each selected floor's
-  published bands appear on the consent and terms-review surfaces, and no rule
-  that reaches a partner can hold a term that fails at the mint or whose
+- **Linkage rule sets** (board 9) -- Done is: an operator selects the built-in
+  linkage rules by a plain-language choice in every application, the accepting
+  party's terms review names the built-in choice when the keys equal one, and no
+  rule that reaches a partner can hold a term that fails at the mint or whose
   per-row cost is unbounded.
 - **Scheduled exchanges** (board 9) -- Done is: a recurring exchange configured
   in the browser runs to completion unattended for a full schedule period with
