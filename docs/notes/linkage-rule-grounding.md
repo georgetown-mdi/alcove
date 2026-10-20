@@ -76,7 +76,8 @@ to 33, whose band holds only where the files cover few people, are offered at
 95% for any pair of files and marked less certain.
 
 The catalog keeps each band's evidence and reasoning; the screens an operator
-sees show the band alone.
+sees name each floor by a label with no percentage
+([Bands](linkage-rule-catalog.md#bands)).
 
 ## Coverage and file size
 

@@ -19,7 +19,7 @@ import {
   LinkageStrategySchema,
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
-  precisionFloorStatement,
+  precisionFloorLabel,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -46,7 +46,6 @@ import {
   declaredFieldsFor,
   editorCitationDrop,
   editorOffersUseBuiltInRules,
-  emptyGuidedKeysNotice,
   keyOrderHelp,
   keySatisfiabilityFor,
   seedRows,
@@ -189,10 +188,6 @@ export function KeysTab({
     () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
     [editor, keysFromOpenedConfiguration, currentTerms],
   );
-  const emptyGuidedKeys = useMemo(
-    () => emptyGuidedKeysNotice(editor),
-    [editor],
-  );
   const keysAuthored = editor.keysAuthored === true;
   const offersUseBuiltInRules = useMemo(
     () => editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
@@ -243,7 +238,7 @@ export function KeysTab({
         <>
           <Radio.Group
             label="Built-in rules"
-            description="Changing this lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
+            description="Changing this lists the rules it selects, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
             value={String(selection.floor)}
             onChange={(value) => {
               const floor = PRECISION_FLOORS.find(
@@ -253,18 +248,14 @@ export function KeysTab({
                 onPrecisionFloorSelection({ ...selection, floor });
             }}
           >
-            {PRECISION_FLOORS.map((floor) => {
-              const statement = precisionFloorStatement(floor);
-              return (
-                <Radio
-                  key={floor}
-                  value={String(floor)}
-                  label={statement.label}
-                  description={statement.description}
-                  mt="xs"
-                />
-              );
-            })}
+            {PRECISION_FLOORS.map((floor) => (
+              <Radio
+                key={floor}
+                value={String(floor)}
+                label={precisionFloorLabel(floor)}
+                mt="xs"
+              />
+            ))}
           </Radio.Group>
         </>
       )}
@@ -328,11 +319,6 @@ export function KeysTab({
           );
         })}
       </ol>
-      {emptyGuidedKeys !== undefined && (
-        <Alert variant="light" color="gray" role="note" my="sm">
-          {emptyGuidedKeys}
-        </Alert>
-      )}
       {showsSharedValueKey && (
         <Alert variant="light" color="gray" role="note" my="sm">
           {SHARED_VALUE_CAVEAT}

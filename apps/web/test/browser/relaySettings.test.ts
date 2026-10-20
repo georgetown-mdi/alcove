@@ -251,9 +251,8 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
         .query(),
     ).toBeNull();
     expect(document.body.textContent).toContain(
-      "A run also lists the relay named by an invitation you accept, after " +
-        "yours. The allowed relays an exchange sets on its review, or a saved " +
-        "exchange on its own page, can leave out any of these.",
+      "The allowed relays an exchange sets on its review, or a saved " +
+        "exchange on its own page, can leave out any of the relays saved here.",
     );
     expect(document.body.textContent).not.toContain(
       "connection.allowed_relays",
@@ -269,8 +268,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     ).toBeNull();
     expect(document.body.textContent).not.toContain("allowed relays");
     expect(document.body.textContent).toContain(
-      "A run also lists the relay named by an invitation you accept, after " +
-        "yours. Exchanges run from this console follow the command-line " +
+      "Exchanges run from this console follow the command-line " +
         "configuration: its connection.allowed_relays key decides which relays " +
         "an exchange may use, and a WebRTC invitation you accept that names a " +
         "TURN server sets it in the Allowed relays field on its first step. " +

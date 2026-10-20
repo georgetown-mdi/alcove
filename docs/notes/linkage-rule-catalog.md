@@ -56,7 +56,9 @@ Two bands are offered:
 
 No rule is offered below 95%.
 A lower band, such as 90%, is added only when a rule has evidence placing it there.
-An operator selects the rules by band; the screens an operator sees show the band, and this catalog keeps the evidence and the reasoning behind it.
+An operator selects the rules by band, and this catalog keeps the evidence and the reasoning behind it.
+The screens an operator sees name each floor by a label with no percentage: **Highest certainty only** for 99% and **Highest certainty, followed by others** for 95%.
+The maintainer chose labels because one false pair in 100 is a high false-positive rate, and the studies behind the bands may not generalize to the files Alcove links, so a percentage on the screen would mislead.
 Why two bands and not three: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-two-bands).
 
 ### The evidence standard

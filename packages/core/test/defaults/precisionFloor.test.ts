@@ -12,8 +12,8 @@ import {
   linkageKeysAtPrecisionFloor,
   linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
+  precisionFloorLabel,
   precisionFloorSelectionStatement,
-  precisionFloorStatement,
   resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
@@ -573,14 +573,12 @@ describe("the guided opt-in offers", () => {
 });
 
 describe("precisionFloorSelectionStatement", () => {
-  test("names the floor alone", () => {
+  test("names the floor by its label, starting lowercase", () => {
     expect(
       precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
-    ).toBe(
-      "the built-in rules at 95% precision and above that your file supplies",
-    );
+    ).toBe("highest certainty, followed by others");
     expect(precisionFloorSelectionStatement({ floor: 99 })).toBe(
-      "the built-in rules at 99% precision and above that your file supplies",
+      "highest certainty only",
     );
   });
 });
@@ -595,30 +593,23 @@ describe("PRECISION_FLOORS", () => {
   });
 });
 
-describe("precisionFloorStatement", () => {
-  test("states the 99% floor's share, which selects no rule marked less certain", () => {
-    expect(precisionFloorStatement(99)).toStrictEqual({
-      label: "The built-in rules at 99% precision and above",
-      description:
-        "Of the pairs each rule matches, at least 99 in 100 are the same " +
-        "person.",
-    });
+describe("precisionFloorLabel", () => {
+  test("labels each floor", () => {
+    expect(precisionFloorLabel(99)).toBe("Highest certainty only");
+    expect(precisionFloorLabel(95)).toBe(
+      "Highest certainty, followed by others",
+    );
   });
 
-  test("states the 95% floor's share, except the rules marked less certain", () => {
-    expect(precisionFloorStatement(95)).toStrictEqual({
-      label: "The built-in rules at 95% precision and above",
-      description:
-        "Of the pairs each rule matches, at least 95 in 100 are the same " +
-        "person, except rules marked less certain, which can fall below " +
-        "that when the files cover many people.",
-    });
+  test("states no percentage", () => {
+    for (const floor of PRECISION_FLOORS)
+      expect(precisionFloorLabel(floor)).not.toMatch(/\d/);
   });
 
   test("names the floor in the words the selection statement uses", () => {
     for (const floor of PRECISION_FLOORS)
-      expect(precisionFloorSelectionStatement({ floor })).toContain(
-        precisionFloorStatement(floor).label.toLowerCase(),
+      expect(precisionFloorSelectionStatement({ floor })).toBe(
+        precisionFloorLabel(floor).toLowerCase(),
       );
   });
 });

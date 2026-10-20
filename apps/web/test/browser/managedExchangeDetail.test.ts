@@ -468,10 +468,10 @@ describe("managed exchange detail local fields", () => {
       }),
     );
 
-    // Anchored so it targets the derived readback line, not the checkbox description
-    // or the cadence note, which also contain "stored secret lapses".
+    // Anchored so it targets the derived readback line, not the cadence note,
+    // which also contains "stored secret stops working".
     await expect
-      .element(page.getByText(/^Stored secret lapses /))
+      .element(page.getByText(/^The secret expires /))
       .toBeInTheDocument();
   });
 
@@ -506,7 +506,7 @@ describe("managed exchange detail local fields", () => {
 
     await expect
       .element(
-        page.getByText("the stored secret does not lapse by age", {
+        page.getByText("the secret does not expire", {
           exact: false,
         }),
       )
@@ -978,13 +978,13 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("30");
     await page
       .getByRole("checkbox", {
-        name: "Set a maximum age for the stored secret",
+        name: "Set an expiration time for the secret",
       })
       .click();
-    await page.getByLabelText("Maximum age in days").fill("7");
+    await page.getByLabelText("Expiration time in days").fill("7");
 
     await expect
-      .element(page.getByText("This cadence outruns the maximum age"))
+      .element(page.getByText("This cadence outruns the expiration time"))
       .toBeInTheDocument();
     // The bound's own terms, and the cadence it is weighed against.
     await expect
@@ -1012,16 +1012,16 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("7");
     await page
       .getByRole("checkbox", {
-        name: "Set a maximum age for the stored secret",
+        name: "Set an expiration time for the secret",
       })
       .click();
-    await page.getByLabelText("Maximum age in days").fill("30");
+    await page.getByLabelText("Expiration time in days").fill("30");
 
     await expect
-      .element(page.getByLabelText("Maximum age in days"))
+      .element(page.getByLabelText("Expiration time in days"))
       .toHaveValue("30");
     expect(
-      page.getByText("This cadence outruns the maximum age").query(),
+      page.getByText("This cadence outruns the expiration time").query(),
     ).toBeNull();
   });
 });
