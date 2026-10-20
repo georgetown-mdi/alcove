@@ -47,7 +47,6 @@ import { canonicalLinkageKeysAndFields } from "@console/loadedConfig";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 import { keysFromOpenedConfiguration as derivedKeysFromOpenedConfiguration } from "@exchange/inviterScreenModel";
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
-import { reviewValidation } from "@psi/inviterModel";
 
 import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
@@ -1223,7 +1222,7 @@ describe("KeysTab: removing every key in Expert authoring", () => {
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
     const floor95 = page.getByRole("radio", {
-      name: precisionFloorStatement(95).label,
+      name: precisionFloorLabel(95),
     });
     await expect.element(floor95).toBeChecked();
 
