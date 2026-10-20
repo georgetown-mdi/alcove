@@ -233,6 +233,27 @@ describe("the settings of the imported document", () => {
     ).toBeNull();
   });
 
+  test("states under the days of inactivity how often the exchange must run", async () => {
+    const created = await createManagedExchange({
+      ...configurationOnly(),
+      tokenMaxAgeDays: 30,
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    const cadenceNote = page.getByText(
+      "This exchange must run within 30 days, or its shared secret expires " +
+        "and you re-invite your partner.",
+      { exact: true },
+    );
+    await expect.element(cadenceNote).toBeInTheDocument();
+
+    await page
+      .getByRole("checkbox", { name: "Shared secret expires after inactivity" })
+      .click();
+    await expect.element(cadenceNote).not.toBeInTheDocument();
+  });
+
   test("the edits land on the stored record and in the download", async () => {
     const created = await createManagedExchange(configurationOnly());
     const downloads = captureDownloads();

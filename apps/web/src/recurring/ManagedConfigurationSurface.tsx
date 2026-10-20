@@ -14,6 +14,7 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
+  maxAgeCadenceNote,
 } from "@exchange/manageOfferModel";
 import { AppPage } from "@components/AppPage";
 import styles from "@styles/app.module.css";
@@ -299,6 +300,7 @@ function ConfigurationSettingsEditor({
     maxAgeDays,
     editMaxAgeDays,
     maxAgeError,
+    tokenMaxAgeDays,
     tokenMaxAgeDaysEdit,
     documentEdits,
     labelValid,
@@ -308,6 +310,7 @@ function ConfigurationSettingsEditor({
     failed,
     submit,
   } = draft;
+  const cadenceNote = maxAgeCadenceNote(tokenMaxAgeDays);
 
   function save() {
     if (!canSave) return;
@@ -359,6 +362,9 @@ function ConfigurationSettingsEditor({
           onChange={editMaxAgeDays}
           mt="xs"
         />
+      )}
+      {cadenceNote !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{cadenceNote}</p>
       )}
       <LocalDocumentFields draft={draft} />
       {failed && (
