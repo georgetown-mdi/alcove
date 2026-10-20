@@ -14,13 +14,10 @@ import type {
 
 /**
  * The refusal a run gets when its connection lists WebSocket relays and the
- * run holds no shared secret to make their proofs from. It names every relay
- * the run lists, and an edit that leaves them all out and still loads:
- * removing `websocket_relay` where that is the one url listed and the
- * invitation does not name it, and otherwise `allowed_relays`. Removing
- * `websocket` from `invitation_relay` can leave a block the relay locator
- * refuses: a `websocket_exchange_id` with no url, a `registrar` with no TURN
- * url, or no url at all.
+ * run holds no shared secret to make their proofs from, naming every relay
+ * the run lists. It names no edit that leaves them out: a webrtc run with no
+ * shared secret is refused whatever relays it lists
+ * (`WEBRTC_RENDEZVOUS_SECRET_REQUIRED` in run/prepare.ts).
  *
  * @internal exported for testing
  */
@@ -31,20 +28,11 @@ export function websocketRelayNeedsSecretMessage(
     (relay) => relay.url,
   );
   const one = urls.length === 1;
-  const own = connection.websocketRelay;
-  const removingOwnLeavesNone =
-    one &&
-    own !== undefined &&
-    urls.includes(own) &&
-    connection.invitationRelay?.websocket !== own;
   return (
     `the WebSocket ${one ? "relay" : "relays"} at ${urls.join(" and ")} ` +
     `${one ? "takes" : "take"} a proof made from the exchange's shared ` +
     "secret, and this run holds none. Establish one with 'alcove invite' " +
-    "and 'alcove accept', or " +
-    (removingOwnLeavesNone
-      ? "remove connection.websocket_relay."
-      : `set connection.allowed_relays to leave ${one ? "it" : "them"} out.`)
+    "and 'alcove accept'."
   );
 }
 
