@@ -1128,7 +1128,7 @@ A linkage key may state a `condition` naming a linkage field that must be missin
 
 **What is admitted.** Only a `date_of_birth` field is admitted. Terms whose condition names an undeclared field, a field of another type, or a field an element of the same key reads are refused when they are parsed. The field a condition names is one the key reads: it is listed in the record's [matching basis](EXCHANGE_RECORD.md#the-matching-basis-against-what-the-run-contributed), and an input with no column for it cannot run the key.
 
-**What a match discloses.** Each round builds the key for only one side's records lacking the field, so a party receiving the result learns, for each pair matched through the key, which of the two records had no valid value. The terms review and consent surfaces state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`).
+**What a match discloses.** Each round builds the key for only one side's records lacking the field, so a party receiving the result learns, for each pair matched through the key, which of the two records had no valid value. The terms review and consent surfaces state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`). The round's element count is sent to the partner like every round's, so in the round where a party builds the key only for its records with no valid date of birth, that count tells the partner how many of that party's records still unmatched at that round have no valid date of birth, one element for each distinct value those records give the key.
 
 ### A terms change at the terms exchange
 

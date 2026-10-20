@@ -545,8 +545,8 @@ These are requirements, not designs, sorted by whether Alcove builds them.
   mobile phones were not compared. `phone_number` is one untyped field. No
   rule depends on it.
 - **A name suffix field, by decision.** No suffix rule ships; the contact
-  rules with no date of birth wait on the missing-date condition instead. See
-  [Name suffixes](#name-suffixes).
+  rules with no date of birth are to run through the missing-date condition
+  instead, and are not yet built-in keys. See [Name suffixes](#name-suffixes).
 - **A name-frequency condition**, which `FN3 + LN + DOB` for uncommon names
   would need: a frequency score for the first and last name combination with a
   cut point, as The Link King computes (Campbell et al. 2006). A general tool
@@ -594,11 +594,12 @@ no date of birth, where the same-name parent and child on a household phone or
 email is the floor (rules 35, 36, 36a, 38 and 39). No suffix field is built.
 The element would remove the parent-and-child pair only where both sides record
 the suffix, at the cost of the pair where only one side did. The five rules
-wait instead on a per-side missing-date condition: each would run without the
-suffix, only where one party's record has no date of birth, so a parent and
-child whose records both hold a date are left to the rules that compare it.
-Suffixes stay stripped from the name fields. The bands do not rise, because
-the phone and email floor is unmeasured.
+are to run instead through the per-side missing-date condition, and are not
+yet built-in keys: each would run without the suffix, only where one party's
+record has no date of birth, so a parent and child whose records both hold a
+date are left to the rules that compare it. Suffixes stay stripped from the
+name fields. The bands do not rise, because the phone and email floor is
+unmeasured.
 
 ## The acceptance-evidence bar
 

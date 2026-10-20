@@ -37,4 +37,5 @@
 - - -> **What a match discloses.**
 - - -> Each round builds the key for only one side's records lacking the field, so a party receiving the result learns, for each pair matched through the key, which of the two records had no valid value.
 - - -> The terms review and consent surfaces state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`).
+- - -> The round's element count is sent to the partner like every round's, so in the round where a party builds the key only for its records with no valid date of birth, that count tells the partner how many of that party's records still unmatched at that round have no valid date of birth, one element for each distinct value those records give the key.
 - - -> For a [key with a missing-field condition](#keys-with-a-missing-field-condition) the name is followed by whose record lacked the field, from the writing party's side: `<name> (your record has no valid date of birth)` or `<name> (partner's record has no valid date of birth)`.

@@ -26,7 +26,7 @@ A rule matches two records only when every element agrees exactly.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
   `FN` is a first name of at least two letters: cleaning keeps a one-letter first name for the `FN1` rules, and every rule on `FN` drops it, since a shared initial is much weaker evidence than a shared full first name.
 - `SFX` is a name suffix (JR, SR, II, III, IV).
-  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they wait on a per-side missing-date condition instead ([Status](#status)).
+  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they are to run through the per-side missing-date condition instead, and are not yet built-in keys ([Status](#status)).
   Suffixes stay stripped from `LN` and `FN`.
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
@@ -511,7 +511,7 @@ Catches any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
 A suffix would remove that pair only where both sides record one, and no suffix field is built.
-The rule waits instead on a per-side missing-date condition: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
+The rule is to run instead through the per-side missing-date condition, and is not yet a built-in key: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
 Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
