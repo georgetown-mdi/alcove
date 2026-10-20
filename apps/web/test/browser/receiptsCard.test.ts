@@ -13,6 +13,8 @@ import {
   IDENTITY_DEFAULT_LOCATION_LABEL,
   IDENTITY_LABEL_REQUIRED_REASON,
   RECEIPTS_DEFAULT,
+  RETENTION_NOTE_NOTICE,
+  RETENTION_NOTE_PLACEHOLDER,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
 } from "@psi/receiptsModel";
 import {
@@ -229,7 +231,7 @@ const RECEIPTS_CARD = /Receipts and record keeping/;
 const modeSelect = () => page.getByLabelText("What this exchange produces");
 
 const retentionNote = () =>
-  page.getByLabelText("Retention note for your own record");
+  page.getByLabelText("Retention note", { exact: true });
 
 const createButton = () =>
   page.getByRole("button", { name: "Create or show my fingerprint" });
@@ -618,6 +620,20 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
     expect(document.getElementById(describedBy ?? "")?.textContent).toBe(
       IDENTITY_LABEL_REQUIRED_REASON,
     );
+  });
+});
+
+describe("ReceiptsCard: the retention note", () => {
+  test("says where the console saves it, with an example", async () => {
+    stubSigningApi();
+    await renderCard();
+
+    await expect
+      .element(retentionNote())
+      .toHaveAccessibleDescription(RETENTION_NOTE_NOTICE);
+    await expect
+      .element(retentionNote())
+      .toHaveAttribute("placeholder", RETENTION_NOTE_PLACEHOLDER);
   });
 });
 

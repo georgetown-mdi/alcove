@@ -16,6 +16,8 @@ import {
   MAX_AGE_DAYS_LABEL,
   MAX_AGE_LABEL,
   RETENTION_NOTE_LABEL,
+  RETENTION_NOTE_NOTICE_WEB,
+  RETENTION_NOTE_PLACEHOLDER,
 } from "@psi/receiptsModel";
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { probeManagedStoreOpen } from "@psi/managed/managedExchangeStore";
@@ -179,7 +181,7 @@ export function ManageExchangeOffer({
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {workingDirectoryGrantSupported()
-          ? `Each later run reads its input from ${MANAGED_INPUT_FILE_NAME} in a folder you choose on this exchange's page after you save it. On that page you can run it yourself or set it to run on a schedule.`
+          ? `Each later run reads its input from ${MANAGED_INPUT_FILE_NAME} in a folder you choose on this exchange's page after you save it. On that page you can run it yourself or schedule it to run while the Alcove app is open.`
           : "You will choose your input file for each run. This browser cannot give a site a folder to read it from."}
       </p>
       <TextInput
@@ -219,6 +221,8 @@ export function ManageExchangeOffer({
       )}
       <Textarea
         label={RETENTION_NOTE_LABEL}
+        description={RETENTION_NOTE_NOTICE_WEB}
+        placeholder={RETENTION_NOTE_PLACEHOLDER}
         autosize
         minRows={2}
         maxRows={5}

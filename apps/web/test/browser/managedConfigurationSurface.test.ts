@@ -221,7 +221,7 @@ describe("the settings of the imported document", () => {
     await expect
       .element(
         page.getByRole("textbox", {
-          name: "Retention note for your own record",
+          name: "Retention note",
         }),
       )
       .toHaveValue(note);
@@ -242,7 +242,7 @@ describe("the settings of the imported document", () => {
       await expect
         .element(
           page.getByRole("textbox", {
-            name: "Retention note for your own record",
+            name: "Retention note",
           }),
         )
         .toBeInTheDocument();
@@ -252,9 +252,7 @@ describe("the settings of the imported document", () => {
       await page
         .getByRole("combobox", { name: "How your file separates fields" })
         .selectOptions(";");
-      await page
-        .getByRole("textbox", { name: "Retention note for your own record" })
-        .fill(note);
+      await page.getByRole("textbox", { name: "Retention note" }).fill(note);
       await page.getByRole("button", { name: "Save settings" }).click();
 
       await expect

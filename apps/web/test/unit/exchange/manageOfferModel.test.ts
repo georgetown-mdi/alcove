@@ -461,15 +461,10 @@ describe("the retention note at setup", () => {
 });
 
 describe("the label guidance", () => {
-  test("directs the operator to keep sensitive counterparty detail out", () => {
-    expect(LABEL_GUIDANCE).toContain("Name the partnership");
-    expect(LABEL_GUIDANCE.toLowerCase()).toContain("never sent");
-    expect(LABEL_GUIDANCE).toContain("Keep sensitive details out of it.");
-  });
-
-  test("names where the label appears", () => {
-    const guidance = LABEL_GUIDANCE.toLowerCase();
-    expect(guidance).toContain("results file names");
-    expect(guidance).toContain("notifications");
+  test("says the label is never sent and names where it appears", () => {
+    expect(LABEL_GUIDANCE).toBe(
+      "A name for this exchange. It is never sent to your partner, but it " +
+        "appears in results file names and notifications.",
+    );
   });
 });

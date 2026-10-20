@@ -281,6 +281,24 @@ describe("saved list route: the always-list surface", () => {
     await expect
       .element(page.getByRole("button", { name: "Import a file" }))
       .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "Choose a backup file (.json) or an alcove.yaml. Add its " +
+            ".alcove.key to run the exchange here.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "The key file's name starts with a dot, so your file chooser may " +
+            "hide it.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
 
     // No stale run rows leak into the empty state.
     expect(page.getByRole("button", { name: "Run" }).query()).toBeNull();

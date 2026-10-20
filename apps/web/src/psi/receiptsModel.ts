@@ -824,19 +824,23 @@ export const CERTIFICATE_EXPORT_NOTICE =
   "receipt without either party's help.";
 
 /** The retention note field's label, on every surface that authors it. */
-export const RETENTION_NOTE_LABEL = "Retention note for your own record";
+export const RETENTION_NOTE_LABEL = "Retention note";
 
-/** The retention note field's example, on the console. */
+/** The retention note field's example, on every surface that authors it. */
 export const RETENTION_NOTE_PLACEHOLDER =
-  "Filed in the association database; kept six years under the records schedule, then purged.";
+  "Filed in our data warehouse; kept six years under our records schedule, then deleted.";
 
-/** What a surface authoring the retention note says about its audience and its
- * limits. */
+/** Where the console keeps the retention note: the exchange record and the
+ * configuration it composes. */
 export const RETENTION_NOTE_NOTICE =
-  "This note is filed with your own exchange record and nothing else: it is " +
-  "never sent to your partner, never checked against theirs, and never part of " +
-  "the agreed terms. Write where this result is filed and how long it is kept - " +
-  "never a name, an identifier, or any value from the data.";
+  "It is never sent to your partner, but it is saved with your exchange " +
+  "records and configuration.";
+
+/** Where the web app keeps the retention note: the stored exchange record,
+ * every backup file, and every exported configuration. */
+export const RETENTION_NOTE_NOTICE_WEB =
+  "It is never sent to your partner, but it is saved with your exchange " +
+  "records, backup files, and configurations.";
 
 /** The label of the control that opts in to the shared secret's time limit,
  * on every surface that authors it. */

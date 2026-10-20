@@ -490,7 +490,7 @@ describe("the open configuration over the files it is derived across", () => {
 
     await openDisclosure(/Receipts and record keeping/);
     await userEvent.fill(
-      page.getByLabelText("Retention note for your own record"),
+      page.getByLabelText("Retention note", { exact: true }),
       "Destroyed after 90 days.",
     );
     await expect
