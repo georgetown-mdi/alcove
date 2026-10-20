@@ -11,6 +11,11 @@ import {
 } from "../linkageSatisfiability.js";
 import { displayText } from "../utils/sanitizeForDisplay.js";
 import { linkageKeyIsLessCertain } from "./lessCertainKey.js";
+import { missingFieldConditionStatement } from "./consentFacts.js";
+import {
+  admitsMissingFieldConditionType,
+  MISSING_FIELD_CONDITION_TYPE_WORDS,
+} from "../linkageKeyCondition.js";
 import {
   frozenLookupTable,
   frozenLookupTableEntry,
@@ -350,6 +355,14 @@ export interface InvitationKeySummary {
    * table's.
    */
   lessCertainHeaderMarker?: Displayable;
+  /**
+   * The line stating the key's missing-field condition
+   * (`missingFieldConditionStatement`, consentFacts.ts), present only for a
+   * key declaring one. Fixed copy naming the field by its type; only a field
+   * the terms do not declare, which a parse refuses, is named by its
+   * sanitized name.
+   */
+  condition?: Displayable;
 }
 
 /**
@@ -1013,6 +1026,19 @@ function summarizeKey(
       : displayText`(either order not supported)`
     : undefined;
   const lessCertain = linkageKeyIsLessCertain(key, fields);
+  let condition: Displayable | undefined;
+  if (key.condition !== undefined) {
+    const type = fieldByName.get(key.condition.missingField);
+    const words =
+      type === undefined
+        ? redactAndSanitizeForDisplay(key.condition.missingField)
+        : admitsMissingFieldConditionType(type)
+          ? MISSING_FIELD_CONDITION_TYPE_WORDS[type]
+          : COMPACT_FIELD_TYPE_LABELS[type];
+    condition = redactAndSanitizeForDisplay(
+      missingFieldConditionStatement(words),
+    );
+  }
 
   return {
     id: key.name,
@@ -1030,6 +1056,7 @@ function summarizeKey(
     lessCertainHeaderMarker: lessCertain
       ? displayText`(less certain)`
       : undefined,
+    ...(condition !== undefined && { condition }),
   };
 }
 

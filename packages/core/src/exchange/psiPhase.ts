@@ -10,6 +10,7 @@ import {
 } from "../psi/link.js";
 import { connectionEndReader } from "../connection/messageConnection.js";
 import { InternalConsistencyError } from "../errors.js";
+import { linkageRounds, roundMatchedKeyName } from "../linkageKeyCondition.js";
 import { getLogger } from "../utils/logger.js";
 import { sanitizeErrorForDisplay } from "../utils/sanitizeErrorForDisplay.js";
 
@@ -246,18 +247,21 @@ export async function runPsiPhase(p: {
     intersectionCount,
     entityClusters,
     matchedKeyOfPair: reportMatchedKeys
-      ? matchedKeyNames(linkageTerms, associationTable, roundOfPair)
+      ? matchedKeyNames(linkageTerms, isReceiver, associationTable, roundOfPair)
       : undefined,
   };
 }
 
 /**
- * The agreed linkage key's name for each pair's round. A round count or table
- * length that does not line up is an internal fault, refused rather than
- * written into a result column that would name the wrong key.
+ * The name of each pair's round ({@link roundMatchedKeyName}): the agreed
+ * linkage key's name, and for a half of a key with a missing-field condition,
+ * whose record lacked the field. A round count or table length that does not
+ * line up is an internal fault, refused rather than written into a result
+ * column that would name the wrong key.
  */
 function matchedKeyNames(
   linkageTerms: LinkageTerms,
+  isReceiver: boolean,
   associationTable: AssociationTable | undefined,
   roundOfPair: Array<number> | undefined,
 ): Array<string> {
@@ -270,13 +274,14 @@ function matchedKeyNames(
       `the cascade reported ${roundOfPair.length} round(s) for ` +
         `${associationTable[0].length} matched pair(s)`,
     );
-  return roundOfPair.map((round) => {
-    const key = linkageTerms.linkageKeys[round];
-    if (key === undefined)
+  const rounds = linkageRounds(linkageTerms.linkageKeys);
+  return roundOfPair.map((roundIndex) => {
+    const round = rounds[roundIndex];
+    if (round === undefined)
       throw new InternalConsistencyError(
-        `a pair was matched in round ${round}, outside the ` +
-          `${linkageTerms.linkageKeys.length} agreed linkage key(s)`,
+        `a pair was matched in round ${roundIndex}, outside the ` +
+          `${rounds.length} round(s) of the agreed linkage keys`,
       );
-    return key.name;
+    return roundMatchedKeyName(round, isReceiver, linkageTerms.linkageFields);
   });
 }

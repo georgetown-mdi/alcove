@@ -11,8 +11,9 @@ import { RoundSetCounter, requireSingleCandidate } from "../psi/link.js";
 import {
   declaredKeyWidth,
   localFanOutFactor,
-  StandardizedKeyIterable,
+  roundKeyIterable,
 } from "../standardization.js";
+import { linkageRounds } from "../linkageKeyCondition.js";
 import { yieldToEventLoop } from "../utils/eventLoop.js";
 
 import type { MessageConnection } from "../connection/messageConnection.js";
@@ -211,8 +212,9 @@ async function assertFirstRoundFits(
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
   if (linkageTerms.linkageStrategy === "single-pass") return;
-  const key = linkageTerms.linkageKeys[0];
-  if (key === undefined) return;
+  const firstRound = linkageRounds(linkageTerms.linkageKeys).at(0);
+  if (firstRound === undefined) return;
+  const { key } = firstRound;
   // Every row contributes at most the key's declared width of candidates, so
   // a dataset whose rows cannot reach the count is not read at all.
   const candidateCeiling =
@@ -265,12 +267,11 @@ async function assertFirstRoundFits(
       options.signal?.throwIfAborted();
       let lastReportAt = performance.now();
       const counter = new RoundSetCounter(keepsDuplicates);
-      const records = new StandardizedKeyIterable(
-        key,
+      const records = roundKeyIterable(
+        firstRound,
         dataset,
         rowCount,
         isReceiver,
-        0,
         false,
       );
       for (const candidates of records) {

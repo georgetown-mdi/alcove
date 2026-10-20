@@ -127,10 +127,13 @@ export const hostileTerms: LinkageTerms = {
       ],
       swap: [`elem${RLO}one`, `last${BEL}name`],
     },
-    // Names alone, so the summary holds the less certain marker too.
+    // Names alone, so the summary holds the less certain marker too, and a
+    // condition naming an undeclared field, the one condition line that holds
+    // partner text.
     {
       name: `key${RLO}two`,
       elements: [{ field: "first_name" }, { field: `last${BEL}name` }],
+      condition: { missingField: `birth${ESC}date` },
     },
   ],
   linkageRuleSet: {

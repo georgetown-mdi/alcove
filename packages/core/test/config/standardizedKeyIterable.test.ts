@@ -30,7 +30,7 @@ const rawRows: ReadonlyArray<Record<string, string>> = [
     ssn: "",
     last_name: "NOSSN",
     first_name: "NOISY",
-    date_of_birth: "19800101",
+    date_of_birth: "19800102",
   },
 ];
 
@@ -116,7 +116,7 @@ describe("StandardizedKeyIterable — basic concatenation", () => {
 
   test("treats an empty-string field value as a real value, not exclusion", () => {
     // Row 2 has an empty SSN; buildKeyStrings concatenates "" like any other value.
-    expect(iter.at(2)).toBe("NOSSN19800101");
+    expect(iter.at(2)).toBe("NOSSN19800102");
   });
 
   test("Symbol.iterator agrees with at()", () => {

@@ -218,8 +218,9 @@ const FUZZY_CASES: ReadonlyArray<FuzzyCase> = [
   { kind: "edit_distances", initiator: "SMITH", responder: "SMYTH" },
   // The year either side, on the canonical date layout.
   { kind: "adjacent_years", initiator: "19900115", responder: "19910115" },
-  // The day either side, here across a year boundary.
-  { kind: "adjacent_days", initiator: "19991231", responder: "20000101" },
+  // The day either side, here across a month boundary. A year boundary reaches
+  // 1 January, a filler date no key reads.
+  { kind: "adjacent_days", initiator: "19990131", responder: "19990201" },
   // The one date the day and month exchange to.
   { kind: "day_month_swaps", initiator: "19900112", responder: "19901201" },
 ];

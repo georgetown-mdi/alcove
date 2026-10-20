@@ -11,6 +11,7 @@ import type { LinkageKey, LinkageTerms } from "./config/linkageTermsSchema.js";
 import { InternalConsistencyError, UsageError } from "./errors.js";
 import { fuzzyCandidateCeiling } from "./fuzzyComparisons.js";
 import { elementValueWidthBound } from "./keyElementWidth.js";
+import { keyRoundCount } from "./linkageKeyCondition.js";
 
 /**
  * The standardization functions that expand one value into several match
@@ -226,7 +227,8 @@ export function termsDeclareCandidateSet(terms: LinkageTerms): boolean {
 
 /**
  * A party's effective key count: the sum of {@link declaredKeyWidth} over the
- * agreed keys, the same on both parties. Times a declared record count it gives
+ * agreed keys' rounds (`linkageRounds`, so a key with a missing-field condition
+ * counts twice), the same on both parties. Times a declared record count it gives
  * that party's value slots. Local standardization is not read
  * ({@link localFanOutFactor})
  * (docs/spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare).
@@ -261,7 +263,7 @@ function effectiveKeyCountOrRefusal(
       return {
         refusal: { message: verdict.refusal, path: ["linkageKeys", keyIndex] },
       };
-    effectiveKeyCount += verdict.width;
+    effectiveKeyCount += verdict.width * keyRoundCount(key);
   }
   if (effectiveKeyCount > MAX_EFFECTIVE_KEY_COUNT)
     return {
