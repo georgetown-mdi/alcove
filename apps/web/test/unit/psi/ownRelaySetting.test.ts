@@ -12,6 +12,7 @@ import {
   webSocketRelaysForRun,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import type { RelayLocator } from "@psi/transport/rendezvous";
@@ -419,6 +420,26 @@ describe("the WebSocket relays a run's plan lists", () => {
       SITE_WEBSOCKET,
     ]);
     expect(enroll).toHaveBeenCalledOnce();
+  });
+
+  test("a run whose allowed relays keep only the default WebSocket relay url enrolls nowhere and lists it not", async () => {
+    const enroll = vi.fn(enrolled);
+    const onRunNotice = vi.fn();
+    const site = {
+      ...SITE,
+      websocketUrl: "wss://site-wsrelay.example.com/relay",
+    };
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      { websocket: site.websocketUrl },
+      ["site-wsrelay.example.com"],
+      { readOwn: ownWithWebSocket, setting: () => site, enroll, onRunNotice },
+    );
+    expect(enroll).not.toHaveBeenCalled();
+    expect(plan.websocketRelays).toEqual([]);
+    expect(onRunNotice).not.toHaveBeenCalledWith(
+      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+    );
   });
 
   test("the default relay's url is left out when the run could not enroll there, even where the invitation names it", async () => {

@@ -308,33 +308,28 @@ describe("the WebSocket relays a run lists", () => {
     ).toEqual([{ source: "own", url: own }]);
   });
 
-  test("a run enrolls at the invitation's registrar when it lists the invitation's WebSocket relay", () => {
+  test("a run listing the invitation's WebSocket relay enrolls at no registrar for it", () => {
     const invitationRelay = {
       websocket: partner,
       registrar: "https://registrar.partner.example.net",
     };
-    expect(runEnrollsAtInvitationRegistrar({ invitationRelay })).toBe(true);
+    expect(runEnrollsAtInvitationRegistrar({ invitationRelay })).toBe(false);
     expect(
       runEnrollsAtInvitationRegistrar({
         websocketRelay: partner,
         invitationRelay,
         allowedRelays: ["partner.example.net"],
       }),
-    ).toBe(true);
+    ).toBe(false);
     const leftOut = { invitationRelay, allowedRelays: ["own.example.org"] };
     expect(runEnrollsAtInvitationRegistrar(leftOut)).toBe(false);
     expect(allowedRelaysLeaveOutInvitationRelay(leftOut)).toBe(true);
     expect(allowedRelaysLeaveOutInvitationRelay({ invitationRelay })).toBe(
       false,
     );
-    expect(
-      runEnrollsAtInvitationRegistrar({
-        invitationRelay: { websocket: partner },
-      }),
-    ).toBe(false);
   });
 
-  test("a kept WebSocket relay of the invitation's enrolls where the setting leaves out its TURN url", () => {
+  test("a kept WebSocket relay of the invitation's enrolls nowhere where the setting leaves out its TURN url", () => {
     const connection = {
       turn: [{ url: "turns:own.example.org:443?transport=tcp" }],
       invitationRelay: {
@@ -344,7 +339,22 @@ describe("the WebSocket relays a run lists", () => {
       },
       allowedRelays: ["own.example.org", "partner.example.net"],
     };
-    expect(runEnrollsAtInvitationRegistrar(connection)).toBe(true);
+    expect(runEnrollsAtInvitationRegistrar(connection)).toBe(false);
     expect(allowedRelaysLeaveOutInvitationRelay(connection)).toBe(false);
+  });
+
+  test("beside the invitation's WebSocket relay, the TURN url it allocates on still decides enrollment", () => {
+    const invitationRelay = {
+      turn: ["turns:partner-turn.example.net:443?transport=tcp"],
+      websocket: partner,
+      registrar: "https://registrar.partner.example.net",
+    };
+    expect(runEnrollsAtInvitationRegistrar({ invitationRelay })).toBe(true);
+    expect(
+      runEnrollsAtInvitationRegistrar({
+        turn: [{ url: "turns:own.example.org:443?transport=tcp" }],
+        invitationRelay,
+      }),
+    ).toBe(false);
   });
 });
