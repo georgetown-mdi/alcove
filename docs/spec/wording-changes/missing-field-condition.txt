@@ -28,6 +28,7 @@
 - - -> Both parties derive the two rounds from the agreed terms and the resolved roles alone.
 - - -> The condition is part of the key, inside the terms both parties compare whole at the terms exchange and the agreed-terms hash covers.
 - - -> **Every per-round quantity counts both rounds:** the round count the strategies and the frame bounds read, the stage list, and the effective key count, to which the key contributes its width once per round.
+- - -> Where the key is first, the [first-round count at the start](#the-memory-ceiling-and-the-csv-intake-cap) and the count against the partner's [receive ceiling](#the-receive-ceiling) hold both its rounds to the bound, since in either role a party builds the key for every record in one of them.
 - - -> Under `single-pass` the two rounds are two keys of the one batch.
 - - -> A count-only (`psi-c`) exchange runs one key in one round, so terms stating a condition under it are refused.
 - - -> **What is admitted.**

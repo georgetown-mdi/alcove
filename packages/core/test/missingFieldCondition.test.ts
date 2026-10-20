@@ -7,6 +7,11 @@ import {
   type ExchangeResult,
 } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { RoundSetLimitError } from "../src/errors";
+import {
+  assertFirstRoundWithinPartnerCeiling,
+  assertFirstRoundWithinSetMaximum,
+} from "../src/exchange/firstRoundCapacity";
 import {
   parseLinkageTerms,
   referencedLinkageFieldNames,
@@ -429,6 +434,77 @@ describe("the rounds a conditioned key runs as", () => {
         missingField: "date_of_birth",
       },
     ]);
+  });
+});
+
+describe("the first-round check on a conditioned first key", () => {
+  // Every record has a valid date, so in each role one half of the key is
+  // built for no record and the other for all of them.
+  const datedRows = (count: number): Row[] =>
+    Array.from({ length: count }, (_, i) =>
+      person(
+        `F${String.fromCharCode(65 + (i % 26))}${i}`,
+        `L${i}`,
+        String(1000 + i),
+        "03/14/1980",
+      ),
+    );
+  const { condition: _, ...plainKey } = NO_DATE_KEY;
+  const prepared = (key: LinkageKey, rows: Row[]) =>
+    prepareForExchange(
+      { linkageTerms: { ...TERMS, identity: "A", linkageKeys: [key] } },
+      "A",
+      rows,
+      COLUMNS,
+    );
+  const refusalOf = async (
+    check: Promise<void>,
+  ): Promise<RoundSetLimitError | undefined> => {
+    try {
+      await check;
+    } catch (err) {
+      if (err instanceof RoundSetLimitError) return err;
+      throw err;
+    }
+    return undefined;
+  };
+
+  test("refuses before contact exactly where the same key with no condition is refused", async () => {
+    for (const key of [plainKey, NO_DATE_KEY]) {
+      const refusal = await refusalOf(
+        assertFirstRoundWithinSetMaximum(prepared(key, datedRows(50)), {
+          maxValues: 10,
+        }),
+      );
+      expect(refusal?.reason).toBe("over-set-maximum");
+      expect(refusal?.message).toMatch(/at least 50 values to send/);
+    }
+  });
+
+  test("admits a conditioned first key whose two rounds both fit", async () => {
+    expect(
+      await refusalOf(
+        assertFirstRoundWithinSetMaximum(prepared(NO_DATE_KEY, datedRows(10)), {
+          maxValues: 10,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  test("holds both rounds to the partner's receive ceiling in the resolved role", async () => {
+    for (const isReceiver of [true, false]) {
+      const [conn] = createMessagePipe();
+      const refusal = await refusalOf(
+        assertFirstRoundWithinPartnerCeiling(
+          conn,
+          prepared(NO_DATE_KEY, datedRows(50)),
+          isReceiver,
+          10,
+          undefined,
+        ),
+      );
+      expect(refusal?.reason).toBe("over-partner-ceiling");
+    }
   });
 });
 
