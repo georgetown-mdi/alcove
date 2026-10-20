@@ -293,8 +293,8 @@ describe("saved list route: the always-list surface", () => {
     await expect
       .element(
         page.getByText(
-          "The key file's name starts with a dot, so your file chooser may " +
-            "hide it.",
+          "Choose both files at once. The key file's name starts with a " +
+            "dot, so your file chooser may hide it.",
           { exact: true },
         ),
       )

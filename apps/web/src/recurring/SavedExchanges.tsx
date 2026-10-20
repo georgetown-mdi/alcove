@@ -751,10 +751,12 @@ const IMPORT_FILE_CHOICES =
   "Choose a backup file (.json) or an alcove.yaml. Add its .alcove.key to " +
   "run the exchange here.";
 
-/** The note the import gives on choosing the key file: the name Alcove
- * writes it under starts with a dot, which file choosers hide by default. */
+/** The note the import gives on choosing the key file: in the same selection
+ * as its `alcove.yaml`, which is the only way the import pairs them, and
+ * under a name starting with a dot, which file choosers hide by default. */
 const KEY_FILE_CHOOSER_NOTE =
-  "The key file's name starts with a dot, so your file chooser may hide it.";
+  "Choose both files at once. The key file's name starts with a dot, so " +
+  "your file chooser may hide it.";
 
 /** The standing import affordance, shared by every list state -- empty,
  * populated, and read-failed -- so all render one markup. It takes either file
