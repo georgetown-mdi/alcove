@@ -1,0 +1,40 @@
+- `effectiveKeyCount` is `sum(w[j])` over the agreed keys. -> `effectiveKeyCount` is `sum(w[j])` over the agreed keys, a key with a [missing-field condition](#keys-with-a-missing-field-condition) counted once for each of its two rounds.
+- It equals `keyCount` exactly when no key's elements declare an expansion, and it is the same number on both parties, since both derive it from the same agreed terms. -> It equals `keyCount`, which counts rounds the same way, exactly when no key's elements declare an expansion, and it is the same number on both parties, since both derive it from the same agreed terms.
+- - -> Filler dates
+- - -> A cleaned date whose month and day are both `01` (`YYYY0101`) is a filler: a system writes 1 January for an unknown month and day, and some assign 1 January of a birth decade.
+- - -> It is kept rather than dropped, since it is also a real birth date for some people, and marked:
+- - -> No key element reads it, so no key built on the date of birth matches it, the one-year, one-day and day/month expansions included: a partner's `19800102` expanded by one day does not meet this party's `19800101`.
+- - -> A [missing-field condition](PROTOCOL.md#keys-with-a-missing-field-condition) counts it as missing, so the record takes part in a key that accepts a missing date of birth.
+- - -> The cleaned value stays in the field, so the [shared-value screens](#shared-value-screens) still read it as part of a person.
+- - -> The mark is applied when the keys are built, to every `date_of_birth` field whatever pipeline cleaned it, and it is not a step an operator can remove.
+- - -> It reads the cleaned value in the `YYYYMMDD` form, so a party whose own cleaning writes another form marks nothing.
+- - -> `"01/01/1985"` | `"19850101"`
+- - -> **A key condition's field is referenced.**
+- - -> The field a key's [missing-field condition](PROTOCOL.md#keys-with-a-missing-field-condition) names is in the basis as an element's field is: whether a record had a valid value for it decided whether the record took part in the key's rounds.
+- - -> Keys with a missing-field condition
+- - -> A linkage key may state a `condition` naming a linkage field that must be missing on one side ([Keys that run only where a field is missing](../EXCHANGE_REFERENCE.md#keys-that-run-only-where-a-field-is-missing)).
+- - -> Such a key runs as two adjacent rounds at its own position in the key order, one per PSI role [resolved above](#role-resolution-and-work-minimization).
+- - -> In the first round the receiver builds the key only for its records with no valid value for the field, and the sender builds it for every record.
+- - -> In the second the two roles exchange.
+- - -> The reference implementation is `linkageRounds` (`packages/core/src/linkageKeyCondition.ts`).
+- - -> **What counts as missing.**
+- - -> A record has no valid value for the field when, after its own party's cleaning, the field holds no value a key reads: the cleaning dropped the value, or the value is a [filler date of birth](DEFAULT_STANDARDIZATION.md#filler-dates).
+- - -> A value the cleaning finds invalid, such as an unparseable date or a placeholder, is therefore missing, never a disagreement.
+- - -> **Which pairs it matches.**
+- - -> A record whose field is valid is not built for the round in which its role is filtered, so a pair whose two values are both valid never matches through the key, whether the values agree or not.
+- - -> The keys before it in the cascade claim the pairs whose values agree.
+- - -> A pair whose two records both lack the field matches in the first round, the receiver's.
+- - -> **No frame or field is added.**
+- - -> Both parties derive the two rounds from the agreed terms and the resolved roles alone.
+- - -> The condition is part of the key, inside the terms both parties compare whole at the terms exchange and the agreed-terms hash covers.
+- - -> **Every per-round quantity counts both rounds:** the round count the strategies and the frame bounds read, the stage list, and the effective key count, to which the key contributes its width once per round.
+- - -> Under `single-pass` the two rounds are two keys of the one batch.
+- - -> A count-only (`psi-c`) exchange runs one key in one round, so terms stating a condition under it are refused.
+- - -> **What is admitted.**
+- - -> Only a `date_of_birth` field is admitted.
+- - -> Terms whose condition names an undeclared field, a field of another type, or a field an element of the same key reads are refused when they are parsed.
+- - -> The field a condition names is one the key reads: it is listed in the record's [matching basis](EXCHANGE_RECORD.md#the-matching-basis-against-what-the-run-contributed), and an input with no column for it cannot run the key.
+- - -> **What a match discloses.**
+- - -> Each round builds the key for only one side's records lacking the field, so a party receiving the result learns, for each pair matched through the key, which of the two records had no valid value.
+- - -> The terms review and consent surfaces state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`).
+- - -> For a [key with a missing-field condition](#keys-with-a-missing-field-condition) the name is followed by whose record lacked the field, from the writing party's side: `<name> (your record has no valid date of birth)` or `<name> (partner's record has no valid date of birth)`.
