@@ -8,6 +8,7 @@ import {
   isMaxPeoplePerValueValid,
   lastNameRuleEntryCleaned,
   lastNameRuleEntryNotice,
+  lastNameRuleLastNameNotice,
   nullIfLastNameFromLists,
 } from "@psi/standardizationAuthoring";
 
@@ -26,12 +27,16 @@ import type { StandardizationStep } from "@alcove/core";
 export function CleaningSettingsEditor({
   settings,
   steps,
+  lastNameSteps,
   onChange,
 }: {
   /** The settings the field states. */
   settings: CleaningSettings;
   /** The field's cleaning steps, which a value entry is checked against. */
   steps: ReadonlyArray<StandardizationStep>;
+  /** The steps that clean the party's last names, which a last-name entry is
+   * checked against; `undefined` where the party has no last name column. */
+  lastNameSteps: ReadonlyArray<StandardizationStep> | undefined;
   /** Emit the field's next settings on any edit. */
   onChange: (settings: CleaningSettings) => void;
 }) {
@@ -41,12 +46,31 @@ export function CleaningSettingsEditor({
   const values = nullIfLastName?.values ?? [];
   const lastNames = nullIfLastName?.lastNames ?? [];
   const halfFilledNotice = halfFilledLastNameRuleNotice(values, lastNames);
-  const entryNotices = values.flatMap((entry) => {
+  const valueNotices = values.flatMap((entry) => {
     const cleaned = lastNameRuleEntryCleaned(entry, steps);
     return cleaned === undefined
       ? []
-      : [{ entry, notice: lastNameRuleEntryNotice(entry, cleaned) }];
+      : [
+          {
+            key: `value:${entry}`,
+            notice: lastNameRuleEntryNotice(entry, cleaned),
+          },
+        ];
   });
+  const lastNameNotices =
+    lastNameSteps === undefined
+      ? []
+      : lastNames.flatMap((entry) => {
+          const cleaned = lastNameRuleEntryCleaned(entry, lastNameSteps);
+          return cleaned === undefined
+            ? []
+            : [
+                {
+                  key: `last name:${entry}`,
+                  notice: lastNameRuleLastNameNotice(entry, cleaned),
+                },
+              ];
+        });
 
   const withLimit = (limit: number | undefined): CleaningSettings => ({
     ...(limit === undefined ? {} : { maxPeoplePerValue: limit }),
@@ -117,8 +141,8 @@ export function CleaningSettingsEditor({
           placeholder="Type a last name and press Enter"
         />
         <div aria-live="polite">
-          {entryNotices.map(({ entry, notice }) => (
-            <Text key={entry} size="xs" c="orange.8">
+          {[...valueNotices, ...lastNameNotices].map(({ key, notice }) => (
+            <Text key={key} size="xs" c="orange.8">
               {notice}
             </Text>
           ))}

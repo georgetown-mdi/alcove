@@ -282,15 +282,44 @@ describe("what the acceptor discloses", () => {
     });
   });
 
+  test("a cleaning settings edit records the field's settings whole", () => {
+    const settings = {
+      maxPeoplePerValue: 2,
+      nullIfLastName: { values: ["MARY"], lastNames: ["ROE"] },
+    };
+    const state = accepted({
+      type: "field-cleaning-settings-changed",
+      output: "first_name",
+      settings,
+    });
+    expect(state.columnsState?.settingsOverrides.get("first_name")).toEqual(
+      settings,
+    );
+    const cleared = acceptorScreenReducer(state, {
+      type: "field-cleaning-settings-changed",
+      output: "first_name",
+      settings: {},
+    });
+    expect(cleared.columnsState?.settingsOverrides.get("first_name")).toEqual(
+      {},
+    );
+  });
+
   test("a reset drops every override back to the seed", () => {
-    const edited = acceptorScreenReducer(withProgramCodeSent(accepted()), {
+    const rebound = acceptorScreenReducer(withProgramCodeSent(accepted()), {
       type: "field-input-changed",
       output: "first_name",
       column: "dob",
     });
+    const edited = acceptorScreenReducer(rebound, {
+      type: "field-cleaning-settings-changed",
+      output: "first_name",
+      settings: { maxPeoplePerValue: 2 },
+    });
     expect(disclosedBy(edited)).toContain("program_code");
     const state = acceptorScreenReducer(edited, { type: "columns-reset" });
     expect(state.columnsState?.inputOverrides.size).toBe(0);
+    expect(state.columnsState?.settingsOverrides.size).toBe(0);
     expect(disclosedBy(state)).not.toContain("program_code");
   });
 

@@ -123,6 +123,7 @@ describe("the Cleaning surfaces' coverage-unavailable banner", () => {
         withholdFanOut: false,
         onFieldSteps: () => undefined,
         onFieldInput: () => undefined,
+        onFieldCleaningSettings: () => undefined,
         onReset: () => undefined,
         onBack: () => undefined,
       }),

@@ -194,6 +194,7 @@ import type {
 } from "@alcove/core";
 import type { AcceptorLaunchSource } from "./useAcceptorExchange";
 import type { AcceptorStep } from "./acceptorModel";
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 import type { CoverageInput } from "@components/useNonEmptyRates";
 import type { CsvDelimiterChoice } from "@components/csvDelimiterChoice";
 import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
@@ -1198,6 +1199,10 @@ function AcceptorInvitationScreen({
   };
   const setFieldInput = (output: string, column: string) =>
     dispatch({ type: "field-input-changed", output, column });
+  const setFieldCleaningSettings = (
+    output: string,
+    settings: CleaningSettings,
+  ) => dispatch({ type: "field-cleaning-settings-changed", output, settings });
   const resetColumns = () => dispatch({ type: "columns-reset" });
   const launchExchange = () => {
     if (verdict === undefined || editorState === undefined) return;
@@ -1862,6 +1867,7 @@ function AcceptorInvitationScreen({
                 : {})}
               onFieldSteps={setFieldSteps}
               onFieldInput={setFieldInput}
+              onFieldCleaningSettings={setFieldCleaningSettings}
               onReset={resetColumns}
               onBack={() => goToStep("columns")}
             />

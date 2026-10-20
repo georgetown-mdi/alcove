@@ -290,11 +290,11 @@ const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
 
 /** A Cleaning-tab card as the tab labels it, by its field's type: never the
  * field's own name, which the tab does not show. */
-function fieldCardLabel(fieldType: string | undefined): string {
+export function fieldCleaningCard(fieldType: string | undefined): string {
   return fieldType !== undefined &&
     Object.hasOwn(SEMANTIC_TYPE_LABELS, fieldType)
-    ? SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]
-    : "a field";
+    ? `the ${SEMANTIC_TYPE_LABELS[fieldType as keyof typeof SEMANTIC_TYPE_LABELS]} cleaning`
+    : "a field's cleaning";
 }
 
 /** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
@@ -312,8 +312,8 @@ function cleaningFanOutMessage(
   countOnly: boolean,
 ): string {
   const step =
-    `the ${functionDisplay(refused.functionName).label} step in the ` +
-    `${fieldCardLabel(fieldType)} cleaning from the ` +
+    `the ${functionDisplay(refused.functionName).label} step in ` +
+    `${fieldCleaningCard(fieldType)} from the ` +
     `${sanitizeForDisplay(refused.input)} column`;
   return countOnly
     ? `A count-only exchange matches one value per record, but ${step} ` +
@@ -678,9 +678,9 @@ export function validateAdvancedInvite(
     );
     if (overLimit !== undefined)
       errors.standardization =
-        `Fix or clear the highlighted limit on people sharing one value in the ` +
-        `${fieldCardLabel(terms.linkageFields.find((field) => field.name === overLimit.output)?.type)} ` +
-        "cleaning before generating.";
+        `Fix or clear the highlighted limit on people sharing one value in ` +
+        `${fieldCleaningCard(terms.linkageFields.find((field) => field.name === overLimit.output)?.type)} ` +
+        "before generating.";
   }
 
   // The cleaning fan-out gate, core's own refusal; the key-transform half is

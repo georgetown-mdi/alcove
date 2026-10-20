@@ -5,6 +5,7 @@ import {
   MAX_TRANSFORM_PATTERN_LENGTH,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
   getDefaultStandardization,
+  lastNameColumn,
   prepareForExchange,
   runPipeline,
   safeParseStandardization,
@@ -17,6 +18,7 @@ import {
   NULL_IF_BOTH_VALUES_REFUSAL,
   STANDARDIZATION_EXPERT_FUNCTION_GROUPS,
   STANDARDIZATION_FUNCTION_GROUPS,
+  applyCleaningSettingsOverrides,
   applyInputOverrides,
   applyStepOverrides,
   authorableFunctionNames,
@@ -30,8 +32,10 @@ import {
   inertCoalesceCause,
   isMaxPeoplePerValueValid,
   isStepValid,
+  lastNameCleaningSteps,
   lastNameRuleEntryCleaned,
   lastNameRuleEntryNotice,
+  lastNameRuleLastNameNotice,
   nullIfLastNameFromLists,
   pipelineHasInertCoalesce,
   transformationWithCleaningSettings,
@@ -721,6 +725,117 @@ describe("the settings beside a field's steps", () => {
         nullIfLastName: undefined,
       }),
     ).toEqual(cleared);
+  });
+
+  test("a settings override replaces a field's settings whatever column it reads", () => {
+    const base: Standardization = [
+      stated,
+      { output: "email", input: "mail", steps: [], maxPeoplePerValue: 5 },
+    ];
+    const result = applyCleaningSettingsOverrides(
+      base,
+      new Map([["first_name", { maxPeoplePerValue: 3 }]]),
+    );
+    expect(result).toEqual([
+      {
+        output: "first_name",
+        input: "fname",
+        steps: [{ function: "to_upper_case" }],
+        maxPeoplePerValue: 3,
+      },
+      base[1],
+    ]);
+    expect(applyCleaningSettingsOverrides(base, new Map())).toEqual(base);
+  });
+});
+
+describe("the last names a last-name rule lists", () => {
+  const terms: LinkageTerms = {
+    version: "1.0.0",
+    identity: "party",
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy: "cascade",
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+      { name: "date_of_birth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "names",
+        elements: [{ field: "first_name" }, { field: "last_name" }],
+      },
+    ],
+  };
+  const metadata: Array<ColumnMetadata> = [
+    { name: "given", type: "first_name", role: "linkage", isPayload: false },
+    { name: "surname", type: "last_name", role: "linkage", isPayload: false },
+    { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+  ];
+  const rawRows = [
+    { given: "Jane", surname: "Doe", dob: "1990-02-03" },
+    { given: "John", surname: "Roe", dob: "1985-11-30" },
+  ];
+  const defaults = getDefaultStandardization(metadata, terms);
+  const ownLastName: Standardization = defaults.map((transformation) =>
+    transformation.output === "last_name"
+      ? { ...transformation, steps: [{ function: "trim_whitespace" }] }
+      : transformation,
+  );
+
+  test.each([
+    ["the party's own last-name transformation", ownLastName],
+    [
+      "the default last-name cleaning",
+      defaults.filter((t) => t.output !== "last_name"),
+    ],
+  ])("are cleaned with the steps the run chooses: %s", (_, standardization) => {
+    const steps = lastNameCleaningSteps(
+      standardization,
+      metadata,
+      terms.linkageFields,
+    );
+    expect(steps).toEqual(
+      lastNameColumn(standardization, metadata, terms, rawRows)?.steps,
+    );
+    expect(steps).toBeDefined();
+  });
+
+  test("are cleaned with no steps where the party has no last name column", () => {
+    const withoutLastName = metadata.filter((c) => c.type !== "last_name");
+    expect(
+      lastNameCleaningSteps(defaults, withoutLastName, terms.linkageFields),
+    ).toBeUndefined();
+  });
+
+  test("an entry the last-name cleaning changes is reported with the form it cleans to", () => {
+    const steps = lastNameCleaningSteps(
+      defaults,
+      metadata,
+      terms.linkageFields,
+    );
+    if (steps === undefined) throw new Error("expected last-name steps");
+    expect(lastNameRuleEntryCleaned("DOE", steps)).toBeUndefined();
+    const cleaned = lastNameRuleEntryCleaned("Doe", steps);
+    expect(cleaned).toBe(runPipeline("Doe", steps));
+    expect(cleaned).toBe("DOE");
+    expect(lastNameRuleLastNameNotice("Doe", "DOE")).toBe(
+      'Your last-name cleaning turns "Doe" into "DOE", so it never matches. Enter "DOE" instead.',
+    );
+
+    const dropped = lastNameRuleEntryCleaned("D", steps);
+    expect(dropped).toBeNull();
+    expect(lastNameRuleLastNameNotice("D", null)).toBe(
+      'Your last-name cleaning drops "D", so it never matches. Remove it.',
+    );
+    expect(
+      lastNameRuleLastNameNotice("SMITH-JONES", new Set(["SMITH", "JONES"])),
+    ).toBe(
+      'Your last-name cleaning splits "SMITH-JONES" into "SMITH", "JONES", so it never matches. Enter each part on its own instead.',
+    );
   });
 });
 

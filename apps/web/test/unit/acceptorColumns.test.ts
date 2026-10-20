@@ -58,9 +58,16 @@ import {
   setColumnDisclosure,
   setColumnTypeForMatching,
 } from "@psi/metadataEditing";
+import { cleaningSettingsOf } from "@psi/standardizationAuthoring";
 
-import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  CSVRow,
+  LinkageTerms,
+  Metadata,
+  Standardization,
+} from "@alcove/core";
 import type { AcceptorColumnsState } from "@exchange/acceptorColumnsModel";
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 
@@ -1878,6 +1885,123 @@ describe("the invitation's declared payload set against the marks", () => {
           `${shape} / ${marks}`,
         ).toBe(acceptorLaunchBlockedReason(verdict, editorState, undeclared));
       }
+  });
+});
+
+describe("the acceptor's shared-value limit and last-name rule", () => {
+  const columns = ["first_name", "last_name", "email"];
+  const emailTerms: LinkageTerms = {
+    ...nameTerms,
+    linkageFields: [
+      ...nameTerms.linkageFields,
+      { name: "email", type: "email_address" },
+    ],
+    linkageKeys: [
+      ...nameTerms.linkageKeys,
+      { name: "mail", elements: [{ field: "email" }] },
+    ],
+  };
+  const settingsOf = (
+    standardization: Standardization,
+    output: string,
+  ): CleaningSettings => {
+    const transformation = standardization.find((t) => t.output === output);
+    if (transformation === undefined) throw new Error(`no ${output} cleaning`);
+    return cleaningSettingsOf(transformation);
+  };
+
+  test("the tab starts from the default cleaning's settings", () => {
+    const { standardization } = editorFor(columns, emailTerms).editorState;
+    expect(settingsOf(standardization, "firstName")).toEqual({
+      nullIfLastName: { values: ["JOHN", "JANE"], lastNames: ["DOE"] },
+    });
+    expect(settingsOf(standardization, "lastName")).toEqual({});
+    expect(settingsOf(standardization, "email")).toEqual({
+      maxPeoplePerValue: 5,
+    });
+  });
+
+  test("an edit states the field's settings whole and reaches the launch", () => {
+    const edited: CleaningSettings = {
+      maxPeoplePerValue: 2,
+      nullIfLastName: { values: ["MARY"], lastNames: ["ROE"] },
+    };
+    const { editorState } = editorFor(columns, emailTerms, {
+      settingsOverrides: new Map([
+        ["firstName", edited],
+        ["email", {}],
+      ]),
+    });
+    const launched = acceptorLaunchPayload(editorState).edits.standardization;
+    expect(settingsOf(launched, "firstName")).toEqual(edited);
+    expect(settingsOf(launched, "email")).toEqual({});
+    expect(
+      launched.find((t) => t.output === "email")?.steps?.length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("the settings stay when the field reads another column", () => {
+    const twoNames = ["first_name", "nickname", "last_name"];
+    const seed = acceptorInitialColumnsState(twoNames, "psi");
+    const { editorState } = editorFor(twoNames, nameTerms, {
+      metadata: setColumnTypeForMatching(
+        seed.metadata,
+        "nickname",
+        "first_name",
+      ),
+      inputOverrides: new Map([["firstName", "nickname"]]),
+      settingsOverrides: new Map([["firstName", { maxPeoplePerValue: 4 }]]),
+    });
+    const firstName = editorState.standardization.find(
+      (t) => t.output === "firstName",
+    );
+    expect(firstName?.input).toBe("nickname");
+    expect(settingsOf(editorState.standardization, "firstName")).toEqual({
+      maxPeoplePerValue: 4,
+    });
+  });
+
+  test("a limit the configuration schema refuses blocks the start, naming its card", () => {
+    const withLimit = (maxPeoplePerValue: number) => {
+      const { editorState } = editorFor(columns, emailTerms, {
+        settingsOverrides: new Map([["email", { maxPeoplePerValue }]]),
+      });
+      return acceptorLaunchBlockedReason(
+        acceptorVerdict(columns, emailTerms, editorState),
+        editorState,
+        emailTerms,
+      );
+    };
+    expect(withLimit(0)).toBe(
+      "Fix or clear the highlighted limit on people sharing one value in " +
+        "the Email address cleaning above before you can start.",
+    );
+    expect(withLimit(2.5)).toBe(withLimit(0));
+    expect(withLimit(1)).toBeUndefined();
+  });
+
+  test("a limit on a cleaning whose output names no linkage field reads as a field", () => {
+    const { editorState } = editorFor(columns, emailTerms, {
+      settingsOverrides: new Map([["email", { maxPeoplePerValue: 0 }]]),
+    });
+    const strayOutput = {
+      ...editorState,
+      standardization: editorState.standardization.map((transformation) =>
+        transformation.output === "email"
+          ? { ...transformation, output: "noSuchField" }
+          : transformation,
+      ),
+    };
+    expect(
+      acceptorLaunchBlockedReason(
+        acceptorVerdict(columns, emailTerms, strayOutput),
+        strayOutput,
+        emailTerms,
+      ),
+    ).toBe(
+      "Fix or clear the highlighted limit on people sharing one value in " +
+        "a field's cleaning above before you can start.",
+    );
   });
 });
 
