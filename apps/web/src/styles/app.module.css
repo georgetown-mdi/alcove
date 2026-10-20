@@ -1112,6 +1112,13 @@
   max-width: none;
 }
 
+/* The console column fits three cards, each heading on one line. */
+.lobby.lobbyWide {
+  max-width: 1100px;
+}
+
+/* Each card spans four shared rows (title, body, action, note), so the main
+   buttons line up across the cards in a row. */
 .lobbyActions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1126,8 +1133,10 @@
 }
 
 .actionCard {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  row-gap: 0;
   background: var(--app-column);
   border: 2px solid var(--app-rule);
   border-radius: 10px;
@@ -1135,10 +1144,6 @@
 }
 
 .actionCard > :last-child {
-  margin-bottom: 0;
-}
-
-.actionCard > div:last-child p:last-child {
   margin-bottom: 0;
 }
 
@@ -1274,7 +1279,15 @@
     padding: 24px 16px 32px 16px;
   }
 
+  /* Stacked cards share no rows, so each sizes to its own content. */
+  .lobbyActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .actionCard {
+    display: flex;
+    flex-direction: column;
+    grid-row: auto;
     padding: 18px 16px 20px 16px;
   }
 

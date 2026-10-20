@@ -1836,7 +1836,7 @@ only way to let the exchange file again.
    lets the exchange file its disclosures again from its next run. It asks you to
    confirm, and it keeps the exchange itself -- the agreed terms, the shared
    secret, the schedule, and the run history are untouched. You do not have to
-   delete the exchange to recover its accounting.
+   remove the exchange to recover its accounting.
 
 A cleared accounting displays as empty until the next run files into it. Where
 the run history beside it records a completed run, the page names the two ways

@@ -111,7 +111,13 @@ export function Lobby() {
 
   return (
     <AppPage>
-      <main className={styles.lobby}>
+      <main
+        className={
+          isConsoleBuild()
+            ? `${styles.lobby} ${styles.lobbyWide}`
+            : styles.lobby
+        }
+      >
         <h1>{HOME_HEADLINE}</h1>
         <p className={styles.tagline}>{HOME_TAGLINE}</p>
         <VisuallyHidden component="h2">
@@ -146,26 +152,23 @@ export function Lobby() {
                   setInvitationError(undefined);
               }}
             />
-            <div>
-              <p>
-                <Button variant="outline" mt="sm" onClick={reviewInvitation}>
-                  Review invitation
-                </Button>
-              </p>
-              <p className={`${styles.small} ${styles.sub}`}>
-                You can review the exchange before starting it.
-              </p>
-            </div>
+            <p>
+              <Button variant="outline" onClick={reviewInvitation}>
+                Review invitation
+              </Button>
+            </p>
+            <p className={`${styles.small} ${styles.sub}`}>
+              You can review the exchange before starting it.
+            </p>
           </div>
           {/* The console's third path: a direct exchange the two parties arranged
               out of band (a shared server, no invitation). Console-only -- it drives
               the console's job API, which a hosted deployment does not run. */}
           {isConsoleBuild() && (
             <div className={styles.actionCard}>
-              <h3>Run an exchange you have already arranged</h3>
+              <h3>Enter server information</h3>
               <p className={`${styles.small} ${styles.sub}`}>
-                You and your partner agreed on a server out of band. Choose a
-                file, confirm the terms your file produces, and run - no
+                You and your partner already have a server you will use. No
                 invitation needed.
               </p>
               <p>
@@ -197,12 +200,10 @@ export function Lobby() {
             disabled={addingSamples}
             onClick={() => void loadSample()}
           >
-            {isConsoleBuild()
-              ? "Start with sample data"
-              : "See how it works with example data"}
+            See how it works with example data
           </Anchor>
           {isConsoleBuild()
-            ? " writes two CSVs of synthetic records into your folder and starts an exchange, so you can choose one and practice both sides."
+            ? ". This writes two sample files into your working folder and opens the invite screen with the first one. To play your partner, accept the invitation in the public Alcove web app with the second file."
             : ". This downloads two sample files and opens the invite screen with the first one. To play your partner, open the invitation in another browser tab and accept it with the second file."}
         </p>
         {sampleFailure !== undefined && (
@@ -222,7 +223,7 @@ export function Lobby() {
           <p>
             <strong>How it works.</strong>{" "}
             {isConsoleBuild()
-              ? "Alcove compares cryptographic fingerprints of the fields you match on - a private set intersection - so only the records you both hold are revealed. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
+              ? "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
               : "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. Data is encrypted locally in your browser before being sent to your partner. A coordination server only helps the two browsers find each other to establish a secure peer-to-peer connection."}
           </p>
         </div>
@@ -262,8 +263,9 @@ export function Lobby() {
             </p>
           ))}
         <p className={`${styles.sub} ${styles.small}`}>
-          Some workplace networks block the default peer-to-peer approach. Your
-          IT team can give you a relay server address to enter in{" "}
+          {isConsoleBuild()
+            ? "If using peer-to-peer, some workplace networks may block the connection. Your IT team can give you a relay server address to enter in "
+            : "Some workplace networks block the default peer-to-peer approach. Your IT team can give you a relay server address to enter in "}
           <Anchor inherit component={Link} to="/relay">
             relay settings
           </Anchor>

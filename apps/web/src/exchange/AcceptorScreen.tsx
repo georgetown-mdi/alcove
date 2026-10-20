@@ -142,11 +142,7 @@ import {
   acceptOffersAllowedRelays,
   acceptorScreenReducer,
 } from "./acceptorScreenModel";
-import {
-  APPLIANCE_FILE_ASSURANCE,
-  BROWSER_ONLY_FILE_ASSURANCE,
-  FILE_ASSURANCE_LINE,
-} from "./fileAssurance";
+import { APPLIANCE_FILE_ASSURANCE, FILE_ASSURANCE_LINE } from "./fileAssurance";
 import {
   acceptorCleaningAttention,
   acceptorColumnsEditorState,
@@ -1461,9 +1457,8 @@ function AcceptorInvitationScreen({
             <h1 tabIndex={-1}>Consent &amp; your file</h1>
             <p className={`${styles.small} ${styles.sub}`}>
               This invitation should have reached you over a trusted channel.
-              {consoleBuild
-                ? " This console runs the exchange from your working folder."
-                : ` ${BROWSER_ONLY_FILE_ASSURANCE}`}
+              {consoleBuild &&
+                " This console runs the exchange from your working folder."}
             </p>
             {legalAgreementDisplay !== undefined && (
               <fieldset className={styles.fieldset}>
