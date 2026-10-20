@@ -751,7 +751,8 @@ class ParkedRelay implements ParkedWebSocketRelayConnection {
       else {
         const now = (this.options.now ?? (() => new Date()))();
         this.relayClockOffsetMs = error.relayClock.getTime() - now.getTime();
-        void this.dialSocket();
+        if (this.pairingWaitEnded) this.fail(error);
+        else void this.dialSocket();
       }
       return;
     }
