@@ -117,7 +117,7 @@ export function ManageExchangeOffer({
           Saved as a recurring exchange.
         </p>
         <p className={styles.small}>
-          Its terms and shared secret are stored in this browser so you can run
+          Its terms and shared secret are saved in this browser so you can run
           it again with the same partner. Find it in your{" "}
           <Anchor inherit component={Link} to="/saved">
             recurring exchanges

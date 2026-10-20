@@ -37,7 +37,7 @@ Each agency runs the software itself, in a container on its own machine or in it
 
 - **The partner learns the intersection, and each party's dataset size.** That is the exchange, not a leak. The guarantee is about the records that did not match, and it is only as strong as the linkage keys the parties agree on: a key built from too little PII is open to a differencing or brute-force attack, so both parties review the keys before agreeing to them ([Threat model](#threat-model)).
 - **A quick exchange has no shared secret**, so it has no application-layer encryption and no key-exchange authentication. Trust rests on the transport and on whoever administers the server or shared folder ([Transport-layer authentication](#transport-layer-authentication)).
-- **Code running where the exchange runs.** An attacker who can run code on the operator's machine, or inside the web application's browser origin, reads what the operator reads. The browser case is set out in full, including what it means for a managed exchange's stored secret ([Hosted at-rest threat model for managed exchanges](#hosted-at-rest-threat-model-for-managed-exchanges), [Egress hardening and its limits](#egress-hardening-and-its-limits)).
+- **Code running where the exchange runs.** An attacker who can run code on the operator's machine, or inside the web application's browser origin, reads what the operator reads. The browser case is set out in full, including what it means for a managed exchange's shared secret ([Hosted at-rest threat model for managed exchanges](#hosted-at-rest-threat-model-for-managed-exchanges), [Egress hardening and its limits](#egress-hardening-and-its-limits)).
 
 ### What the deploying agency is responsible for
 
