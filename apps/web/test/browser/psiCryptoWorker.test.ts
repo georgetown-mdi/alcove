@@ -150,6 +150,8 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
         role: "starter",
         id: "server",
         mode: "identifier-revealing",
+        shard: "primary",
+        helpers: 0,
       }),
     );
     handle.setHandlers({

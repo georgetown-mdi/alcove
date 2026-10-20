@@ -281,6 +281,14 @@ export interface InProcessPsiEngineOptions {
    */
   readonly maskingMemoryBudgetBytes?: number;
   /**
+   * The secret key to build the engine from instead of generating one: the
+   * bytes {@link InProcessPsiEngine.copySecretKey} returned on the engine a
+   * shard helper masks for, so both mask to the same bytes. The library
+   * copies the key into its own state; a key outside the curve's order is
+   * refused there.
+   */
+  readonly secretKey?: Uint8Array;
+  /**
    * @internal
    *
    * The chunk size each operation splits at, in place of the measured policy
@@ -352,14 +360,41 @@ export class InProcessPsiEngine implements PsiEngine {
     this.revealsIdentifiers = modeRevealsIdentifiers(mode);
     this.chunkElements = options.chunkElements;
     this.maskingMemoryBudgetBytes = options.maskingMemoryBudgetBytes;
-    // Generate the fresh secret key for this exchange, held inside the
-    // library's server / client object. An unresolved ("either") role
-    // creates neither; the role-guarded methods below then reject.
+    // The secret key for this exchange, generated fresh unless a shard
+    // helper's is given, held inside the library's server / client object.
+    // An unresolved ("either") role creates neither; the role-guarded
+    // methods below then reject.
+    const key = options.secretKey;
     if (role === "starter") {
-      this.server = library.server!.createWithNewKey(this.revealsIdentifiers);
+      const server = library.server!;
+      this.server =
+        key === undefined
+          ? server.createWithNewKey(this.revealsIdentifiers)
+          : server.createFromKey(key, this.revealsIdentifiers);
     } else if (role === "joiner") {
-      this.client = library.client!.createWithNewKey(this.revealsIdentifiers);
+      const client = library.client!;
+      this.client =
+        key === undefined
+          ? client.createWithNewKey(this.revealsIdentifiers)
+          : client.createFromKey(key, this.revealsIdentifiers);
     }
+  }
+
+  /**
+   * A fresh copy of this engine's secret key, for building a shard helper
+   * that masks under it (the {@link InProcessPsiEngineOptions.secretKey}
+   * option). Each call returns its own buffer, which the caller transfers or
+   * zeroes. psi.js also keeps an unzeroed copy of the key bytes in a JS array
+   * and in WASM temporaries, out of this code's reach. An engine with no
+   * resolved role, or a disposed one, refuses.
+   */
+  copySecretKey(): Uint8Array {
+    const holder = this.server ?? this.client;
+    if (holder === undefined || this.disposed)
+      throw new InternalConsistencyError(
+        `${this.id}: a PSI engine with no role, or a disposed one, holds no secret key`,
+      );
+    return holder.getPrivateKeyBytes();
   }
 
   observeProcessedElements(report: PsiProcessedElementsReporter): void {
