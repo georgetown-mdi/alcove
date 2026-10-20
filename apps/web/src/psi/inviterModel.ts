@@ -205,7 +205,9 @@ export function reviewValidation(
   editor: InviterEditor,
   now: Date = new Date(),
 ): AdvancedValidation {
-  return validateAdvancedInvite(editor.draft, editor.seed, now);
+  return validateAdvancedInvite(editor.draft, editor.seed, now, {
+    keysAuthored: editor.keysAuthored === true,
+  });
 }
 
 /**

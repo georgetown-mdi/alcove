@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
-  Box,
   Button,
   Collapse,
   Divider,
@@ -31,6 +30,7 @@ import {
   addElement,
   addKey,
   moveElement,
+  removeAllKeys,
   removeElement,
   removeKey,
   updateElementAt,
@@ -124,7 +124,8 @@ function elementIdentifier(element: LinkageKeyElement): string {
  * elements (each a field reference chosen from the declared list, an optional
  * alias, a transform pipeline, and an optional fuzzy expansion), and an
  * optional two-of-N swap over its own element identifiers. Keys and elements
- * add, remove, and reorder with keyboard-operable controls.
+ * add, remove, and reorder with keyboard-operable controls, and one control
+ * removes every key.
  *
  * Presentational over the draft: it computes the next draft with the pure helpers
  * in {@link advancedInvite} and emits it through {@link onChange}; the host owns
@@ -658,7 +659,7 @@ export function ExpertKeyEditor({
       </Stack>
 
       <Divider />
-      <Box>
+      <Group gap="sm">
         <Button
           ref={addKeyRef}
           variant="light"
@@ -679,7 +680,21 @@ export function ExpertKeyEditor({
         >
           Add a key
         </Button>
-      </Box>
+        <Button
+          variant="subtle"
+          color="red"
+          leftSection={<IconTrash size={16} aria-hidden />}
+          disabled={draft.keys.length === 0}
+          onClick={() => {
+            onChange(removeAllKeys(draft));
+            announce("Removed all keys.");
+            // This button disables on the empty list, which would drop focus.
+            addKeyRef.current?.focus();
+          }}
+        >
+          Remove all keys
+        </Button>
+      </Group>
     </Stack>
   );
 }

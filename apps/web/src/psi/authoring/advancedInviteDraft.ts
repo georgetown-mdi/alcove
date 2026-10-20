@@ -1003,6 +1003,11 @@ export function removeKey(
   return { ...draft, keys: draft.keys.filter((_, i) => i !== index) };
 }
 
+/** Remove every linkage key, leaving the rest of the draft as it is. */
+export function removeAllKeys(draft: AdvancedInviteDraft): AdvancedInviteDraft {
+  return { ...draft, keys: [] };
+}
+
 /** Append an element referencing `fieldName` to the key at `keyIndex`. When that
  * field already identifies an element in the key, the new element is given a
  * distinct alias so the key keeps the unique element identifiers the schema

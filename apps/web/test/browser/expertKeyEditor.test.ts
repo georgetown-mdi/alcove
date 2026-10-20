@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { page } from "vitest/browser";
 
-import { createElement } from "react";
+import { createElement, useState } from "react";
 
 import { authoredLinkageFields } from "@alcove/core";
 
@@ -12,9 +12,11 @@ import { seedAdvancedInvite } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 
+import { activate, control } from "./keyboardOnly";
 import { restoreMatchMedia, stubReducedMotion } from "./reducedMotion";
 import { createAppMount } from "./renderApp";
 
+import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 import type { KeyVerdict } from "@psi/inviterEditor";
 
 // A file holding every default linkage column, so the seed keeps the full key set
@@ -90,6 +92,71 @@ describe("ExpertKeyEditor: per-key disclosures stay resolvable under reduced mot
       // reference never dangles.
       expect(document.getElementById(id)).not.toBeNull();
     }
+  });
+});
+
+describe("ExpertKeyEditor: Remove all keys", () => {
+  /** The editor over a live draft, recording what it announces. */
+  function Harness({
+    initial,
+    announced,
+  }: {
+    initial: AdvancedInviteDraft;
+    announced: Array<string>;
+  }) {
+    const [draft, setDraft] = useState(initial);
+    return createElement(ExpertKeyEditor, {
+      draft,
+      declaredFields: authoredLinkageFields(
+        draft.metadata,
+        draft.standardization,
+      ),
+      keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
+      onChange: setDraft,
+      announce: (message: string) => announced.push(message),
+    });
+  }
+
+  const keyCards = () =>
+    Array.from(
+      page.getByRole("list", { name: "Linkage keys" }).element().children,
+    );
+
+  test("empties the list in one action, announces it, and keeps focus in the editor", async () => {
+    const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+    const announced: Array<string> = [];
+    app.render(createElement(Harness, { initial: draft, announced }));
+
+    const removeAll = page.getByRole("button", { name: "Remove all keys" });
+    await expect.element(removeAll).toBeEnabled();
+    expect(keyCards().length).toBe(draft.keys.length);
+    expect(draft.keys.length).toBeGreaterThan(1);
+
+    await activate(control("button", "Remove all keys"));
+
+    await expect.poll(keyCards).toHaveLength(0);
+    await expect.element(removeAll).toBeDisabled();
+    expect(announced).toEqual(["Removed all keys."]);
+    await expect
+      .element(page.getByRole("button", { name: "Add a key" }))
+      .toHaveFocus();
+  });
+
+  test("is disabled on an empty list", async () => {
+    const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+    app.render(
+      createElement(Harness, {
+        initial: { ...draft, keys: [] },
+        announced: [],
+      }),
+    );
+
+    await expect
+      .element(page.getByRole("button", { name: "Remove all keys" }))
+      .toBeDisabled();
+    await expect
+      .element(page.getByRole("button", { name: "Add a key" }))
+      .toBeEnabled();
   });
 });
 
