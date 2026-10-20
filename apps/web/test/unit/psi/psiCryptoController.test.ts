@@ -114,20 +114,20 @@ describe("createPsiCryptoWorkerHandle", () => {
     );
   });
 
-  test("a helper's setup report and a fault before it reach onHelperSetup, not the engine", () => {
+  test("a helper's setup report and a fault before it reach onSetup, not the engine", () => {
     const fake = new FakePsiCryptoWorker();
-    const onHelperSetup = vi.fn();
-    const handle = createPsiCryptoWorkerHandle(fake, onHelperSetup);
+    const onSetup = vi.fn();
+    const handle = createPsiCryptoWorkerHandle(fake, onSetup);
     const onMessage = vi.fn();
     const onError = vi.fn();
     handle.setHandlers({ onMessage, onError });
 
     fake.reply({ kind: "helper-setup", ready: true });
-    expect(onHelperSetup).toHaveBeenLastCalledWith(true);
+    expect(onSetup).toHaveBeenLastCalledWith(true);
     expect(onMessage).not.toHaveBeenCalled();
 
     fake.emitError({ message: "worker faulted" });
-    expect(onHelperSetup).toHaveBeenLastCalledWith(false);
+    expect(onSetup).toHaveBeenLastCalledWith(false);
     expect(onError).toHaveBeenCalledOnce();
   });
 

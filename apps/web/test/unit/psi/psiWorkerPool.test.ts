@@ -96,6 +96,23 @@ function keyLoggingLibrary(log: KeyLog): PSILibrary {
   return { ...wasm, server: wrap(wasm.server!), client: wrap(wasm.client!) };
 }
 
+// The real engine under KEY, on which every copy of the key fails.
+function keyCopyFailingLibrary(): PSILibrary {
+  const client = wasm.client!;
+  return {
+    ...wasm,
+    client: {
+      ...client,
+      createWithNewKey: (reveal?: boolean) => ({
+        ...client.createFromKey(KEY, reveal),
+        getPrivateKeyBytes: () => {
+          throw new Error("the key could not be copied");
+        },
+      }),
+    },
+  };
+}
+
 interface InProcessWorker extends PsiCryptoWorker {
   readonly seed: PsiCryptoWorkerSeed;
   terminated: boolean;
@@ -197,6 +214,7 @@ describe("the PSI worker pool's key path", () => {
 
   test.for([
     ["a value that is not a key", ["not a key"]],
+    ["the primary's refusal", [null]],
     ["two key ports", [KEY, KEY]],
   ] as const)(
     "a helper given %s refuses its setup and every request, and generates no key",
@@ -240,16 +258,42 @@ describe("the PSI worker pool's key path", () => {
     },
   );
 
-  test("a helper whose setup fails leaves the run on the primary and its worker stops", async () => {
+  test("a helper whose setup fails leaves the run on the primary, and every helper's worker stops", async () => {
     const library = keyLoggingLibrary({ generated: 0, given: [] });
-    const { spawn, workers } = inProcessSpawner((seed) =>
-      seed.shard === "helper"
-        ? () => Promise.reject(new Error("the engine failed to load"))
-        : () => Promise.resolve({ library, backend: "wasm" }),
+    let helpersSpawned = 0;
+    const { spawn, workers } = inProcessSpawner((seed) => {
+      if (seed.shard === "helper" && ++helpersSpawned === 1)
+        return () => Promise.reject(new Error("the engine failed to load"));
+      return () => Promise.resolve({ library, backend: "wasm" });
+    });
+    const pool = joinerPool(spawn, "count-only", 3);
+    const single = engineUnderKey("count-only");
+    try {
+      expect(await pool.createClientRequest(values(3072))).toEqual(
+        await single.createClientRequest(values(3072)),
+      );
+      expect(workers.map((worker) => worker.terminated)).toEqual([
+        false,
+        true,
+        true,
+      ]);
+    } finally {
+      pool.dispose();
+      single.dispose();
+    }
+  }, 30_000);
+
+  test("a helper whose key copy fails reports a failed setup at once, and the run goes on the primary", async () => {
+    const library = keyCopyFailingLibrary();
+    const { spawn, workers, toPage } = inProcessSpawner(
+      () => () => Promise.resolve({ library, backend: "wasm" }),
     );
     const pool = joinerPool(spawn, "count-only", 2);
     const single = engineUnderKey("count-only");
     try {
+      await vi.waitFor(() =>
+        expect(toPage).toContainEqual({ kind: "helper-setup", ready: false }),
+      );
       expect(await pool.createClientRequest(values(2048))).toEqual(
         await single.createClientRequest(values(2048)),
       );
@@ -259,6 +303,29 @@ describe("the PSI worker pool's key path", () => {
       single.dispose();
     }
   }, 30_000);
+
+  // TIMEOUT_MS, the pool's setup timeout, is longer than this test's own.
+  test("a primary whose library load fails returns its error before the setup timeout, and every helper's worker stops", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn, workers } = inProcessSpawner((seed) =>
+      seed.shard === "primary"
+        ? () => Promise.reject(new Error("the engine failed to load"))
+        : () => Promise.resolve({ library, backend: "wasm" }),
+    );
+    const pool = joinerPool(spawn, "identifier-revealing", 3);
+    try {
+      await expect(pool.createClientRequest(values(3072))).rejects.toEqual(
+        new Error("the engine failed to load"),
+      );
+      expect(workers.map((worker) => worker.terminated)).toEqual([
+        false,
+        true,
+        true,
+      ]);
+    } finally {
+      pool.dispose();
+    }
+  }, 10_000);
 });
 
 // A worker the test answers by hand.
@@ -341,7 +408,29 @@ describe("the PSI worker pool's shards", () => {
     expect(workers.every((worker) => worker.terminated)).toBe(true);
   });
 
-  test("a helper whose setup never reports is left out once the progress timeout passes", async () => {
+  test("a primary that faults before the helpers report fails the operation with its fault, and every helper stops", async () => {
+    vi.useFakeTimers();
+    try {
+      const { spawn, workers } = fakeSpawner();
+      const pool = joinerPool(spawn, "identifier-revealing", 3);
+      const outcome = pool.createClientRequest(values(3072)).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      workers[0].onerror?.({ message: "worker faulted" });
+      expect(await outcome).toEqual(new Error("worker faulted"));
+      expect(vi.getTimerCount()).toBe(0);
+      for (const helper of workers.slice(1)) {
+        expect(helper.terminated).toBe(true);
+        expect(helper.requests).toHaveLength(0);
+      }
+      pool.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a helper whose setup never reports leaves the run on the primary once the progress timeout passes", async () => {
     vi.useFakeTimers();
     try {
       const { spawn, workers } = fakeSpawner();

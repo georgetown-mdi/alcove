@@ -43,10 +43,10 @@ export interface PsiPoolHelper {
 /**
  * A {@link PsiEngine} over a primary worker and its helpers. The first
  * request creation or request processing waits for every helper's setup, up
- * to `progressTimeoutMs`, and from then on those two operations run as a
- * {@link ShardedPsiEngine} over the primary and the helpers that set up; a
- * helper that did not is disposed, and the run goes on without it. Every
- * other operation runs on the primary.
+ * to `progressTimeoutMs`. If every helper set up, those two operations run
+ * from then on as a {@link ShardedPsiEngine} over the primary and the
+ * helpers; if any did not, every helper is disposed and the run goes on the
+ * primary alone. Every other operation runs on the primary.
  */
 export class PsiWorkerPoolEngine implements PsiEngine {
   private sharded: Promise<ShardedPsiEngine> | undefined;
@@ -89,30 +89,31 @@ export class PsiWorkerPoolEngine implements PsiEngine {
     return this.sharded;
   }
 
+  // Ends at the first failed setup, the timeout, or a dispose, any of which
+  // disposes every helper.
   private readyHelpers(): Promise<Array<PsiEngine>> {
-    const outcomes = this.helpers.map((): boolean | undefined => undefined);
+    const engines = this.helpers.map((helper) => helper.engine);
     return new Promise((resolve) => {
-      const end = (): void => {
+      let unreported = engines.length;
+      const end = (allReady: boolean): void => {
         if (this.endSetupWait === undefined) return;
         this.endSetupWait = undefined;
         clearTimeout(timer);
-        const ready: Array<PsiEngine> = [];
-        this.helpers.forEach((helper, index) => {
-          if (outcomes[index] === true && !this.disposed)
-            ready.push(helper.engine);
-          else helper.engine.dispose();
-        });
-        resolve(ready);
+        if (allReady && !this.disposed) {
+          resolve(engines);
+          return;
+        }
+        for (const engine of engines) engine.dispose();
+        resolve([]);
       };
-      this.endSetupWait = end;
-      const timer = setTimeout(end, this.progressTimeoutMs);
-      void Promise.all(
-        this.helpers.map((helper, index) =>
-          helper.ready.then((ready) => {
-            outcomes[index] = ready;
-          }),
-        ),
-      ).then(end);
+      this.endSetupWait = () => end(false);
+      const timer = setTimeout(() => end(false), this.progressTimeoutMs);
+      if (unreported === 0) end(true);
+      for (const helper of this.helpers)
+        void helper.ready.then((ready) => {
+          unreported -= 1;
+          if (!ready || unreported === 0) end(ready);
+        });
     });
   }
 
@@ -199,21 +200,29 @@ export function startPsiWorkerPool(
     spawn({ role, id, mode, shard: "helper" }),
   );
   connectPsiWorkerKeys(primaryWorker, helperWorkers);
+  // A primary that faults sends no key, so it fails every helper's setup.
+  let reportPrimaryFault: () => void = () => undefined;
+  const primaryFault = new Promise<false>((resolve) => {
+    reportPrimaryFault = () => resolve(false);
+  });
+  const primary = new WorkerPsiEngine(
+    createPsiCryptoWorkerHandle(primaryWorker, reportPrimaryFault),
+  );
   const helpers = helperWorkers.map((worker): PsiPoolHelper => {
     let report: (ready: boolean) => void = () => undefined;
-    const ready = new Promise<boolean>((resolve) => {
+    const setup = new Promise<boolean>((resolve) => {
       report = resolve;
     });
     const engine = new WorkerPsiEngine(
       createPsiCryptoWorkerHandle(worker, report),
     );
-    return { engine, ready };
+    return { engine, ready: Promise.race([setup, primaryFault]) };
   });
   return new PsiWorkerPoolEngine(
     library,
     id,
     mode,
-    new WorkerPsiEngine(createPsiCryptoWorkerHandle(primaryWorker)),
+    primary,
     helpers,
     progressTimeoutMs,
   );

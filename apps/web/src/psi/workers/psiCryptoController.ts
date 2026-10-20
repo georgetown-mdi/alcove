@@ -131,17 +131,18 @@ export function createBufferingRequestRouter(
  * A Web Worker's `terminate()` fires no event, so no teardown guard is needed.
  * `onmessageerror` (a reply that fails structured-clone deserialization) is
  * routed to `onError`, since with no handler the pending call would hang.
- * A helper's setup report goes to `onHelperSetup`, as does a fault, which
- * counts as a failed setup if it comes first.
+ * A helper's setup report goes to `onSetup`, as does a fault, which counts
+ * as a failed setup if it comes first. A primary posts no report, so its
+ * `onSetup` is called only on a fault.
  */
 export function createPsiCryptoWorkerHandle(
   worker: PsiCryptoWorker,
-  onHelperSetup?: (ready: boolean) => void,
+  onSetup?: (ready: boolean) => void,
 ): PsiWorkerHandle {
   const fail =
     (onError: (error: Error) => void) =>
     (event: unknown): void => {
-      onHelperSetup?.(false);
+      onSetup?.(false);
       onError(errorFromWorkerEvent(event, "PSI crypto worker failed"));
     };
   return {
@@ -149,7 +150,7 @@ export function createPsiCryptoWorkerHandle(
     setHandlers: ({ onMessage, onError }) => {
       worker.onmessage = (event) => {
         const message = event.data;
-        if ("kind" in message) onHelperSetup?.(message.ready);
+        if ("kind" in message) onSetup?.(message.ready);
         else onMessage(message);
       };
       worker.onerror = fail(onError);

@@ -78,21 +78,27 @@ async function startPrimary(
   keyPorts: Promise<ReadonlyArray<MessagePort>>,
   post: (response: PsiWorkerResponse) => void,
 ): Promise<(request: PsiWorkerRequest) => void> {
-  const { library, backend } = await loadLibrary();
-  const engine = new InProcessPsiEngine(
-    library,
-    seed.role,
-    seed.id,
-    seed.mode,
-    psiEngineOptionsForBackend(backend),
-  );
+  let engine: InProcessPsiEngine;
+  try {
+    const { library, backend } = await loadLibrary();
+    engine = new InProcessPsiEngine(
+      library,
+      seed.role,
+      seed.id,
+      seed.mode,
+      psiEngineOptionsForBackend(backend),
+    );
+  } catch (error) {
+    void keyPorts.then(refuseKey);
+    throw error;
+  }
   void keyPorts.then((ports) => sendKey(engine, ports));
   return servePsiEngine(engine, post);
 }
 
 // Each port takes its own copy, transferred rather than cloned, so no copy
-// stays on this side. A port whose copy fails closes without one, and its
-// helper then reports a failed setup.
+// stays on this side. A port whose copy fails is sent a refusal, which its
+// helper rejects and reports as a failed setup.
 function sendKey(
   engine: InProcessPsiEngine,
   ports: ReadonlyArray<MessagePort>,
@@ -102,10 +108,20 @@ function sendKey(
       const key = engine.copySecretKey();
       port.postMessage(key, [key.buffer]);
     } catch {
-      // The helper's setup report states the failure.
+      port.postMessage(null);
     } finally {
       port.close();
     }
+  }
+}
+
+// A primary that failed to start sends every helper the refusal a failed
+// copy gets: a closed port fires no message, so a helper left without one
+// would wait for its key forever.
+function refuseKey(ports: ReadonlyArray<MessagePort>): void {
+  for (const port of ports) {
+    port.postMessage(null);
+    port.close();
   }
 }
 
