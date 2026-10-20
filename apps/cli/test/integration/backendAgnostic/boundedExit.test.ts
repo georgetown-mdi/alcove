@@ -432,7 +432,8 @@ function writeMatchedInputs(count: number): void {
   const rows: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const month = String((i % 12) + 1).padStart(2, "0");
-    const day = String((i % 28) + 1).padStart(2, "0");
+    // From the 2nd: 1 January is a filler date no key reads.
+    const day = String((i % 27) + 2).padStart(2, "0");
     rows.push(
       `${100000000 + i},SMITH${letters(i)},JOHN${letters(i)},1990${month}${day}`,
     );

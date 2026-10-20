@@ -52,14 +52,14 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 const PARTNER_CSV =
   "ssn,first_name,last_name,date_of_birth\n" +
-  "111223333,bob,smith,1990-01-01\n" +
+  "111223333,bob,smith,1990-01-02\n" +
   "222334444,carol,jones,1985-11-30\n" +
   "333445555,dave,lee,1979-04-02\n";
 
 const OWN_CSV =
   "ssn,first_name,last_name,date_of_birth\n" +
   "444556666,erin,park,1970-07-07\n" +
-  "111223333,bob,smith,1990-01-01\n" +
+  "111223333,bob,smith,1990-01-02\n" +
   "222334444,carol,jones,1985-11-30\n";
 
 const OWN_PAIRS: Array<[number, number]> = [

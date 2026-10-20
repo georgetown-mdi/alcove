@@ -79,7 +79,7 @@ const CLI_INVOCATION_TIMEOUT_MS = 120_000;
 
 const FIXTURE_CSV =
   "ssn,first_name,last_name,date_of_birth\n" +
-  "111223333,bob,smith,1990-01-01\n" +
+  "111223333,bob,smith,1990-01-02\n" +
   "222334444,carol,jones,1985-11-30\n";
 
 /** A schema-valid shared secret whose base64 run is distinct from the all-`A`
