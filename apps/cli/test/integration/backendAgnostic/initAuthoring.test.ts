@@ -9,7 +9,7 @@ import YAML from "yaml";
 import { parseExchangeSpec, safeParseMetadata } from "@alcove/core";
 
 import { describeCliRun, startCli } from "../../cliProcess";
-import type { FinishedCli } from "../../cliProcess";
+import type { FinishedCli, RunningCli } from "../../cliProcess";
 import { ACCEPT_NEEDS_TERMINAL } from "../../../src/commands/accept";
 import { configPlaceholderFields } from "../../../src/config";
 
@@ -33,20 +33,76 @@ const INPUT_CSV =
   "member_id,first_name,last_name,dob,score,notes\n" +
   "M-1,Alice,Smith,1990-01-02,5,first\n";
 
+/** One `alcove` run a test started, kept for the account a failure gives. */
+interface StartedRun {
+  command: string;
+  startedAt: number;
+  running: RunningCli;
+  ended?: { run: FinishedCli; at: number };
+}
+
 let work: string;
+let started: Array<StartedRun>;
 
 beforeEach(() => {
   work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-init-authoring-"));
   fs.writeFileSync(path.join(work, "in.csv"), INPUT_CSV);
+  started = [];
 });
 
-afterEach(() => {
+// A failed test, a timeout included, also fails here with every run it
+// started and how long each took, stopping and describing one still going, so
+// runs slowed by load can be told from a run that stalled. vitest takes no
+// annotation once a test has failed, and a hook's error is reported with it.
+afterEach(async ({ task }) => {
+  const account =
+    task.result?.state === "fail"
+      ? await describeStartedRuns(started)
+      : undefined;
   fs.rmSync(work, { recursive: true, force: true });
+  if (account !== undefined)
+    throw new Error(`the alcove runs this test started:\n${account}`);
 });
 
 async function alcove(args: string[], stdin = ""): Promise<FinishedCli> {
-  return startCli({ args, cwd: work, stdin, timeoutMs: RUN_BUDGET_MS })
-    .finished;
+  const running = startCli({
+    args,
+    cwd: work,
+    stdin,
+    timeoutMs: RUN_BUDGET_MS,
+  });
+  const entry: StartedRun = {
+    command: args[0] ?? "",
+    startedAt: performance.now(),
+    running,
+  };
+  started.push(entry);
+  const run = await running.finished;
+  entry.ended = { run, at: performance.now() };
+  return run;
+}
+
+async function describeStartedRuns(runs: Array<StartedRun>): Promise<string> {
+  const now = performance.now();
+  const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  const lines: Array<string> = [];
+  for (const { command, startedAt, running, ended } of runs) {
+    if (ended !== undefined) {
+      lines.push(
+        `${command}: exit ${ended.run.exitCode ?? "none"}` +
+          `${ended.run.timedOut ? ", killed on its deadline," : ""}` +
+          ` after ${seconds(ended.at - startedAt)}`,
+      );
+      continue;
+    }
+    lines.push(
+      describeCliRun(
+        `${command} (still running after ${seconds(now - startedAt)}, then stopped)`,
+        await running.stop(),
+      ),
+    );
+  }
+  return lines.length === 0 ? "no alcove run started" : lines.join("\n");
 }
 
 test("init from an sftp URL writes a connection block that needs only a credential", async () => {

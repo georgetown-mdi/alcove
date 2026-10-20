@@ -355,6 +355,23 @@ export async function awaitJobSucceeded(
 }
 
 /**
+ * Resolve once `condition` holds of a job's child -- its exit, or the slot its
+ * exit frees -- checking every 10 ms until the test's own timeout aborts
+ * `signal`. It sets no deadline of its own: a child's spawn and start-up are
+ * CPU work that load stretches past any fixed poll, and the child ends either
+ * way, on its own or on the kill a discard sends.
+ */
+export async function awaitChildSettled(
+  condition: () => boolean,
+  signal: AbortSignal,
+): Promise<void> {
+  while (!condition()) {
+    signal.throwIfAborted();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/**
  * Resolve once a manager-held job record has emitted its terminal event. Past
  * `timeoutMs` the wait fails rather than hanging the suite.
  */

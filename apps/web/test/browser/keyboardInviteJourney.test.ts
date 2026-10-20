@@ -15,6 +15,7 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
 
 import {
+  KEYBOARD_JOURNEY_TIMEOUT_MS,
   activate,
   control,
   expectHeadingFocused,
@@ -51,6 +52,8 @@ vi.mock("@psi/transport/rendezvous", async () =>
 vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
   (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
 );
+
+vi.setConfig({ testTimeout: KEYBOARD_JOURNEY_TIMEOUT_MS });
 
 const app = createAppMount();
 
