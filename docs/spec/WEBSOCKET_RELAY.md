@@ -148,7 +148,7 @@ Its values are working values, as the relay's are.
 - **The hello.** On open, it sends its hello. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
 - **The start, held.** It holds its start until the run sends it (`parkWebSocketRelay`), on a socket the relay has paired or not, and sends it behind the hello on each socket that opens after that. Opened with the start already sent (`openWebSocketRelayMessageConnection`), it sends its hello and then its start, with no wait between them.
 - **The partner's start first.** A start the relay sends while this side's own is held is kept, and this side's start then begins the exchange at once. Until the exchange begins, it refuses a binary message, a start before `paired`, a second `paired` or start, and any other text message, closing its socket with 4000.
-- **Dialing again.** Until the partner's start arrives and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):
+- **Dialing again.** Until the exchange begins and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):
   - 4003, since the partner may enroll the exchange's key later;
   - 4006, since an earlier socket of this side may still hold the role;
   - 1000 or 4000, the partner leaving the pairing;

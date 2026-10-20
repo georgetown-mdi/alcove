@@ -393,7 +393,7 @@ export interface ParkedWebSocketRelay {
 
 /**
  * Dial the relay and send the hello, holding this side's start until
- * {@link ParkedWebSocketRelay.start}. Until the partner's start arrives, a
+ * {@link ParkedWebSocketRelay.start}. Until the exchange begins, a
  * close the spec lists (docs/spec/WEBSOCKET_RELAY.md, The command-line
  * client) is followed by a new socket {@link RELAY_REDIAL_INTERVAL_MS} later,
  * while the rendezvous budget lasts. A proof the relay refuses as expired is
