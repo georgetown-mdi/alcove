@@ -24,15 +24,27 @@ import type { PeerCloseOutcome } from "./waitForPeerClose";
 /**
  * The wait for the partner's hello: the WebRTC rendezvous budget, since one
  * party may start well before the other (docs/spec/WEBRTC_TRANSPORT.md,
- * Budgets).
+ * Budgets). It counts from the park, across every socket dialed after it.
  */
 const DEFAULT_RELAY_PAIRING_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * The wait for the partner's start once the relay has paired the two
- * sockets: the WebRTC channel-open budget.
+ * sockets and this side has sent its own: the WebRTC channel-open budget.
  */
 const DEFAULT_RELAY_START_TIMEOUT_MS = 30 * 1000;
+
+/**
+ * How long after a close that calls for it the next socket is dialed, before
+ * the exchange begins. An arbitrary working value.
+ */
+const RELAY_REDIAL_INTERVAL_MS = 5 * 1000;
+
+/**
+ * How long a socket may stay connecting before it is closed and dialed
+ * again. An arbitrary working value, the length of the channel-open budget.
+ */
+const DEFAULT_RELAY_OPEN_TIMEOUT_MS = 30 * 1000;
 
 /** The parked-receive budget, as on the WebRTC transport. */
 const DEFAULT_RELAY_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
@@ -75,7 +87,33 @@ const RelayCloseCode = {
   idle: 4009,
 } as const;
 
-/** Options for {@link openWebSocketRelayConnection}. */
+const RELAY_CLOSE_CODES: ReadonlySet<number> = new Set([
+  CLOSE_NORMAL,
+  ...Object.values(RelayCloseCode),
+]);
+
+/**
+ * The closes before the exchange begins that are followed by a new socket:
+ * the partner leaving the pairing (1000, 4000), a key the partner may enroll
+ * later (4003), an earlier socket of this side still holding the role
+ * (4006), and the relay's idle bound (4009).
+ */
+const REDIALED_RELAY_CLOSES: ReadonlySet<number> = new Set([
+  CLOSE_NORMAL,
+  RelayCloseCode.partnerEnded,
+  RelayCloseCode.notEnrolled,
+  RelayCloseCode.roleTaken,
+  RelayCloseCode.idle,
+]);
+
+/** Whether a close before the exchange begins is followed by a new socket;
+ * a code the relay does not send is a dropped connection, and is. */
+function redialsOn(code: number): boolean {
+  return REDIALED_RELAY_CLOSES.has(code) || !RELAY_CLOSE_CODES.has(code);
+}
+
+/** Options for {@link parkWebSocketRelayConnection} and
+ * {@link openWebSocketRelayConnection}. */
 export interface WebSocketRelayConnectionOptions {
   /** The relay's `wss` url, its `/relay` path included. */
   url: string;
@@ -85,7 +123,8 @@ export interface WebSocketRelayConnectionOptions {
   role: RendezvousRole;
   /** The exchange's relay key, 64 lowercase hex characters. */
   relayKey: string;
-  /** Cuts the wait for the partner and the clean close's wait short. */
+  /** Ends the wait for the partner, closing the socket, and cuts the clean
+   * close's wait short. */
   signal?: AbortSignal;
   /** Reports how a flushing close's wait for the partner's relayed close
    * ended, once; a non-flushing close reports nothing. */
@@ -97,6 +136,8 @@ export interface WebSocketRelayConnectionOptions {
   /** Budgets; tests only. */
   pairingTimeoutMs?: number;
   startTimeoutMs?: number;
+  openTimeoutMs?: number;
+  redialIntervalMs?: number;
   inactivityTimeoutMs?: number;
   closeDrainTimeoutMs?: number;
   /** Send window bounds; tests only. */
@@ -246,6 +287,13 @@ class ProofExpiredRefusal extends ConnectionError {
   }
 }
 
+function couldNotConnectError(): ConnectionError {
+  return new ConnectionError(
+    "Could not connect to the WebSocket relay. Check the relay address and the network connection, then start the exchange again.",
+    "transport",
+  );
+}
+
 /**
  * The failure for a close the relay sent before forwarding started. Every
  * message names what happened and what to do and uses no relay-chosen text;
@@ -306,11 +354,7 @@ function setupCloseError(
         "transport",
       );
   }
-  if (!opened)
-    return new ConnectionError(
-      "Could not connect to the WebSocket relay. Check the relay address and the network connection, then start the exchange again.",
-      "transport",
-    );
+  if (!opened) return couldNotConnectError();
   if (paired)
     return new ConnectionError(
       "The exchange partner left the WebSocket relay before the exchange started. Ask your partner to start the exchange again, then start it again here.",
@@ -347,16 +391,75 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
 }
 
 /**
- * Open a {@link MessageConnection} to the exchange partner through the
- * WebSocket relay at `options.url` (docs/spec/WEBSOCKET_RELAY.md).
+ * A socket to the WebSocket relay with its hello sent and this side's start
+ * held until {@link ParkedWebSocketRelayConnection.start}: what
+ * {@link parkWebSocketRelayConnection} returns.
+ */
+export interface ParkedWebSocketRelayConnection {
+  /** The relay address it was parked with. */
+  readonly url: string;
+  /** Whether the relay has paired this side with its partner on the socket
+   * it holds. */
+  readonly paired: boolean;
+  /** Whether the partner's start has reached this side on that pairing. */
+  readonly partnerStarted: boolean;
+  /** Why the relay ended before the exchange began on it, once it has. It
+   * stays undefined after {@link close}. */
+  readonly failure: ConnectionError | undefined;
+  /**
+   * Call `listener` after each change of `paired`, `partnerStarted` or
+   * `failure`, until {@link close}. Returns the call that removes it.
+   */
+  onChange: (listener: () => void) => () => void;
+  /**
+   * Send this side's start, behind the hello on a socket that has not opened
+   * yet and on every socket dialed after it, and resolve with the connection
+   * once the partner's start has arrived. Each call returns the same promise.
+   *
+   * @throws {ConnectionError} the relay's {@link failure}, or of kind
+   *         `closed` after {@link close}.
+   */
+  start: () => Promise<MessageConnection>;
+  /**
+   * Stop dialing and close the socket: with 1000 while this side's start has
+   * not been sent on it, and with 4000 once it has, since a partner that has
+   * read the start may hold a started connection that must not take the
+   * close for delivery. Does nothing once {@link start} has resolved, as the
+   * connection then owns the socket, or once the relay has failed.
+   */
+  close: () => void;
+}
+
+/**
+ * Dial the WebSocket relay at `options.url` and send the hello with a proof
+ * under the exchange's relay key, holding this side's start until
+ * {@link ParkedWebSocketRelayConnection.start} (docs/spec/WEBSOCKET_RELAY.md,
+ * The web application's client).
  *
- * It sends the hello with a proof under the exchange's relay key and its
- * start at once, waits for the relay to pair the partner and pass on the
- * partner's start, and resolves with the connection. Frames are encoded and
- * reassembled as on the WebRTC data channel (core's `PeerJsFrameEncoder` and
- * `BoundedInboundFrames`), and a send hands its datagrams over a window at a
- * time against the socket's `bufferedAmount`. The caller wraps the
- * connection in the key exchange and its AEAD envelope, as on WebRTC.
+ * Until the exchange begins, a close the spec lists is followed by a new
+ * socket {@link RELAY_REDIAL_INTERVAL_MS} later, while the pairing wait
+ * lasts. A proof the relay refuses as expired is signed again once, on the
+ * second the refusal states as the relay's clock, and so is every later
+ * proof. It never throws: an address or relay key it refuses is its
+ * {@link ParkedWebSocketRelayConnection.failure}, of kind `usage`.
+ */
+export function parkWebSocketRelayConnection(
+  options: WebSocketRelayConnectionOptions,
+): ParkedWebSocketRelayConnection {
+  return new ParkedRelay(options);
+}
+
+/**
+ * Open a {@link MessageConnection} to the exchange partner through the
+ * WebSocket relay at `options.url` (docs/spec/WEBSOCKET_RELAY.md):
+ * {@link parkWebSocketRelayConnection} with the start sent at once.
+ *
+ * It resolves once the relay has paired the partner and passed on the
+ * partner's start. Frames are encoded and reassembled as on the WebRTC data
+ * channel (core's `PeerJsFrameEncoder` and `BoundedInboundFrames`), and a
+ * send hands its datagrams over a window at a time against the socket's
+ * `bufferedAmount`. The caller wraps the connection in the key exchange and
+ * its AEAD envelope, as on WebRTC.
  *
  * A flushing close sends the close sentinel and waits for the partner's
  * close to come back through the relay, the one delivery signal on this path;
@@ -365,9 +468,6 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
  * the partner's. A browser `WebSocket` cannot send a ping, so a parked
  * receive is kept alive by the relay's own pings, which the browser answers.
  *
- * A proof the relay refuses as expired is signed again once, on the second
- * the refusal states as the relay's clock, over a new socket.
- *
  * @throws {ConnectionError} of kind `usage` for an address that is not a
  *         `wss` URL or has a fragment, a relay key no proof can be built
  *         from, or an address the browser refuses to open a socket to; of
@@ -375,151 +475,365 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
  *         the hello, the partner does not arrive within the budgets, or the
  *         relay sends something out of order.
  */
-export async function openWebSocketRelayConnection(
+export function openWebSocketRelayConnection(
   options: WebSocketRelayConnectionOptions,
 ): Promise<MessageConnection> {
-  const url = relaySocketUrl(options.url);
-  const now = options.now ?? (() => new Date());
-  let relayClock: Date;
-  try {
-    return await dialRelay(url, options, now());
-  } catch (err) {
-    if (!(err instanceof ProofExpiredRefusal) || err.relayClock === undefined)
-      throw err;
-    relayClock = err.relayClock;
-  }
-  try {
-    return await dialRelay(url, options, relayClock);
-  } catch (err) {
-    if (!(err instanceof ProofExpiredRefusal)) throw err;
-    throw new ConnectionError(
-      "The WebSocket relay refused this side's proof as expired twice, the second time signed on the relay's own clock. Start the exchange again, and if the relay refuses it again, check the relay and the exchange's enrollment at it.",
-      "transport",
-    );
-  }
+  return parkWebSocketRelayConnection(options).start();
 }
 
-/** One socket to the relay, its hello signed at `proofTime`, up to the
- * partner's start. */
-async function dialRelay(
-  url: string,
-  options: WebSocketRelayConnectionOptions,
-  proofTime: Date,
-): Promise<MessageConnection> {
-  if (options.signal?.aborted) throw setupCancelled();
-  const proof = await buildRelayProof(options, proofTime);
-  if (options.signal?.aborted) throw setupCancelled();
-  const hello = helloFrame(options.exchangeId, proof);
-  const socket = openRelaySocket(url, options);
-  socket.binaryType = "arraybuffer";
+function proofExpiredTwiceError(): ConnectionError {
+  return new ConnectionError(
+    "The WebSocket relay refused this side's proof as expired twice, the second time signed on the relay's own clock. Start the exchange again, and if the relay refuses it again, check the relay and the exchange's enrollment at it.",
+    "transport",
+  );
+}
 
-  return new Promise<MessageConnection>((resolve, reject) => {
-    let opened = false;
-    let paired = false;
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Replaced once forwarding starts, from inside the message handler that
-    // reads the partner's start, so no message falls between the two.
-    let onMessage: (event: MessageEvent) => void;
-    let onClose: (event: CloseEvent) => void;
+/** One socket of a {@link ParkedRelay}, from its dial until it closes or the
+ * exchange begins on it. */
+interface RelaySocket {
+  readonly socket: WebSocket;
+  /** `connecting` until it opens and sends its hello. */
+  phase: "connecting" | "awaiting-pair" | "paired";
+  startSent: boolean;
+  /** The wait for the socket to open, then for the partner's start. */
+  timer: ReturnType<typeof setTimeout> | undefined;
+  // Replaced once forwarding starts, inside the handler that begins the
+  // exchange, so no message falls between the two.
+  onMessage: (event: MessageEvent) => void;
+  onClose: (event: CloseEvent) => void;
+  /** Clears the timer and removes every listener on the socket. */
+  detach: () => void;
+}
 
-    const arm = (ms: number, error: () => ConnectionError) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => failSetup(error()), ms);
-    };
-    const detachSetup = () => {
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", onAbort);
-    };
-    const failSetup = (error: ConnectionError) => {
-      if (settled) return;
-      settled = true;
-      detachSetup();
-      socket.removeEventListener("open", onOpen);
-      socket.removeEventListener("message", dispatchMessage);
-      socket.removeEventListener("close", dispatchClose);
-      if (
-        socket.readyState === SOCKET_OPEN ||
-        socket.readyState === SOCKET_CONNECTING
-      )
-        socket.close(CLOSE_ABNORMAL);
-      reject(error);
-    };
-    const onAbort = () => failSetup(setupCancelled());
-    const onOpen = () => {
-      opened = true;
-      socket.send(hello);
-      socket.send(START_FRAME);
-    };
+class ParkedRelay implements ParkedWebSocketRelayConnection {
+  readonly url: string;
+  paired = false;
+  partnerStarted = false;
+  failure: ConnectionError | undefined;
 
-    onMessage = (event) => {
-      if (typeof event.data !== "string") {
-        failSetup(
-          relayProtocolError(
-            "passed on exchange data before both parties had started",
-          ),
-        );
-        return;
+  private state: "dialing" | "open" | "failed" | "closed" = "dialing";
+  private readonly socketUrl: string;
+  private startRequested = false;
+  private starting:
+    | {
+        promise: Promise<MessageConnection>;
+        resolve: (connection: MessageConnection) => void;
+        reject: (error: ConnectionError) => void;
       }
-      let frame: RelayControlFrame;
-      try {
-        frame = readRelayControlFrame(event.data);
-      } catch (err) {
-        failSetup(asConnectionError(err, "protocol"));
-        return;
-      }
-      if (frame === "paired") {
-        if (paired) {
-          failSetup(relayProtocolError("paired this side twice"));
-          return;
-        }
-        paired = true;
-        arm(
-          options.startTimeoutMs ?? DEFAULT_RELAY_START_TIMEOUT_MS,
-          () =>
-            new ConnectionError(
-              "The exchange partner reached the WebSocket relay but did not start the exchange. Ask your partner to start the exchange again, then start it again here.",
-              "transport",
-            ),
-        );
-        return;
-      }
-      if (!paired) {
-        failSetup(
-          relayProtocolError("passed on the partner's start before pairing"),
-        );
-        return;
-      }
-      settled = true;
-      detachSetup();
-      socket.removeEventListener("open", onOpen);
-      const forwarding = forwardingConnection(socket, options);
-      onMessage = forwarding.onMessage;
-      onClose = forwarding.onClose;
-      resolve(forwarding.connection);
-    };
-    onClose = (event) => failSetup(setupCloseError(event, opened, paired));
+    | undefined;
+  private current: RelaySocket | undefined;
+  private lastSetupError: ConnectionError | undefined;
+  private pairingWaitEnded = false;
+  /** The relay's clock less this device's, once a 4005 has stated it. */
+  private relayClockOffsetMs: number | undefined;
+  private pairingTimer: ReturnType<typeof setTimeout> | undefined;
+  private redialTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly listeners = new Set<() => void>();
+  private readonly onAbort = (): void => this.fail(setupCancelled());
+
+  constructor(private readonly options: WebSocketRelayConnectionOptions) {
+    this.url = options.url;
+    let socketUrl = "";
+    try {
+      socketUrl = relaySocketUrl(options.url);
+    } catch (err) {
+      this.fail(asConnectionError(err, "usage"));
+    }
+    this.socketUrl = socketUrl;
+    if (this.state !== "dialing") return;
+    if (options.signal?.aborted) {
+      this.fail(setupCancelled());
+      return;
+    }
+    options.signal?.addEventListener("abort", this.onAbort, { once: true });
+    this.pairingTimer = setTimeout(
+      () => this.onPairingWaitEnd(),
+      this.pairingTimeoutMs(),
+    );
+    void this.dialSocket();
+  }
+
+  readonly onChange = (listener: () => void): (() => void) => {
+    if (this.state === "closed") return () => {};
+    const call = (): void => listener();
+    this.listeners.add(call);
+    return () => this.listeners.delete(call);
+  };
+
+  readonly start = (): Promise<MessageConnection> => {
+    if (this.starting !== undefined) return this.starting.promise;
+    let resolve!: (connection: MessageConnection) => void;
+    let reject!: (error: ConnectionError) => void;
+    const promise = new Promise<MessageConnection>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    this.starting = { promise, resolve, reject };
+    if (this.state === "failed" && this.failure !== undefined)
+      reject(this.failure);
+    else if (this.state === "closed") reject(setupCancelled());
+    else {
+      this.startRequested = true;
+      const current = this.current;
+      if (current !== undefined && current.phase !== "connecting")
+        this.sendStart(current);
+    }
+    return promise;
+  };
+
+  readonly close = (): void => {
+    if (this.state !== "dialing") return;
+    this.state = "closed";
+    this.listeners.clear();
+    this.teardown(
+      this.current?.startSent === true ? CLOSE_ABNORMAL : CLOSE_NORMAL,
+    );
+    this.paired = false;
+    this.partnerStarted = false;
+    this.starting?.reject(setupCancelled());
+  };
+
+  private pairingTimeoutMs(): number {
+    return this.options.pairingTimeoutMs ?? DEFAULT_RELAY_PAIRING_TIMEOUT_MS;
+  }
+
+  private notify(): void {
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  private async dialSocket(): Promise<void> {
+    const now = (this.options.now ?? (() => new Date()))();
+    let proof: WebSocketRelayProof;
+    try {
+      proof = await buildRelayProof(
+        this.options,
+        new Date(now.getTime() + (this.relayClockOffsetMs ?? 0)),
+      );
+    } catch (err) {
+      this.fail(asConnectionError(err, "usage"));
+      return;
+    }
+    if (this.state !== "dialing") return;
+    const hello = helloFrame(this.options.exchangeId, proof);
+    let socket: WebSocket;
+    try {
+      socket = openRelaySocket(this.socketUrl, this.options);
+    } catch (err) {
+      this.fail(asConnectionError(err, "usage"));
+      return;
+    }
+    socket.binaryType = "arraybuffer";
+    const onOpen = (): void => this.onOpen(current, hello);
     // Error events carry nothing a close event does not; the close that
     // follows each one decides.
-    const dispatchMessage = (event: MessageEvent) => onMessage(event);
-    const dispatchClose = (event: CloseEvent) => onClose(event);
-
+    const dispatchMessage = (event: MessageEvent): void =>
+      current.onMessage(event);
+    const dispatchClose = (event: CloseEvent): void => current.onClose(event);
+    const current: RelaySocket = {
+      socket,
+      phase: "connecting",
+      startSent: false,
+      timer: setTimeout(
+        () => this.onOpenExpired(current),
+        this.options.openTimeoutMs ?? DEFAULT_RELAY_OPEN_TIMEOUT_MS,
+      ),
+      onMessage: (event) => this.onSetupMessage(current, event),
+      onClose: (event) => this.onSetupClose(current, event),
+      detach: () => {
+        clearTimeout(current.timer);
+        socket.removeEventListener("open", onOpen);
+        socket.removeEventListener("message", dispatchMessage);
+        socket.removeEventListener("close", dispatchClose);
+      },
+    };
+    this.current = current;
     socket.addEventListener("open", onOpen);
     socket.addEventListener("message", dispatchMessage);
     socket.addEventListener("close", dispatchClose);
-    options.signal?.addEventListener("abort", onAbort);
-    const pairingTimeoutMs =
-      options.pairingTimeoutMs ?? DEFAULT_RELAY_PAIRING_TIMEOUT_MS;
-    const pairingMinutes = Math.max(1, Math.round(pairingTimeoutMs / 60_000));
-    arm(
-      pairingTimeoutMs,
+  }
+
+  private onOpen(current: RelaySocket, hello: string): void {
+    clearTimeout(current.timer);
+    current.timer = undefined;
+    current.phase = "awaiting-pair";
+    current.socket.send(hello);
+    if (this.startRequested) this.sendStart(current);
+  }
+
+  private onOpenExpired(current: RelaySocket): void {
+    current.detach();
+    this.current = undefined;
+    current.socket.close(CLOSE_ABNORMAL);
+    this.redial(couldNotConnectError());
+  }
+
+  private sendStart(current: RelaySocket): void {
+    if (current.startSent) return;
+    current.startSent = true;
+    current.socket.send(START_FRAME);
+    if (current.phase !== "paired") return;
+    if (this.partnerStarted) this.open(current);
+    else this.armStartWait(current);
+  }
+
+  private armStartWait(current: RelaySocket): void {
+    clearTimeout(current.timer);
+    current.timer = setTimeout(
       () =>
-        new ConnectionError(
-          `The exchange partner did not reach the WebSocket relay within ${pairingMinutes} minute${pairingMinutes === 1 ? "" : "s"}. Check that your partner has started the exchange with the same relay, then start it again.`,
-          "transport",
+        this.fail(
+          new ConnectionError(
+            "The exchange partner reached the WebSocket relay but did not start the exchange. Ask your partner to start the exchange again, then start it again here.",
+            "transport",
+          ),
         ),
+      this.options.startTimeoutMs ?? DEFAULT_RELAY_START_TIMEOUT_MS,
     );
-  });
+  }
+
+  private onSetupMessage(current: RelaySocket, event: MessageEvent): void {
+    if (typeof event.data !== "string") {
+      this.fail(
+        relayProtocolError(
+          "passed on exchange data before both parties had started",
+        ),
+      );
+      return;
+    }
+    let frame: RelayControlFrame;
+    try {
+      frame = readRelayControlFrame(event.data);
+    } catch (err) {
+      this.fail(asConnectionError(err, "protocol"));
+      return;
+    }
+    if (frame === "paired") {
+      if (current.phase === "paired") {
+        this.fail(relayProtocolError("paired this side twice"));
+        return;
+      }
+      current.phase = "paired";
+      this.paired = true;
+      this.lastSetupError = undefined;
+      if (current.startSent) this.armStartWait(current);
+      this.notify();
+      return;
+    }
+    if (current.phase !== "paired") {
+      this.fail(
+        relayProtocolError("passed on the partner's start before pairing"),
+      );
+      return;
+    }
+    if (this.partnerStarted) {
+      this.fail(relayProtocolError("passed on the partner's start twice"));
+      return;
+    }
+    this.partnerStarted = true;
+    if (current.startSent) this.open(current);
+    this.notify();
+  }
+
+  private onSetupClose(current: RelaySocket, event: CloseEvent): void {
+    current.detach();
+    this.current = undefined;
+    const wasPaired = this.paired;
+    this.paired = false;
+    this.partnerStarted = false;
+    const error = setupCloseError(
+      event,
+      current.phase !== "connecting",
+      current.phase === "paired",
+    );
+    if (error instanceof ProofExpiredRefusal) {
+      if (this.relayClockOffsetMs !== undefined)
+        this.fail(proofExpiredTwiceError());
+      else if (error.relayClock === undefined) this.fail(error);
+      else {
+        const now = (this.options.now ?? (() => new Date()))();
+        this.relayClockOffsetMs = error.relayClock.getTime() - now.getTime();
+        if (this.pairingWaitEnded) this.fail(error);
+        else void this.dialSocket();
+      }
+      return;
+    }
+    if (!redialsOn(event.code)) {
+      this.fail(error);
+      return;
+    }
+    this.redial(error);
+    if (wasPaired && this.state === "dialing") this.notify();
+  }
+
+  private redial(error: ConnectionError): void {
+    this.lastSetupError = error;
+    if (this.pairingWaitEnded) {
+      this.fail(error);
+      return;
+    }
+    this.redialTimer = setTimeout(() => {
+      this.redialTimer = undefined;
+      void this.dialSocket();
+    }, this.options.redialIntervalMs ?? RELAY_REDIAL_INTERVAL_MS);
+  }
+
+  /** A pairing already formed outlives the wait; anything short of one ends
+   * on the partner not arriving, or on the last close dialed again on. */
+  private onPairingWaitEnd(): void {
+    this.pairingWaitEnded = true;
+    if (this.state !== "dialing" || this.paired) return;
+    if (this.current?.phase !== "awaiting-pair") {
+      this.fail(this.lastSetupError ?? couldNotConnectError());
+      return;
+    }
+    const minutes = Math.max(1, Math.round(this.pairingTimeoutMs() / 60_000));
+    this.fail(
+      new ConnectionError(
+        `The exchange partner did not reach the WebSocket relay within ${minutes} minute${minutes === 1 ? "" : "s"}. Check that your partner has started the exchange with the same relay, then start it again.`,
+        "transport",
+      ),
+    );
+  }
+
+  private open(current: RelaySocket): void {
+    this.state = "open";
+    this.clearTimers();
+    clearTimeout(current.timer);
+    this.current = undefined;
+    const forwarding = forwardingConnection(current.socket, this.options);
+    current.onMessage = forwarding.onMessage;
+    current.onClose = forwarding.onClose;
+    this.starting?.resolve(forwarding.connection);
+  }
+
+  private fail(error: ConnectionError): void {
+    if (this.state !== "dialing") return;
+    this.state = "failed";
+    this.failure = error;
+    this.teardown(CLOSE_ABNORMAL);
+    this.paired = false;
+    this.partnerStarted = false;
+    this.starting?.reject(error);
+    this.notify();
+  }
+
+  private clearTimers(): void {
+    clearTimeout(this.pairingTimer);
+    clearTimeout(this.redialTimer);
+    this.options.signal?.removeEventListener("abort", this.onAbort);
+  }
+
+  private teardown(code: number): void {
+    this.clearTimers();
+    const current = this.current;
+    this.current = undefined;
+    if (current === undefined) return;
+    current.detach();
+    if (
+      current.socket.readyState === SOCKET_OPEN ||
+      current.socket.readyState === SOCKET_CONNECTING
+    )
+      current.socket.close(code);
+  }
 }
 
 function setupCancelled(): ConnectionError {

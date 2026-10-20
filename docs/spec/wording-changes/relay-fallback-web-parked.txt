@@ -1,0 +1,28 @@
+# WEBSOCKET_RELAY.md, The web application's client: the hello and the
+# start are sent apart, the start held until the run sends it, and until
+# the exchange begins the client dials again on the closes it lists.
+- It opens the relay's `wss` url and, on open, sends its hello and then its start, with no wait between them. -> It opens the relay's `wss` url and, on open, sends its hello.
+- Its proof expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows. -> Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- - -> **The start, held.**
+- - -> It holds its start until the run sends it (`parkWebSocketRelayConnection`), on a socket the relay has paired or not, and sends it behind the hello on each socket that opens after that.
+- - -> Opened with the start already sent (`openWebSocketRelayConnection`), it sends its hello and then its start, with no wait between them.
+- - -> **The partner's start first.**
+- - -> A start the relay sends while this side's own is held is kept, and this side's start then begins the exchange at once.
+- It refuses a binary message before the partner's start, a start before `paired`, and any text message after the partner's start. -> Until the exchange begins, it refuses a binary message, a start before `paired`, a second `paired` or start, and any other text message, closing its socket with 4000.
+- - -> Once the exchange has begun, it refuses any text message.
+- - -> **Dialing again.**
+- - -> Until the exchange begins and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):
+- - -> 4003, since the partner may enroll the exchange's key later;
+- - -> 4006, since an earlier socket of this side may still hold the role;
+- - -> 1000 or 4000, the partner leaving the pairing;
+- - -> 4009, the relay's idle bound;
+- - -> any code the [Close codes](#close-codes) table does not list, as when the connection drops, and a socket that does not open within 30 seconds (`DEFAULT_RELAY_OPEN_TIMEOUT_MS`, an arbitrary working value).
+- - -> Every other close ends the attempt, and so does any close once the rendezvous budget has ended.
+- On a 4005 whose reason is a decimal second a JavaScript `Date` can hold, it opens a new socket once and sends a hello whose proof is made at that second, the relay's clock. -> On a 4005 whose reason is a decimal second a JavaScript `Date` can hold, it opens a new socket at once with a proof made at that second, the relay's clock, and makes every later proof on that clock.
+- - -> A second so near the end of that range that a later proof time falls past it ends the attempt with the error for a proof this side could not build, which points at the invitation rather than the relay.
+- It waits 10 minutes for `paired`, the WebRTC rendezvous budget, and then 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)). -> It waits 10 minutes for `paired`, the WebRTC rendezvous budget, counted from the park across every socket it opens.
+- - -> Once paired with its own start sent, it waits 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)).
+- - -> A pairing whose start it holds has no wait of its own.
+- - -> When the rendezvous budget ends with a socket waiting for `paired`, it reports that the partner did not arrive, and otherwise the last close it dialed again on, or, with none, that it could not connect.
+- - -> **An unused socket.**
+- - -> Closed before the exchange begins, it closes its socket with 1000 while its start has not been sent on it, and with 4000 once it has, since a partner that has read the start may hold a started connection that must not take the close for delivery.
