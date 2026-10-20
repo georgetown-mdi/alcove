@@ -334,7 +334,7 @@ describe("generateInvitation", () => {
       });
     });
 
-    test("names the default WebSocket relay, or this browser's own in its place with no registrar", async () => {
+    test("names the default WebSocket relay, or this browser's own in its place", async () => {
       const withWebSocket = () => ({
         ...DEFAULT_RELAY,
         websocketUrl: "wss://wsrelay.example.org/relay",
@@ -357,6 +357,7 @@ describe("generateInvitation", () => {
         relay: {
           turn: [DEFAULT_RELAY.turnUrl],
           websocket: "wss://own-relay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
         },
       });
     });
@@ -375,7 +376,7 @@ describe("generateInvitation", () => {
         return endpoint.relay;
       }
 
-      test("beside this browser's own WebSocket relay and the default TURN url, nowhere", async () => {
+      test("beside this browser's own WebSocket relay and the default TURN url, at the default registrar when it allocates on that TURN url", async () => {
         stubOwnRelay({
           turn: [],
           stun: [],
@@ -385,15 +386,16 @@ describe("generateInvitation", () => {
         expect(relay).toStrictEqual({
           turn: [DEFAULT_RELAY.turnUrl],
           websocket: "wss://own-relay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
         });
+        expect(
+          runEnrollsAtInvitationRegistrar({ invitationRelay: relay }),
+        ).toBe(true);
         expect(
           runEnrollsAtInvitationRegistrar({
             turn: CLI_OWN_TURN,
             invitationRelay: relay,
           }),
-        ).toBe(false);
-        expect(
-          runEnrollsAtInvitationRegistrar({ invitationRelay: relay }),
         ).toBe(false);
       });
 

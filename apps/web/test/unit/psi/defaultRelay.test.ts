@@ -454,11 +454,15 @@ describe("invitationRelayWithDefault", () => {
       });
     });
 
-    test("gives way to a WebSocket relay of this browser's own, beside which no registrar is named", () => {
+    test("gives way to a WebSocket relay of this browser's own", () => {
       const own = { ...OWN, websocket: "wss://own.example.org/relay" };
       expect(
         invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
-      ).toEqual({ ...own, turn: [...OWN.turn, DEFAULT_RELAY.turnUrl] });
+      ).toEqual({
+        ...own,
+        turn: [...OWN.turn, DEFAULT_RELAY.turnUrl],
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
     });
 
     test("is named with its registrar where this browser's own WebSocket relay is the same url", () => {
@@ -517,14 +521,17 @@ describe("invitationRelayWithDefault", () => {
       };
       expect(
         invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
-      ).toEqual({ ...own, turn: [DEFAULT_RELAY.turnUrl] });
+      ).toEqual({
+        ...own,
+        turn: [DEFAULT_RELAY.turnUrl],
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
     });
   });
 
-  // A locator names a registrar beside a WebSocket relay url only where that
-  // relay reads the keys the registrar enrolls (docs/spec/PROTOCOL.md, "The
-  // invitation's relay locator").
-  test("names the registrar beside the default TURN url only, and beside no WebSocket relay url but the default relay's", () => {
+  // A decoder admits a registrar beside a WebSocket relay url alone, and no
+  // build mints one (docs/spec/PROTOCOL.md, "The invitation's relay locator").
+  test("names the registrar beside the default TURN url only, whatever WebSocket relay url it names", () => {
     const WEBSOCKET = "wss://wsrelay.example.org/relay";
     const OWN_WEBSOCKET = "wss://own.example.org/relay";
     const fullTurn = Array.from(
@@ -567,13 +574,8 @@ describe("invitationRelayWithDefault", () => {
           const namesDefaultTurnUrl = (relay?.turn ?? []).includes(
             defaultRelay.turnUrl,
           );
-          const namesOtherWebSocketRelay =
-            relay?.websocket !== undefined &&
-            relay.websocket !== defaultRelay.websocketUrl;
           expect(relay?.registrar, label).toBe(
-            namesDefaultTurnUrl && !namesOtherWebSocketRelay
-              ? defaultRelay.registrarUrl
-              : undefined,
+            namesDefaultTurnUrl ? defaultRelay.registrarUrl : undefined,
           );
         }
   });

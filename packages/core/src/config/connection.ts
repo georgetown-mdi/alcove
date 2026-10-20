@@ -1245,8 +1245,9 @@ export interface RelayLocator {
    * The `https://` address of a registrar, naming only a host and an optional
    * port, where a run enrolls the exchange's relay key without a token before
    * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Held as
-   * its origin; present only beside `turn` or `websocket`, and named beside a
-   * `websocket` url only where that relay reads the keys it enrolls.
+   * its origin; present only beside `turn` or `websocket`. It enrolls the key
+   * of the locator's TURN relay; which registrar a WebSocket relay's key is
+   * enrolled at is decided when a run first dials one, and no run does yet.
    */
   registrar?: string;
 }

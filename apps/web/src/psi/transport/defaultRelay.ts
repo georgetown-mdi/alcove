@@ -55,15 +55,11 @@ export interface DefaultRelayDependencies {
  * The relay an invitation names: `ownRelay`, followed by the default relay's
  * TURN url when the build names one and `allowedRelays` keeps it, once, and
  * only where the locator has room for it under {@link MAX_RELAY_LOCATOR_URLS}.
- * Where `ownRelay` names no WebSocket relay, the result names the default
- * relay's when the build names one and `allowedRelays` keeps it. Where the
- * result names the default relay's TURN url, it also names the default relay's
- * registrar, where a command-line party enrolls without a token, unless it
- * names a WebSocket relay of `ownRelay`'s other than the default relay's: a
- * locator names a registrar beside a WebSocket relay url only where that relay
- * reads the keys the registrar enrolls (docs/spec/PROTOCOL.md, "The
- * invitation's relay locator"). A new invitation and a managed re-invite both
- * name it this way.
+ * Where the result names that url, it also names the default relay's
+ * registrar, where a command-line party enrolls without a token. Where
+ * `ownRelay` names no WebSocket relay, the result names the default relay's
+ * when the build names one and `allowedRelays` keeps it. A new invitation and
+ * a managed re-invite both name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
@@ -78,16 +74,14 @@ export function invitationRelayWithDefault(
   );
   if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return relay;
   const turn = relay?.turn ?? [];
-  const namesTurnUrl = turn.includes(defaultRelay.turnUrl);
-  if (!namesTurnUrl && turn.length >= MAX_RELAY_LOCATOR_URLS) return relay;
-  const registrar =
-    relay?.websocket !== undefined &&
-    relay.websocket !== defaultRelay.websocketUrl
-      ? {}
-      : { registrar: defaultRelay.registrarUrl };
-  return namesTurnUrl
-    ? { ...relay, ...registrar }
-    : { ...relay, turn: [...turn, defaultRelay.turnUrl], ...registrar };
+  if (turn.includes(defaultRelay.turnUrl))
+    return { ...relay, registrar: defaultRelay.registrarUrl };
+  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return relay;
+  return {
+    ...relay,
+    turn: [...turn, defaultRelay.turnUrl],
+    registrar: defaultRelay.registrarUrl,
+  };
 }
 
 // `relay` naming the default WebSocket relay where it names none of its own,
