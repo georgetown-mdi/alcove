@@ -17,6 +17,7 @@ import { isInstalledRuntime } from "@utils/installedRuntime";
 import { addSampleInputs } from "@psi/jobClient/workInputClient";
 
 import { AppPage } from "@components/AppPage";
+import { HOSTED_WEB_APP_ADDRESS } from "@console/signalingServerModel";
 import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
@@ -157,9 +158,6 @@ export function Lobby() {
                 Review invitation
               </Button>
             </p>
-            <p className={`${styles.small} ${styles.sub}`}>
-              You can review the exchange before starting it.
-            </p>
           </div>
           {/* The console's third path: a direct exchange the two parties arranged
               out of band (a shared server, no invitation). Console-only -- it drives
@@ -192,7 +190,6 @@ export function Lobby() {
           walks through running an exchange step by step.
         </p>
         <p className={`${styles.sub} ${styles.small}`}>
-          No data to link yet?{" "}
           <Anchor
             inherit
             component="button"
@@ -202,9 +199,25 @@ export function Lobby() {
           >
             See how it works with example data
           </Anchor>
-          {isConsoleBuild()
-            ? ". This writes two sample files into your working folder and opens the invite screen with the first one. To play your partner, accept the invitation in the public Alcove web app with the second file."
-            : ". This downloads two sample files and opens the invite screen with the first one. To play your partner, open the invitation in another browser tab and accept it with the second file."}
+          {isConsoleBuild() ? (
+            <>
+              . This writes two sample files into your working folder and opens
+              the invite screen, where you choose the first one. To run both
+              sides, choose WebRTC when you create the invitation, then accept
+              it in the{" "}
+              <Anchor
+                inherit
+                href={HOSTED_WEB_APP_ADDRESS}
+                target="_blank"
+                rel="noreferrer"
+              >
+                public Alcove web app
+              </Anchor>{" "}
+              with the second file.
+            </>
+          ) : (
+            ". This downloads two sample files and opens the invite screen with the first one. To run both sides, open the invitation in another browser tab and accept it with the second file."
+          )}
         </p>
         {sampleFailure !== undefined && (
           <p className={`${styles.sub} ${styles.small}`} role="alert">

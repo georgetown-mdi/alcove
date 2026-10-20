@@ -1117,7 +1117,7 @@
   max-width: 1100px;
 }
 
-/* Each card spans four shared rows (title, body, action, note), so the main
+/* Each card spans three shared rows (title, body, action), so the main
    buttons line up across the cards in a row. */
 .lobbyActions {
   display: grid;
@@ -1134,7 +1134,7 @@
 
 .actionCard {
   display: grid;
-  grid-row: span 4;
+  grid-row: span 3;
   grid-template-rows: subgrid;
   row-gap: 0;
   background: var(--app-column);
