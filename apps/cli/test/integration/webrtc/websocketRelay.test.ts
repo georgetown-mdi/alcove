@@ -16,12 +16,14 @@ import {
 import { SEND_WINDOW_BYTES } from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
   openWebSocketRelayMessageConnection,
+  parkWebSocketRelay,
   webSocketRelayHello,
 } from "../../../src/connection/webrtc/websocketRelayConnection";
 import { webSocketRelayDialFor } from "../../../src/connection/webrtc/websocketRelayDial";
 import { startWebSocketRelayProcess } from "../../signaling/websocketRelayProcess";
 
 import type {
+  ParkedWebSocketRelay,
   WebSocketRelayConnectionOptions,
   WebSocketRelayDial,
 } from "../../../src/connection/webrtc/websocketRelayConnection";
@@ -121,14 +123,12 @@ function recordingSockets(
   return record;
 }
 
-/** Pair both parties through the relay and run the key exchange with the wrap requested. */
-async function authenticatedPair(
-  options: WebSocketRelayConnectionOptions = {},
+/** Run the key exchange over both relayed connections with the wrap requested. */
+async function authenticated(
+  inviterRaw: MessageConnection,
+  acceptorRaw: MessageConnection,
+  secret = SECRET,
 ): Promise<{ inviter: MessageConnection; acceptor: MessageConnection }> {
-  const [inviterRaw, acceptorRaw] = await Promise.all([
-    openWebSocketRelayMessageConnection(await dialFor("inviter"), options),
-    openWebSocketRelayMessageConnection(await dialFor("acceptor"), options),
-  ]);
   const authenticate = async (
     connection: MessageConnection,
     role: RendezvousRole,
@@ -136,7 +136,7 @@ async function authenticatedPair(
     const handshakeRole = handshakeRoleForRendezvousRole(role);
     const { sessionKey, applyEncryption } = await authenticateConnection(
       connection,
-      { sharedSecret: SECRET },
+      { sharedSecret: secret },
       handshakeRole,
       true,
     );
@@ -152,6 +152,56 @@ async function authenticatedPair(
     authenticate(acceptorRaw, "acceptor"),
   ]);
   return { inviter, acceptor };
+}
+
+/** Pair both parties through the relay and run the key exchange with the wrap requested. */
+async function authenticatedPair(
+  options: WebSocketRelayConnectionOptions = {},
+): Promise<{ inviter: MessageConnection; acceptor: MessageConnection }> {
+  const [inviterRaw, acceptorRaw] = await Promise.all([
+    openWebSocketRelayMessageConnection(await dialFor("inviter"), options),
+    openWebSocketRelayMessageConnection(await dialFor("acceptor"), options),
+  ]);
+  return authenticated(inviterRaw, acceptorRaw);
+}
+
+/** Resolves once `condition` holds of `relay`, and rejects with its failure first. */
+function whenRelay(
+  relay: ParkedWebSocketRelay,
+  condition: (relay: ParkedWebSocketRelay) => boolean,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const check = (): void => {
+      if (relay.failure !== undefined) {
+        remove();
+        reject(relay.failure);
+      } else if (condition(relay)) {
+        remove();
+        resolve();
+      }
+    };
+    const remove = relay.onChange(check);
+    check();
+  });
+}
+
+const isPaired = (relay: ParkedWebSocketRelay): boolean => relay.paired;
+
+/** One frame each way inside the wrap, then a clean close both sides confirm. */
+async function exchangeAndClose(pair: {
+  inviter: MessageConnection;
+  acceptor: MessageConnection;
+}): Promise<void> {
+  await pair.inviter.send({ from: "inviter" });
+  expect(await pair.acceptor.receive()).toEqual({ from: "inviter" });
+  await pair.acceptor.send({ from: "acceptor" });
+  expect(await pair.inviter.receive()).toEqual({ from: "acceptor" });
+  const closing = pair.inviter.close();
+  await expect(pair.acceptor.receive()).rejects.toThrow(
+    "peer connection closed",
+  );
+  await pair.acceptor.close().catch(() => {});
+  await closing;
 }
 
 test("two parties pair through the relay, exchange wrapped frames, and the close confirms delivery", async () => {
@@ -268,15 +318,114 @@ test("a sender the relay paces keeps its socket's buffer within the send window"
   await closing;
 }, 60_000);
 
-test("a relay that holds no key for the exchange refuses the hello with the enrollment step", async () => {
+test("a relay that holds no key for the exchange is dialed again until the budget ends, then refused with the enrollment step", async () => {
+  const sockets = recordingSockets();
   await expect(
     openWebSocketRelayMessageConnection(
       await dialFor("inviter", UNENROLLED_SECRET),
+      {
+        socketFactory: sockets.socketFactory,
+        rendezvousTimeoutMs: 2_000,
+        redialIntervalMs: 200,
+      },
     ),
   ).rejects.toThrow(
     `the WebSocket relay at ${relay.url} holds no key for this exchange`,
   );
-});
+  expect(sockets.closeCodes.length).toBeGreaterThan(1);
+  expect(new Set(sockets.closeCodes)).toEqual(new Set([4003]));
+}, 30_000);
+
+test("a party refused as not enrolled pairs once its partner enrolls the key, and the exchange crosses", async () => {
+  const secret = generateSharedSecret();
+  let refusedOnce!: () => void;
+  const refused = new Promise<void>((resolve) => {
+    refusedOnce = resolve;
+  });
+  const socketFactory = (url: string): WebSocket => {
+    const socket = new WebSocket(url);
+    socket.addEventListener("close", (event: CloseEvent) => {
+      if (event.code === 4003) refusedOnce();
+    });
+    return socket;
+  };
+  const inviter = parkWebSocketRelay(await dialFor("inviter", secret), {
+    socketFactory,
+    redialIntervalMs: 200,
+  });
+  await refused;
+  relay.enroll({
+    [await deriveRelayExchangeId(secret)]: await deriveRelayKey(secret),
+  });
+  const acceptor = parkWebSocketRelay(await dialFor("acceptor", secret));
+  await Promise.all([
+    whenRelay(inviter, isPaired),
+    whenRelay(acceptor, isPaired),
+  ]);
+
+  const [inviterRaw, acceptorRaw] = await Promise.all([
+    inviter.start(),
+    acceptor.start(),
+  ]);
+  await exchangeAndClose(await authenticated(inviterRaw, acceptorRaw, secret));
+}, 60_000);
+
+test("a party whose partner leaves a parked pairing dials again and pairs with the partner's next socket", async () => {
+  const inviter = parkWebSocketRelay(await dialFor("inviter"), {
+    redialIntervalMs: 200,
+  });
+  const leaving = parkWebSocketRelay(await dialFor("acceptor"));
+  await Promise.all([
+    whenRelay(inviter, isPaired),
+    whenRelay(leaving, isPaired),
+  ]);
+  leaving.close();
+  await whenRelay(inviter, (parked) => !parked.paired);
+  expect(inviter.failure).toBeUndefined();
+
+  const acceptor = parkWebSocketRelay(await dialFor("acceptor"));
+  await Promise.all([
+    whenRelay(inviter, isPaired),
+    whenRelay(acceptor, isPaired),
+  ]);
+  const [inviterRaw, acceptorRaw] = await Promise.all([
+    inviter.start(),
+    acceptor.start(),
+  ]);
+  await exchangeAndClose(await authenticated(inviterRaw, acceptorRaw));
+}, 60_000);
+
+test("a start one party defers reaches its partner through the relay, and the partner's own start opens both", async () => {
+  const sockets = recordingSockets();
+  const inviter = parkWebSocketRelay(await dialFor("inviter"), {
+    socketFactory: sockets.socketFactory,
+  });
+  const acceptor = parkWebSocketRelay(await dialFor("acceptor"), {
+    socketFactory: sockets.socketFactory,
+  });
+  await Promise.all([
+    whenRelay(inviter, isPaired),
+    whenRelay(acceptor, isPaired),
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(inviter.partnerStarted || acceptor.partnerStarted).toBe(false);
+
+  let inviterOpen = false;
+  const inviterStarting = inviter.start().then((connection) => {
+    inviterOpen = true;
+    return connection;
+  });
+  await whenRelay(acceptor, (parked) => parked.partnerStarted);
+  expect(inviterOpen).toBe(false);
+  expect(sockets.binaryForwarded).toEqual([]);
+
+  const [inviterRaw, acceptorRaw] = await Promise.all([
+    inviterStarting,
+    acceptor.start(),
+  ]);
+  await exchangeAndClose(await authenticated(inviterRaw, acceptorRaw));
+  expect(sockets.closeCodes).toEqual([1000, 1000]);
+}, 60_000);
 
 const PROOF_REFUSED_MESSAGE =
   "holds a key for this exchange other than the one this side's shared " +
@@ -323,7 +472,7 @@ test("a proof made for one role in a hello claiming the other is refused before 
   expect(sockets.binaryForwarded).toEqual([]);
 });
 
-test("a second socket in a role the relay already holds is refused as role taken", async () => {
+test("a second socket in a role the relay already holds is dialed again, then refused as role taken", async () => {
   const controller = new AbortController();
   const first = openWebSocketRelayMessageConnection(await dialFor("inviter"), {
     signal: controller.signal,
@@ -331,9 +480,16 @@ test("a second socket in a role the relay already holds is refused as role taken
   const firstSettled = first.catch((err: unknown) => err);
   // The relay checks hellos in arrival order, so let the first one land.
   await new Promise((resolve) => setTimeout(resolve, 500));
+  const sockets = recordingSockets();
   await expect(
-    openWebSocketRelayMessageConnection(await dialFor("inviter")),
+    openWebSocketRelayMessageConnection(await dialFor("inviter"), {
+      socketFactory: sockets.socketFactory,
+      rendezvousTimeoutMs: 1_500,
+      redialIntervalMs: 200,
+    }),
   ).rejects.toThrow("already holds a connection in this side's role");
+  expect(sockets.closeCodes.length).toBeGreaterThan(1);
+  expect(new Set(sockets.closeCodes)).toEqual(new Set([4006]));
   controller.abort();
   await firstSettled;
-});
+}, 30_000);

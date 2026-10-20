@@ -4,7 +4,7 @@ title: "WebSocket Relay"
 
 # WebSocket relay
 
-This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, its bounds, and the web application's client.
+This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, its bounds, and the web application's and the command-line application's clients.
 It is the implementation-level complement to [WebSocket relay](../DESIGN.md#websocket-relay) in DESIGN.md, which says what the relay is for and what its operator is in a position to see.
 It does not cover the proof a hello presents (see [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)) or the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)).
 The design and the rulings behind it are in [web-websocket-transport.md](../notes/web-websocket-transport.md).
@@ -139,3 +139,24 @@ Its values are working values, as the relay's are.
 - **Pacing.** It stops handing a frame's datagrams to the socket while the socket's `bufferedAmount` is at or above 1 MiB, and resumes once it is at or below 256 KiB, the CLI's window ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#outbound-pacing)). A browser `WebSocket` raises no event as its buffer drains, so a waiting send reads `bufferedAmount` every 50 milliseconds.
 - **The clean close.** It sends the close sentinel behind its last frame and waits up to 5 minutes, the close drain budget, for the partner's close to reach it through the relay or for the partner's own sentinel. On reading the partner's sentinel it closes its socket with 1000, the signal the partner's own close waits for. Any other end of its socket, an error or a wait that ran out, closes with 4000.
 - **Keepalive.** It sends no ping, since a browser `WebSocket` cannot; the relay's pings keep its socket open through a parked receive ([Keepalive](#keepalive)).
+
+## The command-line client
+
+The command-line application's relay transport (`apps/cli/src/connection/webrtc/websocketRelayConnection.ts`) is one party's side of this wire, on Node's own `WebSocket` client.
+Its values are working values, as the relay's are.
+
+- **The hello.** On open, it sends its hello. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- **The start, held.** It holds its start until the run sends it (`parkWebSocketRelay`), on a socket the relay has paired or not, and sends it behind the hello on each socket that opens after that. Opened with the start already sent (`openWebSocketRelayMessageConnection`), it sends its hello and then its start, with no wait between them.
+- **The partner's start first.** A start the relay sends while this side's own is held is kept, and this side's start then begins the exchange at once. Until the exchange begins, it refuses a binary message, a start before `paired`, a second `paired` or start, and any other text message, closing its socket with 4000.
+- **Dialing again.** Until the partner's start arrives and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):
+  - 4003, since the partner may enroll the exchange's key later;
+  - 4006, since an earlier socket of this side may still hold the role;
+  - 1000 or 4000, the partner leaving the pairing;
+  - 4009, the relay's idle bound;
+  - any code the [Close codes](#close-codes) table does not list, as when the connection drops, and a socket that does not open within 30 seconds.
+
+  Every other close ends the attempt, and so does any close once the rendezvous budget has ended.
+- **An expired proof.** On a 4005 whose reason is a decimal second a JavaScript `Date` can hold, it opens a new socket at once with a proof made at that second, the relay's clock, and makes every later proof on that clock. A second 4005 ends the attempt, as does a 4005 whose reason is not such a second.
+- **The waits.** It waits 10 minutes for `paired`, the WebRTC rendezvous budget, counted from its first socket across every socket it opens. Once paired with its own start sent, it waits 30 seconds for the partner's start, the channel-open budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)). A pairing whose start it holds has no wait of its own. When the rendezvous budget ends with a socket waiting for `paired`, it reports that the partner did not arrive, and otherwise the last close it dialed again on, or, with none, that the relay did not answer.
+- **An unused socket.** Closed before the exchange begins, it closes its socket with 1000 while its start has not been sent on it, and with 4000 once it has, since a partner that has read the start may hold a started connection that must not take the close for delivery.
+- **The exchange's messages.** It frames and paces them as the web application's client does, through the same core encoder and reassembler and the same window, a waiting send reading `bufferedAmount` every 10 milliseconds. Node's `WebSocket` answers the relay's pings and sends none.

@@ -27,6 +27,7 @@ import {
 import {
   RELAY_ABANDON_CLOSE_CODE,
   openWebSocketRelayMessageConnection,
+  parkWebSocketRelay,
   relayRefusalError,
 } from "../../../src/connection/webrtc/websocketRelayConnection";
 import {
@@ -554,20 +555,19 @@ test.each([
   await expect(connection.receive()).rejects.toThrow(text);
 });
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 test.each([
-  [4003, "holds no key for this exchange", "alcove enroll-relay"],
   [4004, "other than the one", "--replace-relay-key"],
-  [4006, "already holds a connection in this side's role", "connection.role"],
   [4008, "as many exchanges as it allows", "again later"],
   [1011, "could not check this side's proof", "key table"],
   [1001, "shut down", "once it is back"],
-  [4000, "partner left the WebSocket relay", "Agree a time"],
   [4007, "refused a message this side sent (close code 4007)", "names an"],
-  [1006, "closed before the exchange started (close code 1006)", "reach"],
 ])(
-  "a relay close %i before the start is refused with its cause and next step",
+  "a relay close %i before the start is refused at once with its cause and next step",
   async (code, what, next) => {
-    const { sockets, options } = harness();
+    const { sockets, options } = harness({ redialIntervalMs: 1 });
     const opening = openWebSocketRelayMessageConnection(
       await relayDial(),
       options,
@@ -580,6 +580,81 @@ test.each([
     expect((error as Error).message).toContain(what);
     expect((error as Error).message).toContain(next);
     expect(statesItsOwnNextStep(error)).toBe(true);
+    await sleep(20);
+    expect(sockets).toHaveLength(1);
+  },
+);
+
+/**
+ * Open each socket the side dials and close it with `code`, after `paired`
+ * where `pairFirst`, until `settled` has settled; resolves with how many.
+ */
+async function refuseEachDial(
+  sockets: Array<FakeRelaySocket>,
+  code: number,
+  pairFirst: boolean,
+  settled: Promise<unknown>,
+): Promise<number> {
+  let done = false;
+  void settled.finally(() => {
+    done = true;
+  });
+  let refused = 0;
+  while (!done) {
+    const socket = sockets[refused];
+    if (socket !== undefined) {
+      refused++;
+      socket.open();
+      if (pairFirst) socket.control("paired");
+      socket.closedByRelay(code);
+    }
+    await tick();
+  }
+  return refused;
+}
+
+test.each([
+  [4003, false, "holds no key for this exchange", "alcove enroll-relay"],
+  [4006, false, "already holds a connection in this side's role", "role"],
+  [4000, true, "partner left the WebSocket relay", "Agree a time"],
+  [1000, true, "partner left the WebSocket relay", "Agree a time"],
+  [4009, true, "within its idle limit", "Agree a time"],
+  [
+    1006,
+    false,
+    "closed before the exchange started (close code 1006)",
+    "reach",
+  ],
+  [
+    4999,
+    false,
+    "closed before the exchange started (close code 4999)",
+    "reach",
+  ],
+])(
+  "a relay close %i before the start is dialed again, and refused with its cause once the rendezvous budget ends",
+  async (code, pairFirst, what, next) => {
+    const { sockets, options } = harness({
+      redialIntervalMs: 5,
+      rendezvousTimeoutMs: 150,
+    });
+    const settled = openWebSocketRelayMessageConnection(
+      await relayDial(),
+      options,
+    ).catch((err: unknown) => err);
+    const refused = await refuseEachDial(sockets, code, pairFirst, settled);
+    const error = await settled;
+    expect(refused).toBeGreaterThan(1);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as Error).message).toContain(what);
+    expect((error as Error).message).toContain(next);
+    expect(statesItsOwnNextStep(error)).toBe(true);
+    for (const socket of sockets.slice(0, refused)) {
+      const [hello, start, ...rest] = socket.textSent();
+      expect(JSON.parse(hello)).toMatchObject({ type: "hello" });
+      expect(JSON.parse(start)).toEqual({ type: "start" });
+      expect(rest).toEqual([]);
+    }
   },
 );
 
@@ -683,15 +758,21 @@ test("a paired partner that never starts ends the wait at the channel-open budge
   expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
 });
 
-test("a relay that does not open the socket in time is abandoned", async () => {
-  const { sockets, options } = harness({ openTimeoutMs: 20 });
+test("a relay that does not open the socket in time is abandoned and dialed again", async () => {
+  const { sockets, options } = harness({
+    openTimeoutMs: 20,
+    redialIntervalMs: 5,
+    rendezvousTimeoutMs: 120,
+  });
   const opening = openWebSocketRelayMessageConnection(
     await relayDial(),
     options,
   );
   const socket = await socketDialed(sockets);
   await expect(opening).rejects.toThrow("did not answer in time");
-  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+  expect(sockets.length).toBeGreaterThan(1);
+  for (const dialed of sockets)
+    expect(dialed.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
   socket.open();
   expect(socket.sent).toEqual([]);
 });
@@ -735,6 +816,222 @@ test("an abort before the start closes the socket and stops the dial", async () 
   controller.abort();
   await expect(opening).rejects.toMatchObject({ kind: "closed" });
   expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+function frameTypes(socket: FakeRelaySocket): Array<unknown> {
+  return socket
+    .textSent()
+    .map((text) => (JSON.parse(text) as { type: unknown }).type);
+}
+
+/** A parked relay and the `[paired, partnerStarted]` it showed at each change. */
+async function parkedRelay(options: WebSocketRelayConnectionOptions = {}) {
+  const { sockets, options: dialOptions } = harness(options);
+  const relay = parkWebSocketRelay(await relayDial(), dialOptions);
+  const changes: Array<[boolean, boolean]> = [];
+  relay.onChange(() => changes.push([relay.paired, relay.partnerStarted]));
+  return { relay, sockets, changes };
+}
+
+test("a parked relay sends its hello and holds its start until the run sends it", async () => {
+  const { relay, sockets, changes } = await parkedRelay({
+    channelOpenTimeoutMs: 30,
+  });
+  const socket = await socketDialed(sockets);
+  socket.open();
+  expect(frameTypes(socket)).toEqual(["hello"]);
+  socket.control("paired");
+  expect(relay.paired).toBe(true);
+  await sleep(60);
+  expect(frameTypes(socket)).toEqual(["hello"]);
+  expect(relay.failure).toBeUndefined();
+
+  const starting = relay.start();
+  expect(relay.start()).toBe(starting);
+  expect(frameTypes(socket)).toEqual(["hello", "start"]);
+  socket.control("start");
+  const connection = await starting;
+  expect(changes).toEqual([
+    [true, false],
+    [true, true],
+  ]);
+  await connection.send("first");
+  expect(socket.binarySent()).toHaveLength(1);
+  relay.close();
+  expect(socket.closeCalls).toEqual([]);
+});
+
+test("the partner's start reaching a parked relay is kept, and this side's start then opens the connection at once", async () => {
+  const { relay, sockets, changes } = await parkedRelay();
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  socket.control("start");
+  expect(relay.partnerStarted).toBe(true);
+  expect(frameTypes(socket)).toEqual(["hello"]);
+  expect(changes).toEqual([
+    [true, false],
+    [true, true],
+  ]);
+
+  const connection = await relay.start();
+  expect(frameTypes(socket)).toEqual(["hello", "start"]);
+  socket.binary(packValue({ first: 1 }));
+  expect(await connection.receive()).toEqual({ first: 1 });
+});
+
+test("the channel-open budget runs from this side's start on a pairing held parked", async () => {
+  const { relay, sockets } = await parkedRelay({ channelOpenTimeoutMs: 40 });
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  await sleep(60);
+  const started = Date.now();
+  await expect(relay.start()).rejects.toThrow(
+    "did not start the exchange in time",
+  );
+  expect(Date.now() - started).toBeGreaterThanOrEqual(30);
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a parked pairing the partner leaves is dialed again with the start still held", async () => {
+  const { relay, sockets, changes } = await parkedRelay({
+    redialIntervalMs: 5,
+  });
+  const first = await socketDialed(sockets);
+  first.open();
+  first.control("paired");
+  first.closedByRelay(4000);
+  expect(relay.paired).toBe(false);
+  expect(relay.failure).toBeUndefined();
+
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  expect(frameTypes(second)).toEqual(["hello"]);
+  second.control("paired");
+  expect(changes).toEqual([
+    [true, false],
+    [false, false],
+    [true, false],
+  ]);
+  relay.close();
+  expect(second.closeCalls).toEqual([1000]);
+  await expect(relay.start()).rejects.toMatchObject({ kind: "closed" });
+});
+
+test("a socket dialed again after this side's start sends the start behind its hello", async () => {
+  const { relay, sockets } = await parkedRelay({ redialIntervalMs: 5 });
+  const first = await socketDialed(sockets);
+  first.open();
+  first.control("paired");
+  const starting = relay.start();
+  first.closedByRelay(1000);
+
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  expect(frameTypes(second)).toEqual(["hello", "start"]);
+  second.control("paired");
+  second.control("start");
+  await expect(starting).resolves.toBeDefined();
+});
+
+test("a relay refusing the hello as not enrolled is dialed again with a fresh proof, and pairs once the key is enrolled", async () => {
+  let clock = NOW;
+  const { relay, sockets } = await parkedRelay({
+    redialIntervalMs: 5,
+    now: () => clock,
+  });
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4003);
+  clock = new Date(NOW.getTime() + 60_000);
+
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  const hello = JSON.parse(second.textSent()[0]) as Record<string, string>;
+  expect(hello.proof.split("\n")[2]).toBe(String(NOW_SECONDS + 60 + 300));
+  second.control("paired");
+  expect(relay.paired).toBe(true);
+  expect(relay.failure).toBeUndefined();
+  relay.close();
+});
+
+test("a proof made again on the relay's clock is made on that clock on every later socket", async () => {
+  let clock = NOW;
+  const { relay, sockets } = await parkedRelay({
+    redialIntervalMs: 5,
+    now: () => clock,
+  });
+  const relaySeconds = NOW_SECONDS + 3_600;
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4005, String(relaySeconds));
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  second.closedByRelay(4003);
+  clock = new Date(NOW.getTime() + 10_000);
+
+  const third = await socketDialed(sockets, 3);
+  third.open();
+  const hello = JSON.parse(third.textSent()[0]) as Record<string, string>;
+  expect(hello.proof.split("\n")[2]).toBe(String(relaySeconds + 10 + 300));
+  relay.close();
+});
+
+test("closing a parked relay while it waits to dial again stops the dialing and refuses the start", async () => {
+  const { relay, sockets, changes } = await parkedRelay({
+    redialIntervalMs: 20,
+  });
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4003);
+  relay.close();
+  await sleep(60);
+  expect(sockets).toHaveLength(1);
+  expect(relay.failure).toBeUndefined();
+  expect(changes).toEqual([]);
+  await expect(relay.start()).rejects.toMatchObject({ kind: "closed" });
+});
+
+test("closing a relay after this side's start has been sent closes abnormally", async () => {
+  const { relay, sockets } = await parkedRelay();
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  const starting = relay.start();
+  relay.close();
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+  await expect(starting).rejects.toMatchObject({ kind: "closed" });
+});
+
+test("a parked relay's refusal reaches its listeners and a later start", async () => {
+  const { relay, sockets, changes } = await parkedRelay();
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.closedByRelay(4004);
+  expect(relay.failure?.message).toContain("other than the one");
+  expect(changes).toEqual([[false, false]]);
+  await expect(relay.start()).rejects.toBe(relay.failure);
+});
+
+test("a binary message to a parked relay the partner has started is refused as a protocol fault", async () => {
+  const { relay, sockets } = await parkedRelay();
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  socket.control("start");
+  socket.binary(packValue("early"));
+  expect(relay.failure).toMatchObject({ kind: "protocol" });
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
+test("a relay parked under a signal already aborted dials no socket", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const { relay, sockets } = await parkedRelay({ signal: controller.signal });
+  await sleep(20);
+  expect(sockets).toEqual([]);
+  expect(relay.failure).toMatchObject({ kind: "closed" });
 });
 
 test("a run with no shared secret refuses the relay before dialing", async () => {
