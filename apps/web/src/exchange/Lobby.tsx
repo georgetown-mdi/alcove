@@ -149,11 +149,6 @@ export function Lobby() {
             .
           </p>
         )}
-        {FILE_ASSURANCE_LINE !== undefined && (
-          <p className={`${styles.sub} ${styles.small}`}>
-            {FILE_ASSURANCE_LINE}
-          </p>
-        )}
         <VisuallyHidden component="h2">
           Start a private data exchange
         </VisuallyHidden>
@@ -296,14 +291,14 @@ export function Lobby() {
         </p>
         <div className={styles.howItWorks}>
           <p>
-            <strong>How it works.</strong> Each of you keeps your file on your
-            own machine. Alcove compares cryptographic fingerprints of the
-            fields you match on - a private set intersection - so only the
-            records you both hold are revealed, and only to the people the terms
-            name.{" "}
+            <strong>How it works.</strong> Alcove compares cryptographic
+            fingerprints of the fields you match on - a private set intersection
+            - so only the records you both hold are revealed, and only to the
+            people the terms name.{" "}
             {isConsoleBuild()
               ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
               : "Your browser connects directly to your partner's."}
+            {FILE_ASSURANCE_LINE !== undefined && ` ${FILE_ASSURANCE_LINE}`}
           </p>
         </div>
       </main>
