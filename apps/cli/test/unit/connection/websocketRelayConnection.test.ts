@@ -919,6 +919,41 @@ test("a parked pairing the partner leaves is dialed again with the start still h
   await expect(relay.start()).rejects.toMatchObject({ kind: "closed" });
 });
 
+test("messages and a close arriving on a socket the parked relay has dialed past leave the new pairing unchanged", async () => {
+  const { relay, sockets, changes } = await parkedRelay({
+    redialIntervalMs: 5,
+  });
+  const first = await socketDialed(sockets);
+  first.open();
+  first.control("paired");
+  first.closedByRelay(4000);
+
+  const second = await socketDialed(sockets, 2);
+  second.open();
+  second.control("paired");
+  const changesAtPairing = [...changes];
+
+  first.control("paired");
+  first.control("start");
+  first.binary(packValue("stale"));
+  first.closedByRelay(1001);
+  await sleep(30);
+
+  expect(relay.paired).toBe(true);
+  expect(relay.partnerStarted).toBe(false);
+  expect(relay.failure).toBeUndefined();
+  expect(changes).toEqual(changesAtPairing);
+  expect(sockets).toHaveLength(2);
+  expect(first.closeCalls).toEqual([]);
+  expect(second.closeCalls).toEqual([]);
+
+  const starting = relay.start();
+  second.control("start");
+  const connection = await starting;
+  second.binary(packValue({ live: 1 }));
+  expect(await connection.receive()).toEqual({ live: 1 });
+});
+
 test("a socket dialed again after this side's start sends the start behind its hello", async () => {
   const { relay, sockets } = await parkedRelay({ redialIntervalMs: 5 });
   const first = await socketDialed(sockets);
