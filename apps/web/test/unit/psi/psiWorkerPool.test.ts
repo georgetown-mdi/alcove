@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { InProcessPsiEngine } from "@alcove/core";
+import { InProcessPsiEngine, shardStalledError } from "@alcove/core";
 import PSI from "@openmined/psi.js";
 
 import {
@@ -30,14 +30,16 @@ import type {
   PsiCryptoWorkerSeed,
   PsiHelperSetupReport,
   PsiKeyPortsMessage,
+  PsiShardSplitMessage,
   SpawnPsiCryptoWorker,
 } from "../../../src/psi/workers/psiCryptoController.js";
 
 // The worker pool's key path and failure rules. The worker program runs in
 // process over real MessageChannels, on the real WASM engine, so the key's
-// whole route is observable: what the page posts, what reaches the page, and
-// the key each helper's engine is built from. A real Worker in real Chromium
-// runs the same path in test/browser/psiCryptoWorker.test.ts.
+// whole route is observable: what the page posts, what reaches the page, the
+// key each helper's engine is built from, and the parts each engine masks. A
+// real Worker in real Chromium runs the same path in
+// test/browser/psiCryptoWorker.test.ts.
 
 const wasm = await PSI();
 
@@ -58,7 +60,6 @@ function joinerPool(
 ): PsiEngine {
   return startPsiWorkerPool(
     spawn,
-    wasm,
     "joiner",
     "client",
     mode,
@@ -216,6 +217,33 @@ describe("the PSI worker pool's key path", () => {
       { kind: "helper-setup", ready: true },
       { kind: "helper-setup", ready: true },
     ]);
+  }, 30_000);
+
+  test("the primary splits across its helpers and merges their parts, so the page holds only the merged message", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn, toPage } = inProcessSpawner(
+      () => () => Promise.resolve({ library, backend: "wasm" }),
+    );
+    const pool = joinerPool(spawn, "count-only", 3);
+    const single = engineUnderKey("count-only");
+    try {
+      const merged = await pool.createClientRequest(values(3072));
+      expect(merged).toEqual(await single.createClientRequest(values(3072)));
+      // Each settled part of 1,024 counts while another still runs.
+      expect(
+        toPage.flatMap((message) =>
+          "processed" in (message as object)
+            ? [(message as { processed: number }).processed]
+            : [],
+        ),
+      ).toEqual([1024, 2048]);
+      expect(toPage.filter((message) => "ok" in (message as object))).toEqual([
+        { id: 0, ok: true, result: merged },
+      ]);
+    } finally {
+      pool.dispose();
+      single.dispose();
+    }
   }, 30_000);
 
   test.for([
@@ -571,13 +599,15 @@ class FakeWorker implements PsiCryptoWorker {
   onmessageerror: ((event: unknown) => void) | null = null;
   readonly requests: Array<PsiWorkerRequest> = [];
   readonly keyPorts: Array<PsiKeyPortsMessage> = [];
+  readonly splits: Array<PsiShardSplitMessage> = [];
   terminated = false;
 
   constructor(readonly seed: PsiCryptoWorkerSeed) {}
 
-  postMessage(message: PsiWorkerRequest | PsiKeyPortsMessage): void {
-    if ("kind" in message) this.keyPorts.push(message);
-    else this.requests.push(message);
+  postMessage(message: Parameters<PsiCryptoWorker["postMessage"]>[0]): void {
+    if (!("kind" in message)) this.requests.push(message);
+    else if (message.kind === "key-ports") this.keyPorts.push(message);
+    else this.splits.push(message);
   }
 
   terminate(): void {
@@ -607,7 +637,7 @@ function fakeSpawner(): {
 }
 
 describe("the PSI worker pool's shards", () => {
-  test("ticks from every shard report one running total", async () => {
+  test("the page tells the primary its helpers set up, sends it the whole operation, and reports its running count", async () => {
     const { spawn, workers } = fakeSpawner();
     const pool = joinerPool(spawn, "identifier-revealing", 2);
     const reported: Array<number> = [];
@@ -615,14 +645,40 @@ describe("the PSI worker pool's shards", () => {
     const [primary, helper] = workers as [FakeWorker, FakeWorker];
     helper.send({ kind: "helper-setup", ready: true });
     const done = pool.createClientRequest(values(2048));
-    await vi.waitFor(() => expect(helper.requests).toHaveLength(1));
-    primary.send({ id: primary.requests[0].id, processed: 300 });
-    helper.send({ id: helper.requests[0].id, processed: 200 });
+    await vi.waitFor(() => expect(primary.requests).toHaveLength(1));
+    expect(primary.splits).toEqual([
+      { kind: "shard-split", split: true, progressTimeoutMs: TIMEOUT_MS },
+    ]);
+    primary.send({ id: primary.requests[0].id, processed: 500 });
     primary.answer(EMPTY_REQUEST);
-    helper.answer(EMPTY_REQUEST);
-    await done;
+    expect(await done).toEqual(EMPTY_REQUEST);
     pool.dispose();
-    expect(reported).toEqual([300, 500, 1224]);
+    expect(reported).toEqual([500]);
+    expect(helper.requests).toHaveLength(0);
+  });
+
+  test("a primary silent past the progress timeout fails the split at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const { spawn, workers } = fakeSpawner();
+      const pool = joinerPool(spawn, "identifier-revealing", 2);
+      const [primary, helper] = workers as [FakeWorker, FakeWorker];
+      helper.send({ kind: "helper-setup", ready: true });
+      const outcome = pool.createClientRequest(values(2048)).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      primary.send({ id: primary.requests[0].id, processed: 1 });
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await outcome).toEqual(shardStalledError(TIMEOUT_MS));
+      expect(vi.getTimerCount()).toBe(0);
+      pool.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a helper that fails mid-round fails the operation at once, and nothing is respawned", async () => {
@@ -634,7 +690,7 @@ describe("the PSI worker pool's shards", () => {
       () => undefined,
       (error: unknown) => error,
     );
-    await vi.waitFor(() => expect(workers[2].requests).toHaveLength(1));
+    await vi.waitFor(() => expect(workers[0].requests).toHaveLength(1));
     workers[2].onerror?.({ message: "worker faulted" });
     expect(await outcome).toEqual(new Error("worker faulted"));
     expect(workers).toHaveLength(3);
@@ -673,7 +729,9 @@ describe("the PSI worker pool's shards", () => {
       const done = pool.createClientRequest(values(2048));
       await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
       expect(helper.terminated).toBe(true);
-      expect(helper.requests).toHaveLength(0);
+      expect(primary.splits).toEqual([
+        { kind: "shard-split", split: false, progressTimeoutMs: TIMEOUT_MS },
+      ]);
       expect(primary.requests[0]?.body).toEqual({
         method: "createClientRequest",
         values: values(2048),
@@ -697,7 +755,7 @@ describe("the web exchange's PSI engine factory", () => {
   test("on macOS runs one worker, which shares its key with no one", () => {
     const { spawn, workers } = fakeSpawner();
     const mac = chrome("MacIntel", "Macintosh; Intel Mac OS X 10_15_7");
-    createPooledBrowserPsiEngineFactory(spawn, wasm, mac)(
+    createPooledBrowserPsiEngineFactory(spawn, mac)(
       "joiner",
       "client",
       "identifier-revealing",
@@ -717,7 +775,7 @@ describe("the web exchange's PSI engine factory", () => {
   test("elsewhere runs the core count up to four, one primary and the rest helpers", () => {
     const { spawn, workers } = fakeSpawner();
     const linux = chrome("Linux x86_64", "X11; Linux x86_64");
-    createPooledBrowserPsiEngineFactory(spawn, wasm, linux)(
+    createPooledBrowserPsiEngineFactory(spawn, linux)(
       "starter",
       "server",
       "count-only",

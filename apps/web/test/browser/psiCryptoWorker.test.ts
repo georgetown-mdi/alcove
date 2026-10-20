@@ -12,15 +12,12 @@ import { ProtocolRefusalError } from "@alcove/core/testing";
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
-  PsiWorkerPoolEngine,
-  connectPsiWorkerKeys,
-} from "@psi/workers/psiWorkerPool";
-import {
   createBrowserPsiEngineFactory,
   createPsiCryptoWorkerHandle,
 } from "@psi/workers/psiCryptoController";
 import { defaultSpawnPsiCryptoWorker } from "@psi/workers/psiCryptoWorkerClient";
 import { failureFor } from "@exchange/useInviterExchange";
+import { startPsiWorkerPool } from "@psi/workers/psiWorkerPool";
 
 import type {
   PsiCryptoWorker,
@@ -238,8 +235,9 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
 });
 
 // The pool's split masking against one engine under the same key, over real
-// workers: the reference is a third helper of the same primary, called whole,
-// so it holds the pool's key and runs each operation unsplit.
+// workers: the reference is the pool's last helper, called whole from the
+// page once the pool's own split is done, so it holds the pool's key and
+// runs each operation unsplit.
 describe("the PSI worker pool (real workers, real WASM)", () => {
   const POOL_VALUES = Array.from({ length: 4096 }, (_, i) => `v-${i}`);
   const STARTER_POOL_VALUES = POOL_VALUES.map((value, i) =>
@@ -247,42 +245,28 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
   );
 
   function poolWithReference(
-    library: PSILibrary,
     role: "starter" | "joiner",
     id: string,
     mode: PsiEngineMode,
-  ): { pool: PsiEngine; reference: PsiEngine } {
-    const primary = defaultSpawnPsiCryptoWorker({
-      role,
-      id,
-      mode,
-      shard: "primary",
-      helpers: 3,
-    });
-    const helpers = [0, 1, 2].map(() =>
-      defaultSpawnPsiCryptoWorker({ role, id, mode, shard: "helper" }),
-    );
-    connectPsiWorkerKeys(primary, helpers);
-    const poolHelpers = helpers.slice(0, 2).map((worker) => {
-      let report: (ready: boolean) => void = () => undefined;
-      const ready = new Promise<boolean>((resolve) => {
-        report = resolve;
-      });
-      const engine = new WorkerPsiEngine(
-        createPsiCryptoWorkerHandle(worker, report),
-      );
-      return { engine, ready };
-    });
+    disposeAfter: Array<PsiEngine>,
+  ): { pool: PsiEngine; reference: () => PsiEngine } {
+    const workers: Array<PsiCryptoWorker> = [];
+    const spawn: SpawnPsiCryptoWorker = (seed) => {
+      const worker = defaultSpawnPsiCryptoWorker(seed);
+      workers.push(worker);
+      return worker;
+    };
+    const pool = startPsiWorkerPool(spawn, role, id, mode, 3, 60_000);
+    disposeAfter.push(pool);
     return {
-      pool: new PsiWorkerPoolEngine(
-        library,
-        id,
-        mode,
-        new WorkerPsiEngine(createPsiCryptoWorkerHandle(primary)),
-        poolHelpers,
-        60_000,
-      ),
-      reference: new WorkerPsiEngine(createPsiCryptoWorkerHandle(helpers[2])),
+      pool,
+      reference: () => {
+        const engine = new WorkerPsiEngine(
+          createPsiCryptoWorkerHandle(workers[2]),
+        );
+        disposeAfter.unshift(engine);
+        return engine;
+      },
     };
   }
 
@@ -290,20 +274,20 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
     "a %s round across three workers puts one engine's bytes on the wire",
     { timeout: 60_000 },
     async (mode) => {
-      const psi = await (PSI() as Promise<PSILibrary>);
-      const joiner = poolWithReference(psi, "joiner", "client", mode);
-      const starter = poolWithReference(psi, "starter", "server", mode);
+      const engines: Array<PsiEngine> = [];
+      const joiner = poolWithReference("joiner", "client", mode, engines);
+      const starter = poolWithReference("starter", "server", mode, engines);
       try {
         const { setup } =
           await starter.pool.createServerSetup(STARTER_POOL_VALUES);
         await joiner.pool.receiveServerSetup(setup);
         const request = await joiner.pool.createClientRequest(POOL_VALUES);
         expect(request).toEqual(
-          await joiner.reference.createClientRequest(POOL_VALUES),
+          await joiner.reference().createClientRequest(POOL_VALUES),
         );
         const response = await starter.pool.processClientRequest(request);
         expect(response).toEqual(
-          await starter.reference.processClientRequest(request),
+          await starter.reference().processClientRequest(request),
         );
         if (mode === "count-only")
           expect(
@@ -316,13 +300,7 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
           );
         }
       } finally {
-        for (const engine of [
-          joiner.pool,
-          joiner.reference,
-          starter.pool,
-          starter.reference,
-        ])
-          engine.dispose();
+        for (const engine of engines) engine.dispose();
       }
     },
   );

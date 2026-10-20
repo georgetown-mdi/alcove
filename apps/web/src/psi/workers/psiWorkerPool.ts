@@ -1,4 +1,4 @@
-import { ShardedPsiEngine, WorkerPsiEngine } from "@alcove/core";
+import { WorkerPsiEngine, shardStalledError } from "@alcove/core";
 
 import {
   BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
@@ -14,11 +14,11 @@ import type {
   PsiEngineMode,
   PsiProcessedElementsReporter,
 } from "@alcove/core";
-import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import type {
   BrowserPsiEngineFactory,
   PsiCryptoWorker,
+  PsiShardSplitMessage,
   SpawnPsiCryptoWorker,
 } from "./psiCryptoController";
 import type { BrowserPsiShardEnvironment } from "./psiShardPolicy";
@@ -43,77 +43,75 @@ export function connectPsiWorkerKeys(
   primary.postMessage({ kind: "key-ports", ports: primaryEnds }, primaryEnds);
 }
 
-/** A helper's engine and whether its setup, building that engine from the primary's key, succeeded. */
+/**
+ * A helper worker as the page sees it: whether its setup, building its
+ * engine from the primary's key, succeeded; its fault, a rejection; and its
+ * stop. The page sends a helper no request, since the primary sends it its
+ * parts.
+ */
 export interface PsiPoolHelper {
-  readonly engine: PsiEngine;
   readonly ready: Promise<boolean>;
+  readonly fault: Promise<never>;
+  readonly stop: () => void;
 }
 
 /**
- * A {@link PsiEngine} over a primary worker and its helpers. The first
- * request creation or request processing waits for every helper's setup, up
- * to `progressTimeoutMs`. If every helper set up, those two operations run
- * from then on as a {@link ShardedPsiEngine} over the primary and the
- * helpers; if any did not, every helper is disposed and the run goes on the
- * primary alone. Every other operation runs on the primary.
+ * A {@link PsiEngine} whose every operation runs on the primary worker. The
+ * first request creation or request processing waits for every helper's
+ * setup, up to `progressTimeoutMs`, and tells the primary whether all set
+ * up. If so, the primary splits those two operations across the helpers and
+ * merges their parts itself, so this thread holds only the merged message; a
+ * split fails at once on a helper's fault or on the primary reporting
+ * nothing for `progressTimeoutMs`. If not, every helper is stopped and the
+ * primary runs them alone.
  */
 export class PsiWorkerPoolEngine implements PsiEngine {
-  private sharded: Promise<ShardedPsiEngine> | undefined;
+  private split: Promise<boolean> | undefined;
   private onProcessed: PsiProcessedElementsReporter | undefined;
+  private primaryProgressed: (() => void) | undefined;
   private endSetupWait: (() => void) | undefined;
   private disposed = false;
 
   constructor(
-    private readonly library: PSILibrary,
-    private readonly id: string,
-    private readonly mode: PsiEngineMode,
     private readonly primary: PsiEngine,
+    private readonly tellPrimary: (message: PsiShardSplitMessage) => void,
     private readonly helpers: ReadonlyArray<PsiPoolHelper>,
     private readonly progressTimeoutMs: number,
   ) {
-    primary.observeProcessedElements?.((processed) =>
-      this.onProcessed?.(processed),
-    );
+    primary.observeProcessedElements?.((processed) => {
+      this.primaryProgressed?.();
+      this.onProcessed?.(processed);
+    });
   }
 
   observeProcessedElements(report: PsiProcessedElementsReporter): void {
     this.onProcessed = report;
   }
 
-  private shardedEngine(): Promise<ShardedPsiEngine> {
-    this.sharded ??= this.readyHelpers().then((ready) => {
-      const engine = new ShardedPsiEngine(
-        this.library,
-        this.id,
-        this.mode,
-        this.primary,
-        ready,
-        { shardProgressTimeoutMs: this.progressTimeoutMs },
-      );
-      engine.observeProcessedElements((processed) =>
-        this.onProcessed?.(processed),
-      );
-      return engine;
+  private splitDecided(): Promise<boolean> {
+    this.split ??= this.readyHelpers().then((split) => {
+      this.tellPrimary({
+        kind: "shard-split",
+        split,
+        progressTimeoutMs: this.progressTimeoutMs,
+      });
+      return split;
     });
-    return this.sharded;
+    return this.split;
   }
 
   // Ends at the first failed setup, the timeout, or a dispose, any of which
-  // disposes every helper.
-  private readyHelpers(): Promise<Array<PsiEngine>> {
-    const engines = this.helpers.map((helper) => helper.engine);
+  // stops every helper.
+  private readyHelpers(): Promise<boolean> {
     return new Promise((resolve) => {
-      let unreported = engines.length;
+      let unreported = this.helpers.length;
       const end = (allReady: boolean): void => {
         if (this.endSetupWait === undefined) return;
         this.endSetupWait = undefined;
         clearTimeout(timer);
-        if (allReady && !this.disposed) {
-          resolve(engines);
-          return;
-        }
-        for (const engine of engines) engine.dispose();
-        resolve([]);
+        const split = allReady && !this.disposed;
+        if (!split) for (const helper of this.helpers) helper.stop();
+        resolve(split);
       };
       this.endSetupWait = () => end(false);
       const timer = setTimeout(() => end(false), this.progressTimeoutMs);
@@ -126,20 +124,50 @@ export class PsiWorkerPoolEngine implements PsiEngine {
     });
   }
 
+  // The primary times each helper's part; this times the primary, which
+  // reports a running count while any part is masked.
+  private async splitOnPrimary<T>(run: () => Promise<T>): Promise<T> {
+    if (!(await this.splitDecided())) return run();
+    let fail: (error: Error) => void = () => undefined;
+    const stalled = new Promise<never>((_resolve, reject) => {
+      fail = reject;
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const restart = (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(
+        () => fail(shardStalledError(this.progressTimeoutMs)),
+        this.progressTimeoutMs,
+      );
+    };
+    this.primaryProgressed = restart;
+    restart();
+    try {
+      return await Promise.race([
+        run(),
+        stalled,
+        ...this.helpers.map((helper) => helper.fault),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      this.primaryProgressed = undefined;
+    }
+  }
+
   createServerSetup(
     values: ReadonlyArray<string>,
   ): Promise<{ setup: Uint8Array; permutation: Array<number> }> {
     return this.primary.createServerSetup(values);
   }
 
-  async processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
-    return (await this.shardedEngine()).processClientRequest(requestBytes);
+  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
+    return this.splitOnPrimary(() =>
+      this.primary.processClientRequest(requestBytes),
+    );
   }
 
-  async createClientRequest(
-    values: ReadonlyArray<string>,
-  ): Promise<Uint8Array> {
-    return (await this.shardedEngine()).createClientRequest(values);
+  createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
+    return this.splitOnPrimary(() => this.primary.createClientRequest(values));
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
@@ -169,25 +197,19 @@ export class PsiWorkerPoolEngine implements PsiEngine {
   }
 
   stopInFlight(): boolean {
-    const stopping = [this.primary, ...this.helpers.map((h) => h.engine)].map(
-      (engine) => engine.stopInFlight?.() ?? false,
-    );
-    return stopping.includes(true);
+    return this.primary.stopInFlight?.() ?? false;
   }
 
-  /** Dispose every worker's engine, each even if another's dispose throws. */
+  /** Stop every worker, the helpers even if the primary's dispose throws. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.endSetupWait?.();
-    const failures: Array<unknown> = [];
-    for (const engine of [this.primary, ...this.helpers.map((h) => h.engine)])
-      try {
-        engine.dispose();
-      } catch (error) {
-        failures.push(error);
-      }
-    if (failures.length > 0) throw failures[0];
+    try {
+      this.primary.dispose();
+    } finally {
+      for (const helper of this.helpers) helper.stop();
+    }
   }
 }
 
@@ -197,7 +219,6 @@ export class PsiWorkerPoolEngine implements PsiEngine {
  */
 export function startPsiWorkerPool(
   spawn: SpawnPsiCryptoWorker,
-  library: PSILibrary,
   role: "starter" | "joiner",
   id: string,
   mode: PsiEngineMode,
@@ -228,16 +249,22 @@ export function startPsiWorkerPool(
     const setup = new Promise<boolean>((resolve) => {
       report = resolve;
     });
-    const engine = new WorkerPsiEngine(
-      createPsiCryptoWorkerHandle(worker, report),
-    );
-    return { engine, ready: Promise.race([setup, primaryFault]) };
+    let reportFault: (error: Error) => void = () => undefined;
+    const fault = new Promise<never>((_resolve, reject) => {
+      reportFault = reject;
+    });
+    void fault.catch(() => undefined);
+    const handle = createPsiCryptoWorkerHandle(worker, report);
+    handle.setHandlers({ onMessage: () => undefined, onError: reportFault });
+    return {
+      ready: Promise.race([setup, primaryFault]),
+      fault,
+      stop: () => handle.terminate(),
+    };
   });
   return new PsiWorkerPoolEngine(
-    library,
-    id,
-    mode,
     primary,
+    (message) => primaryWorker.postMessage(message),
     helpers,
     progressTimeoutMs,
   );
@@ -246,12 +273,10 @@ export function startPsiWorkerPool(
 /**
  * The {@link RunExchangeOptions.psiEngineFactory} of a web exchange: as many
  * PSI workers as {@link browserPsiShardCount} gives for `environment`, one
- * worker where it gives one. `library` builds and parses the merged messages
- * on this thread; it holds no key.
+ * worker where it gives one.
  */
 export function createPooledBrowserPsiEngineFactory(
   spawn: SpawnPsiCryptoWorker,
-  library: PSILibrary,
   environment: BrowserPsiShardEnvironment,
 ): BrowserPsiEngineFactory {
   const shardCount = browserPsiShardCount(environment);
@@ -259,7 +284,6 @@ export function createPooledBrowserPsiEngineFactory(
   return (role, id, mode) =>
     startPsiWorkerPool(
       spawn,
-      library,
       role,
       id,
       mode,

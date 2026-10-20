@@ -395,3 +395,15 @@ What each rule is in the shipped pool:
   caught by a progress timeout, derived from the longest gap measured between
   one worker's progress reports, projected to the browser's largest set.
 - **The cap of 4 workers stays**, as measured above.
+
+## The merge runs in the first worker (2026-10-20)
+
+Merging on the page decoded the partner's whole request and every worker's
+output there, and at 100,000 values grew the page's heap by 37 to 57 MB
+against 4 MB on one worker, which projected near the page's heap limit at the
+browser's largest set. The first worker merges instead: the helpers take
+their parts from it and answer it over the channels the key took, so the page
+holds only the merged message, as on one worker, and the first worker's heap
+grows about as the one worker's does. The figures:
+[PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers".

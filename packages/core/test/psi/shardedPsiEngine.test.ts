@@ -270,9 +270,32 @@ describe("the sharded engine's split", () => {
     } finally {
       engine.dispose();
     }
-    // Three shards of 66, 67 and 67: each finished shard adds its range while
-    // another still runs, and the last one's finish is the settle report's.
-    expect(reported).toStrictEqual([66, 133]);
+    // Three shards of 66, 67 and 67, which mask on this thread last first:
+    // each finished shard adds its range while another still runs, and the
+    // last one's finish is the settle report's.
+    expect(reported).toStrictEqual([67, 134]);
+  });
+
+  test("the primary's shard starts after every other shard has its part", async () => {
+    const started: Array<string> = [];
+    const engines = ["primary", "first helper", "second helper"].map((name) => {
+      const engine = fakeEngine();
+      engine.createClientRequest.mockImplementation(() => {
+        started.push(name);
+        return Promise.resolve(new wasm.request().serializeBinary());
+      });
+      return engine;
+    });
+    const engine = new ShardedPsiEngine(
+      wasm,
+      "joiner",
+      "identifier-revealing",
+      engines[0]!,
+      engines.slice(1),
+      { minShardElements: 1 },
+    );
+    await engine.createClientRequest(["a", "b", "c"]);
+    expect(started).toStrictEqual(["second helper", "first helper", "primary"]);
   });
 
   test("an operation on the primary alone passes its count through", async () => {
@@ -507,6 +530,34 @@ describe("the shard progress timeout", () => {
       helper.finish();
       await expect(done).resolves.toBeInstanceOf(Uint8Array);
       expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a shard that settles restarts the timeouts of the shards still running", async () => {
+    vi.useFakeTimers();
+    try {
+      const primary = pendingEngine();
+      const helper = pendingEngine();
+      const engine = new ShardedPsiEngine(
+        wasm,
+        "joiner",
+        "identifier-revealing",
+        primary,
+        [helper],
+        { minShardElements: 1, shardProgressTimeoutMs: TIMEOUT_MS },
+      );
+      const outcome = engine.createClientRequest(["a", "b"]).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      primary.finish();
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await outcome).toEqual(shardStalledError(TIMEOUT_MS));
     } finally {
       vi.useRealTimers();
     }

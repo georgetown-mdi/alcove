@@ -429,7 +429,7 @@ export function runManagedExchangeInBrowser(
             carried.prepared,
             {
               psiLibrary: carried.psiLibrary,
-              psiEngineFactory: browserPsiEngineFactory(carried.psiLibrary),
+              psiEngineFactory: browserPsiEngineFactory(),
               // What the agreed terms resolved to, reported here as for every
               // other seat: a re-run is where an unnoticed widening of the match
               // matters most, since the terms are a standing record. The

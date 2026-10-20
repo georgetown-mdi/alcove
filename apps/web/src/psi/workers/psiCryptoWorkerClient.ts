@@ -1,8 +1,6 @@
 import { createPooledBrowserPsiEngineFactory } from "./psiWorkerPool";
 import { encodePsiWorkerInit } from "./psiCryptoController";
 
-import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
-
 import type {
   BrowserPsiEngineFactory,
   PsiCryptoWorker,
@@ -33,12 +31,9 @@ export const defaultSpawnPsiCryptoWorker: SpawnPsiCryptoWorker = (init) =>
  * The PSI engine factory a web exchange runs: the worker pool this browser's
  * platform and core count give (./psiShardPolicy.ts), over the real worker.
  */
-export function browserPsiEngineFactory(
-  library: PSILibrary,
-): BrowserPsiEngineFactory {
+export function browserPsiEngineFactory(): BrowserPsiEngineFactory {
   return createPooledBrowserPsiEngineFactory(
     defaultSpawnPsiCryptoWorker,
-    library,
     navigator,
   );
 }

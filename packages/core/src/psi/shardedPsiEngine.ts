@@ -68,7 +68,10 @@ export function shardStalledError(timeoutMs: number): Error {
 }
 
 // One timer per running shard, restarted by each of its ticks and cleared
-// when it settles; the first to expire rejects `stalled`.
+// when it settles; the first to expire rejects `stalled`. A shard that
+// settles restarts the others: an engine masking on this thread holds it
+// through its whole part, and the ticks the others sent meanwhile are read
+// only after it settles.
 class ShardProgressWatch {
   readonly stalled: Promise<never>;
   private fail: (error: Error) => void = () => undefined;
@@ -101,10 +104,13 @@ class ShardProgressWatch {
   settled(shard: number): void {
     clearTimeout(this.timers[shard]);
     this.timers[shard] = undefined;
+    for (let running = 0; running < this.shards; running += 1)
+      this.progressed(running);
   }
 
   stop(): void {
-    for (let shard = 0; shard < this.shards; shard += 1) this.settled(shard);
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers.fill(undefined);
   }
 }
 
@@ -200,7 +206,9 @@ export class ShardedPsiEngine implements PsiEngine {
   // Runs `run` on each range's engine at once and returns the results in
   // range order. A shard that finishes counts its whole range, reported while
   // another is still running, so the running total stays short of the
-  // operation's element count until the last shard settles.
+  // operation's element count until the last shard settles. The primary's
+  // shard starts last, so where its engine masks on this thread every other
+  // shard has its part before the thread is taken.
   private async overShards<T>(
     ranges: ReadonlyArray<PsiChunkRange>,
     run: (engine: PsiEngine, range: PsiChunkRange) => Promise<T>,
@@ -213,18 +221,21 @@ export class ShardedPsiEngine implements PsiEngine {
         : new ShardProgressWatch(ranges.length, this.shardProgressTimeoutMs);
     this.shardWatch = watch;
     let running = ranges.length;
+    const runShard = async (shard: number): Promise<T> => {
+      const range = ranges[shard]!;
+      const result = await run(this.engines[shard]!, range);
+      watch?.settled(shard);
+      counts[shard] = range.end - range.start;
+      running -= 1;
+      if (running > 0 && this.shardCounts === counts)
+        this.reportShardTotal(counts);
+      return result;
+    };
     try {
-      const results = Promise.all(
-        ranges.map(async (range, shard) => {
-          const result = await run(this.engines[shard]!, range);
-          watch?.settled(shard);
-          counts[shard] = range.end - range.start;
-          running -= 1;
-          if (running > 0 && this.shardCounts === counts)
-            this.reportShardTotal(counts);
-          return result;
-        }),
-      );
+      const shards = new Array<Promise<T>>(ranges.length);
+      for (let shard = ranges.length - 1; shard >= 0; shard -= 1)
+        shards[shard] = runShard(shard);
+      const results = Promise.all(shards);
       return await (watch === undefined
         ? results
         : Promise.race([results, watch.stalled]));

@@ -602,10 +602,9 @@ export async function runExchangeLifecycle<
       // Run the PSI masking in Web Workers off the UI thread, so the tab stays
       // responsive and the WebRTC peer keepalives keep firing during a round.
       // runExchange disposes this engine on every exchange-end path
-      // (success, error, abort), which terminates the workers -- no leak.
-      // psiLibrary above stays the in-process fallback core requires, and
-      // builds the merged messages of a split operation; each worker loads its own.
-      psiEngineFactory: browserPsiEngineFactory(psiLibrary),
+      // (success, error, abort), which terminates the workers -- no leak. psiLibrary
+      // above stays the in-process fallback core requires; each worker loads its own.
+      psiEngineFactory: browserPsiEngineFactory(),
       onStage: emitStage,
       // What the agreed terms resolved to, named for the operator after the
       // terms exchange and before the first round, the earliest point that can
