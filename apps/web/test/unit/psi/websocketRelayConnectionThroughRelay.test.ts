@@ -8,13 +8,19 @@ import { ConnectionError } from "@alcove/core";
 import { RELAY_PATH } from "@alcove/websocket-relay/protocol";
 import { attachWebSocketRelay } from "@alcove/websocket-relay";
 
+import {
+  openWebSocketRelayConnection,
+  parkWebSocketRelayConnection,
+} from "../../../src/psi/transport/websocketRelayConnection.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
-import { openWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
 
+import type { MessageConnection, RendezvousRole } from "@alcove/core";
+import type {
+  ParkedWebSocketRelayConnection,
+  WebSocketRelayConnectionOptions,
+} from "../../../src/psi/transport/websocketRelayConnection.js";
 import type { AddressInfo } from "node:net";
 import type { PeerCloseOutcome } from "../../../src/psi/transport/waitForPeerClose.js";
-import type { RendezvousRole } from "@alcove/core";
-import type { WebSocketRelayConnectionOptions } from "../../../src/psi/transport/websocketRelayConnection.js";
 
 /** The shared secret of bytes 0x00..0x1f, base64url. */
 const SHARED_SECRET = Buffer.from(
@@ -32,6 +38,8 @@ const LARGE_FRAME_BYTES = 8 * 1024 * 1024;
 interface RunningRelay {
   url: string;
   faults: Array<string>;
+  /** Enroll a relay key under an exchange id while the relay runs. */
+  enroll: (exchangeId: string, relayKey: string) => void;
   stop: () => Promise<void>;
 }
 
@@ -42,11 +50,9 @@ async function startRelay(): Promise<RunningRelay> {
     response.end();
   });
   const faults: Array<string> = [];
+  const enrolled = new Map([[EXCHANGE_ID, RELAY_KEY]]);
   const relay = attachWebSocketRelay(server, {
-    keyTable: {
-      lookup: (exchangeId) =>
-        exchangeId === EXCHANGE_ID ? RELAY_KEY : undefined,
-    },
+    keyTable: { lookup: (exchangeId) => enrolled.get(exchangeId) },
     reportFault: (message) => faults.push(message),
   });
   server.listen(0, "127.0.0.1");
@@ -55,6 +61,9 @@ async function startRelay(): Promise<RunningRelay> {
   return {
     url: `ws://127.0.0.1:${port}${RELAY_PATH}`,
     faults,
+    enroll(exchangeId, relayKey) {
+      enrolled.set(exchangeId, relayKey);
+    },
     async stop() {
       relay.close();
       server.closeAllConnections();
@@ -72,19 +81,95 @@ afterEach(async () => {
   expect(relay.faults).toEqual([]);
 });
 
-/** Open one party, its socket dialing the loopback relay over `ws`. */
-function openParty(
+/** The options of one party, its socket dialing the loopback relay over
+ * `ws`. */
+function partyOptions(
   role: RendezvousRole,
-  options: Partial<WebSocketRelayConnectionOptions> = {},
-) {
-  return openWebSocketRelayConnection({
+  options: Partial<WebSocketRelayConnectionOptions>,
+): WebSocketRelayConnectionOptions {
+  return {
     url: "wss://relay.invalid/relay",
     exchangeId: EXCHANGE_ID,
     role,
     relayKey: RELAY_KEY,
     createSocket: () => new WebSocket(relay.url),
     ...options,
+  };
+}
+
+/** Open one party, its socket dialing the loopback relay over `ws`. */
+function openParty(
+  role: RendezvousRole,
+  options: Partial<WebSocketRelayConnectionOptions> = {},
+) {
+  return openWebSocketRelayConnection(partyOptions(role, options));
+}
+
+/** Park one party, its socket dialing the loopback relay over `ws`. */
+function parkParty(
+  role: RendezvousRole,
+  options: Partial<WebSocketRelayConnectionOptions> = {},
+) {
+  return parkWebSocketRelayConnection(partyOptions(role, options));
+}
+
+/** A `createSocket` dialing the loopback relay that records each socket's
+ * close code. */
+function recordingCloses(closeCodes: Array<number>) {
+  return () => {
+    const socket = new WebSocket(relay.url);
+    socket.addEventListener("close", (event) => closeCodes.push(event.code));
+    return socket;
+  };
+}
+
+/** Resolves once `condition` holds of `parked`, and rejects with its failure
+ * first. */
+function whenParked(
+  parked: ParkedWebSocketRelayConnection,
+  condition: (parked: ParkedWebSocketRelayConnection) => boolean,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      if (parked.failure !== undefined) {
+        remove();
+        reject(parked.failure);
+      } else if (condition(parked)) {
+        remove();
+        resolve();
+      }
+    };
+    const remove = parked.onChange(check);
+    check();
   });
+}
+
+const isPaired = (parked: ParkedWebSocketRelayConnection) => parked.paired;
+
+/** The key exchange over both relayed connections, one frame each way
+ * inside the AEAD envelope, and a clean close. */
+async function exchangeAndClose(
+  inviter: MessageConnection,
+  acceptor: MessageConnection,
+) {
+  const [initiator, responder] = await Promise.all([
+    authenticateExchange(inviter, "initiator", SHARED_SECRET),
+    authenticateExchange(acceptor, "responder", SHARED_SECRET),
+  ]);
+  await initiator.connection.send({ from: "inviter" });
+  await expect(responder.connection.receive()).resolves.toEqual({
+    from: "inviter",
+  });
+  await responder.connection.send({ from: "acceptor" });
+  await expect(initiator.connection.receive()).resolves.toEqual({
+    from: "acceptor",
+  });
+  const closing = responder.connection.close();
+  await expect(initiator.connection.receive()).rejects.toBeInstanceOf(
+    ConnectionError,
+  );
+  await closing;
+  await initiator.connection.close();
 }
 
 /** Both parties paired through the relay and wrapped in the key exchange's
@@ -160,14 +245,25 @@ describe("refusals from the real relay", () => {
     });
   });
 
-  test("an exchange id with no enrolled key", async () => {
-    await expect(
-      openParty("inviter", { exchangeId: "exchange-2" }),
-    ).rejects.toMatchObject({
-      kind: "transport",
-      message: /^The WebSocket relay has no key enrolled for this exchange\./,
-    });
-  });
+  test(
+    "an exchange id with no enrolled key is dialed again until the pairing wait ends, then refused with the enrollment step",
+    { timeout: 30_000 },
+    async () => {
+      const closeCodes: Array<number> = [];
+      const opening = openParty("inviter", {
+        exchangeId: "exchange-2",
+        createSocket: recordingCloses(closeCodes),
+        pairingTimeoutMs: 2_000,
+        redialIntervalMs: 200,
+      });
+      await expect(opening).rejects.toMatchObject({ kind: "transport" });
+      await expect(opening).rejects.toThrow(
+        /^The WebSocket relay has no key enrolled for this exchange\./,
+      );
+      expect(closeCodes.length).toBeGreaterThan(1);
+      expect(new Set(closeCodes)).toEqual(new Set([4003]));
+    },
+  );
 
   test("a proof that expired before it reached the relay is signed again on the relay's clock and pairs", async () => {
     const [inviter, acceptor] = await Promise.all([
@@ -178,11 +274,100 @@ describe("refusals from the real relay", () => {
   });
 
   test("a partner that never arrives", async () => {
-    await expect(
-      openParty("inviter", { pairingTimeoutMs: 300 }),
-    ).rejects.toMatchObject({
-      kind: "transport",
-      message: /^The exchange partner did not reach the WebSocket relay/,
+    const opening = openParty("inviter", { pairingTimeoutMs: 300 });
+    await expect(opening).rejects.toMatchObject({ kind: "transport" });
+    await expect(opening).rejects.toThrow(
+      /^The exchange partner did not reach the WebSocket relay/,
+    );
+  });
+});
+
+describe("a parked socket through the real relay", () => {
+  test(
+    "a party refused as not enrolled pairs once the key is enrolled, and the exchange crosses",
+    { timeout: 30_000 },
+    async () => {
+      const lateExchangeId = "exchange-late";
+      const closeCodes: Array<number> = [];
+      const inviter = parkParty("inviter", {
+        exchangeId: lateExchangeId,
+        relayKey: OTHER_RELAY_KEY,
+        createSocket: recordingCloses(closeCodes),
+        redialIntervalMs: 200,
+      });
+      await expect.poll(() => closeCodes).toContain(4003);
+      relay.enroll(lateExchangeId, OTHER_RELAY_KEY);
+      const acceptor = parkParty("acceptor", {
+        exchangeId: lateExchangeId,
+        relayKey: OTHER_RELAY_KEY,
+      });
+      await Promise.all([
+        whenParked(inviter, isPaired),
+        whenParked(acceptor, isPaired),
+      ]);
+      const [inviterRaw, acceptorRaw] = await Promise.all([
+        inviter.start(),
+        acceptor.start(),
+      ]);
+      await exchangeAndClose(inviterRaw, acceptorRaw);
+    },
+  );
+
+  test(
+    "a party whose partner leaves a parked pairing dials again and pairs with the partner's next socket",
+    { timeout: 30_000 },
+    async () => {
+      const inviter = parkParty("inviter", { redialIntervalMs: 200 });
+      const leaving = parkParty("acceptor");
+      await Promise.all([
+        whenParked(inviter, isPaired),
+        whenParked(leaving, isPaired),
+      ]);
+      leaving.close();
+      await whenParked(inviter, (parked) => !parked.paired);
+      expect(inviter.failure).toBeUndefined();
+
+      const acceptor = parkParty("acceptor");
+      await Promise.all([
+        whenParked(inviter, isPaired),
+        whenParked(acceptor, isPaired),
+      ]);
+      const [inviterRaw, acceptorRaw] = await Promise.all([
+        inviter.start(),
+        acceptor.start(),
+      ]);
+      await exchangeAndClose(inviterRaw, acceptorRaw);
+    },
+  );
+
+  test("a start one party sends while its partner holds its own reaches the partner, and the partner's start opens both", async () => {
+    const closeCodes: Array<number> = [];
+    const inviter = parkParty("inviter", {
+      createSocket: recordingCloses(closeCodes),
     });
+    const acceptor = parkParty("acceptor", {
+      createSocket: recordingCloses(closeCodes),
+    });
+    await Promise.all([
+      whenParked(inviter, isPaired),
+      whenParked(acceptor, isPaired),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(inviter.partnerStarted || acceptor.partnerStarted).toBe(false);
+
+    let inviterOpen = false;
+    const inviterStarting = inviter.start().then((connection) => {
+      inviterOpen = true;
+      return connection;
+    });
+    await whenParked(acceptor, (parked) => parked.partnerStarted);
+    expect(inviterOpen).toBe(false);
+
+    const [inviterRaw, acceptorRaw] = await Promise.all([
+      inviterStarting,
+      acceptor.start(),
+    ]);
+    await exchangeAndClose(inviterRaw, acceptorRaw);
+    await expect.poll(() => closeCodes).toEqual([1000, 1000]);
   });
 });

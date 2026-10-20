@@ -10,11 +10,17 @@ import {
 } from "@alcove/core";
 import { boundedInboundFramesWithBounds } from "@alcove/core/testing";
 
-import { openWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
+import {
+  openWebSocketRelayConnection,
+  parkWebSocketRelayConnection,
+} from "../../../src/psi/transport/websocketRelayConnection.js";
 
+import type {
+  ParkedWebSocketRelayConnection,
+  WebSocketRelayConnectionOptions,
+} from "../../../src/psi/transport/websocketRelayConnection.js";
 import type { MessageConnection } from "@alcove/core";
 import type { PeerCloseOutcome } from "../../../src/psi/transport/waitForPeerClose.js";
-import type { WebSocketRelayConnectionOptions } from "../../../src/psi/transport/websocketRelayConnection.js";
 
 /** The relay key of the secret of bytes 0x00..0x1f (docs/spec/PROTOCOL.md). */
 const RELAY_KEY =
@@ -79,27 +85,33 @@ interface Opening {
   pending: Promise<MessageConnection>;
 }
 
-/** Start opening a connection and wait until its socket exists. */
+/**
+ * Start opening a connection and resolve as its socket is made, so a test
+ * acts on it before the pairing wait, which counts from the start of the
+ * opening, can run out.
+ */
 async function startOpening(
   options: Partial<WebSocketRelayConnectionOptions> = {},
 ): Promise<Opening> {
-  let socket: FakeRelaySocket | undefined;
+  let made!: (socket: FakeRelaySocket) => void;
+  const dialed = new Promise<FakeRelaySocket>((resolve) => (made = resolve));
   const pending = openWebSocketRelayConnection({
     url: RELAY_URL,
     exchangeId: "exchange-1",
     role: "inviter",
     relayKey: RELAY_KEY,
     createSocket: (url) => {
-      socket = new FakeRelaySocket(url);
+      const socket = new FakeRelaySocket(url);
+      made(socket);
       return socket as unknown as WebSocket;
     },
     ...options,
   });
   pending.catch(() => {});
-  await vi.waitFor(() => {
-    if (socket === undefined) throw new Error("no socket yet");
+  const settledFirst = pending.then(() => {
+    throw new Error("the opening resolved before it made a socket");
   });
-  return { socket: socket as FakeRelaySocket, pending };
+  return { socket: await Promise.race([dialed, settledFirst]), pending };
 }
 
 /** Open a connection the relay has paired and started. */
@@ -271,12 +283,12 @@ describe("the hello", () => {
   });
 
   test("gives up when no partner arrives within the pairing wait", async () => {
-    const { socket, pending } = await startOpening({ pairingTimeoutMs: 20 });
+    const { socket, pending } = await startOpening({ pairingTimeoutMs: 300 });
     socket.open();
-    await expect(pending).rejects.toMatchObject({
-      kind: "transport",
-      message: /did not reach the WebSocket relay within 1 minute\./,
-    });
+    await expect(pending).rejects.toMatchObject({ kind: "transport" });
+    await expect(pending).rejects.toThrow(
+      /did not reach the WebSocket relay within 1 minute\./,
+    );
     expect(socket.closedWith).toBe(4000);
   });
 
@@ -314,7 +326,11 @@ describe("a refused hello", () => {
   test.each(refusals)(
     "code %i states what happened and what to do",
     async (code, message) => {
-      const { socket, pending } = await startOpening();
+      // A code dialed again on is reported when the pairing wait ends.
+      const { socket, pending } = await startOpening({
+        pairingTimeoutMs: 300,
+        redialIntervalMs: 60_000,
+      });
       socket.open();
       socket.closeFromRelay(code);
       const error = await pending.catch((e: unknown) => e);
@@ -430,7 +446,10 @@ describe("a refused hello", () => {
   });
 
   test("a socket that never opens is a connection failure", async () => {
-    const { socket, pending } = await startOpening();
+    const { socket, pending } = await startOpening({
+      pairingTimeoutMs: 300,
+      redialIntervalMs: 60_000,
+    });
     socket.closeFromRelay(1006);
     await expect(pending).rejects.toThrow(
       /Could not connect to the WebSocket relay/,
@@ -624,5 +643,384 @@ describe("the close", () => {
     await closing;
     expect(outcomes).toEqual(["run-aborted"]);
     expect(socket.closedWith).toBe(4000);
+  });
+});
+
+describe("a parked socket", () => {
+  interface Parking {
+    parked: ParkedWebSocketRelayConnection;
+    sockets: Array<FakeRelaySocket>;
+    /** How many times the handle has reported a change. */
+    changes: () => number;
+    dialed: (count: number) => Promise<FakeRelaySocket>;
+  }
+
+  /**
+   * Park a relay socket that records every socket it dials. `dialed(n)`
+   * resolves as the nth socket is made, so a test acts on it before any of
+   * the handle's waits can run out.
+   */
+  function park(
+    options: Partial<WebSocketRelayConnectionOptions> = {},
+  ): Parking {
+    const sockets: Array<FakeRelaySocket> = [];
+    const waiters: Array<() => void> = [];
+    const parked = parkWebSocketRelayConnection({
+      url: RELAY_URL,
+      exchangeId: "exchange-1",
+      role: "inviter",
+      relayKey: RELAY_KEY,
+      redialIntervalMs: 10,
+      createSocket: (url) => {
+        const socket = new FakeRelaySocket(url);
+        sockets.push(socket);
+        for (const wake of waiters.splice(0)) wake();
+        return socket as unknown as WebSocket;
+      },
+      ...options,
+    });
+    let changes = 0;
+    parked.onChange(() => (changes += 1));
+    return {
+      parked,
+      sockets,
+      changes: () => changes,
+      async dialed(count) {
+        while (sockets.length < count)
+          await new Promise<void>((wake) => waiters.push(wake));
+        return sockets[count - 1];
+      },
+    };
+  }
+
+  function helloProofExpiry(socket: FakeRelaySocket): number {
+    const hello = JSON.parse(socket.sent[0] as string) as Record<
+      string,
+      string
+    >;
+    return parseWebSocketRelayProof(
+      new TextEncoder().encode(hello.proof),
+      Uint8Array.from(Buffer.from(hello.tag, "hex")),
+    ).expiresAtSeconds;
+  }
+
+  const settleTimers = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  test("sends only the hello on open and holds the start through the pairing, with no wait for the partner's start", async () => {
+    const { parked, dialed, changes } = park({ startTimeoutMs: 20 });
+    expect(parked.url).toBe(RELAY_URL);
+    const socket = await dialed(1);
+    socket.open();
+    expect(socket.sent).toHaveLength(1);
+    expect(JSON.parse(socket.sent[0] as string)).toMatchObject({
+      type: "hello",
+    });
+
+    socket.fromRelay(PAIRED);
+    expect(parked.paired).toBe(true);
+    expect(changes()).toBe(1);
+    await settleTimers(60);
+    expect(parked.failure).toBeUndefined();
+    expect(socket.sent).toHaveLength(1);
+
+    const started = parked.start();
+    expect(parked.start()).toBe(started);
+    expect(socket.sent).toEqual([socket.sent[0], START]);
+    socket.fromRelay(START);
+    await expect(started).resolves.toBeDefined();
+    expect(parked.partnerStarted).toBe(true);
+  });
+
+  test("a start asked for before the socket opens follows the hello", async () => {
+    const { parked, dialed } = park();
+    const started = parked.start();
+    const socket = await dialed(1);
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    expect(socket.sent).toHaveLength(2);
+    expect(socket.sent[1]).toBe(START);
+    socket.fromRelay(PAIRED);
+    socket.fromRelay(START);
+    await expect(started).resolves.toBeDefined();
+  });
+
+  test("the partner's start while this side's is held is reported, and this side's start then begins the exchange at once", async () => {
+    const { parked, dialed, changes } = park();
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    socket.fromRelay(START);
+    expect(parked.partnerStarted).toBe(true);
+    expect(changes()).toBe(2);
+
+    const mc = await parked.start();
+    expect(socket.sent.at(-1)).toBe(START);
+    for (const datagram of partnerFrames("first")) socket.fromRelay(datagram);
+    await expect(mc.receive()).resolves.toBe("first");
+  });
+
+  test.each([
+    [4003, false],
+    [4006, false],
+    [4009, true],
+    [1000, true],
+    [4000, true],
+    [1005, true],
+    [1006, false],
+  ])(
+    "dials again after a close with code %i, a new proof on the new socket",
+    async (code, pairedFirst) => {
+      const localSecond = 1_767_225_600;
+      let clock = new Date(localSecond * 1000);
+      const { parked, dialed, changes } = park({ now: () => clock });
+      const first = await dialed(1);
+      first.open();
+      if (pairedFirst) first.fromRelay(PAIRED);
+      const changesBefore = changes();
+      first.closeFromRelay(code);
+      expect(parked.paired).toBe(false);
+      expect(changes()).toBe(pairedFirst ? changesBefore + 1 : changesBefore);
+      clock = new Date((localSecond + 60) * 1000);
+
+      const second = await dialed(2);
+      second.open();
+      expect(second.sent).toHaveLength(1);
+      expect(helloProofExpiry(second)).toBe(localSecond + 60 + 300);
+      expect(parked.failure).toBeUndefined();
+      second.fromRelay(PAIRED);
+      second.fromRelay(START);
+      await expect(parked.start()).resolves.toBeDefined();
+    },
+  );
+
+  test.each([4004, 4008, 1011, 1001, 4001, 4002, 4007, 1009])(
+    "ends the attempt on a close with code %i, without dialing again",
+    async (code) => {
+      const { parked, sockets, dialed, changes } = park();
+      const socket = await dialed(1);
+      socket.open();
+      socket.closeFromRelay(code);
+      expect(parked.failure).toBeInstanceOf(ConnectionError);
+      expect(changes()).toBe(1);
+      await expect(parked.start()).rejects.toBe(parked.failure);
+      await settleTimers(40);
+      expect(sockets).toHaveLength(1);
+    },
+  );
+
+  test("a start already sent goes behind the hello on the socket dialed after the partner leaves", async () => {
+    const { parked, dialed } = park();
+    const started = parked.start();
+    const first = await dialed(1);
+    first.open();
+    first.fromRelay(PAIRED);
+    first.closeFromRelay(4000);
+
+    const second = await dialed(2);
+    second.open();
+    expect(second.sent).toHaveLength(2);
+    expect(second.sent[1]).toBe(START);
+    second.fromRelay(PAIRED);
+    second.fromRelay(START);
+    await expect(started).resolves.toBeDefined();
+  });
+
+  test("the pairing wait counts across sockets and ends on the last close dialed again on", async () => {
+    const { parked, sockets } = park({
+      pairingTimeoutMs: 300,
+      createSocket: (url) => {
+        const socket = new FakeRelaySocket(url);
+        sockets.push(socket);
+        setTimeout(() => {
+          socket.open();
+          socket.closeFromRelay(4003);
+        }, 0);
+        return socket as unknown as WebSocket;
+      },
+    });
+    await vi.waitFor(() => expect(parked.failure).toBeDefined());
+    expect(parked.failure?.message).toMatch(
+      /no key enrolled for this exchange\. Enroll the exchange/,
+    );
+    expect(sockets.length).toBeGreaterThan(1);
+    const count = sockets.length;
+    await settleTimers(40);
+    expect(sockets).toHaveLength(count);
+  });
+
+  test("the pairing wait ends on the partner not arriving when a socket waits for the pairing", async () => {
+    const { parked, dialed } = park({ pairingTimeoutMs: 300 });
+    const socket = await dialed(1);
+    socket.open();
+    await vi.waitFor(() => expect(parked.failure).toBeDefined());
+    expect(parked.failure?.message).toMatch(
+      /^The exchange partner did not reach the WebSocket relay within 1 minute\./,
+    );
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("a pairing formed outlives the pairing wait, and a close after the wait ends the attempt", async () => {
+    const { parked, sockets, dialed } = park({ pairingTimeoutMs: 150 });
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    await settleTimers(200);
+    expect(parked.failure).toBeUndefined();
+
+    socket.closeFromRelay(4000);
+    expect(parked.failure?.message).toMatch(
+      /^The exchange partner left the WebSocket relay before the exchange started\./,
+    );
+    await settleTimers(40);
+    expect(sockets).toHaveLength(1);
+  });
+
+  test("a socket that does not open in time is closed and dialed again", async () => {
+    const { parked, dialed } = park({ openTimeoutMs: 20 });
+    const first = await dialed(1);
+    const second = await dialed(2);
+    expect(first.closedWith).toBe(4000);
+    expect(parked.failure).toBeUndefined();
+    second.open();
+    expect(second.sent).toHaveLength(1);
+  });
+
+  test("close before the start closes with 1000, and the start then fails as closed", async () => {
+    const { parked, dialed } = park();
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    parked.close();
+    expect(socket.closedWith).toBe(1000);
+    expect(parked.paired).toBe(false);
+    expect(parked.failure).toBeUndefined();
+    await expect(parked.start()).rejects.toMatchObject({ kind: "closed" });
+  });
+
+  test("close after the start closes with 4000 and fails the start as closed", async () => {
+    const { parked, dialed } = park();
+    const socket = await dialed(1);
+    socket.open();
+    const started = parked.start();
+    parked.close();
+    expect(socket.closedWith).toBe(4000);
+    await expect(started).rejects.toMatchObject({ kind: "closed" });
+  });
+
+  test("close while waiting to dial again dials nothing more", async () => {
+    const { parked, sockets, dialed } = park({ redialIntervalMs: 20 });
+    const socket = await dialed(1);
+    socket.open();
+    socket.closeFromRelay(4003);
+    parked.close();
+    await settleTimers(60);
+    expect(sockets).toHaveLength(1);
+  });
+
+  test("close does nothing once the exchange has begun", async () => {
+    const { parked, dialed } = park();
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    socket.fromRelay(START);
+    const mc = await parked.start();
+    parked.close();
+    expect(socket.closedWith).toBeUndefined();
+    await mc.send("still open");
+    expect(socket.binarySent()).toHaveLength(1);
+  });
+
+  test("every proof after the relay states its clock is made on that clock, and a later expired refusal ends the attempt", async () => {
+    const localSecond = 1_767_225_600;
+    const relaySecond = localSecond + 3_600;
+    const { parked, dialed } = park({
+      now: () => new Date(localSecond * 1000),
+    });
+    const first = await dialed(1);
+    first.open();
+    first.closeFromRelay(4005, String(relaySecond));
+
+    const second = await dialed(2);
+    second.open();
+    expect(helloProofExpiry(second)).toBe(relaySecond + 300);
+    second.closeFromRelay(4003);
+
+    const third = await dialed(3);
+    third.open();
+    expect(helloProofExpiry(third)).toBe(relaySecond + 300);
+    third.closeFromRelay(4005, String(relaySecond));
+    expect(parked.failure?.message).toMatch(
+      /^The WebSocket relay refused this side's proof as expired twice/,
+    );
+  });
+
+  test("refuses a second start from the relay", async () => {
+    const { parked, dialed } = park();
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    socket.fromRelay(START);
+    socket.fromRelay(START);
+    expect(parked.failure?.kind).toBe("protocol");
+    expect(parked.failure?.message).toMatch(
+      /passed on the partner's start twice/,
+    );
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("refuses exchange data on a pairing the partner has started while this side's start is held", async () => {
+    const { parked, dialed } = park();
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    socket.fromRelay(START);
+    socket.fromRelay(partnerFrames("early")[0]);
+    expect(parked.failure?.kind).toBe("protocol");
+    expect(parked.failure?.message).toMatch(
+      /passed on exchange data before both parties had started/,
+    );
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("the wait for the partner's start runs from this side's start on a pairing held parked", async () => {
+    const { parked, dialed } = park({ startTimeoutMs: 40 });
+    const socket = await dialed(1);
+    socket.open();
+    socket.fromRelay(PAIRED);
+    await settleTimers(60);
+    const startedAt = Date.now();
+    await expect(parked.start()).rejects.toThrow(
+      /reached the WebSocket relay but did not start the exchange/,
+    );
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(30);
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("parked under a signal already aborted, it dials no socket", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { parked, sockets } = park({ signal: controller.signal });
+    expect(parked.failure?.kind).toBe("closed");
+    await settleTimers(20);
+    expect(sockets).toEqual([]);
+  });
+
+  test("an abort while parked ends it as cancelled and closes with 4000", async () => {
+    const controller = new AbortController();
+    const { parked, dialed } = park({ signal: controller.signal });
+    const socket = await dialed(1);
+    socket.open();
+    controller.abort();
+    expect(parked.failure).toMatchObject({ kind: "closed" });
+    expect(socket.closedWith).toBe(4000);
+  });
+
+  test("an address it refuses is its failure, and no socket is opened", async () => {
+    const createSocket = vi.fn();
+    const { parked } = park({ url: "ws://relay.example/relay", createSocket });
+    expect(parked.failure).toMatchObject({ kind: "usage" });
+    await expect(parked.start()).rejects.toBe(parked.failure);
+    expect(createSocket).not.toHaveBeenCalled();
   });
 });
