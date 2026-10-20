@@ -5,7 +5,10 @@ import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { ShardedPsiEngine } from "../../src/psi/shardedPsiEngine";
+import {
+  ShardedPsiEngine,
+  shardStalledError,
+} from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
@@ -376,6 +379,141 @@ describe("the sharded engine's split", () => {
     expect(() => engine.dispose()).toThrow("dispose failed");
     engine.dispose();
     for (const each of engines) expect(each.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("helpers built from the primary's copied key", () => {
+  test.for<["starter" | "joiner", PsiEngineMode]>([
+    ["joiner", "identifier-revealing"],
+    ["joiner", "count-only"],
+    ["starter", "identifier-revealing"],
+    ["starter", "count-only"],
+  ])(
+    "a %s in %s mode puts the primary's own bytes on the wire",
+    async ([role, mode]) => {
+      const primary = new InProcessPsiEngine(wasm, role, role, mode);
+      const helpers = [1, 2].map(
+        () =>
+          new InProcessPsiEngine(wasm, role, role, mode, {
+            secretKey: primary.copySecretKey(),
+          }),
+      );
+      const single = new InProcessPsiEngine(wasm, role, role, mode, {
+        secretKey: primary.copySecretKey(),
+      });
+      const partner = keyedEngine(wasm, "joiner", mode);
+      const sharded = new ShardedPsiEngine(wasm, role, mode, primary, helpers, {
+        minShardElements: MIN_SHARD_ELEMENTS,
+      });
+      try {
+        if (role === "joiner")
+          expect(await sharded.createClientRequest(clientValues)).toEqual(
+            await single.createClientRequest(clientValues),
+          );
+        else {
+          const request = await partner.createClientRequest(clientValues);
+          expect(await sharded.processClientRequest(request)).toEqual(
+            await single.processClientRequest(request),
+          );
+        }
+      } finally {
+        for (const engine of [sharded, single, partner]) engine.dispose();
+      }
+    },
+  );
+
+  test("each copy is its own buffer, and a disposed engine refuses one", () => {
+    const engine = new InProcessPsiEngine(
+      wasm,
+      "joiner",
+      "joiner",
+      "identifier-revealing",
+    );
+    const first = engine.copySecretKey();
+    const second = engine.copySecretKey();
+    expect(first.byteLength).toBe(32);
+    expect(first.buffer).not.toBe(second.buffer);
+    expect(first).toEqual(second);
+    engine.dispose();
+    expect(() => engine.copySecretKey()).toThrow(/holds no secret key/);
+  });
+});
+
+describe("the shard progress timeout", () => {
+  const TIMEOUT_MS = 60_000;
+
+  function pendingEngine(): FakeEngine & { finish: () => void } {
+    const engine = fakeEngine() as FakeEngine & { finish: () => void };
+    engine.createClientRequest.mockReturnValue(
+      new Promise<Uint8Array>((resolve) => {
+        engine.finish = () => resolve(new wasm.request().serializeBinary());
+      }),
+    );
+    return engine;
+  }
+
+  test("a shard silent past the timeout fails the split at once, naming the shard", async () => {
+    vi.useFakeTimers();
+    try {
+      const primary = pendingEngine();
+      const helper = pendingEngine();
+      const engine = new ShardedPsiEngine(
+        wasm,
+        "joiner",
+        "identifier-revealing",
+        primary,
+        [helper],
+        { minShardElements: 1, shardProgressTimeoutMs: TIMEOUT_MS },
+      );
+      const outcome = engine.createClientRequest(["a", "b"]).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      primary.report?.(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await outcome).toEqual(
+        new Error("PSI worker 2 of 2 made no progress for 1 minute"),
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("ticks keep a shard's timeout from expiring, and a settled split leaves no timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const primary = pendingEngine();
+      const helper = pendingEngine();
+      const engine = new ShardedPsiEngine(
+        wasm,
+        "joiner",
+        "identifier-revealing",
+        primary,
+        [helper],
+        { minShardElements: 1, shardProgressTimeoutMs: TIMEOUT_MS },
+      );
+      const done = engine.createClientRequest(["a", "b"]);
+      for (let tick = 1; tick <= 5; tick += 1) {
+        await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+        primary.report?.(tick);
+        helper.report?.(tick);
+      }
+      primary.finish();
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+      helper.finish();
+      await expect(done).resolves.toBeInstanceOf(Uint8Array);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("the message states a timeout that is not whole minutes in seconds", () => {
+    expect(shardStalledError(0, 3, 90_000).message).toBe(
+      "PSI worker 1 of 3 made no progress for 90 seconds",
+    );
   });
 });
 

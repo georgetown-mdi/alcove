@@ -27,8 +27,9 @@ import type { OlderVersionSide } from "../errors";
 // worker technology -- the CLI wires a `worker_threads` Worker and the browser a
 // Web Worker behind the same {@link PsiWorkerHandle}. Everything that crosses the
 // boundary is raw bytes, value lists, index lists, or a count (never a live library
-// handle and never the secret key, which is generated and stays inside the worker),
-// so the same message protocol serves both structured-clone transports.
+// handle and never the secret key, which is generated inside a worker and reaches
+// only the shard helpers that worker hands it to), so the same message protocol
+// serves both structured-clone transports.
 
 // The role an engine is built for. Named through the participant config field
 // that holds it rather than through the Config interface itself, which the
@@ -305,7 +306,7 @@ export class WorkerPsiEngine implements PsiEngine {
 /**
  * The worker-side dispatcher: builds an {@link InProcessPsiEngine} from `library`
  * in `init`'s mode (so the secret key -- and with it the round's disclosure -- is
- * generated and lives entirely inside the worker) and returns a handler that
+ * generated inside the worker, unless `options` gives it) and returns a handler that
  * answers each {@link PsiWorkerRequest} by calling the matching
  * engine method and posting the result -- or the error message -- back through
  * `post`. An operation over a set large enough to split also posts a
@@ -322,13 +323,22 @@ export function servePsiWorker(
   /** The engine's settings; a worker entry point passes {@link ./psiWasmBudget.psiEngineOptionsForBackend} for its backend. */
   options: InProcessPsiEngineOptions = {},
 ): (request: PsiWorkerRequest) => void {
-  const engine = new InProcessPsiEngine(
-    library,
-    init.role,
-    init.id,
-    init.mode,
-    options,
+  return servePsiEngine(
+    new InProcessPsiEngine(library, init.role, init.id, init.mode, options),
+    post,
   );
+}
+
+/**
+ * The dispatcher {@link servePsiWorker} returns, over an engine the worker
+ * entry point built itself: one whose key it hands to shard helpers, or a
+ * helper built from that key. The engine must not be shared with another
+ * caller.
+ */
+export function servePsiEngine(
+  engine: InProcessPsiEngine,
+  post: (response: PsiWorkerResponse) => void,
+): (request: PsiWorkerRequest) => void {
   const run = (body: PsiWorkerRequestBody): Promise<unknown> => {
     switch (body.method) {
       case "createServerSetup":

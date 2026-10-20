@@ -44,6 +44,74 @@ export interface ShardedPsiEngineOptions {
    * afford to mask.
    */
   readonly minShardElements?: number;
+  /**
+   * How long one shard of a split operation may go without a processed-count
+   * tick or its result before the operation fails as if that shard had
+   * stopped, in milliseconds. Left out, a shard is waited for however long it
+   * runs.
+   */
+  readonly shardProgressTimeoutMs?: number;
+}
+
+/**
+ * The failure of a split operation whose shard `shard` (zero-based) of
+ * `shards` reported nothing for `timeoutMs`.
+ */
+export function shardStalledError(
+  shard: number,
+  shards: number,
+  timeoutMs: number,
+): Error {
+  const minutes = timeoutMs / 60_000;
+  const span = Number.isInteger(minutes)
+    ? `${String(minutes)} minute${minutes === 1 ? "" : "s"}`
+    : `${String(Math.ceil(timeoutMs / 1000))} seconds`;
+  return new Error(
+    `PSI worker ${String(shard + 1)} of ${String(shards)} made no progress for ${span}`,
+  );
+}
+
+// One timer per running shard, restarted by each of its ticks and cleared
+// when it settles; the first to expire rejects `stalled`.
+class ShardProgressWatch {
+  readonly stalled: Promise<never>;
+  private fail: (error: Error) => void = () => undefined;
+  private readonly timers: Array<ReturnType<typeof setTimeout> | undefined>;
+
+  constructor(
+    private readonly shards: number,
+    private readonly timeoutMs: number,
+  ) {
+    this.stalled = new Promise<never>((_resolve, reject) => {
+      this.fail = reject;
+    });
+    this.timers = Array.from({ length: shards }, (_, shard) =>
+      this.start(shard),
+    );
+  }
+
+  private start(shard: number): ReturnType<typeof setTimeout> {
+    return setTimeout(
+      () => this.fail(shardStalledError(shard, this.shards, this.timeoutMs)),
+      this.timeoutMs,
+    );
+  }
+
+  progressed(shard: number): void {
+    const timer = this.timers[shard];
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.timers[shard] = this.start(shard);
+  }
+
+  settled(shard: number): void {
+    clearTimeout(this.timers[shard]);
+    this.timers[shard] = undefined;
+  }
+
+  stop(): void {
+    for (let shard = 0; shard < this.shards; shard += 1) this.settled(shard);
+  }
 }
 
 /**
@@ -56,7 +124,9 @@ export interface ShardedPsiEngineOptions {
  * merged message is then wrong without any engine failing. The engines must
  * not be shared with another caller, since each sees its own lockstep calls.
  * A partner request in the other mode is refused before any engine sees it,
- * with the message one engine named `id` refuses it with.
+ * with the message one engine named `id` refuses it with. A shard that fails
+ * fails its operation at once, as does one silent past
+ * {@link ShardedPsiEngineOptions.shardProgressTimeoutMs}; no shard is retried.
  *
  * `library` builds and parses the merged messages on the calling thread; it
  * creates no key and masks nothing.
@@ -67,10 +137,12 @@ export class ShardedPsiEngine implements PsiEngine {
   private readonly revealsIdentifiers: boolean;
   private readonly engines: ReadonlyArray<PsiEngine>;
   private readonly minShardElements: number;
+  private readonly shardProgressTimeoutMs: number | undefined;
   private onProcessed: PsiProcessedElementsReporter | undefined;
   // Each shard's processed count while a split operation runs; undefined
   // while an operation runs on the primary alone, whose count passes through.
   private shardCounts: Array<number> | undefined;
+  private shardWatch: ShardProgressWatch | undefined;
   private disposed = false;
 
   constructor(
@@ -86,6 +158,14 @@ export class ShardedPsiEngine implements PsiEngine {
     this.revealsIdentifiers = mode === "identifier-revealing";
     this.engines = [primary, ...helpers];
     this.minShardElements = options.minShardElements ?? PSI_SHARD_MIN_ELEMENTS;
+    this.shardProgressTimeoutMs = options.shardProgressTimeoutMs;
+    // Taken whether or not a caller observes them: the progress timeout
+    // reads each shard's ticks.
+    this.engines.forEach((engine, shard) =>
+      engine.observeProcessedElements?.((processed) =>
+        this.shardProcessed(shard, processed),
+      ),
+    );
   }
 
   private get primary(): PsiEngine {
@@ -94,11 +174,6 @@ export class ShardedPsiEngine implements PsiEngine {
 
   observeProcessedElements(report: PsiProcessedElementsReporter): void {
     this.onProcessed = report;
-    this.engines.forEach((engine, shard) =>
-      engine.observeProcessedElements?.((processed) =>
-        this.shardProcessed(shard, processed),
-      ),
-    );
   }
 
   private shardProcessed(shard: number, processed: number): void {
@@ -109,6 +184,7 @@ export class ShardedPsiEngine implements PsiEngine {
       if (shard === 0) this.onProcessed?.(processed);
       return;
     }
+    this.shardWatch?.progressed(shard);
     counts[shard] = processed;
     this.reportShardTotal(counts);
   }
@@ -137,11 +213,17 @@ export class ShardedPsiEngine implements PsiEngine {
   ): Promise<Array<T>> {
     const counts = ranges.map(() => 0);
     this.shardCounts = counts;
+    const watch =
+      this.shardProgressTimeoutMs === undefined
+        ? undefined
+        : new ShardProgressWatch(ranges.length, this.shardProgressTimeoutMs);
+    this.shardWatch = watch;
     let running = ranges.length;
     try {
-      return await Promise.all(
+      const results = Promise.all(
         ranges.map(async (range, shard) => {
           const result = await run(this.engines[shard]!, range);
+          watch?.settled(shard);
           counts[shard] = range.end - range.start;
           running -= 1;
           if (running > 0 && this.shardCounts === counts)
@@ -149,7 +231,12 @@ export class ShardedPsiEngine implements PsiEngine {
           return result;
         }),
       );
+      return await (watch === undefined
+        ? results
+        : Promise.race([results, watch.stalled]));
     } finally {
+      watch?.stop();
+      this.shardWatch = undefined;
       this.shardCounts = undefined;
     }
   }
