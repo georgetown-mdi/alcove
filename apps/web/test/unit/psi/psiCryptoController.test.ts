@@ -11,13 +11,15 @@ import {
 import type {
   PsiEngine,
   PsiEngineMode,
-  PsiWorkerInit,
   PsiWorkerRequest,
   PsiWorkerResponse,
 } from "@alcove/core";
 
 import type {
   PsiCryptoWorker,
+  PsiCryptoWorkerSeed,
+  PsiHelperSetupReport,
+  PsiKeyPortsMessage,
   SpawnPsiCryptoWorker,
 } from "../../../src/psi/workers/psiCryptoController.js";
 
@@ -31,14 +33,18 @@ import type {
 // A stand-in for a dedicated Web Worker: records posted requests and terminate() calls,
 // and lets a test emit the worker's message/error/messageerror events on demand.
 class FakePsiCryptoWorker implements PsiCryptoWorker {
-  onmessage: ((event: { data: PsiWorkerResponse }) => void) | null = null;
+  onmessage:
+    | ((event: { data: PsiWorkerResponse | PsiHelperSetupReport }) => void)
+    | null = null;
   onerror: ((event: unknown) => void) | null = null;
   onmessageerror: ((event: unknown) => void) | null = null;
   readonly posted: Array<PsiWorkerRequest> = [];
+  readonly keyPorts: Array<PsiKeyPortsMessage> = [];
   terminations = 0;
 
-  postMessage(request: PsiWorkerRequest): void {
-    this.posted.push(request);
+  postMessage(message: PsiWorkerRequest | PsiKeyPortsMessage): void {
+    if ("kind" in message) this.keyPorts.push(message);
+    else this.posted.push(message);
   }
 
   terminate(): void {
@@ -46,7 +52,7 @@ class FakePsiCryptoWorker implements PsiCryptoWorker {
   }
 
   // Drive the host side: deliver a reply, a worker fault, or an undeserializable reply.
-  reply(response: PsiWorkerResponse): void {
+  reply(response: PsiWorkerResponse | PsiHelperSetupReport): void {
     this.onmessage?.({ data: response });
   }
   emitError(event: unknown): void {
@@ -64,10 +70,11 @@ class FakePsiCryptoWorker implements PsiCryptoWorker {
 
 describe("encode/decodePsiWorkerInit", () => {
   test("round-trips the role/id seed", () => {
-    const init: PsiWorkerInit = {
+    const init: PsiCryptoWorkerSeed = {
       role: "joiner",
       id: "client",
       mode: "identifier-revealing",
+      shard: "helper",
     };
     expect(decodePsiWorkerInit(encodePsiWorkerInit(init))).toEqual(init);
   });
@@ -107,6 +114,23 @@ describe("createPsiCryptoWorkerHandle", () => {
     );
   });
 
+  test("a helper's setup report and a fault before it reach onHelperSetup, not the engine", () => {
+    const fake = new FakePsiCryptoWorker();
+    const onHelperSetup = vi.fn();
+    const handle = createPsiCryptoWorkerHandle(fake, onHelperSetup);
+    const onMessage = vi.fn();
+    const onError = vi.fn();
+    handle.setHandlers({ onMessage, onError });
+
+    fake.reply({ kind: "helper-setup", ready: true });
+    expect(onHelperSetup).toHaveBeenLastCalledWith(true);
+    expect(onMessage).not.toHaveBeenCalled();
+
+    fake.emitError({ message: "worker faulted" });
+    expect(onHelperSetup).toHaveBeenLastCalledWith(false);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
   test("forwards a posted request and terminate() to the worker", () => {
     const fake = new FakePsiCryptoWorker();
     const handle = createPsiCryptoWorkerHandle(fake);
@@ -131,10 +155,10 @@ describe("createBrowserPsiEngineFactory", () => {
       id: string,
       mode: PsiEngineMode,
     ) => PsiEngine;
-    seeds: Array<PsiWorkerInit>;
+    seeds: Array<PsiCryptoWorkerSeed>;
     workers: Array<FakePsiCryptoWorker>;
   } {
-    const seeds: Array<PsiWorkerInit> = [];
+    const seeds: Array<PsiCryptoWorkerSeed> = [];
     const workers: Array<FakePsiCryptoWorker> = [];
     const spawn: SpawnPsiCryptoWorker = (init) => {
       seeds.push(init);
@@ -155,8 +179,13 @@ describe("createBrowserPsiEngineFactory", () => {
     // assumed here, and a count-only run seeded as revealing would run the disclosure
     // its terms refused.
     expect(seeds).toEqual([
-      { role: "starter", id: "server", mode: "identifier-revealing" },
-      { role: "joiner", id: "client", mode: "count-only" },
+      {
+        role: "starter",
+        id: "server",
+        mode: "identifier-revealing",
+        shard: "primary",
+      },
+      { role: "joiner", id: "client", mode: "count-only", shard: "primary" },
     ]);
     expect(workers).toHaveLength(2);
   });
