@@ -25,6 +25,7 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import {
+  KEYBOARD_JOURNEY_TIMEOUT_MS,
   activate,
   control,
   expectHeadingFocused,
@@ -119,6 +120,8 @@ async function invitationHash(): Promise<string> {
   };
   return encodeInvitation(token);
 }
+
+vi.setConfig({ testTimeout: KEYBOARD_JOURNEY_TIMEOUT_MS });
 
 const app = createAppMount();
 

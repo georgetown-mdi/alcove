@@ -20,6 +20,15 @@ import { accessibleName } from "./accessibilityRules";
  * is not in the order at all. */
 const MAX_TAB_PRESSES = 200;
 
+/**
+ * The test timeout of a whole keyboard journey. A journey makes 38 to 58
+ * keyboard calls to the browser driver one after another, so its time grows
+ * with CPU load: the slowest measured, the recurring-setup journey, took 24.7 s
+ * at a load average of 33 to 39 on 10 cores, past the browser project's 15 s
+ * default. 37 s is a 1.5x margin over it.
+ */
+export const KEYBOARD_JOURNEY_TIMEOUT_MS = 37_000;
+
 /** What a target is matched by: an element, or a predicate over the focused
  * element for a target the caller can name but not hold (it may not have
  * rendered yet). */
