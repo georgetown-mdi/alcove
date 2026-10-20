@@ -595,7 +595,7 @@ export function acceptUnsupported(
  * the invitation's coordination server) runs the exchange through the
  * command-line tool, not in the browser. Every other admitted accept runs the live
  * exchange in this browser. This one signal drives both the "How it runs" ledger row
- * and the settled footer's "never left this browser" claim, so the two cannot
+ * and the settled footer's "encrypted locally in your browser" claim, so the two cannot
  * disagree. The switch has no default, so a widened channel union fails to
  * build here until it is vetted. */
 export function acceptorRunsAsServerJob(

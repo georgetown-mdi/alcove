@@ -4,7 +4,7 @@ title: "Alcove Web App"
 
 # Using the Alcove web app
 
-The web app runs an exchange between two browsers. Your file is read and matched inside your browser and is never uploaded; your browser connects directly to your partner's. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install. While you set up or run an exchange, **Help** in the top bar opens this guide in a new tab.
+The web app runs an exchange between two browsers. Your file is read and matched inside your browser. Data is encrypted locally in your browser before being sent to your partner. A coordination server only helps the two browsers find each other to establish a secure peer-to-peer connection. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install. While you set up or run an exchange, **Help** in the top bar opens this guide in a new tab.
 
 This guide covers one exchange: creating an invitation, accepting one you were sent, reading the results, and keeping and checking the exchange record. Intended readers are analysts and program staff at either party. To run the same exchange again on a schedule, see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md); to run exchanges from the command line or over an SFTP server, see [CLI.md](CLI.md).
 

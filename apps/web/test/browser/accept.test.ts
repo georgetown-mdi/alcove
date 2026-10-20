@@ -2299,7 +2299,9 @@ describe("acceptor screen: run and completion", () => {
     expect(ledger.textContent).toContain(
       "1,847 matched rows + enrollment_date, program_code",
     );
-    expect(ledger.textContent).toContain("Your file never left this browser.");
+    expect(ledger.textContent).toContain(
+      "Data was encrypted locally in your browser before being sent to your partner.",
+    );
 
     // The downloads exist only in this page and none was taken, so leaving
     // asks first.

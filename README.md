@@ -8,7 +8,7 @@ Alcove is an open-source tool that lets two organizations find the records (indi
 
 Pick the one that matches who you are. All three run the same protocol, so the two parties do not have to pick the same one.
 
-1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your files are read and matched inside your browser, which exchanges directly with your partner's. Best for first-time and occasional exchanges. See [Web app](#web-app).
+1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your files are read and matched inside your browser, and data is encrypted locally in your browser before being sent to your partner. Best for first-time and occasional exchanges. See [Web app](#web-app).
 2. **You run Docker and want a guided screen for an exchange over your own SFTP server.** Start the console from the directory holding your input file, then visit [http://127.0.0.1:3000](http://127.0.0.1:3000):
    ```sh
    docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest serve
@@ -30,7 +30,7 @@ To run the web app from source instead, see [apps/web/README.md](apps/web/README
 - **Match without disclosure.** Each party keeps its full dataset private; the protocol reveals only which records the two parties have in common.
 - **Optional data exchange for matched records.** Beyond identifying matches, parties can share selected columns (for example, program enrollment dates or contact information).
 - **Configurable matching.** Records are matched on linkage keys built from identifier fields such as name, date of birth, or SSN, with built-in data cleaning and standardization so both parties' data is compared consistently.
-- **No third party holds your data.** The web app exchanges data directly between the two parties' browsers; the command line app uses an SFTP server or shared folder that you control, or exchanges directly with a partner's browser.
+- **No third party holds your data.** The web app encrypts data in each party's browser before sending it to the other; the command line app uses an SFTP server or shared folder that you control, or exchanges encrypted data with a partner's browser over WebRTC.
 - **A record of every exchange.** Each completed exchange produces a local record of what was shared, which you can retain for disclosure documentation.
 
 ## Example use cases

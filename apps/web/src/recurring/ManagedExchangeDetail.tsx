@@ -438,7 +438,7 @@ function ConfigurationView({
         Re-inviting refreshes the partnership with a new secret on these same
         terms; it does not change them. What you can change here is under{" "}
         {CHANGE_TERMS_TITLE} below. To change anything else, set up a{" "}
-        <Link to="/exchange">new exchange</Link> and delete this one if you no
+        <Link to="/exchange">new exchange</Link> and remove this one if you no
         longer want it.
       </p>
       {canReinvite ? (
@@ -475,7 +475,7 @@ function ConfigurationView({
           onto different terms. What you can change here is under{" "}
           {CHANGE_TERMS_TITLE} below. To change anything else, your partner sets
           up a new exchange with those terms and sends you its invitation -
-          accept it and you can save it as a new recurring exchange, then delete
+          accept it and you can save it as a new recurring exchange, then remove
           this one if you no longer want it.
         </p>
       )}

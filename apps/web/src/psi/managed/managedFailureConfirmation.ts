@@ -185,7 +185,7 @@ export const COMPROMISE_RESPONSE_MESSAGE =
  * not do meanwhile -- the schedule included, since nobody is watching those
  * windows pass. */
 export const COMPROMISE_RESPONSE_STANDS =
-  "This stays here until you clear it below or delete the exchange. While it " +
+  "This stays here until you clear it below or remove the exchange. While it " +
   "does, this exchange offers no fresh invitation, and its scheduled runs do " +
   "not happen.";
 
@@ -216,4 +216,4 @@ export const COMPROMISE_RESPONSE_UNSAVED_TITLE = "Your answer was not saved";
 export const COMPROMISE_RESPONSE_UNSAVED_REASON =
   "This device could not record your answer. It holds here until you leave " +
   "this page or start a run. Answer again the next time this exchange asks. " +
-  "If it still will not save, delete the exchange.";
+  "If it still will not save, remove the exchange.";

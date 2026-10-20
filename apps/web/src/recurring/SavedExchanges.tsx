@@ -544,19 +544,19 @@ export function DeleteExchangeButton({
         {configurationOnly ? (
           <>
             <p>
-              Delete {named}? This removes the settings this browser holds for
+              Remove {named}? This removes the settings this browser holds for
               it. It cannot be undone here.
             </p>
             <p className={`${styles.small} ${styles.sub}`}>
               The exchange itself runs from the alcove.yaml and .alcove.key on
-              the machine you run it from. Deleting it here changes nothing
+              the machine you run it from. Removing it here changes nothing
               there, and your partner is not notified.
             </p>
           </>
         ) : (
           <>
             <p>
-              Delete {named}? This removes everything this browser holds for it
+              Remove {named}? This removes everything this browser holds for it
               - the terms, the shared secret, its run history, its accounting of
               disclosures, and any results a scheduled run left here for you to
               download - in one step. It cannot be undone here. Download those
@@ -578,7 +578,7 @@ export function DeleteExchangeButton({
         {handoff === "command-line" && (
           <p className={`${styles.small} ${styles.sub}`}>
             The alcove.yaml and .alcove.key you saved still run this exchange.
-            Deleting it here neither retires them nor stops the runs you
+            Removing it here neither retires them nor stops the runs you
             scheduled - remove the scheduled command and delete those two files
             on that machine to end it.
           </p>
@@ -604,7 +604,7 @@ export function DeleteExchangeButton({
             loading={deleting}
             onClick={confirmDelete}
           >
-            Delete
+            Remove
           </Button>
         </div>
       </Modal>

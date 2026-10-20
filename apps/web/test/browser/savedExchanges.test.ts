@@ -524,18 +524,18 @@ describe("saved list route: delete is a fully supported, always-available action
     // The confirm names the exchange and says the partner is not notified.
     await expect
       .element(
-        page.getByText('Delete "Riverbend quarterly"?', { exact: false }),
+        page.getByText('Remove "Riverbend quarterly"?', { exact: false }),
       )
       .toBeInTheDocument();
     await expect
       .element(page.getByText("your partner is not notified", { exact: false }))
       .toBeInTheDocument();
 
-    // Confirm the delete: the modal's own Delete, scoped to the dialog so the row's
-    // Delete (behind the overlay) is never the target.
+    // Confirm the delete: the modal's own Remove, scoped to the dialog so the row's
+    // Remove (behind the overlay) is never the target.
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     // The row is gone and the empty state stands in its place.
@@ -732,7 +732,7 @@ describe("saved list route: delete is a fully supported, always-available action
     await page.getByRole("button", { name: "Remove" }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     // The failure is visible, the modal stays open, and the row is still listed.
@@ -759,7 +759,7 @@ describe("saved list route: delete is a fully supported, always-available action
     await page.getByRole("button", { name: "Remove" }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
     await expect
       .element(
@@ -781,7 +781,7 @@ describe("saved list route: delete is a fully supported, always-available action
     ).toBeNull();
     await expect
       .element(
-        page.getByText('Delete "Riverbend quarterly"?', { exact: false }),
+        page.getByText('Remove "Riverbend quarterly"?', { exact: false }),
       )
       .toBeInTheDocument();
 
@@ -789,7 +789,7 @@ describe("saved list route: delete is a fully supported, always-available action
     deleteOverride = undefined;
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     await expect

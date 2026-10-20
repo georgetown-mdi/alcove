@@ -168,7 +168,7 @@ describe("read-failed recovery listing", () => {
     await deletes[deletes.length - 1].click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     // With the offending record gone, the reload recovers to the normal run
@@ -353,7 +353,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     ).toBeNull();
   });
 
-  test("an unlabeled readable entry's confirm displays 'Delete this exchange?', not the row's display text", async () => {
+  test("an unlabeled readable entry's confirm displays 'Remove this exchange?', not the row's display text", async () => {
     // The row text is the display transform "(unnamed exchange)", but the confirm
     // must name the raw (empty) label, so the button's own empty-label branch fires.
     await mountReadFailedWith("");
@@ -361,10 +361,10 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     // The good (unlabeled) record's row is first; open its confirm.
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
-      .element(page.getByText("Delete this exchange?", { exact: false }))
+      .element(page.getByText("Remove this exchange?", { exact: false }))
       .toBeInTheDocument();
     expect(
-      page.getByText('Delete "(unnamed exchange)"?', { exact: false }).query(),
+      page.getByText('Remove "(unnamed exchange)"?', { exact: false }).query(),
     ).toBeNull();
   });
 });

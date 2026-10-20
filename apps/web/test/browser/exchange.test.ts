@@ -2224,7 +2224,9 @@ describe("inviter screen", () => {
     ) as Element;
     expect(ledger.textContent).toContain("Invitation used");
     expect(ledger.textContent).toContain("1,847 matched rows + shared columns");
-    expect(ledger.textContent).toContain("Your file never left this browser.");
+    expect(ledger.textContent).toContain(
+      "Data was encrypted locally in your browser before being sent to your partner.",
+    );
 
     // The downloads exist only in this page and none was taken, so leaving
     // asks first.

@@ -24,10 +24,10 @@ const SETTLED_RESULTS_SENTENCE =
   "The results above are all your partner received about your data.";
 
 /** The footer once a result lands. A server-driven run reads the input file on
- * the console host, not in the browser, so it omits the "never left this
- * browser" sentence. */
+ * the console host, not in the browser, so it omits the "encrypted locally in
+ * your browser" sentence. */
 export function settledTrustFooter(serverJob: boolean): string {
   return serverJob
     ? SETTLED_RESULTS_SENTENCE
-    : `Your file never left this browser. ${SETTLED_RESULTS_SENTENCE}`;
+    : `Data was encrypted locally in your browser before being sent to your partner. ${SETTLED_RESULTS_SENTENCE}`;
 }

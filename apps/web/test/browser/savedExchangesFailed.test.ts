@@ -280,7 +280,7 @@ describe("importing a backup whose stored copy cannot be read here", () => {
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("delete that exchange from the list on this page", {
+        page.getByText("remove that exchange from the list on this page", {
           exact: false,
         }),
       )

@@ -54,8 +54,8 @@ describe("the privacy footer", () => {
 
   test("a server-driven run omits the this-browser sentence", () => {
     expect(settledTrustFooter(false)).toBe(
-      "Your file never left this browser. The results above are all your " +
-        "partner received about your data.",
+      "Data was encrypted locally in your browser before being sent to your " +
+        "partner. The results above are all your partner received about your data.",
     );
     expect(settledTrustFooter(true)).toBe(
       "The results above are all your partner received about your data.",
@@ -65,7 +65,7 @@ describe("the privacy footer", () => {
   test("its text is written in one source file", () => {
     const fragments = [
       "The fields you match on are encrypted on your machine",
-      "never left this browser.",
+      "Data was encrypted locally in your browser",
       "all your partner received about your data",
     ];
     for (const files of filesContainingEach(fragments))

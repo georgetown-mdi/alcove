@@ -142,7 +142,11 @@ import {
   acceptOffersAllowedRelays,
   acceptorScreenReducer,
 } from "./acceptorScreenModel";
-import { APPLIANCE_FILE_ASSURANCE, FILE_ASSURANCE_LINE } from "./fileAssurance";
+import {
+  APPLIANCE_FILE_ASSURANCE,
+  BROWSER_ONLY_FILE_ASSURANCE,
+  FILE_ASSURANCE_LINE,
+} from "./fileAssurance";
 import {
   acceptorCleaningAttention,
   acceptorColumnsEditorState,
@@ -815,7 +819,7 @@ function AcceptorInvitationScreen({
   const token = ready ? decode.invitation.token : undefined;
   // Whether this accept runs as a server job on the console (a console file-drop)
   // rather than in the browser: the one signal behind the "How it runs" ledger row
-  // and the settled footer's "never left this browser" claim.
+  // and the settled footer's "encrypted locally in your browser" claim.
   const acceptServerJob =
     ready && acceptorRunsAsServerJob(decode.invitation.endpoint, consoleBuild);
   // The ledger's "How it runs" phrasing, from the accepted endpoint's run mode: a
@@ -1114,7 +1118,7 @@ function AcceptorInvitationScreen({
 
   // The ledger settles once the exchange completes: the tag names who it was
   // agreed with, the rows relabel past tense with the actual outcome, and the
-  // footer states the file never left. Until then it mirrors the partner's
+  // footer states what was sent and how. Until then it mirrors the partner's
   // proposal, with the columns step's local-only footer swapped in.
   const settled = outputs !== undefined;
   const ledger =
@@ -1459,7 +1463,7 @@ function AcceptorInvitationScreen({
               This invitation should have reached you over a trusted channel.
               {consoleBuild
                 ? " This console runs the exchange from your working folder."
-                : " Your browser connects directly to your partner."}
+                : ` ${BROWSER_ONLY_FILE_ASSURANCE}`}
             </p>
             {legalAgreementDisplay !== undefined && (
               <fieldset className={styles.fieldset}>

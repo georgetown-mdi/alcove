@@ -1488,23 +1488,23 @@ describe("managedReinviteRecoveryCopy", () => {
   const prose = (side: ManagedExchangeRecord["side"]) =>
     managedReinviteRecoveryCopy(record({ side })).body.join(" ");
 
-  test("the acceptor is told the accept saves a second exchange and to delete this one", () => {
+  test("the acceptor is told the accept saves a second exchange and to remove this one", () => {
     const copy = managedReinviteRecoveryCopy(record({ side: "acceptor" }));
     expect(copy.lead).toMatch(/ask your partner/i);
-    // The second record, the delete instruction, and the affordance that performs it
+    // The second record, the remove instruction, and the affordance that performs it
     // -- the operator acts from this copy without a separate lookup.
     expect(copy.body.join(" ")).toMatch(/second/i);
-    expect(copy.body.join(" ")).toMatch(/delete this superseded exchange/i);
-    expect(copy.body.join(" ")).toMatch(/Delete button/);
+    expect(copy.body.join(" ")).toMatch(/remove this superseded exchange/i);
+    expect(copy.body.join(" ")).toMatch(/Remove button/);
     expect(copy.body.join(" ")).toMatch(/recurring exchanges/i);
   });
 
-  test("the inviter's recovery gains no delete instruction", () => {
+  test("the inviter's recovery gains no remove instruction", () => {
     // Re-minting rotates the record in place, so the inviter has nothing to clean up
-    // and must not be told to delete the exchange it just recovered.
+    // and must not be told to remove the exchange it just recovered.
     const copy = managedReinviteRecoveryCopy(record({ side: "inviter" }));
     expect(copy.lead).toMatch(/re-invite your partner/i);
-    expect(copy.body.join(" ")).not.toMatch(/delete/i);
+    expect(copy.body.join(" ")).not.toMatch(/delete|remove/i);
     expect(copy.body.join(" ")).not.toMatch(/second/i);
   });
 

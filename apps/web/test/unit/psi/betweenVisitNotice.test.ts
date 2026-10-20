@@ -234,7 +234,7 @@ describe("betweenVisitNotice: the window an answer held back", () => {
         "stay stopped until you clear that answer. Once your partner " +
         "confirms on a channel you trust, open this exchange from Recurring " +
         'exchanges in this app and choose "Partner confirmed on another ' +
-        'channel", or delete the exchange.',
+        'channel", or remove the exchange.',
     );
   });
 
