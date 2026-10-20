@@ -391,9 +391,9 @@ Ratified by the owner:
   vendored server.
 - **Linkage rule sets** (board 9) -- Done is: an operator selects the built-in
   linkage rules by a plain-language choice in every application, the accepting
-  party's terms review names the built-in choice when the keys equal one, and no
-  rule that reaches a partner can hold a term that fails at the mint or whose
-  per-row cost is unbounded.
+  party's terms review names a built-in choice when the keys are that choice's
+  keys, and no rule that reaches a partner can hold a term that fails at the
+  mint or whose per-row cost is unbounded.
 - **Scheduled exchanges** (board 9) -- Done is: a recurring exchange configured
   in the browser runs to completion unattended for a full schedule period with
   no operator intervention and no manual recovery, and a failed or missed run
