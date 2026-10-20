@@ -120,7 +120,12 @@ function partnerFrames(value: unknown): Array<Uint8Array> {
 
 describe("the hello", () => {
   test("sends the hello and the start at once on open, and resolves on the partner's start", async () => {
+    // The proof is signed on the clock read as the opening starts, so its
+    // expiry is held to the seconds read around the opening: a clock read after
+    // the awaits below can fall in the next second.
+    const openedFromSecond = Math.floor(Date.now() / 1000);
     const { socket, pending } = await startOpening({ role: "acceptor" });
+    const openedBySecond = Math.floor(Date.now() / 1000);
     expect(socket.url).toBe(RELAY_URL);
     expect(socket.binaryType).toBe("arraybuffer");
     expect(socket.sent).toEqual([]);
@@ -154,7 +159,10 @@ describe("the hello", () => {
         now: new Date(),
       }),
     ).resolves.toBeUndefined();
-    expect(proof.expiresAtSeconds - Math.floor(Date.now() / 1000)).toBe(300);
+    expect(proof.expiresAtSeconds - 300).toBeGreaterThanOrEqual(
+      openedFromSecond,
+    );
+    expect(proof.expiresAtSeconds - 300).toBeLessThanOrEqual(openedBySecond);
 
     socket.fromRelay(PAIRED);
     let resolved = false;
