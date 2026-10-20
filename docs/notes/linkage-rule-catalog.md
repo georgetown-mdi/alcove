@@ -6,7 +6,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 
 _Status: built.
 Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.4.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
-A rule whose entry names a feature Alcove lacks has a band and no key, and no floor selects it.
+A rule whose entry names a feature the built-in set does not use yet has a band and no key, and no floor selects it.
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 
@@ -26,7 +26,7 @@ A rule matches two records only when every element agrees exactly.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
   `FN` is a first name of at least two letters: cleaning keeps a one-letter first name for the `FN1` rules, and every rule on `FN` drops it, since a shared initial is much weaker evidence than a shared full first name.
 - `SFX` is a name suffix (JR, SR, II, III, IV).
-  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they wait on a per-side missing-date condition instead ([Status](#status)).
+  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they are to run through the per-side missing-date condition instead, and are not yet built-in keys ([Status](#status)).
   Suffixes stay stripped from `LN` and `FN`.
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
@@ -131,11 +131,12 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Every rule below is a key of the built-in key set, except a rule whose entry names a feature Alcove lacks:
+Every rule below is a key of the built-in key set, except a rule whose entry names a feature the built-in set does not use yet:
 
 - A per-side missing-date condition: rules 35, 36, 36a, 38 and 39, the contact rules with no date of birth.
   Each would run without the suffix, only where one party's record has no date of birth.
   No suffix field is built ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
+  The condition is built ([Follow-on, unbanded until measured](#follow-on-unbanded-until-measured)); these rules are not yet keys of the set.
 
 Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
@@ -510,7 +511,7 @@ Catches any date-of-birth error with no SSN.
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
 A suffix would remove that pair only where both sides record one, and no suffix field is built.
-The rule waits instead on a per-side missing-date condition: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
+The rule is to run instead through the per-side missing-date condition, and is not yet a built-in key: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
 Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
@@ -580,7 +581,8 @@ Two forms of one mailbox, with dots or a plus tag, produce different values, whi
 ## Follow-on, unbanded until measured
 
 `FN + LN + SSN4`, when one side has no valid date of birth, catches a date that is missing or a filler.
-It needs a per-side missing-field condition, which Alcove lacks, and has no band until it is measured ([linkage-rule-grounding.md](linkage-rule-grounding.md#rule-features-the-evidence-calls-for)).
+Its per-side missing-field condition is built: an operator authors the rule with `condition: { missing_field: date_of_birth }` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#keys-that-run-only-where-a-field-is-missing)), and a 01/01 date counts as missing.
+It has no band until it is measured, so neither floor selects it and it is not a key of the built-in set ([linkage-rule-grounding.md](linkage-rule-grounding.md#rule-features-the-evidence-calls-for)).
 
 ## Not offered
 

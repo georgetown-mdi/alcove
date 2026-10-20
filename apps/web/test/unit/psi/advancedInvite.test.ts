@@ -3259,6 +3259,51 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
     expect(blocked.errors.keys).toMatch(/cannot supply/);
   });
 
+  test("a key conditioned on a field the columns cannot supply arrives disabled with the unsupplyable-key guidance", () => {
+    const document: LinkageTerms = {
+      version: "1.0.0",
+      identity: "Inviter",
+      date: "2026-06-20",
+      algorithm: "psi",
+      linkageStrategy: "cascade",
+      output: { expectsOutput: true, shareWithPartner: true },
+      deduplicate: false,
+      linkageFields: [
+        { name: "first_name", type: "first_name" },
+        { name: "last_name", type: "last_name" },
+        { name: "ssn4", type: "ssn4" },
+        { name: "date_of_birth", type: "date_of_birth" },
+      ],
+      linkageKeys: [
+        {
+          name: "FN + LN + SSN4",
+          elements: [
+            { field: "first_name" },
+            { field: "last_name" },
+            { field: "ssn4" },
+          ],
+          condition: { missingField: "date_of_birth" },
+        },
+      ],
+    };
+    expect(safeParseLinkageTerms(document).success).toBe(true);
+    const noDateMetadata: Metadata = [
+      { name: "fn", type: "first_name", role: "linkage", isPayload: false },
+      { name: "ln", type: "last_name", role: "linkage", isPayload: false },
+      { name: "s4", type: "ssn4", role: "linkage", isPayload: false },
+    ];
+    const seed = seedFor(["fn", "ln", "s4"], noDateMetadata);
+    const imported = draftFromTerms(document, seed, 3600, []);
+
+    expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": false });
+    const validation = validateAdvancedInvite(imported, seed, NOW);
+    expect(validation.canGenerate).toBe(false);
+    expect(validation.errors.keys).toContain(
+      "Turn on Expert authoring to see which field each key has no column for",
+    );
+    expect(validation.errors.keys).not.toContain("missing_field");
+  });
+
   test("import enables a key iff building it alone yields schema-valid terms (disable/build lockstep)", () => {
     // The disable-on-import predicate (declarableFieldNames + keyIsSupplyable) and the
     // field set buildAdvancedTerms declares both derive from the SAME

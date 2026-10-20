@@ -165,6 +165,25 @@ describe("summarizeInvitation", () => {
     ]);
   });
 
+  test("matchedFields names a field only a key condition reads, and that only its presence is used", () => {
+    const summary = summarizeInvitation(
+      makeToken({
+        linkageKeys: [
+          {
+            name: "SSN + LN",
+            elements: [{ field: "ssn" }, { field: "last_name" }],
+            condition: { missingField: "dob" },
+          },
+        ],
+      }),
+    );
+    expect(summary.matchedFields).toEqual([
+      "SSN",
+      "last name",
+      "date of birth (only whether it is present)",
+    ]);
+  });
+
   test("derives the inviter's terms for display", () => {
     const summary = summarizeInvitation(makeToken());
     expect(summary.invitingParty).toBe("County Health Department");

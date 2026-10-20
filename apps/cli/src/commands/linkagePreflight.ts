@@ -5,6 +5,7 @@ import {
   getLogger,
   inferMetadata,
   keepFirstPartyLineBreaks,
+  linkageKeyFieldNames,
   LinkageTermsUnsatisfiableError,
   MAX_ERROR_CAUSE_DEPTH,
   redactAndSanitizeForDisplay,
@@ -170,9 +171,7 @@ export function checkLinkageSatisfiability(
   // redacted where it is interpolated, so a private-key marker in one costs
   // that name and not the first-party text composed after it.
   const blockingFieldNames = new Set(
-    verdict.unsatisfiableKeys.flatMap((key) =>
-      key.elements.map((element) => element.field),
-    ),
+    verdict.unsatisfiableKeys.flatMap((key) => linkageKeyFieldNames(key)),
   );
   const details = [
     ...verdict.unsatisfiedFieldColumns

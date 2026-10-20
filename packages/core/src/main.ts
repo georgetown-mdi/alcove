@@ -404,6 +404,11 @@ export type {
   LinkageRuleSetCitationVerdict,
 } from "./defaults/builtInLinkageTerms";
 export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
+export {
+  admitsMissingFieldConditionType,
+  keyConditionRefusal,
+} from "./linkageKeyCondition";
+export type { KeyConditionRule } from "./linkageKeyCondition";
 export { getDefaultStandardization } from "./defaults/builtInStandardization";
 export { lastNameColumn } from "./personColumns";
 export {
@@ -437,6 +442,7 @@ export {
   TEXT_CONTROL_CHAR_PATTERN,
   TEXT_DIRECTION_MESSAGE,
   reasonTermsCannotStateIdentity,
+  linkageKeyFieldNames,
   referencedLinkageFieldNames,
   safeParseLinkageTerms,
   safeParseLinkageTermsTheReaderWrote,
@@ -478,6 +484,7 @@ export type {
 export type {
   LinkageField,
   LinkageKey,
+  LinkageKeyCondition,
   LinkageKeyElement,
   LinkageRuleSetReference,
   LinkageSetIdentity,
@@ -670,6 +677,7 @@ export type {
 // judgment of what an acceptor is consenting to, and the escaping of every
 // partner-controlled string in it, is made once rather than per surface.
 export {
+  matchedFieldEntry,
   matchedFieldsWithColumns,
   summarizeInvitation,
   withholdsPartnerAssociationTable,
@@ -695,6 +703,7 @@ export {
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
+  missingFieldConditionStatement,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,
   RECORDED_LINKAGE_RULE_SET_CAVEAT,

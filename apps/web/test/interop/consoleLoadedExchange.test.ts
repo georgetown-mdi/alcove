@@ -72,14 +72,14 @@ import type { JobRecord } from "@jobs/jobManager";
 // own table back cannot pass by symmetry.
 const PARTNER_CSV =
   "ssn,first_name,last_name,date_of_birth\n" +
-  "111223333,bob,smith,1990-01-01\n" +
+  "111223333,bob,smith,1990-01-02\n" +
   "222334444,carol,jones,1985-11-30\n" +
   "333445555,dave,lee,1979-04-02\n";
 
 const CONSOLE_CSV =
   "ssn,first_name,last_name,date_of_birth\n" +
   "444556666,erin,park,1970-07-07\n" +
-  "111223333,bob,smith,1990-01-01\n" +
+  "111223333,bob,smith,1990-01-02\n" +
   "222334444,carol,jones,1985-11-30\n";
 
 const PARTNER_IDENTITY = "Agency A, a@agency-a.example";
@@ -466,7 +466,7 @@ describe("an opened configuration's maximum age, held by the real Alcove", () =>
  * {@link PARTNER_CSV}, each with its county. */
 const PARTNER_CSV_WITH_COUNTY =
   "ssn,first_name,last_name,date_of_birth,county\n" +
-  "111223333,bob,smith,1990-01-01,Adams\n" +
+  "111223333,bob,smith,1990-01-02,Adams\n" +
   "222334444,carol,jones,1985-11-30,Brown\n" +
   "333445555,dave,lee,1979-04-02,Clark\n";
 

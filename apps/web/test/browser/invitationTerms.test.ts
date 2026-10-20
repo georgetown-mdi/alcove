@@ -23,6 +23,7 @@ import {
   describeDeduplicatePair,
   getDefaultLinkageTerms,
   linkageRuleSetVerdictNote,
+  missingFieldConditionStatement,
   sanitizeForDisplay,
   unshownDeclaredNamesLine,
 } from "@alcove/core";
@@ -837,6 +838,52 @@ describe("InvitationTerms: a key on a name and a date of birth alone is marked l
       page.getByRole("button", { name: /less certain/ }).query(),
     ).toBeNull();
     expect(app.container.textContent).not.toContain("less certain");
+  });
+});
+
+describe("InvitationTerms: a key with a missing-field condition", () => {
+  // The date of birth is read by the condition alone, so the matched fields
+  // mark it as read only for whether it is present.
+  const conditionedTerms: LinkageTerms = {
+    ...terms,
+    linkageKeys: [
+      terms.linkageKeys[1],
+      {
+        name: "SSN + LN",
+        elements: [{ field: "ssn" }, { field: "last_name" }],
+        condition: { missingField: "dob" },
+      },
+    ],
+  };
+
+  test.each(["review", "proposing"] as const)(
+    "on the %s screen the matched fields and the condition's line show with the key list closed",
+    async (perspective) => {
+      await renderTerms(conditionedTerms, { perspective });
+      await expect
+        .element(toggle("Matching strategies"))
+        .toHaveAttribute("aria-expanded", "false");
+      await expect
+        .element(
+          page.getByText(
+            "Matching on SSN, first name, last name, date of birth (only " +
+              "whether it is present).",
+          ),
+        )
+        .toBeVisible();
+      await expect
+        .element(
+          page.getByText(
+            `SSN + LN: ${missingFieldConditionStatement("date of birth")}`,
+          ),
+        )
+        .toBeVisible();
+    },
+  );
+
+  test("terms with no condition show no condition line", async () => {
+    await renderTerms(terms, { perspective: "review" });
+    expect(app.container.textContent).not.toContain("no valid date of birth");
   });
 });
 

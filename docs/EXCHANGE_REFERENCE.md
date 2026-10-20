@@ -390,6 +390,7 @@ linkage_terms:
 | `name` | string | yes | Human-readable name for this key |
 | `elements` | array | yes | Data elements combined to form the key |
 | `swap` | array | no | An array of two field names (or element `name` values) for which the receiver swaps their data elements for this key (see below) |
+| `condition` | object | no | `missing_field`: the name of a `date_of_birth` linkage field. The key then matches only pairs where one side's record has no valid value for that field ([Keys that run only where a field is missing](#keys-that-run-only-where-a-field-is-missing)) |
 
 #### Element fields
 
@@ -426,6 +427,30 @@ The two elements a `swap` names must also declare the same [`generate_fuzzy_comp
 The same rule binds the pair's [`transform`](#element-fields): both positions must declare the same pipeline -- the same steps with the same parameters, or neither one a pipeline at all. A swap moves the field references and leaves each element's own transform where it is, so only a pair whose transforms agree compares like-normalized values on both sides of the swapped key. It is also what makes the key's verdict independent of which party is the receiver: that role is settled per run from the two parties' record counts, not written into the terms, so a pair with differing transforms would match on one run and not the next with no change to the agreed document. A mismatched pair is rejected when the terms are decoded.
 
 Two spellings of the same pipeline are the same pipeline: an omitted `transform` and an empty list both mean "apply nothing", and a step's `params` keys are compared without regard to the order they were written in. Give the swapped pair one transform, the one the slot calls for. Cleaning that belongs to a column rather than to the slot -- a source system that stores one of the two fields differently -- goes in that column's [data standardizing transformation](#data-standardizing-transformations), which each party writes for its own input and applies before any key is built.
+
+#### Keys that run only where a field is missing
+
+A key with a `condition` matches only pairs where one side's record has no valid date of birth. It is how a key without the date, such as first name, last name and the last four SSN digits, is kept from matching two people who share those values and have different dates:
+
+```yaml
+linkage_terms:
+  linkage_keys:
+    - name: "FN + LN + SSN4, one side without a date of birth"
+      elements:
+        - field: first_name
+        - field: last_name
+        - field: ssn4
+      condition:
+        missing_field: date_of_birth
+```
+
+- **What counts as missing.** A date your cleaning drops is missing: an empty cell, a value that does not parse, a date before 1900, or one on the placeholder list. A date whose month and day are both 01 is missing too ([filler dates](spec/DEFAULT_STANDARDIZATION.md#filler-dates)). A missing date is never read as a disagreement.
+- **Which pairs it matches.** Both records having a valid date keeps the pair out of this key, whether the dates agree or not. Put the keys that match on the date before it: they claim the pairs whose dates agree, or are a year or a day apart.
+- **How it runs.** The key runs as two rounds, one where each side sends only its records without a date and the other side sends all of its records. It is still one key in the terms, the consent display and the review, and it costs two candidate values per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling, in place of one.
+- **What it tells the partner.** A party receiving the result learns, for each pair matched through the key, which of the two records had no valid date of birth. Both parties' displays state it on the key, and where no other key matches on the date of birth they list it among the fields matched on as `date of birth (only whether it is present)`.
+- **What is refused.** The terms are rejected when they are decoded if `missing_field` names a field not in `linkage_fields`, a field that is not a `date_of_birth`, or a field one of the key's own elements matches on, and when `algorithm` is `psi-c`, which runs one key in one round. Your input needs a column for the field: without one, the key cannot be run.
+
+The specification is in [PROTOCOL.md](spec/PROTOCOL.md#keys-with-a-missing-field-condition).
 
 ### `linkage_terms.linkage_rule_set`
 
@@ -1412,6 +1437,8 @@ With `true`, the result file ends with a column headed `matched_on_key` containi
 ```yaml
 include_matching_key: true
 ```
+
+For a [key that runs only where a field is missing](#keys-that-run-only-where-a-field-is-missing), the name is followed by whose record had no valid date of birth: `FN + LN + SSN4 (your record has no valid date of birth)` or `FN + LN + SSN4 (partner's record has no valid date of birth)`.
 
 The column is written last, so the leading columns a re-supplied result is read by keep their places, and verification of a result containing it is unaffected. It is always headed `matched_on_key`: a partner payload column or one of your own columns with that name is the one renamed, and only an identifier column already named `matched_on_key` moves it to `own_matched_on_key` ([PROTOCOL.md](spec/PROTOCOL.md#output)).
 

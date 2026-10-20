@@ -19,6 +19,7 @@ import {
   heldBackColumnNames,
   inferredRecordIdentifierStatement,
   matchedFieldColumns,
+  matchedFieldEntry,
   matchedFieldsWithColumns,
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
@@ -353,16 +354,16 @@ export function renderExchangeDisclosure(
     emit(
       `  ${marked("matched on", "matchedFields")}: ` +
         matched
-          .map(({ label, columns }) => {
-            const named = columns.filter(
-              (column) => spokenForm(column) !== spokenForm(label),
-            );
-            return named.length === 0
-              ? label
-              : `${label} (${named
-                  .map((column) => redactAndSanitizeForDisplay(column))
-                  .join(", ")})`;
-          })
+          .map((entry) =>
+            matchedFieldEntry(
+              entry,
+              entry.columns
+                .filter(
+                  (column) => spokenForm(column) !== spokenForm(entry.label),
+                )
+                .map((column) => redactAndSanitizeForDisplay(column)),
+            ),
+          )
           .join(", "),
     );
   const heldBack = heldBackColumnNames(
@@ -385,9 +386,10 @@ export function renderExchangeDisclosure(
   }
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   // One line per key: its name and the fields it combines, both already escaped
-  // by the summary. The full element and transform detail stays in the
-  // acceptance display, where a party is reading terms it did not write.
-  for (const key of summary.linkageKeys)
+  // by the summary, and beneath it a key condition's line, the same one the
+  // acceptance display states. The full element and transform detail stays in
+  // the acceptance display, where a party is reading terms it did not write.
+  for (const key of summary.linkageKeys) {
     emit(
       `    - ${key.name}: ${key.headerFields.join(" - ")}` +
         (key.hasSwap ? " (matched in either order)" : "") +
@@ -395,6 +397,8 @@ export function renderExchangeDisclosure(
           ? ` ${key.lessCertainHeaderMarker}`
           : ""),
     );
+    if (key.condition !== undefined) emit(`      ${key.condition}`);
+  }
   if (summary.linkageKeys.some((key) => key.lessCertain))
     displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[run]);
 

@@ -16,6 +16,7 @@ import {
 } from "../utils/crypto.js";
 import { AlgorithmSchema } from "../types.js";
 import {
+  linkageKeyFieldNames,
   MAX_LINKAGE_ENTRIES,
   MAX_NAME_LENGTH,
   MAX_PAYLOAD_ENTRIES,
@@ -229,8 +230,8 @@ interface ExchangeRecordGovernance {
   algorithm: Algorithm;
   /** Omitted when the terms named no agreement. */
   legalAgreement?: RecordLegalAgreement;
-  /** The fields the linkage keys reference, once each, sorted by `name` in
-   * UTF-16 code units. */
+  /** The fields the linkage keys reference (an element's field or a key
+   * condition's), once each, sorted by `name` in UTF-16 code units. */
   matchingBasis: RecordLinkageField[];
   /** Omitted when the terms cited no set. */
   linkageRuleSet?: RecordLinkageRuleSet;
@@ -577,10 +578,10 @@ function governanceFromTerms(
   const seen = new Set<string>();
   const matchingBasis: RecordLinkageField[] = [];
   for (const key of terms.linkageKeys) {
-    for (const element of key.elements) {
-      if (seen.has(element.field)) continue;
-      seen.add(element.field);
-      const field = fieldByName.get(element.field);
+    for (const name of linkageKeyFieldNames(key)) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const field = fieldByName.get(name);
       if (field === undefined) continue;
       matchingBasis.push({ name: field.name, type: field.type });
     }

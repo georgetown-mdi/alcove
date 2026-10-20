@@ -111,12 +111,12 @@ test("identity transform: mixed-case last_name is passed through as-is (no stand
       first_name: "J",
       last_name: "Smith",
       ssn: "123456789",
-      date_of_birth: "20000101",
+      date_of_birth: "20000102",
     },
   ];
   const iters = makeIterables(rows);
   // Without a to_upper_case cleaning step the raw value is used unchanged.
-  expect(iters[0].at(0)).toBe("123456789Smith20000101");
+  expect(iters[0].at(0)).toBe("123456789Smith20000102");
 });
 
 // --- ssn4 derived from a full SSN column -------------------------------------

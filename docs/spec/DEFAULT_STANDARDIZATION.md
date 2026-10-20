@@ -836,6 +836,28 @@ parties derive the same value from the same cell whenever each runs.
 and changing it changes every date key. `input_format` is the one default
 parameter that varies per party without an operator's edit.
 
+#### Filler dates
+
+A cleaned date whose month and day are both `01` (`YYYY0101`) is a filler: a
+system writes 1 January for an unknown month and day, and some assign 1 January
+of a birth decade. It is kept rather than dropped, since it is also a real
+birth date for some people, and marked:
+
+- No key element reads it, so no key built on the date of birth matches it,
+  the one-year, one-day and day/month expansions included: a partner's
+  `19800102` expanded by one day does not meet this party's `19800101`.
+- A [missing-field condition](PROTOCOL.md#keys-with-a-missing-field-condition)
+  counts it as missing, so the record takes part in a key that accepts a
+  missing date of birth.
+- The cleaned value stays in the field, so the
+  [shared-value screens](#shared-value-screens) still read it as part of a
+  person.
+
+The mark is applied when the keys are built, to every `date_of_birth` field
+whatever pipeline cleaned it, and it is not a step an operator can remove.
+It reads the cleaned value in the `YYYYMMDD` form, so a party whose own
+cleaning writes another form marks nothing.
+
 #### Date-format inference
 
 `MM/DD/YYYY` is the value used when no format is supplied. An exchange that
@@ -894,6 +916,7 @@ examples below use the `MM/DD/YYYY` default.
 | `"12/31/1899"` | `null` |
 | `"01/01/1900"` | `null` |
 | `"1/1/1901"` | `null` |
+| `"01/01/1985"` | `"19850101"` |
 
 ### `phone_number`
 

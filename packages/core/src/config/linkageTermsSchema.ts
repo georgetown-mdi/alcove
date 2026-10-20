@@ -32,6 +32,7 @@ import {
   swapPairTransformsDiffer,
   termsCandidateSetRefusal,
 } from "../linkageTermsPolicy.js";
+import { keyConditionRefusal } from "../linkageKeyCondition.js";
 
 // --- Untrusted-input bounds --------------------------------------------------
 
@@ -779,8 +780,33 @@ const linkageKeyElementSchema = (
 // --- Linkage keys ------------------------------------------------------------
 
 /**
- * One linkage key: one round of matching with PSI, keys ordered most to least
- * precise. A `swap` names two elements the receiver builds in both orders,
+ * A key that runs only where one side's record has no valid value for the
+ * named linkage field. The key runs as two rounds, one per PSI role: in each,
+ * that role's party sends only its records lacking the field and the other
+ * sends every record (docs/spec/PROTOCOL.md#keys-with-a-missing-field-condition).
+ */
+export interface MissingFieldCondition {
+  /** Name of the linkage field that must be missing on one side. */
+  missingField: string;
+}
+
+/**
+ * A condition on which records a key is built for. Each kind is an object with
+ * one member named for it, so a later kind joins the union without changing
+ * this one.
+ */
+export type LinkageKeyCondition = MissingFieldCondition;
+
+const LinkageKeyConditionSchema: z.ZodType<LinkageKeyCondition> = z.object({
+  missingField: nameValue(
+    z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
+  ),
+});
+
+/**
+ * One linkage key: one round of matching with PSI, two for a key with a
+ * `condition`, keys ordered most to least precise. A `swap` names two elements
+ * the receiver builds in both orders,
  * catching reversed data entry (docs/notes/one-sided-fuzzy-expansion.md).
  */
 export interface LinkageKey {
@@ -792,6 +818,8 @@ export interface LinkageKey {
    * swaps; sender uses un-swapped order.
    */
   swap?: [string, string];
+  /** Which records the key is built for; absent builds it for every record. */
+  condition?: LinkageKeyCondition;
 }
 
 const linkageKeySchema = (
@@ -811,20 +839,29 @@ const linkageKeySchema = (
         nameValue(z.string().check(maxCodeUnits(MAX_NAME_LENGTH))),
       ])
       .optional(),
+    condition: LinkageKeyConditionSchema.optional(),
   });
 
 /**
- * The linkage-field names at least one key element references: the fields the
- * exchange standardizes and consumes. Disclosure-relevant: the default-terms
- * and advanced-invite derivations filter `linkageFields` by it, so it shapes
- * the terms hash; keep its membership exact. `swap` does not widen it.
+ * The linkage-field names a key reads: each element's field, and the field its
+ * condition requires missing.
+ */
+export function linkageKeyFieldNames(key: LinkageKey): string[] {
+  const names = key.elements.map((e) => e.field);
+  if (key.condition !== undefined) names.push(key.condition.missingField);
+  return names;
+}
+
+/**
+ * The linkage-field names at least one key reads ({@link linkageKeyFieldNames}):
+ * the fields the exchange standardizes and consumes. Disclosure-relevant: the
+ * default-terms and advanced-invite derivations filter `linkageFields` by it, so
+ * it shapes the terms hash; keep its membership exact. `swap` does not widen it.
  */
 export function referencedLinkageFieldNames(
   linkageKeys: readonly LinkageKey[],
 ): Set<string> {
-  return new Set(
-    linkageKeys.flatMap((key) => key.elements.map((e) => e.field)),
-  );
+  return new Set(linkageKeys.flatMap(linkageKeyFieldNames));
 }
 
 // --- Payload -----------------------------------------------------------------
@@ -986,7 +1023,8 @@ const LinkageRuleSetReferenceSchema: z.ZodType<LinkageRuleSetReference> =
  * an empty `payload.receive` without it; unique field names, key names, and
  * element identifiers within a key; every element `field` a declared field;
  * every `swap` target an element of its key, the two with the same
- * `generateFuzzyComparisons` and `transform`. A repeated payload name collapses.
+ * `generateFuzzyComparisons` and `transform`; every key `condition` admitted
+ * (`keyConditionRefusal`). A repeated payload name collapses.
  *
  * TODO: versioning compatibility rules (migration paths between semver
  * versions).
@@ -1209,6 +1247,15 @@ const linkageTermsSchema = (
         "the two elements a linkage key swap names must declare the same " +
         "transform; give both elements the same transform",
       path: ["linkageKeys"],
+    })
+    .superRefine((terms, ctx) => {
+      const refusal = keyConditionRefusal(terms);
+      if (refusal !== undefined)
+        ctx.addIssue({
+          code: "custom",
+          message: refusal.message,
+          path: [...refusal.path],
+        });
     })
     // Placed here so every parse path refuses a partner's transform regex
     // before it runs: docs/spec/TRANSFORM_REGEX_DIALECT.md, "Transform-regex linear-time dialect".

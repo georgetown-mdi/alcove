@@ -19,6 +19,7 @@ import type {
   LinkageTerms,
   TransformStep,
 } from "./config/linkageTermsSchema.js";
+import { linkageKeyFieldNames } from "./config/linkageTermsSchema.js";
 import { inferMetadata } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import { DEFAULT_DATE_OUTPUT_FORMAT } from "./keyElementWidth.js";
@@ -944,7 +945,8 @@ interface LinkageSatisfiability {
 /**
  * Per-key coverage of `columns` against `terms`, projected from
  * {@link decideLinkageTermsVerdict}. A key is satisfiable only when every
- * element field is declared and producible. Column shape only: a column whose
+ * field it reads (`linkageKeyFieldNames`) is declared and producible. Column
+ * shape only: a column whose
  * every row standardizes to empty still counts, which can over-claim but never
  * wrongly block. Callers own wording and display sanitization.
  */
@@ -969,7 +971,7 @@ export function assessLinkageSatisfiability(
 
 /**
  * How one declared linkage key fares against an input's columns:
- * `unsatisfiable` when an element field cannot be produced, `dead` when the
+ * `unsatisfiable` when a field it reads cannot be produced, `dead` when the
  * fields resolve but an element's cleaning drops every record
  * ({@link pipelineAlwaysDrops}; fixed in the terms, not the input), else
  * `satisfiable`.
@@ -978,8 +980,8 @@ export type LinkageKeyFitness = "satisfiable" | "unsatisfiable" | "dead";
 
 /**
  * One declared linkage key and its {@link LinkageKeyFitness}. An
- * `unsatisfiable` key names `missingField`, the first of its element fields
- * the columns cannot produce; the field name is the terms' text, which the
+ * `unsatisfiable` key names `missingField`, the first field it reads that the
+ * columns cannot produce; the field name is the terms' text, which the
  * caller escapes for display.
  */
 export type GradedLinkageKey =
@@ -1033,10 +1035,15 @@ export function decideLinkageTermsVerdict(
       .filter((name) => !unsatisfiedNames.has(name)),
   );
   // Compiles each measured step once (pinned in linkageProbeCost.test.ts).
+  // A condition's field is read to tell which records lack it, so a key whose
+  // condition field the input cannot bind is graded as one whose element field
+  // it cannot bind.
   const keys: GradedLinkageKey[] = terms.linkageKeys.map((key) => {
-    const missing = key.elements.find((e) => !producibleNames.has(e.field));
+    const missing = linkageKeyFieldNames(key).find(
+      (field) => !producibleNames.has(field),
+    );
     if (missing !== undefined)
-      return { key, fitness: "unsatisfiable", missingField: missing.field };
+      return { key, fitness: "unsatisfiable", missingField: missing };
     return {
       key,
       fitness: key.elements.some((e) => pipelineAlwaysDrops(e.transform))

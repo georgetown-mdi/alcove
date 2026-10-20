@@ -524,26 +524,29 @@ These are requirements, not designs, sorted by whether Alcove builds them.
   count cap for contact values: Cao et al. (2026) caught placeholder SSNs with
   a name-DOB consistency rule, not a count, and Culbertson et al. (2017) count
   999-9999 as a default rather than a value.
-
-### Not built
-
-- **A per-side missing-field condition**: a rule that fires only where a named
-  field is absent on one side. It is not called a conflict veto: a veto
-  implies comparing the two sides' values per pair, which exact equality of
-  hashed values cannot do, while a condition stated per side, which both
+- **A per-side missing-field condition: a key's `condition`, admitting the
+  date of birth** (spec:
+  [PROTOCOL.md](../spec/PROTOCOL.md#keys-with-a-missing-field-condition)). A
+  key stating it runs only where the named field is absent on one side, as two
+  rounds, one per side lacking the field. It is not called a conflict veto: a
+  veto implies comparing the two sides' values per pair, which exact equality
+  of hashed values cannot do, while a condition stated per side, which both
   parties resolve the same way, needs only the terms. HUD's 2005 guidance
   deletes a potential match with conflicting values in two of gender, name
   suffix, the parts of the date and the full SSN (Sokol and Gutierrez 2005).
   The follow-on rule `FN + LN + SSN4`, for a side with no valid date of birth,
-  needs it, and counts a filler date as absent. So do rules 35, 36, 36a, 38
-  and 39, the contact rules with no date of birth, as a missing-date condition;
-  see [Name suffixes](#name-suffixes).
+  uses it, and a filler date counts as absent
+  ([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#filler-dates)).
+  Rules 35, 36, 36a, 38 and 39, the contact rules with no date of birth, need
+  it as a missing-date condition too; see [Name suffixes](#name-suffixes).
+
+### Not built
 - **A phone type.** The Sequoia Project (2018) had to tag numbers so work and
   mobile phones were not compared. `phone_number` is one untyped field. No
   rule depends on it.
 - **A name suffix field, by decision.** No suffix rule ships; the contact
-  rules with no date of birth wait on the missing-date condition instead. See
-  [Name suffixes](#name-suffixes).
+  rules with no date of birth are to run through the missing-date condition
+  instead, and are not yet built-in keys. See [Name suffixes](#name-suffixes).
 - **A name-frequency condition**, which `FN3 + LN + DOB` for uncommon names
   would need: a frequency score for the first and last name combination with a
   cut point, as The Link King computes (Campbell et al. 2006). A general tool
@@ -591,11 +594,12 @@ no date of birth, where the same-name parent and child on a household phone or
 email is the floor (rules 35, 36, 36a, 38 and 39). No suffix field is built.
 The element would remove the parent-and-child pair only where both sides record
 the suffix, at the cost of the pair where only one side did. The five rules
-wait instead on a per-side missing-date condition: each would run without the
-suffix, only where one party's record has no date of birth, so a parent and
-child whose records both hold a date are left to the rules that compare it.
-Suffixes stay stripped from the name fields. The bands do not rise, because
-the phone and email floor is unmeasured.
+are to run instead through the per-side missing-date condition, and are not
+yet built-in keys: each would run without the suffix, only where one party's
+record has no date of birth, so a parent and child whose records both hold a
+date are left to the rules that compare it. Suffixes stay stripped from the
+name fields. The bands do not rise, because the phone and email floor is
+unmeasured.
 
 ## The acceptance-evidence bar
 

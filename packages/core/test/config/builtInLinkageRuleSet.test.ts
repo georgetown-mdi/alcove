@@ -365,6 +365,35 @@ describe("linkageTermsFromRuleSet", () => {
     expect(terms.linkageFields).toEqual(ruleSet.linkageFields);
     expect(terms.linkageRuleSet).toStrictEqual(ruleSet.reference);
   });
+
+  test("a key is dropped where the columns lack its condition's field", () => {
+    const conditioned: LinkageKey = {
+      name: "SSN",
+      elements: [{ field: "ssn" }],
+      condition: { missingField: "date_of_birth" },
+    };
+    const ruleSet: BuiltInLinkageRuleSet = {
+      reference: {
+        fieldSet: { name: "probe-pii", version: "3.1.0" },
+        keySet: { name: "probe-keys", version: "3.1.0" },
+      },
+      linkageFields: [
+        { name: "ssn", type: "ssn" },
+        { name: "date_of_birth", type: "date_of_birth" },
+      ],
+      linkageKeys: [conditioned],
+    };
+    expect(
+      linkageTermsFromRuleSet(ruleSet, "Party A", [col("s", "ssn")])
+        .linkageKeys,
+    ).toEqual([]);
+    expect(
+      linkageTermsFromRuleSet(ruleSet, "Party A", [
+        col("s", "ssn"),
+        col("d", "date_of_birth"),
+      ]).linkageKeys,
+    ).toEqual([conditioned]);
+  });
 });
 
 describe("isDrawnFromLinkageRuleSet", () => {

@@ -11,10 +11,12 @@ import { RoundSetCounter, requireSingleCandidate } from "../psi/link.js";
 import {
   declaredKeyWidth,
   localFanOutFactor,
-  StandardizedKeyIterable,
+  roundKeyIterable,
 } from "../standardization.js";
+import { linkageRounds } from "../linkageKeyCondition.js";
 import { yieldToEventLoop } from "../utils/eventLoop.js";
 
+import type { LinkageRound } from "../linkageKeyCondition.js";
 import type { MessageConnection } from "../connection/messageConnection.js";
 import type { PreparedExchange } from "../exchange.js";
 import type { PsiProgressReporter } from "../psi/participant.js";
@@ -83,10 +85,12 @@ const PARTNER_CEILING_REMEDY =
  * It counts the values the first cascade or count-only round sends under this
  * party's own within-round rule ({@link RoundSetCounter}): every distinct
  * value when its terms set `deduplicate` on a cascade, else only the values
- * exactly one record holds. The count is taken in both PSI roles, since which
- * one this party plays is not yet known. It refuses on a count over the
- * protocol's per-set maximum (`MAX_PSI_DECODE_ELEMENTS`) in both roles, and on
- * any failure to count, with the failure as the refusal's cause. A
+ * exactly one record holds. A first key with a missing-field condition runs
+ * as two rounds (`linkageRounds`), and both are counted. The count is taken in
+ * both PSI roles, since which one this party plays is not yet known. It
+ * refuses where, in both roles, a round of the first key counts over the
+ * protocol's per-set maximum (`MAX_PSI_DECODE_ELEMENTS`), and on any failure
+ * to count, with the failure as the refusal's cause. A
  * {@link UsageError} the round would raise in one role is left to the round
  * when the other role fits; raised in both, it is thrown as it is. The
  * partner's stated receive ceiling is checked once the terms are exchanged,
@@ -131,7 +135,8 @@ export async function assertFirstRoundWithinSetMaximum(
 export interface FirstRoundCheckOptions {
   /**
    * Takes `countFirstRoundValues` reports (`PsiProgress`) as the count
-   * starts, as it goes, and as it settles, once for each role it counts in.
+   * starts, as it goes, and as it settles, once for each round and role it
+   * counts in.
    * An input whose records cannot reach the bound is not counted, so it
    * reports nothing. Called as a {@link PsiProgressReporter} is: a raise on a
    * `progress` report is dropped, and any other reaches the caller. The
@@ -195,10 +200,11 @@ const FIRST_ROUND_COUNT_CLOCK_RECORDS = 1024;
 const FIRST_ROUND_COUNT_PROGRESS_MS = 250;
 
 // The first-round count both checks above share, in each of `roles` (whether
-// this party counts as the PSI receiver) until one fits. `exceeds` is the
-// check's bound on a set of that many values, `tooLarge` its refusal on the
-// fewest values the round sends in any role counted, `uncounted` its refusal
-// when the count fails other than with a refusal the round would raise.
+// this party counts as the PSI receiver) until one fits every round of the
+// first key. `exceeds` is the check's bound on a set of that many values,
+// `tooLarge` its refusal on the fewest values a round over the bound sends in
+// any role counted, `uncounted` its refusal when the count fails other than
+// with a refusal the round would raise.
 async function assertFirstRoundFits(
   prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
   options: FirstRoundCheckOptions,
@@ -211,8 +217,16 @@ async function assertFirstRoundFits(
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
   if (linkageTerms.linkageStrategy === "single-pass") return;
-  const key = linkageTerms.linkageKeys[0];
-  if (key === undefined) return;
+  const rounds = linkageRounds(linkageTerms.linkageKeys);
+  const firstRound = rounds.at(0);
+  if (firstRound === undefined) return;
+  // A key with a missing-field condition runs as two rounds, and in either
+  // role this party builds it for every record in one of them, so a role fits
+  // only where every round of the first key does.
+  const firstKeyRounds = rounds.filter(
+    (round) => round.keyIndex === firstRound.keyIndex,
+  );
+  const { key } = firstRound;
   // Every row contributes at most the key's declared width of candidates, so
   // a dataset whose rows cannot reach the count is not read at all.
   const candidateCeiling =
@@ -250,6 +264,7 @@ async function assertFirstRoundFits(
   // Where the size only grows, the count stops once it is over the bound, and
   // the refusal names that size as the least the round sends.
   const roundSetSize = async (
+    round: LinkageRound,
     isReceiver: boolean,
   ): Promise<number | UsageError> => {
     report?.({
@@ -265,12 +280,11 @@ async function assertFirstRoundFits(
       options.signal?.throwIfAborted();
       let lastReportAt = performance.now();
       const counter = new RoundSetCounter(keepsDuplicates);
-      const records = new StandardizedKeyIterable(
-        key,
+      const records = roundKeyIterable(
+        round,
         dataset,
         rowCount,
         isReceiver,
-        0,
         false,
       );
       for (const candidates of records) {
@@ -312,11 +326,16 @@ async function assertFirstRoundFits(
   const counted: Array<number> = [];
   const refusals: Array<UsageError> = [];
   for (const isReceiver of roles) {
-    const size = await roundSetSize(isReceiver);
-    if (typeof size === "number") {
-      if (!bound.exceeds(size)) return;
-      counted.push(size);
-    } else refusals.push(size);
+    let refused: number | UsageError | undefined;
+    for (const round of firstKeyRounds) {
+      const size = await roundSetSize(round, isReceiver);
+      if (typeof size === "number" && !bound.exceeds(size)) continue;
+      refused = size;
+      break;
+    }
+    if (refused === undefined) return;
+    if (typeof refused === "number") counted.push(refused);
+    else refusals.push(refused);
   }
   if (refusals.length > 0) throw refusals[0];
   throw bound.tooLarge(Math.min(...counted));

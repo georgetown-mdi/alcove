@@ -42,10 +42,13 @@ import type {
   TransformStep,
 } from "./config/linkageTermsSchema.js";
 import {
+  linkageKeyFieldNames,
   MAX_DATE_FORMAT_LENGTH,
   MAX_TRANSFORM_PATTERN_LENGTH,
-  referencedLinkageFieldNames,
 } from "./config/linkageTermsSchema.js";
+import { isFillerDateOfBirth } from "./defaults/dateOfBirthFiller.js";
+import { roundRequiresMissingField } from "./linkageKeyCondition.js";
+import type { LinkageRound } from "./linkageKeyCondition.js";
 import {
   swapPairFuzzyComparisonsDiffer,
   swapPairTransformsDiffer,
@@ -2127,16 +2130,17 @@ export class StandardizedDataset {
    * pipeline declaring a fan-out producer -- the local authoring surface the
    * partner cannot see.
    *
-   * Scoped to the fields those keys read because they are the only fields the
-   * exchange standardizes and matches on ({@link referencedLinkageFieldNames}),
-   * so a fan-out on any other field widens no key's candidate set and declares
-   * nothing. It is what {@link localFanOutFactor} multiplies this party's
-   * DECLARED RECORD COUNT by, and what widens the per-key bound the row builder
-   * holds a record's candidate set to.
+   * Scoped to the fields those keys' elements read because they are the only
+   * fields whose values a key is built from, so a fan-out on any other field --
+   * a key condition's field among them -- widens no key's candidate set and
+   * declares nothing. It is what {@link localFanOutFactor} multiplies this
+   * party's DECLARED RECORD COUNT by, and what widens the per-key bound the row
+   * builder holds a record's candidate set to.
    */
   readonly declaresFanOut: boolean;
 
   private readonly fieldMap: ReadonlyMap<string, StandardizedField>;
+  private readonly fillerMarkedFields: ReadonlySet<string>;
 
   /**
    * @param fields - The standardized fields this dataset serves.
@@ -2144,17 +2148,39 @@ export class StandardizedDataset {
    *   scope {@link declaresFanOut}. Pass them as AUTHORED: a `swap` only permutes
    *   `field` among a key's own elements, so the authored elements already name
    *   every field a swapped reading could reach.
+   * @param fillerMarkedFields - The `date_of_birth` fields, whose filler values
+   *   {@link keyValues} leaves out.
    */
   constructor(
     fields: StandardizedField[],
     linkageKeys: ReadonlyArray<LinkageKey>,
+    fillerMarkedFields: ReadonlySet<string> = new Set(),
   ) {
     this.fieldMap = new Map(fields.map((f) => [f.name, f]));
-    const keyReadFields = referencedLinkageFieldNames(linkageKeys);
+    this.fillerMarkedFields = fillerMarkedFields;
+    const elementFields = new Set(
+      linkageKeys.flatMap((key) => key.elements.map((e) => e.field)),
+    );
     this.declaresFanOut = fields.some(
       (field) =>
-        field.multiplicitySources.listed && keyReadFields.has(field.name),
+        field.multiplicitySources.listed && elementFields.has(field.name),
     );
+  }
+
+  /**
+   * The values a key reads for field `name` at row `index`: the field's values
+   * ({@link StandardizedField.get}) less a filler date of birth
+   * ({@link isFillerDateOfBirth}), which the field keeps and no key reads.
+   * Empty where the dataset has no such field.
+   */
+  keyValues(name: string, index: number): string[] {
+    const field = this.fieldMap.get(name);
+    if (field === undefined) return [];
+    const values = field.get(index);
+    if (!this.fillerMarkedFields.has(name)) return values;
+    return values.some(isFillerDateOfBirth)
+      ? values.filter((value) => !isFillerDateOfBirth(value))
+      : values;
   }
 
   /** Names of the linkage fields this dataset provides. */
@@ -2416,8 +2442,10 @@ export function resolveFieldColumns(
 }
 
 /**
- * The input column each linkage field a key uses reads, by field name, as
- * {@link resolveFieldColumns} binds it. A field bound to no column is absent.
+ * The input column of each linkage field a key reads
+ * ({@link linkageKeyFieldNames}: an element's field or its condition's), by
+ * field name, as {@link resolveFieldColumns} binds it. A field bound to no
+ * column is absent.
  */
 export function matchedFieldColumns(
   metadata: ColumnMetadata[],
@@ -2427,21 +2455,21 @@ export function matchedFieldColumns(
   const resolution = resolveFieldColumns(terms, standardization, metadata);
   const matched = new Map<string, string>();
   for (const key of terms.linkageKeys)
-    for (const element of key.elements) {
-      const column = resolution.get(element.field)?.column;
-      if (column !== undefined) matched.set(element.field, column);
+    for (const field of linkageKeyFieldNames(key)) {
+      const column = resolution.get(field)?.column;
+      if (column !== undefined) matched.set(field, column);
     }
   return matched;
 }
 
 /**
- * The columns of the input the run neither sends nor matches on, in input
+ * The columns of the input the run neither sends nor reads for a key, in input
  * order: declared in `metadata` and present in `inputColumns`, not disclosed
  * ({@link isDisclosedToPartner}), and bound by {@link resolveFieldColumns} to
- * no field a linkage key uses. A `metadata` entry the input lacks is not
- * listed. In a direct run these are the columns whose names Alcove recognizes
- * as linkage keys but no key of the terms reads, such as `phone`, or a second
- * date-of-birth column.
+ * no field a linkage key reads ({@link matchedFieldColumns}). A `metadata`
+ * entry the input lacks is not listed. In a direct run these are the columns
+ * whose names Alcove recognizes as linkage keys but no key of the terms reads,
+ * such as `phone`, or a second date-of-birth column.
  */
 export function heldBackColumnNames(
   metadata: ColumnMetadata[],
@@ -2600,8 +2628,17 @@ export function buildStandardizedDataset(
       field.dropBesideLastNames(rule, lastNameField);
   }
 
+  const fillerMarkedFields = new Set(
+    terms.linkageFields
+      .filter((field) => field.type === "date_of_birth")
+      .map((field) => field.name),
+  );
   if (screens.length === 0)
-    return new StandardizedDataset(fields, terms.linkageKeys);
+    return new StandardizedDataset(
+      fields,
+      terms.linkageKeys,
+      fillerMarkedFields,
+    );
   if (personColumns === undefined)
     throw new Error(
       "buildStandardizedDataset: a shared-value screen needs the party's person columns",
@@ -2612,7 +2649,7 @@ export function buildStandardizedDataset(
   for (const { field, sources } of followers)
     field.followSharedValueScreens(sources);
 
-  return new StandardizedDataset(fields, terms.linkageKeys);
+  return new StandardizedDataset(fields, terms.linkageKeys, fillerMarkedFields);
 }
 
 // --- Key building ------------------------------------------------------------
@@ -3821,7 +3858,7 @@ function readRowUnderPlan(
 
   for (const [elementIndex, element] of elements.entries()) {
     const field = dataset.getField(element.field);
-    const raw = field ? field.get(index) : [];
+    const raw = dataset.keyValues(element.field, index);
     if (raw.length === 0) return null;
     if (field?.fanOutFromUnlistedFunction(index))
       provenance.fromUnlistedFunction = true;
@@ -4119,6 +4156,29 @@ function readRowUnderPlan(
 // --- Standardized key iterable ----------------------------------------------
 
 /**
+ * The key iterable for one round of a run (`linkageRounds`), read in this
+ * party's role: on the lacking role's half of a key with a missing-field
+ * condition, only the records lacking the condition's field.
+ */
+export function roundKeyIterable(
+  round: LinkageRound,
+  dataset: StandardizedDataset,
+  rowCount: number,
+  isReceiver: boolean,
+  reportRows = true,
+): StandardizedKeyIterable {
+  return new StandardizedKeyIterable(
+    round.key,
+    dataset,
+    rowCount,
+    isReceiver,
+    round.keyIndex,
+    reportRows,
+    roundRequiresMissingField(round, isReceiver),
+  );
+}
+
+/**
  * An {@link IndexableIterable} over a single {@link LinkageKey} round,
  * bridging the {@link StandardizedDataset} + {@link buildKeyStrings} pipeline
  * to the `Array<IndexableIterable<KeyCandidates>>` interface required by
@@ -4141,6 +4201,7 @@ export class StandardizedKeyIterable {
   private readonly isReceiver: boolean;
   private readonly keyIndex: number | undefined;
   private readonly reportRows: boolean;
+  private readonly onlyRecordsLacking: string | undefined;
   // Read at the first row rather than in the constructor, so an element
   // transform that does not compile refuses from the row read rather than from
   // the construction of the round's iterables.
@@ -4149,6 +4210,11 @@ export class StandardizedKeyIterable {
   /**
    * @param reportRows - Whether the rows this round drops or finds wide are
    *   reported; false for a read that only sizes the round ahead of it.
+   * @param onlyRecordsLacking - A field this round is built only for records
+   *   lacking: a row with a value a key reads for it
+   *   ({@link StandardizedDataset.keyValues}) contributes nothing. Set on the
+   *   lacking role's half of a key with a missing-field condition
+   *   (`roundRequiresMissingField`).
    */
   constructor(
     key: LinkageKey,
@@ -4157,6 +4223,7 @@ export class StandardizedKeyIterable {
     isReceiver = false,
     keyIndex?: number,
     reportRows = true,
+    onlyRecordsLacking?: string,
   ) {
     this.key = key;
     this.dataset = dataset;
@@ -4164,6 +4231,7 @@ export class StandardizedKeyIterable {
     this.isReceiver = isReceiver;
     this.keyIndex = keyIndex;
     this.reportRows = reportRows;
+    this.onlyRecordsLacking = onlyRecordsLacking;
 
     return new Proxy(this, {
       get: (target, prop, receiver) => {
@@ -4178,6 +4246,11 @@ export class StandardizedKeyIterable {
   }
 
   private valueAt(index: number): KeyCandidates {
+    if (
+      this.onlyRecordsLacking !== undefined &&
+      this.dataset.keyValues(this.onlyRecordsLacking, index).length > 0
+    )
+      return undefined;
     if (this.plan === undefined) {
       this.plan = planKeyRead(
         this.key,

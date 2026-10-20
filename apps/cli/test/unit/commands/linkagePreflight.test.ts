@@ -677,6 +677,34 @@ test("a declared field no linkage key references is not named", () => {
   expect(links.join("\n")).not.toContain("unreferenced");
 });
 
+test("a key condition's field the CSV has no column for is named", () => {
+  const terms: LinkageTerms = {
+    ...dobTerms(),
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+      { name: "ssn4", type: "ssn4" },
+      { name: "date_of_birth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN + LN + SSN4",
+        elements: [
+          { field: "first_name" },
+          { field: "last_name" },
+          { field: "ssn4" },
+        ],
+        condition: { missingField: "date_of_birth" },
+      },
+    ],
+  };
+  const links = refusalLinks(["first_name", "last_name", "ssn4"], terms);
+  expect(links.slice(1)).toEqual([
+    "this CSV has no column of type date_of_birth for linkage field date_of_birth",
+    "linkage key the CSV cannot produce: FN + LN + SSN4",
+  ]);
+});
+
 test("a dead key's refusal names the key and no field at all", () => {
   // A dead key is shape-satisfiable, so every field it references resolves and
   // the enumeration is the key alone: the remedy is the terms, and there is no

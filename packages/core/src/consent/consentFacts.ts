@@ -1067,3 +1067,19 @@ export const LESS_CERTAIN_KEY_COPY = {
   acceptorRemedy:
     "To leave them out, ask your partner for an invitation without them.",
 } as const;
+
+/**
+ * The one line every terms review and consent surface shows for a key with a
+ * missing-field condition, whichever of its two rounds a match comes from:
+ * which pairs the key matches, and what a match tells a party receiving the
+ * result, since each round sends only one side's records lacking the field.
+ * `field` names the field's type in lowercase words
+ * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts).
+ */
+export function missingFieldConditionStatement(field: string): string {
+  return (
+    `Matches only where one of the two records has no valid ${field}. ` +
+    "A match through this key tells a party receiving the result which of " +
+    "the two records had none."
+  );
+}

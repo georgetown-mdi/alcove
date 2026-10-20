@@ -349,6 +349,13 @@ function MatchKeyDisclosure({
       ) : (
         subline
       )}
+      {/* What a match through this key discloses, so it stays visible with the
+          key rather than inside the collapsed detail. Core's fixed copy. */}
+      {summary.condition !== undefined && (
+        <Text size="xs" c="dimmed">
+          {summary.condition}
+        </Text>
+      )}
       <div id={panelId}>
         <Collapse expanded={open}>
           <MatchKeyDetails summary={summary} />
@@ -1355,6 +1362,20 @@ export function InvitationTerms({
             <LessCertainInfo remedy={lessCertainRemedy}>
               <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
             </LessCertainInfo>
+          )}
+          {/* Outside the collapse as well: what a match through a key with a
+              missing-field condition discloses, core's line for each such key
+              after the key's name. */}
+          {summary.linkageKeys.map(
+            (key) =>
+              key.condition !== undefined && (
+                <Text key={key.id} size="sm">
+                  <Text span size="sm" fw={500}>
+                    {key.name}
+                  </Text>
+                  : {key.condition}
+                </Text>
+              ),
           )}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's

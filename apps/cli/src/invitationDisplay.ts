@@ -562,6 +562,7 @@ function displayLinkageKey(
         ? ` ${key.lessCertainHeaderMarker}`
         : ""),
   );
+  if (key.condition !== undefined) emit(`      ${key.condition}`);
   emit("      elements:");
   for (const element of key.elements) {
     emit(`        - ${element.fieldLabel}`);

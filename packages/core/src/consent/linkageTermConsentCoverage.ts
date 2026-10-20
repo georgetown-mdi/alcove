@@ -303,6 +303,11 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
       ],
       swap: ["given", "family"],
     },
+    {
+      name: "given name and family name, no date of birth",
+      elements: [{ field: "given_name" }, { field: "family_name" }],
+      condition: { missingField: "birth_date" },
+    },
   ],
   // A citation of its own rather than the built-in set's: the probe's fields and
   // keys are not the built-in ones, so citing the built-in key set here would
@@ -331,11 +336,12 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 
 /**
  * {@link CONSENT_PROBE_TERMS} stripped to what a count-only exchange
- * accepts, `psi` still: no payload in either direction, and a key
- * declaring no candidate set -- neither the swapped order nor the fuzzy
- * expansion the base's key declares, both of which a psi-c document is
- * refused for (docs/spec/PROTOCOL.md, PSI-C). Its single cascade key and
- * its `deduplicate: false` come from the base and need no stripping.
+ * accepts, `psi` still: no payload in either direction, the base's first
+ * key alone, since a psi-c document declares one key and no key condition,
+ * and that key declaring no candidate set -- neither the swapped order nor
+ * the fuzzy expansion it declares, both of which a psi-c document is
+ * refused for (docs/spec/PROTOCOL.md, PSI-C). Its cascade strategy and its
+ * `deduplicate: false` come from the base and need no stripping.
  *
  * It is the `algorithm` entry's `prepare` below, so the count-only pair
  * is built on it: varied against the base as it stands, the psi-c side
@@ -345,6 +351,7 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 function countOnlyAdmissibleBase(terms: LinkageTerms): LinkageTerms {
   return edited(terms, (draft) => {
     draft.payload = { send: [], receive: [] };
+    draft.linkageKeys = draft.linkageKeys.slice(0, 1);
     for (const key of draft.linkageKeys) {
       delete key.swap;
       for (const element of key.elements)
@@ -702,7 +709,12 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
       "four digits are a real disclosure difference.",
     // A date-of-birth field becomes an SSN field: the two have the same
     // constraint shape, so the replacement moves the semantic type and nothing
-    // else.
+    // else. A key condition admits a date-of-birth field alone, so the pair is
+    // built without the condition naming it.
+    prepare: (terms) =>
+      edited(terms, (draft) => {
+        for (const key of draft.linkageKeys) delete key.condition;
+      }),
     vary: (terms) =>
       edited(terms, (draft) => {
         const field = fieldOfType(draft, "date_of_birth");
@@ -857,6 +869,17 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     vary: (terms) =>
       edited(terms, (draft) => {
         delete draft.linkageKeys[0].swap;
+      }),
+  },
+  "linkageKeys[].condition.missingField": {
+    classification: "consent-relevant",
+    reason:
+      "Runs the key only where one side's record has no valid value for the " +
+      "field, so a match through it tells a party receiving the result which " +
+      "of the two records had none.",
+    vary: (terms) =>
+      edited(terms, (draft) => {
+        delete draft.linkageKeys[1].condition;
       }),
   },
   "linkageRuleSet.fieldSet.name": {

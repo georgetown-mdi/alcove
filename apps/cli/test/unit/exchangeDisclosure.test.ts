@@ -17,6 +17,7 @@ import {
   LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
+  missingFieldConditionStatement,
   setDiagnosticSink,
 } from "@alcove/core";
 import {
@@ -607,6 +608,38 @@ const lessCertainTerms: LinkageTerms = {
   ],
 };
 
+test("a key with a missing-date condition states, beneath it, the line every review surface states", () => {
+  const lines = rendered({
+    ...lessCertainTerms,
+    linkageFields: [
+      ...lessCertainTerms.linkageFields,
+      { name: "last4", type: "ssn4" },
+    ],
+    linkageKeys: [
+      {
+        name: "no date",
+        elements: [
+          { field: "given" },
+          { field: "surname" },
+          { field: "last4" },
+        ],
+        condition: { missingField: "born" },
+      },
+    ],
+  });
+  const keyAt = lines.indexOf(
+    "    - no date: first name - last name - SSN (last 4) - " +
+      "date of birth (only whether it is present)",
+  );
+  expect(keyAt).toBeGreaterThanOrEqual(0);
+  expect(lines[keyAt + 1]).toBe(
+    `      ${missingFieldConditionStatement("date of birth")}`,
+  );
+  expect(lines[keyAt + 1]).toContain(
+    "tells a party receiving the result which of the two records had none",
+  );
+});
+
 test("a key on names and a date of birth alone is marked less certain, and the mark explained once", () => {
   const lines = rendered(lessCertainTerms);
   expect(lines).toContain(
@@ -979,6 +1012,44 @@ test("the matched-on line names a column whose name differs from the field label
     "  matched on (enforced): first name, date of birth (dob)",
   );
   expect(lines).toContain("  held back (enforced): date_of_birth");
+});
+
+test("a date-of-birth column only a key condition reads is matched on, marked as read for presence", () => {
+  const conditionedTerms: LinkageTerms = {
+    ...localTerms,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+      { name: "ssn4", type: "ssn4" },
+      { name: "date_of_birth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN + LN + SSN4",
+        elements: [
+          { field: "first_name" },
+          { field: "last_name" },
+          { field: "ssn4" },
+        ],
+        condition: { missingField: "date_of_birth" },
+      },
+    ],
+  };
+  const header = ["first_name", "last_name", "ssn4", "dob", "phone"];
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    conditionedTerms,
+    inferMetadata(header, [], { mode: "direct" }),
+    header,
+    undefined,
+    "configuredExchange",
+  );
+  expect(lines).toContain(
+    "  matched on (enforced): first name, last name, SSN (last 4) (ssn4), " +
+      "date of birth (dob; only whether it is present)",
+  );
+  expect(lines).toContain("  held back (enforced): phone");
 });
 
 test("a held-back line lists only columns the input holds, in input order", () => {

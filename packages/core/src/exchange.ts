@@ -27,8 +27,12 @@ import {
   declaredEffectiveKeyCount,
   declaredKeyWidth,
   localFanOutFactor,
-  StandardizedKeyIterable,
+  roundKeyIterable,
 } from "./standardization.js";
+import {
+  assertKeyConditionsAdmitted,
+  linkageRounds,
+} from "./linkageKeyCondition.js";
 import {
   assertFanOutImplemented,
   assertLinkageTermsSatisfiable,
@@ -293,6 +297,7 @@ export function assertTermsRunnable(
   assertAlgorithmImplemented(terms.algorithm);
   assertDeduplicateImplemented(terms);
   assertFanOutImplemented(terms, standardization);
+  assertKeyConditionsAdmitted(terms);
   // A step whose compile throws aborts the run only once the pipeline is
   // built, after the partner has agreed to the terms naming it.
   assertTransformsCompile(terms, standardization);
@@ -406,8 +411,13 @@ function assertDeclaredWidthMatchesStrategy(
   const countOnly = terms.algorithm === "psi-c";
   if (!countOnly && candidateSetIsImplementedForStrategy(terms.linkageStrategy))
     return;
+  if (
+    !partyFansOut(linkageRounds(terms.linkageKeys).length, {
+      effectiveKeyCount,
+    })
+  )
+    return;
   const keyCount = terms.linkageKeys.length;
-  if (!partyFansOut(keyCount, { effectiveKeyCount })) return;
   if (countOnly) throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.candidateSet);
   throw new UsageError(
     "these linkage terms declare " +
@@ -823,8 +833,9 @@ export function prepareForExchange(
         `${declaredRecordCount} declared record(s) across ` +
         `${linkageTerms.linkageKeys.length} linkage key(s) exceed the ` +
         `single-pass limit. ${SINGLE_PASS_LOCAL_REMEDY}` +
-        (partyFansOut(linkageTerms.linkageKeys.length, { effectiveKeyCount }) ||
-        dataset.declaresFanOut
+        (partyFansOut(linkageRounds(linkageTerms.linkageKeys).length, {
+          effectiveKeyCount,
+        }) || dataset.declaresFanOut
           ? " Removing a step that splits values or expands a key also " +
             "lowers the count."
           : ""),
@@ -881,8 +892,9 @@ export interface ExchangeStageDefinition {
  * during execution.
  *
  * Stages: one "confirming protocol" step (terms exchange + role resolution).
- * For the cascade strategy, one "stage N / K" step per linkage key follows, since
- * each key is a separate on-wire PSI round. Single-pass runs every key in one
+ * For the cascade strategy, one "stage N / K" step per round follows, since each
+ * round is a separate on-wire PSI round: one per linkage key, two for a key with
+ * a missing-field condition (`linkageRounds`). Single-pass runs every key in one
  * exchange and then replays them locally in-memory, so it emits no per-key stage
  * (the replay is instant); its only enumerated step is confirming protocol, and
  * the encrypt/match stages it emits pass through the caller's onStage unlabeled.
@@ -899,7 +911,7 @@ export function describeExchangeStages(
   };
   if (prepared.linkageTerms.linkageStrategy === "single-pass")
     return [confirming];
-  const keyCount = prepared.linkageTerms.linkageKeys.length;
+  const keyCount = linkageRounds(prepared.linkageTerms.linkageKeys).length;
   return [
     confirming,
     ...Array.from({ length: keyCount }, (_, i) => ({
@@ -1410,6 +1422,10 @@ export async function runExchange(
   // after this party's terms have gone on the wire. See assertFanOutImplemented.
   assertFanOutImplemented(linkageTerms);
 
+  // Refuse a key condition the terms schema refuses, for a PreparedExchange whose
+  // terms were built without a parse. See assertKeyConditionsAdmitted.
+  assertKeyConditionsAdmitted(linkageTerms);
+
   // Refuse a disclosed column whose name is too long to carry before anything goes
   // on the wire. prepareForExchange refuses it at prepare time; this holds for a
   // PreparedExchange assembled without going through it, where the partner's parse
@@ -1447,10 +1463,11 @@ export async function runExchange(
   // and needs the explicit, authenticated signal (see the withhold gate below).
   const localDisclosesPayload = prepared.metadata.some(isDisclosedToPartner);
 
-  // The per-key candidate widths the agreed terms declare, and their sum. Both
+  // The per-round candidate widths the agreed terms declare, and their sum. Both
   // parties derive them from terms they have both agreed, so nothing about width
   // rides the wire and neither party reads the other's declaration.
-  const keyWidths = linkageTerms.linkageKeys.map((key, keyIndex) =>
+  const rounds = linkageRounds(linkageTerms.linkageKeys);
+  const keyWidths = rounds.map(({ key, keyIndex }) =>
     declaredKeyWidth(key, keyIndex),
   );
   const effectiveKeyCount = declaredEffectiveKeyCount(linkageTerms);
@@ -1746,9 +1763,8 @@ export async function runExchange(
       withholdSenderTable,
   });
 
-  const linkageKeyIterables = linkageTerms.linkageKeys.map(
-    (key, keyIndex) =>
-      new StandardizedKeyIterable(key, dataset, rowCount, isReceiver, keyIndex),
+  const linkageKeyIterables = rounds.map((round) =>
+    roundKeyIterable(round, dataset, rowCount, isReceiver),
   );
 
   // Per-message element-count caps for the PSI decode boundaries, from
