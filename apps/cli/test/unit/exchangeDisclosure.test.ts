@@ -17,6 +17,7 @@ import {
   LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
+  missingFieldConditionStatement,
   setDiagnosticSink,
 } from "@alcove/core";
 import {
@@ -606,6 +607,37 @@ const lessCertainTerms: LinkageTerms = {
     },
   ],
 };
+
+test("a key with a missing-date condition states, beneath it, the line every review surface states", () => {
+  const lines = rendered({
+    ...lessCertainTerms,
+    linkageFields: [
+      ...lessCertainTerms.linkageFields,
+      { name: "last4", type: "ssn4" },
+    ],
+    linkageKeys: [
+      {
+        name: "no date",
+        elements: [
+          { field: "given" },
+          { field: "surname" },
+          { field: "last4" },
+        ],
+        condition: { missingField: "born" },
+      },
+    ],
+  });
+  const keyAt = lines.indexOf(
+    "    - no date: first name - last name - SSN (last 4)",
+  );
+  expect(keyAt).toBeGreaterThanOrEqual(0);
+  expect(lines[keyAt + 1]).toBe(
+    `      ${missingFieldConditionStatement("date of birth")}`,
+  );
+  expect(lines[keyAt + 1]).toContain(
+    "tells a party receiving the result which of the two records had none",
+  );
+});
 
 test("a key on names and a date of birth alone is marked less certain, and the mark explained once", () => {
   const lines = rendered(lessCertainTerms);

@@ -11,6 +11,7 @@ import {
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
+  missingFieldConditionStatement,
   PROPOSED_NOT_APPLIED_NOTES,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
@@ -2242,6 +2243,31 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
       },
     };
   }
+
+  test("displayInvitation: states a key's missing-date condition on the line after its fields", () => {
+    const log = getLogger("accept-display-key-condition-test");
+    log.setLevel("silent");
+    const token = lessCertainToken();
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageKeys: [
+          {
+            name: "no date",
+            elements: [{ field: "given" }, { field: "surname" }],
+            condition: { missingField: "born" },
+          },
+        ],
+      },
+    }).split("\n");
+    const keyAt = lines.indexOf("    - no date");
+    expect(keyAt).toBeGreaterThanOrEqual(0);
+    expect(lines[keyAt + 2]).toBe(
+      `      ${missingFieldConditionStatement("date of birth")}`,
+    );
+    expect(lines[keyAt + 3]).toBe("      elements:");
+  });
 
   test("displayInvitation: marks a name and date key less certain and explains it once, with the acceptor's remedy", () => {
     const log = getLogger("accept-display-less-certain-test");

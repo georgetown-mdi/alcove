@@ -349,6 +349,13 @@ function MatchKeyDisclosure({
       ) : (
         subline
       )}
+      {/* What a match through this key discloses, so it stays visible with the
+          key rather than inside the collapsed detail. Core's fixed copy. */}
+      {summary.condition !== undefined && (
+        <Text size="xs" c="dimmed">
+          {summary.condition}
+        </Text>
+      )}
       <div id={panelId}>
         <Collapse expanded={open}>
           <MatchKeyDetails summary={summary} />
