@@ -109,10 +109,12 @@ async function startPrimary(
   return servePsiEngine(engine, post);
 }
 
-// Each port takes its own copy, transferred rather than cloned, so no copy
-// stays on this side. A port whose copy or post fails is sent a refusal,
-// which its helper rejects and reports as a failed setup. A post that throws
-// transferred nothing, so its copy is zeroed here; a detached one is empty.
+// Each port takes its own copy, transferred rather than cloned, so this code
+// keeps no buffer of it. psi.js keeps an unzeroed copy of the key bytes in a JS
+// array and in WASM temporaries, out of this code's reach. A port whose copy
+// or post fails is sent a refusal, which its helper rejects and reports as a
+// failed setup. A post that throws transferred nothing, so its copy is zeroed
+// here; a detached one is empty.
 function sendKey(
   engine: InProcessPsiEngine,
   ports: ReadonlyArray<MessagePort>,

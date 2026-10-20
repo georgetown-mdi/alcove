@@ -384,7 +384,9 @@ export class InProcessPsiEngine implements PsiEngine {
    * A fresh copy of this engine's secret key, for building a shard helper
    * that masks under it (the {@link InProcessPsiEngineOptions.secretKey}
    * option). Each call returns its own buffer, which the caller transfers or
-   * zeroes. An engine with no resolved role, or a disposed one, refuses.
+   * zeroes. psi.js also keeps an unzeroed copy of the key bytes in a JS array
+   * and in WASM temporaries, out of this code's reach. An engine with no
+   * resolved role, or a disposed one, refuses.
    */
   copySecretKey(): Uint8Array {
     const holder = this.server ?? this.client;
