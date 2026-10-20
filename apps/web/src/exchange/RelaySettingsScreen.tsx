@@ -29,13 +29,21 @@ import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
 /**
  * What the relay's operator learns, shown at the end of the relay settings page
- * and in `DefaultRelayNotice`, and stated in docs/COMMUNICATION.md and
- * docs/SHARED_RESPONSIBILITY.md.
+ * and in `DefaultRelayNotice`. docs/COMMUNICATION.md and
+ * docs/SHARED_RESPONSIBILITY.md state it in full, with the reason the address
+ * reaches the relay when no traffic is relayed.
  */
 export const RELAY_OPERATOR_DISCLOSURE =
-  "The relay's operator sees each party's network address for every exchange " +
+  "The relay's operator learns each party's network address for every exchange " +
   "that uses it, even when no traffic is relayed. The relay passes only " +
   "encrypted traffic and cannot read the exchange.";
+
+/** The relay settings page's opening paragraph: when a relay is needed, and
+ * which party sets it up. */
+export const RELAY_PAGE_INTRO =
+  "When a firewall blocks a direct connection to your partner, you can both " +
+  "connect through a TURN relay. If you run the relay, create the invitation " +
+  "so your partner uses it too.";
 
 /**
  * What the relay must hold for each run's credential, shown under the page's
@@ -174,12 +182,7 @@ export function RelaySettingsScreen({
   return (
     <WorkShell>
       <h1>Relay server</h1>
-      <p className={`${styles.small} ${styles.sub}`}>
-        When network permissions prevent a direct connection to your partner,
-        both sides can connect through a TURN relay. Whichever partner sets up
-        the relay should use this page and create the invitation for the
-        exchange.
-      </p>
+      <p className={`${styles.small} ${styles.sub}`}>{RELAY_PAGE_INTRO}</p>
       <p className={`${styles.small} ${styles.sub}`}>
         {consoleBuild
           ? "Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."

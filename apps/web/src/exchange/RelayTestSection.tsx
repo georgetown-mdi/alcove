@@ -24,7 +24,7 @@ import type {
 export const RELAY_TEST_INTRO =
   "The test checks that this browser can reach each relay below. It does not check " +
   "that an exchange's traffic will pass through it. Each relay's operator " +
-  "sees this browser's network address.";
+  "learns this browser's network address.";
 
 /** Shown in place of the test when there is no relay to test. */
 export const RELAY_TEST_NOTHING_TO_TEST =
