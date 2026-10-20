@@ -718,8 +718,9 @@ describe("the announcement after a floor choice", () => {
     );
     expect(empty.draft.keys).toHaveLength(0);
     expect(guidedKeysAnnouncement(empty)).toBe(
-      "The key list shows no built-in rules. Highest precision needs an " +
-        "SSN, ZIP code, or phone column in your file.",
+      "The key list shows no built-in rules. Highest precision needs " +
+        "stronger identifiers in your file, such as an SSN, ZIP code, or " +
+        "phone number.",
     );
   });
 
@@ -730,7 +731,8 @@ describe("the announcement after a floor choice", () => {
     );
     expect(empty.draft.keys).toHaveLength(0);
     expect(guidedKeysAnnouncement(empty)).toBe(
-      "The key list shows no built-in rules.",
+      "The key list shows no built-in rules. Your file's columns supply " +
+        "none of them.",
     );
   });
 });
@@ -787,8 +789,9 @@ describe("highest precision on columns that supply none of its rules", () => {
     expect(validation.canGenerate).toBe(false);
     expect(validation.errors.keys).toBe(HIGHEST_PRECISION_UNAVAILABLE_PROBLEM);
     expect(HIGHEST_PRECISION_UNAVAILABLE_PROBLEM).toBe(
-      "Highest precision needs an SSN, ZIP code, or phone column in your " +
-        "file. Choose broader matching instead.",
+      "Highest precision needs stronger identifiers in your file, such as " +
+        "an SSN, ZIP code, or phone number. Choose broader matching, or set " +
+        "a column's type to one of these.",
     );
     expect(spineProblems(held).map((problem) => problem.message)).toContain(
       HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,

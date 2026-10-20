@@ -670,7 +670,8 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect.element(floor99).toBeDisabled();
     await expect.element(floor99).toBeChecked();
     expect(HIGHEST_PRECISION_UNAVAILABLE_REASON).toBe(
-      "Needs an SSN, ZIP code, or phone column in your file.",
+      "Needs stronger identifiers in your file, such as an SSN, ZIP code, " +
+        "or phone number.",
     );
     await expect
       .element(floor99)

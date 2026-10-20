@@ -320,7 +320,8 @@ const HIGHEST_PRECISION: PrecisionFloorSelection = {
 /** The description of the Highest precision choice while
  * {@link highestPrecisionUnavailable} disables it. */
 export const HIGHEST_PRECISION_UNAVAILABLE_REASON =
-  "Needs an SSN, ZIP code, or phone column in your file.";
+  "Needs stronger identifiers in your file, such as an SSN, ZIP code, or " +
+  "phone number.";
 
 /** {@link HIGHEST_PRECISION_UNAVAILABLE_REASON} as a sentence naming the
  * choice. */
@@ -332,7 +333,7 @@ const HIGHEST_PRECISION_NEEDS =
 /** The key error while {@link highestPrecisionHeldWithoutRules}: Matching keys
  * states the reason beside the choice, and the Problems list names the way
  * out. */
-export const HIGHEST_PRECISION_UNAVAILABLE_PROBLEM = `${HIGHEST_PRECISION_NEEDS} Choose broader matching instead.`;
+export const HIGHEST_PRECISION_UNAVAILABLE_PROBLEM = `${HIGHEST_PRECISION_NEEDS} Choose broader matching, or set a column's type to one of these.`;
 
 /** Whether the session's columns, as their types and roles stand now, supply
  * none of the rules Highest precision selects. Matching keys disables that
@@ -419,13 +420,14 @@ export function keyOrderHelp(
 
 /** What a screen reader hears after a precision floor choice
  * reseeds the guided keys: how many the list shows and how many are on, and
- * for a list {@link highestPrecisionHeldWithoutRules} empties, why. */
+ * for an empty list, why. */
 export function guidedKeysAnnouncement(editor: InviterEditor): string {
   const count = editor.draft.keys.length;
   if (count === 0)
     return highestPrecisionHeldWithoutRules(editor)
       ? `The key list shows no built-in rules. ${HIGHEST_PRECISION_NEEDS}`
-      : "The key list shows no built-in rules.";
+      : "The key list shows no built-in rules. Your file's columns supply " +
+          "none of them.";
   const on = enabledKeys(editor.draft).length;
   return (
     `The key list shows ${String(count)} built-in ` +
