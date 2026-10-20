@@ -28,10 +28,13 @@ import type { ManageOfferState } from "./manageOfferModel";
 import type { Metadata, SemanticType, StandardizationStep } from "@alcove/core";
 
 import type {
+  CleaningSettings,
+  FieldStepOverride,
+} from "@psi/standardizationAuthoring";
+import type {
   JobRendezvousConfig,
   ProfiledJobInput,
 } from "@psi/jobClient/workInputClient";
-import type { FieldStepOverride } from "@psi/standardizationAuthoring";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
 import type { SftpConnectionInfo } from "@psi/jobClient/serverJobExchangeDriver";
@@ -364,6 +367,11 @@ export type AcceptorScreenAction =
       steps: Array<StandardizationStep>;
     }
   | { type: "field-input-changed"; output: string; column: string }
+  | {
+      type: "field-cleaning-settings-changed";
+      output: string;
+      settings: CleaningSettings;
+    }
   | { type: "columns-reset" }
   /** The columns step launched the exchange. The cardinality comes from what the
    * consent gate committed, never from the control the operator may have moved
@@ -612,6 +620,18 @@ export function acceptorScreenReducer(
               inputOverrides: new Map<string, string>(
                 state.columnsState.inputOverrides,
               ).set(action.output, action.column),
+            },
+          };
+    case "field-cleaning-settings-changed":
+      return state.columnsState === undefined
+        ? state
+        : {
+            ...state,
+            columnsState: {
+              ...state.columnsState,
+              settingsOverrides: new Map<string, CleaningSettings>(
+                state.columnsState.settingsOverrides,
+              ).set(action.output, action.settings),
             },
           };
     case "columns-reset":

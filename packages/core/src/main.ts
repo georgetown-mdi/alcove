@@ -405,6 +405,7 @@ export type {
 } from "./defaults/builtInLinkageTerms";
 export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
 export { getDefaultStandardization } from "./defaults/builtInStandardization";
+export { lastNameColumn } from "./personColumns";
 export {
   ExchangeSpecSchema,
   parseExchangeSpec,
@@ -653,6 +654,7 @@ export {
 } from "./valueConstraints";
 export type {
   FieldValue,
+  PersonColumn,
   StandardizationFunctionDescriptor,
 } from "./standardization";
 export type {

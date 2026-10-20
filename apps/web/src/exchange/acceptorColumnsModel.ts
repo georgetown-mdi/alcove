@@ -21,9 +21,11 @@ import {
 } from "@psi/metadataEditing";
 
 import {
+  applyCleaningSettingsOverrides,
   applyInputOverrides,
   applyStepOverrides,
   functionDisplay,
+  isMaxPeoplePerValueValid,
   isStepValid,
   refusedCleaningFanOut,
 } from "@psi/standardizationAuthoring";
@@ -46,9 +48,12 @@ import type {
   Standardization,
 } from "@alcove/core";
 
+import type {
+  CleaningSettings,
+  FieldStepOverride,
+} from "@psi/standardizationAuthoring";
 import type { AcceptorDataEdits } from "@psi/acceptInvitation";
 import type { DisclosureChoice } from "@psi/metadataEditing";
-import type { FieldStepOverride } from "@psi/standardizationAuthoring";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { ProfiledDateInputFormats } from "@psi/authoring/advancedInvite";
 
@@ -93,12 +98,12 @@ export interface AcceptorAcquiredCsv {
 }
 
 /**
- * The acceptor's column-step working state: the seed metadata, plus two override
- * LAYERS (input-column rebinds and authored step edits) over the standardization
- * derived from the current metadata. Held as layers rather than a whole
- * standardization so the binding is always re-derived and the verdict stays
- * accurate; an empty override map means the effective standardization equals the
- * derived default byte for byte.
+ * The acceptor's column-step working state: the seed metadata, plus three
+ * override LAYERS (input-column rebinds, authored step edits, and authored
+ * cleaning settings) over the standardization derived from the current
+ * metadata. Held as layers rather than a whole standardization so the binding
+ * is always re-derived and the verdict stays accurate; an empty override map
+ * means the effective standardization equals the derived default byte for byte.
  */
 export interface AcceptorColumnsState {
   metadata: Metadata;
@@ -108,6 +113,9 @@ export interface AcceptorColumnsState {
   /** Per-field authored step overrides, keyed by field name and paired with the
    * input column they were authored against. */
   stepOverrides: ReadonlyMap<string, FieldStepOverride>;
+  /** Per-field authored shared-value limit and last-name rule, keyed by field
+   * name, each stating both settings whole. */
+  settingsOverrides: ReadonlyMap<string, CleaningSettings>;
 }
 
 /**
@@ -132,6 +140,7 @@ export function acceptorInitialColumnsState(
       algorithm === "psi-c" ? withIdentifiersNotSent(inferred) : inferred,
     inputOverrides: new Map(),
     stepOverrides: new Map(),
+    settingsOverrides: new Map(),
   };
 }
 
@@ -151,6 +160,9 @@ export function acceptorInitialColumnsState(
  *    each on the current input column, so a step authored against the old column is
  *    seen as stale and dropped after a remap rather than silently cleaning a different
  *    column.
+ * 4. Authored cleaning settings are applied last
+ *    ({@link applyCleaningSettingsOverrides}), replacing the field's default limit
+ *    and last-name rule whatever column it reads.
  *
  * The input rebind running before the step layer is critical: it is what makes a
  * post-remap step override stale. With no overrides the result equals the derived
@@ -186,14 +198,17 @@ export function acceptorColumnsEditorState(
     rawRows,
     dateInputFormats,
   );
-  const standardization = applyStepOverrides(
-    applyInputOverrides(
-      baseStandardization,
-      effectiveInputOverrides,
-      linkageTerms.linkageFields,
-      metadata,
+  const standardization = applyCleaningSettingsOverrides(
+    applyStepOverrides(
+      applyInputOverrides(
+        baseStandardization,
+        effectiveInputOverrides,
+        linkageTerms.linkageFields,
+        metadata,
+      ),
+      state.stepOverrides,
     ),
-    state.stepOverrides,
+    state.settingsOverrides,
   );
   return { metadata, standardization };
 }
@@ -402,7 +417,9 @@ const NO_STEP_BLOCKS: AcceptorLaunchStepBlocks = {
  * in the frame ({@link acceptorOverlongDisclosedColumns}), the metadata has
  * more than one identifier column, an authored cleaning step is invalid,
  * mid-edit, or splits a value under terms that refuse one
- * ({@link refusedCleaningFanOut}), or one of the step's own blocks holds.
+ * ({@link refusedCleaningFanOut}), a shared-value limit is one the
+ * configuration schema refuses ({@link isMaxPeoplePerValueValid}), or one of
+ * the step's own blocks holds.
  *
  * The gate and the explanation are ONE derivation, so a state that disables the
  * button while telling a screen-reader operator nothing is unrepresentable.
@@ -411,7 +428,7 @@ const NO_STEP_BLOCKS: AcceptorLaunchStepBlocks = {
  * screen clears first: offline, then the refused duplicate-matching pair and a
  * duplicate-matching setting moved since consent, whose control is back on the
  * review step. Then the verdict, the count-only refusal, the over-long name
- * notice, the identifier rule, the cleaning steps,
+ * notice, the identifier rule, the cleaning steps, the shared-value limits,
  * the connection, the split rendezvous's retain-mode requirement, and the
  * file-handling and connection-tuning cards -- so an operator working down the
  * screen is sent to the first unresolved card. The signing-identity divergence
@@ -469,6 +486,23 @@ export function acceptorLaunchBlockedReason(
     return "Choose a single record identifier column above before you can start.";
   if (!acceptorStandardizationValid(editorState.standardization))
     return "Finish, fix, or remove the highlighted cleaning steps above before you can start.";
+  const overLimit = editorState.standardization.find(
+    (transformation) =>
+      !isMaxPeoplePerValueValid(transformation.maxPeoplePerValue),
+  );
+  if (overLimit !== undefined) {
+    const fieldType = invitationTerms.linkageFields.find(
+      (field) => field.name === overLimit.output,
+    )?.type;
+    const card =
+      fieldType === undefined
+        ? "a field's"
+        : `the ${SEMANTIC_TYPE_LABELS[fieldType]}`;
+    return (
+      "Fix or clear the highlighted limit on people sharing one value in " +
+      `${card} cleaning above before you can start.`
+    );
+  }
   const refusedFanOut = refusedCleaningFanOut(
     invitationTerms,
     editorState.standardization,

@@ -5,8 +5,11 @@ import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 
 import { fieldSourceColumnTypes } from "@alcove/core";
 
+import {
+  cleaningSettingsOf,
+  lastNameCleaningSteps,
+} from "@psi/standardizationAuthoring";
 import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
-import { cleaningSettingsOf } from "@psi/standardizationAuthoring";
 
 import { CleaningSettingsEditor } from "@components/CleaningSettingsEditor";
 import { DisclosureSection } from "@components/DisclosureSection";
@@ -125,6 +128,10 @@ export function StandardizationCards({
     () => new Map(declaredFields.map((field) => [field.name, field])),
     [declaredFields],
   );
+  const lastNameSteps = useMemo(
+    () => lastNameCleaningSteps(standardization, metadata, declaredFields),
+    [standardization, metadata, declaredFields],
+  );
 
   // The operator's `role: linkage` columns per semantic type, in metadata order --
   // the columns a field of that type MAY bind to. Only a linkage column participates
@@ -212,6 +219,7 @@ export function StandardizationCards({
             silentEmpty={isFieldSilentEmpty?.(transformation.output) ?? false}
             withholdFanOut={withholdFanOut}
             cleaningSettings={cleaningSettingsOf(transformation)}
+            lastNameSteps={lastNameSteps}
             onCleaningSettingsChange={
               onCleaningSettingsChange === undefined
                 ? undefined
@@ -266,6 +274,7 @@ function StandardizationCard({
   silentEmpty,
   withholdFanOut,
   cleaningSettings,
+  lastNameSteps,
   onCleaningSettingsChange,
   onRemove,
 }: {
@@ -282,6 +291,7 @@ function StandardizationCard({
   silentEmpty: boolean;
   withholdFanOut: boolean;
   cleaningSettings: CleaningSettings;
+  lastNameSteps: ReadonlyArray<StandardizationStep> | undefined;
   onCleaningSettingsChange?: (settings: CleaningSettings) => void;
   onRemove?: () => void;
 }) {
@@ -333,6 +343,7 @@ function StandardizationCard({
             <CleaningSettingsEditor
               settings={cleaningSettings}
               steps={steps}
+              lastNameSteps={lastNameSteps}
               onChange={onCleaningSettingsChange}
             />
           )}

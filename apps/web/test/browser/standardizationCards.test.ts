@@ -180,15 +180,17 @@ describe("StandardizationCards: the limit and last-name rule beside the steps", 
   function StatefulCards({
     initial,
     onCleaningSettingsChange,
+    columns,
   }: {
     initial: Standardization;
     onCleaningSettingsChange: SettingsSpy;
+    columns: Metadata;
   }) {
     const [standardization, setStandardization] = useState(initial);
     return createElement(StandardizationCards, {
       standardization,
-      declaredFields: authoredLinkageFields(metadata, standardization),
-      metadata,
+      declaredFields: authoredLinkageFields(columns, standardization),
+      metadata: columns,
       columnSamples,
       onStepsChange: () => {},
       onInputColumnChange: () => {},
@@ -206,10 +208,17 @@ describe("StandardizationCards: the limit and last-name rule beside the steps", 
     });
   }
 
-  function renderStateful(initial: Standardization) {
+  function renderStateful(
+    initial: Standardization,
+    columns: Metadata = metadata,
+  ) {
     const onCleaningSettingsChange = vi.fn<SettingsSpy>();
     app.render(
-      createElement(StatefulCards, { initial, onCleaningSettingsChange }),
+      createElement(StatefulCards, {
+        initial,
+        onCleaningSettingsChange,
+        columns,
+      }),
     );
     return onCleaningSettingsChange;
   }
@@ -306,6 +315,48 @@ describe("StandardizationCards: the limit and last-name rule beside the steps", 
     expect(page.getByText(/turns "JANE"/).elements()).toHaveLength(0);
   });
 
+  test("a last name the party's last-name cleaning changes is flagged with its cleaned form", async () => {
+    const withLastName: Metadata = [
+      ...metadata,
+      {
+        name: "surname_col",
+        type: "last_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    renderStateful(
+      [{ output: "first_name", input: "maiden_col", steps: [] }],
+      withLastName,
+    );
+    await expandFieldCards();
+    await userEvent.click(
+      page.getByPlaceholder("Type a last name and press Enter"),
+    );
+    await userEvent.keyboard("Doe{Enter}ROE{Enter}");
+    await expect
+      .element(
+        page.getByText(
+          'Your last-name cleaning turns "Doe" into "DOE", so it never matches. Enter "DOE" instead.',
+        ),
+      )
+      .toBeInTheDocument();
+    expect(page.getByText(/turns "ROE"/).elements()).toHaveLength(0);
+  });
+
+  test("a last name is not flagged where the party has no last name column", async () => {
+    renderStateful([{ output: "first_name", input: "maiden_col", steps: [] }]);
+    await expandFieldCards();
+    await userEvent.click(
+      page.getByPlaceholder("Type a last name and press Enter"),
+    );
+    await userEvent.keyboard("Doe{Enter}");
+    await expect
+      .element(page.getByText("Doe", { exact: true }))
+      .toBeInTheDocument();
+    expect(page.getByText(/last-name cleaning/).elements()).toHaveLength(0);
+  });
+
   test("the limit cannot be stepped below one person", async () => {
     renderStateful([
       {
@@ -337,7 +388,7 @@ describe("StandardizationCards: the limit and last-name rule beside the steps", 
       .toBeInTheDocument();
   });
 
-  test("no settings controls when the host does not edit them (the acceptor case)", async () => {
+  test("no settings controls when the host does not edit them", async () => {
     render(ruled);
     await expandFieldCards();
     await expect

@@ -66,6 +66,7 @@ import { MetadataGrid } from "@components/MetadataGrid";
 import { applyDisclosure } from "@psi/metadataEditing";
 
 import { createAppMount } from "./renderApp";
+import { expandFieldCards } from "./fieldCards";
 import { expectConsole } from "./expectedConsole";
 import { openDisclosure } from "./collapsePanels";
 import { visualOrderWithin } from "./visualOrder";
@@ -1461,6 +1462,38 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await expect
       .element(page.getByRole("heading", { name: "Confirm your columns" }))
       .toBeInTheDocument();
+  });
+
+  test("the acceptor's Cleaning tab edits the limit and last-name rule and flags a changed last name", async () => {
+    await reachColumns("first_name,last_name\nAlice,Smith\n");
+    await userEvent.click(page.getByRole("button", { name: /Cleaning/ }));
+    await expandFieldCards();
+    // The default cleaning's rule on the first-name card.
+    await expect
+      .element(page.getByText("JANE", { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("DOE", { exact: true }))
+      .toBeInTheDocument();
+
+    const limit = page
+      .getByRole("textbox", { name: "Most people who may share one value" })
+      .first();
+    await userEvent.fill(limit, "3");
+    await expect.element(limit).toHaveValue("3");
+
+    await userEvent.click(
+      page.getByPlaceholder("Type a last name and press Enter").first(),
+    );
+    await userEvent.keyboard("Roe{Enter}");
+    await expect
+      .element(
+        page.getByText(
+          'Your last-name cleaning turns "Roe" into "ROE", so it never matches. Enter "ROE" instead.',
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(limit).toHaveValue("3");
   });
 
   test("the run writes with the delimiter the file was read by at consent", async () => {

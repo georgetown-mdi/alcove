@@ -18,6 +18,7 @@ import {
   assertFanOutImplemented,
   coalesceSubstitutesConstant,
   derivedFieldSteps,
+  lastNameColumn,
   runPipeline,
   sanitizeForDisplay,
   stepCanEmptyRealizedValue,
@@ -734,10 +735,45 @@ export function halfFilledLastNameRuleNotice(
 }
 
 /**
- * What `steps` make of a value entry of the last-name rule, or `undefined`
- * when the entry comes through unchanged or a step cannot run yet. The rule
- * compares its entries, NFC-normalized, with the field's cleaned values, so an
- * entry the cleaning changes never matches.
+ * The steps that clean this party's last names for a last-name rule, chosen by
+ * the function the run chooses them with ({@link lastNameColumn}), or
+ * `undefined` when `metadata` has no `role: linkage` last name column, where
+ * the rule drops nothing.
+ */
+export function lastNameCleaningSteps(
+  standardization: Standardization,
+  metadata: ReadonlyArray<ColumnMetadata>,
+  linkageFields: LinkageTerms["linkageFields"],
+): Array<StandardizationStep> | undefined {
+  // The rows decide only a date column's input format, never these steps.
+  return lastNameColumn(standardization, metadata, { linkageFields }, [])
+    ?.steps;
+}
+
+/**
+ * Layer per-field cleaning settings onto a derived standardization, keyed by
+ * the field name: each override states the field's limit and last-name rule
+ * whole ({@link transformationWithCleaningSettings}). It is not gated on the
+ * input column, so the settings stay across a rebind, as the inviter's do.
+ */
+export function applyCleaningSettingsOverrides(
+  base: Standardization,
+  overrides: ReadonlyMap<string, CleaningSettings>,
+): Standardization {
+  return base.map((transformation) => {
+    const override = overrides.get(transformation.output);
+    return override === undefined
+      ? transformation
+      : transformationWithCleaningSettings(transformation, override);
+  });
+}
+
+/**
+ * What `steps` make of an entry of the last-name rule, or `undefined` when the
+ * entry comes through unchanged or a step cannot run yet. The rule compares
+ * its entries, NFC-normalized, with cleaned values -- a value entry with the
+ * field's, a last-name entry with the last names' -- so an entry the cleaning
+ * changes never matches.
  */
 export function lastNameRuleEntryCleaned(
   entry: string,
@@ -763,15 +799,33 @@ export function lastNameRuleEntryNotice(
   entry: string,
   cleaned: FieldValue,
 ): string {
+  return changedEntryNotice("This field's cleaning", entry, cleaned);
+}
+
+/** The warning beside a last-name entry the party's last-name cleaning
+ * ({@link lastNameCleaningSteps}) changes, given what
+ * {@link lastNameRuleEntryCleaned} made of it. */
+export function lastNameRuleLastNameNotice(
+  entry: string,
+  cleaned: FieldValue,
+): string {
+  return changedEntryNotice("Your last-name cleaning", entry, cleaned);
+}
+
+function changedEntryNotice(
+  cleaning: string,
+  entry: string,
+  cleaned: FieldValue,
+): string {
   const shown = `"${sanitizeForDisplay(entry)}"`;
   if (cleaned === null)
-    return `This field's cleaning drops ${shown}, so it never matches. Remove it.`;
+    return `${cleaning} drops ${shown}, so it never matches. Remove it.`;
   if (cleaned instanceof Set) {
     const parts = [...cleaned]
       .map((part) => `"${sanitizeForDisplay(part)}"`)
       .join(", ");
-    return `This field's cleaning splits ${shown} into ${parts}, so it never matches. Enter each part on its own instead.`;
+    return `${cleaning} splits ${shown} into ${parts}, so it never matches. Enter each part on its own instead.`;
   }
   const result = `"${sanitizeForDisplay(cleaned)}"`;
-  return `This field's cleaning turns ${shown} into ${result}, so it never matches. Enter ${result} instead.`;
+  return `${cleaning} turns ${shown} into ${result}, so it never matches. Enter ${result} instead.`;
 }

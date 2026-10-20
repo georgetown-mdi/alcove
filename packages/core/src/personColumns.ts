@@ -45,7 +45,7 @@ export function personColumns(
 export function lastNameColumn(
   standardization: Standardization | undefined,
   metadata: ReadonlyArray<ColumnMetadata>,
-  terms: LinkageTerms,
+  terms: Pick<LinkageTerms, "linkageFields">,
   rawRows: ReadonlyArray<CSVRow>,
 ): PersonColumn | undefined {
   return ownColumn("last_name", standardization, metadata, terms, rawRows);
@@ -55,7 +55,7 @@ function ownColumn(
   type: SemanticType,
   standardization: Standardization | undefined,
   metadata: ReadonlyArray<ColumnMetadata>,
-  terms: LinkageTerms,
+  terms: Pick<LinkageTerms, "linkageFields">,
   rawRows: ReadonlyArray<CSVRow>,
 ): PersonColumn | undefined {
   const column = metadata.find(

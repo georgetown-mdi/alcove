@@ -21,6 +21,7 @@ import type {
   Standardization,
   StandardizationStep,
 } from "@alcove/core";
+import type { CleaningSettings } from "@psi/standardizationAuthoring";
 import type { ColumnSamples } from "@psi/columnSamples";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { OverlongColumnName } from "@psi/columnNames";
@@ -54,6 +55,7 @@ export function AcceptorCleaningStep({
   withholdFanOut,
   onFieldSteps,
   onFieldInput,
+  onFieldCleaningSettings,
   onReset,
   onBack,
 }: {
@@ -92,6 +94,7 @@ export function AcceptorCleaningStep({
   withholdFanOut: boolean;
   onFieldSteps: (output: string, steps: Array<StandardizationStep>) => void;
   onFieldInput: (output: string, column: string) => void;
+  onFieldCleaningSettings: (output: string, settings: CleaningSettings) => void;
   onReset: () => void;
   onBack: () => void;
 }) {
@@ -202,6 +205,7 @@ export function AcceptorCleaningStep({
           }}
           onMissingField="throw"
           withholdFanOut={withholdFanOut}
+          onCleaningSettingsChange={onFieldCleaningSettings}
         />
       </CleaningErrorBoundary>
       {/* One polite, atomic region announces a silent-empty collapse for the whole

@@ -1,8 +1,16 @@
 import { describe, expect, test } from "vitest";
 
-import { disclosedColumnNames } from "@alcove/core";
+import { parse as parseYaml } from "yaml";
 
+import { disclosedColumnNames, parseExchangeSpec } from "@alcove/core";
+
+import {
+  acceptorColumnsEditorState,
+  acceptorInitialColumnsState,
+  acceptorLaunchPayload,
+} from "@exchange/acceptorColumnsModel";
 import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
+import { composeConfigDocument } from "@jobs/intentConfig";
 import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 
@@ -14,6 +22,7 @@ import type {
   Metadata,
   Standardization,
 } from "@alcove/core";
+import type { AcceptorColumnsState } from "@exchange/acceptorColumnsModel";
 import type { AcceptorDataEdits } from "@psi/acceptInvitation";
 
 // The inviter-perspective terms an accepted invitation holds: the inviter is
@@ -295,5 +304,73 @@ describe("the accepting party's own deduplicate in the composed job config", () 
 
   test("an omitted control leaves the composed terms one-to-one on this side", () => {
     expect(configFor().linkageTerms.deduplicate).toBe(false);
+  });
+});
+
+describe("the accepting party's cleaning settings in the composed configuration", () => {
+  // The console runs the accept from the alcove.yaml it composes, so what the
+  // Cleaning tab holds is what the command line reads back from that file.
+  function composedFrom(
+    settingsOverrides: AcceptorColumnsState["settingsOverrides"],
+  ) {
+    const columns = ["first_name", "last_name"];
+    const editorState = acceptorColumnsEditorState(
+      {
+        ...acceptorInitialColumnsState(columns, inviterTerms.algorithm),
+        settingsOverrides,
+      },
+      inviterTerms,
+      [{ first_name: "Mary", last_name: "Roe" }],
+    );
+    const { edits: launched } = acceptorLaunchPayload(editorState);
+    const intent = jobExchangeIntentSchema.parse(
+      intentFor(
+        acceptorServerJobConfig({
+          deduplicate: false,
+          token: { ...token, sharedSecret: VALID_SHARED_SECRET },
+          acceptorName: "Accepting Org",
+          edits: launched,
+          inputSource: { kind: "inline", csv: "first_name,last_name\n" },
+          transport: { channel: "filedrop" },
+        }),
+      ),
+    );
+    if (intent.channel !== "filedrop")
+      throw new Error("expected a filedrop intent");
+    const document = composeConfigDocument(intent, "/rendezvous");
+    return {
+      launched: launched.standardization,
+      document,
+      read: parseExchangeSpec(parseYaml(document)).standardization,
+    };
+  }
+
+  test("a limit and last-name rule set on the tab are written and read back unchanged", () => {
+    const { launched, document, read } = composedFrom(
+      new Map([
+        [
+          "firstName",
+          {
+            maxPeoplePerValue: 2,
+            nullIfLastName: { values: ["MARY"], lastNames: ["ROE", "DOE"] },
+          },
+        ],
+      ]),
+    );
+    expect(document).toContain("max_people_per_value: 2");
+    expect(document).toContain("null_if_last_name:");
+    expect(read).toEqual(launched);
+    expect(read?.find((t) => t.output === "firstName")).toMatchObject({
+      maxPeoplePerValue: 2,
+      nullIfLastName: { values: ["MARY"], lastNames: ["ROE", "DOE"] },
+    });
+  });
+
+  test("settings cleared on the tab are left out of the file", () => {
+    const { document, read } = composedFrom(new Map([["firstName", {}]]));
+    expect(document).not.toContain("null_if_last_name");
+    expect(read?.find((t) => t.output === "firstName")).not.toHaveProperty(
+      "nullIfLastName",
+    );
   });
 });
