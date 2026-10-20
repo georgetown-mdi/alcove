@@ -388,8 +388,9 @@ What each rule is in the shipped pool:
   the delivered key masks as the first worker does.
 - **A stopped worker fails the run.** No retry and no fallback, since either
   would also hide a fault in Alcove's own code. A helper that fails before
-  the first split leaves the run on the workers that set up. The shard is
-  named in the message where that stays plain.
+  the first split leaves the run on the first worker alone. The message
+  names no shard, since no plain wording of the shard's number helps anyone
+  act on the failure.
 - **A silent worker is bounded.** A worker that ends with no error event is
   caught by a progress timeout, derived from the longest gap measured between
   one worker's progress reports, projected to the browser's largest set.

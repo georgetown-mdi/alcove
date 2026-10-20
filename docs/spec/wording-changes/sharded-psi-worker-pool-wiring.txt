@@ -23,16 +23,20 @@
 - - -> **The key goes from worker to worker.**
 - - -> The primary generates the key.
 - - -> For each helper the page creates a MessageChannel and transfers one end to the primary and the other to the helper, keeping neither; the primary posts each helper its own transferred copy of the key over that channel.
+- - -> A primary takes only the first key-ports message it is given, before any request and with a port for each helper its seed names, and sends a refusal down the ports of any other, so the one-worker path's primary, seeded with no helpers, sends its key to no port.
 - - -> A helper builds its engine only from the key that arrives on its one port, generates none, and refuses every request without it.
 - - -> `psiWorkerPool.test.ts` checks over real channels that no message between the page and a worker contains the key.
-- - -> **A helper that fails its setup is left out.**
+- - -> **A helper that fails its setup leaves the run on the primary.**
 - - -> A helper reports to the page once its engine is built from the key.
-- - -> The first request the pool creates or answers waits for every helper's report, up to the progress timeout below; a helper that failed or has not reported is terminated, and the run goes on with the rest, on the primary alone, the single-threaded path, if none set up.
+- - -> The first request the pool creates or answers waits for every helper's report, up to the progress timeout below.
+- - -> If any helper failed or has not reported, every helper is terminated and the run goes on the primary alone, the single-threaded path.
+- - -> A primary that fails to start sends each helper a refusal in place of the key, so the wait ends at once.
 - - -> **A worker that stops fails the run.**
 - - -> A fault in any worker during a split operation fails that operation, and so the run, at once, by the path a fault in one worker takes.
 - - -> No worker is retried or started again.
 - - -> **The progress timeout.**
-- - -> A worker of a split operation that reports neither a processed count nor its result for `BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS`, 33 minutes, is treated as stopped, and the run fails naming it: `PSI worker 2 of 4 made no progress for 33 minutes`.
+- - -> A worker of a split operation that reports neither a processed count nor its result for `BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS`, 33 minutes, is treated as stopped, and the run fails with `Encrypting the data made no progress for 33 minutes.
+- - -> Run the exchange again.`
 - - -> This catches a worker that ends with no error event.
 - - -> The longest measured gap between one worker's consecutive progress events, below, was 0.58 ms per element of the chunk it was masking.
 - - -> A split operation at `BROWSER_PSI_SET_MAX_ELEMENTS`, 8,388,608, gives each of at least two workers at most 4,194,304 elements in five chunks of at most 838,861, about 487 s at that rate.
