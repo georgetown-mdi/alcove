@@ -840,4 +840,36 @@ describe("the columns the run holds back", () => {
       ),
     ).toEqual(["date_of_birth"]);
   });
+
+  test("a column only a key condition reads is not held back", () => {
+    const conditionedTerms: LinkageTerms = {
+      ...linkageTerms,
+      linkageKeys: [
+        {
+          name: "FN",
+          elements: [{ field: "first_name" }],
+          condition: { missingField: "date_of_birth" },
+        },
+      ],
+    };
+    const metadata: Metadata = [
+      column("first_name", "first_name"),
+      column("dob", "date_of_birth"),
+      column("phone", "phone_number"),
+    ];
+    expect(matchedFieldColumns(metadata, conditionedTerms, undefined)).toEqual(
+      new Map([
+        ["first_name", "first_name"],
+        ["date_of_birth", "dob"],
+      ]),
+    );
+    expect(
+      heldBackColumnNames(
+        metadata,
+        ["first_name", "dob", "phone"],
+        conditionedTerms,
+        undefined,
+      ),
+    ).toEqual(["phone"]);
+  });
 });

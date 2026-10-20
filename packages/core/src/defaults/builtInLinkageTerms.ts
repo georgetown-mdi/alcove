@@ -1,4 +1,7 @@
-import { referencedLinkageFieldNames } from "../config/linkageTermsSchema";
+import {
+  linkageKeyFieldNames,
+  referencedLinkageFieldNames,
+} from "../config/linkageTermsSchema";
 import type {
   LinkageRuleSetReference,
   LinkageSetIdentity,
@@ -844,9 +847,9 @@ export function linkageRuleSetReferenceFor(
  * a party runs when it authors none of its own.
  *
  * The keys are those `selection` selects ({@link linkageKeysAtPrecisionFloor}).
- * When metadata are provided, only those whose elements can be satisfied by
- * the present columns are included; metadata declaring no column satisfies
- * none. Either way the
+ * When metadata are provided, only those whose fields
+ * ({@link linkageKeyFieldNames}) can be satisfied by the present columns are
+ * included; metadata declaring no column satisfies none. Either way the
  * emitted keys are a subset of the set, never an addition to it: what the
  * input supports narrows the set, and nothing widens it -- which is what
  * makes the emitted citation accurate, an upper bound on what was tried
@@ -870,7 +873,9 @@ export function linkageTermsFromRuleSet(
     // is dropped here instead of built unusable.
     const availableTypes = fieldTypesSuppliedByDefault(metadata);
     linkageKeys = linkageKeys.filter((key) =>
-      key.elements.every((el) => availableTypes.has(el.field as SemanticType)),
+      linkageKeyFieldNames(key).every((field) =>
+        availableTypes.has(field as SemanticType),
+      ),
     );
   }
 

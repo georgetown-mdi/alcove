@@ -11,6 +11,7 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
+  linkageKeyFieldNames,
   linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
 } from "@alcove/core";
@@ -873,16 +874,17 @@ export function draftWithFieldAdded(
   };
 }
 
-/** Whether the inviter's columns can supply every field `key` references (each
- * element's `field` is declarable -- see {@link declarableFieldNames}). A key that
- * is not supplyable dangles the built terms, so the import disables it
- * ({@link draftFromTerms}) and {@link validateAdvancedInvite} messages it distinctly
- * from a draft whose keys were merely turned off. */
+/** Whether the inviter's columns can supply every field `key` reads (each
+ * element's `field` and its condition's field are declarable -- see
+ * {@link declarableFieldNames}). A key that is not supplyable dangles the built
+ * terms, so the import disables it ({@link draftFromTerms}) and
+ * {@link validateAdvancedInvite} messages it distinctly from a draft whose keys
+ * were merely turned off. */
 export function keyIsSupplyable(
   key: LinkageKey,
   declarable: ReadonlySet<string>,
 ): boolean {
-  return key.elements.every((element) => declarable.has(element.field));
+  return linkageKeyFieldNames(key).every((field) => declarable.has(field));
 }
 
 // --- Expert key / element authoring ------------------------------------------

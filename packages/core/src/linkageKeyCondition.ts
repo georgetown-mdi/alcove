@@ -59,8 +59,7 @@ export interface KeyConditionRefusal {
 
 /**
  * The first rule a document's key conditions break, or `undefined`. The one
- * reading the schema refine, {@link assertKeyConditionsAdmitted} and the web
- * editor share.
+ * reading the schema refine and {@link assertKeyConditionsAdmitted} share.
  */
 export function keyConditionRefusal(
   terms: Pick<LinkageTerms, "algorithm" | "linkageFields" | "linkageKeys">,

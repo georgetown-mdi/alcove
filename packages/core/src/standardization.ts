@@ -42,6 +42,7 @@ import type {
   TransformStep,
 } from "./config/linkageTermsSchema.js";
 import {
+  linkageKeyFieldNames,
   MAX_DATE_FORMAT_LENGTH,
   MAX_TRANSFORM_PATTERN_LENGTH,
 } from "./config/linkageTermsSchema.js";
@@ -2441,8 +2442,10 @@ export function resolveFieldColumns(
 }
 
 /**
- * The input column each linkage field a key uses reads, by field name, as
- * {@link resolveFieldColumns} binds it. A field bound to no column is absent.
+ * The input column of each linkage field a key reads
+ * ({@link linkageKeyFieldNames}: an element's field or its condition's), by
+ * field name, as {@link resolveFieldColumns} binds it. A field bound to no
+ * column is absent.
  */
 export function matchedFieldColumns(
   metadata: ColumnMetadata[],
@@ -2452,21 +2455,21 @@ export function matchedFieldColumns(
   const resolution = resolveFieldColumns(terms, standardization, metadata);
   const matched = new Map<string, string>();
   for (const key of terms.linkageKeys)
-    for (const element of key.elements) {
-      const column = resolution.get(element.field)?.column;
-      if (column !== undefined) matched.set(element.field, column);
+    for (const field of linkageKeyFieldNames(key)) {
+      const column = resolution.get(field)?.column;
+      if (column !== undefined) matched.set(field, column);
     }
   return matched;
 }
 
 /**
- * The columns of the input the run neither sends nor matches on, in input
+ * The columns of the input the run neither sends nor reads for a key, in input
  * order: declared in `metadata` and present in `inputColumns`, not disclosed
  * ({@link isDisclosedToPartner}), and bound by {@link resolveFieldColumns} to
- * no field a linkage key uses. A `metadata` entry the input lacks is not
- * listed. In a direct run these are the columns whose names Alcove recognizes
- * as linkage keys but no key of the terms reads, such as `phone`, or a second
- * date-of-birth column.
+ * no field a linkage key reads ({@link matchedFieldColumns}). A `metadata`
+ * entry the input lacks is not listed. In a direct run these are the columns
+ * whose names Alcove recognizes as linkage keys but no key of the terms reads,
+ * such as `phone`, or a second date-of-birth column.
  */
 export function heldBackColumnNames(
   metadata: ColumnMetadata[],
