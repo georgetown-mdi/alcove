@@ -30,6 +30,7 @@ import {
 } from "../config/transformParamDisplay.js";
 import { endpointRequiresRetainedFiles } from "../config/invitation.js";
 import type { InvitationToken } from "../config/invitation.js";
+import { linkageKeyFieldNames } from "../config/linkageTermsSchema.js";
 import { checkLinkageRuleSetCitation } from "../defaults/builtInLinkageTerms.js";
 import type { LinkageRuleSetCitationVerdict } from "../defaults/builtInLinkageTerms.js";
 import {
@@ -333,7 +334,9 @@ export interface InvitationKeySummary {
    * to its sanitized identifier. A swap re-attributes each marker to its
    * partner's field, since each swapped element reads the other's value on the
    * receiver (core's `swapElements`). The either-order note is
-   * {@link swapHeaderMarker}.
+   * {@link swapHeaderMarker}. A key with a missing-field condition ends with
+   * that field marked as read only for whether it is present
+   * (`matchedFieldEntry`).
    */
   headerFields: Array<Displayable>;
   /**
@@ -487,9 +490,11 @@ export interface InvitationSummary {
   /** Linkage keys in the inviter's order, with their elements and rules. */
   linkageKeys: Array<InvitationKeySummary>;
   /**
-   * The unique fields the keys match on, as compact labels in order of first
-   * appearance, with no markers or grouping. Always visible above the collapsed
-   * detail. An unresolved reference falls back to its sanitized name.
+   * The unique fields the keys read, as compact labels in order of first
+   * appearance, with no breadth markers or grouping. A field only a key's
+   * missing-field condition reads is marked as read only for whether it is
+   * present (`matchedFieldEntry`). Always visible above the collapsed detail.
+   * An unresolved reference falls back to its sanitized name.
    */
   matchedFields: Array<Displayable>;
   /** PII fields involved, each with its label and declared constraints. */
@@ -839,56 +844,109 @@ function elementBreadthMarker(
   return undefined;
 }
 
+/**
+ * The marker a matched-field entry takes for a field a key reads only through
+ * its missing-field condition, which uses whether the field holds a valid
+ * value and never the value.
+ */
+const PRESENCE_ONLY_MARKER = displayText`only whether it is present`;
+
 /** One compact matched-field label with the names of the fields that share it. */
 interface MatchedFieldGroup {
   label: Displayable;
+  /** {@link PRESENCE_ONLY_MARKER} where only a key condition reads the fields. */
+  marker?: Displayable;
   fields: Array<string>;
 }
 
 /** One matched-field label with the input columns its fields read. */
 export interface MatchedFieldColumns {
   label: Displayable;
+  /**
+   * Present where only a key's missing-field condition reads these fields,
+   * stating that only whether a value is present is used.
+   */
+  marker?: Displayable;
   columns: Array<string>;
 }
 
 /**
- * The fields the keys match on grouped by compact label, in order of first
- * appearance: each label with the names of the fields that share it. An
- * unresolved reference falls back to its sanitized name.
+ * One entry of a matched-on line: `label`, then in parentheses the `details`
+ * a surface names for it (such as the input columns it reads) and the
+ * entry's `marker`, as "date of birth (dob; only whether it is present)".
+ * Every surface listing the fields a key reads composes its entries here.
+ */
+export function matchedFieldEntry(
+  entry: { label: Displayable; marker?: Displayable },
+  details: ReadonlyArray<Displayable> = [],
+): Displayable {
+  let inside: Displayable | undefined;
+  for (const detail of details)
+    inside = inside === undefined ? detail : displayText`${inside}, ${detail}`;
+  if (entry.marker !== undefined)
+    inside =
+      inside === undefined
+        ? entry.marker
+        : displayText`${inside}; ${entry.marker}`;
+  return inside === undefined
+    ? entry.label
+    : displayText`${entry.label} (${inside})`;
+}
+
+/**
+ * The fields the keys read grouped by compact label, in order of first
+ * appearance: each label with the names of the fields that share it. A field
+ * only a key's missing-field condition reads takes
+ * {@link PRESENCE_ONLY_MARKER} and a group of its own. An unresolved
+ * reference falls back to its sanitized name.
  */
 function matchedFieldGroups(terms: LinkageTerms): Array<MatchedFieldGroup> {
   const fieldByName = new Map(
     terms.linkageFields.map((field) => [field.name, field.type]),
   );
+  const elementFields = new Set(
+    terms.linkageKeys.flatMap((key) =>
+      key.elements.map((element) => element.field),
+    ),
+  );
   const groups = new Map<string, MatchedFieldGroup>();
   for (const key of terms.linkageKeys) {
-    for (const element of key.elements) {
-      const type = fieldByName.get(element.field);
+    for (const field of linkageKeyFieldNames(key)) {
+      const type = fieldByName.get(field);
       const label =
         type !== undefined
           ? COMPACT_FIELD_TYPE_LABELS[type]
-          : redactAndSanitizeForDisplay(element.field);
-      const group = groups.get(label) ?? { label, fields: [] };
-      if (!group.fields.includes(element.field))
-        group.fields.push(element.field);
-      groups.set(label, group);
+          : redactAndSanitizeForDisplay(field);
+      const marker = elementFields.has(field)
+        ? undefined
+        : PRESENCE_ONLY_MARKER;
+      const entry = matchedFieldEntry({ label, marker });
+      const group = groups.get(entry) ?? {
+        label,
+        ...(marker !== undefined && { marker }),
+        fields: [],
+      };
+      if (!group.fields.includes(field)) group.fields.push(field);
+      groups.set(entry, group);
     }
   }
   return [...groups.values()];
 }
 
 /**
- * The labels {@link InvitationSummary.matchedFields} lists, each with the
- * input columns its fields read, given the field-to-column binding of
- * {@link matchedFieldColumns}. A column shared by two fields of one label is
- * listed once; a label whose fields read no column lists none.
+ * The labels {@link InvitationSummary.matchedFields} lists, each with its
+ * marker and the input columns its fields read, given the field-to-column
+ * binding of {@link matchedFieldColumns}. A column shared by two fields of one
+ * label is listed once; a label whose fields read no column lists none.
+ * {@link matchedFieldEntry} composes an entry from it.
  */
 export function matchedFieldsWithColumns(
   terms: LinkageTerms,
   columnByField: ReadonlyMap<string, string>,
 ): Array<MatchedFieldColumns> {
-  return matchedFieldGroups(terms).map(({ label, fields }) => ({
+  return matchedFieldGroups(terms).map(({ label, marker, fields }) => ({
     label,
+    ...(marker !== undefined && { marker }),
     columns: [
       ...new Set(
         fields.flatMap((field) => {
@@ -1005,7 +1063,7 @@ function summarizeKey(
   // The always-visible field one-liner: a compact label per element with its
   // marker (re-attributed across a swap), deduped by the full entry so a
   // truncated element does not collapse onto a whole-value one of the same
-  // field.
+  // field, then a condition's field, which no element of the key reads.
   const headerFields: Array<Displayable> = [];
   const seenHeaderFields = new Set<string>();
   for (const element of key.elements) {
@@ -1019,6 +1077,13 @@ function summarizeKey(
     seenHeaderFields.add(entry);
     headerFields.push(entry);
   }
+  if (key.condition !== undefined)
+    headerFields.push(
+      matchedFieldEntry({
+        label: compactLabelForField(key.condition.missingField),
+        marker: PRESENCE_ONLY_MARKER,
+      }),
+    );
 
   const swapHeaderMarker = hasSwap
     ? swapApplied
@@ -1231,9 +1296,11 @@ export function summarizeInvitation(
   }
 
   // The unique matched fields, compact and in order of first appearance,
-  // derived from the keys' elements (not the declared field list) through the
-  // same label path as the per-key sublines.
-  const matchedFields = matchedFieldGroups(terms).map((group) => group.label);
+  // derived from the fields the keys read (not the declared field list)
+  // through the same label path as the per-key sublines.
+  const matchedFields = matchedFieldGroups(terms).map((group) =>
+    matchedFieldEntry(group),
+  );
 
   // The consent screen shows the inviter's terms as proposed, not only what
   // today's exchange runs; the *Applied flags report the gap to the renderer.

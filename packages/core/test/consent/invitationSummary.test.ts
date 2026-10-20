@@ -5,6 +5,8 @@ import {
   getDefaultLinkageTerms,
 } from "../../src/defaults/builtInLinkageTerms.js";
 import {
+  matchedFieldEntry,
+  matchedFieldsWithColumns,
   summarizeInvitation,
   TRANSFORM_FUNCTION_GLOSSARY,
   withholdsAcceptorAssociationTable,
@@ -35,6 +37,7 @@ import {
 import { declaredTransformParamType } from "../../src/config/transformParamTypes.js";
 import { camelizeKeys } from "../../src/utils/camelizeKeys.js";
 import { runPipeline } from "../../src/standardization.js";
+import { sanitizeForDisplay } from "../../src/utils/sanitizeForDisplay.js";
 import { DATE_COLLAPSE_PROBES } from "../../src/linkageSatisfiability.js";
 
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
@@ -1087,6 +1090,89 @@ describe("the consent summary's street number field", () => {
       "first name",
       "date of birth",
       "street number",
+    ]);
+  });
+});
+
+describe("the consent summary's fields read by a key condition", () => {
+  const fields: LinkageTerms["linkageFields"] = [
+    { name: "first_name", type: "first_name" },
+    { name: "last_name", type: "last_name" },
+    { name: "ssn4", type: "ssn4" },
+    { name: "dob", type: "date_of_birth" },
+  ];
+  const conditionedKey = {
+    name: "FN + LN + SSN4",
+    elements: [
+      { field: "first_name" },
+      { field: "last_name" },
+      { field: "ssn4" },
+    ],
+    condition: { missingField: "dob" },
+  };
+  const termsOf = (linkageKeys: LinkageTerms["linkageKeys"]): LinkageTerms => ({
+    ...getDefaultLinkageTerms(
+      "Inviter",
+      inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+    ),
+    linkageFields: fields,
+    linkageKeys,
+  });
+  const summaryOf = (linkageKeys: LinkageTerms["linkageKeys"]) =>
+    summarizeInvitation({ linkageTerms: termsOf(linkageKeys) });
+
+  test("lists a field only a condition reads, marked as read only for whether it is present", () => {
+    const summary = summaryOf([conditionedKey]);
+    const marked = "date of birth (only whether it is present)";
+    expect(summary.matchedFields).toEqual([
+      "first name",
+      "last name",
+      "SSN (last 4)",
+      marked,
+    ]);
+    expect(summary.linkageKeys[0].headerFields).toEqual([
+      "first name",
+      "last name",
+      "SSN (last 4)",
+      marked,
+    ]);
+  });
+
+  test("lists a field another key matches on once, unmarked", () => {
+    const summary = summaryOf([
+      {
+        name: "SSN4 + LN + DOB",
+        elements: [{ field: "ssn4" }, { field: "last_name" }, { field: "dob" }],
+      },
+      conditionedKey,
+    ]);
+    expect(summary.matchedFields).toEqual([
+      "SSN (last 4)",
+      "last name",
+      "date of birth",
+      "first name",
+    ]);
+    expect(summary.linkageKeys[1].headerFields.at(-1)).toBe(
+      "date of birth (only whether it is present)",
+    );
+  });
+
+  test("gives the entries a surface names columns in the same marker", () => {
+    expect(
+      matchedFieldsWithColumns(
+        termsOf([conditionedKey]),
+        new Map([["dob", "birth"]]),
+      ).map((entry) =>
+        matchedFieldEntry(
+          entry,
+          entry.columns.map((column) => sanitizeForDisplay(column)),
+        ),
+      ),
+    ).toEqual([
+      "first name",
+      "last name",
+      "SSN (last 4)",
+      "date of birth (birth; only whether it is present)",
     ]);
   });
 });

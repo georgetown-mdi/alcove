@@ -675,6 +675,7 @@ export type {
 // judgment of what an acceptor is consenting to, and the escaping of every
 // partner-controlled string in it, is made once rather than per surface.
 export {
+  matchedFieldEntry,
   matchedFieldsWithColumns,
   summarizeInvitation,
   withholdsPartnerAssociationTable,

@@ -2263,10 +2263,18 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     }).split("\n");
     const keyAt = lines.indexOf("    - no date");
     expect(keyAt).toBeGreaterThanOrEqual(0);
+    expect(lines[keyAt + 1]).toBe(
+      "      matches on: first name - last name - " +
+        "date of birth (only whether it is present) (less certain)",
+    );
     expect(lines[keyAt + 2]).toBe(
       `      ${missingFieldConditionStatement("date of birth")}`,
     );
     expect(lines[keyAt + 3]).toBe("      elements:");
+    expect(lines).toContain(
+      "  matched on (enforced): first name, last name, " +
+        "date of birth (only whether it is present)",
+    );
   });
 
   test("displayInvitation: marks a name and date key less certain and explains it once, with the acceptor's remedy", () => {

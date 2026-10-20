@@ -19,6 +19,7 @@ import {
   heldBackColumnNames,
   inferredRecordIdentifierStatement,
   matchedFieldColumns,
+  matchedFieldEntry,
   matchedFieldsWithColumns,
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
@@ -353,16 +354,16 @@ export function renderExchangeDisclosure(
     emit(
       `  ${marked("matched on", "matchedFields")}: ` +
         matched
-          .map(({ label, columns }) => {
-            const named = columns.filter(
-              (column) => spokenForm(column) !== spokenForm(label),
-            );
-            return named.length === 0
-              ? label
-              : `${label} (${named
-                  .map((column) => redactAndSanitizeForDisplay(column))
-                  .join(", ")})`;
-          })
+          .map((entry) =>
+            matchedFieldEntry(
+              entry,
+              entry.columns
+                .filter(
+                  (column) => spokenForm(column) !== spokenForm(entry.label),
+                )
+                .map((column) => redactAndSanitizeForDisplay(column)),
+            ),
+          )
           .join(", "),
     );
   const heldBack = heldBackColumnNames(
