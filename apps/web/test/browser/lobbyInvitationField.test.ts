@@ -150,7 +150,8 @@ describe.each([
 });
 
 describe("lobby browser-version line", () => {
-  const line = "This is the browser version";
+  const line =
+    "This is the browser version, which is ideal for one-off or infrequent exchanges.";
 
   test("the hosted build says so and links the installed version", async () => {
     build.console = false;

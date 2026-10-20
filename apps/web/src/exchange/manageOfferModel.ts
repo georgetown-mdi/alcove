@@ -252,7 +252,7 @@ export const SECRET_EXPIRATION_INFO_LABEL = "What the expiration time does";
 
 /** What the info button beside that control shows. */
 export const SECRET_EXPIRATION_EXPLANATION =
-  "The saved secret stops working if the exchange is not run or renewed within this time.";
+  "The stored secret stops working if the exchange is not run or renewed within this time.";
 
 /** The operator guidance for the label field (docs/SECURITY_DESIGN.md,
  * "Metadata at rest: presence and shape"). */

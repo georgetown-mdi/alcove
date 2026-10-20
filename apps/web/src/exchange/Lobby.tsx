@@ -133,10 +133,11 @@ export function Lobby() {
         </p>
         {!isConsoleBuild() && (
           <p className={`${styles.sub} ${styles.small}`}>
-            This is the browser version: nothing to install, and data for
-            matching is encrypted locally in your browser. To exchange through
-            your own SFTP server or a shared folder, or to run exchanges on a
-            schedule from your own systems, use the{" "}
+            This is the browser version, which is ideal for one-off or
+            infrequent exchanges. There is nothing to install and the encrypted
+            matching and sharing is handled by code in your browser. To exchange
+            through your own SFTP server or a shared folder, or to run exchanges
+            on a schedule from your own systems, use the{" "}
             <Anchor
               inherit
               href={INSTALLED_VERSION_URL}
