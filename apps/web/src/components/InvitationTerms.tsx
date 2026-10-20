@@ -1363,6 +1363,20 @@ export function InvitationTerms({
               <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
             </LessCertainInfo>
           )}
+          {/* Outside the collapse as well: what a match through a key with a
+              missing-field condition discloses, core's line for each such key
+              after the key's name. */}
+          {summary.linkageKeys.map(
+            (key) =>
+              key.condition !== undefined && (
+                <Text key={key.id} size="sm">
+                  <Text span size="sm" fw={500}>
+                    {key.name}
+                  </Text>
+                  : {key.condition}
+                </Text>
+              ),
+          )}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's
               flow content) so AT announces the set; keyed by each key's stable id
