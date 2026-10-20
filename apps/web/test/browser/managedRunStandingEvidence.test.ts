@@ -471,7 +471,7 @@ describe("a compromise response the operator has reached", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has lapsed"))
+      .element(page.getByText("This exchange's stored secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
     // The live failure really is offering the re-invite before the gate is
@@ -499,7 +499,7 @@ describe("a compromise response the operator has reached", () => {
     // The lapse is still stated: the compromise response withdraws the offer, not
     // the account of what happened.
     expect(app.container.textContent).toContain(
-      "This exchange's stored secret has lapsed",
+      "This exchange's stored secret has expired",
     );
   });
 
@@ -933,7 +933,7 @@ describe("a compromise response this device could not save", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has lapsed"))
+      .element(page.getByText("This exchange's stored secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
 
@@ -1100,7 +1100,7 @@ describe("a standing condition beside a live failure of another tier", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has lapsed"))
+      .element(page.getByText("This exchange's stored secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
 

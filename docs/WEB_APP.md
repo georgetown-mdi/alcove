@@ -44,10 +44,10 @@ If the page you created it on runs on your own computer or inside your network, 
 
 ### Choosing the matching keys
 
-The invitation starts with the built-in rules your file supplies at 95% precision and above. To choose others, open **Customize > Matching keys** before you create the invitation. The console's invitation editor offers the same choices.
+The invitation starts with the built-in rules your file supplies under **Highest certainty, followed by others**. To choose others, open **Customize > Matching keys** before you create the invitation. The console's invitation editor offers the same choices.
 
-- **Built-in rules.** The rules at 99% precision and above, or at 95% precision and above. Each choice states the share of the pairs its rules match that are the same person.
-- **Rules marked less certain.** A key built only from first name, last name and date of birth fields is marked **(less certain)** in the list, with an info button beside it that says why: different people share these more often the more people the two files cover. At 95% the three built-in rules of that kind are listed and turned on. Turn them off when your files cover many people. A file of one age group, such as one school class, counts as covering many people, because its members share birth years.
+- **Built-in rules.** **Highest certainty only** selects only the rules of highest certainty. **Highest certainty, followed by others** selects those rules first and then the rest.
+- **Rules marked less certain.** A key built only from first name, last name and date of birth fields is marked **(less certain)** in the list, with an info button beside it that says why: different people share these more often the more people the two files cover. Under **Highest certainty, followed by others** the three built-in rules of that kind are listed and turned on. Turn them off when your files cover many people. A file of one age group, such as one school class, counts as covering many people, because its members share birth years.
 
 Changing the choice lists the rules it selects that your file supplies, in the built-in order. A key you turned off stays off while the choice keeps it, and a key the choice adds is turned on; you can then turn keys off or reorder them. The choice is not sent to your partner: the terms hold the keys, and **Review & create** names the choice they were selected with. The bands, the rules and the mark are described in [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor).
 

@@ -6,7 +6,7 @@ import styles from "@styles/app.module.css";
 
 import type { NumberInputHandlers, NumberInputProps } from "@mantine/core";
 
-/** The step buttons' names: "One more day of maximum age", "Five fewer
+/** The step buttons' names: "One more day of expiration time", "Five fewer
  * hours of window length". The field name keeps two fields sharing a unit apart. */
 export function stepButtonNames(
   step: number,
@@ -34,8 +34,8 @@ export function NamedStepNumberInput({
 }: Omit<NumberInputProps, "rightSection" | "handlersRef"> & {
   /** The singular unit one step adds or removes ("day", "hour"). */
   stepUnit: string;
-  /** The field's name as the step buttons say it, in lower case ("maximum
-   * age"). */
+  /** The field's name as the step buttons say it, in lower case ("expiration
+   * time"). */
   fieldName: string;
 }) {
   const handlers = useRef<NumberInputHandlers>(undefined);

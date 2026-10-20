@@ -463,16 +463,12 @@ describe("the label guidance", () => {
   test("directs the operator to keep sensitive counterparty detail out", () => {
     expect(LABEL_GUIDANCE).toContain("Name the partnership");
     expect(LABEL_GUIDANCE.toLowerCase()).toContain("never sent");
+    expect(LABEL_GUIDANCE).toContain("Keep sensitive details out of it.");
   });
 
-  test("names every place the label reaches", () => {
+  test("names where the label appears", () => {
     const guidance = LABEL_GUIDANCE.toLowerCase();
-    expect(guidance).toContain("this browser's storage");
-    expect(guidance).toContain("anyone reading it can see");
-    expect(guidance).toContain("name of every results file");
-    expect(guidance).toContain("folder you choose");
-    expect(guidance).toContain("copy you download");
-    expect(guidance).toContain("between-visit notifications");
-    expect(guidance).toContain("locked screen");
+    expect(guidance).toContain("results file names");
+    expect(guidance).toContain("notifications");
   });
 });

@@ -8,6 +8,10 @@ export const WEB_APP_GUIDE_URL =
 export const CONSOLE_GUIDE_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/docs/CONSOLE.md";
 
+/** Where the installed version (command line and console) is described. */
+export const INSTALLED_VERSION_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove";
+
 /** The user guide for the build this page is: the console guide on a console
  * build, the browser task guide otherwise. */
 export function userGuideUrl(): string {

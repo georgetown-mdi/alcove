@@ -595,8 +595,8 @@ export const RETENTION_NOTE_CONTROL_CHAR_PROBLEM =
  * The composed configuration's schema refuses the same value
  * (`authentication.token_max_age_days`). */
 export const MAX_AGE_PROBLEM =
-  "The shared secret's maximum age must be a whole number of days from 1 to " +
-  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the maximum age off.`;
+  "The secret's expiration time must be a whole number of days from 1 to " +
+  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the expiration time off.`;
 
 /**
  * Everything wrong with the draft, as messages to show beside the card --
@@ -826,7 +826,7 @@ export const CERTIFICATE_EXPORT_NOTICE =
 /** The retention note field's label, on every surface that authors it. */
 export const RETENTION_NOTE_LABEL = "Retention note for your own record";
 
-/** The retention note field's example, on every surface that authors it. */
+/** The retention note field's example, on the console. */
 export const RETENTION_NOTE_PLACEHOLDER =
   "Filed in the association database; kept six years under the records schedule, then purged.";
 
@@ -838,19 +838,8 @@ export const RETENTION_NOTE_NOTICE =
   "the agreed terms. Write where this result is filed and how long it is kept - " +
   "never a name, an identifier, or any value from the data.";
 
-/** The web app's form of the notice: the stored document, every backup, and
- * every exported configuration hold the note, and the notice names each. */
-export const RETENTION_NOTE_NOTICE_WEB =
-  "This note is kept in this browser's storage with your own exchange " +
-  "record, which anyone reading that storage can see. It also goes into " +
-  "every backup file you download, which is not encrypted, and every " +
-  "configuration file you export. It is never sent to your partner, " +
-  "never checked against theirs, and never part of the agreed terms. Write " +
-  "where this result is filed and how long it is kept - never a name, an " +
-  "identifier, or any value from the data.";
-
 /** The maximum-age control's label. */
-export const MAX_AGE_LABEL = "Set a maximum age for the shared secret";
+export const MAX_AGE_LABEL = "Set an expiration time for the secret";
 
 /** The line under the maximum-age control: what turning it on does. */
 export const MAX_AGE_DESCRIPTION =

@@ -1248,7 +1248,7 @@ What the import accepts is what this app can hold:
   that names none, and so does this. An sftp or filedrop connection has no `role`.
 
 What is editable is what a browser-run exchange edits in place: the label; the
-maximum age for the exchange's secret, which the exported configuration holds as
+expiration time for the exchange's secret, which the exported configuration holds as
 `authentication.token_max_age_days` for the command-line run to apply; and the
 five settings of the file that are this party's alone -- which of its own columns
 its result file holds (`include_own_columns`), whether that file names the

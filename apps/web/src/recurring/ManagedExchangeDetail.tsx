@@ -25,6 +25,7 @@ import {
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
+import { InfoButton } from "@components/InfoButton";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
@@ -36,6 +37,9 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
+  SECRET_EXPIRATION_EXPLANATION,
+  SECRET_EXPIRATION_INFO_LABEL,
+  SECRET_EXPIRATION_LABEL,
   maxAgeCadenceNote,
 } from "@exchange/manageOfferModel";
 import styles from "@styles/app.module.css";
@@ -667,18 +671,22 @@ function LocalFieldsEditor({
           {resultSizeWarning}
         </Alert>
       )}
-      <Checkbox
-        label="Set a maximum age for the stored secret"
-        description="Off by default. When set, the stored secret lapses if the exchange is not run or renewed within the age you choose."
-        checked={maxAgeEnabled}
-        onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
+      <InfoButton
+        label={SECRET_EXPIRATION_INFO_LABEL}
+        explanation={SECRET_EXPIRATION_EXPLANATION}
         mt="sm"
-      />
+      >
+        <Checkbox
+          label={SECRET_EXPIRATION_LABEL}
+          checked={maxAgeEnabled}
+          onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
+        />
+      </InfoButton>
       {maxAgeEnabled && (
         <NamedStepNumberInput
-          label="Maximum age in days"
+          label="Expiration time in days"
           stepUnit="day"
-          fieldName="maximum age"
+          fieldName="expiration time"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -695,7 +703,7 @@ function LocalFieldsEditor({
       {cadenceProblem !== undefined && (
         <Alert
           color="yellow"
-          title="This cadence outruns the maximum age"
+          title="This cadence outruns the expiration time"
           mt="sm"
           mb="sm"
         >
@@ -703,16 +711,16 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        Shortening the maximum age applies now. Turning the bound off applies
-        now too and removes the age lapse entirely, so the stored secret no
-        longer lapses by age. A longer maximum age takes effect the next time
-        this exchange runs, so an edit never extends the stored secret&apos;s
-        life on its own.
+        Shortening the expiration time applies now. Turning the bound off
+        applies now too and removes the expiration entirely, so the stored
+        secret no longer expires by time. A longer expiration time takes effect
+        the next time this exchange runs, so an edit never extends the stored
+        secret&apos;s life on its own.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined
-          ? `Stored secret lapses ${dateLabel(new Date(record.expires))}.`
-          : "No age bound is set; the stored secret does not lapse by age."}
+          ? `The secret expires ${dateLabel(new Date(record.expires))}.`
+          : "No expiration time is set; the secret does not expire."}
       </p>
       <LocalDocumentFields
         draft={draft}

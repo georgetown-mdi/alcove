@@ -486,7 +486,7 @@ export function ReceiptsCard({
             />
             {draft.maxAgeEnabled && (
               <NumberInput
-                label="Maximum age in days"
+                label="Expiration time in days"
                 value={draft.maxAgeDays}
                 min={1}
                 max={MAX_TOKEN_MAX_AGE_DAYS}

@@ -12,8 +12,8 @@
 
 import { MAX_TEXT_LENGTH, MAX_TOKEN_MAX_AGE_DAYS } from "@alcove/core";
 
+import { MAX_AGE_LABEL, RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 import { NOTE_CONTROL_CHAR_PATTERN } from "@jobContract/intentSchemas";
-import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 import { maxAgeDaysError } from "@psi/tokenMaxAge";
 
 import {
@@ -241,13 +241,23 @@ export function maxAgeCadenceNote(
 ): string | undefined {
   if (tokenMaxAgeDays === undefined) return undefined;
   const days = tokenMaxAgeDays === 1 ? "1 day" : `${tokenMaxAgeDays} days`;
-  return `This exchange must run or be renewed within ${days}, or its stored secret lapses and you re-invite your partner.`;
+  return `This exchange must run or be renewed within ${days}, or its stored secret stops working and you re-invite your partner.`;
 }
+
+/** The label of the control that opts in to a stored secret's maximum age. */
+export const SECRET_EXPIRATION_LABEL = MAX_AGE_LABEL;
+
+/** The accessible name of the info button beside that control. */
+export const SECRET_EXPIRATION_INFO_LABEL = "What the expiration time does";
+
+/** What the info button beside that control shows. */
+export const SECRET_EXPIRATION_EXPLANATION =
+  "The stored secret stops working if the exchange is not run or renewed within this time.";
 
 /** The operator guidance for the label field (docs/SECURITY_DESIGN.md,
  * "Metadata at rest: presence and shape"). */
 export const LABEL_GUIDANCE =
-  "Name the partnership so you recognize it later. The label is never sent, but three things show it: this browser's storage, which anyone reading it can see; the name of every results file, in a folder you choose and in a copy you download; and, if you turn on between-visit notifications, a notification your device may show on a locked screen or mirror to your other devices. Keep agreement numbers, contact details, and other sensitive counterparty information out of it.";
+  "Name the partnership so you recognize it later. It is never sent to your partner, but it appears in results file names and notifications. Keep sensitive details out of it.";
 
 /** The problem a retention note holding a control character reports. */
 export const RETENTION_NOTE_CONTROL_CHARACTER_PROBLEM =
@@ -273,10 +283,3 @@ export function retentionNoteValue(note: string): string | undefined {
   const trimmed = note.trim();
   return trimmed === "" ? undefined : trimmed;
 }
-
-/** What saving does and what it needs (docs/notes/managed-exchange-design.md,
- * "The automation goal and its platform envelope"). */
-export const SAVE_OFFER_SCHEDULE_NOTE =
-  "Once saved, it can run on a schedule you agree with your partner, in this " +
-  "browser: the installed Alcove app must be open during each run window, or " +
-  "you open this site and run it yourself.";

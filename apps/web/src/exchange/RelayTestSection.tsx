@@ -22,12 +22,9 @@ import type {
 
 /** What the test does and proves, shown above the relays it contacts. */
 export const RELAY_TEST_INTRO =
-  "The test asks each relay below for a relay address, signing in with a " +
-  "placeholder credential the relay is expected to refuse. A relay that " +
-  "refuses it has answered, which shows that this browser reaches it over " +
-  "that transport. It does not show that the relay passes an exchange's " +
-  "traffic. Whoever runs each relay learns this browser's network address. " +
-  "A relay named in an invitation you accept is not tested here.";
+  "The test checks that this browser can reach each relay below. It does not check " +
+  "that an exchange's traffic will pass through it. Each relay's operator " +
+  "sees this browser's network address.";
 
 /** Shown in place of the test when there is no relay to test. */
 export const RELAY_TEST_NOTHING_TO_TEST =

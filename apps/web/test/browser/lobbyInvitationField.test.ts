@@ -148,3 +148,29 @@ describe.each([
     expect(textarea.scrollHeight).toBeGreaterThan(textarea.clientHeight);
   });
 });
+
+describe("lobby browser-version line", () => {
+  const line =
+    "This is the browser version, which is ideal for one-off or infrequent exchanges.";
+
+  test("the hosted build says so and links the installed version", async () => {
+    build.console = false;
+    app.render(createElement(Lobby));
+    await expect.element(page.getByText(line)).toBeInTheDocument();
+    const link = page.getByRole("link", { name: "installed version" });
+    await expect
+      .element(link)
+      .toHaveAttribute(
+        "href",
+        "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove",
+      );
+    await expect.element(link).toHaveAttribute("target", "_blank");
+  });
+
+  test("the console build does not show it", async () => {
+    build.console = true;
+    app.render(createElement(Lobby));
+    await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
+    await expect.element(page.getByText(line)).not.toBeInTheDocument();
+  });
+});

@@ -341,7 +341,7 @@ function ConfigurationSettingsEditor({
         mt="sm"
       />
       <Checkbox
-        label="Set a maximum age for the exchange's secret"
+        label="Set an expiration time for the exchange's secret"
         description="Off by default. When set, each command-line run stamps this age onto the secret it rotates, and the exchange must run again within it or you re-invite your partner."
         checked={maxAgeEnabled}
         onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
@@ -349,7 +349,7 @@ function ConfigurationSettingsEditor({
       />
       {maxAgeEnabled && (
         <NumberInput
-          label="Maximum age in days"
+          label="Expiration time in days"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
