@@ -333,7 +333,7 @@ const HIGHEST_PRECISION_NEEDS =
 /** The key error while {@link highestPrecisionHeldWithoutRules}: Matching keys
  * states the reason beside the choice, and the Problems list names the way
  * out. */
-export const HIGHEST_PRECISION_UNAVAILABLE_PROBLEM = `${HIGHEST_PRECISION_NEEDS} Choose broader matching, or set a column's type to one of these.`;
+export const HIGHEST_PRECISION_UNAVAILABLE_PROBLEM = `${HIGHEST_PRECISION_NEEDS} Choose broader matching, or set a column's type or use so your file supplies one of these.`;
 
 /** Whether the session's columns, as their types and roles stand now, supply
  * none of the rules Highest precision selects. Matching keys disables that

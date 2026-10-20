@@ -792,7 +792,7 @@ describe("highest precision on columns that supply none of its rules", () => {
     expect(HIGHEST_PRECISION_UNAVAILABLE_PROBLEM).toBe(
       "Highest precision needs stronger identifiers in your file, such as " +
         "an SSN, ZIP code, or phone number. Choose broader matching, or set " +
-        "a column's type to one of these.",
+        "a column's type or use so your file supplies one of these.",
     );
     expect(spineProblems(held).map((problem) => problem.message)).toContain(
       HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
