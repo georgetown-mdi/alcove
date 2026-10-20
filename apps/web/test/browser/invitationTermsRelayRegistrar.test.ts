@@ -69,6 +69,7 @@ const terms: LinkageTerms = {
 };
 
 const TURN_URL = "turns:default-relay.example.net:443?transport=tcp";
+const WEBSOCKET_URL = "wss://default-relay.example.net/relay";
 const REGISTRAR = "https://default-relay.example.net";
 
 const CONSOLE_LINE =
@@ -122,6 +123,24 @@ describe("InvitationTerms: the registrar an invitation's relay names", () => {
       expect(text).not.toContain(
         isConsole ? HOSTED_LINE : "whoever runs that registrar",
       );
+    },
+  );
+
+  test.each([
+    { profile: "console", isConsole: true, line: CONSOLE_LINE },
+    { profile: "hosted", isConsole: false, line: HOSTED_LINE },
+  ])(
+    "the $profile build names the registrar beside a WebSocket relay url alone",
+    async ({ isConsole, line }) => {
+      build.console = isConsole;
+      const text = await producesText({
+        channel: "webrtc",
+        host: "peer.example.org",
+        relay: { websocket: WEBSOCKET_URL, registrar: REGISTRAR },
+      });
+      expect(text).toContain(`WebSocket relay ${WEBSOCKET_URL}`);
+      expect(text).toContain(line);
+      expect(text).not.toContain("TURN ");
     },
   );
 

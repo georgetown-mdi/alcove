@@ -228,21 +228,33 @@ export interface RunRelaySelection {
 }
 
 /**
- * One WebSocket relay a webrtc run lists. A relay's `source` decides the
- * exchange id its proof is made under: the connection's own is enrolled
- * under `relayRegistrar`'s exchange id where one is set, the invitation's
- * under the id derived from the secret.
+ * One WebSocket relay a webrtc run lists, and the exchange id its proof to
+ * that relay is made under. The id is decided by the url, not the `source`:
+ * the url the invitation names takes the invitation's `websocketExchangeId`,
+ * since the inviter proves to it under that id, and the connection's own url
+ * otherwise takes `relayRegistrar`'s exchange id.
  */
 export interface RunWebSocketRelay {
   /** Whether the url is the connection's own `websocketRelay` or the invitation's. */
   source: "own" | "invitation";
   url: string;
+  /**
+   * The exchange id the relay holds the exchange's relay key under, where
+   * the connection or the invitation names one; absent, the id derived from
+   * the shared secret ({@link deriveRelayExchangeId}).
+   */
+  exchangeId?: string;
 }
 
 /** The connection fields that decide a run's relay servers. */
 export type RunRelayConnection = Pick<
   WebRTCConnectionConfig,
-  "stun" | "turn" | "invitationRelay" | "allowedRelays" | "websocketRelay"
+  | "stun"
+  | "turn"
+  | "invitationRelay"
+  | "allowedRelays"
+  | "websocketRelay"
+  | "relayRegistrar"
 >;
 
 /**
@@ -289,13 +301,29 @@ export function selectRunRelay(
     if (leftOut.length > 0) selection.turnLeftOut = leftOut;
   }
   const websocket: RunWebSocketRelay[] = [];
-  if (connection.websocketRelay !== undefined)
-    websocket.push({ source: "own", url: connection.websocketRelay });
+  const invitationExchangeId = invitation?.websocketExchangeId;
+  if (connection.websocketRelay !== undefined) {
+    const exchangeId =
+      connection.websocketRelay === invitation?.websocket
+        ? invitationExchangeId
+        : connection.relayRegistrar?.exchangeId;
+    websocket.push({
+      source: "own",
+      url: connection.websocketRelay,
+      ...(exchangeId !== undefined && { exchangeId }),
+    });
+  }
   if (
     invitation?.websocket !== undefined &&
     invitation.websocket !== connection.websocketRelay
   )
-    websocket.push({ source: "invitation", url: invitation.websocket });
+    websocket.push({
+      source: "invitation",
+      url: invitation.websocket,
+      ...(invitationExchangeId !== undefined && {
+        exchangeId: invitationExchangeId,
+      }),
+    });
   if (websocket.length > 0) {
     selection.websocket = websocket.filter((relay) =>
       webSocketRelayUrlIsAllowed(relay.url, connection.allowedRelays),
@@ -310,18 +338,23 @@ export function selectRunRelay(
 }
 
 /**
- * Whether `allowedRelays` left out every TURN url the invitation names that
- * a run would otherwise list, so a run contacts neither that relay nor its
- * registrar for that reason alone.
+ * Whether `allowedRelays` left out every TURN url and the WebSocket relay url
+ * the invitation names that a run would otherwise list, so a run contacts
+ * neither that relay nor its registrar for that reason alone.
  */
 export function allowedRelaysLeaveOutInvitationRelay(
   connection: RunRelayConnection,
 ): boolean {
-  const { turn, turnLeftOut } = selectRunRelay(connection);
-  return (
-    (turnLeftOut ?? []).some((server) => server.source === "invitation") &&
-    !(turn ?? []).some((server) => server.source === "invitation")
-  );
+  const { turn, turnLeftOut, websocket, websocketLeftOut } =
+    selectRunRelay(connection);
+  const invitationWebSocket = connection.invitationRelay?.websocket;
+  const leftOut =
+    (turnLeftOut ?? []).some((server) => server.source === "invitation") ||
+    (websocketLeftOut ?? []).some((relay) => relay.url === invitationWebSocket);
+  const kept =
+    (turn ?? []).some((server) => server.source === "invitation") ||
+    (websocket ?? []).some((relay) => relay.url === invitationWebSocket);
+  return leftOut && !kept;
 }
 
 /**
@@ -330,7 +363,8 @@ export function allowedRelaysLeaveOutInvitationRelay(
  * first {@link selectRunRelay} lists, has a url the invitation names and is
  * presented the minted credential, the one the registrar enrolls the key of.
  * Decided by the url, not the entry's `source`, so an own url-only entry
- * naming the invitation's url enrolls too.
+ * naming the invitation's url enrolls too. The invitation's WebSocket relay
+ * url does not decide it (docs/spec/PROTOCOL.md, "No run dials one").
  */
 export function runEnrollsAtInvitationRegistrar(
   connection: RunRelayConnection,

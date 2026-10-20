@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { deriveRelayExchangeId, generateSharedSecret } from "@alcove/core";
+
 import {
   MAX_RELAY_URLS,
   ownRelayForInvitation,
@@ -10,6 +12,8 @@ import {
   webSocketRelaysForRun,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
+import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import type { RelayLocator } from "@psi/transport/rendezvous";
 
@@ -330,5 +334,140 @@ describe("the own WebSocket relay", () => {
         relay: { turn: [], stun: [], websocket: WEBSOCKET },
       })),
     ).toEqual({ websocket: WEBSOCKET });
+  });
+});
+
+describe("the WebSocket relays a run's plan lists", () => {
+  const WEBSOCKET = "wss://wsrelay.example.org/relay";
+  const PARTNER = "wss://partner.example.net/relay";
+  const SITE_WEBSOCKET = "wss://site-relay.example.com/relay";
+  const SITE = {
+    turnUrl: "turns:site-relay.example.com:443?transport=tcp",
+    registrarUrl: "https://site-relay.example.com",
+    websocketUrl: SITE_WEBSOCKET,
+  };
+  const ownWithWebSocket = () => ({
+    kind: "set" as const,
+    relay: { ...OWN, websocket: WEBSOCKET },
+  });
+  const enrolled = () =>
+    Promise.resolve({ kind: "enrolled" as const, lapsesAt: "x" });
+
+  test("lists this browser's own, the invitation's, then the default relay's, each with its exchange id", async () => {
+    const secret = generateSharedSecret();
+    const derived = await deriveRelayExchangeId(secret);
+    const plan = await relayPlanForRun(
+      secret,
+      { websocket: PARTNER, websocketExchangeId: "partner-weekly" },
+      undefined,
+      {
+        readOwn: ownWithWebSocket,
+        ownRelayExchangeId: "own-weekly",
+        setting: () => SITE,
+        enroll: vi.fn(enrolled),
+      },
+    );
+    expect(plan.websocketRelays).toEqual([
+      { url: WEBSOCKET, exchangeId: "own-weekly" },
+      { url: PARTNER, exchangeId: "partner-weekly" },
+      { url: SITE_WEBSOCKET, exchangeId: derived },
+    ]);
+  });
+
+  test("a relay with no exchange id named is proven under the id derived from the secret", async () => {
+    const secret = generateSharedSecret();
+    const derived = await deriveRelayExchangeId(secret);
+    const plan = await relayPlanForRun(
+      secret,
+      { websocket: PARTNER },
+      undefined,
+      {
+        readOwn: ownWithWebSocket,
+        setting: () => undefined,
+      },
+    );
+    expect(plan.websocketRelays).toEqual([
+      { url: WEBSOCKET, exchangeId: derived },
+      { url: PARTNER, exchangeId: derived },
+    ]);
+  });
+
+  test("a url both name is listed once, under the invitation's exchange id", async () => {
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      { websocket: WEBSOCKET, websocketExchangeId: "partner-weekly" },
+      undefined,
+      {
+        readOwn: ownWithWebSocket,
+        ownRelayExchangeId: "own-weekly",
+        setting: () => undefined,
+      },
+    );
+    expect(plan.websocketRelays).toEqual([
+      { url: WEBSOCKET, exchangeId: "partner-weekly" },
+    ]);
+  });
+
+  test("lists only the relays the allowed relays keep, and enrolls for the default one they keep", async () => {
+    const enroll = vi.fn(enrolled);
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      { websocket: PARTNER },
+      ["site-relay.example.com:443"],
+      { readOwn: ownWithWebSocket, setting: () => SITE, enroll },
+    );
+    expect(plan.websocketRelays.map((relay) => relay.url)).toEqual([
+      SITE_WEBSOCKET,
+    ]);
+    expect(enroll).toHaveBeenCalledOnce();
+  });
+
+  test("a run whose allowed relays keep only the default WebSocket relay url enrolls nowhere and lists it not", async () => {
+    const enroll = vi.fn(enrolled);
+    const onRunNotice = vi.fn();
+    const site = {
+      ...SITE,
+      websocketUrl: "wss://site-wsrelay.example.com/relay",
+    };
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      { websocket: site.websocketUrl },
+      ["site-wsrelay.example.com"],
+      { readOwn: ownWithWebSocket, setting: () => site, enroll, onRunNotice },
+    );
+    expect(enroll).not.toHaveBeenCalled();
+    expect(plan.websocketRelays).toEqual([]);
+    expect(onRunNotice).not.toHaveBeenCalledWith(
+      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+    );
+  });
+
+  test("the default relay's url is left out when the run could not enroll there, even where the invitation names it", async () => {
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      { websocket: SITE_WEBSOCKET },
+      undefined,
+      {
+        readOwn: ownWithWebSocket,
+        setting: () => SITE,
+        enroll: vi.fn(() =>
+          Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+        ),
+      },
+    );
+    expect(plan.websocketRelays.map((relay) => relay.url)).toEqual([WEBSOCKET]);
+  });
+
+  test("a run listing no WebSocket relay lists none", async () => {
+    const plan = await relayPlanForRun(
+      generateSharedSecret(),
+      undefined,
+      undefined,
+      {
+        readOwn: () => ({ kind: "set", relay: OWN }),
+        setting: () => undefined,
+      },
+    );
+    expect(plan.websocketRelays).toEqual([]);
   });
 });

@@ -156,6 +156,64 @@ describe("composeManagedReinvite", () => {
     });
   });
 
+  test("names the record's registrar's exchange id beside this browser's own WebSocket relay only", async () => {
+    const relayRegistrar = {
+      url: "https://registrar.example.org",
+      exchangeId: "riverbend-quarterly",
+    };
+    const ownRelay = { websocket: "wss://wsrelay.example.org/relay" };
+    const withId = await decodeInvitation(
+      (
+        await composeManagedReinvite(
+          inviterRecord({ relayRegistrar }),
+          location,
+          {
+            ...seams,
+            ownRelay,
+          },
+        )
+      ).encoded,
+    );
+    expect(withId.connectionEndpoint).toMatchObject({
+      relay: { ...ownRelay, websocketExchangeId: relayRegistrar.exchangeId },
+    });
+    const withoutRegistrar = await decodeInvitation(
+      (
+        await composeManagedReinvite(inviterRecord(), location, {
+          ...seams,
+          ownRelay,
+        })
+      ).encoded,
+    );
+    expect(withoutRegistrar.connectionEndpoint).toMatchObject({
+      relay: ownRelay,
+    });
+    expect(withoutRegistrar.connectionEndpoint).not.toHaveProperty(
+      "relay.websocketExchangeId",
+    );
+    const defaultWebSocket = await decodeInvitation(
+      (
+        await composeManagedReinvite(
+          inviterRecord({ relayRegistrar }),
+          location,
+          {
+            ...seams,
+            defaultRelay: {
+              ...DEFAULT_RELAY,
+              websocketUrl: "wss://default-wsrelay.example.org/relay",
+            },
+          },
+        )
+      ).encoded,
+    );
+    expect(defaultWebSocket.connectionEndpoint).toMatchObject({
+      relay: { websocket: "wss://default-wsrelay.example.org/relay" },
+    });
+    expect(defaultWebSocket.connectionEndpoint).not.toHaveProperty(
+      "relay.websocketExchangeId",
+    );
+  });
+
   test("with no own relay the invitation names none", async () => {
     const token = await decodeInvitation(
       (await composeManagedReinvite(inviterRecord(), location, seams)).encoded,

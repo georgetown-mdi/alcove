@@ -1056,13 +1056,16 @@ const INVITATION_TURN_URL = "turns:default-relay.example.net:443?transport=tcp";
 
 /** Run the pair, the acceptor's connection naming an invitation relay with a
  * registrar and, with `ownTurn`, that `turn` entry of its own, against a
- * registrar that answers with `answers`. */
+ * registrar that answers with `answers`. With `invitationWebSocket` the
+ * invitation relay names that WebSocket relay url too. */
 async function runPairEnrollingAt(
   answers: Response[],
   {
     ownTurn,
+    invitationWebSocket,
   }: {
     ownTurn?: { url: string; username?: string; credential?: string };
+    invitationWebSocket?: string;
   } = {},
 ) {
   const registrar = fakeRegistrar(answers);
@@ -1084,6 +1087,9 @@ async function runPairEnrollingAt(
           ...(ownTurn !== undefined && { turn: [ownTurn] }),
           invitationRelay: {
             turn: [INVITATION_TURN_URL],
+            ...(invitationWebSocket !== undefined && {
+              websocket: invitationWebSocket,
+            }),
             registrar: INVITATION_REGISTRAR,
           },
         },
@@ -1212,6 +1218,27 @@ test("a run with a turn entry of its own contacts no invitation registrar and sa
       "turns:default-relay.example.net:443?transport=tcp",
     ]),
   );
+});
+
+test("a run listing the invitation's WebSocket relay url, allocating on its own turn entry, contacts no invitation registrar", async () => {
+  const { requests } = await runPairEnrollingAt([], {
+    ownTurn: { url: OWN_TURN_URL },
+    invitationWebSocket: "wss://default-relay.example.net/relay",
+  });
+  expect(requests).toHaveLength(0);
+  expect(mockState.logLines).toContain(
+    "the relay registrar that your partner's invitation names was not " +
+      "contacted, because this run allocates its relay on a relay the " +
+      `invitation did not name, at ${OWN_TURN_URL}`,
+  );
+});
+
+test("a run listing the invitation's WebSocket relay url, allocating on the invitation's TURN url, enrolls once", async () => {
+  const { requests } = await runPairEnrollingAt(
+    [registrationAnswer(null, "2026-01-01T01:10:00Z")],
+    { invitationWebSocket: "wss://default-relay.example.net/relay" },
+  );
+  expect(requests).toHaveLength(1);
 });
 
 test("a refused enrollment is warned about and the run goes on to dial", async () => {

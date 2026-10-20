@@ -1181,19 +1181,47 @@ export function webSocketRelayUrlSchema(name: string): z.ZodType<string> {
 
 const WebSocketRelayUrlSchema = webSocketRelayUrlSchema("websocket_relay");
 
+// --- Relay exchange id -------------------------------------------------------
+
+// The registrar refuses an id with this prefix from any caller but the relay's
+// own verify.sh (infra/relay/README.md, Per-exchange keys).
+const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
+
+// The grammar of an exchange id a registrar holds a relay key under. Each
+// refusal starts with `name`, the field as the reader of the message knows it.
+function relayExchangeIdSchema(name: string): z.ZodType<string> {
+  return z
+    .string()
+    .refine(isRelayRegistrarExchangeId, {
+      message:
+        `${name} must be 1 to 128 of A-Z, a-z, 0-9, '.', '_' and '-', not ` +
+        "starting with '-' and not holding a run of 64 hex characters",
+    })
+    .refine((id) => id !== "." && id !== "..", {
+      message:
+        `${name} must not be '.' or '..', which name a directory in the ` +
+        "registrar's request path rather than an exchange",
+    })
+    .refine((id) => !id.startsWith(RELAY_VERIFY_EXCHANGE_ID_PREFIX), {
+      message:
+        `${name} must not start with ${RELAY_VERIFY_EXCHANGE_ID_PREFIX}, ` +
+        "which the relay keeps for its own checks",
+    });
+}
+
 // --- Relay locator -----------------------------------------------------------
 
 /**
  * Where a relay is reached, and nothing that authenticates to it: TURN and
  * STUN urls under the grammar of the connection block's own `turn` and `stun`
  * entries, a WebSocket relay's address under the grammar of its own
- * `websocket_relay`, and the address of a registrar that enrolls the
- * exchange's relay key without a token. An invitation's webrtc endpoint may
- * name one, and the
- * accepting side keeps it on its connection as
- * {@link WebRTCConnectionConfig.invitationRelay}. Each party mints the TURN
- * credential from the exchange's shared secret (docs/spec/PROTOCOL.md, "Relay
- * credential derivation"), so the locator has no username or credential field.
+ * `websocket_relay` with the exchange id that relay holds the key under, and
+ * the address of a registrar that enrolls the exchange's relay key without a
+ * token. An invitation's webrtc endpoint may name one, and the accepting side
+ * keeps it on its connection as {@link WebRTCConnectionConfig.invitationRelay}.
+ * Each party mints the TURN credential from the exchange's shared secret
+ * (docs/spec/PROTOCOL.md, "Relay credential derivation"), so the locator has no
+ * username or credential field.
  */
 export interface RelayLocator {
   /** TURN urls; non-empty when present. */
@@ -1206,10 +1234,20 @@ export interface RelayLocator {
    */
   websocket?: string;
   /**
+   * The exchange id the {@link websocket} relay holds the exchange's relay key
+   * under, where the inviter enrolled it under one of its own rather than the
+   * id derived from the secret; a run's proof to that relay names it
+   * (docs/spec/PROTOCOL.md, "The WebSocket relay proof"). Present only beside
+   * `websocket`.
+   */
+  websocketExchangeId?: string;
+  /**
    * The `https://` address of a registrar, naming only a host and an optional
    * port, where a run enrolls the exchange's relay key without a token before
    * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Held as
-   * its origin; present only beside `turn`.
+   * its origin; present only beside `turn` or `websocket`. It enrolls the key
+   * of the locator's TURN relay; which registrar a WebSocket relay's key is
+   * enrolled at is decided when a run first dials one, and no run does yet.
    */
   registrar?: string;
 }
@@ -1263,14 +1301,19 @@ const relayLocatorWebSocketSchema = webSocketRelayUrlSchema(
   "a relay locator's websocket url",
 );
 
+const relayLocatorWebSocketExchangeIdSchema = relayExchangeIdSchema(
+  "a relay locator's websocket exchange id",
+);
+
 /**
  * Build the strict {@link RelayLocator} schema. Every key outside
- * `turn`/`stun`/`websocket`/`registrar`, a `username` or `credential`
- * included, is refused rather than stripped, with `unknownKeysMessage` naming
- * the keys; a locator naming no url, and one naming a registrar beside no
- * TURN url, are refused too. The invitation endpoint and the connection block
- * each supply their own message: one names keys a partner wrote, the other
- * keys the operator wrote.
+ * `turn`/`stun`/`websocket`/`websocketExchangeId`/`registrar`, a `username` or
+ * `credential` included, is refused rather than stripped, with
+ * `unknownKeysMessage` naming the keys; a locator naming no url, one naming a
+ * registrar beside no TURN or WebSocket relay url, and one naming a WebSocket
+ * relay's exchange id beside no WebSocket relay url, are refused too. The
+ * invitation endpoint and the connection block each supply their own message:
+ * one names keys a partner wrote, the other keys the operator wrote.
  */
 export function relayLocatorSchema(
   unknownKeysMessage: (keys: ReadonlyArray<string>) => string,
@@ -1281,6 +1324,7 @@ export function relayLocatorSchema(
         turn: relayUrlList(TurnUrlSchema, "turn").optional(),
         stun: relayUrlList(StunUrlSchema, "stun").optional(),
         websocket: relayLocatorWebSocketSchema.optional(),
+        websocketExchangeId: relayLocatorWebSocketExchangeIdSchema.optional(),
         registrar: relayLocatorRegistrarSchema.optional(),
       },
       {
@@ -1302,12 +1346,26 @@ export function relayLocatorSchema(
       },
     )
     .refine(
-      (relay) => relay.registrar === undefined || relay.turn !== undefined,
+      (relay) =>
+        relay.registrar === undefined ||
+        relay.turn !== undefined ||
+        relay.websocket !== undefined,
       {
         message:
-          "a relay locator's registrar enrolls the key of its TURN relay, so " +
-          "it requires a turn url",
+          "a relay locator's registrar enrolls the key of its TURN or " +
+          "WebSocket relay, so it requires a turn or websocket url",
         path: ["registrar"],
+      },
+    )
+    .refine(
+      (relay) =>
+        relay.websocketExchangeId === undefined ||
+        relay.websocket !== undefined,
+      {
+        message:
+          "a relay locator's websocket exchange id names the key its " +
+          "WebSocket relay holds, so it requires a websocket url",
+        path: ["websocketExchangeId"],
       },
     );
 }
@@ -1316,7 +1374,7 @@ const ConnectionRelayLocatorSchema = relayLocatorSchema(
   (keys) =>
     `invitation_relay has no ${keys.length === 1 ? "key" : "keys"} ` +
     `${keys.join(", ")}; it holds only turn and stun url lists, a ` +
-    "websocket url and a registrar url",
+    "websocket url with its websocket_exchange_id, and a registrar url",
 );
 
 // --- Allowed relays ----------------------------------------------------------
@@ -1481,10 +1539,6 @@ export interface RelayRegistrar {
 /** Upper bound on {@link RelayRegistrar.url}, in UTF-16 code units. */
 export const MAX_RELAY_REGISTRAR_URL_LENGTH = 1024;
 
-// The registrar refuses an id with this prefix from any caller but the relay's
-// own verify.sh (infra/relay/README.md, Per-exchange keys).
-const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
-
 const RELAY_REGISTRAR_URL_FORM =
   "an https:// url naming only a host and an optional port from 1 to 65535, " +
   "for example https://registrar.example.org";
@@ -1546,25 +1600,7 @@ export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
           });
       })
       .transform(relayRegistrarOrigin),
-    exchangeId: z
-      .string()
-      .refine(isRelayRegistrarExchangeId, {
-        message:
-          "relay_registrar.exchange_id must be 1 to 128 of A-Z, a-z, 0-9, " +
-          "'.', '_' and '-', not starting with '-' and not holding a run of " +
-          "64 hex characters",
-      })
-      .refine((id) => id !== "." && id !== "..", {
-        message:
-          "relay_registrar.exchange_id must not be '.' or '..', which name a " +
-          "directory in the registrar's request path rather than an exchange",
-      })
-      .refine((id) => !id.startsWith(RELAY_VERIFY_EXCHANGE_ID_PREFIX), {
-        message:
-          "relay_registrar.exchange_id must not start with " +
-          `${RELAY_VERIFY_EXCHANGE_ID_PREFIX}, which the relay keeps for its ` +
-          "own checks",
-      }),
+    exchangeId: relayExchangeIdSchema("relay_registrar.exchange_id"),
   },
   {
     error: (issue) =>
@@ -1617,7 +1653,8 @@ export interface WebRTCConnectionConfig {
    * and enrolls at its `registrar`, when it names one, before it dials if the
    * relay it allocates on is one this locator names and takes the minted
    * credential (`runEnrollsAtInvitationRegistrar` in relayCredential.ts).
-   * Its `websocket` url is listed after {@link websocketRelay}.
+   * Its `websocket` url is listed after {@link websocketRelay}, proven under
+   * its `websocketExchangeId` where it names one.
    */
   invitationRelay?: RelayLocator;
   /**
@@ -1643,7 +1680,9 @@ export interface WebRTCConnectionConfig {
    * {@link relayRegistrar}'s exchange id when one is set and otherwise the id
    * derived from the secret (docs/spec/PROTOCOL.md, "The WebSocket relay
    * proof"). An invitation this party creates names it as its relay
-   * locator's `websocket` where {@link allowedRelays} keeps it.
+   * locator's `websocket` where {@link allowedRelays} keeps it, with
+   * {@link relayRegistrar}'s exchange id as its `websocketExchangeId` where
+   * one is set.
    */
   websocketRelay?: string;
   /**

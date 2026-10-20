@@ -112,14 +112,14 @@ describe("the relays a browser run lists under its allowed relays", () => {
   test("a default relay left out is neither enrolled at nor listed", async () => {
     const enroll = vi.fn();
     const relay = { turn: [OWN_URL], stun: [] };
-    expect(
-      await relayWithDefaultForRun(
-        generateSharedSecret(),
-        relay,
-        ["own.example.org"],
-        { setting: () => SITE, enroll },
-      ),
-    ).toBe(relay);
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      relay,
+      ["own.example.org"],
+      { setting: () => SITE, enroll },
+    );
+    expect(run.relay).toBe(relay);
+    expect(run).not.toHaveProperty("defaultWebSocketRelay");
     expect(enroll).not.toHaveBeenCalled();
   });
 });
@@ -146,6 +146,7 @@ describe("relayPlanForRun", () => {
         stun: ["stun:own.example.org:3478"],
       },
       relaysLeftOut: [PARTNER_URL],
+      websocketRelays: [],
     });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       allowedRelaysRunNotice([OWN_URL, SITE.turnUrl], [PARTNER_URL]),
@@ -170,6 +171,7 @@ describe("relayPlanForRun", () => {
         stun: ["stun:own.example.org:3478"],
       },
       relaysLeftOut: [],
+      websocketRelays: [],
     });
     expect(onRunNotice).not.toHaveBeenCalled();
   });
@@ -206,6 +208,7 @@ describe("relayPlanForRun", () => {
     expect(plan).toEqual({
       relay: { turn: [], stun: ["stun:own.example.org:3478"] },
       relaysLeftOut: [OWN_URL, PARTNER_URL],
+      websocketRelays: [],
     });
     expect(onRunNotice.mock.calls).toEqual([
       [allowedRelaysRunNotice([SITE.turnUrl], [OWN_URL, PARTNER_URL])],
@@ -228,7 +231,7 @@ describe("relayPlanForRun", () => {
         onRunNotice,
       },
     );
-    expect(plan).toEqual({ relaysLeftOut: [] });
+    expect(plan).toEqual({ relaysLeftOut: [], websocketRelays: [] });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );

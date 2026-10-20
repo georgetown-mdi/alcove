@@ -387,7 +387,7 @@ describe("the ICE list of a build naming a default relay", () => {
     secret: string;
   }> {
     const secret = generateSharedSecret();
-    const relay = await relayWithDefaultForRun(
+    const { relay } = await relayWithDefaultForRun(
       secret,
       relayForRun(invitationRelay, undefined, () => own),
       undefined,

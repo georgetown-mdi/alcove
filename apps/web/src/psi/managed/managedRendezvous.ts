@@ -63,7 +63,7 @@ const defaultFlows: ManagedRendezvousFlows = {
 /** The fields of a stored record the rendezvous reads. */
 export type ManagedRendezvousRecord = Pick<
   RunnableManagedExchangeRecord,
-  "side" | "sharedSecret" | "exchangeFile" | "label"
+  "side" | "sharedSecret" | "exchangeFile" | "label" | "relayRegistrar"
 >;
 
 /**
@@ -230,6 +230,9 @@ export async function beginManagedRendezvous(
     managedAllowedRelays(exchangeFile),
     {
       ...options.defaultRelay,
+      ...(record.relayRegistrar !== undefined
+        ? { ownRelayExchangeId: record.relayRegistrar.exchangeId }
+        : {}),
       ...(signal !== undefined ? { signal } : {}),
       ...(options.onRunNotice !== undefined
         ? { onRunNotice: options.onRunNotice }

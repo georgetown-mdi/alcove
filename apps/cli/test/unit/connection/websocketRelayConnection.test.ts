@@ -1077,7 +1077,9 @@ test("a run with no shared secret refuses the relay before dialing", async () =>
   );
   await expect(dialing).rejects.toBeInstanceOf(UsageError);
   await expect(dialing).rejects.toThrow(
-    websocketRelayNeedsSecretMessage("wss://relay.example.org/relay"),
+    websocketRelayNeedsSecretMessage({
+      websocketRelay: "wss://relay.example.org/relay",
+    }),
   );
 });
 

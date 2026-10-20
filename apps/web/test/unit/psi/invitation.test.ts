@@ -15,6 +15,7 @@ import {
   encodeInvitation,
   getDefaultLinkageTerms,
   inferMetadata,
+  runEnrollsAtInvitationRegistrar,
   summarizeInvitation,
 } from "@alcove/core";
 
@@ -358,6 +359,83 @@ describe("generateInvitation", () => {
           websocket: "wss://own-relay.example.org/relay",
           registrar: DEFAULT_RELAY.registrarUrl,
         },
+      });
+    });
+
+    describe("where a command-line party accepting it enrolls", () => {
+      const CLI_OWN_TURN = [
+        { url: "turns:cli-relay.example.com:443?transport=tcp" },
+      ];
+
+      async function invitationRelay(
+        setting: () => typeof DEFAULT_RELAY | undefined,
+      ) {
+        const endpoint = await mintedEndpoint(setting);
+        if (endpoint?.channel !== "webrtc" || endpoint.relay === undefined)
+          throw new Error("expected a webrtc endpoint naming a relay");
+        return endpoint.relay;
+      }
+
+      test("beside this browser's own WebSocket relay and the default TURN url, at the default registrar when it allocates on that TURN url", async () => {
+        stubOwnRelay({
+          turn: [],
+          stun: [],
+          websocket: "wss://own-relay.example.org/relay",
+        });
+        const relay = await invitationRelay(() => DEFAULT_RELAY);
+        expect(relay).toStrictEqual({
+          turn: [DEFAULT_RELAY.turnUrl],
+          websocket: "wss://own-relay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
+        });
+        expect(
+          runEnrollsAtInvitationRegistrar({ invitationRelay: relay }),
+        ).toBe(true);
+        expect(
+          runEnrollsAtInvitationRegistrar({
+            turn: CLI_OWN_TURN,
+            invitationRelay: relay,
+          }),
+        ).toBe(false);
+      });
+
+      test("beside the default WebSocket relay, at the default registrar only when it allocates on the default TURN url", async () => {
+        const relay = await invitationRelay(() => ({
+          ...DEFAULT_RELAY,
+          websocketUrl: "wss://wsrelay.example.org/relay",
+        }));
+        expect(relay).toMatchObject({
+          websocket: "wss://wsrelay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
+        });
+        expect(
+          runEnrollsAtInvitationRegistrar({
+            turn: CLI_OWN_TURN,
+            invitationRelay: relay,
+          }),
+        ).toBe(false);
+        expect(
+          runEnrollsAtInvitationRegistrar({ invitationRelay: relay }),
+        ).toBe(true);
+      });
+    });
+
+    test("names the default WebSocket relay, and no registrar, where the allowed relays keep only its host", async () => {
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: () => ({
+          ...DEFAULT_RELAY,
+          websocketUrl: "wss://wsrelay.example.org/relay",
+        }),
+        allowedRelays: ["wsrelay.example.org"],
+      });
+      expect(
+        (await decodeInvitation(minted.encoded)).connectionEndpoint,
+      ).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: { websocket: "wss://wsrelay.example.org/relay" },
       });
     });
 
@@ -1993,8 +2071,32 @@ describe("invitationWebrtcEndpoint", () => {
     });
     expect(
       invitationWebrtcEndpoint(location, {
+        websocket: "wss://wsrelay.example.org/relay",
+        registrar,
+      }).relay,
+    ).toStrictEqual({ websocket: "wss://wsrelay.example.org/relay" });
+    expect(
+      invitationWebrtcEndpoint(location, {
         stun: ["stun:relay.example.org:3478"],
         registrar,
+      }).relay,
+    ).toStrictEqual({ stun: ["stun:relay.example.org:3478"] });
+  });
+
+  test("names a WebSocket relay's exchange id beside its url only", () => {
+    expect(
+      invitationWebrtcEndpoint(location, {
+        websocket: "wss://wsrelay.example.org/relay",
+        websocketExchangeId: "q3-linkage-7f2c",
+      }).relay,
+    ).toStrictEqual({
+      websocket: "wss://wsrelay.example.org/relay",
+      websocketExchangeId: "q3-linkage-7f2c",
+    });
+    expect(
+      invitationWebrtcEndpoint(location, {
+        stun: ["stun:relay.example.org:3478"],
+        websocketExchangeId: "q3-linkage-7f2c",
       }).relay,
     ).toStrictEqual({ stun: ["stun:relay.example.org:3478"] });
   });

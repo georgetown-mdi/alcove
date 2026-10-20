@@ -102,7 +102,7 @@ describe("the invitation's relay locator", () => {
       await expect(
         decodeInvitation(await encodeRawInvitation(token)),
       ).rejects.toThrow(
-        /relay may hold only turn and stun url lists, a websocket url and a registrar url/,
+        /relay may hold only turn and stun url lists, a websocket url with its exchange id, and a registrar url/,
       );
       await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
     },
@@ -383,7 +383,7 @@ describe("the invitation's relay locator", () => {
     ).rejects.toThrow(/registrar is longer than 1024 characters/);
   });
 
-  test("a registrar beside no turn url is refused at decode and at mint", async () => {
+  test("a registrar beside no turn or websocket url is refused at decode and at mint", async () => {
     const token = tokenWithEndpoint({
       channel: "webrtc",
       host: "signal.example",
@@ -391,7 +391,10 @@ describe("the invitation's relay locator", () => {
     });
     await expect(
       decodeInvitation(await encodeRawInvitation(token)),
-    ).rejects.toThrow(/registrar enrolls the key of its TURN relay/);
+    ).rejects.toThrow(
+      "a relay locator's registrar enrolls the key of its TURN or WebSocket " +
+        "relay, so it requires a turn or websocket url",
+    );
     await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
   });
 
@@ -836,5 +839,161 @@ describe("the relay locator's WebSocket relay", () => {
         invitation_relay: { websocket: "ws://wsrelay.example.org/relay" },
       }),
     ).toThrow(/a relay locator's websocket url must be a wss:\/\/ url/);
+  });
+});
+
+describe("the WebSocket relay's exchange id and registrar on the locator", () => {
+  const WEBSOCKET = "wss://wsrelay.example.org/relay";
+  const EXCHANGE_ID = "q3-linkage-7f2c";
+  const ID_GRAMMAR =
+    "a relay locator's websocket exchange id must be 1 to 128 of A-Z, a-z, " +
+    "0-9, '.', '_' and '-', not starting with '-' and not holding a run of " +
+    "64 hex characters";
+
+  test.each([
+    [
+      "an exchange id",
+      { websocket: WEBSOCKET, websocketExchangeId: EXCHANGE_ID },
+    ],
+    [
+      "a registrar and no turn url",
+      { websocket: WEBSOCKET, registrar: REGISTRAR },
+    ],
+    [
+      "an exchange id of 128 characters",
+      { websocket: WEBSOCKET, websocketExchangeId: "q".repeat(128) },
+    ],
+  ])("a WebSocket relay beside %s round-trips", async (_, relay) => {
+    const endpoint = { channel: "webrtc", host: "signal.example", relay };
+    const decoded = await decodeInvitation(
+      await encodeInvitation(tokenWithEndpoint(endpoint)),
+    );
+    expect(decoded.connectionEndpoint).toEqual(endpoint);
+  });
+
+  test.each([
+    ["a character outside the alphabet", "q3 linkage", ID_GRAMMAR],
+    ["a leading '-'", "-q3", ID_GRAMMAR],
+    ["129 characters", "q".repeat(129), ID_GRAMMAR],
+    ["a run of 64 hex characters", "f".repeat(64), ID_GRAMMAR],
+    ["empty", "", ID_GRAMMAR],
+    [
+      "'..'",
+      "..",
+      "a relay locator's websocket exchange id must not be '.' or '..'",
+    ],
+    [
+      "the relay's own check prefix",
+      "alcove-verify-q3",
+      "a relay locator's websocket exchange id must not start with alcove-verify-",
+    ],
+  ])(
+    "an exchange id with %s is refused at decode and at mint",
+    async (_, websocketExchangeId, refusal) => {
+      const token = tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { websocket: WEBSOCKET, websocketExchangeId },
+      });
+      await expect(
+        decodeInvitation(await encodeRawInvitation(token)),
+      ).rejects.toThrow(refusal);
+      await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+    },
+  );
+
+  test("an exchange id beside no WebSocket relay is refused at decode and at mint", async () => {
+    const token = tokenWithEndpoint({
+      channel: "webrtc",
+      host: "signal.example",
+      relay: { ...RELAY, websocketExchangeId: EXCHANGE_ID },
+    });
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(
+      "a relay locator's websocket exchange id names the key its WebSocket " +
+        "relay holds, so it requires a websocket url",
+    );
+    await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
+  });
+
+  test("the consent summary does not name the exchange id", () => {
+    const summary = summarizeInvitation(
+      tokenWithEndpoint({
+        channel: "webrtc",
+        host: "signal.example",
+        relay: { websocket: WEBSOCKET, websocketExchangeId: EXCHANGE_ID },
+      }),
+    );
+    expect(summary.relay).toEqual({ turn: [], stun: [], websocket: WEBSOCKET });
+  });
+
+  test("relayLocatorFromOwnRelay names an exchange id beside the WebSocket relay only", () => {
+    expect(
+      relayLocatorFromOwnRelay({
+        websocket: WEBSOCKET,
+        websocketExchangeId: EXCHANGE_ID,
+      }),
+    ).toEqual({ websocket: WEBSOCKET, websocketExchangeId: EXCHANGE_ID });
+    expect(
+      relayLocatorFromOwnRelay({ ...RELAY, websocketExchangeId: EXCHANGE_ID }),
+    ).toEqual(RELAY);
+  });
+
+  test("the inviter's endpoint names relay_registrar's exchange id beside its websocket_relay, and only there", () => {
+    const base: WebRTCConnectionConfig = {
+      channel: "webrtc",
+      server: { host: "signal.example", path: "/" },
+      turn: [{ url: RELAY.turn[0] ?? "" }],
+      relayRegistrar: {
+        url: "https://registrar.example.org",
+        exchangeId: EXCHANGE_ID,
+      },
+      websocketRelay: WEBSOCKET,
+    };
+    expect(endpointFromConnection(base)).toHaveProperty("relay", {
+      turn: RELAY.turn,
+      websocket: WEBSOCKET,
+      websocketExchangeId: EXCHANGE_ID,
+    });
+    expect(
+      endpointFromConnection({ ...base, allowedRelays: ["relay.example.org"] }),
+    ).toHaveProperty("relay", { turn: RELAY.turn });
+    const { relayRegistrar: _, ...unregistered } = base;
+    expect(endpointFromConnection(unregistered)).toHaveProperty("relay", {
+      turn: RELAY.turn,
+      websocket: WEBSOCKET,
+    });
+  });
+
+  test("the accepting side keeps the exchange id on invitation_relay, and parses it back from a configuration file", () => {
+    const relay = { websocket: WEBSOCKET, websocketExchangeId: EXCHANGE_ID };
+    expect(
+      connectionFromLocator({
+        channel: "webrtc",
+        host: "signal.example",
+        relay,
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: {
+          websocket: WEBSOCKET,
+          websocket_exchange_id: EXCHANGE_ID,
+        },
+      }),
+    ).toMatchObject({ invitationRelay: relay });
+    expect(() =>
+      parseConnectionConfig({
+        channel: "webrtc",
+        server: { host: "signal.example" },
+        invitation_relay: { websocket: WEBSOCKET, exchange_id: EXCHANGE_ID },
+      }),
+    ).toThrow(
+      "; it holds only turn and stun url lists, a websocket url with its " +
+        "websocket_exchange_id, and a registrar url",
+    );
   });
 });

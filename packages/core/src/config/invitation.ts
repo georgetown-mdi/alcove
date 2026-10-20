@@ -32,8 +32,8 @@ export interface WebRTCEndpoint {
   path?: string;
   /**
    * The inviter's relay, its TURN and STUN urls, its WebSocket relay's url
-   * and the registrar a run enrolls at without a token, listed beside the
-   * acceptor's own
+   * with the exchange id that relay holds the key under, and the registrar a
+   * run enrolls at without a token, listed beside the acceptor's own
    * (`WebRTCConnectionConfig.invitationRelay`).
    */
   relay?: RelayLocator;
@@ -98,7 +98,7 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
     return (
       "a connection endpoint may hold only a credential-free locator (channel " +
       "plus host/port/path and, on webrtc, a relay of turn and stun urls, " +
-      "a websocket url and a registrar url, or " +
+      "a websocket url with its exchange id, and a registrar url, or " +
       "an inbound_path/outbound_path pair for a split " +
       "file-sync directory), so that no password, private key, or host-key " +
       "fingerprint is sent in an invitation. Remove unexpected " +
@@ -110,13 +110,13 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
   return undefined;
 };
 
-// The inviter's relay: TURN and STUN urls, a WebSocket relay url and a
-// registrar url only. Any other key, a credential included, is refused rather
-// than stripped.
+// The inviter's relay: TURN and STUN urls, a WebSocket relay url with its
+// exchange id, and a registrar url only. Any other key, a credential included,
+// is refused rather than stripped.
 const InvitationRelayLocatorSchema = relayLocatorSchema(
   (keys) =>
     "a connection endpoint's relay may hold only turn and stun url lists, " +
-    "a websocket url and a registrar url; " +
+    "a websocket url with its exchange id, and a registrar url; " +
     "a relay credential is derived by each party from the shared secret and " +
     "is never part of an invitation. Remove unexpected field(s): " +
     keys.map(fittedEndpointKeyName).join(", "),
@@ -124,8 +124,9 @@ const InvitationRelayLocatorSchema = relayLocatorSchema(
 
 /**
  * The relay locator an inviter names in its invitation, from its own relay's
- * TURN and STUN urls and its WebSocket relay's url, or `undefined` when it has
- * none. Takes urls alone, so no credential can reach the result.
+ * TURN and STUN urls and its WebSocket relay's url, with the exchange id that
+ * relay holds the key under beside the url only, or `undefined` when it has
+ * none. Takes urls and that id alone, so no credential can reach the result.
  */
 export function relayLocatorFromOwnRelay(
   ownRelay:
@@ -133,6 +134,7 @@ export function relayLocatorFromOwnRelay(
         turn?: ReadonlyArray<string>;
         stun?: ReadonlyArray<string>;
         websocket?: string;
+        websocketExchangeId?: string;
       }
     | undefined,
 ): RelayLocator | undefined {
@@ -141,10 +143,13 @@ export function relayLocatorFromOwnRelay(
   const websocket = ownRelay?.websocket;
   if (turn.length === 0 && stun.length === 0 && websocket === undefined)
     return undefined;
+  const websocketExchangeId =
+    websocket !== undefined ? ownRelay?.websocketExchangeId : undefined;
   return {
     ...(turn.length > 0 ? { turn: [...turn] } : {}),
     ...(stun.length > 0 ? { stun: [...stun] } : {}),
     ...(websocket !== undefined ? { websocket } : {}),
+    ...(websocketExchangeId !== undefined ? { websocketExchangeId } : {}),
   };
 }
 
