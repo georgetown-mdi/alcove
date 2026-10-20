@@ -9,29 +9,42 @@ import type { WebSocketRelayDial } from "./websocketRelayConnection";
 import type {
   RendezvousRole,
   RunRelayConnection,
-  RunWebSocketRelay,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
 /**
- * The refusal a run gets when its connection lists a WebSocket relay and the
- * run holds no shared secret to make the relay's proof from: `source` names
- * the setting that lists it, the connection's own `websocket_relay` or the
- * invitation's relay.
+ * The refusal a run gets when its connection lists WebSocket relays and the
+ * run holds no shared secret to make their proofs from. It names every relay
+ * the run lists, and an edit that leaves them all out and still loads:
+ * removing `websocket_relay` where that is the one url listed and the
+ * invitation does not name it, and otherwise `allowed_relays`. Removing
+ * `websocket` from `invitation_relay` can leave a block the relay locator
+ * refuses: a `websocket_exchange_id` with no url, a `registrar` with no TURN
+ * url, or no url at all.
  *
  * @internal exported for testing
  */
 export function websocketRelayNeedsSecretMessage(
-  url: string,
-  source: RunWebSocketRelay["source"] = "own",
+  connection: RunRelayConnection,
 ): string {
+  const urls = (selectRunRelay(connection).websocket ?? []).map(
+    (relay) => relay.url,
+  );
+  const one = urls.length === 1;
+  const own = connection.websocketRelay;
+  const removingOwnLeavesNone =
+    one &&
+    own !== undefined &&
+    urls.includes(own) &&
+    connection.invitationRelay?.websocket !== own;
   return (
-    `the WebSocket relay at ${url} takes a proof made from the exchange's ` +
-    "shared secret, and this run holds none. Establish one with 'alcove " +
-    "invite' and 'alcove accept', or remove " +
-    (source === "own"
-      ? "connection.websocket_relay."
-      : "websocket from connection.invitation_relay.")
+    `the WebSocket ${one ? "relay" : "relays"} at ${urls.join(" and ")} ` +
+    `${one ? "takes" : "take"} a proof made from the exchange's shared ` +
+    "secret, and this run holds none. Establish one with 'alcove invite' " +
+    "and 'alcove accept', or " +
+    (removingOwnLeavesNone
+      ? "remove connection.websocket_relay."
+      : `set connection.allowed_relays to leave ${one ? "it" : "them"} out.`)
   );
 }
 
@@ -55,12 +68,9 @@ export async function webSocketRelayDialsFor(
   role: RendezvousRole,
 ): Promise<WebSocketRelayDial[]> {
   const relays = selectRunRelay(connection).websocket ?? [];
-  const [first] = relays;
-  if (first === undefined) return [];
+  if (relays.length === 0) return [];
   if (sharedSecret === undefined)
-    throw new UsageError(
-      websocketRelayNeedsSecretMessage(first.url, first.source),
-    );
+    throw new UsageError(websocketRelayNeedsSecretMessage(connection));
   const relayKey = await deriveRelayKey(sharedSecret);
   const derivedExchangeId = await deriveRelayExchangeId(sharedSecret);
   return relays.map((relay) => ({
