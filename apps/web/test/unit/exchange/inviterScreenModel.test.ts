@@ -151,12 +151,32 @@ describe("what the terms declare", () => {
       type: "column-edited",
       editor: edited.editor,
       announcement: "Demoted client_id.",
+      editorAnnouncement: "The key list shows no built-in rules.",
     });
     expect(state.editor).toBe(edited.editor);
     expect(disclosedColumnNames(state.editor?.draft.metadata ?? [])).toContain(
       "program_code",
     );
     expect(state.announcement).toBe("Demoted client_id.");
+    expect(state.editorAnnouncement).toBe(
+      "The key list shows no built-in rules.",
+    );
+  });
+
+  test("a column edit that announces nothing about the keys clears the keys announcement", () => {
+    const announced = withFile("Dana Okafor", {
+      type: "editor-announced",
+      announcement: "The key list shows no built-in rules.",
+    });
+    if (announced.editor === undefined)
+      throw new Error("the fixture read no file");
+    const state = inviterScreenReducer(announced, {
+      type: "column-edited",
+      editor: announced.editor,
+      announcement: "",
+      editorAnnouncement: "",
+    });
+    expect(state.editorAnnouncement).toBe("");
   });
 
   test("an own-columns choice arrives through the plain editor edit", () => {

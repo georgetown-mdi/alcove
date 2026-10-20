@@ -1011,7 +1011,7 @@ describe("the receipts card's model", () => {
     expect(receiptsIntentFields(bounded)).toEqual({ tokenMaxAgeDays: 30 });
     expect(problemsFor(bounded)).toEqual([]);
     expect(receiptsSummary(bounded)).toBe(
-      "Unsigned record only; secret expires 30 days after each exchange",
+      "Unsigned record only; shared secret expires after 30 days of inactivity",
     );
     expect(maxAgeCadenceNote(bounded)).toContain("within 30 days");
   });

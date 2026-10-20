@@ -4,10 +4,14 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { page } from "vitest/browser";
 
-import { createElement, useState } from "react";
+import { Fragment, createElement, useState } from "react";
+
+import "@mantine/core/styles.css";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  BUILT_IN_RULES_INFO,
+  HIGHEST_PRECISION_UNAVAILABLE_REASON,
   MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
@@ -15,6 +19,7 @@ import {
   editorFromCsv,
   editorWithAuthoredDraft,
   editorWithBuiltInKeys,
+  editorWithColumnDisclosure,
   editorWithImportedTerms,
   editorWithKeyEnabled,
   editorWithKeyMoved,
@@ -22,12 +27,13 @@ import {
   keyOrderHelp,
   resetToRecommended,
 } from "@psi/inviterEditor";
+import { reviewValidation } from "@psi/inviterModel";
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   LESS_CERTAIN_KEY_COPY,
   linkageKeyIsLessCertain,
-  precisionFloorStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import {
@@ -43,7 +49,6 @@ import { canonicalLinkageKeysAndFields } from "@console/loadedConfig";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 import { keysFromOpenedConfiguration as derivedKeysFromOpenedConfiguration } from "@exchange/inviterScreenModel";
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
-import { reviewValidation } from "@psi/inviterModel";
 
 import { activate, control } from "./keyboardOnly";
 import { createAppMount } from "./renderApp";
@@ -515,24 +520,24 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     });
   }
 
-  const at99 = precisionFloorStatement(99);
-  const at95 = precisionFloorStatement(95);
+  const at99 = precisionFloorLabel(99);
+  const at95 = precisionFloorLabel(95);
   const nameAndDateKey = {
     name: /Key \d+ - LN \+ FN \+ DOB \(less certain\)$/,
   };
 
-  test("offers each floor in core's words, 95% chosen, and asks no coverage question", async () => {
+  test("offers each floor by its label alone, 95 chosen, and asks no coverage question", async () => {
     app.render(
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
 
-    const floor99 = page.getByRole("radio", { name: at99.label });
-    const floor95 = page.getByRole("radio", { name: at95.label });
+    const floor99 = page.getByRole("radio", { name: at99 });
+    const floor95 = page.getByRole("radio", { name: at95 });
     await expect.element(floor95).toBeChecked();
     await expect.element(floor99).not.toBeChecked();
-    await expect.element(page.getByText(at99.description)).toBeInTheDocument();
-    await expect.element(page.getByText(at95.description)).toBeInTheDocument();
-    expect(at95.description).toContain("except rules marked less certain");
+    await expect.element(floor99).toBeEnabled();
+    expect(floor99.element().getAttribute("aria-describedby")).toBeNull();
+    expect(floor95.element().getAttribute("aria-describedby")).toBeNull();
     expect(document.body.textContent).not.toMatch(/tier/i);
 
     expect(page.getByRole("radiogroup").elements()).toHaveLength(2);
@@ -542,6 +547,224 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     expect(document.body.textContent).not.toMatch(
       /metropolitan|one state|answer below/i,
     );
+  });
+
+  test("places the button beside the Built-in rules label, which names the choice alone", async () => {
+    const { ssn4: _ssn4, ...namesAndDate } = csv.rawRows[0];
+    const file: AcquiredCsv = {
+      ...csv,
+      rawRows: [namesAndDate],
+      columns: Object.keys(namesAndDate),
+    };
+    app.render(
+      createElement(Harness, {
+        initial: editorFromCsv("Dana Okafor", file),
+        file,
+      }),
+    );
+
+    const info = page.getByRole("button", {
+      name: "About the built-in rules",
+      exact: true,
+    });
+    const group = page.getByRole("radiogroup", {
+      name: "Built-in rules",
+      exact: true,
+    });
+    await expect.element(group).toBeInTheDocument();
+    await expect
+      .element(group)
+      .toHaveAccessibleDescription(
+        "Changing this lists the rules it selects that your file supplies, " +
+          "in the built-in order. Keys you turned off stay off, and keys it " +
+          "adds are turned on.",
+      );
+    // Highest precision is unavailable here, so its reason widens the group.
+    await expect
+      .element(page.getByRole("radio", { name: at99 }))
+      .toBeDisabled();
+
+    const label = page.getByText("Built-in rules", { exact: true }).element();
+    const labelBox = label.getBoundingClientRect();
+    const infoBox = info.element().getBoundingClientRect();
+    const groupBox = group.element().getBoundingClientRect();
+    expect(infoBox.left - labelBox.right).toBeGreaterThanOrEqual(0);
+    expect(infoBox.left - labelBox.right).toBeLessThan(12);
+    const infoMiddle = (infoBox.top + infoBox.bottom) / 2;
+    expect(infoMiddle).toBeGreaterThan(labelBox.top);
+    expect(infoMiddle).toBeLessThan(labelBox.bottom);
+    expect(infoBox.right).toBeLessThan(groupBox.right / 2);
+  });
+
+  test("explains the choices behind one button, read with each choice while open", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    expect(BUILT_IN_RULES_INFO.explanation).toBe(
+      "Highest precision pairs a name or date of birth with an SSN, ZIP " +
+        "code, or phone number. In published studies, fewer than 1 in 100 " +
+        "of its matches were wrong. Broader matching adds rules that find " +
+        "more people, with a few more wrong matches.",
+    );
+    const info = page.getByRole("button", {
+      name: "About the built-in rules",
+      exact: true,
+    });
+    await expect.element(info).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(
+      info.element().getAttribute("aria-controls") ?? "",
+    )!;
+    const shown = `${BUILT_IN_RULES_INFO.explanation} How the rules were chosen`;
+    await expect.poll(() => panel.textContent).toBe(shown);
+    const explanation = page.elementLocator(panel).getByText(shown);
+    await expect.element(explanation).not.toBeVisible();
+    const floors = [
+      page.getByRole("radio", { name: at99 }),
+      page.getByRole("radio", { name: at95 }),
+    ];
+    for (const floor of floors)
+      await expect.element(floor).toHaveAccessibleDescription("");
+
+    await activate(control("button", "About the built-in rules"));
+    await expect.element(info).toHaveAttribute("aria-expanded", "true");
+    await expect.element(explanation).toBeVisible();
+    const link = page
+      .elementLocator(panel)
+      .getByRole("link", { name: "How the rules were chosen" });
+    await expect
+      .element(link)
+      .toHaveAttribute(
+        "href",
+        "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor",
+      );
+    await expect.element(link).toHaveAttribute("target", "_blank");
+    await expect.element(link).toHaveAttribute("rel", "noreferrer");
+    for (const floor of floors)
+      await expect.element(floor).toHaveAccessibleDescription(shown);
+
+    await activate(control("button", "About the built-in rules"));
+    await expect.element(info).toHaveAttribute("aria-expanded", "false");
+    for (const floor of floors)
+      await expect.element(floor).toHaveAccessibleDescription("");
+  });
+
+  /** The tab over a live session, with buttons outside it that set the ssn4
+   * column's role as the Columns step sets it, and the key error the inviter
+   * screen passes it. */
+  function RoleHarness({
+    initial,
+    file = csv,
+  }: {
+    initial: InviterEditor;
+    file?: AcquiredCsv;
+  }) {
+    const [editor, setEditor] = useState(initial);
+    const setSsn4Role = (role: "ignored" | "match") =>
+      setEditor(editorWithColumnDisclosure(editor, file, "ssn4", role).editor);
+    return createElement(
+      Fragment,
+      null,
+      createElement(
+        "button",
+        { type: "button", onClick: () => setSsn4Role("ignored") },
+        "Stop matching on ssn4",
+      ),
+      createElement(
+        "button",
+        { type: "button", onClick: () => setSsn4Role("match") },
+        "Match on ssn4",
+      ),
+      createElement(KeysTab, {
+        editor,
+        csv: file,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onPrecisionFloorSelection: (selection) =>
+          setEditor(editorWithPrecisionFloorSelection(editor, selection)),
+        onUseBuiltInRules: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onAlgorithm: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: reviewValidation(editor).errors.keys,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  test("disables highest precision while the columns supply none of its rules, keeping it chosen, and enables it again when a column role changes", async () => {
+    app.render(
+      createElement(RoleHarness, {
+        initial: editorWithPrecisionFloorSelection(
+          editorFromCsv("Dana Okafor", csv),
+          { floor: 99 },
+        ),
+      }),
+    );
+
+    const floor99 = page.getByRole("radio", { name: at99 });
+    const floor95 = page.getByRole("radio", { name: at95 });
+    const ssn4Key = page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ });
+    const keyItems = page.getByRole("list").getByRole("listitem");
+    await expect.element(floor99).toBeChecked();
+    await expect.element(floor99).toBeEnabled();
+    await expect.element(ssn4Key).toBeChecked();
+
+    await page.getByRole("button", { name: "Stop matching on ssn4" }).click();
+    await expect.element(floor99).toBeDisabled();
+    await expect.element(floor99).toBeChecked();
+    expect(HIGHEST_PRECISION_UNAVAILABLE_REASON).toBe(
+      "Needs stronger identifiers in your file, such as an SSN, ZIP code, " +
+        "or phone number.",
+    );
+    await expect
+      .element(floor99)
+      .toHaveAccessibleDescription(HIGHEST_PRECISION_UNAVAILABLE_REASON);
+    await expect.element(floor95).toBeEnabled();
+    expect(keyItems.elements()).toHaveLength(0);
+    expect(page.getByRole("alert").query()).toBeNull();
+    expect(document.body.textContent).not.toContain(
+      "Turn on Expert authoring to see which field",
+    );
+
+    await page.getByRole("button", { name: "Match on ssn4" }).click();
+    await expect.element(floor99).toBeEnabled();
+    await expect.element(floor99).toBeChecked();
+    await expect.element(floor99).toHaveAccessibleDescription("");
+    await expect.element(ssn4Key).toBeChecked();
+  });
+
+  test("keeps the Expert authoring message on a file no choice lists a rule for", async () => {
+    const uncovered: AcquiredCsv = {
+      fileName: "contacts.csv",
+      sizeBytes: 64,
+      rawRows: [
+        { client_id: "1", email: "ann@example.org", phone: "555-123-4567" },
+      ],
+      columns: ["client_id", "email", "phone"],
+      rowCount: 1,
+    };
+    app.render(
+      createElement(RoleHarness, {
+        initial: editorWithPrecisionFloorSelection(
+          editorFromCsv("Dana Okafor", uncovered),
+          { floor: 99 },
+        ),
+        file: uncovered,
+      }),
+    );
+
+    await expect
+      .element(page.getByRole("radio", { name: at99 }))
+      .toBeDisabled();
+    await expect
+      .element(page.getByRole("alert"))
+      .toMatchTextContent(/Turn on Expert authoring/);
   });
 
   test("reseeds the key list on a floor choice", async () => {
@@ -555,10 +778,8 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .element(page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }))
       .toBeInTheDocument();
 
-    await page.getByRole("radio", { name: at99.label }).click();
-    await expect
-      .element(page.getByRole("radio", { name: at99.label }))
-      .toBeChecked();
+    await page.getByRole("radio", { name: at99 }).click();
+    await expect.element(page.getByRole("radio", { name: at99 })).toBeChecked();
     expect(nameAndDate.query()).toBeNull();
     expect(
       page.getByRole("checkbox", { name: /SSN4 \+ LN4 \+ YOB/ }).query(),
@@ -567,7 +788,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .element(page.getByRole("checkbox", { name: /SSN4 \+ LN \+ DOB$/ }))
       .toBeChecked();
 
-    await page.getByRole("radio", { name: at95.label }).click();
+    await page.getByRole("radio", { name: at95 }).click();
     await expect.element(nameAndDate).toBeChecked();
   });
 
@@ -610,7 +831,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
         page.getByRole("note").filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE }),
       )
       .toBeInTheDocument();
-    expect(page.getByRole("radio", { name: at99.label }).query()).toBeNull();
+    expect(page.getByRole("radio", { name: at99 }).query()).toBeNull();
   });
 
   test("keeps a key turned off across a floor change and back", async () => {
@@ -622,9 +843,9 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await kept.click();
     await expect.element(kept).not.toBeChecked();
 
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     await expect.element(kept).not.toBeChecked();
-    await page.getByRole("radio", { name: at95.label }).click();
+    await page.getByRole("radio", { name: at95 }).click();
     await expect.element(kept).not.toBeChecked();
     await expect
       .element(page.getByRole("checkbox", nameAndDateKey))
@@ -671,15 +892,22 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect.poll(() => panel.textContent).toBe(explained);
     const explanation = page.elementLocator(panel).getByText(explained);
     await expect.element(explanation).not.toBeVisible();
+    const marked = page.getByRole("checkbox", nameAndDateKey);
+    await expect.element(marked).toHaveAccessibleDescription("");
 
     await activate(control("button", name));
     await expect.element(first).toHaveAttribute("aria-expanded", "true");
     await expect.element(explanation).toBeVisible();
+    await expect.element(marked).toHaveAccessibleDescription(explained);
+
+    await activate(control("button", name));
+    await expect.element(first).toHaveAttribute("aria-expanded", "false");
+    await expect.element(marked).toHaveAccessibleDescription("");
     expect(document.body.textContent).not.toContain(
       LESS_CERTAIN_KEY_COPY.acceptorRemedy,
     );
 
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     expect(infoButtons.elements()).toHaveLength(0);
   });
 
@@ -842,7 +1070,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect
       .element(keyList)
       .toHaveAccessibleDescription(keyOrderHelp(seeded));
-    await page.getByRole("radio", { name: at99.label }).click();
+    await page.getByRole("radio", { name: at99 }).click();
     await expect
       .element(keyList)
       .toHaveAccessibleDescription(
@@ -872,9 +1100,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .getByRole("button", { name: USE_BUILT_IN_RULES_LABEL })
       .click();
 
-    await expect
-      .element(page.getByRole("radio", { name: at95.label }))
-      .toBeChecked();
+    await expect.element(page.getByRole("radio", { name: at95 })).toBeChecked();
     expect(
       page
         .getByRole("note")
@@ -962,7 +1188,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     const openedNote = page
       .getByRole("note")
       .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE });
-    const floor95 = page.getByRole("radio", { name: at95.label });
+    const floor95 = page.getByRole("radio", { name: at95 });
     await expect.element(openedNote).toBeInTheDocument();
     expect(
       document.getElementById("key-order-help")!.textContent,
@@ -1046,7 +1272,7 @@ describe("KeysTab: removing every key in Expert authoring", () => {
       createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
     );
     const floor95 = page.getByRole("radio", {
-      name: precisionFloorStatement(95).label,
+      name: precisionFloorLabel(95),
     });
     await expect.element(floor95).toBeChecked();
 

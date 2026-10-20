@@ -298,7 +298,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               <div className={styles.callout}>
                 <p className={styles.calloutLead}>Back up this exchange.</p>
                 <p className={styles.small}>
-                  This run rotated the stored secret, so your previous backup is
+                  This run rotated the shared secret, so your previous backup is
                   now out of date. Download an updated backup to keep it
                   current.
                 </p>

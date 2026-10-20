@@ -381,9 +381,10 @@ describe("the label cap", () => {
 
 describe("maxAgeCadenceNote", () => {
   test("names the cadence implication when a policy is set", () => {
-    const note = maxAgeCadenceNote(30);
-    expect(note).toContain("30 days");
-    expect(note).toContain("run or be renewed");
+    expect(maxAgeCadenceNote(30)).toBe(
+      "This exchange must run within 30 days, or its shared secret expires " +
+        "and you re-invite your partner.",
+    );
   });
 
   test("singularizes one day", () => {
@@ -460,19 +461,10 @@ describe("the retention note at setup", () => {
 });
 
 describe("the label guidance", () => {
-  test("directs the operator to keep sensitive counterparty detail out", () => {
-    expect(LABEL_GUIDANCE).toContain("Name the partnership");
-    expect(LABEL_GUIDANCE.toLowerCase()).toContain("never sent");
-  });
-
-  test("names every place the label reaches", () => {
-    const guidance = LABEL_GUIDANCE.toLowerCase();
-    expect(guidance).toContain("this browser's storage");
-    expect(guidance).toContain("anyone reading it can see");
-    expect(guidance).toContain("name of every results file");
-    expect(guidance).toContain("folder you choose");
-    expect(guidance).toContain("copy you download");
-    expect(guidance).toContain("between-visit notifications");
-    expect(guidance).toContain("locked screen");
+  test("says the label is never sent and names where it appears", () => {
+    expect(LABEL_GUIDANCE).toBe(
+      "A name for this exchange. It is never sent to your partner, but it " +
+        "appears in results file names and notifications.",
+    );
   });
 });

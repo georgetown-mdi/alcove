@@ -235,8 +235,8 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     {
       path: ["linkage_terms", "linkage_keys"],
       lines: [
-        "Ordered keys, tried in turn. The keys written list the built-in rules",
-        "at 99% precision first, then the rules at 95%.",
+        "Ordered keys, tried in turn. The keys written list the highest-precision",
+        "rules first, then the rules broader matching adds.",
       ],
     },
     {
@@ -248,18 +248,18 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
         "yourself are no longer that set's. Leaving out a key or field you cannot",
         "supply narrows the set rather than departing from it, so the citation",
         "still holds.",
-        "The keys written are the set's rules at the 95% precision floor. Three",
-        "of them are less certain, matching on a name and a date of birth alone:",
-        "LN + FN + DOB, swap(LN, FN) + DOB and split(LN) + FN + DOB. Different",
-        "people share a name and a date of birth more often the more people the",
-        "two files cover, so delete those three keys when your files cover many",
-        "people. A file of one age group, such as one school class, counts as",
-        "covering many people, because its members share birth years.",
-        "To run only the rules at 99% precision, delete those three and SSN + FN,",
+        "The keys written are the rules broader matching selects. Three of them",
+        "are less certain, matching on a name and a date of birth alone:",
+        "LN + FN + DOB, swap(LN, FN) + DOB, and split(LN) + FN + DOB.",
+        "Different people share a name and a date of birth more often the more",
+        "people the two files cover, so delete those three keys when your files",
+        "cover many people. A file of one age group, such as one school class,",
+        "counts as covering many people, because its members share birth years.",
+        "To run the highest-precision rules only, delete those three and SSN + FN,",
         "SSN4 + LN4 + YOB + MOB, LN + FN + DOB + ZIP3,",
         "ZIP5 + soundex(LN) + FN + DOB, ZIP5 + LN + FN + DOB +/-1 year,",
         "LN + FN + DOB + STATE, LN + FN + DOB + COUNTY,",
-        "LN + FN + YOB + MOB + ZIP5 and FN + DOB + EMAIL.",
+        "LN + FN + YOB + MOB + ZIP5, and FN + DOB + EMAIL.",
         "A key your input file cannot supply is not written.",
       ],
     },
@@ -416,7 +416,8 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # authentication: partner shared-secret policy. The secret itself lives in the
 # key file, never here; only policy belongs in the config.
 # authentication:
-#   # Stamp a maximum age (in days) onto the rotated token; omit for no limit.
+#   # The shared secret expires after this many days of inactivity (no
+#   # successful run); omit it and the shared secret does not expire.
 #   token_max_age_days: 365
 
 # signing: receipt signing and partner-certificate trust. mode is none or

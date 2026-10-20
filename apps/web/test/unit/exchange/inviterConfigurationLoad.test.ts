@@ -1527,6 +1527,7 @@ describe("a document stating no column roles keeps the operator's own", () => {
         "payload",
       ).editor,
       announcement: "",
+      editorAnnouncement: "",
     });
   }
 

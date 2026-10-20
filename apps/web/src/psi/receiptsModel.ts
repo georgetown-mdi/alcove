@@ -595,8 +595,8 @@ export const RETENTION_NOTE_CONTROL_CHAR_PROBLEM =
  * The composed configuration's schema refuses the same value
  * (`authentication.token_max_age_days`). */
 export const MAX_AGE_PROBLEM =
-  "The shared secret's maximum age must be a whole number of days from 1 to " +
-  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the maximum age off.`;
+  "Days of inactivity must be a whole number from 1 to " +
+  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn this setting off.`;
 
 /**
  * Everything wrong with the draft, as messages to show beside the card --
@@ -824,39 +824,40 @@ export const CERTIFICATE_EXPORT_NOTICE =
   "receipt without either party's help.";
 
 /** The retention note field's label, on every surface that authors it. */
-export const RETENTION_NOTE_LABEL = "Retention note for your own record";
+export const RETENTION_NOTE_LABEL = "Retention note";
 
 /** The retention note field's example, on every surface that authors it. */
 export const RETENTION_NOTE_PLACEHOLDER =
-  "Filed in the association database; kept six years under the records schedule, then purged.";
+  "Filed in our data warehouse; kept six years under our records schedule, then deleted.";
 
-/** What a surface authoring the retention note says about its audience and its
- * limits. */
+/** Where the console keeps the retention note: the exchange record and the
+ * configuration it composes. */
 export const RETENTION_NOTE_NOTICE =
-  "This note is filed with your own exchange record and nothing else: it is " +
-  "never sent to your partner, never checked against theirs, and never part of " +
-  "the agreed terms. Write where this result is filed and how long it is kept - " +
-  "never a name, an identifier, or any value from the data.";
+  "It is never sent to your partner, but it is saved with your exchange " +
+  "records and configuration.";
 
-/** The web app's form of the notice: the stored document, every backup, and
- * every exported configuration hold the note, and the notice names each. */
+/** Where the web app keeps the retention note: the stored exchange record,
+ * every backup file, and every exported configuration. */
 export const RETENTION_NOTE_NOTICE_WEB =
-  "This note is kept in this browser's storage with your own exchange " +
-  "record, which anyone reading that storage can see. It also goes into " +
-  "every backup file you download, which is not encrypted, and every " +
-  "configuration file you export. It is never sent to your partner, " +
-  "never checked against theirs, and never part of the agreed terms. Write " +
-  "where this result is filed and how long it is kept - never a name, an " +
-  "identifier, or any value from the data.";
+  "It is never sent to your partner, but it is saved with your exchange " +
+  "records, backup files, and configurations.";
 
-/** The maximum-age control's label. */
-export const MAX_AGE_LABEL = "Set a maximum age for the shared secret";
+/** The label of the control that opts in to the shared secret's time limit,
+ * on every surface that authors it. */
+export const MAX_AGE_LABEL = "Shared secret expires after inactivity";
 
-/** The line under the maximum-age control: what turning it on does. */
-export const MAX_AGE_DESCRIPTION =
-  "Off by default. When set, each exchange writes its new shared secret to " +
-  "the key file with an expiry this many days out, and a run after that " +
-  "expiry is refused.";
+/** The day-count field's label under {@link MAX_AGE_LABEL}. */
+export const MAX_AGE_DAYS_LABEL = "Days of inactivity";
+
+/** The day-count field's name as its step buttons say it ("One more day of
+ * inactivity"). */
+export const MAX_AGE_FIELD_NAME = "inactivity";
+
+/** What a time limit of `days` commits the operator to, on every surface that
+ * authors one. */
+export function inactivityCadenceNote(days: number): string {
+  return `This exchange must run within ${dayCount(days)}, or its shared secret expires and you re-invite your partner.`;
+}
 
 /**
  * What a maximum age commits the operator to, shown under the control while
@@ -865,10 +866,7 @@ export const MAX_AGE_DESCRIPTION =
 export function maxAgeCadenceNote(draft: ReceiptsDraft): string | undefined {
   const days = draftMaxAgeDays(draft);
   if (days === undefined) return undefined;
-  return (
-    `Run this exchange again within ${dayCount(days)} of each exchange, or its shared ` +
-    "secret expires and you invite your partner again."
-  );
+  return inactivityCadenceNote(days);
 }
 
 /**
@@ -992,7 +990,7 @@ export function receiptsSummary(draft: ReceiptsDraft): string {
   const maxAge =
     days === undefined
       ? ""
-      : `; secret expires ${dayCount(days)} after each exchange`;
+      : `; shared secret expires after ${dayCount(days)} of inactivity`;
   return `${receiptsRecordSummary(fields)}${maxAge}`;
 }
 

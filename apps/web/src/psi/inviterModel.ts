@@ -24,7 +24,12 @@ import { OFFLINE_EXCHANGE_REASON } from "./offlineExchangeGate";
 
 import { TRANSPORT_ANSWER_LABELS } from "./transportChooser";
 
-import { enabledKeys, identifierProblem } from "./inviterEditor";
+import {
+  HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
+  enabledKeys,
+  highestPrecisionHeldWithoutRules,
+  identifierProblem,
+} from "./inviterEditor";
 
 import { RESULTS_DIRECTION_LABELS, lifetimeNoun } from "./formatting";
 
@@ -128,8 +133,7 @@ function rulesSelectedFact(editor: InviterEditor): string {
   const selection = editor.draft.precisionFloorSelection;
   if (editor.keysAuthored === true || selection === undefined)
     return "Keys written in Expert authoring or loaded from a document";
-  const statement = precisionFloorSelectionStatement(selection);
-  return statement.charAt(0).toUpperCase() + statement.slice(1);
+  return precisionFloorSelectionStatement(selection);
 }
 
 /**
@@ -200,14 +204,25 @@ export interface SpineProblem {
 }
 
 /** Validate the draft for the create gate -- the AdvancedInvite model's own
- * validation over the console's session. */
+ * validation over the console's session. A key list emptied only because
+ * Highest precision stays chosen ({@link highestPrecisionHeldWithoutRules})
+ * names that choice rather than Expert authoring: broader matching lists
+ * rules for these columns. */
 export function reviewValidation(
   editor: InviterEditor,
   now: Date = new Date(),
 ): AdvancedValidation {
-  return validateAdvancedInvite(editor.draft, editor.seed, now, {
+  const validation = validateAdvancedInvite(editor.draft, editor.seed, now, {
     keysAuthored: editor.keysAuthored === true,
   });
+  if (!highestPrecisionHeldWithoutRules(editor)) return validation;
+  return {
+    ...validation,
+    errors: {
+      ...validation.errors,
+      keys: HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
+    },
+  };
 }
 
 /**

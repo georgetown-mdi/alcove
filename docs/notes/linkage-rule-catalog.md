@@ -56,7 +56,10 @@ Two bands are offered:
 
 No rule is offered below 95%.
 A lower band, such as 90%, is added only when a rule has evidence placing it there.
-An operator selects the rules by band; the screens an operator sees show the band, and this catalog keeps the evidence and the reasoning behind it.
+An operator selects the rules by band, and this catalog keeps the evidence and the reasoning behind it.
+The screens show each floor as a label, not a percentage: **Highest precision** (99%) and **Broader matching** (95%).
+Labels describe each choice in plain words without underselling rules the evidence supports.
+The percentages and their evidence stay in this catalog.
 Why two bands and not three: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-two-bands).
 
 ### The evidence standard

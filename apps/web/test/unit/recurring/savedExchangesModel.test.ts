@@ -231,7 +231,7 @@ describe("savedExchangeRow", () => {
       NOW,
     );
     expect(row.expired).toBe(true);
-    expect(row.status).toMatch(/lapsed/);
+    expect(row.status).toMatch(/expired/);
     expect(row.status).toMatch(/re-invite/);
   });
 });
@@ -373,7 +373,7 @@ describe("savedExchangeRow schedule lines", () => {
       NOW,
     );
     expect(row.expired).toBe(true);
-    expect(row.status).toMatch(/lapsed/);
+    expect(row.status).toMatch(/expired/);
     expect(row.schedule?.dueLine).toMatch(/^Run window open now, until /);
   });
 
@@ -484,7 +484,7 @@ describe("savedExchangeRow: a standing condition", () => {
       undefined,
       NOW,
     );
-    expect(row.status).toBe("Stored secret lapsed; re-invite to run again");
+    expect(row.status).toBe("Shared secret expired; re-invite to run again");
     expect(row.expired).toBe(true);
   });
 

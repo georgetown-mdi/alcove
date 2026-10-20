@@ -8,7 +8,7 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { getDefaultLinkageTerms, precisionFloorStatement } from "@alcove/core";
+import { getDefaultLinkageTerms, precisionFloorLabel } from "@alcove/core";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
@@ -490,7 +490,7 @@ describe("the open configuration over the files it is derived across", () => {
 
     await openDisclosure(/Receipts and record keeping/);
     await userEvent.fill(
-      page.getByLabelText("Retention note for your own record"),
+      page.getByLabelText("Retention note", { exact: true }),
       "Destroyed after 90 days.",
     );
     await expect
@@ -1056,19 +1056,21 @@ describe("the review step of an opened configuration's run", () => {
     expect(app.container.textContent).not.toContain(EDITED_TERMS_TITLE);
   });
 
-  test("the shared secret's maximum age starts from the file's", async () => {
+  test("the shared secret's inactivity limit starts from the file's", async () => {
     await goToReview({ tokenMaxAgeDays: 30 });
     await expect
-      .element(page.getByText(/secret expires 30 days after each exchange/))
+      .element(
+        page.getByText(/shared secret expires after 30 days of inactivity/),
+      )
       .toBeInTheDocument();
     await page
       .getByRole("button", { name: /Receipts and record keeping/ })
       .click();
     await expect
-      .element(page.getByLabelText("Set a maximum age for the shared secret"))
+      .element(page.getByLabelText("Shared secret expires after inactivity"))
       .toBeChecked();
     await expect
-      .element(page.getByLabelText("Maximum age in days"))
+      .element(page.getByLabelText("Days of inactivity"))
       .toHaveValue("30");
   });
 
@@ -1122,9 +1124,7 @@ describe("the review step of an opened configuration's run", () => {
     await page.getByRole("button", { name: /Matching on/ }).click();
     await expect.element(openedNote).toBeInTheDocument();
     expect(
-      page
-        .getByRole("radio", { name: precisionFloorStatement(95).label })
-        .query(),
+      page.getByRole("radio", { name: precisionFloorLabel(95) }).query(),
     ).toBeNull();
     expect(useBuiltInRules.query()).toBeNull();
 

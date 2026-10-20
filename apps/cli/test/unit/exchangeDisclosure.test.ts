@@ -11,14 +11,12 @@ import {
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
-  DEFAULT_PRECISION_FLOOR_SELECTION,
   DEFAULT_LINKAGE_RULE_SET,
   inferMetadata,
   inferredRecordIdentifierStatement,
   LESS_CERTAIN_KEY_COPY,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
-  precisionFloorSelectionStatement,
   setDiagnosticSink,
 } from "@alcove/core";
 import {
@@ -500,9 +498,7 @@ test("a quick exchange names its rule selection above the keys, and a configured
       stdio.restore();
     }
   };
-  const line = `  rules selected: ${precisionFloorSelectionStatement(
-    DEFAULT_PRECISION_FLOOR_SELECTION,
-  )}`;
+  const line = "  rules selected: broader matching";
   expect(shown(true)).toContain(`${line}\n  linkage keys (`);
   expect(shown(false)).not.toContain("rules selected");
 });

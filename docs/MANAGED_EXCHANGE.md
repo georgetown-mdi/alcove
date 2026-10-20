@@ -621,7 +621,7 @@ nobody arrives, so no handshake is attempted and nothing leaves this device.
 That is the benign no-show a missed window records, and the surface names it as
 one -- the partner was not there, this device is not at fault -- rather than
 sending the operator to check their own connection. Where this device already
-holds a reason its stored secret may no longer be the partnership's, that
+holds a reason its shared secret may no longer be the partnership's, that
 reason is what the run reports instead (see [A missed window is neither desync
 nor attack](#a-missed-window-is-neither-desync-nor-attack)).
 
@@ -933,7 +933,7 @@ security](SECURITY_DESIGN.md#key-file-security)). Store it where only you can
 read it, never send it over an unencrypted channel, and use an encrypted
 location or a secrets manager if you want it encrypted at rest. The file does
 not change after you export it: it stays usable until a run changes the secret,
-or until any `expires` it holds lapses. A copy that leaks, or a copy kept after
+or until the shared secret it holds expires. A copy that leaks, or a copy kept after
 a move, is a live credential until then; treat it under the [compromise
 response](SECURITY_DESIGN.md#compromise-response): tell your partner over
 another channel and send a fresh invitation.
@@ -1247,8 +1247,9 @@ What the import accepts is what this app can hold:
   the partnership this party takes; the command line refuses a webrtc connection
   that names none, and so does this. An sftp or filedrop connection has no `role`.
 
-What is editable is what a browser-run exchange edits in place: the label; the
-maximum age for the exchange's secret, which the exported configuration holds as
+What is editable is what a browser-run exchange edits in place: the label;
+whether the shared secret expires after a number of days of inactivity, which
+the exported configuration holds as
 `authentication.token_max_age_days` for the command-line run to apply; and the
 five settings of the file that are this party's alone -- which of its own columns
 its result file holds (`include_own_columns`), whether that file names the
@@ -1317,7 +1318,7 @@ secrets wait on addresses the other is not using, and each records a no-show,
 every time, for as long as the desync stands. The no-show is therefore the
 reading of last resort: where this device already holds a standing reason its
 secret may no longer be the partnership's -- a restore since the last
-successful run, a one-sided persist failure, or a lapsed bound -- the run
+successful run, a one-sided persist failure, or an expired shared secret -- the run
 reports that state and its re-invite recovery instead. Where it does not, the
 no-show state names the persistent case in its own copy, so a partner who was
 demonstrably at their machine at an agreed time and still never arrived is
@@ -1354,8 +1355,8 @@ The evidence is not: both are also raised as a **standing condition** beside tha
 entry, which no run stamp reaches (see [A standing condition outlives the run
 that raised it](#a-standing-condition-outlives-the-run-that-raised-it)), so the
 recurring-exchanges list line, the exchange's own page, and a later run all still
-read it. The other two reasons live outside the entry as well -- a lapsed bound
-is the record's own `expires`, and a restore since the last success its import
+read it. The other two reasons live outside the entry as well -- an expired
+shared secret is the record's own `expires`, and a restore since the last success its import
 marker, which a standing failed-closed handshake is read against exactly as a
 freshly recorded one is.
 
@@ -1408,7 +1409,7 @@ attack](notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 **Tier 1: local evidence explains the failure.** When the record holds a benign
 explanation -- a recorded persist failure on the last run (the structured
 `failureKind` bookkeeping), a detected restore-from-backup or import since the
-last successful run, or a lapsed age bound (which never even reaches here; see
+last successful run, or an expired shared secret (which never even reaches here; see
 [Expiry is its own state](#expiry-is-its-own-state-never-routed-through-attack-framing))
 -- the failure shows as that specific benign state with its specific
 recovery, which for each of them is re-invite, **without** the attack
@@ -1472,29 +1473,30 @@ in the same words.
 
 ### Expiry is its own state, never routed through attack framing
 
-A lapsed age bound (`expires` in the past) is detected **before** any
+An expired shared secret (`expires` in the past) is detected **before** any
 connection or handshake, so it is never ambiguous: it shows as its own
 unambiguous, benign state with plain re-invite copy -- mirroring the CLI's
 distinct expired-token error, which names re-invitation rather than the generic
 out-of-sync guidance -- and is never delivered through the desync/attack
 framing above.
 
-The age bound is **opt-in and off by default** -- exactly the CLI's no-bound
-default (see [Token age and rotation
-policy](SECURITY_DESIGN.md#token-age-and-rotation-policy)). It is set at setup
+The inactivity limit, which expires the shared secret after a number of days
+with no successful run, is **opt-in and off by default** -- exactly the CLI's
+no-limit default (see [Shared secret rotation and inactivity
+limit](SECURITY_DESIGN.md#shared-secret-rotation-and-inactivity-limit)). It is set at setup
 and remains editable afterward, from the exchange's detail surface, where it
 can also be cleared; an edit re-derives the bound conservatively and never
-moves the stored secret's lapse later than it already stood. When the operator
+moves the shared secret's expiry later than it already stood. When the operator
 sets one, the exchange shows its cadence implication -- "this exchange must run
-or be renewed within N days" -- for the operator to weigh against the
+within N days" -- for the operator to weigh against the
 partnership's known cadence. Where the exchange also has an agreed schedule,
 that weighing is done for them: a cadence whose next window opens at or past
-the bound is reported as a problem at entry, since the stored secret would
-lapse before the window that would have refreshed it. It is stated rather than
+the bound is reported as a problem at entry, since the shared secret would
+expire before the window that would have refreshed it. It is stated rather than
 refused -- an operator who renews by hand is entitled to that cadence -- and it
 is unreachable for an exchange that set no bound. Opt in for a dormant
 partnership: rotation caps exposure only for an exchange that actually runs, so
-an idle stored secret has no automatic exposure bound unless a max-age is set
+an idle shared secret has no automatic exposure bound unless an inactivity limit is set
 (see [The primary controls](SECURITY_DESIGN.md#the-primary-controls)).
 
 ### Recovery: fast re-invite
@@ -1832,7 +1834,7 @@ only way to let the exchange file again.
    verify page nor this app will read it back.
 2. **Start a fresh accounting.** This deletes the stored records permanently and
    lets the exchange file its disclosures again from its next run. It asks you to
-   confirm, and it keeps the exchange itself -- the agreed terms, the stored
+   confirm, and it keeps the exchange itself -- the agreed terms, the shared
    secret, the schedule, and the run history are untouched. You do not have to
    delete the exchange to recover its accounting.
 
@@ -2099,8 +2101,8 @@ confirm says to download those results and export the accounting first if they
 must be kept.
 Deletion is local and unilateral -- it does not notify the partner, whose own
 copy stands until they delete it or the partnership is re-established by
-re-invite -- and it is not secret expiry: an age bound (when set) caps how long
-the stored secret stays usable, while deletion removes this party's stored
+re-invite -- and it is not secret expiry: an inactivity limit (when set) caps how long
+the shared secret stays usable, while deletion removes this party's stored
 information entirely, whatever the secret's state. One custody note: deletion
 covers the browser's storage only; an exported backup file is under the
 operator's own custody and is disposed of by the operator (see [Moving the

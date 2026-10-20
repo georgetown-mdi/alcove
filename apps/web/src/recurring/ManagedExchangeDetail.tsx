@@ -33,6 +33,12 @@ import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 import { dateLabel } from "@psi/formatting";
 
 import {
+  MAX_AGE_DAYS_LABEL,
+  MAX_AGE_FIELD_NAME,
+  MAX_AGE_LABEL,
+} from "@psi/receiptsModel";
+
+import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
@@ -68,6 +74,7 @@ import {
   MAX_SCHEDULE_INTERVAL_DAYS,
   MAX_SCHEDULE_WINDOW_HOURS,
   MIN_SCHEDULE_WINDOW_HOURS,
+  SECRET_EXPIRES_BETWEEN_RUNS_TITLE,
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
   WORKING_FOLDER_UNSUPPORTED_NOTE,
@@ -668,17 +675,16 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <Checkbox
-        label="Set a maximum age for the stored secret"
-        description="Off by default. When set, the stored secret lapses if the exchange is not run or renewed within the age you choose."
+        label={MAX_AGE_LABEL}
         checked={maxAgeEnabled}
         onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
         mt="sm"
       />
       {maxAgeEnabled && (
         <NamedStepNumberInput
-          label="Maximum age in days"
+          label={MAX_AGE_DAYS_LABEL}
           stepUnit="day"
-          fieldName="maximum age"
+          fieldName={MAX_AGE_FIELD_NAME}
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -695,7 +701,7 @@ function LocalFieldsEditor({
       {cadenceProblem !== undefined && (
         <Alert
           color="yellow"
-          title="This cadence outruns the maximum age"
+          title={SECRET_EXPIRES_BETWEEN_RUNS_TITLE}
           mt="sm"
           mb="sm"
         >
@@ -703,16 +709,13 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        Shortening the maximum age applies now. Turning the bound off applies
-        now too and removes the age lapse entirely, so the stored secret no
-        longer lapses by age. A longer maximum age takes effect the next time
-        this exchange runs, so an edit never extends the stored secret&apos;s
-        life on its own.
+        Shortening it or turning it off applies now. A longer limit applies from
+        the next run.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined
-          ? `Stored secret lapses ${dateLabel(new Date(record.expires))}.`
-          : "No age bound is set; the stored secret does not lapse by age."}
+          ? `The shared secret expires ${dateLabel(new Date(record.expires))} unless the exchange runs first.`
+          : "The shared secret does not expire."}
       </p>
       <LocalDocumentFields
         draft={draft}
@@ -2025,7 +2028,7 @@ function UnreadableAccountingRecovery({
           be undone.
         </p>
         <p className={`${styles.small} ${styles.sub}`}>
-          The exchange itself is kept: its agreed terms, its stored secret, its
+          The exchange itself is kept: its agreed terms, its shared secret, its
           schedule, and its run history are untouched. Its next completed run
           files the first entry of the new accounting.
         </p>

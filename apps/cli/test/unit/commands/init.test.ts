@@ -260,7 +260,7 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
     (key) => bands.get(key.name)!.band === 95,
   );
   const listed = (names: string[]) =>
-    `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+    `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
   const isLessCertain = (key: (typeof shippedAt95)[number]) =>
     linkageKeyIsLessCertain(key, DEFAULT_LINKAGE_RULE_SET.linkageFields);
   const lessCertain = shippedAt95

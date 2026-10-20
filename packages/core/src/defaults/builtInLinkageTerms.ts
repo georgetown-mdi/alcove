@@ -19,8 +19,6 @@ import type {
   StandardizationTransformation,
 } from "../config/standardizationSchema";
 import type { SemanticType } from "../types";
-import { LESS_CERTAIN_KEY_COPY } from "../consent/consentFacts";
-import { linkageKeyIsLessCertain } from "../consent/lessCertainKey";
 
 /**
  * Neutral, stable identifier of the built-in linkage field set: the PII
@@ -467,48 +465,31 @@ export const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = Object.freeze([
   99, 95,
 ]);
 
-/** The rules a floor selects, as a phrase starting lowercase. */
-function rulesAtPrecisionFloor(floor: PrecisionFloor): string {
-  return `the built-in rules at ${String(floor)}% precision and above`;
-}
-
 /**
- * A floor as the control choosing it states it: a label naming the rules it
- * selects, and a description of the share of matched pairs that are the same
- * person. Where the rules it selects include a key `linkageKeyIsLessCertain`
- * marks, the share names those rules as the exception.
+ * What every screen calls each floor. No label states a band's share of
+ * matched pairs; why: `docs/notes/linkage-rule-catalog.md`, Bands.
  */
-export function precisionFloorStatement(floor: PrecisionFloor): {
-  label: string;
-  description: string;
-} {
-  const label = rulesAtPrecisionFloor(floor);
-  const share = `Of the pairs each rule matches, at least ${String(floor)} in 100 are the same person`;
-  const selectsLessCertain = linkageKeysAtPrecisionFloor(
-    DEFAULT_LINKAGE_RULE_SET,
-    { floor },
-  ).some((key) =>
-    linkageKeyIsLessCertain(key, DEFAULT_LINKAGE_RULE_SET.linkageFields),
-  );
-  return {
-    label: label.charAt(0).toUpperCase() + label.slice(1),
-    description: selectsLessCertain
-      ? `${share}, except rules marked ${LESS_CERTAIN_KEY_COPY.mark}, which ` +
-        "can fall below that when the files cover many people."
-      : `${share}.`,
-  };
+const PRECISION_FLOOR_LABELS: Readonly<Record<PrecisionFloor, string>> =
+  Object.freeze({
+    99: "Highest precision",
+    95: "Broader matching",
+  });
+
+/** The label of the control choice that selects `floor`. */
+export function precisionFloorLabel(floor: PrecisionFloor): string {
+  return PRECISION_FLOOR_LABELS[floor];
 }
 
 /**
- * The rules `selection` picks for a file, as every screen that names a
- * selection words it: the console's confirm step, the CLI's display before
- * the run, and the web invitation's review. Starts lowercase, for use after a
- * label.
+ * `selection`'s label as every screen that names a selection words it: the
+ * console's confirm step, the CLI's display before the run, and the web
+ * invitation's review. Starts lowercase, for use after a label.
  */
 export function precisionFloorSelectionStatement(
   selection: PrecisionFloorSelection,
 ): string {
-  return `${rulesAtPrecisionFloor(selection.floor)} that your file supplies`;
+  const label = precisionFloorLabel(selection.floor);
+  return label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 /**

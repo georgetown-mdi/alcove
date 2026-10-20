@@ -11,6 +11,7 @@ import "@mantine/core/styles.css";
 import {
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
+  RELAY_PAGE_INTRO,
   RelaySettingsScreen,
 } from "@exchange/RelaySettingsScreen";
 import {
@@ -88,9 +89,25 @@ afterEach(async () => {
 });
 
 describe("RelaySettingsScreen", () => {
+  test("opens with when a relay is needed and which party sets it up", async () => {
+    await mountScreen();
+
+    expect(RELAY_PAGE_INTRO).toBe(
+      "When a firewall blocks a direct connection to your partner, you can " +
+        "both connect through a TURN relay. If you run the relay, create the " +
+        "invitation so your partner uses it too.",
+    );
+    await expect.element(page.getByText(RELAY_PAGE_INTRO)).toBeVisible();
+  });
+
   test("states what the relay's operator learns before anything is saved", async () => {
     await mountScreen();
 
+    expect(RELAY_OPERATOR_DISCLOSURE).toBe(
+      "The relay's operator learns each party's network address for every " +
+        "exchange that uses it, even when no traffic is relayed. The relay " +
+        "passes only encrypted traffic and cannot read the exchange.",
+    );
     await expect
       .element(page.getByText(RELAY_OPERATOR_DISCLOSURE))
       .toBeVisible();
@@ -251,9 +268,8 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
         .query(),
     ).toBeNull();
     expect(document.body.textContent).toContain(
-      "A run also lists the relay named by an invitation you accept, after " +
-        "yours. The allowed relays an exchange sets on its review, or a saved " +
-        "exchange on its own page, can leave out any of these.",
+      "The allowed relays an exchange sets on its review, or a saved " +
+        "exchange on its own page, can leave out any of the relays saved here.",
     );
     expect(document.body.textContent).not.toContain(
       "connection.allowed_relays",
@@ -269,8 +285,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     ).toBeNull();
     expect(document.body.textContent).not.toContain("allowed relays");
     expect(document.body.textContent).toContain(
-      "A run also lists the relay named by an invitation you accept, after " +
-        "yours. Exchanges run from this console follow the command-line " +
+      "Exchanges run from this console follow the command-line " +
         "configuration: its connection.allowed_relays key decides which relays " +
         "an exchange may use, and a WebRTC invitation you accept that names a " +
         "TURN server sets it in the Allowed relays field on its first step. " +
@@ -387,6 +402,11 @@ describe("the relay test", () => {
       createElement(RelaySettingsScreen, { defaultRelay: () => SITE_RELAY }),
     );
 
+    expect(RELAY_TEST_INTRO).toBe(
+      "The test checks that this browser can reach each relay below. It does " +
+        "not check that an exchange's traffic will pass through it. Each " +
+        "relay's operator learns this browser's network address.",
+    );
     await expect.element(page.getByText(RELAY_TEST_INTRO)).toBeVisible();
     await expect
       .element(page.getByRole("listitem").filter({ hasText: TURN_URL }))

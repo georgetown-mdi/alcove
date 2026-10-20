@@ -251,6 +251,9 @@ describe("previewInferredTerms", () => {
         DEFAULT_PRECISION_FLOOR_SELECTION,
       )}.`,
     );
+    expect(DIRECT_RULE_SELECTION_NOTICE).toBe(
+      "Rules selected: broader matching.",
+    );
   });
 
   test("names the preview's first id column as the record identifier, in the CLI display's words", () => {

@@ -498,7 +498,7 @@ export function DeleteExchangeButton({
           <>
             <p>
               Delete {named}? This removes everything this browser holds for it
-              - the terms, the stored secret, its run history, its accounting of
+              - the terms, the shared secret, its run history, its accounting of
               disclosures, and any results a scheduled run left here for you to
               download - in one step. It cannot be undone here. Download those
               results and export the accounting first if you need to keep them.
@@ -746,11 +746,17 @@ function pairImportFailureAlert(error: unknown): ImportFailureAlert {
  * own: the `.alcove.key` a configuration is imported with. */
 const KEY_FILE_ACCEPT = ".key";
 
-/** The note the import gives on choosing the key file: the name Alcove
- * writes it under starts with a dot, which file choosers hide by default. */
+/** The files the import takes, and which of them runs the exchange here. */
+const IMPORT_FILE_CHOICES =
+  "Choose a backup file (.json) or an alcove.yaml. Add its .alcove.key to " +
+  "run the exchange here.";
+
+/** The note the import gives on choosing the key file: in the same selection
+ * as its `alcove.yaml`, which is the only way the import pairs them, and
+ * under a name starting with a dot, which file choosers hide by default. */
 const KEY_FILE_CHOOSER_NOTE =
-  "Choose both files at once. The key file's name starts with a dot, so the " +
-  "file chooser may hide it until you show hidden files.";
+  "Choose both files at once. The key file's name starts with a dot, so " +
+  "your file chooser may hide it.";
 
 /** The standing import affordance, shared by every list state -- empty,
  * populated, and read-failed -- so all render one markup. It takes either file
@@ -812,13 +818,7 @@ function ImportExchangeFile() {
   return (
     <div className={styles.callout}>
       <p className={styles.calloutLead}>Import an exchange.</p>
-      <p className={styles.small}>
-        If this browser was cleared or you are moving to a new device, import
-        the backup file you exported to bring the exchange back here. You can
-        also import a command-line alcove.yaml: on its own to edit its settings
-        here while it keeps running from the command line, or with the
-        .alcove.key beside it to run it in this browser.
-      </p>
+      <p className={styles.small}>{IMPORT_FILE_CHOICES}</p>
       <p className={`${styles.small} ${styles.sub}`}>{KEY_FILE_CHOOSER_NOTE}</p>
       <ImportOutcomeAlerts
         outcome={outcome}

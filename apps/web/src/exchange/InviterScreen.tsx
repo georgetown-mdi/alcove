@@ -59,6 +59,7 @@ import { triggerBlobDownload } from "@components/blobDownload";
 import { unlinkableFileAlert } from "@components/UnlinkableFileAlert";
 
 import {
+  columnEditKeysAnnouncement,
   demotionNotice,
   editorFromCsv,
   editorReprofiled,
@@ -1232,14 +1233,18 @@ export function InviterScreen() {
     dispatch({ type: "name-changed", name: next });
   }
 
-  function applyColumnEdit(result: {
-    editor: InviterEditor;
-    demotedIdentifiers: Array<string>;
-  }) {
+  function applyColumnEdit(
+    before: InviterEditor,
+    result: {
+      editor: InviterEditor;
+      demotedIdentifiers: Array<string>;
+    },
+  ) {
     dispatch({
       type: "column-edited",
       editor: result.editor,
       announcement: demotionNotice(result.demotedIdentifiers),
+      editorAnnouncement: columnEditKeysAnnouncement(before, result.editor),
     });
   }
 
@@ -1833,6 +1838,7 @@ export function InviterScreen() {
               metadata={editor.draft.metadata}
               onColumnType={(columnName: string, type: SemanticType) =>
                 applyColumnEdit(
+                  editor,
                   editorWithColumnType(editor, acquired, columnName, type),
                 )
               }
@@ -1841,6 +1847,7 @@ export function InviterScreen() {
                 choice: DisclosureChoice,
               ) =>
                 applyColumnEdit(
+                  editor,
                   editorWithColumnDisclosure(
                     editor,
                     acquired,

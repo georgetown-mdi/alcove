@@ -221,7 +221,7 @@ describe("the settings of the imported document", () => {
     await expect
       .element(
         page.getByRole("textbox", {
-          name: "Retention note for your own record",
+          name: "Retention note",
         }),
       )
       .toHaveValue(note);
@@ -233,6 +233,27 @@ describe("the settings of the imported document", () => {
     ).toBeNull();
   });
 
+  test("states under the days of inactivity how often the exchange must run", async () => {
+    const created = await createManagedExchange({
+      ...configurationOnly(),
+      tokenMaxAgeDays: 30,
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    const cadenceNote = page.getByText(
+      "This exchange must run within 30 days, or its shared secret expires " +
+        "and you re-invite your partner.",
+      { exact: true },
+    );
+    await expect.element(cadenceNote).toBeInTheDocument();
+
+    await page
+      .getByRole("checkbox", { name: "Shared secret expires after inactivity" })
+      .click();
+    await expect.element(cadenceNote).not.toBeInTheDocument();
+  });
+
   test("the edits land on the stored record and in the download", async () => {
     const created = await createManagedExchange(configurationOnly());
     const downloads = captureDownloads();
@@ -242,7 +263,7 @@ describe("the settings of the imported document", () => {
       await expect
         .element(
           page.getByRole("textbox", {
-            name: "Retention note for your own record",
+            name: "Retention note",
           }),
         )
         .toBeInTheDocument();
@@ -252,9 +273,7 @@ describe("the settings of the imported document", () => {
       await page
         .getByRole("combobox", { name: "How your file separates fields" })
         .selectOptions(";");
-      await page
-        .getByRole("textbox", { name: "Retention note for your own record" })
-        .fill(note);
+      await page.getByRole("textbox", { name: "Retention note" }).fill(note);
       await page.getByRole("button", { name: "Save settings" }).click();
 
       await expect

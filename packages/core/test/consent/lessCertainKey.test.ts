@@ -155,9 +155,8 @@ describe("LESS_CERTAIN_KEY_COPY", () => {
         "of birth fields, with no SSN, phone number, email or address. " +
         "Different people share these more often the more people the two " +
         "files cover, so some of its matches may be two different people. " +
-        "The built-in rules of this kind reach 95% precision only when both " +
-        "files cover few people. Leave such keys out when the files cover " +
-        "many people. A file of one age group, such as one school class, " +
+        "Leave such keys out when the files cover many people. A file of " +
+        "one age group, such as one school class, " +
         "counts as covering many people, because its members share birth " +
         "years.",
       acceptorRemedy:

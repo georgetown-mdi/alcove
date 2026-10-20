@@ -46,6 +46,13 @@ vi.mock("@utils/clientConfig", async (importOriginal) => {
   );
 });
 
+// Each test picks the runtime: this tab is never the installed app, so the
+// lobby's isInstalledRuntime() answers what the test sets.
+const runtime = vi.hoisted(() => ({ installed: false }));
+vi.mock("@utils/installedRuntime", () => ({
+  isInstalledRuntime: () => runtime.installed,
+}));
+
 const terms: LinkageTerms = {
   version: "1.0.0",
   identity: "County Health Department",
@@ -118,6 +125,7 @@ const app = createAppMount();
 afterEach(() => {
   app.unmount();
   build.console = false;
+  runtime.installed = false;
 });
 
 describe.each([
@@ -146,5 +154,53 @@ describe.each([
     expect(measureLayout()).toEqual(before);
     const textarea = field.element() as HTMLTextAreaElement;
     expect(textarea.scrollHeight).toBeGreaterThan(textarea.clientHeight);
+  });
+});
+
+describe("lobby pointer to the other ways to use Alcove", () => {
+  const line =
+    "For SFTP, a shared folder, or scheduled runs on your own servers, see " +
+    "the other ways to use Alcove.";
+  const pointer = () => page.getByText(/^For SFTP, a shared folder/);
+
+  test("the hosted build in a browser tab shows it and links the README", async () => {
+    build.console = false;
+    runtime.installed = false;
+    app.render(createElement(Lobby));
+    await expect
+      .element(
+        page.getByText(
+          "Find records you have in common while keeping your PII private, " +
+            "then exchange data about those records.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(pointer()).toHaveTextContent(line);
+    const link = page.getByRole("link", { name: "other ways to use Alcove" });
+    await expect
+      .element(link)
+      .toHaveAttribute(
+        "href",
+        "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove",
+      );
+    await expect.element(link).toHaveAttribute("target", "_blank");
+    await expect.element(link).toHaveAttribute("rel", "noreferrer");
+  });
+
+  test("the console build does not show it", async () => {
+    build.console = true;
+    runtime.installed = false;
+    app.render(createElement(Lobby));
+    await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
+    await expect.element(pointer()).not.toBeInTheDocument();
+  });
+
+  test("the installed web app does not show it", async () => {
+    build.console = false;
+    runtime.installed = true;
+    app.render(createElement(Lobby));
+    await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
+    await expect.element(pointer()).not.toBeInTheDocument();
   });
 });

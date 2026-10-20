@@ -7,12 +7,14 @@ import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
+import { MAX_AGE_DAYS_LABEL, MAX_AGE_LABEL } from "@psi/receiptsModel";
 import { updateManagedExchangeLocalFields } from "@psi/managed/managedExchangeStore";
 
 import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
+  maxAgeCadenceNote,
 } from "@exchange/manageOfferModel";
 import { AppPage } from "@components/AppPage";
 import styles from "@styles/app.module.css";
@@ -298,6 +300,7 @@ function ConfigurationSettingsEditor({
     maxAgeDays,
     editMaxAgeDays,
     maxAgeError,
+    tokenMaxAgeDays,
     tokenMaxAgeDaysEdit,
     documentEdits,
     labelValid,
@@ -307,6 +310,7 @@ function ConfigurationSettingsEditor({
     failed,
     submit,
   } = draft;
+  const cadenceNote = maxAgeCadenceNote(tokenMaxAgeDays);
 
   function save() {
     if (!canSave) return;
@@ -341,15 +345,14 @@ function ConfigurationSettingsEditor({
         mt="sm"
       />
       <Checkbox
-        label="Set a maximum age for the exchange's secret"
-        description="Off by default. When set, each command-line run stamps this age onto the secret it rotates, and the exchange must run again within it or you re-invite your partner."
+        label={MAX_AGE_LABEL}
         checked={maxAgeEnabled}
         onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
         mt="sm"
       />
       {maxAgeEnabled && (
         <NumberInput
-          label="Maximum age in days"
+          label={MAX_AGE_DAYS_LABEL}
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -359,6 +362,9 @@ function ConfigurationSettingsEditor({
           onChange={editMaxAgeDays}
           mt="xs"
         />
+      )}
+      {cadenceNote !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{cadenceNote}</p>
       )}
       <LocalDocumentFields draft={draft} />
       {failed && (

@@ -7,13 +7,11 @@
  */
 
 import {
-  DEFAULT_PRECISION_FLOOR_SELECTION,
   PRECISION_FLOORS,
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
-  precisionFloorSelectionStatement,
-  precisionFloorStatement,
+  precisionFloorLabel,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -311,11 +309,69 @@ export const AUTHORED_KEYS_FLOOR_NOTE =
 
 /** What the confirm before {@link editorWithBuiltInKeys} states. */
 export const USE_BUILT_IN_RULES_STATEMENT =
-  "This replaces the keys, fields and cleaning with the ones a new " +
-  "invitation starts with for your file: " +
-  `${precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION)}, ` +
-  "all turned on. The invitation will cite the built-in rules. Your " +
-  "columns and other settings stay. This cannot be undone.";
+  "Replace your keys, fields, and cleaning with the built-in ones? This " +
+  "cannot be undone.";
+
+/** The most precise floor, which Matching keys labels Highest precision. */
+const HIGHEST_PRECISION: PrecisionFloorSelection = {
+  floor: PRECISION_FLOORS[0],
+};
+
+/** The description of the Highest precision choice while
+ * {@link highestPrecisionUnavailable} disables it. */
+export const HIGHEST_PRECISION_UNAVAILABLE_REASON =
+  "Needs stronger identifiers in your file, such as an SSN, ZIP code, or " +
+  "phone number.";
+
+/** {@link HIGHEST_PRECISION_UNAVAILABLE_REASON} as a sentence naming the
+ * choice. */
+const HIGHEST_PRECISION_NEEDS =
+  `${precisionFloorLabel(HIGHEST_PRECISION.floor)} ` +
+  HIGHEST_PRECISION_UNAVAILABLE_REASON.charAt(0).toLowerCase() +
+  HIGHEST_PRECISION_UNAVAILABLE_REASON.slice(1);
+
+/** The key error while {@link highestPrecisionHeldWithoutRules}: Matching keys
+ * states the reason beside the choice, and the Problems list names the way
+ * out. */
+export const HIGHEST_PRECISION_UNAVAILABLE_PROBLEM = `${HIGHEST_PRECISION_NEEDS} Choose broader matching, or set a column's type or use so your file supplies one of these.`;
+
+/** Whether the session's columns, as their types and roles stand now, supply
+ * none of the rules Highest precision selects. Matching keys disables that
+ * choice while this holds, and enables it again once a column edit supplies
+ * one. */
+export function highestPrecisionUnavailable(editor: InviterEditor): boolean {
+  return !draftHasOfferedKeys({
+    ...editor.draft,
+    precisionFloorSelection: HIGHEST_PRECISION,
+  });
+}
+
+/** Whether Highest precision stays chosen on a guided list it leaves empty
+ * while broader matching would list rules ({@link highestPrecisionUnavailable}).
+ * The choice does not move on its own: the list refills once the columns
+ * supply one of its rules. */
+export function highestPrecisionHeldWithoutRules(
+  editor: InviterEditor,
+): boolean {
+  return (
+    editor.keysAuthored !== true &&
+    editor.draft.precisionFloorSelection?.floor === HIGHEST_PRECISION.floor &&
+    highestPrecisionUnavailable(editor) &&
+    editorOffersBuiltInKeys(editor)
+  );
+}
+
+/** The (i) beside Built-in rules: its accessible name, what it shows, and the
+ * link that follows. */
+export const BUILT_IN_RULES_INFO = {
+  label: "About the built-in rules",
+  explanation:
+    "Highest precision pairs a name or date of birth with an SSN, ZIP code, " +
+    "or phone number. In published studies, fewer than 1 in 100 of its " +
+    "matches were wrong. Broader matching adds rules that find more people, " +
+    "with a few more wrong matches.",
+  linkText: "How the rules were chosen",
+} as const;
 
 /** What Matching keys shows in place of the precision floor
  * control on the console, for keys a run of an opened configuration
@@ -356,52 +412,41 @@ export function keyOrderHelp(
   const lead =
     "Records are matched on these keys, tried in order, and earlier keys " +
     "match first.";
-  const [highest, ...lower] = PRECISION_FLOORS.filter(
-    (band) => band >= selection.floor,
-  ).map((band) => `${String(band)}%`);
-  return lower.length === 0
-    ? `${lead} The built-in keys are only the rules at ${highest} precision.`
-    : `${lead} The built-in keys come with the rules at ${highest} ` +
-        `precision first, then the rules at ${lower.join(", ")}.`;
-}
-
-/** The note for a guided key list the precision floor leaves empty while a
- * wider floor would not, or `undefined` otherwise. */
-export function emptyGuidedKeysNotice(
-  editor: InviterEditor,
-): string | undefined {
-  if (editor.keysAuthored === true || editor.draft.keys.length > 0)
-    return undefined;
-  const widest: PrecisionFloorSelection = {
-    floor: PRECISION_FLOORS.at(-1) ?? DEFAULT_PRECISION_FLOOR_SELECTION.floor,
-  };
-  if (
-    !draftHasOfferedKeys({ ...editor.draft, precisionFloorSelection: widest })
-  )
-    return undefined;
-  return (
-    "Your file's columns supply none of the built-in rules this choice " +
-    `selects. ${precisionFloorStatement(widest.floor).label} include rules ` +
-    "your file supplies."
-  );
+  return selection.floor === HIGHEST_PRECISION.floor
+    ? `${lead} The built-in keys are the highest-precision rules only.`
+    : `${lead} The built-in keys list the highest-precision rules first, ` +
+        "then the rules broader matching adds.";
 }
 
 /** What a screen reader hears after a precision floor choice
- * reseeds the guided keys: how many the list shows and how many are on, or,
- * for an empty list, the note beside it ({@link emptyGuidedKeysNotice}). */
+ * reseeds the guided keys: how many the list shows and how many are on, and
+ * for an empty list, why. */
 export function guidedKeysAnnouncement(editor: InviterEditor): string {
   const count = editor.draft.keys.length;
   if (count === 0)
-    return (
-      emptyGuidedKeysNotice(editor) ??
-      "Your file's columns supply none of the built-in rules."
-    );
+    return highestPrecisionHeldWithoutRules(editor)
+      ? `The key list shows no built-in rules. ${HIGHEST_PRECISION_NEEDS}`
+      : "The key list shows no built-in rules. Your file's columns supply " +
+          "none of them.";
   const on = enabledKeys(editor.draft).length;
   return (
     `The key list shows ${String(count)} built-in ` +
     `${count === 1 ? "rule" : "rules"} your file supplies, ` +
     `${on === count ? "all" : String(on)} turned on.`
   );
+}
+
+/** What a screen reader hears about the key list after a column edit: why the
+ * list is empty where the edit leaves Highest precision chosen over it
+ * ({@link highestPrecisionHeldWithoutRules}), and nothing otherwise. */
+export function columnEditKeysAnnouncement(
+  before: InviterEditor,
+  after: InviterEditor,
+): string {
+  return !highestPrecisionHeldWithoutRules(before) &&
+    highestPrecisionHeldWithoutRules(after)
+    ? guidedKeysAnnouncement(after)
+    : "";
 }
 
 /** Move the key at `index` one place earlier (`-1`) or later (`+1`); a move

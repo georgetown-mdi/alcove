@@ -8,6 +8,10 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
+import {
+  RETENTION_NOTE_NOTICE_WEB,
+  RETENTION_NOTE_PLACEHOLDER,
+} from "@psi/receiptsModel";
 import { ManageExchangeOffer } from "@exchange/ManageExchangeOffer";
 
 import { createAppMount } from "./renderApp";
@@ -102,12 +106,23 @@ describe("manage-exchange offer store gate", () => {
     );
 
     await expect
+      .element(
+        page.getByText(
+          "Each later run reads its input from input.csv in a folder you " +
+            "choose on this exchange's page after you save it. On that page " +
+            "you can run it yourself or schedule it to run while the Alcove " +
+            "app is open.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
       .element(page.getByRole("textbox", { name: "Label" }))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByRole("checkbox", {
-          name: "Set a maximum age for the stored secret",
+          name: "Shared secret expires after inactivity",
         }),
       )
       .toBeInTheDocument();
@@ -128,9 +143,14 @@ describe("manage-exchange offer store gate", () => {
       }),
     );
 
-    await page
-      .getByRole("textbox", { name: "Retention note for your own record" })
-      .fill("  Filed with the program office for seven years.  ");
+    const note = page.getByRole("textbox", { name: "Retention note" });
+    await expect
+      .element(note)
+      .toHaveAccessibleDescription(RETENTION_NOTE_NOTICE_WEB);
+    await expect
+      .element(note)
+      .toHaveAttribute("placeholder", RETENTION_NOTE_PLACEHOLDER);
+    await note.fill("  Filed with the program office for seven years.  ");
     await page
       .getByRole("button", { name: "Save as a recurring exchange" })
       .click();
@@ -164,7 +184,7 @@ describe("manage-exchange offer store gate", () => {
     expect(
       page
         .getByRole("checkbox", {
-          name: "Set a maximum age for the stored secret",
+          name: "Shared secret expires after inactivity",
         })
         .query(),
     ).toBeNull();

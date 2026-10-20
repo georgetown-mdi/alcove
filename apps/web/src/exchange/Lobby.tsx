@@ -12,6 +12,7 @@ import { listManagedLocalState } from "@psi/managed/managedLocalState";
 import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
 
 import { isConsoleBuild } from "@utils/clientConfig";
+import { isInstalledRuntime } from "@utils/installedRuntime";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
@@ -23,9 +24,9 @@ import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
+import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
 import { FILE_ASSURANCE_LINE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
-import { userGuideUrl } from "./userGuide";
 
 /**
  * The quick path's screen: two primary actions side by side -- invite someone to a
@@ -128,12 +129,22 @@ export function Lobby() {
       <main className={styles.lobby}>
         <h1>Alcove - encrypted matching and sharing</h1>
         <p className={styles.tagline}>
-          Find the records you both hold - without either of you seeing the
-          other&apos;s data.
+          Find records you have in common while keeping your PII private, then
+          exchange data about those records.
         </p>
-        {FILE_ASSURANCE_LINE !== undefined && (
+        {!isConsoleBuild() && !isInstalledRuntime() && (
           <p className={`${styles.sub} ${styles.small}`}>
-            {FILE_ASSURANCE_LINE}
+            For SFTP, a shared folder, or scheduled runs on your own servers,
+            see the{" "}
+            <Anchor
+              inherit
+              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              other ways to use Alcove
+            </Anchor>
+            .
           </p>
         )}
         <VisuallyHidden component="h2">
@@ -278,14 +289,14 @@ export function Lobby() {
         </p>
         <div className={styles.howItWorks}>
           <p>
-            <strong>How it works.</strong> Each of you keeps your file on your
-            own machine. Alcove compares cryptographic fingerprints of the
-            fields you match on - a private set intersection - so only the
-            records you both hold are revealed, and only to the people the terms
-            name.{" "}
+            <strong>How it works.</strong> Alcove compares cryptographic
+            fingerprints of the fields you match on - a private set intersection
+            - so only the records you both hold are revealed, and only to the
+            people the terms name.{" "}
             {isConsoleBuild()
               ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
               : "Your browser connects directly to your partner's."}
+            {FILE_ASSURANCE_LINE !== undefined && ` ${FILE_ASSURANCE_LINE}`}
           </p>
         </div>
       </main>

@@ -1,9 +1,11 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Checkbox,
+  Input,
   NativeSelect,
   Radio,
   Switch,
@@ -19,7 +21,7 @@ import {
   LinkageStrategySchema,
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
-  precisionFloorStatement,
+  precisionFloorLabel,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -35,18 +37,22 @@ import {
 } from "@psi/authoring/advancedInvite";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
+import { InfoButton } from "@components/InfoButton";
 import { LessCertainInfo } from "@components/LessCertainInfo";
 import { TermsImportExport } from "@components/TermsImportExport";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
+  BUILT_IN_RULES_INFO,
+  HIGHEST_PRECISION_UNAVAILABLE_REASON,
   MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
   editorCitationDrop,
   editorOffersUseBuiltInRules,
-  emptyGuidedKeysNotice,
+  highestPrecisionHeldWithoutRules,
+  highestPrecisionUnavailable,
   keyOrderHelp,
   keySatisfiabilityFor,
   seedRows,
@@ -54,6 +60,7 @@ import {
 
 import styles from "@styles/app.module.css";
 
+import { BUILT_IN_RULES_GUIDE_URL } from "./userGuide";
 import { CitationDropNotice } from "./CitationDropNotice";
 import { ConfirmedActionButton } from "./ConfirmedActionButton";
 
@@ -97,7 +104,10 @@ const SHARED_VALUE_CAVEAT =
  * The list holds the built-in keys the chosen floor selects for these
  * columns, each with a checkbox and the reorder pair, and a key core marks
  * less certain (`linkageKeyIsLessCertain`) states the mark in its label with
- * the button that explains it. The floor is withheld once the keys were
+ * the button that explains it. Highest precision is disabled, naming the
+ * columns it needs, while the columns supply none of its rules; still chosen
+ * then, it keeps the list empty and that reason replaces the key error
+ * (`highestPrecisionHeldWithoutRules`). The floor is withheld once the keys were
  * written in Expert authoring or loaded from a document, with a note saying
  * so and, where the file supplies a built-in
  * rule, an action that replaces those keys, fields and cleaning with a new
@@ -189,10 +199,6 @@ export function KeysTab({
     () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
     [editor, keysFromOpenedConfiguration, currentTerms],
   );
-  const emptyGuidedKeys = useMemo(
-    () => emptyGuidedKeysNotice(editor),
-    [editor],
-  );
   const keysAuthored = editor.keysAuthored === true;
   const offersUseBuiltInRules = useMemo(
     () => editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
@@ -200,6 +206,17 @@ export function KeysTab({
   );
   const selection =
     editor.draft.precisionFloorSelection ?? DEFAULT_PRECISION_FLOOR_SELECTION;
+  const highestUnavailable = useMemo(
+    () => highestPrecisionUnavailable(editor),
+    [editor],
+  );
+  const highestHeldWithoutRules = useMemo(
+    () => highestPrecisionHeldWithoutRules(editor),
+    [editor],
+  );
+  const builtInRulesLabelId = useId();
+  const builtInRulesDescriptionId = useId();
+  const builtInRulesName = useId();
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -240,33 +257,68 @@ export function KeysTab({
         </Alert>
       )}
       {!keysAuthored && !keysFromOpenedConfiguration && (
-        <>
-          <Radio.Group
-            label="Built-in rules"
-            description="Changing this lists the rules it selects that your file supplies, in the built-in order. Keys you turned off stay off, and keys it adds are turned on."
-            value={String(selection.floor)}
-            onChange={(value) => {
-              const floor = PRECISION_FLOORS.find(
-                (candidate) => String(candidate) === value,
-              );
-              if (floor !== undefined)
-                onPrecisionFloorSelection({ ...selection, floor });
-            }}
-          >
-            {PRECISION_FLOORS.map((floor) => {
-              const statement = precisionFloorStatement(floor);
-              return (
-                <Radio
-                  key={floor}
-                  value={String(floor)}
-                  label={statement.label}
-                  description={statement.description}
-                  mt="xs"
-                />
-              );
-            })}
-          </Radio.Group>
-        </>
+        <InfoButton
+          label={BUILT_IN_RULES_INFO.label}
+          explanation={
+            <>
+              {BUILT_IN_RULES_INFO.explanation}{" "}
+              <Anchor
+                inherit
+                href={BUILT_IN_RULES_GUIDE_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {BUILT_IN_RULES_INFO.linkText}
+              </Anchor>
+            </>
+          }
+          controls={(explanationId) => (
+            <>
+              <Input.Description id={builtInRulesDescriptionId}>
+                Changing this lists the rules it selects that your file
+                supplies, in the built-in order. Keys you turned off stay off,
+                and keys it adds are turned on.
+              </Input.Description>
+              {/* Not Radio.Group: the button beside the label would sit inside
+                  that label, and the group's name would take in the button's.
+                  Each radio takes the explanation. */}
+              <div
+                role="radiogroup"
+                aria-labelledby={builtInRulesLabelId}
+                aria-describedby={builtInRulesDescriptionId}
+              >
+                {PRECISION_FLOORS.map((floor) => {
+                  const unavailable =
+                    floor === PRECISION_FLOORS[0] && highestUnavailable;
+                  return (
+                    <Radio
+                      key={floor}
+                      name={builtInRulesName}
+                      value={String(floor)}
+                      checked={selection.floor === floor}
+                      onChange={() =>
+                        onPrecisionFloorSelection({ ...selection, floor })
+                      }
+                      label={precisionFloorLabel(floor)}
+                      disabled={unavailable}
+                      description={
+                        unavailable
+                          ? HIGHEST_PRECISION_UNAVAILABLE_REASON
+                          : undefined
+                      }
+                      aria-describedby={explanationId}
+                      mt="xs"
+                    />
+                  );
+                })}
+              </div>
+            </>
+          )}
+        >
+          <Input.Label id={builtInRulesLabelId} labelElement="div">
+            Built-in rules
+          </Input.Label>
+        </InfoButton>
       )}
       <p id="key-order-help">
         {keyOrderHelp(editor, keysFromOpenedConfiguration)}
@@ -275,8 +327,9 @@ export function KeysTab({
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
           const lessCertain = linkageKeyIsLessCertain(entry.key, keyFields);
-          const checkbox = (
+          const checkbox = (explanationId?: string) => (
             <Checkbox
+              aria-describedby={explanationId}
               checked={entry.enabled}
               onChange={(event) =>
                 onKeyEnabled(index, event.currentTarget.checked)
@@ -304,7 +357,7 @@ export function KeysTab({
                   {checkbox}
                 </LessCertainInfo>
               ) : (
-                checkbox
+                checkbox()
               )}
               <span className={styles.movers}>
                 <ActionIcon
@@ -328,17 +381,12 @@ export function KeysTab({
           );
         })}
       </ol>
-      {emptyGuidedKeys !== undefined && (
-        <Alert variant="light" color="gray" role="note" my="sm">
-          {emptyGuidedKeys}
-        </Alert>
-      )}
       {showsSharedValueKey && (
         <Alert variant="light" color="gray" role="note" my="sm">
           {SHARED_VALUE_CAVEAT}
         </Alert>
       )}
-      {keysError !== undefined && (
+      {keysError !== undefined && !highestHeldWithoutRules && (
         <p
           role="alert"
           className={`${styles.small} ${styles.statusLine} ${styles.statusLineDanger}`}

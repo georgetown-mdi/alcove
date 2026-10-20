@@ -4,7 +4,6 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
   linkageTermsFromRuleSet,
-  precisionFloorSelectionStatement,
 } from "@alcove/core";
 
 import {
@@ -21,8 +20,11 @@ import {
   seededCitationDropNotice,
   validateAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
+
 import {
+  HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
   USE_BUILT_IN_RULES_STATEMENT,
+  columnEditKeysAnnouncement,
   editorCitationDrop,
   editorFromCsv,
   editorOffersBuiltInKeys,
@@ -37,12 +39,17 @@ import {
   editorWithKeyMoved,
   editorWithPastedConfiguration,
   editorWithPrecisionFloorSelection,
-  emptyGuidedKeysNotice,
   enabledKeys,
   guidedKeysAnnouncement,
+  highestPrecisionHeldWithoutRules,
+  highestPrecisionUnavailable,
   keyOrderHelp,
 } from "@psi/inviterEditor";
-import { answersRows } from "@psi/inviterModel";
+import {
+  answersRows,
+  reviewValidation,
+  spineProblems,
+} from "@psi/inviterModel";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { PrecisionFloorSelection, Standardization } from "@alcove/core";
@@ -75,6 +82,14 @@ const namesAndDate = csvOf({
   first_name: "Ann",
   last_name: "Lee",
   dob: "01/02/1990",
+});
+
+// An email and a phone with no name or date of birth: no built-in rule at
+// either floor.
+const contactsOnly = csvOf({
+  client_id: "1",
+  email: "ann@example.org",
+  phone: "555-123-4567",
 });
 
 const AT_99: PrecisionFloorSelection = { floor: 99 };
@@ -473,11 +488,8 @@ describe("replacing authored keys with the built-in rules", () => {
 
   test("states in its confirm what replaces the keys", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
-      "This replaces the keys, fields and cleaning with the ones a new " +
-        "invitation starts with for your file: the built-in rules at 95% " +
-        "precision and above that your file supplies, all turned on. The " +
-        "invitation will cite the built-in rules. Your " +
-        "columns and other settings stay. This cannot be undone.",
+      "Replace your keys, fields, and cleaning with the built-in ones? This " +
+        "cannot be undone.",
     );
   });
 });
@@ -659,18 +671,18 @@ describe("the built-in rules as a reset to a new invitation's keys, fields and c
 describe("the key order help", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 
-  test("at 95% names the 99% rules first, then the 95% rules", () => {
+  test("under broader matching names the highest-precision rules first, then the rules it adds", () => {
     expect(keyOrderHelp(seeded)).toBe(
       "Records are matched on these keys, tried in order, and earlier keys " +
-        "match first. The built-in keys come with the rules at 99% precision " +
-        "first, then the rules at 95%.",
+        "match first. The built-in keys list the highest-precision rules " +
+        "first, then the rules broader matching adds.",
     );
   });
 
-  test("at 99% names the 99% rules only", () => {
+  test("under highest precision names its rules only", () => {
     expect(keyOrderHelp(editorWithPrecisionFloorSelection(seeded, AT_99))).toBe(
       "Records are matched on these keys, tried in order, and earlier keys " +
-        "match first. The built-in keys are only the rules at 99% precision.",
+        "match first. The built-in keys are the highest-precision rules only.",
     );
   });
 
@@ -700,31 +712,147 @@ describe("the announcement after a floor choice", () => {
     );
   });
 
-  test("reads the empty-list note for an empty list", () => {
+  test("states why highest precision lists no rules for these columns", () => {
     const empty = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", namesAndDate),
       AT_99,
     );
     expect(empty.draft.keys).toHaveLength(0);
-    expect(guidedKeysAnnouncement(empty)).toBe(emptyGuidedKeysNotice(empty));
-    expect(guidedKeysAnnouncement(empty)).not.toContain("0 built-in");
+    expect(guidedKeysAnnouncement(empty)).toBe(
+      "The key list shows no built-in rules. Highest precision needs " +
+        "stronger identifiers in your file, such as an SSN, ZIP code, or " +
+        "phone number.",
+    );
+  });
+
+  test("states an empty list where no choice lists a rule", () => {
+    const empty = editorWithPrecisionFloorSelection(
+      editorFromCsv("Dana", contactsOnly),
+      AT_99,
+    );
+    expect(empty.draft.keys).toHaveLength(0);
+    expect(guidedKeysAnnouncement(empty)).toBe(
+      "The key list shows no built-in rules. Your file's columns supply " +
+        "none of them.",
+    );
   });
 });
 
 describe("Review & create", () => {
-  test("names the floor the keys were selected with", () => {
+  test("names the floor the keys were selected with, in lowercase", () => {
     const seeded = editorFromCsv("Dana", withSsn);
-    const capitalized = (selection: PrecisionFloorSelection) => {
-      const statement = precisionFloorSelectionStatement(selection);
-      return statement.charAt(0).toUpperCase() + statement.slice(1);
-    };
-    expect(rulesSelected(seeded, withSsn)).toBe(
-      capitalized(DEFAULT_PRECISION_FLOOR_SELECTION),
-    );
+    expect(rulesSelected(seeded, withSsn)).toBe("broader matching");
     expect(
       rulesSelected(editorWithPrecisionFloorSelection(seeded, AT_99), withSsn),
-    ).toBe(
-      "The built-in rules at 99% precision and above that your file supplies",
+    ).toBe("highest precision");
+  });
+});
+
+describe("highest precision on columns that supply none of its rules", () => {
+  /** `editor` with the `ssn` column's role set, as the Columns step sets it. */
+  function withSsnRole(editor: InviterEditor, role: "ignored" | "match") {
+    return editorWithColumnDisclosure(editor, withSsn, "ssn", role).editor;
+  }
+
+  test("is available while the columns supply one of its rules, and not otherwise", () => {
+    expect(highestPrecisionUnavailable(editorFromCsv("Dana", withSsn))).toBe(
+      false,
+    );
+    expect(
+      highestPrecisionUnavailable(editorFromCsv("Dana", namesAndDate)),
+    ).toBe(true);
+    expect(
+      highestPrecisionUnavailable(editorFromCsv("Dana", contactsOnly)),
+    ).toBe(true);
+  });
+
+  test("follows a column role change both ways", () => {
+    const seeded = editorFromCsv("Dana", withSsn);
+    const ignored = withSsnRole(seeded, "ignored");
+    expect(highestPrecisionUnavailable(ignored)).toBe(true);
+    expect(highestPrecisionUnavailable(withSsnRole(ignored, "match"))).toBe(
+      false,
+    );
+  });
+
+  test("stays chosen over an empty list, with the reason in place of the Expert authoring message, until the columns supply a rule", () => {
+    const at99 = editorWithPrecisionFloorSelection(
+      editorFromCsv("Dana", withSsn),
+      AT_99,
+    );
+    expect(highestPrecisionHeldWithoutRules(at99)).toBe(false);
+
+    const held = withSsnRole(at99, "ignored");
+    expect(held.draft.precisionFloorSelection).toStrictEqual(AT_99);
+    expect(held.draft.keys).toHaveLength(0);
+    expect(highestPrecisionHeldWithoutRules(held)).toBe(true);
+    const validation = reviewValidation(held);
+    expect(validation.canGenerate).toBe(false);
+    expect(validation.errors.keys).toBe(HIGHEST_PRECISION_UNAVAILABLE_PROBLEM);
+    expect(HIGHEST_PRECISION_UNAVAILABLE_PROBLEM).toBe(
+      "Highest precision needs stronger identifiers in your file, such as " +
+        "an SSN, ZIP code, or phone number. Choose broader matching, or set " +
+        "a column's type or use so your file supplies one of these.",
+    );
+    expect(spineProblems(held).map((problem) => problem.message)).toContain(
+      HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
+    );
+
+    const refilled = withSsnRole(held, "match");
+    expect(refilled.draft.precisionFloorSelection).toStrictEqual(AT_99);
+    expect(keyNames(refilled)).toStrictEqual(catalogKeyNames(refilled, AT_99));
+    expect(keyNames(refilled).length).toBeGreaterThan(0);
+    expect(highestPrecisionHeldWithoutRules(refilled)).toBe(false);
+    expect(reviewValidation(refilled).errors.keys).toBeUndefined();
+  });
+
+  test("a column edit that empties the list under it says why, and no other column edit speaks of the keys", () => {
+    const seeded = editorFromCsv("Dana", withSsn);
+    const at99 = editorWithPrecisionFloorSelection(seeded, AT_99);
+    const held = withSsnRole(at99, "ignored");
+    expect(columnEditKeysAnnouncement(at99, held)).toBe(
+      "The key list shows no built-in rules. Highest precision needs " +
+        "stronger identifiers in your file, such as an SSN, ZIP code, or " +
+        "phone number.",
+    );
+
+    const stillHeld = editorWithColumnDisclosure(
+      held,
+      withSsn,
+      "program_code",
+      "payload",
+    ).editor;
+    expect(highestPrecisionHeldWithoutRules(stillHeld)).toBe(true);
+    expect(columnEditKeysAnnouncement(held, stillHeld)).toBe("");
+    expect(columnEditKeysAnnouncement(held, withSsnRole(held, "match"))).toBe(
+      "",
+    );
+    expect(
+      columnEditKeysAnnouncement(seeded, withSsnRole(seeded, "ignored")),
+    ).toBe("");
+  });
+
+  test("keeps the Expert authoring message where no choice lists a rule", () => {
+    const empty = editorWithPrecisionFloorSelection(
+      editorFromCsv("Dana", contactsOnly),
+      AT_99,
+    );
+    expect(highestPrecisionHeldWithoutRules(empty)).toBe(false);
+    expect(reviewValidation(empty).errors.keys).toBe(
+      validateAdvancedInvite(empty.draft, empty.seed).errors.keys,
+    );
+    expect(reviewValidation(empty).errors.keys).toContain("Expert authoring");
+  });
+
+  test("leaves keys written in Expert authoring to their own message", () => {
+    const at99 = editorWithPrecisionFloorSelection(
+      editorFromCsv("Dana", namesAndDate),
+      AT_99,
+    );
+    const authored = editorWithAuthoredDraft(at99, at99.draft);
+    expect(highestPrecisionHeldWithoutRules(authored)).toBe(false);
+    expect(reviewValidation(authored).errors.keys).not.toBe(
+      HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
     );
   });
 });
@@ -924,29 +1052,5 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
     const drop = editorCitationDrop(rewritten, false);
     expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
     expect(drop?.notice).toContain(USE_BUILT_IN_RULES_LABEL);
-  });
-});
-
-describe("an empty guided key list", () => {
-  test("names the wider choice that supplies rules", () => {
-    const seeded = editorFromCsv("Dana", namesAndDate);
-    expect(emptyGuidedKeysNotice(seeded)).toBeUndefined();
-    const empty = editorWithPrecisionFloorSelection(seeded, AT_99);
-    expect(empty.draft.keys).toHaveLength(0);
-    expect(emptyGuidedKeysNotice(empty)).toBe(
-      "Your file's columns supply none of the built-in rules this choice " +
-        "selects. The built-in rules at 95% precision and above include " +
-        "rules your file supplies.",
-    );
-  });
-
-  test("says nothing where no choice supplies a rule", () => {
-    const unmatchable = csvOf({ client_id: "1", program_code: "A" });
-    const at99 = editorWithPrecisionFloorSelection(
-      editorFromCsv("Dana", unmatchable),
-      AT_99,
-    );
-    expect(at99.draft.keys).toHaveLength(0);
-    expect(emptyGuidedKeysNotice(at99)).toBeUndefined();
   });
 });
