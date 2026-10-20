@@ -535,7 +535,7 @@ export function resolvedFirstWindowLabel(
  * or `undefined` when the two are compatible (including no policy set).
  *
  * A successful run restamps the bound to `tokenMaxAgeDays` past the run; a
- * cadence at or past the bound therefore lapses the stored secret before the
+ * cadence at or past the bound therefore expires the shared secret before the
  * next window could refresh it, and recovery is a re-invite. Raised rather
  * than refused: an operator who renews by hand is entitled to that cadence.
  */
@@ -550,8 +550,12 @@ export function cadenceAgainstTokenBound(
     tokenMaxAgeDays === 1 ? "1 day" : `${String(tokenMaxAgeDays)} days`;
   const cadence =
     intervalDays === 1 ? "every day" : `every ${String(intervalDays)} days`;
-  return `This exchange must run or be renewed within ${bound}, but a run window opens only ${cadence}. The stored secret stops working before the next window arrives, and recovering it means re-inviting your partner. Shorten the cadence, or lengthen the expiration time above it.`;
+  return `This exchange must run within ${bound}, but a run window opens only ${cadence}. The shared secret would expire before the next window, and you would have to re-invite your partner. Shorten the cadence, or raise the days of inactivity.`;
 }
+
+/** The title over {@link cadenceAgainstTokenBound}'s message. */
+export const SECRET_EXPIRES_BETWEEN_RUNS_TITLE =
+  "The shared secret would expire between runs";
 
 /**
  * The exchange's working folder, as the surfaces offer it: a folder this operator

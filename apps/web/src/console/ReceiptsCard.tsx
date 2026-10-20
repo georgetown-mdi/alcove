@@ -22,7 +22,7 @@ import { useRequestGeneration } from "@utils/requestGeneration";
 
 import {
   CERTIFICATE_EXPORT_NOTICE,
-  MAX_AGE_DESCRIPTION,
+  MAX_AGE_DAYS_LABEL,
   MAX_AGE_LABEL,
   RETENTION_NOTE_LABEL,
   RETENTION_NOTE_NOTICE,
@@ -478,7 +478,6 @@ export function ReceiptsCard({
           <Stack gap={4}>
             <Checkbox
               label={MAX_AGE_LABEL}
-              description={MAX_AGE_DESCRIPTION}
               checked={draft.maxAgeEnabled}
               onChange={(event) =>
                 set("maxAgeEnabled", event.currentTarget.checked)
@@ -486,7 +485,7 @@ export function ReceiptsCard({
             />
             {draft.maxAgeEnabled && (
               <NumberInput
-                label="Expiration time in days"
+                label={MAX_AGE_DAYS_LABEL}
                 value={draft.maxAgeDays}
                 min={1}
                 max={MAX_TOKEN_MAX_AGE_DAYS}

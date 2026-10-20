@@ -335,11 +335,11 @@ describe("a cadence weighed against the max-token-age bound", () => {
 
   test("a cadence that outruns the bound is reported, in the bound's own terms", () => {
     const problem = cadenceAgainstTokenBound(30, 7);
-    expect(problem).toMatch(/must run or be renewed within 7 days/i);
+    expect(problem).toMatch(/must run within 7 days/i);
     expect(problem).toMatch(/every 30 days/);
     // It names the recovery rather than leaving the operator with a warning they
     // cannot act on.
-    expect(problem).toMatch(/re-inviting your partner/i);
+    expect(problem).toMatch(/re-invite your partner/i);
     expect(problem).toMatch(/shorten the cadence/i);
   });
 

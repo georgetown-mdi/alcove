@@ -107,7 +107,7 @@ describe("manage-exchange offer store gate", () => {
     await expect
       .element(
         page.getByRole("checkbox", {
-          name: "Set an expiration time for the secret",
+          name: "Shared secret expires after inactivity",
         }),
       )
       .toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("manage-exchange offer store gate", () => {
     expect(
       page
         .getByRole("checkbox", {
-          name: "Set an expiration time for the secret",
+          name: "Shared secret expires after inactivity",
         })
         .query(),
     ).toBeNull();

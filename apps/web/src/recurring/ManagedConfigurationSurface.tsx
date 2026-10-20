@@ -7,6 +7,7 @@ import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
+import { MAX_AGE_DAYS_LABEL, MAX_AGE_LABEL } from "@psi/receiptsModel";
 import { updateManagedExchangeLocalFields } from "@psi/managed/managedExchangeStore";
 
 import {
@@ -341,15 +342,14 @@ function ConfigurationSettingsEditor({
         mt="sm"
       />
       <Checkbox
-        label="Set an expiration time for the exchange's secret"
-        description="Off by default. When set, each command-line run stamps this age onto the secret it rotates, and the exchange must run again within it or you re-invite your partner."
+        label={MAX_AGE_LABEL}
         checked={maxAgeEnabled}
         onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
         mt="sm"
       />
       {maxAgeEnabled && (
         <NumberInput
-          label="Expiration time in days"
+          label={MAX_AGE_DAYS_LABEL}
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}

@@ -498,7 +498,7 @@ export function DeleteExchangeButton({
           <>
             <p>
               Delete {named}? This removes everything this browser holds for it
-              - the terms, the stored secret, its run history, its accounting of
+              - the terms, the shared secret, its run history, its accounting of
               disclosures, and any results a scheduled run left here for you to
               download - in one step. It cannot be undone here. Download those
               results and export the accounting first if you need to keep them.

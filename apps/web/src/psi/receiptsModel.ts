@@ -595,8 +595,8 @@ export const RETENTION_NOTE_CONTROL_CHAR_PROBLEM =
  * The composed configuration's schema refuses the same value
  * (`authentication.token_max_age_days`). */
 export const MAX_AGE_PROBLEM =
-  "The secret's expiration time must be a whole number of days from 1 to " +
-  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn the expiration time off.`;
+  "Days of inactivity must be a whole number from 1 to " +
+  `${MAX_TOKEN_MAX_AGE_DAYS}. Correct it, or turn this setting off.`;
 
 /**
  * Everything wrong with the draft, as messages to show beside the card --
@@ -838,14 +838,22 @@ export const RETENTION_NOTE_NOTICE =
   "the agreed terms. Write where this result is filed and how long it is kept - " +
   "never a name, an identifier, or any value from the data.";
 
-/** The maximum-age control's label. */
-export const MAX_AGE_LABEL = "Set an expiration time for the secret";
+/** The label of the control that opts in to the shared secret's time limit,
+ * on every surface that authors it. */
+export const MAX_AGE_LABEL = "Shared secret expires after inactivity";
 
-/** The line under the maximum-age control: what turning it on does. */
-export const MAX_AGE_DESCRIPTION =
-  "Off by default. When set, each exchange writes its new shared secret to " +
-  "the key file with an expiry this many days out, and a run after that " +
-  "expiry is refused.";
+/** The day-count field's label under {@link MAX_AGE_LABEL}. */
+export const MAX_AGE_DAYS_LABEL = "Days of inactivity";
+
+/** The day-count field's name as its step buttons say it ("One more day of
+ * inactivity"). */
+export const MAX_AGE_FIELD_NAME = "inactivity";
+
+/** What a time limit of `days` commits the operator to, on every surface that
+ * authors one. */
+export function inactivityCadenceNote(days: number): string {
+  return `This exchange must run within ${dayCount(days)}, or its shared secret expires and you re-invite your partner.`;
+}
 
 /**
  * What a maximum age commits the operator to, shown under the control while
@@ -854,10 +862,7 @@ export const MAX_AGE_DESCRIPTION =
 export function maxAgeCadenceNote(draft: ReceiptsDraft): string | undefined {
   const days = draftMaxAgeDays(draft);
   if (days === undefined) return undefined;
-  return (
-    `Run this exchange again within ${dayCount(days)} of each exchange, or its shared ` +
-    "secret expires and you invite your partner again."
-  );
+  return inactivityCadenceNote(days);
 }
 
 /**
@@ -981,7 +986,7 @@ export function receiptsSummary(draft: ReceiptsDraft): string {
   const maxAge =
     days === undefined
       ? ""
-      : `; secret expires ${dayCount(days)} after each exchange`;
+      : `; shared secret expires after ${dayCount(days)} of inactivity`;
   return `${receiptsRecordSummary(fields)}${maxAge}`;
 }
 

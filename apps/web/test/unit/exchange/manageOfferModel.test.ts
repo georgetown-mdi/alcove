@@ -381,9 +381,10 @@ describe("the label cap", () => {
 
 describe("maxAgeCadenceNote", () => {
   test("names the cadence implication when a policy is set", () => {
-    const note = maxAgeCadenceNote(30);
-    expect(note).toContain("30 days");
-    expect(note).toContain("run or be renewed");
+    expect(maxAgeCadenceNote(30)).toBe(
+      "This exchange must run within 30 days, or its shared secret expires " +
+        "and you re-invite your partner.",
+    );
   });
 
   test("singularizes one day", () => {

@@ -52,8 +52,8 @@ function StepForm({ fields }: { fields: Array<FieldSpec> }) {
 }
 
 const MAX_AGE: FieldSpec = {
-  label: "Expiration time in days",
-  fieldName: "expiration time",
+  label: "Days of inactivity",
+  fieldName: "inactivity",
   initial: 2,
   min: 1,
   max: 3,
@@ -83,8 +83,8 @@ describe("NamedStepNumberInput step buttons", () => {
       (button) => button.getAttribute("aria-label"),
     );
     expect(names).toEqual([
-      "One more day of expiration time",
-      "One fewer day of expiration time",
+      "One more day of inactivity",
+      "One fewer day of inactivity",
       "5 more days of window interval",
       "5 fewer days of window interval",
     ]);

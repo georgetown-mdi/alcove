@@ -20,7 +20,7 @@ import { minimalPreparedExchange } from "@alcove/core/testing";
 
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
-import { SECRET_EXPIRATION_LABEL } from "@exchange/manageOfferModel";
+import { MAX_AGE_LABEL } from "@psi/receiptsModel";
 import { stagesFor } from "@exchange/exchangeRun";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -281,7 +281,7 @@ describe("the recurring-save offer appears at completion", () => {
 
     await completeRun(1);
     await expect
-      .element(page.getByRole("checkbox", { name: SECRET_EXPIRATION_LABEL }))
+      .element(page.getByRole("checkbox", { name: MAX_AGE_LABEL }))
       .toBeInTheDocument();
   });
 
@@ -292,7 +292,7 @@ describe("the recurring-save offer appears at completion", () => {
 
     await completeRun(1);
     await expect
-      .element(page.getByRole("checkbox", { name: SECRET_EXPIRATION_LABEL }))
+      .element(page.getByRole("checkbox", { name: MAX_AGE_LABEL }))
       .toBeInTheDocument();
   });
 });

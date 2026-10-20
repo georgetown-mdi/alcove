@@ -12,9 +12,12 @@ import {
 import { IconCircleCheck } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 
-import { InfoButton } from "@components/InfoButton";
+import {
+  MAX_AGE_DAYS_LABEL,
+  MAX_AGE_LABEL,
+  RETENTION_NOTE_LABEL,
+} from "@psi/receiptsModel";
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
-import { RETENTION_NOTE_LABEL } from "@psi/receiptsModel";
 import { probeManagedStoreOpen } from "@psi/managed/managedExchangeStore";
 
 import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
@@ -26,9 +29,6 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
-  SECRET_EXPIRATION_EXPLANATION,
-  SECRET_EXPIRATION_INFO_LABEL,
-  SECRET_EXPIRATION_LABEL,
   labelWithinCap,
   maxAgeCadenceNote,
   maxAgeDaysError,
@@ -115,8 +115,8 @@ export function ManageExchangeOffer({
           Saved as a recurring exchange.
         </p>
         <p className={styles.small}>
-          Its terms and secret are stored in this browser so you can run it
-          again with the same partner. Find it in your{" "}
+          Its terms and shared secret are stored in this browser so you can run
+          it again with the same partner. Find it in your{" "}
           <Anchor inherit component={Link} to="/saved">
             recurring exchanges
           </Anchor>
@@ -173,9 +173,9 @@ export function ManageExchangeOffer({
     <div className={styles.callout}>
       <p className={styles.calloutLead}>Save as a recurring exchange</p>
       <p className={styles.small}>
-        Save this exchange&apos;s terms and secret in this browser to run it
-        again with the same partner, without a new invitation. Skip this for a
-        one-off exchange: nothing is saved.
+        Save this exchange&apos;s terms and shared secret in this browser to run
+        it again with the same partner, without a new invitation. Skip this for
+        a one-off exchange: nothing is saved.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {workingDirectoryGrantSupported()
@@ -195,20 +195,15 @@ export function ManageExchangeOffer({
         onChange={(event) => setLabel(event.currentTarget.value)}
         mt="sm"
       />
-      <InfoButton
-        label={SECRET_EXPIRATION_INFO_LABEL}
-        explanation={SECRET_EXPIRATION_EXPLANATION}
+      <Checkbox
+        label={MAX_AGE_LABEL}
+        checked={maxAgeEnabled}
+        onChange={(event) => setMaxAgeEnabled(event.currentTarget.checked)}
         mt="sm"
-      >
-        <Checkbox
-          label={SECRET_EXPIRATION_LABEL}
-          checked={maxAgeEnabled}
-          onChange={(event) => setMaxAgeEnabled(event.currentTarget.checked)}
-        />
-      </InfoButton>
+      />
       {maxAgeEnabled && (
         <NumberInput
-          label="Expiration time in days"
+          label={MAX_AGE_DAYS_LABEL}
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}

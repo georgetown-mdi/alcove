@@ -31,7 +31,7 @@ export class ManagedExchangeExpiredError extends Error {
   /** The lapsed `expires` instant (ISO 8601 UTC) the record held. */
   readonly expires: string;
   constructor(expires: string) {
-    super("managed exchange stored secret has lapsed; re-invite to run again");
+    super("managed exchange shared secret has expired; re-invite to run again");
     this.name = "ManagedExchangeExpiredError";
     this.expires = expires;
   }

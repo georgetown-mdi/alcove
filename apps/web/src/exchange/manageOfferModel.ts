@@ -12,7 +12,10 @@
 
 import { MAX_TEXT_LENGTH, MAX_TOKEN_MAX_AGE_DAYS } from "@alcove/core";
 
-import { MAX_AGE_LABEL, RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
+import {
+  RETENTION_NOTE_PROBLEM,
+  inactivityCadenceNote,
+} from "@psi/receiptsModel";
 import { NOTE_CONTROL_CHAR_PATTERN } from "@jobContract/intentSchemas";
 import { maxAgeDaysError } from "@psi/tokenMaxAge";
 
@@ -240,19 +243,8 @@ export function maxAgeCadenceNote(
   tokenMaxAgeDays: number | undefined,
 ): string | undefined {
   if (tokenMaxAgeDays === undefined) return undefined;
-  const days = tokenMaxAgeDays === 1 ? "1 day" : `${tokenMaxAgeDays} days`;
-  return `This exchange must run or be renewed within ${days}, or its stored secret stops working and you re-invite your partner.`;
+  return inactivityCadenceNote(tokenMaxAgeDays);
 }
-
-/** The label of the control that opts in to a stored secret's maximum age. */
-export const SECRET_EXPIRATION_LABEL = MAX_AGE_LABEL;
-
-/** The accessible name of the info button beside that control. */
-export const SECRET_EXPIRATION_INFO_LABEL = "What the expiration time does";
-
-/** What the info button beside that control shows. */
-export const SECRET_EXPIRATION_EXPLANATION =
-  "The stored secret stops working if the exchange is not run or renewed within this time.";
 
 /** The operator guidance for the label field (docs/SECURITY_DESIGN.md,
  * "Metadata at rest: presence and shape"). */

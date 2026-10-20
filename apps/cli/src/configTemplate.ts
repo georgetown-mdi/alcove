@@ -416,7 +416,8 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # authentication: partner shared-secret policy. The secret itself lives in the
 # key file, never here; only policy belongs in the config.
 # authentication:
-#   # Stamp a maximum age (in days) onto the rotated token; omit for no limit.
+#   # The shared secret expires after this many days of inactivity (no
+#   # successful run); omit it and the shared secret does not expire.
 #   token_max_age_days: 365
 
 # signing: receipt signing and partner-certificate trust. mode is none or

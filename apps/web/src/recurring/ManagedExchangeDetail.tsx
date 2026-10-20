@@ -25,7 +25,6 @@ import {
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
-import { InfoButton } from "@components/InfoButton";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
@@ -34,12 +33,15 @@ import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 import { dateLabel } from "@psi/formatting";
 
 import {
+  MAX_AGE_DAYS_LABEL,
+  MAX_AGE_FIELD_NAME,
+  MAX_AGE_LABEL,
+} from "@psi/receiptsModel";
+
+import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
-  SECRET_EXPIRATION_EXPLANATION,
-  SECRET_EXPIRATION_INFO_LABEL,
-  SECRET_EXPIRATION_LABEL,
   maxAgeCadenceNote,
 } from "@exchange/manageOfferModel";
 import styles from "@styles/app.module.css";
@@ -72,6 +74,7 @@ import {
   MAX_SCHEDULE_INTERVAL_DAYS,
   MAX_SCHEDULE_WINDOW_HOURS,
   MIN_SCHEDULE_WINDOW_HOURS,
+  SECRET_EXPIRES_BETWEEN_RUNS_TITLE,
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
   WORKING_FOLDER_UNSUPPORTED_NOTE,
@@ -671,22 +674,17 @@ function LocalFieldsEditor({
           {resultSizeWarning}
         </Alert>
       )}
-      <InfoButton
-        label={SECRET_EXPIRATION_INFO_LABEL}
-        explanation={SECRET_EXPIRATION_EXPLANATION}
+      <Checkbox
+        label={MAX_AGE_LABEL}
+        checked={maxAgeEnabled}
+        onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
         mt="sm"
-      >
-        <Checkbox
-          label={SECRET_EXPIRATION_LABEL}
-          checked={maxAgeEnabled}
-          onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
-        />
-      </InfoButton>
+      />
       {maxAgeEnabled && (
         <NamedStepNumberInput
-          label="Expiration time in days"
+          label={MAX_AGE_DAYS_LABEL}
           stepUnit="day"
-          fieldName="expiration time"
+          fieldName={MAX_AGE_FIELD_NAME}
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -703,7 +701,7 @@ function LocalFieldsEditor({
       {cadenceProblem !== undefined && (
         <Alert
           color="yellow"
-          title="This cadence outruns the expiration time"
+          title={SECRET_EXPIRES_BETWEEN_RUNS_TITLE}
           mt="sm"
           mb="sm"
         >
@@ -711,16 +709,13 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        Shortening the expiration time applies now. Turning the bound off
-        applies now too and removes the expiration entirely, so the stored
-        secret no longer expires by time. A longer expiration time takes effect
-        the next time this exchange runs, so an edit never extends the stored
-        secret&apos;s life on its own.
+        Shortening it or turning it off applies now. A longer limit applies from
+        the next run.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined
-          ? `The secret expires ${dateLabel(new Date(record.expires))}.`
-          : "No expiration time is set; the secret does not expire."}
+          ? `The shared secret expires ${dateLabel(new Date(record.expires))} unless the exchange runs first.`
+          : "The shared secret does not expire."}
       </p>
       <LocalDocumentFields
         draft={draft}
@@ -2033,7 +2028,7 @@ function UnreadableAccountingRecovery({
           be undone.
         </p>
         <p className={`${styles.small} ${styles.sub}`}>
-          The exchange itself is kept: its agreed terms, its stored secret, its
+          The exchange itself is kept: its agreed terms, its shared secret, its
           schedule, and its run history are untouched. Its next completed run
           files the first entry of the new accounting.
         </p>

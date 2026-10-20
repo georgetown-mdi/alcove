@@ -469,9 +469,13 @@ describe("managed exchange detail local fields", () => {
     );
 
     // Anchored so it targets the derived readback line, not the cadence note,
-    // which also contains "stored secret stops working".
+    // which also contains "shared secret expires".
     await expect
-      .element(page.getByText(/^The secret expires /))
+      .element(
+        page.getByText(
+          /^The shared secret expires .+ unless the exchange runs first\.$/,
+        ),
+      )
       .toBeInTheDocument();
   });
 
@@ -506,8 +510,8 @@ describe("managed exchange detail local fields", () => {
 
     await expect
       .element(
-        page.getByText("the secret does not expire", {
-          exact: false,
+        page.getByText("The shared secret does not expire.", {
+          exact: true,
         }),
       )
       .toBeInTheDocument();
@@ -978,19 +982,19 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("30");
     await page
       .getByRole("checkbox", {
-        name: "Set an expiration time for the secret",
+        name: "Shared secret expires after inactivity",
       })
       .click();
-    await page.getByLabelText("Expiration time in days").fill("7");
+    await page.getByLabelText("Days of inactivity").fill("7");
 
     await expect
-      .element(page.getByText("This cadence outruns the expiration time"))
+      .element(page.getByText("The shared secret would expire between runs"))
       .toBeInTheDocument();
     // The bound's own terms, and the cadence it is weighed against.
     await expect
       .element(
         page.getByText(
-          "must run or be renewed within 7 days, but a run window opens only every 30 days",
+          "must run within 7 days, but a run window opens only every 30 days",
           { exact: false },
         ),
       )
@@ -1012,16 +1016,16 @@ describe("managed exchange detail schedule entry", () => {
     await page.getByLabelText("A window opens every (days)").fill("7");
     await page
       .getByRole("checkbox", {
-        name: "Set an expiration time for the secret",
+        name: "Shared secret expires after inactivity",
       })
       .click();
-    await page.getByLabelText("Expiration time in days").fill("30");
+    await page.getByLabelText("Days of inactivity").fill("30");
 
     await expect
-      .element(page.getByLabelText("Expiration time in days"))
+      .element(page.getByLabelText("Days of inactivity"))
       .toHaveValue("30");
     expect(
-      page.getByText("This cadence outruns the expiration time").query(),
+      page.getByText("The shared secret would expire between runs").query(),
     ).toBeNull();
   });
 });

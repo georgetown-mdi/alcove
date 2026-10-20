@@ -484,7 +484,7 @@ describe("savedExchangeRow: a standing condition", () => {
       undefined,
       NOW,
     );
-    expect(row.status).toBe("Stored secret expired; re-invite to run again");
+    expect(row.status).toBe("Shared secret expired; re-invite to run again");
     expect(row.expired).toBe(true);
   });
 

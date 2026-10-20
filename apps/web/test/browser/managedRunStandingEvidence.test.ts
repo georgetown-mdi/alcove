@@ -449,7 +449,7 @@ describe("a compromise response the operator has reached", () => {
   test("leaves the live failure no re-invite to offer beside it", async () => {
     expectConsole(
       "error",
-      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+      "ManagedExchangeExpiredError: managed exchange shared secret has expired; re-invite to run again",
     );
     // The standing gate is answered "something does not add up" while the live
     // failure is a lapsed bound, whose own recovery is a fresh invitation. The
@@ -471,7 +471,7 @@ describe("a compromise response the operator has reached", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has expired"))
+      .element(page.getByText("This exchange's shared secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
     // The live failure really is offering the re-invite before the gate is
@@ -499,7 +499,7 @@ describe("a compromise response the operator has reached", () => {
     // The lapse is still stated: the compromise response withdraws the offer, not
     // the account of what happened.
     expect(app.container.textContent).toContain(
-      "This exchange's stored secret has expired",
+      "This exchange's shared secret has expired",
     );
   });
 
@@ -920,7 +920,7 @@ describe("a compromise response this device could not save", () => {
     expectConsole(
       "error",
       "Error: the write failed",
-      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+      "ManagedExchangeExpiredError: managed exchange shared secret has expired; re-invite to run again",
     );
     // The unsaved answer stands until a run starts, not over whatever the page
     // shows next. A run since then has a failure of its own, classified
@@ -933,7 +933,7 @@ describe("a compromise response this device could not save", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has expired"))
+      .element(page.getByText("This exchange's shared secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
 
@@ -1077,7 +1077,7 @@ describe("a standing condition beside a live failure of another tier", () => {
   test("leaves the re-invite to the live failure rather than offering a second", async () => {
     expectConsole(
       "error",
-      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+      "ManagedExchangeExpiredError: managed exchange shared secret has expired; re-invite to run again",
     );
     // A lapsed bound over a standing persist failure: two states, one recovery
     // between them -- a single fresh invitation minted from this record. The
@@ -1100,7 +1100,7 @@ describe("a standing condition beside a live failure of another tier", () => {
     await expect.element(runButton).toBeEnabled();
     await runButton.click();
     await expect
-      .element(page.getByText("This exchange's stored secret has expired"))
+      .element(page.getByText("This exchange's shared secret has expired"))
       .toBeInTheDocument();
     await flushPendingUpdates();
 

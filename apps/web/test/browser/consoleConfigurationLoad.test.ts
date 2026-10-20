@@ -1056,19 +1056,21 @@ describe("the review step of an opened configuration's run", () => {
     expect(app.container.textContent).not.toContain(EDITED_TERMS_TITLE);
   });
 
-  test("the shared secret's maximum age starts from the file's", async () => {
+  test("the shared secret's inactivity limit starts from the file's", async () => {
     await goToReview({ tokenMaxAgeDays: 30 });
     await expect
-      .element(page.getByText(/secret expires 30 days after each exchange/))
+      .element(
+        page.getByText(/shared secret expires after 30 days of inactivity/),
+      )
       .toBeInTheDocument();
     await page
       .getByRole("button", { name: /Receipts and record keeping/ })
       .click();
     await expect
-      .element(page.getByLabelText("Set an expiration time for the secret"))
+      .element(page.getByLabelText("Shared secret expires after inactivity"))
       .toBeChecked();
     await expect
-      .element(page.getByLabelText("Expiration time in days"))
+      .element(page.getByLabelText("Days of inactivity"))
       .toHaveValue("30");
   });
 
