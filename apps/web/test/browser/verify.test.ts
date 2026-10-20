@@ -1,6 +1,14 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -22,6 +30,7 @@ import { buildExchangeRecord, signReceiptContent } from "@alcove/core/testing";
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { startPageTrace } from "./pageTrace";
 
 import type {
   DualSignedRecord,
@@ -37,6 +46,8 @@ import type {
   CommittedPayload,
   ReceiptContent,
 } from "@alcove/core/testing";
+
+import type { PageTrace } from "./pageTrace";
 
 /** Each fixture party's own name, held apart from the terms: `identity` is
  * optional there, so reading it back would type as possibly absent where these
@@ -242,6 +253,7 @@ async function uploadFile(
       message: `no chosen-file card named '${file.name}' after the upload`,
     })
     .toBeGreaterThan(0);
+  trace?.mark(`the chosen-file card for '${file.name}' shown`);
 }
 
 // The Mantine Dropzone renders a hidden file input; the page's dropzones appear
@@ -272,14 +284,34 @@ async function mountVerifyScreen() {
   await expect
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Verify an exchange record");
+  trace?.mark("the verify screen mounted");
 }
 
-afterEach(async () => {
+// A failure here also reports what the page did, in order with the times: the
+// user events, the Verify buttons a run disables while it reads, and the
+// verdict region. A verdict that never appears then shows whether its run
+// never started, was still reading, or ended without one.
+let trace: PageTrace | undefined;
+
+beforeEach(() => {
+  trace = startPageTrace({
+    buttons: (button) => button.textContent.trim().startsWith("Verify"),
+    region: '[data-testid="verdict"]',
+  });
+});
+
+afterEach(async ({ task }) => {
+  const account = trace?.stop();
+  trace = undefined;
   // Every parse and every verify run on this screen resolves asynchronously,
   // and a disclosure the test opened commits its panel later still, so an
   // unmount taken straight after a test can interleave with a render.
   await flushPendingUpdates();
   app.unmount();
+  // vitest takes no annotation once a test has failed, and a hook's error is
+  // reported with the test.
+  if (task.result?.state === "fail" && account !== undefined)
+    throw new Error(account);
 });
 
 // A joint run: the record's own verdict, whose standing note points the reader
