@@ -12,6 +12,7 @@ import { listManagedLocalState } from "@psi/managed/managedLocalState";
 import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
 
 import { isConsoleBuild } from "@utils/clientConfig";
+import { isInstalledRuntime } from "@utils/installedRuntime";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
@@ -23,7 +24,7 @@ import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
-import { INSTALLED_VERSION_URL, userGuideUrl } from "./userGuide";
+import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
 import { FILE_ASSURANCE_LINE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
 
@@ -128,23 +129,20 @@ export function Lobby() {
       <main className={styles.lobby}>
         <h1>Alcove - encrypted matching and sharing</h1>
         <p className={styles.tagline}>
-          Find records you have in common without sharing PII, then exchange
-          data about those records.
+          Find records you have in common while keeping your PII private, then
+          exchange data about those records.
         </p>
-        {!isConsoleBuild() && (
+        {!isConsoleBuild() && !isInstalledRuntime() && (
           <p className={`${styles.sub} ${styles.small}`}>
-            This is the browser version, which is ideal for one-off or
-            infrequent exchanges. There is nothing to install and the encrypted
-            matching and sharing is handled by code in your browser. To exchange
-            through your own SFTP server or a shared folder, or to run exchanges
-            on a schedule from your own systems, use the{" "}
+            For SFTP, a shared folder, or scheduled runs on your own servers,
+            see the{" "}
             <Anchor
               inherit
-              href={INSTALLED_VERSION_URL}
+              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
               target="_blank"
               rel="noreferrer"
             >
-              installed version
+              other ways to use Alcove
             </Anchor>
             .
           </p>
