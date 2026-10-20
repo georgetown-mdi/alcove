@@ -195,7 +195,13 @@ export function startPsiWorkerPool(
   shardCount: number,
   progressTimeoutMs: number,
 ): PsiEngine {
-  const primaryWorker = spawn({ role, id, mode, shard: "primary" });
+  const primaryWorker = spawn({
+    role,
+    id,
+    mode,
+    shard: "primary",
+    helpers: shardCount - 1,
+  });
   const helperWorkers = Array.from({ length: shardCount - 1 }, () =>
     spawn({ role, id, mode, shard: "helper" }),
   );

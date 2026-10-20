@@ -3,7 +3,10 @@ import { describe, expect, test, vi } from "vitest";
 import { InProcessPsiEngine } from "@alcove/core";
 import PSI from "@openmined/psi.js";
 
-import { encodePsiWorkerInit } from "../../../src/psi/workers/psiCryptoController.js";
+import {
+  createBrowserPsiEngineFactory,
+  encodePsiWorkerInit,
+} from "../../../src/psi/workers/psiCryptoController.js";
 import { runPsiCryptoWorker } from "../../../src/psi/workers/psiCryptoWorkerProgram.js";
 import { startPsiWorkerPool } from "../../../src/psi/workers/psiWorkerPool.js";
 
@@ -326,6 +329,234 @@ describe("the PSI worker pool's key path", () => {
       pool.dispose();
     }
   }, 10_000);
+});
+
+const primarySeed = (helpers: number): string =>
+  encodePsiWorkerInit({
+    role: "joiner",
+    id: "client",
+    mode: "identifier-revealing",
+    shard: "primary",
+    helpers,
+  });
+const HELPER_SEED = encodePsiWorkerInit({
+  role: "joiner",
+  id: "client",
+  mode: "identifier-revealing",
+  shard: "helper",
+});
+
+const loadOf =
+  (library: PSILibrary): LoadPsiWorkerLibrary =>
+  () =>
+    Promise.resolve({ library, backend: "wasm" });
+
+// The worker program alone, in a scope the test drives by hand.
+function runProgram(
+  name: string,
+  load: LoadPsiWorkerLibrary,
+): {
+  scope: PsiCryptoWorkerScope;
+  posted: Array<PsiWorkerResponse | PsiHelperSetupReport>;
+} {
+  const posted: Array<PsiWorkerResponse | PsiHelperSetupReport> = [];
+  const scope: PsiCryptoWorkerScope = {
+    name,
+    onmessage: null,
+    postMessage: (message) => posted.push(message),
+  };
+  runPsiCryptoWorker(scope, load);
+  return { scope, posted };
+}
+
+// A key port whose both sides the test holds, so it keeps the very array the
+// program posts or receives, where a MessageChannel would copy or detach it.
+class FakeKeyPort {
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onmessageerror: ((event: unknown) => void) | null = null;
+  readonly posted: Array<unknown> = [];
+  readonly keysAsPosted: Array<Uint8Array> = [];
+
+  constructor(private readonly throwsOn: "nothing" | "key" | "every post") {}
+
+  postMessage(message: unknown): void {
+    this.posted.push(message);
+    if (message instanceof Uint8Array)
+      this.keysAsPosted.push(Uint8Array.from(message));
+    if (
+      this.throwsOn === "every post" ||
+      (this.throwsOn === "key" && message instanceof Uint8Array)
+    )
+      throw new DOMException("could not be cloned", "DataCloneError");
+  }
+
+  close(): void {}
+}
+
+function giveKeyPorts(
+  scope: PsiCryptoWorkerScope,
+  ports: Array<MessagePort | FakeKeyPort>,
+): void {
+  scope.onmessage?.({
+    data: { kind: "key-ports", ports: ports as Array<MessagePort> },
+  });
+}
+
+function firstMessage(port: MessagePort): Promise<unknown> {
+  return new Promise((resolve) => {
+    port.onmessage = (event: MessageEvent<unknown>) => {
+      port.close();
+      resolve(event.data);
+    };
+  });
+}
+
+const isZeroed = (bytes: unknown): boolean =>
+  bytes instanceof Uint8Array &&
+  bytes.length === KEY.length &&
+  bytes.every((byte) => byte === 0);
+
+describe("the PSI worker program's key handling", () => {
+  test("a single-worker primary refuses a key-ports message and still serves its requests", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn, workers } = inProcessSpawner(() => loadOf(library));
+    const engine = createBrowserPsiEngineFactory(spawn)(
+      "joiner",
+      "client",
+      "identifier-revealing",
+    );
+    const single = engineUnderKey("identifier-revealing");
+    const channel = new MessageChannel();
+    const arrived = firstMessage(channel.port1);
+    workers[0].postMessage({ kind: "key-ports", ports: [channel.port2] });
+    try {
+      expect(await engine.createClientRequest(values(8))).toEqual(
+        await single.createClientRequest(values(8)),
+      );
+      expect(await arrived).toBeNull();
+    } finally {
+      engine.dispose();
+      single.dispose();
+    }
+  });
+
+  test("a pool primary sends its key down the first key-ports message only", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { scope } = runProgram(primarySeed(1), loadOf(library));
+    const [first, second] = [new MessageChannel(), new MessageChannel()];
+    const arrived = [firstMessage(first.port1), firstMessage(second.port1)];
+    giveKeyPorts(scope, [first.port2]);
+    giveKeyPorts(scope, [second.port2]);
+    expect(await Promise.all(arrived)).toEqual([KEY, null]);
+  });
+
+  test.for([
+    ["comes after a request", 1, 1, true],
+    ["has more ports than the seed's helpers", 1, 2, false],
+    ["has fewer ports than the seed's helpers", 2, 1, false],
+  ] as const)(
+    "a pool primary refuses a key-ports message that %s",
+    async ([, helpers, portCount, afterRequest]) => {
+      const library = keyLoggingLibrary({ generated: 0, given: [] });
+      const { scope, posted } = runProgram(
+        primarySeed(helpers),
+        loadOf(library),
+      );
+      const request: PsiWorkerRequest = {
+        id: 1,
+        body: { method: "createClientRequest", values: ["a"] },
+      };
+      if (afterRequest) scope.onmessage?.({ data: request });
+      const channels = Array.from(
+        { length: portCount },
+        () => new MessageChannel(),
+      );
+      const arrived = channels.map((channel) => firstMessage(channel.port1));
+      giveKeyPorts(
+        scope,
+        channels.map((channel) => channel.port2),
+      );
+      expect(await Promise.all(arrived)).toEqual(channels.map(() => null));
+      if (afterRequest)
+        await vi.waitFor(() =>
+          expect(posted).toContainEqual(
+            expect.objectContaining({ id: 1, ok: true }),
+          ),
+        );
+    },
+  );
+
+  test.for(["before", "after"] as const)(
+    "a helper whose library load fails %s its key arrives zeroes the key",
+    async (order) => {
+      let failLoad: () => void = () => undefined;
+      const { scope, posted } = runProgram(
+        HELPER_SEED,
+        () =>
+          new Promise((_resolve, reject) => {
+            failLoad = () => reject(new Error("the engine failed to load"));
+          }),
+      );
+      const port = new FakeKeyPort("nothing");
+      giveKeyPorts(scope, [port]);
+      await vi.waitFor(() => expect(port.onmessage).not.toBeNull());
+      const key = Uint8Array.from(KEY);
+      const setupFailed = (): Promise<void> =>
+        vi.waitFor(() =>
+          expect(posted).toEqual([{ kind: "helper-setup", ready: false }]),
+        );
+      if (order === "before") {
+        failLoad();
+        await setupFailed();
+        port.onmessage?.({ data: key });
+      } else {
+        port.onmessage?.({ data: key });
+        failLoad();
+        await setupFailed();
+      }
+      await vi.waitFor(() => expect(isZeroed(key)).toBe(true));
+    },
+  );
+
+  test("a primary whose key post throws zeroes that copy and sends a refusal", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { scope } = runProgram(primarySeed(1), loadOf(library));
+    const port = new FakeKeyPort("key");
+    giveKeyPorts(scope, [port]);
+    await vi.waitFor(() => expect(port.posted).toHaveLength(2));
+    expect(port.keysAsPosted).toEqual([KEY]);
+    expect(isZeroed(port.posted[0])).toBe(true);
+    expect(port.posted[1]).toBeNull();
+  });
+
+  test("a port whose refusal throws leaves the next helper served", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { scope } = runProgram(primarySeed(2), loadOf(library));
+    const broken = new FakeKeyPort("every post");
+    const channel = new MessageChannel();
+    const arrived = firstMessage(channel.port1);
+    giveKeyPorts(scope, [broken, channel.port2]);
+    expect(await arrived).toEqual(KEY);
+    expect(broken.keysAsPosted).toEqual([KEY]);
+    expect(isZeroed(broken.posted[0])).toBe(true);
+    expect(broken.posted[1]).toBeNull();
+  });
+
+  test("a helper whose key fails to deserialize reports a failed setup at once", async () => {
+    const log: KeyLog = { generated: 0, given: [] };
+    const { scope, posted } = runProgram(
+      HELPER_SEED,
+      loadOf(keyLoggingLibrary(log)),
+    );
+    const port = new FakeKeyPort("nothing");
+    giveKeyPorts(scope, [port]);
+    await vi.waitFor(() => expect(port.onmessage).not.toBeNull());
+    port.onmessageerror?.({ data: null });
+    await vi.waitFor(() =>
+      expect(posted).toEqual([{ kind: "helper-setup", ready: false }]),
+    );
+    expect(log).toEqual({ generated: 0, given: [] });
+  });
 });
 
 // A worker the test answers by hand.

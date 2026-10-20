@@ -27,7 +27,10 @@ import type {
 /**
  * The page's message handing a worker the ports its key goes out on (a
  * primary, one per helper) or comes in on (a helper, exactly one). Both ends
- * of each channel are transferred, so the page holds neither.
+ * of each channel are transferred, so the page holds neither. A primary takes
+ * only the first such message, and only if it comes before any request with a
+ * port for each helper its seed names; it sends a refusal down the ports of
+ * any other.
  */
 export interface PsiKeyPortsMessage {
   readonly kind: "key-ports";
@@ -57,12 +60,15 @@ export interface PsiCryptoWorker {
 
 /**
  * A PSI worker's seed: the engine's role, id and mode, and whether it is the
- * primary, which generates the key, or a helper, which builds its engine only
- * from the key the primary sends it.
+ * primary, which generates the key and sends a copy to each of its `helpers`,
+ * or a helper, which builds its engine only from the key the primary sends it.
+ * A primary seeded with no helpers sends its key to no port.
  */
-export type PsiCryptoWorkerSeed = PsiWorkerInit & {
-  readonly shard: "primary" | "helper";
-};
+export type PsiCryptoWorkerSeed = PsiWorkerInit &
+  (
+    | { readonly shard: "primary"; readonly helpers: number }
+    | { readonly shard: "helper" }
+  );
 
 /** Spawns a fresh PSI-crypto worker seeded with `init` through the Worker's
  * `name` (see {@link encodePsiWorkerInit}); the browser default is
@@ -169,7 +175,8 @@ export type BrowserPsiEngineFactory = (
 
 /**
  * Build the {@link RunExchangeOptions.psiEngineFactory} for a run on one PSI
- * worker: spawn a primary seeded with the resolved role and id, and return a
+ * worker: spawn a primary seeded with the resolved role and id and no
+ * helpers, so its key leaves it by no message, and return a
  * {@link WorkerPsiEngine} bound to it. `runExchange` disposes the engine on
  * every exchange-end path, and {@link WorkerPsiEngine.dispose} terminates the
  * worker. ./psiWorkerPool.ts runs one engine across several workers.
@@ -179,6 +186,8 @@ export function createBrowserPsiEngineFactory(
 ): BrowserPsiEngineFactory {
   return (role, id, mode) =>
     new WorkerPsiEngine(
-      createPsiCryptoWorkerHandle(spawn({ role, id, mode, shard: "primary" })),
+      createPsiCryptoWorkerHandle(
+        spawn({ role, id, mode, shard: "primary", helpers: 0 }),
+      ),
     );
 }

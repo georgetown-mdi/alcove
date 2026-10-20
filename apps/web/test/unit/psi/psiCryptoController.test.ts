@@ -184,8 +184,15 @@ describe("createBrowserPsiEngineFactory", () => {
         id: "server",
         mode: "identifier-revealing",
         shard: "primary",
+        helpers: 0,
       },
-      { role: "joiner", id: "client", mode: "count-only", shard: "primary" },
+      {
+        role: "joiner",
+        id: "client",
+        mode: "count-only",
+        shard: "primary",
+        helpers: 0,
+      },
     ]);
     expect(workers).toHaveLength(2);
   });
