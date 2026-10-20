@@ -3,7 +3,7 @@ import type { Socket } from "node:dgram";
 import { createServer } from "node:net";
 import type { Server } from "node:net";
 
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeAll, expect, test } from "vitest";
 
 import { NO_RELAY_CANDIDATE_GATHERED } from "../../../src/connection/webrtc/iceDiagnostics";
 import { gatherRelayCandidate } from "../../../src/connection/webrtc/weriftPeer";
@@ -32,6 +32,13 @@ const CREDENTIAL = {
 };
 
 /**
+ * werift gives up on a TURN server that never answers its allocation after
+ * 6.4 s (6366 to 6372 ms over three runs), and the check's own bound is
+ * longer, so a check ending inside this ended on the server's refusal.
+ */
+const ENDED_ON_REFUSAL_WITHIN_MS = 5_000;
+
+/**
  * An allocate error response (401) to `request`, echoing its transaction id.
  * It names no realm or nonce, so werift does not retry with credentials.
  */
@@ -58,6 +65,14 @@ interface LoopbackTurnSocket {
 
 const openSockets: Array<Socket> = [];
 const openServers: Array<Server> = [];
+
+// gatherRelayCandidate loads werift on its first call, CPU work that took 1.6
+// to 1.9 s against a 3 to 33 ms gather on a CPU shared six ways. Loading it
+// here keeps it out of the elapsed times below, within the 15 s the first
+// test had for it.
+beforeAll(async () => {
+  await import("werift");
+}, 15_000);
 
 afterEach(async () => {
   await Promise.all([
@@ -182,7 +197,7 @@ test("a relay that answers each allocate request with a 401 is reported not reac
     10_000,
   );
 
-  expect(Date.now() - started).toBeLessThan(5_000);
+  expect(Date.now() - started).toBeLessThan(ENDED_ON_REFUSAL_WITHIN_MS);
   expect(relay.allocateRequests()).toBeGreaterThanOrEqual(1);
   expect(report.checks).toHaveLength(1);
   expect(report.checks[0]).toMatchObject({ id: "turn_1", status: "fail", url });
