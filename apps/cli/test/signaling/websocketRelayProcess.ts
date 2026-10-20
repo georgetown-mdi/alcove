@@ -36,12 +36,25 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const relayRoot = path.resolve(here, "../../../../packages/websocket-relay");
 const runner = path.join(relayRoot, "src/standalone.ts");
 
+function insertKeys(database: DatabaseSync, keys: Record<string, string>) {
+  for (const [exchangeId, key] of Object.entries(keys)) {
+    database.prepare("INSERT INTO turn_secret VALUES (?, ?)").run(REALM, key);
+    database
+      .prepare(
+        "INSERT INTO alcove_exchange VALUES (?, ?, ?, 1767225600, NULL, NULL)",
+      )
+      .run(exchangeId, REALM, key);
+  }
+}
+
 /** A running relay, and the handle to stop it. */
 export interface WebSocketRelayProcess {
   /** The relay's `ws://` address on loopback, path included. */
   url: string;
   /** Everything the child has written to stderr so far. */
   stderr: () => string;
+  /** Enroll more keys, exchange id to relay key, while the relay runs. */
+  enroll: (keys: Record<string, string>) => void;
   /** Terminate the child, wait for it to exit, and remove its key table. */
   stop: () => Promise<void>;
 }
@@ -59,14 +72,7 @@ export function startWebSocketRelayProcess(
   const database = new DatabaseSync(keyTable);
   database.exec(TURN_SECRET_TABLE);
   database.exec(EXCHANGE_TABLE);
-  for (const [exchangeId, key] of Object.entries(keys)) {
-    database.prepare("INSERT INTO turn_secret VALUES (?, ?)").run(REALM, key);
-    database
-      .prepare(
-        "INSERT INTO alcove_exchange VALUES (?, ?, ?, 1767225600, NULL, NULL)",
-      )
-      .run(exchangeId, REALM, key);
-  }
+  insertKeys(database, keys);
   database.close();
 
   const child = spawn(
@@ -112,6 +118,14 @@ export function startWebSocketRelayProcess(
         resolve({
           url: `ws://127.0.0.1:${match[1]}/relay`,
           stderr: () => stderr,
+          enroll: (more) => {
+            const writer = new DatabaseSync(keyTable);
+            try {
+              insertKeys(writer, more);
+            } finally {
+              writer.close();
+            }
+          },
           stop: async () => {
             await stopChild(child);
             removeKeyTable();
