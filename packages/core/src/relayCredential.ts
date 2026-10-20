@@ -364,7 +364,10 @@ export function allowedRelaysLeaveOutInvitationRelay(
  * the first {@link selectRunRelay} lists, has a url the invitation names and
  * is presented the minted credential, the one the registrar enrolls the key
  * of. Decided by the url, not the entry's `source`, so an own url-only entry
- * or `websocketRelay` naming the invitation's url enrolls too.
+ * or `websocketRelay` naming the invitation's url enrolls too. An inviter
+ * names a registrar beside a WebSocket relay url only where that relay reads
+ * the keys the registrar enrolls (docs/spec/PROTOCOL.md, "The invitation's
+ * relay locator").
  */
 export function runEnrollsAtInvitationRegistrar(
   connection: RunRelayConnection,

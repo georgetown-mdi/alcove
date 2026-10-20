@@ -112,7 +112,7 @@ The `fail`s of `exclusive_create` and `rename_onto_existing` are the occupied-wo
 
 | Id | What a passing check establishes |
 | -- | -------------------------------- |
-| `enrollment` | The registrar `invitation_relay` names enrolled the exchange's relay key, as it does for a run before it dials when the url the run allocates on is the invitation's and is sent the minted credential (`runEnrollsAtInvitationRegistrar`). Present, and first, only where `invitation_relay` names a `registrar`; `skipped`, with nothing contacted, where a run of the configuration does not enroll there. |
+| `enrollment` | The registrar `invitation_relay` names enrolled the exchange's relay key, as it does for a run before it dials when the url the run allocates on is the invitation's and is sent the minted credential, or when the run lists the invitation's WebSocket relay url (`runEnrollsAtInvitationRegistrar`). Present, and first, only where `invitation_relay` names a `registrar`; `skipped`, with nothing contacted, where a run of the configuration does not enroll there. |
 | `turn_1` | The relay at the check's `url`, the first the run lists and the only one a run allocates on, gave this host a relay candidate. werift allocates on the first TURN url a peer is given and ignores the rest ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)). |
 | `turn_2`, `turn_3`, ... | Always `skipped`: a run lists the relay at the check's `url` but does not contact it, so the check does not either. The number is the url's 1-based position in the run's list, so the id set is as long as that list, and a consumer reads `url` for which relay a check is about. |
 

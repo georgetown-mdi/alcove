@@ -442,11 +442,25 @@ describe("invitationRelayWithDefault", () => {
       });
     });
 
-    test("gives way to a WebSocket relay of this browser's own", () => {
+    test("gives way to a WebSocket relay of this browser's own, beside which no registrar is named", () => {
       const own = { ...OWN, websocket: "wss://own.example.org/relay" };
       expect(
         invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
-      ).toMatchObject({ websocket: own.websocket });
+      ).toEqual({ ...own, turn: [...OWN.turn, DEFAULT_RELAY.turnUrl] });
+    });
+
+    test("is named with its registrar where this browser's own WebSocket relay is the same url", () => {
+      expect(
+        invitationRelayWithDefault(
+          { websocket: WEBSOCKET },
+          withWebSocket,
+          NO_RESTRICTION,
+        ),
+      ).toEqual({
+        websocket: WEBSOCKET,
+        turn: [DEFAULT_RELAY.turnUrl],
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
     });
 
     test("is named, with its registrar, or left out by the allowed relays apart from the TURN url", () => {
@@ -498,11 +512,66 @@ describe("invitationRelayWithDefault", () => {
       };
       expect(
         invitationRelayWithDefault(own, withWebSocket, NO_RESTRICTION),
-      ).toEqual({
-        ...own,
-        turn: [DEFAULT_RELAY.turnUrl],
-        registrar: DEFAULT_RELAY.registrarUrl,
-      });
+      ).toEqual({ ...own, turn: [DEFAULT_RELAY.turnUrl] });
     });
+  });
+
+  // A command-line party enrolls at the registrar a locator names wherever it
+  // lists the locator's WebSocket relay url (runEnrollsAtInvitationRegistrar in
+  // core), so the registrar is named beside no WebSocket relay url it does not
+  // serve.
+  test("names the registrar beside no WebSocket relay url but the default relay's, and wherever it names one of the default relay's urls otherwise", () => {
+    const WEBSOCKET = "wss://wsrelay.example.org/relay";
+    const OWN_WEBSOCKET = "wss://own.example.org/relay";
+    const fullTurn = Array.from(
+      { length: MAX_RELAY_LOCATOR_URLS },
+      (_, index) => `turns:relay-${index}.example.org:443?transport=tcp`,
+    );
+    const ownRelays = [
+      undefined,
+      OWN,
+      { websocket: OWN_WEBSOCKET },
+      { ...OWN, websocket: OWN_WEBSOCKET, websocketExchangeId: "own-weekly" },
+      { websocket: WEBSOCKET },
+      { turn: fullTurn, websocket: OWN_WEBSOCKET },
+      { turn: fullTurn },
+    ];
+    const defaultRelays: ReadonlyArray<{
+      turnUrl: string;
+      registrarUrl: string;
+      websocketUrl?: string;
+    }> = [DEFAULT_RELAY, { ...DEFAULT_RELAY, websocketUrl: WEBSOCKET }];
+    const allowedRelaysCases = [
+      NO_RESTRICTION,
+      ["turn.example.org"],
+      ["wsrelay.example.org"],
+      ["own.example.org", "own-relay.example.org"],
+    ];
+    for (const ownRelay of ownRelays)
+      for (const defaultRelay of defaultRelays)
+        for (const allowedRelays of allowedRelaysCases) {
+          const relay = invitationRelayWithDefault(
+            ownRelay,
+            defaultRelay,
+            allowedRelays,
+          );
+          const label = JSON.stringify({
+            ownRelay,
+            defaultRelay,
+            allowedRelays,
+          });
+          const namesDefaultUrl =
+            (relay?.turn ?? []).includes(defaultRelay.turnUrl) ||
+            (defaultRelay.websocketUrl !== undefined &&
+              relay?.websocket === defaultRelay.websocketUrl);
+          const namesOtherWebSocketRelay =
+            relay?.websocket !== undefined &&
+            relay.websocket !== defaultRelay.websocketUrl;
+          expect(relay?.registrar, label).toBe(
+            namesDefaultUrl && !namesOtherWebSocketRelay
+              ? defaultRelay.registrarUrl
+              : undefined,
+          );
+        }
   });
 });

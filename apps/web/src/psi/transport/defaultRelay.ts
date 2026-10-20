@@ -59,8 +59,11 @@ export interface DefaultRelayDependencies {
  * relay's when the build names one and `allowedRelays` keeps it. Where the
  * result names the default relay's TURN url or its WebSocket relay url, it
  * also names the default relay's registrar, where a command-line party enrolls
- * without a token. A new invitation and a managed re-invite both name it this
- * way.
+ * without a token, unless it names a WebSocket relay of `ownRelay`'s other
+ * than the default relay's. That registrar enrolls no key such a relay reads,
+ * and a command-line party that lists the WebSocket relay url a registrar is
+ * named beside enrolls there. A new invitation and a managed re-invite both
+ * name it this way.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
@@ -73,22 +76,23 @@ export function invitationRelayWithDefault(
     defaultRelay,
     allowedRelays,
   );
-  const withRegistrar = (named: RelayUrls | undefined): RelayUrls => ({
-    ...named,
-    registrar: defaultRelay.registrarUrl,
-  });
   const namesDefaultWebSocketRelay =
     defaultRelay.websocketUrl !== undefined &&
     relay?.websocket === defaultRelay.websocketUrl;
+  const namesOtherWebSocketRelay =
+    relay?.websocket !== undefined && !namesDefaultWebSocketRelay;
+  const registrar = namesOtherWebSocketRelay
+    ? {}
+    : { registrar: defaultRelay.registrarUrl };
   const turn = relay?.turn ?? [];
   if (
     !turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays) ||
     (!turn.includes(defaultRelay.turnUrl) &&
       turn.length >= MAX_RELAY_LOCATOR_URLS)
   )
-    return namesDefaultWebSocketRelay ? withRegistrar(relay) : relay;
-  if (turn.includes(defaultRelay.turnUrl)) return withRegistrar(relay);
-  return withRegistrar({ ...relay, turn: [...turn, defaultRelay.turnUrl] });
+    return namesDefaultWebSocketRelay ? { ...relay, ...registrar } : relay;
+  if (turn.includes(defaultRelay.turnUrl)) return { ...relay, ...registrar };
+  return { ...relay, turn: [...turn, defaultRelay.turnUrl], ...registrar };
 }
 
 // `relay` naming the default WebSocket relay where it names none of its own,
