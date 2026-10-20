@@ -471,8 +471,8 @@ export const PRECISION_FLOORS: ReadonlyArray<PrecisionFloor> = Object.freeze([
  */
 const PRECISION_FLOOR_LABELS: Readonly<Record<PrecisionFloor, string>> =
   Object.freeze({
-    99: "Highest certainty only",
-    95: "Highest certainty, followed by others",
+    99: "Highest precision",
+    95: "Broader matching",
   });
 
 /** The label of the control choice that selects `floor`. */

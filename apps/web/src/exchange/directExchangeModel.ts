@@ -8,7 +8,7 @@ import {
   inferMetadata,
   inferredRecordIdentifierStatement,
   overlongDisclosedColumnPositions,
-  precisionFloorLabel,
+  precisionFloorSelectionStatement,
 } from "@alcove/core";
 
 import { payloadSendForMetadata } from "@psi/metadataEditing";
@@ -140,8 +140,8 @@ export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
 
 /** The rules a quick exchange runs, worded as the CLI's display before the run
  * words them. */
-export const DIRECT_RULE_SELECTION_NOTICE = `Rules selected: ${precisionFloorLabel(
-  DEFAULT_PRECISION_FLOOR_SELECTION.floor,
+export const DIRECT_RULE_SELECTION_NOTICE = `Rules selected: ${precisionFloorSelectionStatement(
+  DEFAULT_PRECISION_FLOOR_SELECTION,
 )}.`;
 
 /** The column a quick exchange on `metadata` indexes its records by, worded as

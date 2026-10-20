@@ -193,7 +193,7 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
 
     await expect
       .element(rulesSelectedCell())
-      .toHaveTextContent("Highest certainty, followed by others");
+      .toHaveTextContent("broader matching");
     await expect
       .element(rulesSelectedCell())
       .not.toHaveTextContent("metropolitan");
@@ -208,7 +208,7 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
 
     await expect
       .element(rulesSelectedCell())
-      .toHaveTextContent("Highest certainty only");
+      .toHaveTextContent("highest precision");
   });
 
   test("names no floor for keys loaded from a document", async () => {

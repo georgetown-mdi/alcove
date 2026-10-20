@@ -2,7 +2,7 @@ import { LESS_CERTAIN_KEY_COPY } from "@alcove/core";
 
 import { InfoButton } from "@components/InfoButton";
 
-import type { ReactNode } from "react";
+import type { InfoButtonSubject } from "@components/InfoButton";
 
 /**
  * The accessible name of the button that shows why a key is marked less
@@ -25,8 +25,10 @@ export function LessCertainInfo({
   remedy,
   keyName,
 }: {
-  /** The line the mark is on; it states the mark itself, in words. */
-  children: ReactNode;
+  /** The line the mark is on, stating the mark itself in words, or the
+   * control it labels, rendered with the explanation's id
+   * ({@link InfoButtonSubject}). */
+  children: InfoButtonSubject;
   /** What the reader of this screen does to leave such keys out. */
   remedy: string;
   /** The key the line names, already escaped for display; absent for a line

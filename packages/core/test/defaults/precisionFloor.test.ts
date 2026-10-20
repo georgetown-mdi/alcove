@@ -576,9 +576,9 @@ describe("precisionFloorSelectionStatement", () => {
   test("names the floor by its label, starting lowercase", () => {
     expect(
       precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
-    ).toBe("highest certainty, followed by others");
+    ).toBe("broader matching");
     expect(precisionFloorSelectionStatement({ floor: 99 })).toBe(
-      "highest certainty only",
+      "highest precision",
     );
   });
 });
@@ -595,10 +595,8 @@ describe("PRECISION_FLOORS", () => {
 
 describe("precisionFloorLabel", () => {
   test("labels each floor", () => {
-    expect(precisionFloorLabel(99)).toBe("Highest certainty only");
-    expect(precisionFloorLabel(95)).toBe(
-      "Highest certainty, followed by others",
-    );
+    expect(precisionFloorLabel(99)).toBe("Highest precision");
+    expect(precisionFloorLabel(95)).toBe("Broader matching");
   });
 
   test("states no percentage", () => {

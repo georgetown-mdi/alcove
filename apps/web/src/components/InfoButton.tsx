@@ -7,13 +7,24 @@ import type { MantineSpacing } from "@mantine/core";
 import type { ReactNode } from "react";
 
 /**
+ * What an {@link InfoButton} follows: a line, or a function rendering the
+ * control the explanation is about, given the explanation's id to set as that
+ * control's `aria-describedby` while the explanation is open (`undefined`
+ * while it is closed).
+ */
+export type InfoButtonSubject =
+  ReactNode | ((explanationId: string | undefined) => ReactNode);
+
+/**
  * A line with an info button after it that shows `explanation` below the
  * line. A button rather than a hover tooltip, so the text is reachable from
  * the keyboard and announced: aria-expanded on the button, and aria-controls
  * on an always-mounted wrapper around a Collapse, as `DisclosureSection` does.
  *
  * The button sits outside `children`, so a line that is itself a control's
- * label (a checkbox) holds no nested control.
+ * label (a checkbox) holds no nested control. A collapsed explanation stays in
+ * the document, and an `aria-describedby` reference reads hidden text, so the
+ * id is handed to the control only while the explanation is open.
  */
 export function InfoButton({
   children,
@@ -21,8 +32,8 @@ export function InfoButton({
   explanation,
   mt,
 }: {
-  /** The line the button follows. */
-  children: ReactNode;
+  /** The line or control the button follows. */
+  children: InfoButtonSubject;
   /** The button's accessible name. */
   label: string;
   /** The text the button shows. */
@@ -31,10 +42,13 @@ export function InfoButton({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const explanationId = useId();
   return (
     <Box {...(mt !== undefined ? { mt } : {})}>
       <Group gap={4} wrap="nowrap" align="flex-start">
-        {children}
+        {typeof children === "function"
+          ? children(open ? explanationId : undefined)
+          : children}
         <ActionIcon
           variant="subtle"
           size="sm"
@@ -48,7 +62,7 @@ export function InfoButton({
       </Group>
       <div id={panelId}>
         <Collapse expanded={open}>
-          <Text size="xs" mt={4}>
+          <Text id={explanationId} size="xs" mt={4}>
             {explanation}
           </Text>
         </Collapse>

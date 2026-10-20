@@ -8,6 +8,10 @@ export const WEB_APP_GUIDE_URL =
 export const CONSOLE_GUIDE_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/docs/CONSOLE.md";
 
+/** How the built-in rules behind each Built-in rules choice were chosen. */
+export const BUILT_IN_RULES_GUIDE_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor";
+
 /** Where the installed version (command line and console) is described. */
 export const INSTALLED_VERSION_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove";

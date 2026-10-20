@@ -498,7 +498,7 @@ test("a quick exchange names its rule selection above the keys, and a configured
       stdio.restore();
     }
   };
-  const line = "  rules selected: highest certainty, followed by others";
+  const line = "  rules selected: broader matching";
   expect(shown(true)).toContain(`${line}\n  linkage keys (`);
   expect(shown(false)).not.toContain("rules selected");
 });

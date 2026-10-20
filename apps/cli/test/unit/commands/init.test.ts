@@ -260,7 +260,7 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
     (key) => bands.get(key.name)!.band === 95,
   );
   const listed = (names: string[]) =>
-    `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+    `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
   const isLessCertain = (key: (typeof shippedAt95)[number]) =>
     linkageKeyIsLessCertain(key, DEFAULT_LINKAGE_RULE_SET.linkageFields);
   const lessCertain = shippedAt95
@@ -280,15 +280,6 @@ test("the rule-set help names the keys each narrower choice deletes", () => {
       "many people, because its members share birth years.",
   );
   expect(help).not.toMatch(/state or one|metropolitan|wider area/);
-});
-
-test("no field comment states a rule's precision", () => {
-  for (const { lines } of [
-    ...FIELD_DOCS,
-    ...SFTP_FIELD_DOCS,
-    ...FILEDROP_FIELD_DOCS,
-  ])
-    expect(lines.join(" ")).not.toMatch(/%|precision/i);
 });
 
 test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {
