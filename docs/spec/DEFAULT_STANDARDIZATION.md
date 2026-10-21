@@ -73,7 +73,7 @@ surface rather than a local formatting choice.
 
 The `first_name`, `last_name` and `date_of_birth` pipelines each end in a
 placeholder list: a `null_if` whose `values` are dropped. In the defaults the
-`first_name` list is the `last_name` list with nine values added (see
+`first_name` list is the `last_name` list with twelve values added (see
 [`first_name`](#first_name)), and each name field's list is that field's own
 step parameter. An operator may edit any of the three lists in their
 own standardization, to add a filler their system writes or to keep a value the
@@ -520,7 +520,7 @@ steps:
       values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
   - function: null_if
     params:
-      values: ["UNKNOWN", "UNK", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST", "BABY BOY", "BABY GIRL", "BB", "BG", "FNU", "UNKNOWN MALE", "UNKNOWN FEMALE", "TWIN A", "TWIN B"]
+      values: ["UNKNOWN", "UNK", "GIRL", "TWIN", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST", "BABY", "BOY", "MALE", "BABY BOY", "BABY GIRL", "BB", "BG", "FNU", "UNKNOWN MALE", "UNKNOWN FEMALE", "TWIN A", "TWIN B"]
 ```
 
 Result: an uppercase ASCII value whose word separators are single spaces, with
@@ -560,10 +560,11 @@ Order determines the meaning here:
   A name containing one of the values beside another word (`"Baby Jane"`) or
   inside a longer one (`"Boyd"`, `"Babyak"`) is kept.
 
-The `first_name` list is the `last_name` list with nine values added, each a
+The `first_name` list is the `last_name` list with twelve values added, each a
 whole value a record system writes in place of a first name it does not have:
-`BABY BOY` and `BABY GIRL` and their initials `BB` and `BG`, `UNKNOWN MALE` and
-`UNKNOWN FEMALE`, `TWIN A` and `TWIN B`, and `FNU`, for first name unknown.
+`BABY`, `BOY` and `MALE`, which are surnames as well, `BABY BOY` and `BABY GIRL`
+and their initials `BB` and `BG`, `UNKNOWN MALE` and `UNKNOWN FEMALE`, `TWIN A`
+and `TWIN B`, and `FNU`, for first name unknown.
 
 Each name field has its own placeholder list, and an operator may
 edit either one for their own data (see
@@ -715,7 +716,7 @@ steps:
       pattern: "^.{2,}$"
   - function: null_if
     params:
-      values: ["UNKNOWN", "UNK", "BABY", "BOY", "GIRL", "TWIN", "MALE", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
+      values: ["UNKNOWN", "UNK", "GIRL", "TWIN", "FEMALE", "TRAUMA", "REFUSED", "ANONYMOUS", "NONE", "TEST"]
 ```
 
 The `last_name` sequence is the `first_name` sequence with one step added, the
@@ -727,9 +728,9 @@ initial written in place of a surname (`"Q"`, `"Q."`). The two are listed
 separately because they are two independent defaults: a change to one is not
 automatically a change to the other.
 
-The placeholder list is the `first_name` list without the nine values that
-list adds. Neither list drops `DOE`, which is a surname as well as a
-placeholder.
+The placeholder list is the `first_name` list without the twelve values that
+list adds. Neither list drops `DOE`, and the `last_name` list keeps `BABY`,
+`BOY` and `MALE`: each is a surname as well as a placeholder.
 
 | Input | Result |
 | ----- | ------ |
@@ -740,6 +741,9 @@ placeholder.
 | `"Gro\u00df"` | `"GROSS"` |
 | `"Doe"` | `"DOE"` |
 | `"Baby Boy"` | `"BABY BOY"` |
+| `"Baby"` | `"BABY"` |
+| `"Boy"` | `"BOY"` |
+| `"Male"` | `"MALE"` |
 | `"Refused"` | `null` |
 | `"Q"` | `null` |
 | `"!!!"` | `null` |
