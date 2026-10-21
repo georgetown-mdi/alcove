@@ -12,6 +12,14 @@ import { useNarrowViewport } from "./narrowViewport";
 import type { RailFact } from "@psi/rail";
 import type { ReactNode } from "react";
 
+/** The sample-data notice: its label, its Clear action, and a line shown
+ * under them. */
+interface DemoNotice {
+  label: string;
+  onClear?: () => void;
+  detail?: ReactNode;
+}
+
 /** The narrow share bar's rows in ledger order: the headline disclosure facts
  * each row producer marked `shareBar` -- the producer declares its own
  * condensed subset, so a relabel cannot silently drop a row from the trust
@@ -199,7 +207,7 @@ function LedgerStanding({
   demoNotice,
 }: {
   tag?: string;
-  demoNotice?: { label: string; onClear?: () => void };
+  demoNotice?: DemoNotice;
 }) {
   return (
     <>
@@ -218,6 +226,7 @@ function LedgerStanding({
           )}
         </div>
       )}
+      {demoNotice?.detail}
     </>
   );
 }
@@ -285,8 +294,9 @@ export function Ledger({
   /** A quiet standing notice shown while the loaded file is the synthetic
    * sample (pristine or edited). `onClear` renders its Clear action; the
    * hosting console withholds it once the terms seal (an invitation minted or an
-   * exchange file saved), where a one-click teardown would be destructive. */
-  demoNotice?: { label: string; onClear?: () => void };
+   * exchange file saved), where a one-click teardown would be destructive.
+   * `detail` renders under the label. */
+  demoNotice?: DemoNotice;
   rows: ReadonlyArray<LedgerRow>;
   /** The optional surfaces' Customize rows; absent once the terms seal (the
    * share/save/launched phases). */
@@ -336,7 +346,7 @@ function NarrowLedger({
 }: {
   title: string;
   tag?: string;
-  demoNotice?: { label: string; onClear?: () => void };
+  demoNotice?: DemoNotice;
   rows: ReadonlyArray<LedgerRow>;
   customize?: ReadonlyArray<RailFact>;
   footer?: ReactNode;

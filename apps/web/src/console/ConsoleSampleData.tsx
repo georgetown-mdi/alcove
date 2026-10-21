@@ -30,19 +30,15 @@ export function sampleInputsFailure(
     case "unwritable":
       return (
         "The console could not write the sample files into your folder, " +
-        "which may be mounted read-only. Download them instead and copy one " +
-        "into your folder."
+        "which may be mounted read-only."
       );
     case "disabled":
       return (
         "This console was started without a folder, so it has nowhere to " +
-        "write the sample files. Download them instead."
+        "write the sample files."
       );
     case "error":
-      return (
-        "The console did not answer. Try again, or download the sample " +
-        "files instead."
-      );
+      return "The console did not answer. Try again.";
   }
 }
 

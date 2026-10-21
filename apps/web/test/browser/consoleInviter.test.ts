@@ -628,7 +628,9 @@ describe("console inviter transports and sample data", () => {
     app.render(createElement(InviterScreen));
     // The in-place sample seed is gone; the download stays.
     await expect
-      .element(page.getByRole("button", { name: "partner CSV" }))
+      .element(
+        page.getByRole("button", { name: "Download partner sample CSV" }),
+      )
       .toBeInTheDocument();
     expect(
       page.getByRole("button", { name: "load it into this exchange" }).query(),

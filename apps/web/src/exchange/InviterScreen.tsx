@@ -188,7 +188,6 @@ import {
   buildManagedDeposit,
   webrtcLocatorFromEndpoint,
 } from "./manageOfferModel";
-import { downloadSamplePartnerCsv, sampleInviterFile } from "./sampleData";
 import {
   endpointRequestFor,
   exchangeFileInputFor,
@@ -197,6 +196,7 @@ import {
   saveExchangeError,
   saveRailNote,
 } from "./saveExchangeModel";
+import { sampleInviterFile } from "./sampleData";
 
 import { preRunTrustFooter } from "./trustFooter";
 
@@ -213,6 +213,7 @@ import { MatchingSharingSection } from "./MatchingSharingSection";
 import { Problems } from "./Problems";
 import { RecoveredExchangePanel } from "./RecoveredExchangePanel";
 import { ReviewCreateSection } from "./ReviewCreateSection";
+import { SamplePartnerFileStatus } from "./SamplePartnerFileStatus";
 import { SaveExchangeSection } from "./SaveExchangeSection";
 import { TopBar } from "./TopBar";
 import { YourFileSection } from "./YourFileSection";
@@ -1739,7 +1740,12 @@ export function InviterScreen() {
             demoActive
               ? {
                   label: "Sample data (synthetic records)",
-                  ...(sealed ? {} : { onClear: clearSample }),
+                  ...(sealed
+                    ? {}
+                    : {
+                        onClear: clearSample,
+                        detail: <SamplePartnerFileStatus />,
+                      }),
                 }
               : undefined
           }
@@ -1842,10 +1848,7 @@ export function InviterScreen() {
             onContinue={() => {
               if (fileReady) goTo("columns");
             }}
-            onLoadSample={() => {
-              downloadSamplePartnerCsv();
-              loadSample();
-            }}
+            onLoadSample={loadSample}
           />
         )}
         {section === "columns" &&

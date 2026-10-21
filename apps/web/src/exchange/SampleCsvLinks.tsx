@@ -1,4 +1,4 @@
-import { Anchor } from "@mantine/core";
+import { Anchor, VisuallyHidden } from "@mantine/core";
 
 import {
   downloadSampleInviterCsv,
@@ -6,7 +6,8 @@ import {
 } from "./sampleData";
 
 /** "the inviter CSV or the partner CSV", each a link downloading that one
- * sample file; the caller supplies the leading "download". */
+ * sample file; the caller supplies the leading "download". Each link's
+ * accessible name is the whole action, "Download inviter sample CSV". */
 export function SampleCsvLinks() {
   return (
     <>
@@ -17,7 +18,8 @@ export function SampleCsvLinks() {
         type="button"
         onClick={downloadSampleInviterCsv}
       >
-        inviter CSV
+        <VisuallyHidden>Download </VisuallyHidden>inviter{" "}
+        <VisuallyHidden>sample </VisuallyHidden>CSV
       </Anchor>{" "}
       or the{" "}
       <Anchor
@@ -26,7 +28,8 @@ export function SampleCsvLinks() {
         type="button"
         onClick={downloadSamplePartnerCsv}
       >
-        partner CSV
+        <VisuallyHidden>Download </VisuallyHidden>partner{" "}
+        <VisuallyHidden>sample </VisuallyHidden>CSV
       </Anchor>
     </>
   );
