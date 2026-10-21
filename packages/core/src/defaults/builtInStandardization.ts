@@ -44,11 +44,8 @@ const NAME_STEPS: StandardizationStep[] = [
 const NAME_PLACEHOLDERS: readonly string[] = [
   "UNKNOWN",
   "UNK",
-  "BABY",
-  "BOY",
   "GIRL",
   "TWIN",
-  "MALE",
   "FEMALE",
   "TRAUMA",
   "REFUSED",
@@ -57,11 +54,16 @@ const NAME_PLACEHOLDERS: readonly string[] = [
   "TEST",
 ];
 
+// BABY, BOY and MALE are Census surnames, so only the first-name list drops
+// them.
 const FIRST_NAME_PLACEHOLDER_STEP: StandardizationStep = {
   function: "null_if",
   params: {
     values: [
       ...NAME_PLACEHOLDERS,
+      "BABY",
+      "BOY",
+      "MALE",
       "BABY BOY",
       "BABY GIRL",
       "BB",

@@ -1041,11 +1041,8 @@ describe("default name pipeline (first_name / last_name)", () => {
   test.each([
     "Unknown",
     "UNK",
-    "baby",
-    "Boy",
     "Girl",
     "Twin",
-    "Male",
     "Female",
     "Trauma",
     "Refused",
@@ -1059,6 +1056,10 @@ describe("default name pipeline (first_name / last_name)", () => {
   });
 
   test.each([
+    ["baby", "BABY"],
+    ["Boy", "BOY"],
+    ["Male", "MALE"],
+    [" male. ", "MALE"],
     ["Baby Boy", "BABY BOY"],
     ["baby-girl", "BABY GIRL"],
     ["B.B.", "BB"],
@@ -1095,7 +1096,7 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(runLast("Doe")).toBe("DOE");
   });
 
-  test("the last-name list is the first-name list without its compound values and initials", () => {
+  test("the last-name list is the first-name list without BABY, BOY, MALE, its compound values and initials", () => {
     const placeholders = (steps: StandardizationStep[]) =>
       steps.find(
         (step) =>
@@ -1106,11 +1107,8 @@ describe("default name pipeline (first_name / last_name)", () => {
     const lastNames = [
       "UNKNOWN",
       "UNK",
-      "BABY",
-      "BOY",
       "GIRL",
       "TWIN",
-      "MALE",
       "FEMALE",
       "TRAUMA",
       "REFUSED",
@@ -1134,6 +1132,9 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(placeholders(last.steps!)).toEqual(lastNames);
     expect(placeholders(first.steps!)).toEqual([
       ...lastNames,
+      "BABY",
+      "BOY",
+      "MALE",
       "BABY BOY",
       "BABY GIRL",
       "BB",
