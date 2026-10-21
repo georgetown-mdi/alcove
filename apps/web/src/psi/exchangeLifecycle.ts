@@ -545,7 +545,7 @@ export async function runExchangeLifecycle<
     try {
       release();
     } catch (err) {
-      log.error("teardown: disconnecting the peer failed:", err);
+      log.error("teardown: releasing the transport failed:", err);
     }
   };
 

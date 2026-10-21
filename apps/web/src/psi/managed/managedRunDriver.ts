@@ -753,7 +753,10 @@ async function teardown(
   try {
     runConnection.release();
   } catch (error) {
-    log.error("managed re-run teardown: disconnecting the peer failed:", error);
+    log.error(
+      "managed re-run teardown: releasing the transport failed:",
+      error,
+    );
   }
   try {
     await mc.close();

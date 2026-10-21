@@ -1142,7 +1142,7 @@ describe("runExchangeLifecycle", () => {
     // -- and the swallowed failure is logged rather than leaked to stderr.
     expect(
       logCapture.errors.some((e) =>
-        e.includes("teardown: disconnecting the peer failed"),
+        e.includes("teardown: releasing the transport failed"),
       ),
     ).toBe(true);
   });
@@ -1294,6 +1294,39 @@ describe("runExchangeLifecycle", () => {
     expect(conn.close).toHaveBeenCalled();
     expect(peer.disconnect).toHaveBeenCalled();
     expect(mockedOpen).not.toHaveBeenCalled();
+    expect(s.onError).not.toHaveBeenCalled();
+    expect(s.onResult).not.toHaveBeenCalled();
+  });
+
+  test("an abort as acquire resolves closes and releases the handed connection, no exchange", async () => {
+    const controller = new AbortController();
+    const { mc, close } = makeFakeMc();
+    const release = vi.fn();
+    const acquire: Acquire = () => {
+      controller.abort();
+      return Promise.resolve({
+        connection: mc,
+        release,
+        psi: Promise.resolve({} as PSILibrary),
+        prepared: STUB_PREPARED,
+      });
+    };
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: controller.signal,
+      ...s,
+    });
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(close.mock.invocationCallOrder[0]).toBeLessThan(
+      release.mock.invocationCallOrder[0],
+    );
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
+    expect(mockedRunExchange).not.toHaveBeenCalled();
     expect(s.onError).not.toHaveBeenCalled();
     expect(s.onResult).not.toHaveBeenCalled();
   });
