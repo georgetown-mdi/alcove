@@ -1840,7 +1840,7 @@ describe("DELETE frees the slot for a new POST", () => {
     const id = await createSucceededJob({ STUB_OUTPUT_FILE: "id\n1\n" });
     const manager = (globalThis as { jobManagerInstance?: JobManagerType })
       .jobManagerInstance!;
-    await vi.waitFor(() => expect(manager.getJob(id)?.terminal).not.toBeNull());
+    expect(manager.getJob(id)?.terminal).not.toBeNull();
 
     // Reject-until-DELETE: the settled exchange holds the slot, and the busy body
     // still names it so the browser can re-attach.
