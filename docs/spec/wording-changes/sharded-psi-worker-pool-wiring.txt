@@ -5,14 +5,22 @@
 # The browser's PSI worker pool: what it splits, how many workers, the macOS
 # bound, the key path, the merge in the primary, the failure rules, the
 # progress timeout and its basis, and the single-threaded path measured
-# against the pool, in time and in heap.
+# against the pool, in time and in heap. The pool runs for the party creating
+# the request; the party answering it keeps one worker, since a pooled answer
+# at the set ceiling ran the renderer out of memory where one worker passed,
+# measured beside the joiner's pooled round at the ceiling.
 - - -> **The browser runs its masking across a pool of PSI workers.**
-- - -> The web app creates its request, and answers its partner's request, across several PSI workers at once: each masks a contiguous part of the set under the round's one key, and the primary merges their outputs by the chunk rules above (`ShardedPsiEngine`, `packages/core/src/psi/shardedPsiEngine.ts`, run in the primary by `apps/web/src/psi/workers/psiCryptoWorkerProgram.ts`; the pool is `apps/web/src/psi/workers/psiWorkerPool.ts`).
+- - -> The web app creates its request across several PSI workers at once: each masks a contiguous part of the set under the round's one key, and the primary merges their outputs by the chunk rules above (`ShardedPsiEngine`, `packages/core/src/psi/shardedPsiEngine.ts`, run in the primary by `apps/web/src/psi/workers/psiCryptoWorkerProgram.ts`; the pool is `apps/web/src/psi/workers/psiWorkerPool.ts`).
 - - -> Nothing on the wire changes, and the pool needs no cross-origin isolation headers and no `SharedArrayBuffer`: each worker has its own WASM instance and memory, and the workers exchange only structured-clone messages.
 - - -> **Which operations.**
-- - -> Creating the request and answering the partner's request are split.
+- - -> Creating the request is split.
 - - -> Creating the setup and the match run on one worker, the primary, so a count-only match counts the whole response once: counts summed over parts would count a value the partner repeated once per part.
 - - -> A set under 2,048 elements, two shards of `PSI_SHARD_MIN_ELEMENTS` (1,024), runs on the primary alone.
+- - -> **The party answering the request runs one worker.**
+- - -> The starter, which creates the setup and answers the joiner's request, runs the single-threaded path, one worker, on every platform.
+- - -> A pooled answer at `BROWSER_PSI_SET_MAX_ELEMENTS` ran the renderer out of memory where one worker completed the same round (measured below); the cause is not established.
+- - -> `ShardedPsiEngine` and the pool can split the answer, and the identity tests below cover that output, but the web app's engine factory starts no pool for the starter.
+- - -> `psiWorkerPool.test.ts` checks that the factory starts one worker for the starter and the shard count for the joiner.
 - - -> **The output is one engine's.**
 - - -> The merged request and response are byte-identical to one engine's under the same key.
 - - -> `packages/core/test/psi/shardedPsiEngine.test.ts` holds this at 1 to 5 engines in both modes on both backends, `apps/web/test/unit/psi/psiWorkerPool.test.ts` over the worker program against an engine built from the pool's key, and `apps/web/test/browser/psiCryptoWorker.test.ts` over real workers in Chromium, running a test-only worker entry whose keys are fixed, against an engine on the page built from the same key.
@@ -29,7 +37,7 @@
 - - -> `psiWorkerPool.test.ts` checks over real channels that no message between the page and a worker contains the key.
 - - -> **A helper that fails its setup leaves the run on the primary.**
 - - -> A helper reports to the page once its engine is built from the key.
-- - -> The first request the pool creates or answers waits for every helper's report, up to the progress timeout below.
+- - -> The first request the pool creates waits for every helper's report, up to the progress timeout below.
 - - -> If any helper failed or has not reported, every helper is terminated and the run goes on the primary alone, the single-threaded path.
 - - -> A primary that fails to start sends each helper a refusal in place of the key, so the wait ends at once.
 - - -> **The primary merges the parts.**
@@ -63,4 +71,19 @@
 - - -> Workers | Page, creating the request | Page, answering it | Primary, creating | Primary, answering | Each helper, creating and answering
 - - -> 1, the single-threaded path | 4 MB | 4 MB | 33 MB | 56 MB | none
 - - -> 4 | 7 MB | 4 MB | 23 MB | 57 MB | 6 MB and 10 to 11 MB
-- - -> So a pooled round grows the page's heap about as the single-threaded path does, and the primary's about as that path's one worker's, the path measured to complete at `BROWSER_PSI_SET_MAX_ELEMENTS` (above); no pooled round that large has been measured.
+- - -> In both tables the pooled rows' answer figures measure the pool answering, which the web app does not run: it answers on one worker, the first row.
+- - -> At 100,000 values a pooled round grows the page's heap about as the single-threaded path does, and the primary's about as that path's one worker's.
+- - -> At `BROWSER_PSI_SET_MAX_ELEMENTS` the pool was measured 2026-10-21 on the x86-64 host above, at the same memory and with nothing else running, in the same Chrome for Testing 156.0.8078.4 run headless: one round in each role through the wrap with `browserWrappedRound.ts`, its page building the engine from the web app's pooled factory (a local change, not kept in the tree), 8,388,608 values a side, identifier-revealing, 1,000 shared, the partner on the native addon.
+- - -> The page read 6 logical cores, so the pool ran 4 workers.
+- - -> The one-worker figures are the host's wrapped rounds above.
+- - -> Joiner's workers | Wall time | Creating the request | The match | Worker V8 heap peak | Peak renderer RSS
+- - -> 1, the single-threaded path | 5,715 s | 2,966 s | 2,429 s | 2,561 MiB | 6,019 MB
+- - -> 4 | 3,865 s | 1,122 s | 2,422 s | 2,656 MiB in the primary; 618 to 625 MiB in each helper | 6,510 MB
+- - -> **The joiner's round completed.**
+- - -> It matched the known overlap, and creating the request took 38% of its one-worker time.
+- - -> The match is not split, and took about the same time.
+- - -> **The starter's pooled answer failed.**
+- - -> Creating the setup ran on the primary alone in 2,960.4 s, as on one worker.
+- - -> Within about 197 s of the pooled answer starting, the renderer stopped with `V8 javascript OOM (MarkCompactCollector: young object promotion failed)`, raised in an isolate whose size and collections mark it as a helper, at 167 MB in use, far under its 4,192 MiB limit.
+- - -> The renderer's resident set peaked at 7,890 MB, against 7,379 MB for the whole one-worker round, and the host's available memory stayed at 17.1 GB or more.
+- - -> The starter therefore answers on one worker (above).

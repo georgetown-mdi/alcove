@@ -5,12 +5,14 @@ Web Worker sharding, with the pthreads/SIMD build declined
 ([Decision](#decision-2026-09-16)) -- the macOS bound decided on 2026-10-18
 ([Decision](#decision-2026-10-18-the-macos-bound)), and the key path and the
 failure rules on 2026-10-19
-([Decision](#decision-2026-10-19-the-key-path-and-a-stopped-worker)). The
+([Decision](#decision-2026-10-19-the-key-path-and-a-stopped-worker)), and the
+party answering the request kept on one worker on 2026-10-20
+([Decision](#decision-2026-10-20-the-party-answering-keeps-one-worker)). The
 shipped arm is built: the engine that splits a round's request and response
 across engines holding one key (`packages/core/src/psi/shardedPsiEngine.ts`),
 the browser shard count (`apps/web/src/psi/workers/psiShardPolicy.ts`), and the
-worker pool the web exchange runs (`apps/web/src/psi/workers/psiWorkerPool.ts`),
-specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+worker pool the web exchange runs for the party creating the request
+(`apps/web/src/psi/workers/psiWorkerPool.ts`), specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
 "The browser runs its masking across a pool of PSI workers". The measurement
 prototype lives under two `test/bench` directories.
 
@@ -406,5 +408,26 @@ browser's largest set. The first worker merges instead: the helpers take
 their parts from it and answer it over the channels the key took, so the page
 holds only the merged message, as on one worker, and the first worker's heap
 grows about as the one worker's does. The figures:
+[PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers".
+
+## Decision (2026-10-20): the party answering keeps one worker
+
+The pool runs only for the joiner, the party creating the request. The
+starter, which answers it, runs on one worker, as before the pool. The
+browser's set ceiling is a measured capability the product states, so the
+pool may not lower it.
+
+- **Why.** At the browser's set ceiling on the x86-64 host, a pooled answer
+  ran the renderer out of memory within minutes of starting, where the same
+  round on one worker had completed. The cause is not established: the
+  joiner's pooled round on the same host completed, with larger helpers.
+- **What the joiner gains.** Creating the request at the ceiling took 38% of
+  its one-worker time, and the whole round about two thirds.
+- **What stays.** The pool's split of the answer, and the identity tests of
+  it, stay in the code, unused by the web app's engine factory, so a later
+  measurement can pool the answer again once the crash is understood.
+
+The figures:
 [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
 "The browser runs its masking across a pool of PSI workers".
