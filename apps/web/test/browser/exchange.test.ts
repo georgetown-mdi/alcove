@@ -366,8 +366,8 @@ describe("quick path", () => {
       "Alcove encrypts the fields you match on and compares " +
         "them using a method called private set intersection, so neither " +
         "of you sees the other's records that don't match. Data is " +
-        "encrypted locally in your browser before being sent to your " +
-        "partner. A coordination server only helps the two browsers find " +
+        "encrypted before leaving your machine. A coordination server " +
+        "only helps the two browsers find " +
         "each other to establish a secure peer-to-peer connection.",
     );
 

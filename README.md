@@ -8,7 +8,7 @@ Alcove is an open-source tool that lets two organizations find the records (indi
 
 Pick the one that matches who you are. All three run the same protocol, so the two parties do not have to pick the same one.
 
-1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your files are read and matched inside your browser, and data is encrypted locally in your browser before being sent to your partner. Best for first-time and occasional exchanges. See [Web app](#web-app).
+1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your files are read and matched inside your browser, and data is encrypted before leaving your machine. Best for first-time and occasional exchanges. See [Web app](#web-app).
 2. **You run Docker and want a guided screen for an exchange over your own SFTP server.** Start the console from the directory holding your input file, then visit [http://127.0.0.1:3000](http://127.0.0.1:3000):
    ```sh
    docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest serve
