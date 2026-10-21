@@ -376,7 +376,10 @@ describe("quick path", () => {
     );
     expect(setUpLink?.getAttribute("href")).toBe("/exchange");
 
-    const guide = page.getByRole("link", { name: "user guide (on GitHub)" });
+    const guide = page.getByRole("link", {
+      name: "user guide (on GitHub) (opens in a new tab)",
+      exact: true,
+    });
     await expect.element(guide).toHaveAttribute("href", WEB_APP_GUIDE_URL);
     await expect.element(guide).toHaveAttribute("target", "_blank");
 
