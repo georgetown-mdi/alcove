@@ -12,7 +12,10 @@ import { sortAssociationTable } from "@alcove/core/testing";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
-import { runExchangeLifecycle } from "../../src/psi/exchangeLifecycle.js";
+import {
+  openOneShotPeerConnection,
+  runExchangeLifecycle,
+} from "../../src/psi/exchangeLifecycle.js";
 
 import {
   canReachServer,
@@ -93,10 +96,11 @@ function resultsUrlOf(
 }
 
 /** Drive runExchangeLifecycle for one role over an already-open connection,
- * capturing every callback. The connection is supplied via a trivial `acquire`
- * (the role-specific dialing is exercised by the live rendezvous setup and by
- * invitedPSI); everything after acquire -- message-connection open, authenticated
- * key exchange, runExchange, output generation, teardown -- runs for real. */
+ * capturing every callback. The channel is supplied via a trivial `acquire`
+ * that opens the one-shot connection over it (the role-specific dialing is
+ * exercised by the live rendezvous setup and by invitedPSI); everything from
+ * there -- message-connection open, authenticated key exchange, runExchange,
+ * output generation, teardown -- runs for real. */
 async function driveRole(
   exchangeRole: "responder" | "initiator",
   peer: Peer,
@@ -117,13 +121,11 @@ async function driveRole(
   // finally-latch tears the connection down before it resolves.
   const controller = new AbortController();
   await runExchangeLifecycle({
-    acquire: () =>
-      Promise.resolve({
-        peer,
-        conn,
-        psi: Promise.resolve(psiLibrary),
-        prepared,
-      }),
+    acquire: async (context) => ({
+      ...(await openOneShotPeerConnection(peer, conn, context)),
+      psi: Promise.resolve(psiLibrary),
+      prepared,
+    }),
     exchangeRole,
     sharedSecret,
     signal: controller.signal,

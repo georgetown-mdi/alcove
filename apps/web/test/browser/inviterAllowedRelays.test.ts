@@ -117,6 +117,7 @@ async function runListen() {
   await lifecycleCall(0)
     .acquire({
       signal: new AbortController().signal,
+      onCloseOutcome: () => undefined,
       onStage: () => undefined,
       onStages: () => undefined,
       onPsiProgress: () => undefined,

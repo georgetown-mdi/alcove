@@ -25,6 +25,7 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
+import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -489,6 +490,7 @@ export function useAcceptorExchange({
     // the inviter's late await.
     const acquire: Acquire = async ({
       signal,
+      onCloseOutcome,
       onStage,
       onStages,
       onPsiProgress,
@@ -528,9 +530,9 @@ export function useAcceptorExchange({
       // Dial the inviter's derived id. acquire runs only on the browser path,
       // which the selection below reaches only for a WebRTC endpoint; narrow to
       // it fail-closed so a mis-selected non-WebRTC endpoint aborts rather than
-      // reaching dialAsAcceptor with an undrivable locator. dialAsAcceptor tears
-      // down its own peer on failure, so acquisition stays atomic without a
-      // redundant destroy here.
+      // reaching dialAsAcceptor with an undrivable locator. dialAsAcceptor and
+      // the open after it each tear down their own failure, so acquisition
+      // stays atomic without a redundant destroy here.
       if (endpoint.channel !== "webrtc")
         throw new Error("the browser acceptor path requires a WebRTC endpoint");
       const relayPlan = await relayPlanForRun(
@@ -543,7 +545,11 @@ export function useAcceptorExchange({
         signal,
         ...relayPlan,
       });
-      return { peer, conn, psi, prepared };
+      const connection = await openOneShotPeerConnection(peer, conn, {
+        signal,
+        onCloseOutcome,
+      });
+      return { ...connection, psi, prepared };
     };
 
     const browserDriver = (): ExchangeDriver<RunOutputs> =>
