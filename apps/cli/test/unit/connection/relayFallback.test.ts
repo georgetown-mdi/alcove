@@ -8,7 +8,6 @@ import {
   setLogLevel,
 } from "@alcove/core";
 
-import { RELAY_ABANDON_CLOSE_CODE } from "../../../src/connection/webrtc/websocketRelayConnection";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 
 import type { MessageConnection, RendezvousRole } from "@alcove/core";
@@ -104,14 +103,10 @@ class FakeRelay implements ParkedWebSocketRelay {
     return this.starting.promise;
   }
 
-  /** The code the real relay closes with, by {@link ParkedWebSocketRelay.close}'s contract. */
-  closeCode: number | undefined;
-
   close(): void {
+    this.closeCalls += 1;
     if (this.opened || this.closed || this.failure !== undefined) return;
     this.closed = true;
-    this.closeCalls += 1;
-    this.closeCode = this.startSent ? RELAY_ABANDON_CLOSE_CODE : 1000;
     this.listeners.clear();
     this.starting?.reject(new ConnectionError("stopped", "closed"));
   }
@@ -456,13 +451,25 @@ test("the partner leaving the inviter's relay and starting on another moves the 
   const [a, b] = relays("a", "b");
   a.pair();
   b.pair();
+  const events: string[] = [];
+  const closeA = a.close.bind(a);
+  a.close = () => {
+    events.push("close a");
+    closeA();
+  };
+  const startB = b.start.bind(b);
+  b.start = () => {
+    events.push("start b");
+    return startB();
+  };
   const { outcome, webRtc } = race("inviter", [a, b]);
   webRtc.pathFails();
   await settle();
   a.partnerLeaves();
   b.partnerStarts();
   expect(a.isClosed).toBe(true);
-  expect(a.closeCode).toBe(RELAY_ABANDON_CLOSE_CODE);
+  expect(a.closeCalls).toBe(1);
+  expect(events).toEqual(["close a", "start b"]);
   expect(b.startSent).toBe(true);
   const result = await outcome;
   expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
