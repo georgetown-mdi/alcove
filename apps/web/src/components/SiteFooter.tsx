@@ -1,4 +1,4 @@
-import { Anchor } from "@mantine/core";
+import { Anchor, VisuallyHidden } from "@mantine/core";
 
 import styles from "@styles/app.module.css";
 
@@ -34,10 +34,12 @@ export function SiteFooter({ wide = false }: { wide?: boolean }) {
         Alcove is open-source software built by{" "}
         <Anchor inherit href={MDI_PETS_URL} target="_blank" rel="noreferrer">
           Georgetown&apos;s Massive Data Institute
+          <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
         </Anchor>
         .
       </p>
       <div className={styles.siteFooterLinks}>
+        <span>On GitHub:</span>
         {FOOTER_LINKS.map(({ label, href }) => (
           <Anchor
             key={label}
@@ -47,9 +49,9 @@ export function SiteFooter({ wide = false }: { wide?: boolean }) {
             rel="noreferrer"
           >
             {label}
+            <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
           </Anchor>
         ))}
-        <span>(all on GitHub)</span>
       </div>
     </footer>
   );

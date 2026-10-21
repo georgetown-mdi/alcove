@@ -633,8 +633,8 @@ function AcceptorInvitationScreen({
 
   // The file-assurance line for the acceptor's own intake: the console reads the
   // file itself, so the acceptor opts into the mounted-directory claim explicitly
-  // (as the inviter's YourFileSection does), while the hosted build keeps the
-  // browser-only line. Not FILE_ASSURANCE_LINE alone -- that resolves to no claim
+  // (as the inviter's YourFileSection does), while the hosted build keeps
+  // HOSTED_FILE_ASSURANCE. Not FILE_ASSURANCE_LINE alone -- that resolves to no claim
   // on the console, which would leave this accurate surface silent.
   const acceptAssuranceLine = consoleBuild
     ? APPLIANCE_FILE_ASSURANCE

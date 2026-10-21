@@ -1119,6 +1119,28 @@
   max-width: 1100px;
 }
 
+/* Paragraphs in the wider console column keep the hosted column's content
+   width (880px less the .lobby side padding). */
+.page .lobbyFullWidth.lobbyWide p {
+  max-width: calc(880px - 64px);
+}
+
+/* The site headline above the recurring-exchange list's h1: the h1 look,
+   without being a heading. */
+.page .siteHeadline {
+  font-size: 1.6rem;
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 0 0 0.6rem 0;
+}
+
+/* The recurring-exchange list's h1 sits below the site headline at the
+   .page h2 size. */
+.page .savedListTitle {
+  font-size: 1.18rem;
+  margin: 2rem 0 0.6rem 0;
+}
+
 /* Each card spans three shared rows (title, body, action), so the main
    buttons line up across the cards in a row. */
 .lobbyActions {
@@ -1162,7 +1184,7 @@
   font-size: 15px;
 }
 
-/* The heading keeps the Other connection options look: ink color, with the
+/* The heading keeps the More options look: ink color, with the
    rule's padding standing in for its top margin. */
 .page .howItWorks .lobbyHelpHeading {
   color: var(--app-ink);

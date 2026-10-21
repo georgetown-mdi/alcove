@@ -882,7 +882,7 @@ export function partitionReadableManagedExchanges(
  * recorded. Not the whole record: the diagnostic path must never return the
  * `sharedSecret` or any document field to a component, so this type
  * structurally cannot hold secret material (see
- * docs/MANAGED_EXCHANGE.md, "Deleting a managed exchange", and the read-failed
+ * docs/MANAGED_EXCHANGE.md, "Removing a managed exchange", and the read-failed
  * recovery listing). The `id` is the stored key a delete-by-key acts on.
  */
 export interface ManagedExchangeDiagnosticEssentials {

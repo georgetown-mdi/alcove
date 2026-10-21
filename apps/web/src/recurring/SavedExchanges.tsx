@@ -231,8 +231,8 @@ function SavedExchangesSurface({
   return (
     <AppPage>
       <main className={`${styles.lobby} ${styles.lobbyFullWidth}`}>
-        <h1>{HOME_HEADLINE}</h1>
-        <h2>Recurring exchanges</h2>
+        <p className={styles.siteHeadline}>{HOME_HEADLINE}</p>
+        <h1 className={styles.savedListTitle}>Recurring exchanges</h1>
         <p className={styles.sub}>
           Exchanges you saved to run again with the same partner, stored in this
           browser. Choose one to run it again without a new invitation.
@@ -252,11 +252,11 @@ function SavedExchangesSurface({
 }
 
 /** The populated run list: a row per stored exchange with a run/open action and the
- * always-available delete, above a create entry into the invite/configure flow
- * (where saving as recurring happens at share time) beside an entry to the
- * lobby's invitation field, the one-off quick-path alternative, and the import
- * every list state offers. A row moved to another
- * device also offers its own restore from backup. Deleting a row calls `reload`,
+ * always-available remove, above a create entry into the invite/configure flow
+ * (where saving as recurring is offered once the exchange completes) beside an
+ * entry to the lobby's invitation field, the one-off quick-path alternative, and
+ * the import every list state offers. A row moved to another
+ * device also offers its own restore from backup. Removing a row calls `reload`,
  * so the list reflects the removal without a page navigation. */
 function SavedExchangesList({
   rows,
@@ -337,9 +337,8 @@ function SavedExchangesList({
         without saving it here.
       </p>
       <p className={`${styles.sub} ${styles.small}`}>
-        Can&apos;t connect? Some workplace networks block the default
-        peer-to-peer approach. Your IT team can give you a relay server address
-        to enter in{" "}
+        If you can&apos;t connect to your partner, your IT team can give you a
+        relay server address to enter in{" "}
         <Anchor inherit component={Link} to="/relay">
           relay settings
         </Anchor>
@@ -358,8 +357,8 @@ function StorageUnavailable() {
   return (
     <AppPage>
       <main className={styles.lobby}>
-        <h1>{HOME_HEADLINE}</h1>
-        <h2>Recurring exchanges</h2>
+        <p className={styles.siteHeadline}>{HOME_HEADLINE}</p>
+        <h1 className={styles.savedListTitle}>Recurring exchanges</h1>
         <p className={styles.sub}>
           This browser cannot store recurring exchanges - private browsing may
           be blocking storage, or this browser does not support it. You can
@@ -590,7 +589,7 @@ export function DeleteExchangeButton({
             title="That exchange could not be removed"
             mb="sm"
           >
-            Removing it from this browser failed. Nothing was deleted; try
+            Removing it from this browser failed. Nothing was removed; try
             again.
           </Alert>
         )}

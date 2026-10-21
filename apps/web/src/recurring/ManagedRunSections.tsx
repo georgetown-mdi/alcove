@@ -92,6 +92,7 @@ export function BackupPanel({
     <div
       className={styles.callout}
       id={MANAGED_BACKUP_SECTION_ID}
+      tabIndex={-1}
       ref={sectionRef}
     >
       {state.kind === "backed-up" ? (

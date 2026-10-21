@@ -2,15 +2,15 @@ import { describe, expect, test } from "vitest";
 
 import {
   APPLIANCE_FILE_ASSURANCE,
-  BROWSER_ONLY_FILE_ASSURANCE,
+  HOSTED_FILE_ASSURANCE,
   fileAssuranceLine,
 } from "@exchange/fileAssurance";
 import { parseClientConfig } from "@utils/clientConfig";
 
-describe("BROWSER_ONLY_FILE_ASSURANCE", () => {
-  test("is the exact copy the hosted, browser-only deployment states", () => {
-    expect(BROWSER_ONLY_FILE_ASSURANCE).toBe(
-      "Data is encrypted before leaving your machine.",
+describe("HOSTED_FILE_ASSURANCE", () => {
+  test("is the exact copy the hosted deployment states", () => {
+    expect(HOSTED_FILE_ASSURANCE).toBe(
+      "Your file is never uploaded to our servers. What is sent to your partner is encrypted first.",
     );
   });
 });
@@ -24,8 +24,8 @@ describe("APPLIANCE_FILE_ASSURANCE", () => {
 });
 
 describe("fileAssuranceLine", () => {
-  test("renders the browser-only claim when the server does not receive files", () => {
-    expect(fileAssuranceLine(false)).toBe(BROWSER_ONLY_FILE_ASSURANCE);
+  test("renders the hosted claim when the server does not receive files", () => {
+    expect(fileAssuranceLine(false)).toBe(HOSTED_FILE_ASSURANCE);
   });
 
   test("omits the claim rather than substituting copy when the server receives files", () => {

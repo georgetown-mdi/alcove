@@ -10,7 +10,7 @@ export const RECURRING_SETUP_HREF = `/exchange?${RECURRING_SETUP_PARAM}=1`;
 /** The invite flow's opening line for a visitor who came to set up a
  * recurring exchange. */
 export const RECURRING_SETUP_NOTE =
-  "You can save this exchange to run again when you share the invitation.";
+  "You can save this exchange to run again once it finishes.";
 
 /** Whether the URL's query string marks an arrival from a "Set up a recurring
  * exchange" entry. */

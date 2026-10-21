@@ -140,7 +140,7 @@ describe("a re-read of the accounting shows that it is under way", () => {
     await page
       .getByRole("button", { name: "Start a fresh accounting" })
       .click();
-    await page.getByRole("button", { name: "Delete these records" }).click();
+    await page.getByRole("button", { name: "Remove these records" }).click();
 
     // The destructive step took, and the surface says the store is being read
     // again rather than standing on the verdict that step just invalidated.

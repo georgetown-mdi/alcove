@@ -1034,6 +1034,7 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
     <div
       className={styles.callout}
       id={MANAGED_SCHEDULE_SECTION_ID}
+      tabIndex={-1}
       ref={sectionRef}
     >
       <h2 className={styles.eyebrow}>Run schedule</h2>
@@ -1251,7 +1252,7 @@ export function ParkedResultsView({
       )}
       {/* Offered for anything this exchange has here, including a value this
           build cannot read -- the delete needs no parse, and it is the only way
-          out of that state short of deleting the exchange. Withheld only where
+          out of that state short of removing the exchange. Withheld only where
           the read found nothing to clear or did not reach the store, which a
           clear could not speak for either. */}
       {(read?.kind === "parked" || read?.kind === "unreadable") && (
@@ -1532,7 +1533,7 @@ function DisclosureAccountingView({
         </>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        This accounting is kept in this browser and is deleted with the
+        This accounting is kept in this browser and is removed with the
         exchange.{" "}
         {entries.length > 0 && (
           <>
@@ -2031,7 +2032,7 @@ function UnreadableAccountingRecovery({
         transitionProps={{ duration: 0 }}
       >
         <p>
-          Delete the disclosure records stored for this exchange? They are
+          Remove the disclosure records stored for this exchange? They are
           destroyed permanently, this browser holds no other copy, and it cannot
           be undone.
         </p>
@@ -2065,7 +2066,7 @@ function UnreadableAccountingRecovery({
             mt="sm"
             mb="sm"
           >
-            The stored records were not deleted. Nothing changed; try again.
+            The stored records were not removed. Nothing changed; try again.
           </Alert>
         )}
         <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
@@ -2078,7 +2079,7 @@ function UnreadableAccountingRecovery({
             loading={resetting}
             onClick={confirmReset}
           >
-            Delete these records
+            Remove these records
           </Button>
         </div>
       </Modal>

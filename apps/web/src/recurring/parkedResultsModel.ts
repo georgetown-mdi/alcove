@@ -75,7 +75,7 @@ export const PARKED_RESULTS_SCHEDULE_NOTE =
   `can read them. After ${RETENTION_PHRASE} they are no longer offered, and ` +
   `your next visit to this page deletes them, as does a later run that leaves ` +
   `results of its own; until one of those happens the bytes stay on disk. ` +
-  `Clearing what is kept here removes them at once, as does deleting the ` +
+  `Clearing what is kept here removes them at once, as does removing the ` +
   `exchange.`;
 
 /** What the section holding parked results says about them: where they are, how
@@ -87,7 +87,7 @@ export const PARKED_RESULTS_RETENTION_NOTE =
   `browser storage; after ${RETENTION_PHRASE} they are no longer offered, and ` +
   `your next visit to this page deletes them, as does a later run that leaves ` +
   `results of its own. Until one of those happens the bytes stay on disk. ` +
-  `Clearing what is kept here removes them at once, as does deleting this ` +
+  `Clearing what is kept here removes them at once, as does removing this ` +
   `exchange.`;
 
 /** The empty state: no scheduled run has left anything here. Stated against the
@@ -114,7 +114,7 @@ export const UNREADABLE_PARKED_RESULTS_NOTE =
   "would otherwise remove it does not apply, and while it is here a scheduled " +
   "run cannot leave its results or record that it could not - the runs " +
   "themselves still complete and file their disclosures. Clearing what is kept " +
-  "here removes it without reading it, as does deleting the exchange.";
+  "here removes it without reading it, as does removing the exchange.";
 
 /** The state a store that did not answer presents as, held apart from the empty
  * one: nothing is known about what is stored, so it may not read as "nothing is
