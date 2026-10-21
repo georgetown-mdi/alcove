@@ -25,7 +25,8 @@ import styles from "@styles/app.module.css";
 import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
 import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
 import { HOSTED_FILE_ASSURANCE } from "./fileAssurance";
-import { downloadSampleCsvs } from "./sampleData";
+import { SampleCsvLinks } from "./SampleCsvLinks";
+import { downloadSamplePartnerCsv } from "./sampleData";
 
 /** The paste card's heading, which names the invitation field. */
 const PASTE_INVITATION_HEADING_ID = "paste-invitation-heading";
@@ -99,7 +100,7 @@ export function Lobby() {
   // folder for the picker to list instead.
   async function loadSample() {
     if (!isConsoleBuild()) {
-      downloadSampleCsvs();
+      downloadSamplePartnerCsv();
       window.location.assign("/exchange?demo=1");
       return;
     }
@@ -224,20 +225,12 @@ export function Lobby() {
               with the second file.
             </>
           ) : (
-            ". This downloads two sample files and opens the invite screen with the first one. To run both sides, open the invitation in another browser tab and accept it with the second file."
+            ". This opens the invite screen with sample data loaded and downloads the partner's sample file. To run both sides, open the invitation in another browser tab and accept it with that file."
           )}
         </p>
         {sampleFailure !== undefined && (
           <p className={`${styles.sub} ${styles.small}`} role="alert">
-            {sampleFailure}{" "}
-            <Anchor
-              inherit
-              component="button"
-              type="button"
-              onClick={downloadSampleCsvs}
-            >
-              Download the CSVs
-            </Anchor>
+            {sampleFailure} Download <SampleCsvLinks />.
           </p>
         )}
         <div className={styles.howItWorks}>

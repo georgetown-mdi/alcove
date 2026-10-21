@@ -7,10 +7,17 @@ import {
   SAMPLE_PARTNER_FILE_NAME,
 } from "@psi/sampleData";
 
-/** Download both sample CSVs (inviter then partner) client-side. Nothing is
- * uploaded; the bytes come from the shared `@psi/sampleData` module. */
-export function downloadSampleCsvs(): void {
+// One file per click: a browser may hold or block the second of two downloads
+// started by one click, so no control here downloads both sample CSVs at once.
+
+/** Download the inviter sample CSV client-side. Nothing is uploaded; the bytes
+ * come from the shared `@psi/sampleData` module. */
+export function downloadSampleInviterCsv(): void {
   triggerBlobDownload(SAMPLE_INVITER_FILE_NAME, SAMPLE_INVITER_CSV, "text/csv");
+}
+
+/** Download the partner sample CSV, for the side that accepts the invitation. */
+export function downloadSamplePartnerCsv(): void {
   triggerBlobDownload(SAMPLE_PARTNER_FILE_NAME, SAMPLE_PARTNER_CSV, "text/csv");
 }
 

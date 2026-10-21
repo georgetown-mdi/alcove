@@ -1246,6 +1246,48 @@ describe("inviter screen", () => {
     }
   });
 
+  test("each sample link downloads one file, and loading the sample downloads the partner CSV", async () => {
+    const downloads = captureDownloads();
+    try {
+      app.render(createElement(InviterScreen));
+      const fileNames = () => downloads.captured.map((entry) => entry.fileName);
+
+      await page.getByRole("button", { name: "inviter CSV" }).click();
+      expect(fileNames()).toEqual(["alcove-sample-inviter.csv"]);
+      await page.getByRole("button", { name: "partner CSV" }).click();
+      expect(fileNames()).toEqual([
+        "alcove-sample-inviter.csv",
+        "alcove-sample-partner.csv",
+      ]);
+
+      await page
+        .getByRole("button", { name: "load it into this exchange" })
+        .click();
+      await expect
+        .element(page.getByText("alcove-sample-inviter.csv"))
+        .toBeInTheDocument();
+      expect(fileNames().slice(2)).toEqual(["alcove-sample-partner.csv"]);
+    } finally {
+      downloads.restore();
+    }
+  });
+
+  test("the ?demo=1 seed downloads nothing", async () => {
+    const downloads = captureDownloads();
+    const before = window.location.href;
+    window.history.replaceState(window.history.state, "", "/exchange?demo=1");
+    try {
+      app.render(createElement(InviterScreen));
+      await expect
+        .element(page.getByText("alcove-sample-inviter.csv"))
+        .toBeInTheDocument();
+      expect(downloads.captured).toEqual([]);
+    } finally {
+      window.history.replaceState(window.history.state, "", before);
+      downloads.restore();
+    }
+  });
+
   test("the guard stays disarmed for the sample (pristine and edited) and re-arms on a real swap", async () => {
     const unloadPrompted = () =>
       !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));

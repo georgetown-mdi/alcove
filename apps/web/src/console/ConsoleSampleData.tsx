@@ -8,6 +8,7 @@ import {
   SAMPLE_INVITER_FILE_NAME,
   SAMPLE_PARTNER_FILE_NAME,
 } from "@psi/sampleData";
+import { SampleCsvLinks } from "@exchange/SampleCsvLinks";
 import styles from "@styles/app.module.css";
 
 import type { AddSampleInputsResult } from "@psi/jobClient/workInputClient";
@@ -52,11 +53,9 @@ export function sampleInputsFailure(
  */
 export function ConsoleSampleData({
   onAdded,
-  onDownloadSamples,
 }: {
   /** The files are in the folder: the picker lists it again. */
   onAdded: () => void;
-  onDownloadSamples: () => void;
 }) {
   const [state, setState] = useState<
     | { status: "idle" }
@@ -90,16 +89,7 @@ export function ConsoleSampleData({
         >
           Add sample files to my folder
         </Anchor>
-        , or{" "}
-        <Anchor
-          inherit
-          component="button"
-          type="button"
-          onClick={onDownloadSamples}
-        >
-          download the CSVs
-        </Anchor>
-        .
+        , or download <SampleCsvLinks />.
       </p>
       <div role="status" aria-live="polite">
         {state.status === "added" && (

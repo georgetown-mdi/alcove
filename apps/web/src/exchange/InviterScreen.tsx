@@ -188,7 +188,7 @@ import {
   buildManagedDeposit,
   webrtcLocatorFromEndpoint,
 } from "./manageOfferModel";
-import { downloadSampleCsvs, sampleInviterFile } from "./sampleData";
+import { downloadSamplePartnerCsv, sampleInviterFile } from "./sampleData";
 import {
   endpointRequestFor,
   exchangeFileInputFor,
@@ -1842,8 +1842,10 @@ export function InviterScreen() {
             onContinue={() => {
               if (fileReady) goTo("columns");
             }}
-            onLoadSample={loadSample}
-            onDownloadSamples={downloadSampleCsvs}
+            onLoadSample={() => {
+              downloadSamplePartnerCsv();
+              loadSample();
+            }}
           />
         )}
         {section === "columns" &&

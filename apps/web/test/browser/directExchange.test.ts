@@ -1994,7 +1994,7 @@ describe("console lobby copy and sample data", () => {
       ),
     ).toBe(true);
     await expect
-      .element(page.getByRole("button", { name: "Download the CSVs" }))
+      .element(page.getByRole("button", { name: "partner CSV" }))
       .toBeInTheDocument();
   });
 });
