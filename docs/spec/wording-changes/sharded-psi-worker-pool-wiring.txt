@@ -39,6 +39,7 @@
 - - -> **A worker that stops fails the run.**
 - - -> A fault in any worker during a split operation fails that operation, and so the run, at once, by the path a fault in one worker takes: a helper's failed reply, or its report of a part it could not read, reaches the primary, and a helper's error event the page.
 - - -> No worker is retried or started again.
+- - -> The primary masks its own part without yielding and starts it last, so a fault that reaches the primary is read once that part ends, up to a share of the operation's time; a helper's error event reaches the page at once.
 - - -> **The progress timeout.**
 - - -> A worker of a split operation that reports neither a processed count nor its result for `BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS`, 33 minutes, is treated as stopped, and the run fails with `Encrypting the data made no progress for 33 minutes.
 - - -> Run the exchange again.`
