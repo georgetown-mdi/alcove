@@ -360,9 +360,10 @@ describe("quick path", () => {
     // How it works states what leaves the browser and in what form; assert the
     // exact copy so a rewording is an intentional change.
     expect(
-      page.getByText("How it works.", { exact: true }).element().parentElement,
+      page.getByRole("heading", { name: "How it works", exact: true }).element()
+        .nextElementSibling,
     ).toHaveTextContent(
-      "How it works. Alcove encrypts the fields you match on and compares " +
+      "Alcove encrypts the fields you match on and compares " +
         "them using a method called private set intersection, so neither " +
         "of you sees the other's records that don't match. Data is " +
         "encrypted locally in your browser before being sent to your " +

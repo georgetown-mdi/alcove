@@ -1155,13 +1155,16 @@
 .howItWorks {
   border-top: 1px solid var(--app-rule);
   margin-top: 2rem;
-  padding-top: 1.2rem;
+  padding-top: 1.6rem;
   color: var(--app-secondary);
   font-size: 15px;
 }
 
-.howItWorks strong {
+/* The heading keeps the Other connection options look: ink color, with the
+   rule's padding standing in for its top margin. */
+.page .howItWorks .lobbyHelpHeading {
   color: var(--app-ink);
+  margin-top: 0;
 }
 
 /* ---------- saved exchanges ---------- */
