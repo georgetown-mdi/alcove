@@ -151,4 +151,41 @@ describe("the record of sample invitations this browser created", () => {
       true,
     );
   });
+
+  test("stores at most the eight most recent entries, whatever a lookup reads", async () => {
+    const hexDigest = async (text: string): Promise<string> => {
+      const bytes = await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(text),
+      );
+      return Array.from(new Uint8Array(bytes), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+    };
+    for (let index = 0; index < 9; index += 1)
+      await recordSampleInvitation(`stored-${index}`, IN_AN_HOUR, NOW);
+    const stored = JSON.parse(
+      storage.getItem(SAMPLE_INVITATIONS_STORAGE_KEY) ?? "",
+    ) as { entries: Array<{ digest: string }> };
+    const expected = await Promise.all(
+      [1, 2, 3, 4, 5, 6, 7, 8].map((index) => hexDigest(`stored-${index}`)),
+    );
+    expect(stored.entries).toHaveLength(8);
+    expect(stored.entries.map((entry) => entry.digest)).toStrictEqual(expected);
+    expect(stored.entries.map((entry) => entry.digest)).not.toContain(
+      await hexDigest("stored-0"),
+    );
+  });
+
+  test("stores a repeated invitation once", async () => {
+    await recordSampleInvitation(SAMPLE_INVITATION, IN_AN_HOUR, NOW);
+    await recordSampleInvitation("another-sample", IN_AN_HOUR, NOW);
+    await recordSampleInvitation(SAMPLE_INVITATION, IN_AN_HOUR, NOW);
+    const stored = JSON.parse(
+      storage.getItem(SAMPLE_INVITATIONS_STORAGE_KEY) ?? "",
+    ) as { entries: Array<{ digest: string }> };
+    const digests = stored.entries.map((entry) => entry.digest);
+    expect(digests).toHaveLength(2);
+    expect(new Set(digests).size).toBe(2);
+  });
 });
