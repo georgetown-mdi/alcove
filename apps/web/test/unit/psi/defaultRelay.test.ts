@@ -146,6 +146,33 @@ describe("relayWithDefaultForRun", () => {
     });
   });
 
+  test("keeps own STUN urls replacing the default STUN server whether or not the enrollment confirms", async () => {
+    const own = {
+      ...OWN,
+      stun: ["stun:own-stun.example.org:3478"],
+      stunReplacesDefault: true as const,
+    };
+    for (const enrollment of [
+      ENROLLED,
+      { kind: "failed", detail: "HTTP 409" } as const,
+    ]) {
+      const run = await relayWithDefaultForRun(
+        generateSharedSecret(),
+        own,
+        NO_RESTRICTION,
+        { setting: () => DEFAULT_RELAY, enroll: answering(enrollment) },
+      );
+      expect(run.relay).toStrictEqual({
+        turn:
+          enrollment.kind === "enrolled"
+            ? [...own.turn, DEFAULT_RELAY.turnUrl]
+            : own.turn,
+        stun: own.stun,
+        stunReplacesDefault: true,
+      });
+    }
+  });
+
   test("a failed enrollment says so once and dials with its other relays", async () => {
     const onRunNotice = vi.fn();
     const run = await relayWithDefaultForRun(

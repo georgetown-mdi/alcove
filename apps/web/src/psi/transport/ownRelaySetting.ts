@@ -21,7 +21,7 @@ import {
   webSocketRelayUrlSchema,
 } from "@alcove/core";
 
-import type { RelayLocator } from "./rendezvous";
+import type { RelayLocator, RunRelay } from "./rendezvous";
 
 const log = getLogger("ownRelaySetting");
 
@@ -225,15 +225,17 @@ export interface RelayUrls {
  * this browser's own and the invitation's. Its TURN urls are this browser's
  * own followed by the invitation's, each listed once, less every one
  * `allowedRelays` leaves out, and its STUN urls likewise, none left out.
- * With neither it is none. A stored setting this build cannot read adds
- * nothing, and is logged. The command line lists them the same way
- * (`selectRunRelay` in core).
+ * Where this browser's own setting names STUN urls they replace the default
+ * STUN server (`stunReplacesDefault`); an invitation's do not. With neither
+ * it is none. A stored setting this build cannot read adds nothing, and is
+ * logged. The command line lists the urls the same way (`selectRunRelay` in
+ * core).
  */
 export function relayForRun(
   invitationRelay: RelayUrls | undefined,
   allowedRelays: ReadonlyArray<string> | undefined,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-): RelayLocator | undefined {
+): RunRelay | undefined {
   const own = readOwn();
   if (own.kind === "unreadable")
     log.warn(
@@ -247,7 +249,13 @@ export function relayForRun(
   const stun = [
     ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
   ];
-  return turn.length + stun.length === 0 ? undefined : { turn, stun };
+  if (turn.length + stun.length === 0) return undefined;
+  return {
+    turn,
+    stun,
+    ...(ownRelay !== undefined &&
+      ownRelay.stun.length > 0 && { stunReplacesDefault: true as const }),
+  };
 }
 
 /**
@@ -284,7 +292,9 @@ export function ownRelayForInvitation(
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): RelayUrls | undefined {
   const own = readOwn();
-  const urls = relayForRun(undefined, allowedRelays, () => own);
+  const run = relayForRun(undefined, allowedRelays, () => own);
+  const urls =
+    run !== undefined ? { turn: run.turn, stun: run.stun } : undefined;
   const websocket = webSocketRelaysForRun(
     undefined,
     allowedRelays,

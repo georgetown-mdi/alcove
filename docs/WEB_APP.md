@@ -109,6 +109,13 @@ The page reports **Verified**, **Incomplete** (some checks could not run, for ex
 
 To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen once the exchange completes, before you leave it. The offer is not shown for a practice run with sample data. Scheduled runs happen only in the web app installed on your computer and left running; see [Installing the app](MANAGED_EXCHANGE.md#installing-the-app) and [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md).
 
+## Relay settings
+
+The **relay settings** link on the start page opens the Relay server page. What you save there is kept in this browser for this site and applies to every exchange the browser starts from then on, the runs of a saved recurring exchange included. An invitation you create names the servers you saved, less any relay its Allowed relays leave out, so your partner's browser uses them too.
+
+- **TURN server urls** name a relay for when a firewall blocks a direct connection to your partner. The page states what the relay's operator learns, and can test the relays you saved ([COMMUNICATION.md](COMMUNICATION.md#stunturn)).
+- **STUN server urls** name the servers that find your browser's public network address before it connects. A STUN server learns the network address of each party that uses it. Unless you name your own here, the web app uses Google's public STUN server (`stun:stun.l.google.com:19302`). The servers you name replace it rather than adding to it, as a `stun` list does in the command line app ([CLI.md](CLI.md#stun-and-what-it-discloses)). Your partner's browser follows its own setting, so to keep Google's server out of an exchange, both of you name your own. STUN servers named in an invitation you accept are used as well, beside yours or Google's.
+
 ## How large an exchange can be
 
 Each figure below is a fixed limit or a measured run recorded in the specification, linked beside it. A size with no measured run is named as not measured rather than estimated. The times are for whole runs on the machines the sources name; yours will differ with the hardware, the network between the parties, and the number of linkage keys.

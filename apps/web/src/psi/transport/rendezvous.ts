@@ -121,11 +121,18 @@ export interface RelayLocator {
   /** `turn:` / `turns:` urls, of one relay or several, every one keyed from
    * the exchange's relay key and so taking one credential. */
   turn: ReadonlyArray<string>;
-  /** `stun:` / `stuns:` urls, listed beside the default STUN server. */
+  /** `stun:` / `stuns:` urls. */
   stun: ReadonlyArray<string>;
 }
 
-/** The STUN server every run lists, whatever relay it also lists. */
+/** The relay one browser run gathers against ({@link buildIceServers}). */
+export interface RunRelay extends RelayLocator {
+  /** Set where `stun` holds STUN urls this browser's user named, which then
+   * take the place of the default STUN server. */
+  stunReplacesDefault?: true;
+}
+
+/** The STUN server a run lists unless this browser's user named their own. */
 const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
 
 /**
@@ -139,24 +146,30 @@ export const RELAY_CREDENTIAL_TTL_SECONDS = RELAY_CREDENTIAL_MAX_TTL_SECONDS;
 const RELAY_CREDENTIAL_LABEL = "alcove";
 
 /**
- * The ICE server list for one run: one STUN entry, the default STUN server
- * followed by any STUN url the relay names, and, when the relay names TURN
- * urls, one entry of them all holding a credential minted at `now` from the
- * relay key the exchange's shared secret derives. Every relay a browser run
- * lists, its own, the invitation's and the build's default, is keyed from that
- * relay key, so the one credential serves each. The default STUN server stays
- * beside any relay, unlike the CLI's rule, where a configured list replaces
- * the default: a party whose relay fails still offers a server-reflexive
+ * The ICE server list for one run: one STUN entry, and, when the relay names
+ * TURN urls, one entry of them all holding a credential minted at `now` from
+ * the relay key the exchange's shared secret derives. Every relay a browser
+ * run lists, its own, the invitation's and the build's default, is keyed from
+ * that relay key, so the one credential serves each. The STUN entry is the
+ * relay's STUN urls where this browser's user named their own
+ * (`stunReplacesDefault`), as a configured list replaces the default on the
+ * CLI. Otherwise it is the default STUN server followed by any STUN url the
+ * relay names: STUN urls only an invitation names do not take the default's
+ * place, since the acceptor did not choose them. Every run so lists a STUN
+ * server, and a party whose relay fails still offers a server-reflexive
  * candidate. Nothing minted or derived outlives the returned list.
  *
  * @internal
  */
 export async function buildIceServers(
-  relay: RelayLocator | undefined,
+  relay: RunRelay | undefined,
   sharedSecret: string,
   now: Date,
 ): Promise<Array<RTCIceServer>> {
-  const stun = [...new Set([...DEFAULT_STUN_URLS, ...(relay?.stun ?? [])])];
+  const stun =
+    relay?.stunReplacesDefault === true && relay.stun.length > 0
+      ? [...new Set(relay.stun)]
+      : [...new Set([...DEFAULT_STUN_URLS, ...(relay?.stun ?? [])])];
   const iceServers: Array<RTCIceServer> = [{ urls: stun }];
   if (relay !== undefined && relay.turn.length > 0) {
     const { username, credential } = await mintRelayCredential({
@@ -367,7 +380,7 @@ export async function listenAsInviter(
   sharedSecret: string,
   options?: {
     signal?: AbortSignal;
-    relay?: RelayLocator;
+    relay?: RunRelay;
     relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
@@ -613,7 +626,7 @@ export async function dialAsAcceptor(
   endpoint: WebRTCEndpoint,
   options?: {
     signal?: AbortSignal;
-    relay?: RelayLocator;
+    relay?: RunRelay;
     relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;

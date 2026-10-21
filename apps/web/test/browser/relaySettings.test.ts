@@ -13,6 +13,7 @@ import {
   RELAY_OPERATOR_DISCLOSURE,
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
+  STUN_FIELD_DESCRIPTION,
 } from "@exchange/RelaySettingsScreen";
 import {
   RELAY_TEST_FAILED,
@@ -112,6 +113,21 @@ describe("RelaySettingsScreen", () => {
       .element(page.getByText(RELAY_OPERATOR_DISCLOSURE))
       .toBeVisible();
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+  });
+
+  test("the STUN field says what a STUN server learns and that its servers replace the default", async () => {
+    await mountScreen();
+
+    expect(STUN_FIELD_DESCRIPTION).toBe(
+      "One per line. A STUN server finds each browser's public network " +
+        "address, so it learns the network address of each party that uses " +
+        "it. The servers you enter replace the default, Google's public STUN " +
+        "server, in every exchange this browser runs. For example: " +
+        "stun:stun.example.org:3478",
+    );
+    await expect
+      .element(stunField())
+      .toHaveAccessibleDescription(STUN_FIELD_DESCRIPTION);
   });
 
   test("states that an exchange not enrolled at a registrar needs its relay key registered again", async () => {
