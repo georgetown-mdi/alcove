@@ -29,10 +29,11 @@ import type {
 // entry so a unit test can run it in process over real MessageChannels. A
 // primary generates the round's key and posts a copy down each port of the
 // one key-ports message its seed admits; a helper builds its engine only from
-// the key that arrives on its one port, and refuses every request without it.
-// The key is never posted to the page. A split runs over the same ports: the
-// primary sends each helper its part and merges the answers itself, so the
-// page sees only the merged message.
+// the key that arrives on its one port, serves only the primary over that
+// port, and refuses every request the page sends it. The key is never posted
+// to the page. A split runs over the same ports: the primary sends each
+// helper its part and merges the answers itself, so the page sees only the
+// merged message.
 
 /** The parts of a dedicated worker's global scope the program uses. */
 export interface PsiCryptoWorkerScope {
@@ -49,6 +50,8 @@ export interface PsiCryptoWorkerScope {
 export type LoadPsiWorkerLibrary = () => Promise<PsiBackendSelection>;
 
 const HELPER_WITHOUT_KEY = "the PSI helper worker received no key";
+const HELPER_REFUSES_PAGE =
+  "the PSI helper worker takes no request from the page";
 const WORKER_FAILED = "PSI crypto worker failed";
 
 // What a helper posts its primary when a part fails to reach it. It names no
@@ -256,7 +259,12 @@ async function startHelper(
       port.postMessage(fault);
     };
     scope.postMessage({ kind: "helper-setup", ready: true });
-    return servePsiEngine(engine, (response) => scope.postMessage(response));
+    return (request) =>
+      scope.postMessage({
+        id: request.id,
+        ok: false,
+        error: HELPER_REFUSES_PAGE,
+      });
   } catch (error) {
     // A library load that fails before or after the key arrives leaves the
     // key unused, so it is zeroed whenever it comes.

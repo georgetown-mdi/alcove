@@ -15,7 +15,7 @@
 - - -> A set under 2,048 elements, two shards of `PSI_SHARD_MIN_ELEMENTS` (1,024), runs on the primary alone.
 - - -> **The output is one engine's.**
 - - -> The merged request and response are byte-identical to one engine's under the same key.
-- - -> `packages/core/test/psi/shardedPsiEngine.test.ts` holds this at 1 to 5 engines in both modes on both backends, `apps/web/test/unit/psi/psiWorkerPool.test.ts` over the worker program against an engine built from the pool's key, and `apps/web/test/browser/psiCryptoWorker.test.ts` over real workers in Chromium against one of the pool's helpers, called unsplit once the pool's split is done.
+- - -> `packages/core/test/psi/shardedPsiEngine.test.ts` holds this at 1 to 5 engines in both modes on both backends, `apps/web/test/unit/psi/psiWorkerPool.test.ts` over the worker program against an engine built from the pool's key, and `apps/web/test/browser/psiCryptoWorker.test.ts` over real workers in Chromium, running a test-only worker entry whose keys are fixed, against an engine on the page built from the same key.
 - - -> **How many workers.**
 - - -> `browserPsiShardCount` (`apps/web/src/psi/workers/psiShardPolicy.ts`): the logical core count `navigator.hardwareConcurrency` reports, at most `BROWSER_PSI_SHARD_CAP`, 4, the count the measurements recommend ([wasm-parallel-evaluation.md](../notes/wasm-parallel-evaluation.md#recommendation)), and one where the count is missing or unusable.
 - - -> **macOS runs one worker.**
@@ -25,7 +25,7 @@
 - - -> The primary generates the key.
 - - -> For each helper the page creates a MessageChannel and transfers one end to the primary and the other to the helper, keeping neither; the primary posts each helper its own transferred copy of the key over that channel.
 - - -> A primary takes only the first key-ports message it is given, before any request and with a port for each helper its seed names, and sends a refusal down the ports of any other, so the one-worker path's primary, seeded with no helpers, sends its key to no port.
-- - -> A helper builds its engine only from the key that arrives on its one port, generates none, and refuses every request without it.
+- - -> A helper builds its engine only from the key that arrives on its one port, generates none, and takes its parts from the primary over that port alone, refusing every request the page sends it.
 - - -> `psiWorkerPool.test.ts` checks over real channels that no message between the page and a worker contains the key.
 - - -> **A helper that fails its setup leaves the run on the primary.**
 - - -> A helper reports to the page once its engine is built from the key.

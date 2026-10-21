@@ -601,6 +601,42 @@ describe("the PSI worker program's key handling", () => {
     expect(broken.posted[1]).toBeNull();
   });
 
+  test("a helper that set up serves the primary over its port and refuses every request from the page", async () => {
+    const { scope, posted } = runProgram(
+      HELPER_SEED,
+      loadOf(keyLoggingLibrary({ generated: 0, given: [] })),
+    );
+    const channel = new MessageChannel();
+    giveKeyPorts(scope, [channel.port2]);
+    channel.port1.postMessage(Uint8Array.from(KEY));
+    await vi.waitFor(() =>
+      expect(posted).toEqual([{ kind: "helper-setup", ready: true }]),
+    );
+    const request = (id: number): PsiWorkerRequest => ({
+      id,
+      body: { method: "createClientRequest", values: values(8) },
+    });
+    const single = engineUnderKey("identifier-revealing");
+    try {
+      const fromHelper = firstMessage(channel.port1);
+      channel.port1.postMessage(request(1));
+      scope.onmessage?.({ data: request(2) });
+      expect(await fromHelper).toEqual({
+        id: 1,
+        ok: true,
+        result: await single.createClientRequest(values(8)),
+      });
+      await vi.waitFor(() => expect(posted).toHaveLength(2));
+      expect(posted[1]).toEqual({
+        id: 2,
+        ok: false,
+        error: "the PSI helper worker takes no request from the page",
+      });
+    } finally {
+      single.dispose();
+    }
+  });
+
   test("a helper whose key fails to deserialize reports a failed setup at once", async () => {
     const log: KeyLog = { generated: 0, given: [] };
     const { scope, posted } = runProgram(

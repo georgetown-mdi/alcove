@@ -46,8 +46,8 @@ export function connectPsiWorkerKeys(
 /**
  * A helper worker as the page sees it: whether its setup, building its
  * engine from the primary's key, succeeded; its fault, a rejection; and its
- * stop. The page sends a helper no request, since the primary sends it its
- * parts.
+ * stop. The page sends a helper no request, and a helper refuses one: the
+ * primary sends it its parts.
  */
 export interface PsiPoolHelper {
   readonly ready: Promise<boolean>;

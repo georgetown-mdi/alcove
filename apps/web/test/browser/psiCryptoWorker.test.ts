@@ -3,9 +3,10 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  WorkerPsiEngine,
+  InProcessPsiEngine,
   classifyFailure,
   isPartnerProtocolRefusal,
+  psiEngineOptionsForBackend,
 } from "@alcove/core";
 import { ProtocolRefusalError } from "@alcove/core/testing";
 // @ts-ignore this is really there
@@ -14,10 +15,13 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 import {
   createBrowserPsiEngineFactory,
   createPsiCryptoWorkerHandle,
+  encodePsiWorkerInit,
 } from "@psi/workers/psiCryptoController";
 import { defaultSpawnPsiCryptoWorker } from "@psi/workers/psiCryptoWorkerClient";
 import { failureFor } from "@exchange/useInviterExchange";
 import { startPsiWorkerPool } from "@psi/workers/psiWorkerPool";
+
+import { SEEDED_JOINER_KEY, SEEDED_STARTER_KEY } from "./seededPsiKeys";
 
 import type {
   PsiCryptoWorker,
@@ -235,66 +239,94 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
 });
 
 // The pool's split masking against one engine under the same key, over real
-// workers: the reference is the pool's last helper, called whole from the
-// page once the pool's own split is done, so it holds the pool's key and
-// runs each operation unsplit.
+// workers. The pool's workers run a test-only entry whose new keys are seeded
+// (./seededKeyPsiCrypto.worker.ts), so the reference is an engine on this
+// page built from the seeded key, and the page sends a helper no request.
 describe("the PSI worker pool (real workers, real WASM)", () => {
   const POOL_VALUES = Array.from({ length: 4096 }, (_, i) => `v-${i}`);
   const STARTER_POOL_VALUES = POOL_VALUES.map((value, i) =>
     i % 2 === 0 ? value : `starter-only-${i}`,
   );
 
-  function poolWithReference(
+  // Compared in place of the bytes: a mismatch between two messages this
+  // large otherwise hangs the run in the diff of its failure report.
+  async function sha256Hex(bytes: Uint8Array): Promise<string> {
+    const digest = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes)),
+    );
+    return Array.from(digest, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }
+
+  // Records each split word the page posts a primary, which says split only
+  // once every helper has set up.
+  function seededKeyPool(
     role: "starter" | "joiner",
     id: string,
     mode: PsiEngineMode,
-    disposeAfter: Array<PsiEngine>,
-  ): { pool: PsiEngine; reference: () => PsiEngine } {
-    const workers: Array<PsiCryptoWorker> = [];
+    splits: Array<boolean>,
+  ): PsiEngine {
     const spawn: SpawnPsiCryptoWorker = (seed) => {
-      const worker = defaultSpawnPsiCryptoWorker(seed);
-      workers.push(worker);
+      const worker = new Worker(
+        new URL("./seededKeyPsiCrypto.worker.ts", import.meta.url),
+        { type: "module", name: encodePsiWorkerInit(seed) },
+      ) as unknown as PsiCryptoWorker;
+      const post = worker.postMessage.bind(worker);
+      worker.postMessage = (message, transfer) => {
+        if ("kind" in message && message.kind === "shard-split")
+          splits.push(message.split);
+        post(message, transfer);
+      };
       return worker;
     };
-    const pool = startPsiWorkerPool(spawn, role, id, mode, 3, 60_000);
-    disposeAfter.push(pool);
-    return {
-      pool,
-      reference: () => {
-        const engine = new WorkerPsiEngine(
-          createPsiCryptoWorkerHandle(workers[2]),
-        );
-        disposeAfter.unshift(engine);
-        return engine;
-      },
-    };
+    return startPsiWorkerPool(spawn, role, id, mode, 3, 60_000);
   }
 
   test.for<PsiEngineMode>(["identifier-revealing", "count-only"])(
     "a %s round across three workers puts one engine's bytes on the wire",
     { timeout: 60_000 },
     async (mode) => {
-      const engines: Array<PsiEngine> = [];
-      const joiner = poolWithReference("joiner", "client", mode, engines);
-      const starter = poolWithReference("starter", "server", mode, engines);
+      const psi = await (PSI() as Promise<PSILibrary>);
+      const options = psiEngineOptionsForBackend("wasm");
+      const splits: Array<boolean> = [];
+      const joiner = seededKeyPool("joiner", "client", mode, splits);
+      const starter = seededKeyPool("starter", "server", mode, splits);
+      const joinerReference = new InProcessPsiEngine(
+        psi,
+        "joiner",
+        "client",
+        mode,
+        { ...options, secretKey: Uint8Array.from(SEEDED_JOINER_KEY) },
+      );
+      const starterReference = new InProcessPsiEngine(
+        psi,
+        "starter",
+        "server",
+        mode,
+        { ...options, secretKey: Uint8Array.from(SEEDED_STARTER_KEY) },
+      );
+      const engines = [joiner, starter, joinerReference, starterReference];
       try {
-        const { setup } =
-          await starter.pool.createServerSetup(STARTER_POOL_VALUES);
-        await joiner.pool.receiveServerSetup(setup);
-        const request = await joiner.pool.createClientRequest(POOL_VALUES);
-        expect(request).toEqual(
-          await joiner.reference().createClientRequest(POOL_VALUES),
+        const { setup } = await starter.createServerSetup(STARTER_POOL_VALUES);
+        await joiner.receiveServerSetup(setup);
+        const request = await joiner.createClientRequest(POOL_VALUES);
+        expect(await sha256Hex(request)).toBe(
+          await sha256Hex(
+            await joinerReference.createClientRequest(POOL_VALUES),
+          ),
         );
-        const response = await starter.pool.processClientRequest(request);
-        expect(response).toEqual(
-          await starter.reference().processClientRequest(request),
+        const response = await starter.processClientRequest(request);
+        expect(await sha256Hex(response)).toBe(
+          await sha256Hex(await starterReference.processClientRequest(request)),
         );
+        expect(splits).toEqual([true, true]);
         if (mode === "count-only")
-          expect(
-            await joiner.pool.computeIntersectionCardinality(response),
-          ).toBe(2048);
+          expect(await joiner.computeIntersectionCardinality(response)).toBe(
+            2048,
+          );
         else {
-          const [local] = await joiner.pool.computeAssociationTable(response);
+          const [local] = await joiner.computeAssociationTable(response);
           expect([...local].sort((a, b) => a - b)).toEqual(
             POOL_VALUES.flatMap((_, i) => (i % 2 === 0 ? [i] : [])),
           );
