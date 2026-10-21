@@ -115,8 +115,8 @@ export function Lobby() {
       <main
         className={
           isConsoleBuild()
-            ? `${styles.lobby} ${styles.lobbyWide}`
-            : styles.lobby
+            ? `${styles.lobby} ${styles.lobbyFullWidth} ${styles.lobbyWide}`
+            : `${styles.lobby} ${styles.lobbyFullWidth}`
         }
       >
         <h1>{HOME_HEADLINE}</h1>

@@ -230,7 +230,7 @@ function SavedExchangesSurface({
 }) {
   return (
     <AppPage>
-      <main className={styles.lobby}>
+      <main className={`${styles.lobby} ${styles.lobbyFullWidth}`}>
         <h1>{HOME_HEADLINE}</h1>
         <h2>Recurring exchanges</h2>
         <p className={styles.sub}>

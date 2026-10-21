@@ -1107,8 +1107,10 @@
   font-size: 1.08rem;
 }
 
-/* Lobby paragraphs span the content column, the width of the action cards. */
-.lobby p {
+/* On the home page and the recurring-exchange list, paragraphs span the
+   content column, the width of the action cards. Other lobby-framed screens
+   keep the .page p measure. */
+.page .lobbyFullWidth p {
   max-width: none;
 }
 

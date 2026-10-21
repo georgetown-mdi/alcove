@@ -1032,6 +1032,11 @@ export function InviterScreen() {
     [],
   );
 
+  // A console build saves no recurring exchange, so it never shows the note.
+  const [forRecurringSetup] = useState(
+    () => !isConsoleBuild() && arrivedForRecurringSetup(window.location.search),
+  );
+
   // Seed the synthetic sample when the visitor arrived at `?demo=1` (the
   // under-dropzone entry and the lobby link both route here). The param is read
   // once and stripped from the URL with replaceState so a reload or a shared
@@ -1039,11 +1044,6 @@ export function InviterScreen() {
   // step-history integration (which lives in history.state, not the URL) alone.
   // The seed rides the same readFile intake a dropped file does, so the stale-
   // parse guard and every derived-terms path are shared, not forked.
-  // A console build saves no recurring exchange, so it never shows the note.
-  const [forRecurringSetup] = useState(
-    () => !isConsoleBuild() && arrivedForRecurringSetup(window.location.search),
-  );
-
   const seededDemo = useRef(false);
   useEffect(() => {
     if (seededDemo.current) return;
