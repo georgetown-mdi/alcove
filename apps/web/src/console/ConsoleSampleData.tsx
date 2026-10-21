@@ -8,6 +8,7 @@ import {
   SAMPLE_INVITER_FILE_NAME,
   SAMPLE_PARTNER_FILE_NAME,
 } from "@psi/sampleData";
+import { SampleCsvLinks } from "@exchange/SampleCsvLinks";
 import styles from "@styles/app.module.css";
 
 import type { AddSampleInputsResult } from "@psi/jobClient/workInputClient";
@@ -29,19 +30,15 @@ export function sampleInputsFailure(
     case "unwritable":
       return (
         "The console could not write the sample files into your folder, " +
-        "which may be mounted read-only. Download them instead and copy one " +
-        "into your folder."
+        "which may be mounted read-only."
       );
     case "disabled":
       return (
         "This console was started without a folder, so it has nowhere to " +
-        "write the sample files. Download them instead."
+        "write the sample files."
       );
     case "error":
-      return (
-        "The console did not answer. Try again, or download the sample " +
-        "files instead."
-      );
+      return "The console did not answer. Try again.";
   }
 }
 
@@ -52,11 +49,9 @@ export function sampleInputsFailure(
  */
 export function ConsoleSampleData({
   onAdded,
-  onDownloadSamples,
 }: {
   /** The files are in the folder: the picker lists it again. */
   onAdded: () => void;
-  onDownloadSamples: () => void;
 }) {
   const [state, setState] = useState<
     | { status: "idle" }
@@ -90,16 +85,7 @@ export function ConsoleSampleData({
         >
           Add sample files to my folder
         </Anchor>
-        , or{" "}
-        <Anchor
-          inherit
-          component="button"
-          type="button"
-          onClick={onDownloadSamples}
-        >
-          download the CSVs
-        </Anchor>
-        .
+        , or <SampleCsvLinks /> and put the file in your folder.
       </p>
       <div role="status" aria-live="polite">
         {state.status === "added" && (

@@ -1195,6 +1195,9 @@ describe("inviter screen", () => {
       ) as Element;
       expect(ledger.textContent).toContain("Sample data (synthetic records)");
       expect(page.getByRole("button", { name: "Clear" }).query()).toBeNull();
+      expect(
+        page.getByRole("button", { name: "download the partner CSV" }).query(),
+      ).toBeNull();
     } finally {
       window.history.replaceState(window.history.state, "", before);
     }
@@ -1243,6 +1246,121 @@ describe("inviter screen", () => {
         .toBeInTheDocument();
     } finally {
       window.history.replaceState(window.history.state, "", before);
+    }
+  });
+
+  test("each sample link downloads one file, and loading the sample downloads the partner CSV", async () => {
+    const downloads = captureDownloads();
+    try {
+      app.render(createElement(InviterScreen));
+      const fileNames = () => downloads.captured.map((entry) => entry.fileName);
+
+      await page
+        .getByRole("button", {
+          name: "download the inviter sample CSV",
+          exact: true,
+        })
+        .click();
+      expect(fileNames()).toEqual(["alcove-sample-inviter.csv"]);
+      await page
+        .getByRole("button", {
+          name: "download the partner sample CSV",
+          exact: true,
+        })
+        .click();
+      expect(fileNames()).toEqual([
+        "alcove-sample-inviter.csv",
+        "alcove-sample-partner.csv",
+      ]);
+
+      await page
+        .getByRole("button", { name: "load it into this exchange" })
+        .click();
+      await expect
+        .element(page.getByText("alcove-sample-inviter.csv"))
+        .toBeInTheDocument();
+      expect(fileNames().slice(2)).toEqual(["alcove-sample-partner.csv"]);
+    } finally {
+      downloads.restore();
+    }
+  });
+
+  test("while the sample is loaded, the ledger offers the partner CSV again until a real file replaces it", async () => {
+    const line =
+      "The other tab needs the partner CSV, alcove-sample-partner.csv. If you do not have it, download the partner CSV.";
+    const downloadAgain = () =>
+      page.getByRole("button", {
+        name: "download the partner CSV",
+        exact: true,
+      });
+    const downloads = captureDownloads();
+    const fileNames = () => downloads.captured.map((entry) => entry.fileName);
+    const before = window.location.href;
+    window.history.replaceState(window.history.state, "", "/exchange?demo=1");
+    try {
+      // The lobby's seed.
+      app.render(createElement(InviterScreen));
+      await expect.element(downloadAgain()).toBeInTheDocument();
+      await downloadAgain().click();
+      expect(fileNames()).toEqual(["alcove-sample-partner.csv"]);
+      app.unmount();
+    } finally {
+      window.history.replaceState(window.history.state, "", before);
+    }
+
+    try {
+      // The in-place load, announced politely.
+      app.render(createElement(InviterScreen));
+      await expect
+        .element(
+          page.getByRole("button", { name: "load it into this exchange" }),
+        )
+        .toBeInTheDocument();
+      expect(downloadAgain().query()).toBeNull();
+      await page
+        .getByRole("button", { name: "load it into this exchange" })
+        .click();
+      await expect.element(downloadAgain()).toBeInTheDocument();
+      await expect
+        .element(page.getByRole("status").filter({ hasText: line }))
+        .toHaveAttribute("aria-live", "polite");
+      await downloadAgain().click();
+      expect(fileNames()).toEqual([
+        "alcove-sample-partner.csv",
+        "alcove-sample-partner.csv",
+        "alcove-sample-partner.csv",
+      ]);
+
+      // A real file replaces the sample, and the line goes with it.
+      const fileInput = document.querySelector('input[type="file"]');
+      await userEvent.upload(
+        page.elementLocator(fileInput as HTMLElement),
+        new File(
+          ["first_name,last_name,dob\nAnn,Lee,01/02/1990\n"],
+          "mine.csv",
+          { type: "text/csv" },
+        ),
+      );
+      await expect.element(page.getByText("mine.csv")).toBeInTheDocument();
+      expect(downloadAgain().query()).toBeNull();
+    } finally {
+      downloads.restore();
+    }
+  });
+
+  test("the ?demo=1 seed downloads nothing", async () => {
+    const downloads = captureDownloads();
+    const before = window.location.href;
+    window.history.replaceState(window.history.state, "", "/exchange?demo=1");
+    try {
+      app.render(createElement(InviterScreen));
+      await expect
+        .element(page.getByText("alcove-sample-inviter.csv"))
+        .toBeInTheDocument();
+      expect(downloads.captured).toEqual([]);
+    } finally {
+      window.history.replaceState(window.history.state, "", before);
+      downloads.restore();
     }
   });
 

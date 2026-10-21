@@ -21,6 +21,8 @@ import { ServerFilePicker } from "@console/ServerFilePicker";
 import styles from "@styles/app.module.css";
 
 import { APPLIANCE_FILE_ASSURANCE, FILE_ASSURANCE_LINE } from "./fileAssurance";
+import { SampleCsvLinks } from "./SampleCsvLinks";
+import { downloadSamplePartnerCsv } from "./sampleData";
 
 import type {
   ProfiledJobInput,
@@ -66,7 +68,6 @@ export function YourFileSection({
   onInvalidate,
   onContinue,
   onLoadSample,
-  onDownloadSamples,
 }: {
   name: string;
   onNameChange: (name: string) => void;
@@ -96,11 +97,10 @@ export function YourFileSection({
    * moved, so its columns are not the ones the run reads. Unused off the console. */
   onInvalidate?: () => void;
   onContinue: () => void;
-  /** Seed the synthetic sample into this exchange in place. Hosted build only -- the
-   * console cannot read an in-browser file, so it writes the sample into its folder. */
+  /** Seed the synthetic sample into this exchange in place; the section downloads
+   * the partner CSV beside it. Hosted build only -- the console cannot read an
+   * in-browser file, so it writes the sample into its folder. */
   onLoadSample: () => void;
-  /** Download the two sample CSVs client-side, uploading nothing. */
-  onDownloadSamples: () => void;
 }) {
   const consoleBuild = isConsoleBuild();
   const [samplesAdded, setSamplesAdded] = useState(0);
@@ -174,7 +174,6 @@ export function YourFileSection({
           {acquired === undefined && (
             <ConsoleSampleData
               onAdded={() => setSamplesAdded((count) => count + 1)}
-              onDownloadSamples={onDownloadSamples}
             />
           )}
         </>
@@ -219,20 +218,15 @@ export function YourFileSection({
                 inherit
                 component="button"
                 type="button"
-                onClick={onLoadSample}
+                onClick={() => {
+                  downloadSamplePartnerCsv();
+                  onLoadSample();
+                }}
               >
                 load it into this exchange
               </Anchor>
-              , or{" "}
-              <Anchor
-                inherit
-                component="button"
-                type="button"
-                onClick={onDownloadSamples}
-              >
-                download the CSVs
-              </Anchor>
-              .
+              , which also downloads the partner CSV for the other side, or{" "}
+              <SampleCsvLinks />.
             </p>
           )}
           {acquired !== undefined && (

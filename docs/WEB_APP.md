@@ -17,7 +17,7 @@ This guide covers one exchange: creating an invitation, accepting one you were s
 
 ## Practicing with sample data
 
-On the start page, choose **See how it works with example data**. Alcove downloads two synthetic CSVs, `alcove-sample-inviter.csv` and `alcove-sample-partner.csv`, and starts an invitation using the first. Open the invitation link in another browser tab, a second browser window, or on a second computer, and use the second file there. The repository's [`test_data/`](../test_data/) folder holds two more synthetic files for the same purpose.
+On the start page, choose **See how it works with example data**. Alcove starts an invitation with synthetic sample data already loaded and downloads the partner's synthetic CSV, `alcove-sample-partner.csv`. Open the invitation link in another browser tab, a second browser window, or on a second computer, and use that file there. The invite screen offers the same files before you choose one: its **download the inviter sample CSV** and **download the partner sample CSV** links each download one sample file, and **load it into this exchange** loads the inviter sample and also downloads the partner CSV. While the sample is loaded, the **This exchange** panel names the partner CSV the other tab needs and offers it for download. The repository's [`test_data/`](../test_data/) folder holds two more synthetic files for the same purpose.
 
 ## Creating an invitation
 
