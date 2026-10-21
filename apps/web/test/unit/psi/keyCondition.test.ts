@@ -150,7 +150,9 @@ describe("a key authored with the control", () => {
   });
 });
 
-describe("Generate is held with core's refusal", () => {
+const SCHEMA_WORDS = /missing_field|linkage_fields|date_of_birth|algorithm/;
+
+describe("Generate is held where core refuses, in the web app's words", () => {
   test("for a field outside the agreed linkage fields", () => {
     const { draft, seed } = draftWithNamesAndSsn4([
       "first_name",
@@ -165,7 +167,12 @@ describe("Generate is held with core's refusal", () => {
     const validation = validateAdvancedInvite(authored, seed);
     expect(validation.canGenerate).toBe(false);
     expect(validation.errors.keys).toBe(keyConditionRefusalMessage(refusal));
-    expect(validation.errors.keys).toMatch(/^A linkage key's /);
+    expect(validation.errors.keys).toBe(
+      'A linkage key is set to "Match only where a field is missing" for a ' +
+        "field that is not one of this exchange's linkage fields. Open that " +
+        "key and choose another field, or clear the choice.",
+    );
+    expect(validation.errors.keys).not.toMatch(SCHEMA_WORDS);
   });
 
   test("for a field of a type the condition does not admit", () => {
@@ -178,6 +185,12 @@ describe("Generate is held with core's refusal", () => {
     const validation = validateAdvancedInvite(authored, seed);
     expect(validation.canGenerate).toBe(false);
     expect(validation.errors.keys).toBe(keyConditionRefusalMessage(refusal));
+    expect(validation.errors.keys).toBe(
+      'A linkage key is set to "Match only where a field is missing" for a ' +
+        "field other than a date of birth, which Alcove does not support. " +
+        "Open that key and clear the choice.",
+    );
+    expect(validation.errors.keys).not.toMatch(SCHEMA_WORDS);
   });
 
   test("for a key that also matches on the field", () => {
@@ -189,9 +202,15 @@ describe("Generate is held with core's refusal", () => {
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("readsField");
-    expect(validateAdvancedInvite(authored, seed).errors.keys).toBe(
-      keyConditionRefusalMessage(refusal),
+    const message = validateAdvancedInvite(authored, seed).errors.keys;
+    expect(message).toBe(keyConditionRefusalMessage(refusal));
+    expect(message).toBe(
+      "A linkage key matches on a date of birth and is also set to match " +
+        "only where that date of birth is missing, so it can never match. " +
+        "Open that key and remove the date of birth element, or clear the " +
+        "choice.",
     );
+    expect(message).not.toMatch(SCHEMA_WORDS);
   });
 
   test("for a count-only draft", () => {
@@ -201,9 +220,15 @@ describe("Generate is held with core's refusal", () => {
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("countOnly");
-    expect(validateAdvancedInvite(authored, seed).errors.keys).toBe(
-      keyConditionRefusalMessage(refusal),
+    const message = validateAdvancedInvite(authored, seed).errors.keys;
+    expect(message).toBe(keyConditionRefusalMessage(refusal));
+    expect(message).toBe(
+      "A count-only exchange runs its one linkage key in one round, but a " +
+        'key set to "Match only where a field is missing" runs in two. Clear ' +
+        'the choice, or choose "Reveal the matched identifiers (standard)" ' +
+        'under "Matching method" instead.',
     );
+    expect(message).not.toMatch(SCHEMA_WORDS);
   });
 });
 

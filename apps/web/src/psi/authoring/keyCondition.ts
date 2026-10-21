@@ -2,7 +2,7 @@
  * The expert key editor's missing-field control: its copy, the fields it
  * offers, the edit it makes, and the Generate message for a refused
  * condition. No React. The rules a condition is held to are core's
- * (`keyConditionRefusal`), and so is the refusal text.
+ * (`keyConditionRefusal`); the refusal text is this app's own.
  */
 
 import {
@@ -13,6 +13,7 @@ import {
 import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 
 import type {
+  KeyConditionRule,
   LinkageField,
   LinkageKey,
   keyConditionRefusal,
@@ -77,13 +78,39 @@ export function withKeyCondition(
     : { ...rest, condition: { missingField } };
 }
 
+const OPEN_THE_KEY = "Open that key";
+
 /**
- * The Generate message for a key condition core refuses: core's own refusal
- * text, opened with a capital since it stands alone here. A fixed literal per
- * rule, so it names no key or field from an imported document.
+ * The Generate message per rule core refuses a key condition under, worded
+ * for this app: core's text names schema keys a user never sees. A fixed
+ * literal per rule, so it names no key or field from an imported document.
  */
+const KEY_CONDITION_REFUSAL_MESSAGES: Readonly<
+  Record<KeyConditionRule, string>
+> = {
+  undeclared:
+    `A linkage key is set to "${KEY_CONDITION_CONTROL.label}" for a field ` +
+    "that is not one of this exchange's linkage fields. " +
+    `${OPEN_THE_KEY} and choose another field, or clear the choice.`,
+  fieldType:
+    `A linkage key is set to "${KEY_CONDITION_CONTROL.label}" for a field ` +
+    "other than a date of birth, which Alcove does not support. " +
+    `${OPEN_THE_KEY} and clear the choice.`,
+  readsField:
+    "A linkage key matches on a date of birth and is also set to match " +
+    "only where that date of birth is missing, so it can never match. " +
+    `${OPEN_THE_KEY} and remove the date of birth element, or clear the ` +
+    "choice.",
+  countOnly:
+    "A count-only exchange runs its one linkage key in one round, but a " +
+    `key set to "${KEY_CONDITION_CONTROL.label}" runs in two. Clear the ` +
+    'choice, or choose "Reveal the matched identifiers (standard)" under ' +
+    '"Matching method" instead.',
+};
+
+/** The Generate message for a key condition core refuses. */
 export function keyConditionRefusalMessage(
   refusal: NonNullable<ReturnType<typeof keyConditionRefusal>>,
 ): string {
-  return refusal.message.charAt(0).toUpperCase() + refusal.message.slice(1);
+  return KEY_CONDITION_REFUSAL_MESSAGES[refusal.rule];
 }
