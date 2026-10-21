@@ -1304,7 +1304,7 @@ describe("inviter screen", () => {
 
   test("while the sample is loaded, the ledger offers the partner CSV again until a real file replaces it", async () => {
     const line =
-      "The other tab needs the partner CSV, alcove-sample-partner.csv. If you do not have it, download the partner CSV.";
+      "Another tab of this browser can accept the invitation with the sample partner file it offers. A different browser needs the partner CSV, alcove-sample-partner.csv: if you do not have it, download the partner CSV.";
     const downloadAgain = () =>
       page.getByRole("button", {
         name: "download the partner CSV",
