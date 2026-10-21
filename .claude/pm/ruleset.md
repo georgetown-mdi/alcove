@@ -444,18 +444,23 @@ Ratified by the owner:
 - **WebSocket relay** (board 9) -- Done is: on a network that intercepts TLS
   and stops TURN but passes a WebSocket on 443, a browser-to-browser exchange
   and a CLI-to-browser exchange each complete through the project's WebSocket
-  relay, which each party reaches with no relay setting when no WebRTC path
-  opens (a CLI on such a network still trusts the network's CA); the relay
-  admits only an exchange whose key, derived from the current shared secret, is
-  registered; every frame it carries is under the negotiated application AEAD,
-  and a quick exchange refuses it; and the disclosure documents state what the
-  relay's operator and any TLS interception point on the path see.
+  relay, which each party reaches with no relay setting on the demo site, and
+  on production and staging once a party turned the project relay on, when no
+  WebRTC path opens (a CLI on such a network still trusts the network's CA);
+  the relay admits only an exchange whose key, derived from the current shared
+  secret, is registered; every frame it carries is under the negotiated
+  application AEAD, and a quick exchange refuses it; and the disclosure
+  documents state what the relay's operator and any TLS interception point on
+  the path see.
 - **Hosted site defaults** (boards 9 and 10) -- Done is: an exchange on the
-  production and staging web app uses no relay the project runs unless a
-  party turned it on, a user can name their own STUN and coordination servers
-  in place of the defaults, a demo site lists the project's relay by default,
-  and docs/COMPLIANCE.md, PRIVACY.md and docs/SHARED_RESPONSIBILITY.md state
-  each site's defaults as its build has them.
+  production and staging web app sends data through no service the project
+  runs unless a party turned it on (the project's TURN relay and WebSocket
+  relay today, any later service that carries a party's data outside its
+  direct control alike), each such service is easy to turn on there, a user
+  can name their own STUN and coordination servers in place of the defaults, a
+  demo site turns the project's services on by default, and
+  docs/COMPLIANCE.md, PRIVACY.md and docs/SHARED_RESPONSIBILITY.md state each
+  site's defaults as its build has them.
 - **Repo review 2026-09** (boards 9 and 10) -- Done is: every finding in the
   2026-09 repo review's lists, including those its own review
   rounds raised, is landed or recorded as refused with a reason, and no source
