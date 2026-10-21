@@ -3,10 +3,10 @@ import { isConsoleBuild } from "@utils/clientConfig";
 /**
  * The file-step assurance line on the hosted build. It shows before a channel
  * is chosen, and a save-file flow leaves the encrypting to the command-line
- * tool, so it names no place where the encryption happens.
+ * tool on the operator's machine, so it names the machine, not the browser.
  */
 export const BROWSER_ONLY_FILE_ASSURANCE =
-  "Data is encrypted before it is sent to your partner.";
+  "Data is encrypted before leaving your machine.";
 
 /**
  * The file-assurance line for a console surface that reads input from the
