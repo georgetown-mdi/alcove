@@ -1,6 +1,6 @@
 # STUN urls a browser's relay setting names replace the default STUN server;
 # STUN urls only an invitation names are listed beside it.
 - It adds the default STUN server, always, and a build's default relay's TURN url, last, once the run has enrolled there ([Enrolling at a default relay](#enrolling-at-a-default-relay)). -> It adds a build's default relay's TURN url, last, once the run has enrolled there ([Enrolling at a default relay](#enrolling-at-a-default-relay)).
-- - -> It lists the default STUN server first unless the browser's relay setting names STUN urls of its own, which then take its place (`buildIceServers` in `apps/web/src/psi/transport/rendezvous.ts`); STUN urls only the invitation names are listed after the default STUN server, not in its place.
+- - -> It lists the default STUN server first unless the browser's relay setting names STUN urls of its own, which then take its place (`buildIceServers` in `apps/web/src/psi/transport/rendezvous.ts`); STUN urls only the invitation names are listed after the browser's own or the default STUN server, not in its place.
 - - -> A STUN list saved in relay settings before the setting replaced the default replaces it from this version on; the web app shows no notice of the change.
 - Its ICE servers always hold the default STUN server. -> Its ICE servers hold the default STUN server unless the browser's relay setting names STUN urls of its own ([Which relay a run uses](#the-invitations-relay-locator)).
