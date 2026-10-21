@@ -10,13 +10,16 @@ import {
 } from "@alcove/core";
 
 import {
+  BROKER_REGISTRATION_TIMEOUT_MS,
+  buildIceServers,
+} from "@psi/transport/rendezvous";
+import {
   ManagedSignalingEndpointRefusedError,
   assertManagedRendezvousPossible,
   assertManagedRerunDispatchable,
   beginManagedRendezvous,
   managedAcceptorSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
-import { BROKER_REGISTRATION_TIMEOUT_MS } from "@psi/transport/rendezvous";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
@@ -606,6 +609,39 @@ describe("beginManagedRendezvous: relay", () => {
 
     expect(acceptorCalls[0].options?.relay).toEqual(ownRelay);
     expect(acceptorCalls[0].options?.relaysLeftOut).toEqual([]);
+  });
+
+  test("a record's run lists the STUN urls this browser's setting names when the run starts, in place of the default", async () => {
+    stubAppLocation();
+    const ownStun = "stun:own-stun.example.org:3478";
+    const named = { stun: ["stun:partner-relay.example.org:3478"] };
+    let stored: object = { ...ownRelay, stun: [ownStun] };
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-own-relay"
+          ? JSON.stringify({ version: 1, ...stored })
+          : null,
+    });
+    const { flows, acceptorCalls } = recordingFlows();
+    const file = exchangeFile({ ...webrtcLocator, relay: named });
+    const stunListed = async (call: number) => {
+      const [stun] = await buildIceServers(
+        acceptorCalls[call].options?.relay,
+        generateSharedSecret(),
+        new Date(),
+      );
+      return stun.urls;
+    };
+
+    await begin("acceptor", generateSharedSecret(), file, { flows });
+    stored = ownRelay;
+    await begin("acceptor", generateSharedSecret(), file, { flows });
+
+    expect(await stunListed(0)).toEqual([ownStun, ...named.stun]);
+    expect(await stunListed(1)).toEqual([
+      "stun:stun.l.google.com:19302",
+      ...named.stun,
+    ]);
   });
 
   test("with no own relay the flows get none", async () => {

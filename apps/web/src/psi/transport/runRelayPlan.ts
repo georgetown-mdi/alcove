@@ -13,7 +13,7 @@ import { relayWithDefaultForRun } from "./defaultRelay";
 import type { OwnRelayRead, RelayUrls } from "./ownRelaySetting";
 import type { DefaultRelayDependencies } from "./defaultRelay";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
-import type { RelayLocator } from "./rendezvous";
+import type { RunRelay } from "./rendezvous";
 
 /** One WebSocket relay a browser run lists, and the exchange id its proof to
  * that relay is made under. */
@@ -27,7 +27,7 @@ export interface WebSocketRelayForRun {
 /** The relay a browser run dials with. */
 export interface RunRelayPlan {
   /** The relay its peer connection gathers against; none when absent. */
-  relay?: RelayLocator;
+  relay?: RunRelay;
   /** The TURN urls the allowed relays left out, named by a failed open. */
   relaysLeftOut: ReadonlyArray<string>;
   /**

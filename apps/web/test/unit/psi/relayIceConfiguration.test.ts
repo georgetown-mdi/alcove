@@ -25,15 +25,18 @@ import { relayWithDefaultForRun } from "../../../src/psi/transport/defaultRelay.
 
 import type { WebRTCEndpoint, enrollRelayKeyWithinWait } from "@alcove/core";
 
+import type {
+  RelayLocator,
+  RunRelay,
+} from "../../../src/psi/transport/rendezvous.js";
 import type { OwnRelayRead } from "../../../src/psi/transport/ownRelaySetting.js";
 import type Peer from "peerjs";
 import type { PeerOptions } from "peerjs";
-import type { RelayLocator } from "../../../src/psi/transport/rendezvous.js";
 
 // The ICE configuration the browser's peer connection is built with: the
-// default STUN server always, and with a relay its urls beside it, the TURN
-// entry holding a credential minted for this run from the exchange's shared
-// secret.
+// default STUN server unless this browser's user named STUN urls of their own,
+// and with a relay its urls, the TURN entry holding a credential minted for
+// this run from the exchange's shared secret.
 
 const DEFAULT_STUN_ENTRY = { urls: ["stun:stun.l.google.com:19302"] };
 
@@ -152,6 +155,23 @@ describe("buildIceServers", () => {
     ]);
   });
 
+  test("STUN urls this browser's user named replace the default server", async () => {
+    const relay: RunRelay = {
+      turn: [],
+      stun: ["stun:own-stun.example.org:3478"],
+      stunReplacesDefault: true,
+    };
+    expect(await buildIceServers(relay, generateSharedSecret(), NOW)).toEqual([
+      { urls: ["stun:own-stun.example.org:3478"] },
+    ]);
+  });
+
+  test("a relay marked as replacing the default but naming no STUN url keeps the default server", async () => {
+    const relay: RunRelay = { ...RELAY, stunReplacesDefault: true };
+    const [stun] = await buildIceServers(relay, generateSharedSecret(), NOW);
+    expect(stun).toEqual(DEFAULT_STUN_ENTRY);
+  });
+
   test("the credential expires one lifetime after the run starts", async () => {
     const [, turn] = await buildIceServers(RELAY, generateSharedSecret(), NOW);
     const expiry = Number(turn.username?.split(":")[0]);
@@ -265,7 +285,7 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
     return options.config as RTCConfiguration;
   }
 
-  test("lists this browser's own relay, then the invitation's, under one credential", async () => {
+  test("lists this browser's own relay, then the invitation's, under one credential, its own STUN urls in place of the default", async () => {
     vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
     stubWindow();
     const secret = generateSharedSecret();
@@ -279,7 +299,7 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
     );
     const expected = await mintRunRelayCredential(secret, NOW);
     expect(config.iceServers).toEqual([
-      { urls: [...DEFAULT_STUN_ENTRY.urls, ...OWN.stun, ...NAMED.stun] },
+      { urls: [...OWN.stun, ...NAMED.stun] },
       {
         urls: [...OWN.turn, ...NAMED.turn],
         username: expected.username,
@@ -296,10 +316,34 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
       generateSharedSecret(),
     );
     const urls = config.iceServers?.flatMap((server) => server.urls);
+    expect(urls).toEqual([...OWN.stun, ...OWN.turn]);
+  });
+
+  test("lists STUN urls only the invitation names after the default server, not in its place", async () => {
+    stubWindow();
+    const config = await dialConfig(
+      { ...endpoint, relay: { stun: NAMED.stun } },
+      () => ({ kind: "none" }),
+      generateSharedSecret(),
+    );
+    expect(config.iceServers).toEqual([
+      { urls: [...DEFAULT_STUN_ENTRY.urls, ...NAMED.stun] },
+    ]);
+  });
+
+  test("lists the invitation's STUN urls after the default server beside a TURN-only own relay", async () => {
+    stubWindow();
+    const config = await dialConfig(
+      { ...endpoint, relay: NAMED },
+      () => ({ kind: "set", relay: { turn: OWN.turn, stun: [] } }),
+      generateSharedSecret(),
+    );
+    const urls = config.iceServers?.flatMap((server) => server.urls);
     expect(urls).toEqual([
       ...DEFAULT_STUN_ENTRY.urls,
-      ...OWN.stun,
+      ...NAMED.stun,
       ...OWN.turn,
+      ...NAMED.turn,
     ]);
   });
 
@@ -447,6 +491,24 @@ describe("the ICE list of a build naming a default relay", () => {
       ...DEFAULT_STUN_ENTRY.urls,
       ...OWN.turn,
       DEFAULT_RELAY.turnUrl,
+    ]);
+  });
+
+  test("lists this browser's own STUN urls in place of the default server, beside its own relay and the default relay", async () => {
+    const ownStun = "stun:own-stun.example.org:3478";
+    const { servers, secret } = await iceList(
+      undefined,
+      { kind: "set", relay: { ...OWN, stun: [ownStun] } },
+      DEFAULT_RELAY,
+    );
+    const expected = await mintRunRelayCredential(secret, NOW);
+    expect(servers).toEqual([
+      { urls: [ownStun] },
+      {
+        urls: [...OWN.turn, DEFAULT_RELAY.turnUrl],
+        username: expected.username,
+        credential: expected.credential,
+      },
     ]);
   });
 

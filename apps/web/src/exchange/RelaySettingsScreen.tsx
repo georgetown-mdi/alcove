@@ -59,6 +59,17 @@ export const RELAY_KEY_NOTICE =
   "exchange through your relay needs its key registered with the relay again " +
   "after each run.";
 
+/** The STUN field's description: what a STUN server learns, and that the
+ * servers entered take the default's place (`buildIceServers`). */
+export const STUN_FIELD_DESCRIPTION =
+  "One per line. A STUN server finds each browser's public network address, " +
+  "so it learns the network address of each party that uses it. The servers " +
+  "you enter replace the default, Google's public STUN server, in every " +
+  "exchange this browser runs, and invitations you create name them, so your " +
+  "partner contacts them too. Servers an invitation you accept names are " +
+  "contacted as well, and your partner follows their own setting. For " +
+  "example: stun:stun.example.org:3478";
+
 /** The WebSocket relay field's description. */
 export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
   "A relay for networks that block connections through a TURN relay. An " +
@@ -213,7 +224,7 @@ export function RelaySettingsScreen({
         />
         <Textarea
           label="STUN server urls"
-          description="One per line, listed beside the default STUN server every exchange in this browser uses. For example: stun:stun.example.org:3478"
+          description={STUN_FIELD_DESCRIPTION}
           autosize
           minRows={2}
           value={stunText}

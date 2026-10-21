@@ -62,7 +62,7 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 - **What each invitation names.** Every browser invitation the build creates names the relay and its registrar, after the inviter's own relay, without contacting the registrar. A command-line partner accepting it lists the relay beside its own, and enrolls the key at the registrar before it connects when it allocates on the relay's TURN url ([the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator)).
 - **What the relay's operator learns.** Each party's network address on every browser exchange, and on every exchange a command-line party runs from an invitation the build created, whether or not traffic is relayed ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); the registrar also sees each party's address when it enrolls. A deployment that names a default relay states this in its privacy statement, as [PRIVACY.md](../PRIVACY.md#hosted-web-application) does for the project's.
 - **A misconfiguration stops the build.** The TURN url or the registrar set without the other, the WebSocket relay set without both, or a value that is not a url of its kind, is refused by the build and by the page at load.
-- **Unset,** the build names no default relay, and each run lists the default STUN server and any relay the invitation or the browser's own setting names.
+- **Unset,** the build names no default relay, and each run lists any relay the invitation or the browser's own setting names, and the default STUN server unless that setting names STUN servers of its own ([WEB_APP.md](WEB_APP.md#relay-settings)).
 
 ### Hardening the coordination server
 
