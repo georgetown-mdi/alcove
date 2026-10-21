@@ -192,6 +192,7 @@ export function Lobby() {
             rel="noreferrer"
           >
             user guide (on GitHub)
+            <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
           </Anchor>{" "}
           walks through running an exchange step by step.
         </p>
@@ -259,6 +260,7 @@ export function Lobby() {
               rel="noreferrer"
             >
               other ways to use Alcove (on GitHub)
+              <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
             </Anchor>
             .
           </p>

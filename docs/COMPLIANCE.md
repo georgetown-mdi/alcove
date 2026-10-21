@@ -102,7 +102,7 @@ Alcove is software, not a service, so it is not in scope for FedRAMP or StateRAM
   - A coordination server, a relay, and the relay's registrar, which the project operates on AWS in `us-west-2`.
   - Google's public STUN server.
 
-None of the services the hosted site uses holds a FedRAMP or StateRAMP authorization. On the hosted site, a party can leave the project's relay out of an exchange under Allowed relays ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); to keep it out of the exchange, both parties leave it out. Using a different coordination server takes deploying your own copy of the web app.
+The project holds no FedRAMP or StateRAMP authorization for the hosted site or for the services it operates. On the hosted site, a party can leave the project's relay out of an exchange under Allowed relays ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); to keep it out of the exchange, both parties leave it out. Using a different coordination server takes deploying your own copy of the web app.
 
 **The relay.** A relay forwards encrypted traffic it cannot read and stores none of it, like other network equipment. Its operator sees each side's network address and when it connected. The project's relay runs on AWS in `us-west-2`. You can use your own relay instead and leave the project's out.
 

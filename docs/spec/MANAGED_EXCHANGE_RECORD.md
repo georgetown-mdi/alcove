@@ -2097,7 +2097,7 @@ is dropped on read rather than rejected, and is gone at that build's next write.
 Holding any of them on the record would therefore force a new `schemaVersion`,
 so no older build drops it silently, or leak into the artifact. Keeping them siblings makes their non-inclusion **structural**: the
 exporter reads
-only the record. Deleting a managed exchange removes the record and its sibling
+only the record. Removing a managed exchange removes the record and its sibling
 state together (see [Removing a managed
 exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
@@ -2403,9 +2403,9 @@ partner and agreement metadata to what a reader of the store learns (see
 [Metadata at
 rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). It is bounded
 only by the exchange's own run history: nothing prunes it, since a silently
-dropped entry would falsify the account. Deleting the managed exchange deletes
+dropped entry would falsify the account. Removing the managed exchange erases
 its accounting, and the note of any run it could not file, in the same one-step
-delete, so an operator who must keep it exports it first.
+removal, so an operator who must keep it exports it first.
 
 ### What an exchange-record version bump does to a stored accounting
 
@@ -2792,8 +2792,8 @@ entry but the written one, whose rows are in the granted folder instead. See
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#results-of-a-scheduled-run-at-rest),
 which states the reach and the bounds, and claims no at-rest protection.
 
-Deleting a managed exchange deletes its parked results in the same one-step
-delete (see [Removing a managed
+Removing a managed exchange erases its parked results in the same one-step
+removal (see [Removing a managed
 exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
 ## The between-visit notification opt-in

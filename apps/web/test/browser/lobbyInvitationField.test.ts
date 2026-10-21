@@ -171,7 +171,7 @@ describe.each([
 describe("lobby pointer to the other ways to use Alcove", () => {
   const line =
     "For SFTP, a shared folder, or scheduled runs on your own servers, see " +
-    "the other ways to use Alcove (on GitHub).";
+    "the other ways to use Alcove (on GitHub) (opens in a new tab).";
   const pointer = () => page.getByText(/^For SFTP, a shared folder/);
 
   test("the hosted build in a browser tab shows it and links the README", async () => {
@@ -200,7 +200,8 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     ).toBeTruthy();
     expect(headingEl.nextElementSibling).toBe(pointerEl);
     const link = page.getByRole("link", {
-      name: "other ways to use Alcove (on GitHub)",
+      name: "other ways to use Alcove (on GitHub) (opens in a new tab)",
+      exact: true,
     });
     await expect
       .element(link)
