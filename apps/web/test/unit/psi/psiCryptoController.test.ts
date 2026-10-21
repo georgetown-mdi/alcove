@@ -42,9 +42,9 @@ class FakePsiCryptoWorker implements PsiCryptoWorker {
   readonly keyPorts: Array<PsiKeyPortsMessage> = [];
   terminations = 0;
 
-  postMessage(message: PsiWorkerRequest | PsiKeyPortsMessage): void {
-    if ("kind" in message) this.keyPorts.push(message);
-    else this.posted.push(message);
+  postMessage(message: Parameters<PsiCryptoWorker["postMessage"]>[0]): void {
+    if (!("kind" in message)) this.posted.push(message);
+    else if (message.kind === "key-ports") this.keyPorts.push(message);
   }
 
   terminate(): void {

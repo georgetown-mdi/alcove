@@ -48,8 +48,7 @@ import { undeclaredColumnsRunNotice } from "../runWarnings";
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
 import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
 import { authenticateExchange } from "../authenticateExchange";
-import { createBrowserPsiEngineFactory } from "../workers/psiCryptoController";
-import { defaultSpawnPsiCryptoWorker } from "../workers/psiCryptoWorkerClient";
+import { browserPsiEngineFactory } from "../workers/psiCryptoWorkerClient";
 import { noteUnfiledDisclosureRun } from "../unfiledDisclosureStore";
 import { openPeerMessageConnection } from "../transport/peerMessageConnection";
 import { waitForIncomingConnection } from "../transport/waitForConnection";
@@ -430,9 +429,7 @@ export function runManagedExchangeInBrowser(
             carried.prepared,
             {
               psiLibrary: carried.psiLibrary,
-              psiEngineFactory: createBrowserPsiEngineFactory(
-                defaultSpawnPsiCryptoWorker,
-              ),
+              psiEngineFactory: browserPsiEngineFactory(),
               // What the agreed terms resolved to, reported here as for every
               // other seat: a re-run is where an unnoticed widening of the match
               // matters most, since the terms are a standing record. The

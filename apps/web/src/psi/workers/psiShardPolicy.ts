@@ -6,6 +6,15 @@
 export const BROWSER_PSI_SHARD_CAP = 4;
 
 /**
+ * How long one PSI worker of a split operation may report no progress before
+ * the run fails as if it had stopped, and how long a helper's setup is waited
+ * for: four times the longest gap between two progress reports projected to
+ * the browser's largest set, from a measurement (docs/spec/PROTOCOL.md, "The
+ * browser runs its masking across a pool of PSI workers").
+ */
+export const BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS = 33 * 60_000;
+
+/**
  * The parts of `navigator` the shard policy reads; `navigator` itself
  * satisfies it. `userAgentData` is the Chromium client-hints object, absent
  * in other engines.

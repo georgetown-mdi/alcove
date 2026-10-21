@@ -2,14 +2,19 @@
 
 Status: both arms measured, with the browser direction decided on 2026-09-16 --
 Web Worker sharding, with the pthreads/SIMD build declined
-([Decision](#decision-2026-09-16)) -- and the macOS bound decided on 2026-10-18
-([Decision](#decision-2026-10-18-the-macos-bound)). Two parts of the shipped arm
-are built: the engine that splits a round's request and response across engines
-holding one key (`packages/core/src/psi/shardedPsiEngine.ts`), and the browser
-shard count (`apps/web/src/psi/workers/psiShardPolicy.ts`). The web exchange
-runs one PSI worker until its worker engines are given one key, which is the
-key-distribution question below. The measurement prototype lives under two
-`test/bench` directories.
+([Decision](#decision-2026-09-16)) -- the macOS bound decided on 2026-10-18
+([Decision](#decision-2026-10-18-the-macos-bound)), and the key path and the
+failure rules on 2026-10-19
+([Decision](#decision-2026-10-19-the-key-path-and-a-stopped-worker)), and the
+party answering the request kept on one worker on 2026-10-20
+([Decision](#decision-2026-10-20-the-party-answering-keeps-one-worker)). The
+shipped arm is built: the engine that splits a round's request and response
+across engines holding one key (`packages/core/src/psi/shardedPsiEngine.ts`),
+the browser shard count (`apps/web/src/psi/workers/psiShardPolicy.ts`), and the
+worker pool the web exchange runs for the party creating the request
+(`apps/web/src/psi/workers/psiWorkerPool.ts`), specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers". The measurement
+prototype lives under two `test/bench` directories.
 
 The quantity being attacked is the masking cost the protocol spec sets the
 expectation for: one elliptic-curve scalar multiplication per distinct value,
@@ -50,9 +55,8 @@ repository already drives it: the wire-vector generator
 known-answer bytes with fixed keys through `createFromKey`. The arm is not
 blocked.
 
-Production generates the key inside the single worker and never lets it out
-(`servePsiWorker`). Sharding changes that: the key has to reach every shard, so
-it exists in N isolates instead of one.
+Production generates the key inside one worker. Sharding has the key reach
+every shard, so it exists in N isolates instead of one.
 
 ## The merge rules, and the byte-identity condition
 
@@ -125,8 +129,8 @@ cost 5 ms at 1 worker and 22 ms at 8 for a 12,000-element setup.
 
 ## Browser results (8,000 values, masked into a request, best of 3)
 
-The shipped browser path already runs one PSI worker, so one worker is the
-baseline.
+The browser path ran its masking in one PSI worker when this was measured, so
+one worker is the baseline.
 
 | Config | best ms | spread ms | rows/s | speedup |
 | --- | --- | --- | --- | --- |
@@ -246,7 +250,8 @@ intermittently crashed its renderer.
   is 10 on this Mac, did not crash and are not in the total. macOS
   wrote no crash report and Chrome printed no signal line, so the signal is
   unknown. The machine was in use, with a load average above 30.
-- **Untested.** A shipped bundle with a sharded path, which does not exist yet.
+- **Untested.** The shipped bundle's sharded path on the Mac, where the
+  shipped pool runs one worker.
 
 That several module instances must be computing at once for it to happen is
 measured; nothing beyond that is. On full Chrome the crash is real at a low
@@ -260,8 +265,9 @@ by stating the measured rate as a limit.
 - **No COOP/COEP, and no response-header change on the web app.** Separate WASM
   instances, structured-clone messaging; nothing shared. That is the arm's main
   advantage over pthreads.
-- **Key distribution to N workers.** Today the key is generated inside the single
-  worker and never crosses a boundary; sharding sends it to every shard at spawn.
+- **Key distribution to N workers.** The key is generated inside one worker;
+  sharding sends it to every helper over a channel the page only connects,
+  once the first worker's library has loaded.
   Same-origin dedicated workers in one renderer, and `worker_threads` in one
   process, so it does not leave the process -- but it is a change to where key
   material lives, and it is the piece a security review has to weigh.
@@ -366,3 +372,62 @@ defects in Alcove's own code.
 - **Lifting it.** The bound stays until a re-test on a newer Chrome shows the
   crash gone. A search of Chromium's known issues across Chrome 151 to 156,
   made on 2026-10-19, found no fix, so nothing schedules that re-test yet.
+
+## Decision (2026-10-19): the key path and a stopped worker
+
+What each rule is in the shipped pool:
+[PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers".
+
+- **The key goes worker to worker.** The first worker keeps generating the
+  key and posts it to each helper over a MessageChannel the page only
+  connects, so the key never reaches the page's memory, which the wrap's
+  copies and any page script share. The alternative, the page seeding each
+  helper, was declined for that reason.
+- **No setup probe.** A check that each helper masks a fixed value as the
+  first worker does was declined as more than the delivery needs: the key
+  arrives by structured clone. A helper refuses to run without a key, it has
+  no path that generates one, and a unit test holds that a helper built from
+  the delivered key masks as the first worker does.
+- **A stopped worker fails the run.** No retry and no fallback, since either
+  would also hide a fault in Alcove's own code. A helper that fails before
+  the first split leaves the run on the first worker alone. The message
+  names no shard, since no plain wording of the shard's number helps anyone
+  act on the failure.
+- **A silent worker is bounded.** A worker that ends with no error event is
+  caught by a progress timeout, derived from the longest gap measured between
+  one worker's progress reports, projected to the browser's largest set.
+- **The cap of 4 workers stays**, as measured above.
+
+## The merge runs in the first worker (2026-10-20)
+
+Merging on the page decoded the partner's whole request and every worker's
+output there, and at 100,000 values grew the page's heap by 37 to 57 MB
+against 4 MB on one worker, which projected near the page's heap limit at the
+browser's largest set. The first worker merges instead: the helpers take
+their parts from it and answer it over the channels the key took, so the page
+holds only the merged message, as on one worker, and the first worker's heap
+grows about as the one worker's does. The figures:
+[PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers".
+
+## Decision (2026-10-20): the party answering keeps one worker
+
+The pool runs only for the joiner, the party creating the request. The
+starter, which answers it, runs on one worker, as before the pool. The
+browser's set ceiling is a measured capability the product states, so the
+pool may not lower it.
+
+- **Why.** At the browser's set ceiling on the x86-64 host, a pooled answer
+  ran the renderer out of memory within minutes of starting, where the same
+  round on one worker had completed. The cause is not established: the
+  joiner's pooled round on the same host completed, with larger helpers.
+- **What the joiner gains.** Creating the request at the ceiling took 38% of
+  its one-worker time, and the whole round about two thirds.
+- **What stays.** The pool's split of the answer, and the identity tests of
+  it, stay in the code, unused by the web app's engine factory, so a later
+  measurement can pool the answer again once the crash is understood.
+
+The figures:
+[PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute),
+"The browser runs its masking across a pool of PSI workers".

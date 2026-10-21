@@ -331,12 +331,13 @@ export function servePsiWorker(
 
 /**
  * The dispatcher {@link servePsiWorker} returns, over an engine the worker
- * entry point built itself: one whose key it hands to shard helpers, or a
- * helper built from that key. The engine must not be shared with another
+ * entry point built itself: one whose key it hands to shard helpers, a
+ * helper built from that key, or a {@link ./shardedPsiEngine.ShardedPsiEngine}
+ * over the first and its helpers. The engine must not be shared with another
  * caller.
  */
 export function servePsiEngine(
-  engine: InProcessPsiEngine,
+  engine: PsiEngine,
   post: (response: PsiWorkerResponse) => void,
 ): (request: PsiWorkerRequest) => void {
   const run = (body: PsiWorkerRequestBody): Promise<unknown> => {
@@ -369,7 +370,7 @@ export function servePsiEngine(
     // A stop is raised from inside the engine's chunk loop, where this sink
     // is called, so it unwinds the operation the same way a failure does.
     const stopFlag = request.stopFlag;
-    engine.observeProcessedElements((processed) => {
+    engine.observeProcessedElements?.((processed) => {
       if (stopFlag !== undefined && Atomics.load(stopFlag, 0) !== 0)
         throw new PsiOperationStoppedError();
       post({ id: request.id, processed });

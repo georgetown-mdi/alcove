@@ -10,8 +10,7 @@ import {
 } from "@alcove/core";
 
 import { authenticateExchange } from "./authenticateExchange";
-import { createBrowserPsiEngineFactory } from "./workers/psiCryptoController";
-import { defaultSpawnPsiCryptoWorker } from "./workers/psiCryptoWorkerClient";
+import { browserPsiEngineFactory } from "./workers/psiCryptoWorkerClient";
 import { openPeerMessageConnection } from "./transport/peerMessageConnection";
 
 import type { DataConnection } from "peerjs";
@@ -600,14 +599,12 @@ export async function runExchangeLifecycle<
     const psiLibrary = await psi;
     const result = await runExchange(secure, exchangeRole, prepared, {
       psiLibrary,
-      // Run the PSI masking in a Web Worker off the UI thread, so the tab stays
+      // Run the PSI masking in Web Workers off the UI thread, so the tab stays
       // responsive and the WebRTC peer keepalives keep firing during a round.
       // runExchange disposes this engine on every exchange-end path
-      // (success, error, abort), which terminates the worker -- no leak. psiLibrary
-      // above stays the in-process fallback core requires; the worker loads its own.
-      psiEngineFactory: createBrowserPsiEngineFactory(
-        defaultSpawnPsiCryptoWorker,
-      ),
+      // (success, error, abort), which terminates the workers -- no leak. psiLibrary
+      // above stays the in-process fallback core requires; each worker loads its own.
+      psiEngineFactory: browserPsiEngineFactory(),
       onStage: emitStage,
       // What the agreed terms resolved to, named for the operator after the
       // terms exchange and before the first round, the earliest point that can

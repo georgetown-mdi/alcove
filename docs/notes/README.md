@@ -66,7 +66,7 @@ stands, from a direction still open to a decision taken and built.
 | [signing-identity-custody.md](signing-identity-custody.md) | Decided and built, by a 3-panelist design panel converging 3-0. |
 | [standing-relay-delivery.md](standing-relay-delivery.md) | Decided, the reference is written, and the first deployment has driven a relayed exchange through it. |
 | [turn-provisioning-governance.md](turn-provisioning-governance.md) | Surveyed, with a recommendation per profile; nothing decided or built, and the configuration shape left to separate work. |
-| [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Both arms measured, and the browser direction decided: Web Worker sharding, with the pthreads/SIMD build declined; nothing is built into the production path. |
+| [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Both arms measured, and the browser direction decided: Web Worker sharding, with the pthreads/SIMD build declined; the web exchange runs the worker pool for the party creating the request, one worker for the party answering it and on macOS. |
 | [web-server-runtime-role.md](web-server-runtime-role.md) | End state reached for the public deployment: a static site, with the framework's server half removed; the console keeps its server. |
 | [web-websocket-transport.md](web-websocket-transport.md) | Design only, not built; the WebSocket relay for networks that stop TURN recommended first, the browser SFTP forks re-answered for the public web application, and seven choices left open. |
 | [webrtc-frame-structure-envelope.md](webrtc-frame-structure-envelope.md) | Decided and built, by a 3-panelist design panel converging 3-0 on the retirement and 2-1 on the ceiling. |

@@ -37,6 +37,19 @@ export interface PsiKeyPortsMessage {
   readonly ports: ReadonlyArray<MessagePort>;
 }
 
+/**
+ * The page's word to a pool's primary, posted once before its first request
+ * creation or request processing: whether every helper set up. If so, the
+ * primary splits those two operations across its helpers over the key's
+ * channels, timing each by `progressTimeoutMs`, and merges their parts; if
+ * not, it runs them alone and closes the channels.
+ */
+export interface PsiShardSplitMessage {
+  readonly kind: "shard-split";
+  readonly split: boolean;
+  readonly progressTimeoutMs: number;
+}
+
 /** A helper's report that it built its engine from the primary's key, or failed to. */
 export interface PsiHelperSetupReport {
   readonly kind: "helper-setup";
@@ -47,7 +60,7 @@ export interface PsiHelperSetupReport {
  * supplies a fake. */
 export interface PsiCryptoWorker {
   postMessage: (
-    message: PsiWorkerRequest | PsiKeyPortsMessage,
+    message: PsiWorkerRequest | PsiKeyPortsMessage | PsiShardSplitMessage,
     transfer?: Array<Transferable>,
   ) => void;
   onmessage:
