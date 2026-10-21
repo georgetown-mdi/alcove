@@ -45,6 +45,7 @@ import {
 import type {
   AttemptIceServers,
   AttemptStartReason,
+  WebRtcPathFailure,
   WebRtcPeerSession,
   WeriftPeerConfiguration,
 } from "../../../src/connection/webrtc/weriftPeer";
@@ -337,6 +338,7 @@ async function startRendezvous(options: {
   /** Shared with another rendezvous so the two derive the same pair of ids. */
   sharedSecret?: string;
   onRegistered?: () => void;
+  onPathFailed?: (failure: WebRtcPathFailure) => void;
 }): Promise<{
   socket: ScriptedSocket;
   /** Every broker socket opened, one per registration, in order; `socket` is the first. */
@@ -395,6 +397,7 @@ async function startRendezvous(options: {
     attemptIceServers: options.attemptIceServers,
     certificateProbe: options.certificateProbe,
     onRegistered: options.onRegistered,
+    onPathFailed: options.onPathFailed,
     peerConnectionFactory: (configuration) => {
       const built = peers.length === 0 ? peer : new ScriptedPeer();
       peers.push(built);
@@ -2887,4 +2890,122 @@ test("an attempt started by an unopened channel under a minute in names the chan
     ),
   ).toBe(true);
   expect(lines.some((line) => line.includes("has not connected"))).toBe(false);
+});
+
+// --- path failures a fallback starts on -------------------------------------
+
+test("a failed peer connection reports a path failure before the wait fails", async () => {
+  const failures: Array<WebRtcPathFailure> = [];
+  const { peer, session } = await startRendezvous({
+    role: "acceptor",
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  peer.failConnection();
+  expect(failures).toEqual(["connection-failed"]);
+  await expect(session).rejects.toThrow("no network path");
+});
+
+test("the channel-open ceiling on the last attempt reports a path failure", async () => {
+  const failures: Array<WebRtcPathFailure> = [];
+  const { socket, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    channelOpenTimeoutMs: 100,
+    rendezvousTimeoutMs: 30_000,
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  answer(socket, inviterId, offeredConnectionIds(socket)[0]);
+  await expect(session).rejects.toThrow("did not open within 0.1s");
+  expect(failures).toEqual(["channel-not-opened"]);
+});
+
+test("the channel-open ceiling on an attempt another follows reports a path failure and the wait goes on", async () => {
+  captureDiagnostics();
+  const failures: Array<WebRtcPathFailure> = [];
+  holdAttemptClock();
+  const { socket, sockets, peers, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    channelOpenTimeoutMs: 10_000,
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  answer(socket, inviterId, offeredConnectionIds(socket)[0]);
+  await waitFor(
+    () => peers[0].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
+  await vi.advanceTimersByTimeAsync(11_000);
+  await settleRegistration(sockets, 2);
+  expect(failures).toEqual(["channel-not-opened"]);
+  expect(await settlementOf(session)).toBe("waiting");
+});
+
+test("a first registration the coordination server drops reports a path failure", async () => {
+  const failures: Array<WebRtcPathFailure> = [];
+  const { socket, session } = await startRendezvous({
+    role: "acceptor",
+    confirmRegistration: false,
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  socket.drop();
+  await expect(session).rejects.toThrow(
+    "the coordination server closed the connection",
+  );
+  expect(failures).toEqual(["signaling-unreachable"]);
+});
+
+test("a re-registration that fails reports a path failure and is retried", async () => {
+  captureDiagnostics();
+  const failures: Array<WebRtcPathFailure> = [];
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.fail();
+      else socket.register();
+    },
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(failures).toEqual(["signaling-unreachable"]);
+  expect(await settlementOf(session)).toBe("waiting");
+});
+
+test("a refusal from the coordination server is not a path failure", async () => {
+  const failures: Array<WebRtcPathFailure> = [];
+  const { socket, session } = await startRendezvous({
+    role: "acceptor",
+    confirmRegistration: false,
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  refuseIdTaken(socket);
+  await expect(session).rejects.toThrow(ID_TAKEN_MESSAGE);
+  expect(failures).toEqual([]);
+});
+
+test("a re-registration whose certificate does not verify is not a path failure", async () => {
+  for (const variable of PROXY_VARIABLES) delete process.env[variable];
+  process.execArgv = [];
+  captureDiagnostics();
+  const failures: Array<WebRtcPathFailure> = [];
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    secure: true,
+    certificateProbe: () => Promise.resolve("DEPTH_ZERO_SELF_SIGNED_CERT"),
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.fail();
+      else socket.register();
+    },
+    onPathFailed: (failure) => failures.push(failure),
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  await expect(session).rejects.toBeInstanceOf(AuthenticationError);
+  expect(failures).toEqual([]);
 });

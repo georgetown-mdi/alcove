@@ -440,7 +440,27 @@ export interface WebRtcPeerOptions {
    * as a transport failure.
    */
   onRegistered?: () => void;
+  /**
+   * Called each time the wait meets a failure of the path to the partner, on
+   * any attempt: see {@link WebRtcPathFailure}. The wait itself goes on as it
+   * would without the call, so a caller holding another path decides what
+   * follows (docs/spec/WEBRTC_TRANSPORT.md, Falling back to the WebSocket
+   * relay).
+   */
+  onPathFailed?: (failure: WebRtcPathFailure) => void;
 }
+
+/**
+ * A failure of the path to the partner that a fallback starts on:
+ * - `channel-not-opened`: the channel-open budget expired, whether or not
+ *   another attempt follows;
+ * - `connection-failed`: the peer connection reported `failed`;
+ * - `signaling-unreachable`: a registration with the coordination server
+ *   failed with no refusal from it, or its socket dropped and so failed the
+ *   wait. A certificate that did not verify is not one.
+ */
+export type WebRtcPathFailure =
+  "channel-not-opened" | "connection-failed" | "signaling-unreachable";
 
 /**
  * Why a connection attempt after the first starts, recorded as the attempt
@@ -1064,6 +1084,7 @@ export async function openWebRtcPeerSession(
     socketFactory,
     certificateProbe,
     onRegistered,
+    onPathFailed,
   } = options;
 
   const [inviterId, acceptorId] = await Promise.all([
@@ -1150,7 +1171,18 @@ export async function openWebRtcPeerSession(
         socketFactory,
         certificateProbe,
       });
-    if (!reregistration) return await connect();
+    if (!reregistration) {
+      try {
+        return await connect();
+      } catch (err) {
+        if (
+          err instanceof BrokerUnreachableError ||
+          err instanceof BrokerSocketDroppedError
+        )
+          onPathFailed?.("signaling-unreachable");
+        throw err;
+      }
+    }
     // A re-registration follows one that succeeded in this run, so a refusal
     // or an unreachable signaling server is waited out within the rendezvous
     // deadline rather than read as the misconfiguration it is on a first
@@ -1171,6 +1203,7 @@ export async function openWebRtcPeerSession(
           err instanceof BrokerUnreachableError ||
           err instanceof BrokerSocketDroppedError;
         if (!idTaken && !unreachable) throw err;
+        if (unreachable) onPathFailed?.("signaling-unreachable");
         const now = Date.now();
         if (now >= deadline) throw idTaken ? arrivalTimeout() : err;
         let waitMs = Math.min(delayMs, deadline - now);
@@ -1235,6 +1268,7 @@ export async function openWebRtcPeerSession(
       arrivalTimeout,
       partnerRestart: previous?.partnerRestart,
       signal,
+      onPathFailed,
     });
     let broker: BrokerClient | undefined;
     let torn = false;
@@ -1370,6 +1404,8 @@ interface NegotiationOptions {
   /** The partner's new connection the attempt before this one ended on, which this one answers. */
   partnerRestart?: PartnerRestart;
   signal?: AbortSignal;
+  /** See {@link WebRtcPeerOptions.onPathFailed}. */
+  onPathFailed?: (failure: WebRtcPathFailure) => void;
 }
 
 /** How long one attempt runs, and whether another follows it. */
@@ -1504,6 +1540,7 @@ class Negotiation {
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === "failed") {
+        this.pathFailed("connection-failed");
         void this.failWithIceDiagnosis(
           "the peer connection failed before the data channel opened; no " +
             "network path between the two parties could be established",
@@ -1521,6 +1558,12 @@ class Negotiation {
     });
     this.watchChannel(channel);
     await this.offer();
+  }
+
+  /** Report a failure of the path to the partner, while the attempt is unsettled. */
+  private pathFailed(failure: WebRtcPathFailure): void {
+    if (this.settled) return;
+    this.options.onPathFailed?.(failure);
   }
 
   /** Latch a terminal failure; the run rejects with the first one latched. */
@@ -1559,6 +1602,8 @@ class Negotiation {
       this.finished ||
       this.failure !== undefined
     ) {
+      if (error instanceof BrokerSocketDroppedError)
+        this.pathFailed("signaling-unreachable");
       this.fail(error);
       return;
     }
@@ -1612,6 +1657,7 @@ class Negotiation {
       `the data channel did not open within ` +
       `${budgetSeconds(this.options.channelOpenTimeoutMs)} after the ` +
       "exchange partner's session description arrived";
+    this.pathFailed("channel-not-opened");
     if (this.plan?.finalAttempt !== false) {
       await this.failWithIceDiagnosis(summary);
       return;
@@ -1707,6 +1753,7 @@ class Negotiation {
       return;
     }
     this.engagedGraceTimer = setTimeout(() => {
+      this.pathFailed("channel-not-opened");
       if (!finalAttempt) {
         this.endUnmet({ cause: "channel-not-opened" });
         return;

@@ -132,6 +132,18 @@ vi.mock(
   }),
 );
 
+vi.mock(
+  "../../../src/connection/webrtc/websocketRelayConnection",
+  async (importActual) => ({
+    ...(await importActual<
+      typeof import("../../../src/connection/webrtc/websocketRelayConnection")
+    >()),
+    parkWebSocketRelay: vi.fn(() => {
+      throw new Error("a run parked a WebSocket relay");
+    }),
+  }),
+);
+
 // The SFTP adapter must never be constructed on this channel; importing the real
 // one would also pull ssh2 into a suite that has no server.
 vi.mock("../../../src/connection/ssh2SftpAdapter", () => ({
@@ -142,6 +154,8 @@ vi.mock("../../../src/connection/ssh2SftpAdapter", () => ({
 
 const { openWebRtcMessageConnection } =
   await import("../../../src/connection/webrtc/webrtcMessageConnection");
+const { parkWebSocketRelay } =
+  await import("../../../src/connection/webrtc/websocketRelayConnection");
 const { runProtocol } = await import("../../../src/protocol");
 const {
   webRtcDialFrom,
@@ -314,6 +328,28 @@ test("both parties complete an authenticated exchange over the data channel", as
   // Each party checked its first round against the per-set maximum before
   // dialing.
   expect(vi.mocked(assertFirstRoundWithinSetMaximum)).toHaveBeenCalledTimes(2);
+});
+
+test("a run whose connection lists a WebSocket relay dials no relay (PROTOCOL.md, No run dials one)", async () => {
+  await Promise.all(
+    (["inviter", "acceptor"] as const).map((role) => {
+      const keyFilePath = path.join(tmpDir, `${role}.key`);
+      saveKeyFile(keyFilePath, { sharedSecret: SECRET });
+      return runProtocol({
+        connection: {
+          ...webrtcConnection(role),
+          websocketRelay: "wss://relay.example.org/relay",
+        },
+        auth: { sharedSecret: SECRET, keyFilePath },
+        prepared: minimalPrepared,
+        output: path.join(tmpDir, `${role}.csv`),
+        verbosity: -1,
+        loggerName: "test",
+      });
+    }),
+  );
+  expect(mockState.exchangeConnections).toHaveLength(2);
+  expect(vi.mocked(parkWebSocketRelay)).not.toHaveBeenCalled();
 });
 
 test("the configured role fixes the handshake role, complementary across the pair", async () => {

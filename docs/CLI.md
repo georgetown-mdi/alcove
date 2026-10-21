@@ -847,7 +847,7 @@ connection:
   websocket_relay: wss://wsrelay.example.org/relay
 ```
 
-- **No run dials it yet.** A run takes the relay only when no WebRTC path opens, and that fallback is not built, so a run with the setting connects over WebRTC as one without it.
+- **No run dials it yet.** A run takes the relay only when no WebRTC path opens, and that fallback is not turned on yet, so a run with the setting connects over WebRTC as one without it.
 - **Your invitations name it.** An invitation you create names the relay where [`allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays) keeps it, with the `exchange_id` of `relay_registrar` beside it where that is set, and the review before you accept an invitation shows the WebSocket relay that invitation names.
 - **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. Once the fallback dials the relay, a run with no shared secret will refuse it before dialing (exit 64).
 
