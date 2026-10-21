@@ -18,9 +18,9 @@ import type {
 } from "@mantine/core";
 
 /**
- * The color scheme every `MantineProvider` and the hosted documents'
- * color-scheme script start from: the operating system's setting. The app
- * offers no control of its own.
+ * The color scheme every `MantineProvider` and the documents' pre-paint
+ * color-scheme script (utils/colorSchemeScript.ts) start from: the operating
+ * system's setting. The app offers no control of its own.
  */
 export const APP_COLOR_SCHEME: MantineColorScheme = "auto";
 

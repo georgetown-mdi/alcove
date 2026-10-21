@@ -1,12 +1,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { ColorSchemeScript } from "@mantine/core";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-
-import { APP_COLOR_SCHEME } from "../src/theme.ts";
 import { rootDocumentHead } from "../src/utils/documentHead.ts";
+import { withColorSchemeScript } from "../src/utils/colorSchemeScript.ts";
 
 import { declaredRoutes, matchesRoutePattern } from "./declaredRoutes.ts";
 import { serviceWorkerStringArray } from "./serviceWorkerSource.ts";
@@ -147,10 +143,7 @@ export function hostedRouteDocuments(templateFileName: string): Plugin {
     },
     transformIndexHtml(html) {
       return {
-        html: html.replace(
-          "</head>",
-          `  ${renderToStaticMarkup(createElement(ColorSchemeScript, { defaultColorScheme: APP_COLOR_SCHEME }))}\n  </head>`,
-        ),
+        html: withColorSchemeScript(html),
         tags: rootHeadTags(),
       };
     },

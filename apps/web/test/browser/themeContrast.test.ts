@@ -538,8 +538,8 @@ describe("rendered app-token surface contrast (WCAG 2.1 AA)", () => {
   }
 
   // --app-caution colours the cleaning editor's notices, which sit on a Mantine
-  // Paper (--mantine-color-body). Light keeps Mantine's orange-8, which is under
-  // the 4.5:1 floor there; dark is tuned to clear it.
+  // Paper (--mantine-color-body). An undefined token would fall back to the
+  // inherited body text and pass the floor, so the token is checked first.
   for (const scheme of ["light", "dark"] as const) {
     test(`caution notice text on a Paper surface (${scheme})`, async () => {
       app.render(
@@ -562,14 +562,15 @@ describe("rendered app-token surface contrast (WCAG 2.1 AA)", () => {
       );
       const text = await waitForEl('[data-testid="caution"]');
       const surface = await waitForEl('[data-testid="surface"]');
-      const color = getComputedStyle(text).color;
-      expect(color).toBe(
-        scheme === "light" ? "rgb(232, 89, 12)" : "rgb(255, 169, 77)",
-      );
-      if (scheme === "dark")
-        expect(
-          contrast(color, getComputedStyle(surface).backgroundColor),
-        ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        getComputedStyle(text).getPropertyValue("--app-caution").trim(),
+      ).not.toBe("");
+      expect(
+        contrast(
+          getComputedStyle(text).color,
+          getComputedStyle(surface).backgroundColor,
+        ),
+      ).toBeGreaterThanOrEqual(4.5);
     });
   }
 });
