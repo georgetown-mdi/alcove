@@ -41,7 +41,7 @@ import {
   updateElementAt,
   updateKeyAt,
 } from "@psi/authoring/advancedInvite";
-import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
+import { linkageFieldLabel } from "@psi/authoring/linkageFieldLabel";
 
 import { StepListEditor } from "@components/StepListEditor";
 
@@ -211,13 +211,7 @@ export function ExpertKeyEditor({
 
   const fieldOptions = declaredFields.map((field) => ({
     value: field.name,
-    // The type label, qualified by the field name only when it differs (an
-    // imported custom-named field); the name is sanitized as it may not be a
-    // safe type token.
-    label:
-      field.name === field.type
-        ? SEMANTIC_TYPE_LABELS[field.type]
-        : `${SEMANTIC_TYPE_LABELS[field.type]} (${sanitizeForDisplay(field.name)})`,
+    label: linkageFieldLabel(field),
   }));
   // `.at(0)` (not `[0]`) so the type is genuinely `string | undefined` -- the
   // declared field list can be empty (a file with no linkage columns), which the

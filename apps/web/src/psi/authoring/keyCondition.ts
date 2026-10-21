@@ -10,7 +10,7 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
+import { linkageFieldLabel } from "./linkageFieldLabel";
 
 import type {
   KeyConditionRule,
@@ -18,6 +18,7 @@ import type {
   LinkageKey,
   keyConditionRefusal,
 } from "@alcove/core";
+import type { DraftKey } from "./advancedInviteTypes";
 
 /** The control's label, description and empty-choice placeholder. */
 export const KEY_CONDITION_CONTROL = {
@@ -47,18 +48,20 @@ export function keyConditionOptions(
         admitsMissingFieldConditionType(field.type) &&
         (!read.has(field.name) || field.name === current),
     )
-    .map((field) => ({
-      value: field.name,
-      label:
-        field.name === field.type
-          ? SEMANTIC_TYPE_LABELS[field.type]
-          : `${SEMANTIC_TYPE_LABELS[field.type]} (${sanitizeForDisplay(field.name)})`,
-    }));
+    .map((field) => ({ value: field.name, label: linkageFieldLabel(field) }));
   if (
     current !== undefined &&
     !options.some((option) => option.value === current)
-  )
-    options.push({ value: current, label: sanitizeForDisplay(current) });
+  ) {
+    const declared = declaredFields.find((field) => field.name === current);
+    options.push({
+      value: current,
+      label:
+        declared === undefined
+          ? sanitizeForDisplay(current)
+          : linkageFieldLabel(declared),
+    });
+  }
   return options;
 }
 
@@ -78,39 +81,69 @@ export function withKeyCondition(
     : { ...rest, condition: { missingField } };
 }
 
+/** The way out every count-only message offers besides fixing the setting it
+ * names: the other Matching method, quoted as the control labels it. */
+export const REVEAL_IDENTIFIERS_INSTEAD =
+  'set Matching method to "Reveal the matched identifiers (standard)".';
+
 const OPEN_THE_KEY = "Open that key";
 
 /**
  * The Generate message per rule core refuses a key condition under, worded
- * for this app: core's text names schema keys a user never sees. A fixed
- * literal per rule, so it names no key or field from an imported document.
+ * for this app: core's text names schema keys a user never sees. `key` is
+ * the refused key's position label ("Key 2"), or `undefined` where the
+ * refusal does not locate it; no key or field text from an imported
+ * document is named.
  */
 const KEY_CONDITION_REFUSAL_MESSAGES: Readonly<
-  Record<KeyConditionRule, string>
+  Record<KeyConditionRule, (key: string | undefined) => string>
 > = {
-  undeclared:
-    `A linkage key is set to "${KEY_CONDITION_CONTROL.label}" for a field ` +
-    "that is not one of this exchange's linkage fields. " +
+  undeclared: (key) =>
+    `${key ?? "A linkage key"} is set to "${KEY_CONDITION_CONTROL.label}" ` +
+    "for a field that is not one of this exchange's linkage fields. " +
     `${OPEN_THE_KEY} and choose another field, or clear the choice.`,
-  fieldType:
-    `A linkage key is set to "${KEY_CONDITION_CONTROL.label}" for a field ` +
-    "other than a date of birth, which Alcove does not support. " +
+  fieldType: (key) =>
+    `${key ?? "A linkage key"} is set to "${KEY_CONDITION_CONTROL.label}" ` +
+    "for a field other than a date of birth, which Alcove does not support. " +
     `${OPEN_THE_KEY} and clear the choice.`,
-  readsField:
-    "A linkage key matches on a date of birth and is also set to match " +
-    "only where that date of birth is missing, so it can never match. " +
-    `${OPEN_THE_KEY} and remove the date of birth element, or clear the ` +
-    "choice.",
-  countOnly:
+  readsField: (key) =>
+    `${key ?? "A linkage key"} matches on a date of birth and is also set ` +
+    "to match only where that date of birth is missing, so it can never " +
+    `match. ${OPEN_THE_KEY} and remove the date of birth element, or clear ` +
+    "the choice.",
+  countOnly: (key) =>
     "A count-only exchange runs its one linkage key in one round, but a " +
     `key set to "${KEY_CONDITION_CONTROL.label}" runs in two. Clear the ` +
-    'choice, or choose "Reveal the matched identifiers (standard)" under ' +
-    '"Matching method" instead.',
+    `choice${key === undefined ? "" : ` on ${key}`}, or ` +
+    REVEAL_IDENTIFIERS_INSTEAD,
 };
 
-/** The Generate message for a key condition core refuses. */
+/**
+ * The refused key's label as the Keys step's key list numbers it ("Key 2",
+ * counting every key, on or off), from the refusal's index into the built
+ * terms' keys, which hold only the keys that are on.
+ */
+function refusedKeyLabel(
+  refusal: NonNullable<ReturnType<typeof keyConditionRefusal>>,
+  draftKeys: ReadonlyArray<DraftKey>,
+): string | undefined {
+  const termsIndex = refusal.path[1];
+  if (typeof termsIndex !== "number") return undefined;
+  const draftIndex = draftKeys
+    .flatMap((entry, index) => (entry.enabled ? [index] : []))
+    .at(termsIndex);
+  return draftIndex === undefined ? undefined : `Key ${draftIndex + 1}`;
+}
+
+/**
+ * The Generate message for a key condition core refuses in the terms built
+ * from `draftKeys`, naming the refused key.
+ */
 export function keyConditionRefusalMessage(
   refusal: NonNullable<ReturnType<typeof keyConditionRefusal>>,
+  draftKeys: ReadonlyArray<DraftKey>,
 ): string {
-  return KEY_CONDITION_REFUSAL_MESSAGES[refusal.rule];
+  return KEY_CONDITION_REFUSAL_MESSAGES[refusal.rule](
+    refusedKeyLabel(refusal, draftKeys),
+  );
 }

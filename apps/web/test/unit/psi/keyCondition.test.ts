@@ -97,6 +97,27 @@ describe("the missing-field control's choices", () => {
     });
   });
 
+  test("labels a current choice of a type it does not offer as the Field choice does", () => {
+    const declared: Array<LinkageField> = [
+      ...DECLARED,
+      { name: "intake_ssn4", type: "ssn4" },
+    ];
+    const key = withKeyCondition(
+      { ...NAMES_AND_SSN4, elements: [{ field: "first_name" }] },
+      "intake_ssn4",
+    );
+    expect(keyConditionOptions(declared, key)).toContainEqual({
+      value: "intake_ssn4",
+      label: "Last 4 of Social Security number (intake_ssn4)",
+    });
+    expect(
+      keyConditionOptions(declared, withKeyCondition(key, "ssn4")),
+    ).toContainEqual({
+      value: "ssn4",
+      label: "Last 4 of Social Security number",
+    });
+  });
+
   test("setting and clearing the choice adds and removes the condition", () => {
     const set = withKeyCondition(NAMES_AND_SSN4, "date_of_birth");
     expect(set.condition).toEqual({ missingField: "date_of_birth" });
@@ -152,6 +173,21 @@ describe("a key authored with the control", () => {
 
 const SCHEMA_WORDS = /missing_field|linkage_fields|date_of_birth|algorithm/;
 
+// `draft` with a key that is off ahead of its keys: the refused key is Key 2
+// in the list but the first key of the built terms.
+function behindAKeyThatIsOff(draft: AdvancedInviteDraft): AdvancedInviteDraft {
+  return {
+    ...draft,
+    keys: [
+      {
+        key: { name: "SSN4 alone", elements: [{ field: "ssn4" }] },
+        enabled: false,
+      },
+      ...draft.keys,
+    ],
+  };
+}
+
 describe("Generate is held where core refuses, in the web app's words", () => {
   test("for a field outside the agreed linkage fields", () => {
     const { draft, seed } = draftWithNamesAndSsn4([
@@ -159,36 +195,42 @@ describe("Generate is held where core refuses, in the web app's words", () => {
       "last_name",
       "ssn4",
     ]);
-    const authored = updateKeyAt(draft, 0, (key) =>
+    const authored = updateKeyAt(behindAKeyThatIsOff(draft), 1, (key) =>
       withKeyCondition(key, "date_of_birth"),
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("undeclared");
     const validation = validateAdvancedInvite(authored, seed);
     expect(validation.canGenerate).toBe(false);
-    expect(validation.errors.keys).toBe(keyConditionRefusalMessage(refusal));
     expect(validation.errors.keys).toBe(
-      'A linkage key is set to "Match only where a field is missing" for a ' +
-        "field that is not one of this exchange's linkage fields. Open that " +
-        "key and choose another field, or clear the choice.",
+      keyConditionRefusalMessage(refusal, authored.keys),
+    );
+    expect(validation.errors.keys).toBe(
+      'Key 2 is set to "Match only where a field is missing" for a field ' +
+        "that is not one of this exchange's linkage fields. Open that key " +
+        "and choose another field, or clear the choice.",
     );
     expect(validation.errors.keys).not.toMatch(SCHEMA_WORDS);
   });
 
   test("for a field of a type the condition does not admit", () => {
     const { draft, seed } = draftWithNamesAndSsn4();
-    const authored = updateKeyAt(removeElementNamed(draft, "ssn4"), 0, (key) =>
-      withKeyCondition(key, "ssn4"),
+    const authored = updateKeyAt(
+      behindAKeyThatIsOff(removeElementNamed(draft, "ssn4")),
+      1,
+      (key) => withKeyCondition(key, "ssn4"),
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("fieldType");
     const validation = validateAdvancedInvite(authored, seed);
     expect(validation.canGenerate).toBe(false);
-    expect(validation.errors.keys).toBe(keyConditionRefusalMessage(refusal));
     expect(validation.errors.keys).toBe(
-      'A linkage key is set to "Match only where a field is missing" for a ' +
-        "field other than a date of birth, which Alcove does not support. " +
-        "Open that key and clear the choice.",
+      keyConditionRefusalMessage(refusal, authored.keys),
+    );
+    expect(validation.errors.keys).toBe(
+      'Key 2 is set to "Match only where a field is missing" for a field ' +
+        "other than a date of birth, which Alcove does not support. Open " +
+        "that key and clear the choice.",
     );
     expect(validation.errors.keys).not.toMatch(SCHEMA_WORDS);
   });
@@ -196,39 +238,55 @@ describe("Generate is held where core refuses, in the web app's words", () => {
   test("for a key that also matches on the field", () => {
     const { draft, seed } = draftWithNamesAndSsn4();
     const authored = updateKeyAt(
-      addElement(draft, 0, "date_of_birth"),
-      0,
+      behindAKeyThatIsOff(addElement(draft, 0, "date_of_birth")),
+      1,
       (key) => withKeyCondition(key, "date_of_birth"),
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("readsField");
     const message = validateAdvancedInvite(authored, seed).errors.keys;
-    expect(message).toBe(keyConditionRefusalMessage(refusal));
+    expect(message).toBe(keyConditionRefusalMessage(refusal, authored.keys));
     expect(message).toBe(
-      "A linkage key matches on a date of birth and is also set to match " +
-        "only where that date of birth is missing, so it can never match. " +
-        "Open that key and remove the date of birth element, or clear the " +
-        "choice.",
+      "Key 2 matches on a date of birth and is also set to match only " +
+        "where that date of birth is missing, so it can never match. Open " +
+        "that key and remove the date of birth element, or clear the choice.",
     );
     expect(message).not.toMatch(SCHEMA_WORDS);
   });
 
   test("for a count-only draft", () => {
     const { draft, seed } = draftWithNamesAndSsn4();
-    const authored = updateKeyAt({ ...draft, algorithm: "psi-c" }, 0, (key) =>
-      withKeyCondition(key, "date_of_birth"),
+    const authored = updateKeyAt(
+      behindAKeyThatIsOff({ ...draft, algorithm: "psi-c" }),
+      1,
+      (key) => withKeyCondition(key, "date_of_birth"),
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("countOnly");
     const message = validateAdvancedInvite(authored, seed).errors.keys;
-    expect(message).toBe(keyConditionRefusalMessage(refusal));
+    expect(message).toBe(keyConditionRefusalMessage(refusal, authored.keys));
     expect(message).toBe(
       "A count-only exchange runs its one linkage key in one round, but a " +
         'key set to "Match only where a field is missing" runs in two. Clear ' +
-        'the choice, or choose "Reveal the matched identifiers (standard)" ' +
-        'under "Matching method" instead.',
+        'the choice on Key 2, or set Matching method to "Reveal the matched ' +
+        'identifiers (standard)".',
     );
     expect(message).not.toMatch(SCHEMA_WORDS);
+  });
+
+  test("names no key where the refusal does not locate one", () => {
+    expect(
+      keyConditionRefusalMessage(
+        { rule: "undeclared", message: "", path: ["linkageKeys"] },
+        [],
+      ),
+    ).toMatch(/^A linkage key is set to /);
+    expect(
+      keyConditionRefusalMessage(
+        { rule: "countOnly", message: "", path: ["linkageKeys", 3] },
+        [],
+      ),
+    ).toMatch(/Clear the choice, or set Matching method/);
   });
 });
 

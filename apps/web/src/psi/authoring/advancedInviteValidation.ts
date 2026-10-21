@@ -40,6 +40,10 @@ import {
 import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 
 import {
+  REVEAL_IDENTIFIERS_INSTEAD,
+  keyConditionRefusalMessage,
+} from "./keyCondition";
+import {
   buildAdvancedTerms,
   importedCitationDropCause,
 } from "./advancedInviteTerms";
@@ -51,7 +55,6 @@ import {
   draftOffersBuiltInKeys,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
-import { keyConditionRefusalMessage } from "./keyCondition";
 import { outputForDirection } from "./advancedInviteTypes";
 
 import type {
@@ -246,11 +249,6 @@ const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
   deduplicate: "keys",
   payload: "payload",
 };
-
-/** The way out every count-only message offers besides fixing the setting it
- * names: the other Matching method, quoted as the control labels it. */
-const REVEAL_IDENTIFIERS_INSTEAD =
-  'set Matching method to "Reveal the matched identifiers (standard)".';
 
 /** What a count-only document outside the specified shape tells the operator to
  * change, in this editor's own words rather than core's refusal text -- the same
@@ -478,7 +476,7 @@ export function validateAdvancedInvite(
   } else if (conditionRefusal !== undefined) {
     // Ahead of the unsupplyable check: a condition naming a field the columns
     // cannot supply is also undeclared, and core's refusal names the condition.
-    errors.keys = keyConditionRefusalMessage(conditionRefusal);
+    errors.keys = keyConditionRefusalMessage(conditionRefusal, draft.keys);
   } else if (
     enabledKeys.some((entry) => !keyIsSupplyable(entry.key, declarable))
   ) {
