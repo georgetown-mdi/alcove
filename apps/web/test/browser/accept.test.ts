@@ -3246,6 +3246,11 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
       .toBeInTheDocument();
   }
 
+  // About 30 browser-driver calls one after another, with eight history moves
+  // and three disclosures opened, so the test's time grows with CPU load: five
+  // full browser runs at a mean load average of 35 to 40 on 10 cores took 3.7
+  // to 26.3 s, past the browser project's 15 s default. 39.4 s is a 1.5x margin
+  // over 26.3.
   test("a value moved after consent holds the launch until the two agree", async () => {
     // The run presents the value the consent gate committed, so a control moved
     // after that gate -- reached by a browser Back, and returned from by a
@@ -3278,7 +3283,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
     await expect.element(start).toBeEnabled();
     await userEvent.click(start);
     await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
-  });
+  }, 39_400);
 
   test("blocks the accept when the invitation mirrors to terms no acceptance can run", async () => {
     // A sole-receiver invitation that also declares a payload.send mirrors to a

@@ -62,6 +62,7 @@ import {
   TEST_HOST_KEY_FINGERPRINT,
   TEST_RUN_STAMP,
   VALID_SHARED_SECRET,
+  awaitChildSettled,
   awaitTerminalEmitted,
   composedConnection,
   composedServer,
@@ -242,12 +243,14 @@ const ERROR_EVENT = {
 };
 
 describe("JobManager end-to-end via the stub CLI", () => {
-  test("a successful run buffers the terminal result and marks succeeded", async () => {
+  test("a successful run buffers the terminal result and marks succeeded", async ({
+    signal,
+  }) => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.status).toBe("succeeded");
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.type).toBe("result");
@@ -307,7 +310,9 @@ describe("JobManager end-to-end via the stub CLI", () => {
     );
   });
 
-  test("a run that emitted its own terminal event repeats no stderr", async () => {
+  test("a run that emitted its own terminal event repeats no stderr", async ({
+    signal,
+  }) => {
     // The CLI named the failure itself, so the terminal it sent stands alone:
     // appending the same text off stderr would show the operator the diagnosis
     // twice.
@@ -326,7 +331,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     const terminal = record.events[record.events.length - 1].event;
     expect(String(terminal.message)).toBe("the partner aborted the exchange");
     expect(
@@ -385,7 +390,9 @@ describe("JobManager end-to-end via the stub CLI", () => {
     );
   });
 
-  test("exit 73 beside the CLI's result terminal completes with a persistence loss", async () => {
+  test("exit 73 beside the CLI's result terminal completes with a persistence loss", async ({
+    signal,
+  }) => {
     const manager = makeManager({
       events: [
         {
@@ -401,7 +408,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.terminal).toEqual({
       outcome: "completedWithPersistenceLoss",
       exitCode: 73,
@@ -423,7 +430,9 @@ describe("JobManager end-to-end via the stub CLI", () => {
     ).toBe(true);
   });
 
-  test("exit 73 beside an output error terminal keeps the loss outcome", async () => {
+  test("exit 73 beside an output error terminal keeps the loss outcome", async ({
+    signal,
+  }) => {
     // The one persistence loss that is the result file itself: the CLI reports it
     // as its terminal error, so there is no artifact to promise -- but the run
     // still must not be repeated.
@@ -441,7 +450,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.terminal?.outcome).toBe("completedWithPersistenceLoss");
     expect(record.status).toBe("failed");
     expect(manager.getJobView(id)?.resultAvailable).toBe(false);
@@ -449,7 +458,9 @@ describe("JobManager end-to-end via the stub CLI", () => {
     expect(terminal.category).toBe("output");
   });
 
-  test("exit 73 without a terminal event synthesizes an output terminal", async () => {
+  test("exit 73 without a terminal event synthesizes an output terminal", async ({
+    signal,
+  }) => {
     const manager = makeManager({
       exitCode: 73,
       stderr: "ENOSPC: no space left on device\n",
@@ -457,7 +468,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.terminal?.outcome).toBe("completedWithPersistenceLoss");
     expect(record.status).toBe("failed");
     const terminal = record.events[record.events.length - 1].event;
@@ -588,7 +599,9 @@ describe("a synthesized persistence-loss terminal reaches the operator's alert",
 });
 
 describe("a run that exits with no terminal event, by the CLI's exit-code table", () => {
-  test("exit 70 (EX_SOFTWARE, docs/CLI.md Exit codes) is an internal fault whose alert withholds Try again", async () => {
+  test("exit 70 (EX_SOFTWARE, docs/CLI.md Exit codes) is an internal fault whose alert withholds Try again", async ({
+    signal,
+  }) => {
     const manager = makeManager({
       exitCode: 70,
       stderr: "a check on the run's own state failed\n",
@@ -596,7 +609,7 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.status).toBe("failed");
 
     const terminal = record.events[record.events.length - 1].event;
@@ -651,7 +664,9 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     );
   });
 
-  test("exit 69 (EX_UNAVAILABLE, docs/CLI.md Exit codes) is a broken stream whose alert offers Try again", async () => {
+  test("exit 69 (EX_UNAVAILABLE, docs/CLI.md Exit codes) is a broken stream whose alert offers Try again", async ({
+    signal,
+  }) => {
     const manager = makeManager({
       exitCode: 69,
       stderr: "the connection to the server was reset\n",
@@ -659,7 +674,7 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(record.status).toBe("failed");
 
     const terminal = record.events[record.events.length - 1].event;
@@ -1274,13 +1289,15 @@ describe("the in-app authored sftp connection", () => {
     expect(manager.sftpProjection()).toBeNull();
   });
 
-  test("deleting the exchange keeps the authored connection", async () => {
+  test("deleting the exchange keeps the authored connection", async ({
+    signal,
+  }) => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const shown = manager.authorSftpServer(authoredBody());
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(await manager.deleteJob(id)).toBe(true);
     expect(manager.sftpProjection()).toEqual(shown);
   });
@@ -1383,7 +1400,9 @@ describe("the in-app authored sftp connection", () => {
     expect(configYaml).not.toContain("s3cret-in-config");
   });
 
-  test("a retry after deleting a failed job runs over the connection the console still shows", async () => {
+  test("a retry after deleting a failed job runs over the connection the console still shows", async ({
+    signal,
+  }) => {
     const scratch = scratchDir("cred-scratch");
     const manager = makeManager({ exitCode: 1, credentialScratchDir: scratch });
     manager.authorSftpServer(rawBody("s3cret-for-retry"));
@@ -1391,7 +1410,7 @@ describe("the in-app authored sftp connection", () => {
     const failedId = await manager.createJob(validSftpIntent());
     const failed = manager.getJob(failedId)!;
     await awaitTerminalEmitted(failed);
-    await vi.waitFor(() => expect(failed.terminal).not.toBeNull());
+    await awaitChildSettled(() => failed.terminal !== null, signal);
     expect(failed.status).not.toBe("succeeded");
     // Try again deletes the failed job before it creates the next one.
     expect(await manager.deleteJob(failedId)).toBe(true);
@@ -1928,7 +1947,9 @@ describe("the single exchange slot", () => {
     await awaitTerminalEmitted(first);
   });
 
-  test("overflow-SIGKILL keeps the slot occupied until the exchange is deleted", async () => {
+  test("overflow-SIGKILL keeps the slot occupied until the exchange is deleted", async ({
+    signal,
+  }) => {
     const manager = makeManager({ delayMs: 5000 });
     const firstId = await manager.createJob(validIntent());
     const first = manager.getJob(firstId)!;
@@ -1946,7 +1967,7 @@ describe("the single exchange slot", () => {
     // Even after the killed child's close is observed, the slot is held: only a
     // DELETE frees a terminal exchange.
     await awaitTerminalEmitted(first);
-    await vi.waitFor(() => expect(first.terminal).not.toBeNull());
+    await awaitChildSettled(() => first.terminal !== null, signal);
     await expect(manager.createJob(validIntent())).rejects.toThrow(
       ExchangeBusyError,
     );
@@ -1972,12 +1993,14 @@ describe("the single exchange slot", () => {
     expect(secondId).not.toBe(firstId);
   });
 
-  test("a terminal but undeleted exchange rejects a create; DELETE frees the slot", async () => {
+  test("a terminal but undeleted exchange rejects a create; DELETE frees the slot", async ({
+    signal,
+  }) => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const firstId = await manager.createJob(validIntent());
     const first = manager.getJob(firstId)!;
     await awaitTerminalEmitted(first);
-    await vi.waitFor(() => expect(first.terminal).not.toBeNull());
+    await awaitChildSettled(() => first.terminal !== null, signal);
 
     // Reject-until-DELETE: the settled exchange keeps the slot until it is deleted.
     await expect(manager.createJob(validIntent())).rejects.toThrow(
@@ -2007,7 +2030,9 @@ describe("occupiedSlotId reports the slot occupant", () => {
     expect(manager.occupiedSlotId()).toBeNull();
   });
 
-  test("is the occupant id while an exchange is active, then null once it frees", async () => {
+  test("is the occupant id while an exchange is active, then null once it frees", async ({
+    signal,
+  }) => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validIntent());
     // Occupied the instant the exchange holds the slot -- exactly when a create
@@ -2015,7 +2040,7 @@ describe("occupiedSlotId reports the slot occupant", () => {
     expect(manager.occupiedSlotId()).toBe(id);
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    await awaitChildSettled(() => record.terminal !== null, signal);
     expect(manager.occupiedSlotId()).toBe(id);
     // DELETE frees the slot once the child's exit is observed.
     expect(await manager.deleteJob(id)).toBe(true);
