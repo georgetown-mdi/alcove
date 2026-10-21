@@ -11,7 +11,7 @@ import "@mantine/core/styles.css";
 import "@mantine/dropzone/styles.css";
 import { MantineProvider, mantineHtmlProps } from "@mantine/core";
 
-import { cssVariablesResolver, mantineTheme } from "@theme";
+import { APP_COLOR_SCHEME, cssVariablesResolver, mantineTheme } from "@theme";
 import { AppShellStatus } from "@components/AppShellStatus";
 import { DefaultCatchBoundary } from "@components/DefaultCatchBoundary";
 import { NotFound } from "@components/NotFound";
@@ -32,6 +32,7 @@ export const Route = createRootRoute({
     <MantineProvider
       theme={mantineTheme}
       cssVariablesResolver={cssVariablesResolver}
+      defaultColorScheme={APP_COLOR_SCHEME}
     >
       <DefaultCatchBoundary {...props} />
     </MantineProvider>
@@ -61,6 +62,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <MantineProvider
           theme={mantineTheme}
           cssVariablesResolver={cssVariablesResolver}
+          defaultColorScheme={APP_COLOR_SCHEME}
         >
           <AppShellStatus />
           <ScheduledExchangeRunner />

@@ -5,8 +5,20 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
 import { srcAliases } from "./vite.config.ts";
+import { withColorSchemeScript } from "./src/utils/colorSchemeScript.ts";
+
+import type { Plugin } from "vite";
 
 const appRoot = import.meta.dirname;
+
+/** Adds the pre-paint color-scheme script to the console's document, in the
+ * build and under `npm run dev:console` alike. */
+function consoleColorSchemeScript(): Plugin {
+  return {
+    name: "alcove-console-color-scheme-script",
+    transformIndexHtml: withColorSchemeScript,
+  };
+}
 
 // Written outside src/, so the checked-in src/routeTree.gen.ts the dev server
 // and vitest generate is never rewritten; router.tsx's import of it resolves
@@ -37,6 +49,7 @@ export default defineConfig(({ isSsrBuild }) => ({
       plugin: { vite: { environmentName: "client" } },
     }),
     viteReact(),
+    consoleColorSchemeScript(),
   ],
   resolve: {
     alias: [

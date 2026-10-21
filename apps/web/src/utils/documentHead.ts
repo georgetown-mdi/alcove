@@ -4,7 +4,11 @@ import { seo } from "./seo";
 export type DocumentHeadMeta =
   | { readonly title: string }
   | { readonly charSet: string }
-  | { readonly name: string; readonly content: string | undefined }
+  | {
+      readonly name: string;
+      readonly content: string | undefined;
+      readonly media?: string;
+    }
   | { readonly property: string; readonly content: string | undefined };
 
 /** A `<link>` entry, in the shape the router's `head` takes. */
@@ -31,6 +35,13 @@ export const rootDocumentHead: {
     {
       name: "viewport",
       content: "width=device-width, initial-scale=1",
+    },
+    {
+      // The dark --app-surface (styles/tokens.css). The browser takes the first
+      // theme-color whose media matches, so this precedes the light entry.
+      name: "theme-color",
+      media: "(prefers-color-scheme: dark)",
+      content: "#131512",
     },
     {
       // Matches the manifest's theme_color and the console's background, so an

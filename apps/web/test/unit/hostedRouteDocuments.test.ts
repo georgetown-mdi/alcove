@@ -8,6 +8,7 @@ import {
   hostedRouteDocuments,
   routeDocumentFileName,
 } from "../../hosted/routeDocuments";
+import { colorSchemeScriptElement } from "../../src/utils/colorSchemeScript";
 import { declaredRoutes } from "../../hosted/declaredRoutes";
 import { rootDocumentHead } from "../../src/utils/documentHead";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
@@ -175,7 +176,8 @@ describe("the hosted build's route documents", () => {
   test("start from the root route's head and the color-scheme script", () => {
     const { html, tags } = resolvedPlugin().transformIndexHtml(templateHtml);
 
-    expect(html).toContain('<script data-mantine-script="true">');
+    const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+    expect(head).toContain(colorSchemeScriptElement);
     const title = rootDocumentHead.meta.find((entry) => "title" in entry);
     expect(tags).toContainEqual(
       expect.objectContaining({ tag: "title", children: title?.title }),

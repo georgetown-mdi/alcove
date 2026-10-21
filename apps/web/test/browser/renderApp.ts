@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { MantineProvider } from "@mantine/core";
 
-import { cssVariablesResolver, mantineTheme } from "@theme";
+import { APP_COLOR_SCHEME, cssVariablesResolver, mantineTheme } from "@theme";
 
 import type { ReactElement, ReactNode } from "react";
 import type { MantineProviderProps } from "@mantine/core";
@@ -18,16 +18,17 @@ export interface RenderAppOptions {
   /**
    * Pin the rendered subtree to one color scheme, for a test asserting
    * scheme-specific behavior (e.g. the light-only resolver token overrides).
-   * Left unset, the provider follows its default color-scheme resolution, as
-   * the app root does.
+   * Left unset, the provider follows the operating system's setting, as the
+   * app root does.
    */
   forceColorScheme?: MantineProviderProps["forceColorScheme"];
 }
 
 /**
  * Wraps `node` in a `MantineProvider` configured exactly as the app root
- * (`routes/__root.tsx`) does -- `theme={mantineTheme}` plus
- * `cssVariablesResolver={cssVariablesResolver}`, both from `theme.ts`. A
+ * (`routes/__root.tsx`) does -- `theme={mantineTheme}`,
+ * `cssVariablesResolver={cssVariablesResolver}` and
+ * `defaultColorScheme={APP_COLOR_SCHEME}`, all from `theme.ts`. A
  * component reading a resolver-overridden token (`dimmed`, `placeholder`, the
  * light-variant status text, `error`) then renders the app's real value, not
  * the Mantine default the app never ships.
@@ -45,6 +46,7 @@ export function renderApp(
     {
       theme: mantineTheme,
       cssVariablesResolver,
+      defaultColorScheme: APP_COLOR_SCHEME,
       ...(options.forceColorScheme !== undefined
         ? { forceColorScheme: options.forceColorScheme }
         : {}),

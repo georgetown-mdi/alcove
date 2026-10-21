@@ -436,9 +436,13 @@ browser run is one nobody expected.
 Three kinds of browser test hold the web app's accessibility, each covering
 what the others cannot:
 
-- The contrast sweep (`themeContrastSweep.test.ts`) measures every rendered
-  text element against the WCAG AA floor at each primary route's first screen,
-  in both color schemes.
+- The contrast sweep (`contrastSweep.ts`, run by `themeContrastSweep.test.ts`
+  on the hosted profile and `themeContrastSweepConsole.test.ts` on the
+  console's) measures every rendered text element against the WCAG AA floor,
+  in both color schemes. It runs on the same route states as the rule scan
+  (`routeStates.ts`), and the test fails when a declared route has none. A
+  light-scheme failure not yet fixed is listed in `contrastSweep.ts`, and the
+  test fails when a listed one stops failing.
 - The rule scan (`accessibilityRules.ts`, run by
   `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
   unique ids, resolving label and description references, named controls and
