@@ -12,14 +12,14 @@ import type { ReactNode } from "react";
  * text color, and base type scale of the linkage console design. It is the
  * outermost console element and declares no landmark of its own -- the single
  * `<main>` is in {@link WorkShell}'s work column or a route's own lobby layout.
- * A hosted build ends every page with the {@link SiteFooter}; the console,
- * which serves only its own operator, has none.
+ * Every page, hosted or console, ends with the {@link SiteFooter}; the console
+ * widens it to the console lobby column.
  */
 export function AppPage({ children }: { children: ReactNode }) {
   return (
     <div className={styles.page}>
       {children}
-      {!isConsoleBuild() && <SiteFooter />}
+      <SiteFooter wide={isConsoleBuild()} />
     </div>
   );
 }

@@ -18,12 +18,18 @@ const FOOTER_LINKS: ReadonlyArray<{ label: string; href: string }> = [
 ];
 
 /**
- * The hosted site's footer: who builds Alcove, and its privacy, security,
- * support and source pages, all on GitHub.
+ * The site footer: who builds Alcove, and its privacy, security, support and
+ * source pages, all on GitHub. `wide` matches the console lobby column.
  */
-export function SiteFooter() {
+export function SiteFooter({ wide = false }: { wide?: boolean }) {
   return (
-    <footer className={styles.siteFooter}>
+    <footer
+      className={
+        wide
+          ? `${styles.siteFooter} ${styles.siteFooterWide}`
+          : styles.siteFooter
+      }
+    >
       <p>
         Alcove is open-source software built by{" "}
         <Anchor inherit href={MDI_PETS_URL} target="_blank" rel="noreferrer">

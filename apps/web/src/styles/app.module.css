@@ -1239,6 +1239,10 @@
   text-align: center;
 }
 
+.siteFooter.siteFooterWide {
+  max-width: 1100px;
+}
+
 .siteFooter p {
   margin: 0 auto 6px auto;
   max-width: 72ch;
