@@ -199,6 +199,7 @@ import {
 import { sampleInviterFile } from "./sampleData";
 
 import { preRunTrustFooter } from "./trustFooter";
+import { recordSampleInvitation } from "./sampleInvitationRecord";
 
 import { useBeforeUnloadPrompt, useUnloadGuard } from "./useUnloadGuard";
 import { AgreementTab } from "./AgreementTab";
@@ -991,6 +992,13 @@ export function InviterScreen() {
     outputs,
     failure,
   });
+
+  // A hosted invitation minted from the sample is noted in this browser, so
+  // the accept screen in another of its tabs offers the sample partner file.
+  useEffect(() => {
+    if (invitation === undefined || !demoActive || isConsoleBuild()) return;
+    void recordSampleInvitation(invitation.encoded, invitation.expires);
+  }, [invitation, demoActive]);
 
   // The live exchange itself, armed exactly where the guard above disarms and
   // held until the run settles: this browser listens from the mint onward,

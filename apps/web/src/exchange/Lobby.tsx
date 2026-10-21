@@ -225,7 +225,7 @@ export function Lobby() {
               with the second file.
             </>
           ) : (
-            ". This opens the invite screen with sample data loaded and downloads the partner CSV. To run both sides, open the invitation in another browser tab and accept it with that file."
+            ". This opens the invite screen with sample data loaded and downloads the partner CSV. To run both sides, open the invitation in another tab of this browser and use the sample partner file it offers, or accept it in another browser with the downloaded file."
           )}
         </p>
         {sampleFailure !== undefined && (

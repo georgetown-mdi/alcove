@@ -140,6 +140,7 @@ import {
 import {
   ACCEPTOR_SCREEN_INITIAL,
   acceptOffersAllowedRelays,
+  acceptorSampleInUse,
   acceptorScreenReducer,
 } from "./acceptorScreenModel";
 import { APPLIANCE_FILE_ASSURANCE, FILE_ASSURANCE_LINE } from "./fileAssurance";
@@ -159,6 +160,8 @@ import { AcceptorColumnsStep } from "./AcceptorColumnsStep";
 import { AcceptorExchangeSection } from "./AcceptorExchangeSection";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
 import { WorkShell } from "./WorkShell";
+import { createdFromSampleInThisBrowser } from "./sampleInvitationRecord";
+import { samplePartnerFile } from "./sampleData";
 
 import { Ledger } from "./Ledger";
 import { ManageExchangeOffer } from "./ManageExchangeOffer";
@@ -309,10 +312,12 @@ function AcceptorInvitationScreen({
     rejectionMessage,
     rendezvous,
     runDiagnostics,
+    sampleOffered,
     sanitizedColumnPositions,
     sftpInfo,
     step,
   } = screenState;
+  const sampleInUse = acceptorSampleInUse(screenState);
 
   // How this party's own file is read and its own result file written. Local
   // component state rather than reducer state: the consent gate resolves it to
@@ -378,12 +383,17 @@ function AcceptorInvitationScreen({
           consoleBuild && invitation.endpoint.channel === "webrtc"
             ? await fetchSignalingServer()
             : null;
+        // The token does not state whether its inviter used the sample, so
+        // only this browser's own record of its sample invitations can.
+        const createdFromSample =
+          !consoleBuild && (await createdFromSampleInThisBrowser(encoded));
         if (!controller.signal.aborted)
           dispatch({
             type: "invitation-decoded",
             invitation,
             rendezvous: rvz,
             heldSignalingServer: held,
+            sampleOffered: createdFromSample,
           });
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -582,13 +592,15 @@ function AcceptorInvitationScreen({
   // token naming no live step (a stale entry from before a deploy renamed one)
   // is ignored rather than rendered as an empty work column. A position whose
   // backing state is gone (a `launched` entry left behind by a back-to-columns
-  // recovery, or a later step after an edit to the review's Allowed relays)
-  // clamps to a step that can still render; the settled token is returned so
-  // the hook rewrites the dead entry.
+  // recovery, a later step after an edit to the review's Allowed relays, or the
+  // columns step after another file was chosen) clamps to a step that can
+  // still render; the settled token is returned so the hook rewrites the dead
+  // entry.
   function restorePosition(token: string): string | void {
     const settled = restorablePosition(token, {
       hasLaunch: launched !== undefined,
       reviewCommitted: committedAllowedRelays !== undefined,
+      hasAcquired: acquired !== undefined,
     });
     if (settled === "columns:cleaning") {
       dispatch({
@@ -660,6 +672,17 @@ function AcceptorInvitationScreen({
     dispatch({
       type: "file-rejected",
       message: `That file is ${reasons.join(" and ")}. Choose a CSV file under ${maxMb} MB.`,
+    });
+  }
+
+  // Choose the sample partner file through the same intake a dropped file
+  // uses, read by commas as the sample is written.
+  function chooseSample() {
+    setDelimiterChoice(INITIAL_CSV_DELIMITER_CHOICE);
+    dispatch({
+      type: "file-selected",
+      file: samplePartnerFile(),
+      sample: true,
     });
   }
 
@@ -974,15 +997,19 @@ function AcceptorInvitationScreen({
   useUnloadGuard({
     hasFile: file !== undefined || consoleSource !== undefined,
     finalized: launched !== undefined,
+    demoActive: sampleInUse,
   });
 
   // The live exchange itself, armed exactly where the guard above disarms and
   // held until the run settles: this seat dials on launch, an unload ends the
   // session for BOTH parties, and the app-shell update notice renders its Reload
   // button above this route throughout the run. A server-job accept stays out for
-  // the same reason it is out above -- the console conducts it instead.
+  // the same reason it is out above -- the console conducts it instead. A
+  // sample run stays out as the inviter's does: its partner is ordinarily this
+  // operator's other tab.
   useBeforeUnloadPrompt(
     !acceptServerJob &&
+      !sampleInUse &&
       launched !== undefined &&
       outputs === undefined &&
       failure === undefined,
@@ -1125,6 +1152,16 @@ function AcceptorInvitationScreen({
           settled
             ? acceptorDoneLedgerTag(invitingPartyName(token))
             : acceptorLedgerTag(invitingPartyName(token))
+        }
+        demoNotice={
+          sampleInUse
+            ? {
+                label: "Sample data (synthetic records)",
+                ...(acquired === undefined && !parsing
+                  ? { onClear: () => dispatch({ type: "sample-cleared" }) }
+                  : {}),
+              }
+            : undefined
         }
         customize={step === "launched" ? undefined : customizeFacts}
         rows={(settled && launched !== undefined
@@ -1583,6 +1620,21 @@ function AcceptorInvitationScreen({
                     {rejectionMessage}
                   </Text>
                 )}
+                {sampleOffered && file === undefined && (
+                  <p className={`${styles.small} ${styles.sub}`}>
+                    You created this invitation from sample data in this
+                    browser.{" "}
+                    <Anchor
+                      inherit
+                      component="button"
+                      type="button"
+                      onClick={chooseSample}
+                    >
+                      Use the sample partner file
+                    </Anchor>{" "}
+                    to accept it.
+                  </p>
+                )}
                 {file !== undefined && (
                   <div className={styles.fileCard}>
                     <svg
@@ -1892,9 +1944,11 @@ function AcceptorInvitationScreen({
                 locator from the invitation's endpoint) and is skippable: leaving
                 it untouched keeps the exchange one-off. It appears once the
                 exchange completes and holds the secret it rotated to. A
-                console run keeps that secret in the working folder instead. */}
+                console run keeps that secret in the working folder instead.
+                A sample run is excluded, as on the inviter's side. */}
             {decode.invitation.endpoint.channel === "webrtc" &&
               !acceptServerJob &&
+              !sampleInUse &&
               launched !== undefined &&
               outputs !== undefined &&
               rotatedSecret !== undefined &&

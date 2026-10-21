@@ -18,6 +18,7 @@ import {
 import { computeFieldCoverage } from "@psi/workers/nonEmptyAggregate";
 import { editorFromCsv } from "@psi/inviterEditor";
 import { inviterCleaningAttention } from "@psi/inviterModel";
+import { samplePartnerFile } from "@exchange/sampleData";
 
 import type { AcquiredCsv } from "@psi/inviterEditor";
 
@@ -151,6 +152,13 @@ describe("sample data", () => {
     // so no default key intersects.
     expect(rowsIntersect(inviter, 6, partner, 6)).toBe(false);
     expect(rowsIntersect(inviter, 7, partner, 7)).toBe(false);
+  });
+
+  test("the sample partner file is the partner CSV under its file name", async () => {
+    const file = samplePartnerFile();
+    expect(file.name).toBe(SAMPLE_PARTNER_FILE_NAME);
+    expect(file.type).toBe("text/csv");
+    expect(await file.text()).toBe(SAMPLE_PARTNER_CSV);
   });
 
   test("the matching pairs are exactly six across the whole cross-product", async () => {
