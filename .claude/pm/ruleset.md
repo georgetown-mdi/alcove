@@ -444,10 +444,10 @@ Ratified by the owner:
 - **WebSocket relay** (board 9) -- Done is: on a network that intercepts TLS
   and stops TURN but passes a WebSocket on 443, a browser-to-browser exchange
   and a CLI-to-browser exchange each complete through the project's WebSocket
-  relay, which each party reaches with no relay setting on the demo site, and
-  on production and staging once a party turned the project relay on, when no
-  WebRTC path opens (a CLI on such a network still trusts the network's CA);
-  the relay admits only an exchange whose key, derived from the current shared
+  relay when no WebRTC path opens, which a party reaches with no relay setting
+  wherever the Hosted site defaults line turns the project's services on, and
+  otherwise once a party listed it, in relay settings or in its configuration
+  (a CLI on such a network still trusts the network's CA); the relay admits only an exchange whose key, derived from the current shared
   secret, is registered; every frame it carries is under the negotiated
   application AEAD, and a quick exchange refuses it; and the disclosure
   documents state what the relay's operator and any TLS interception point on
