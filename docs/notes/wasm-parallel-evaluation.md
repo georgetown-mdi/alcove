@@ -264,7 +264,8 @@ by stating the measured rate as a limit.
   instances, structured-clone messaging; nothing shared. That is the arm's main
   advantage over pthreads.
 - **Key distribution to N workers.** The key is generated inside one worker;
-  sharding sends it to every shard at spawn.
+  sharding sends it to every helper over a channel the page only connects,
+  once the first worker's library has loaded.
   Same-origin dedicated workers in one renderer, and `worker_threads` in one
   process, so it does not leave the process -- but it is a change to where key
   material lives, and it is the piece a security review has to weigh.
