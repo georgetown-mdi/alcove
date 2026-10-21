@@ -436,10 +436,11 @@ Ratified by the owner:
   holds only the current key; no relay credential or owner token is stored
   outside the operator's own settings or shipped in a bundle; a CLI-to-browser
   exchange with the browser on a UDP-blocked network completes over a relayed
-  pair; and the production web app relays through the project's relay by
-  default, its key enrolled without the owner token, so a browser-to-browser
-  exchange with one party on a UDP-blocked network completes over a relayed
-  pair.
+  pair; and the demo web app relays through the project's relay by default,
+  and the production web app once its user turns it on, its key enrolled
+  without the owner token, so a browser-to-browser
+  exchange with one party on a UDP-blocked network completes over a
+  relayed pair.
 - **WebSocket relay** (board 9) -- Done is: on a network that intercepts TLS
   and stops TURN but passes a WebSocket on 443, a browser-to-browser exchange
   and a CLI-to-browser exchange each complete through the project's WebSocket
@@ -449,6 +450,12 @@ Ratified by the owner:
   registered; every frame it carries is under the negotiated application AEAD,
   and a quick exchange refuses it; and the disclosure documents state what the
   relay's operator and any TLS interception point on the path see.
+- **Hosted site defaults** (boards 9 and 10) -- Done is: an exchange on the
+  production and staging web app uses no relay the project runs unless a
+  party turned it on, a user can name their own STUN and coordination servers
+  in place of the defaults, a demo site lists the project's relay by default,
+  and docs/COMPLIANCE.md, PRIVACY.md and docs/SHARED_RESPONSIBILITY.md state
+  each site's defaults as its build has them.
 - **Repo review 2026-09** (boards 9 and 10) -- Done is: every finding in the
   2026-09 repo review's lists, including those its own review
   rounds raised, is landed or recorded as refused with a reason, and no source
