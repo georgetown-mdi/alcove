@@ -9,9 +9,9 @@ import {
   withoutTypeAwareLayer,
 } from "./eslint-strip-type-aware-layer.mjs";
 
-// Coverage of the regex-in-toMatchObject ban. `toMatchObject` compares a
-// RegExp value against the received property by equality, so a regex written as
-// a property value passes whatever the received value is. The ban is one
+// Coverage of the regex-in-toMatchObject ban. `toMatchObject` matches a RegExp
+// value as an empty subset, so a regex written as a property value passes
+// whatever the received value is. The ban is one
 // no-restricted-syntax selector, carried by the repo-root block that covers the
 // test trees of packages/ and apps/cli and by the test block of
 // apps/web/eslint.config.js (reached here through the repo-root config, which
@@ -71,6 +71,10 @@ const FLAGGED = [
   [
     "a regex element of an array property",
     "expect(value).toMatchObject({ messages: [/refused/] });",
+  ],
+  [
+    "a regex element of a top-level array argument",
+    "expect(value).toMatchObject([/refused/]);",
   ],
   [
     "a regex property value among several",
