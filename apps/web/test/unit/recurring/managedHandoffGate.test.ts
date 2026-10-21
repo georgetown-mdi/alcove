@@ -121,6 +121,6 @@ describe("the import refusal for a stored copy that could not be read", () => {
     // than sending them to a control that cannot decide it.
     const reason = custodyUnreadableImportReason("Riverbend");
     expect(reason).toContain("If you handed this exchange off");
-    expect(reason).toContain("If you did not, delete that exchange");
+    expect(reason).toContain("If you did not, remove that exchange");
   });
 });

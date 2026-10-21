@@ -13,42 +13,36 @@ import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
-import { useOnlineStatus } from "@components/useOnlineStatus";
-
-import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 
 import { addSampleInputs } from "@psi/jobClient/workInputClient";
 
 import { AppPage } from "@components/AppPage";
+import { HOSTED_WEB_APP_ADDRESS } from "@console/signalingServerModel";
 import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
 import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
+import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
 import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
-import { FILE_ASSURANCE_LINE } from "./fileAssurance";
+import { HOSTED_FILE_ASSURANCE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
 
+/** The paste card's heading, which names the invitation field. */
+const PASTE_INVITATION_HEADING_ID = "paste-invitation-heading";
+
 /**
- * The quick path's screen: two primary actions side by side -- invite someone to a
- * one-off exchange, or accept an invitation you were sent -- above the standing how-it-works
- * explanation. It has its own route at `/quick` and is also the home route's
- * first-run landing (an empty or unavailable managed store at `/` renders it
- * directly, with no redirect); the recurring-exchange list lives at `/saved`,
- * which this screen links to on a hosted build. A console build has no recurring
- * surface, so it omits that pointer.
+ * The quick path's screen: two primary actions side by side -- invite a partner to a
+ * one-off exchange, or paste an invitation you were sent -- then the first-visit
+ * help, the how-it-works explanation, and the restore and relay pointers. It has its
+ * own route at `/quick` and is also the home route's first-run landing (an empty or
+ * unavailable managed store at `/` renders it directly, with no redirect); the
+ * recurring-exchange list lives at `/saved`, which this screen links to on a hosted
+ * build. A console build has no recurring surface, so it omits that pointer.
  */
 export function Lobby() {
   const navigate = useNavigate();
   const [invitation, setInvitation] = useState("");
   const [invitationError, setInvitationError] = useState<string>();
-
-  // Advisory only. Every entry below navigates or reads -- authoring an exchange
-  // file for the command-line tool reaches no partner, and neither does reading
-  // an invitation -- so the block belongs to the create or run each flow ends in,
-  // which holds it. Saying so here spares an operator the walk to a gate they
-  // will meet after choosing a file. Only the offline direction is read: being
-  // online is no promise the partner is there (see @utils/networkStatus).
-  const online = useOnlineStatus();
 
   // Whether this browser already holds a saved recurring exchange, read once
   // on mount. Gates the "run it again" pointer below; the restore-from-backup
@@ -79,9 +73,7 @@ export function Lobby() {
   // "Review invitation" peels the token out of whatever was pasted -- a bare code
   // or a deep-link URL -- via the shared tokenFromInput helper, and routes to the
   // accept console with the token in the URL fragment, never a search param. An
-  // empty extraction shows the inline field error and does not navigate. The
-  // button itself is disabled until the field holds a usable token (see below),
-  // so this guard only covers a submit that slips past that disabled state.
+  // empty extraction shows the inline field error and does not navigate.
   function reviewInvitation() {
     const token = tokenFromInput(invitation);
     if (token === "") {
@@ -90,8 +82,6 @@ export function Lobby() {
     }
     void navigate({ to: "/accept", hash: token });
   }
-
-  const invitationToken = tokenFromInput(invitation);
 
   // Focus the field when the fragment names it.
   const invitationFieldRef = useRef<HTMLTextAreaElement>(null);
@@ -126,37 +116,23 @@ export function Lobby() {
 
   return (
     <AppPage>
-      <main className={styles.lobby}>
-        <h1>Alcove - encrypted matching and sharing</h1>
-        <p className={styles.tagline}>
-          Find records you have in common while keeping your PII private, then
-          exchange data about those records.
-        </p>
-        {!isConsoleBuild() && !isInstalledRuntime() && (
-          <p className={`${styles.sub} ${styles.small}`}>
-            For SFTP, a shared folder, or scheduled runs on your own servers,
-            see the{" "}
-            <Anchor
-              inherit
-              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              other ways to use Alcove
-            </Anchor>
-            .
-          </p>
-        )}
+      <main
+        className={
+          isConsoleBuild()
+            ? `${styles.lobby} ${styles.lobbyFullWidth} ${styles.lobbyWide}`
+            : `${styles.lobby} ${styles.lobbyFullWidth}`
+        }
+      >
+        <h1>{HOME_HEADLINE}</h1>
+        <p className={styles.tagline}>{HOME_TAGLINE}</p>
         <VisuallyHidden component="h2">
           Start a private data exchange
         </VisuallyHidden>
         <div className={styles.lobbyActions}>
           <div className={styles.actionCard}>
-            <h3>Invite someone to exchange data</h3>
+            <h3>Invite a partner</h3>
             <p className={`${styles.small} ${styles.sub}`}>
               Choose a file, confirm what you disclose, and share an invitation.
-              Default configuration comes from your file and can be customized
-              if needed.
             </p>
             <p>
               <Button component={Link} to="/exchange">
@@ -165,13 +141,14 @@ export function Lobby() {
             </p>
           </div>
           <div className={styles.actionCard}>
-            <h3>Accept an invitation you were sent</h3>
+            <h3 id={PASTE_INVITATION_HEADING_ID}>
+              Have an invitation? Paste it here
+            </h3>
             <Textarea
               id={PASTE_INVITATION_FIELD_ID}
               ref={invitationFieldRef}
-              aria-label="Invitation"
-              description="Paste the invitation your partner sent to you"
-              placeholder="https://...#... or the invitation text"
+              aria-labelledby={PASTE_INVITATION_HEADING_ID}
+              placeholder="Paste the invitation link or text"
               rows={2}
               value={invitation}
               error={invitationError}
@@ -183,43 +160,29 @@ export function Lobby() {
               }}
             />
             <p>
-              <Button
-                variant="outline"
-                mt="sm"
-                disabled={invitationToken === ""}
-                onClick={reviewInvitation}
-              >
+              <Button variant="outline" onClick={reviewInvitation}>
                 Review invitation
               </Button>
             </p>
           </div>
           {/* The console's third path: a direct exchange the two parties arranged
-              out of band (a shared server, no invitation). Console-only -- it drives
-              the console's job API, which a hosted deployment does not run. */}
+              out of band (a shared server or folder, no invitation). Console-only --
+              it drives the console's job API, which a hosted deployment does not run. */}
           {isConsoleBuild() && (
             <div className={styles.actionCard}>
-              <h3>Run an exchange you have already arranged</h3>
+              <h3>Skip the invitation</h3>
               <p className={`${styles.small} ${styles.sub}`}>
-                You and your partner agreed on a server out of band. Choose a
-                file, confirm the terms your file produces, and run - no
-                invitation needed.
+                Use an agreed server or shared folder, and run it together with
+                your partner.
               </p>
               <p>
                 <Button component={Link} to="/direct" variant="outline">
-                  Run a quick exchange
+                  Start
                 </Button>
               </p>
             </div>
           )}
         </div>
-        {!online && (
-          <p className={`${styles.sub} ${styles.small}`}>
-            {OFFLINE_EXCHANGE_REASON} Reading an invitation and authoring an
-            exchange file for the command-line tool reach no partner, so those
-            stay open; each flow states this again at the create or run that
-            would start the exchange.
-          </p>
-        )}
         <p className={`${styles.sub} ${styles.small}`}>
           First time here? The{" "}
           <Anchor
@@ -228,12 +191,12 @@ export function Lobby() {
             target="_blank"
             rel="noreferrer"
           >
-            user guide
+            user guide (on GitHub)
+            <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
           </Anchor>{" "}
           walks through running an exchange step by step.
         </p>
         <p className={`${styles.sub} ${styles.small}`}>
-          No data to link yet?{" "}
           <Anchor
             inherit
             component="button"
@@ -241,11 +204,28 @@ export function Lobby() {
             disabled={addingSamples}
             onClick={() => void loadSample()}
           >
-            Start with sample data
-          </Anchor>{" "}
-          {isConsoleBuild()
-            ? "writes two CSVs of synthetic records into your folder and starts an exchange, so you can choose one and practice both sides."
-            : "seeds an exchange with synthetic records and downloads the two CSVs so you can run both sides."}
+            See how it works with example data
+          </Anchor>
+          {isConsoleBuild() ? (
+            <>
+              . This writes two sample files into your working folder and opens
+              the invite screen, where you choose the first one. To run both
+              sides, choose WebRTC when you create the invitation, then accept
+              it in the{" "}
+              <Anchor
+                inherit
+                href={HOSTED_WEB_APP_ADDRESS}
+                target="_blank"
+                rel="noreferrer"
+              >
+                public Alcove web app
+                <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+              </Anchor>{" "}
+              with the second file.
+            </>
+          ) : (
+            ". This downloads two sample files and opens the invite screen with the first one. To run both sides, open the invitation in another browser tab and accept it with the second file."
+          )}
         </p>
         {sampleFailure !== undefined && (
           <p className={`${styles.sub} ${styles.small}`} role="alert">
@@ -260,45 +240,59 @@ export function Lobby() {
             </Anchor>
           </p>
         )}
+        <div className={styles.howItWorks}>
+          <h2 className={styles.lobbyHelpHeading}>How it works</h2>
+          <p>
+            {isConsoleBuild()
+              ? "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
+              : `Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. ${HOSTED_FILE_ASSURANCE} A coordination server helps the two sides find each other. It never sees your data.`}
+          </p>
+        </div>
+        <h2 className={styles.lobbyHelpHeading}>More options</h2>
+        {!isConsoleBuild() && !isInstalledRuntime() && (
+          <p className={`${styles.sub} ${styles.small}`}>
+            For SFTP, a shared folder, or scheduled runs on your own servers,
+            see the{" "}
+            <Anchor
+              inherit
+              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              other ways to use Alcove (on GitHub)
+              <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+            </Anchor>
+            .
+          </p>
+        )}
         {!isConsoleBuild() &&
           (hasSavedExchanges === undefined ? null : hasSavedExchanges ? (
             <p className={`${styles.sub} ${styles.small}`}>
-              Saved an exchange to run again?{" "}
+              Saved an exchange to run again? Run it or restore it from a backup
+              file on the{" "}
               <Anchor inherit component={Link} to="/saved">
                 Recurring exchanges
               </Anchor>{" "}
-              lists the ones stored in this browser so you can run one without a
-              new invitation, and is where you restore one from a backup file if
-              this browser was cleared.
+              page.
             </p>
           ) : (
             <p className={`${styles.sub} ${styles.small}`}>
-              Cleared this browser, or moving to a new device?{" "}
+              Have a backup file from a saved exchange? Restore it on the{" "}
               <Anchor inherit component={Link} to="/saved">
                 Recurring exchanges
               </Anchor>{" "}
-              is where you restore a saved exchange from a backup file.
+              page.
             </p>
           ))}
         <p className={`${styles.sub} ${styles.small}`}>
-          Can&apos;t connect to your partner? Your IT team can set a{" "}
+          {isConsoleBuild()
+            ? "If using peer-to-peer, some workplace networks may block the connection. Your IT team can give you a relay server address to enter in "
+            : "If you can't connect to your partner, your IT team can give you a relay server address to enter in "}
           <Anchor inherit component={Link} to="/relay">
-            relay server
-          </Anchor>{" "}
-          for this browser to connect through.
+            relay settings
+          </Anchor>
+          .
         </p>
-        <div className={styles.howItWorks}>
-          <p>
-            <strong>How it works.</strong> Alcove compares cryptographic
-            fingerprints of the fields you match on - a private set intersection
-            - so only the records you both hold are revealed, and only to the
-            people the terms name.{" "}
-            {isConsoleBuild()
-              ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
-              : "Your browser connects directly to your partner's."}
-            {FILE_ASSURANCE_LINE !== undefined && ` ${FILE_ASSURANCE_LINE}`}
-          </p>
-        </div>
       </main>
     </AppPage>
   );

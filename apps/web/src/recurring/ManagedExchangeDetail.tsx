@@ -29,6 +29,7 @@ import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import { useHashTarget } from "@components/useHashTarget";
 
 import { dateLabel } from "@psi/formatting";
 
@@ -109,9 +110,11 @@ import {
   REPEATED_MISS_TITLE,
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
+
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { MANAGED_SCHEDULE_SECTION_ID } from "./managedSectionIds";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
@@ -435,7 +438,7 @@ function ConfigurationView({
         Re-inviting refreshes the partnership with a new secret on these same
         terms; it does not change them. What you can change here is under{" "}
         {CHANGE_TERMS_TITLE} below. To change anything else, set up a{" "}
-        <Link to="/exchange">new exchange</Link> and delete this one if you no
+        <Link to="/exchange">new exchange</Link> and remove this one if you no
         longer want it.
       </p>
       {canReinvite ? (
@@ -472,7 +475,7 @@ function ConfigurationView({
           onto different terms. What you can change here is under{" "}
           {CHANGE_TERMS_TITLE} below. To change anything else, your partner sets
           up a new exchange with those terms and sends you its invitation -
-          accept it and you can save it as a new recurring exchange, then delete
+          accept it and you can save it as a new recurring exchange, then remove
           this one if you no longer want it.
         </p>
       )}
@@ -1025,9 +1028,15 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
     Date.now(),
     inputModifiedAtMs,
   );
+  const sectionRef = useHashTarget<HTMLDivElement>(MANAGED_SCHEDULE_SECTION_ID);
   if (view === undefined) return null;
   return (
-    <div className={styles.callout}>
+    <div
+      className={styles.callout}
+      id={MANAGED_SCHEDULE_SECTION_ID}
+      tabIndex={-1}
+      ref={sectionRef}
+    >
       <h2 className={styles.eyebrow}>Run schedule</h2>
       <p className={styles.calloutLead}>{view.dueLine}</p>
       <p className={styles.small}>{view.cadence}</p>
@@ -1243,7 +1252,7 @@ export function ParkedResultsView({
       )}
       {/* Offered for anything this exchange has here, including a value this
           build cannot read -- the delete needs no parse, and it is the only way
-          out of that state short of deleting the exchange. Withheld only where
+          out of that state short of removing the exchange. Withheld only where
           the read found nothing to clear or did not reach the store, which a
           clear could not speak for either. */}
       {(read?.kind === "parked" || read?.kind === "unreadable") && (
@@ -1524,7 +1533,7 @@ function DisclosureAccountingView({
         </>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        This accounting is kept in this browser and is deleted with the
+        This accounting is kept in this browser and is removed with the
         exchange.{" "}
         {entries.length > 0 && (
           <>
@@ -2023,7 +2032,7 @@ function UnreadableAccountingRecovery({
         transitionProps={{ duration: 0 }}
       >
         <p>
-          Delete the disclosure records stored for this exchange? They are
+          Remove the disclosure records stored for this exchange? They are
           destroyed permanently, this browser holds no other copy, and it cannot
           be undone.
         </p>
@@ -2057,7 +2066,7 @@ function UnreadableAccountingRecovery({
             mt="sm"
             mb="sm"
           >
-            The stored records were not deleted. Nothing changed; try again.
+            The stored records were not removed. Nothing changed; try again.
           </Alert>
         )}
         <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
@@ -2070,7 +2079,7 @@ function UnreadableAccountingRecovery({
             loading={resetting}
             onClick={confirmReset}
           >
-            Delete these records
+            Remove these records
           </Button>
         </div>
       </Modal>

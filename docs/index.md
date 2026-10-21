@@ -12,7 +12,7 @@ It performs privacy-preserving record linkage (PPRL) with a cryptographic protoc
 All three run the same protocol, so you and your partner do not have to pick the same one.
 
 - **The web app**, at [psi.data-bridge.org](https://psi.data-bridge.org/).
-  Nothing to install: your file is read and matched inside your browser, which exchanges directly with your partner's.
+  Nothing to install: your file is read and matched inside your browser and never uploaded to our servers. What is sent to your partner is encrypted first.
   Best for a first or occasional exchange, and it can run the same exchange again on a schedule.
   Read [Using the web app](WEB_APP.md) and [Recurring exchanges in the browser](MANAGED_EXCHANGE.md).
 - **The command line app**, a Docker image.

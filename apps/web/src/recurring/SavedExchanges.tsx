@@ -36,10 +36,18 @@ import {
 import { MAX_KEY_FILE_IMPORT_BYTES } from "@psi/managed/managedCommandLineImport";
 import { listManagedLocalState } from "@psi/managed/managedLocalState";
 
+import { HOME_HEADLINE } from "@exchange/homeCopy";
 import { Lobby } from "@exchange/Lobby";
+import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
+import { RECURRING_SETUP_HREF } from "@exchange/recurringSetup";
 
 import { AppPage } from "@components/AppPage";
 import styles from "@styles/app.module.css";
+
+import {
+  MANAGED_BACKUP_SECTION_ID,
+  MANAGED_SCHEDULE_SECTION_ID,
+} from "./managedSectionIds";
 
 import {
   ALREADY_HELD_IMPORT_TITLE,
@@ -149,7 +157,7 @@ export function SavedExchangesHome() {
     return (
       <AppPage>
         <main className={styles.lobby}>
-          <Loader />
+          <DelayedLoader />
         </main>
       </AppPage>
     );
@@ -159,6 +167,22 @@ export function SavedExchangesHome() {
   )
     return <Lobby />;
   return <SavedExchangesSurface load={load} reload={reload} />;
+}
+
+/** How long a store read runs before its loader shows: a read that settles
+ * sooner renders the page with no loader flashing before it. */
+const LOADER_DELAY_MS = 200;
+
+/** The loading indicator for a store read, named for assistive technology
+ * and shown only once the read has run past {@link LOADER_DELAY_MS}. */
+function DelayedLoader() {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShown(true), LOADER_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!shown) return null;
+  return <Loader role="status" aria-label="Loading" />;
 }
 
 /**
@@ -206,15 +230,15 @@ function SavedExchangesSurface({
 }) {
   return (
     <AppPage>
-      <main className={styles.lobby}>
-        <div className={styles.wordmark}>Alcove</div>
-        <h1>Recurring exchanges</h1>
+      <main className={`${styles.lobby} ${styles.lobbyFullWidth}`}>
+        <p className={styles.siteHeadline}>{HOME_HEADLINE}</p>
+        <h1 className={styles.savedListTitle}>Recurring exchanges</h1>
         <p className={styles.sub}>
           Exchanges you saved to run again with the same partner, stored in this
           browser. Choose one to run it again without a new invitation.
         </p>
         {load === undefined ? (
-          <Loader />
+          <DelayedLoader />
         ) : load.kind === "failed" ? (
           <SavedExchangesFailed reload={reload} />
         ) : load.rows.length === 0 ? (
@@ -228,10 +252,11 @@ function SavedExchangesSurface({
 }
 
 /** The populated run list: a row per stored exchange with a run/open action and the
- * always-available delete, above a primary create entry into the invite/configure
- * flow (where saving as recurring happens at share time), the one-off quick-path
- * alternative, and the import every list state offers. A row moved to another
- * device also offers its own restore from backup. Deleting a row calls `reload`,
+ * always-available remove, above a create entry into the invite/configure flow
+ * (where saving as recurring is offered once the exchange completes) beside an
+ * entry to the lobby's invitation field, the one-off quick-path alternative, and
+ * the import every list state offers. A row moved to another
+ * device also offers its own restore from backup. Removing a row calls `reload`,
  * so the list reflects the removal without a page navigation. */
 function SavedExchangesList({
   rows,
@@ -268,7 +293,7 @@ function SavedExchangesList({
             </div>
             <div className={styles.savedRowActions}>
               <Button
-                variant={runnableRow(row) ? "default" : "subtle"}
+                variant={runnableRow(row) ? "filled" : "subtle"}
                 onClick={() =>
                   void navigate({
                     to: "/saved/$id",
@@ -291,24 +316,33 @@ function SavedExchangesList({
         ))}
       </ul>
       <BetweenVisitNotifications />
-      <p>
-        <Button component={Link} to="/exchange" variant="default">
+      <div className={styles.savedListActions}>
+        <Button component="a" href={RECURRING_SETUP_HREF} variant="default">
           Set up a recurring exchange
         </Button>
-      </p>
+        <Button
+          component={Link}
+          to="/quick"
+          hash={PASTE_INVITATION_FIELD_ID}
+          variant="default"
+        >
+          Accept an invitation
+        </Button>
+      </div>
       <p className={`${styles.sub} ${styles.small}`}>
         Need a one-off instead?{" "}
         <Anchor inherit component={Link} to="/quick">
-          Set up or accept an exchange
+          Start or accept a one-time exchange
         </Anchor>{" "}
         without saving it here.
       </p>
       <p className={`${styles.sub} ${styles.small}`}>
-        Can&apos;t connect to your partner? Your IT team can set a{" "}
+        If you can&apos;t connect to your partner, your IT team can give you a
+        relay server address to enter in{" "}
         <Anchor inherit component={Link} to="/relay">
-          relay server
-        </Anchor>{" "}
-        for this browser to connect through.
+          relay settings
+        </Anchor>
+        .
       </p>
       <ImportExchangeFile />
     </>
@@ -323,8 +357,8 @@ function StorageUnavailable() {
   return (
     <AppPage>
       <main className={styles.lobby}>
-        <div className={styles.wordmark}>Alcove</div>
-        <h1>Recurring exchanges</h1>
+        <p className={styles.siteHeadline}>{HOME_HEADLINE}</p>
+        <h1 className={styles.savedListTitle}>Recurring exchanges</h1>
         <p className={styles.sub}>
           This browser cannot store recurring exchanges - private browsing may
           be blocking storage, or this browser does not support it. You can
@@ -350,8 +384,9 @@ function runnableRow(row: SavedExchangeRow): boolean {
 /** The per-row schedule lines, for a row whose record holds an agreed
  * schedule: where the recurrence stands, quietly, and -- once the record's
  * consecutive-miss count reaches the escalation threshold -- the coordination
- * line, the one state here an operator acts on. A row with no schedule renders
- * nothing.
+ * line, the one state here an operator acts on, with a link to the exchange's
+ * run schedule where the steps to compare schedules are. A row with no
+ * schedule renders nothing.
  *
  * The coordination line takes the caution treatment, matching the yellow Alert
  * the exchange's own surface uses for the same state, rather than the failure
@@ -364,11 +399,22 @@ function ScheduleLines({ row }: { row: SavedExchangeRow }) {
       <span className={`${styles.small} ${styles.sub}`}>
         {row.schedule.dueLine}
       </span>
-      {row.schedule.missLine !== undefined && (
-        <span
-          className={`${styles.small} ${styles.statusLine} ${styles.statusLineWarn}`}
-        >
-          {row.schedule.missLine}
+      {row.schedule.miss !== undefined && (
+        <span className={`${styles.small} ${styles.savedRowMiss}`}>
+          <strong>{row.schedule.miss.lead}</strong> {row.schedule.miss.detail}{" "}
+          <Anchor
+            inherit
+            renderRoot={(props) => (
+              <Link
+                {...props}
+                to="/saved/$id"
+                params={{ id: row.id }}
+                hash={MANAGED_SCHEDULE_SECTION_ID}
+              />
+            )}
+          >
+            Compare schedules
+          </Anchor>
         </span>
       )}
     </>
@@ -376,7 +422,7 @@ function ScheduleLines({ row }: { row: SavedExchangeRow }) {
 }
 
 /** The per-row backup line: a quiet "backed up as of <date>" when a current export
- * exists, or the actionable "Back up this exchange" when none does. A spent row
+ * exists, or, when none does, a link to the exchange's backup panel. A spent row
  * names its handoff instead, with the recovery that hand-off actually has: the
  * migration's artifact brings the secret back, while the command-line files
  * bring back the configuration alone. A configuration-only row shows no backup
@@ -398,8 +444,20 @@ function BackupLine({ row }: { row: SavedExchangeRow }) {
       </span>
     );
   return (
-    <span className={`${styles.small} ${styles.sub}`}>
-      Back up this exchange
+    <span className={styles.small}>
+      <Anchor
+        inherit
+        renderRoot={(props) => (
+          <Link
+            {...props}
+            to="/saved/$id"
+            params={{ id: row.id }}
+            hash={MANAGED_BACKUP_SECTION_ID}
+          />
+        )}
+      >
+        Not backed up - back up now
+      </Anchor>
     </span>
   );
 }
@@ -473,7 +531,7 @@ export function DeleteExchangeButton({
           setConfirming(true);
         }}
       >
-        Delete
+        Remove
       </Button>
       <Modal
         opened={confirming}
@@ -485,19 +543,19 @@ export function DeleteExchangeButton({
         {configurationOnly ? (
           <>
             <p>
-              Delete {named}? This removes the settings this browser holds for
+              Remove {named}? This removes the settings this browser holds for
               it. It cannot be undone here.
             </p>
             <p className={`${styles.small} ${styles.sub}`}>
               The exchange itself runs from the alcove.yaml and .alcove.key on
-              the machine you run it from. Deleting it here changes nothing
+              the machine you run it from. Removing it here changes nothing
               there, and your partner is not notified.
             </p>
           </>
         ) : (
           <>
             <p>
-              Delete {named}? This removes everything this browser holds for it
+              Remove {named}? This removes everything this browser holds for it
               - the terms, the shared secret, its run history, its accounting of
               disclosures, and any results a scheduled run left here for you to
               download - in one step. It cannot be undone here. Download those
@@ -519,7 +577,7 @@ export function DeleteExchangeButton({
         {handoff === "command-line" && (
           <p className={`${styles.small} ${styles.sub}`}>
             The alcove.yaml and .alcove.key you saved still run this exchange.
-            Deleting it here neither retires them nor stops the runs you
+            Removing it here neither retires them nor stops the runs you
             scheduled - remove the scheduled command and delete those two files
             on that machine to end it.
           </p>
@@ -531,7 +589,7 @@ export function DeleteExchangeButton({
             title="That exchange could not be removed"
             mb="sm"
           >
-            Removing it from this browser failed. Nothing was deleted; try
+            Removing it from this browser failed. Nothing was removed; try
             again.
           </Alert>
         )}
@@ -545,7 +603,7 @@ export function DeleteExchangeButton({
             loading={deleting}
             onClick={confirmDelete}
           >
-            Delete
+            Remove
           </Button>
         </div>
       </Modal>
@@ -554,8 +612,8 @@ export function DeleteExchangeButton({
 }
 
 /** The first-run empty state: a designed surface, not a blank list. It explains what a
- * managed exchange is, offers creating one and accepting a recurring invitation into the
- * quick path, and includes the standing import affordance for post-eviction recovery. A
+ * managed exchange is, offers creating one in the invite flow and accepting a recurring
+ * invitation, and includes the standing import affordance for post-eviction recovery. A
  * wholesale eviction cannot be told from a first visit, so the import is offered here
  * standing rather than behind a detected loss. */
 function SavedExchangesEmpty() {
@@ -568,7 +626,7 @@ function SavedExchangesEmpty() {
         You have none saved yet.
       </p>
       <p>
-        <Button component={Link} to="/quick">
+        <Button component="a" href={RECURRING_SETUP_HREF}>
           Set up a recurring exchange
         </Button>
       </p>
@@ -816,7 +874,7 @@ function ImportExchangeFile() {
   });
 
   return (
-    <div className={styles.callout}>
+    <div className={styles.importSection}>
       <p className={styles.calloutLead}>Import an exchange.</p>
       <p className={styles.small}>{IMPORT_FILE_CHOICES}</p>
       <p className={`${styles.small} ${styles.sub}`}>{KEY_FILE_CHOOSER_NOTE}</p>

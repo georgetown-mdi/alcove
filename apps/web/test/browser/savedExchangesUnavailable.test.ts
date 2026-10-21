@@ -44,14 +44,12 @@ describe("store unavailable", () => {
 
     // The one-off flow itself, not the list's degrade message.
     await expect
-      .element(
-        page.getByRole("heading", { name: "Invite someone to exchange data" }),
-      )
+      .element(page.getByRole("heading", { name: "Invite a partner" }))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByRole("heading", {
-          name: "Accept an invitation you were sent",
+          name: "Have an invitation? Paste it here",
         }),
       )
       .toBeInTheDocument();

@@ -1294,7 +1294,7 @@ the scheduled runtime, or by the operator on an attended run.
 
 | Input | Why it is not persisted |
 | ----- | ----------------------- |
-| The input file's contents | Never persisted -- the record holds a pointer to the folder the file stands in at most (`workingDirectoryHandle` above), never content. The file is read in the browser at each run and never uploaded, exactly as the one-shot flow reads it (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality)). See [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run). |
+| The input file's contents | Never persisted -- the record holds a pointer to the folder the file stands in at most (`workingDirectoryHandle` above), never content. The file is read in the browser at each run, exactly as the one-shot flow reads it. Nothing from it leaves except in the exchange's encrypted messages to the partner, which neither the coordination server nor a relay can read (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality)). See [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run). |
 | Any connection credential | The persisted document's connection block is composed from a credential-free locator (see [The connection block](#the-connection-block-credential-free-by-composition)), so no credential is representable in the record. |
 | The live rendezvous / peer id | Derived fresh each run from `sharedSecret` under the label the local `side` field selects (see [Derived, never stored](#derived-never-stored)); storing it would duplicate a value that changes with every rotation. |
 | The session key and AEAD keys | Ephemeral per run; derived by the handshake and discarded after. Never persisted. |
@@ -2097,9 +2097,9 @@ is dropped on read rather than rejected, and is gone at that build's next write.
 Holding any of them on the record would therefore force a new `schemaVersion`,
 so no older build drops it silently, or leak into the artifact. Keeping them siblings makes their non-inclusion **structural**: the
 exporter reads
-only the record. Deleting a managed exchange removes the record and its sibling
-state together (see [Deleting a managed
-exchange](../MANAGED_EXCHANGE.md#deleting-a-managed-exchange)).
+only the record. Removing a managed exchange removes the record and its sibling
+state together (see [Removing a managed
+exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
 ### Reconciling a backup import
 
@@ -2403,9 +2403,9 @@ partner and agreement metadata to what a reader of the store learns (see
 [Metadata at
 rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). It is bounded
 only by the exchange's own run history: nothing prunes it, since a silently
-dropped entry would falsify the account. Deleting the managed exchange deletes
+dropped entry would falsify the account. Removing the managed exchange erases
 its accounting, and the note of any run it could not file, in the same one-step
-delete, so an operator who must keep it exports it first.
+removal, so an operator who must keep it exports it first.
 
 ### What an exchange-record version bump does to a stored accounting
 
@@ -2792,9 +2792,9 @@ entry but the written one, whose rows are in the granted folder instead. See
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#results-of-a-scheduled-run-at-rest),
 which states the reach and the bounds, and claims no at-rest protection.
 
-Deleting a managed exchange deletes its parked results in the same one-step
-delete (see [Deleting a managed
-exchange](../MANAGED_EXCHANGE.md#deleting-a-managed-exchange)).
+Removing a managed exchange erases its parked results in the same one-step
+removal (see [Removing a managed
+exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
 ## The between-visit notification opt-in
 

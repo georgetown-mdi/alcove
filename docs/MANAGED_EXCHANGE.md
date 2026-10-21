@@ -10,7 +10,7 @@ an analyst or program staff member who has run one exchange with a partner (see
 the browser, without a new invitation each time. It covers saving the exchange,
 installing the app so runs happen with nobody present, the schedule, what each
 run does, moving the exchange to another device or to the command line, what to
-do when a run fails, the accounting of disclosures, backups, and deleting the
+do when a run fails, the accounting of disclosures, backups, and removing the
 exchange.
 
 If your organization has IT staff who can run installed software, the command
@@ -37,8 +37,8 @@ exchange keeps, in this browser only:
 - the results of a scheduled run that could not be written to that folder (see
   [Where a scheduled run's results go](#where-a-scheduled-runs-results-go)).
 
-Nothing is kept on a server. [Deleting the
-exchange](#deleting-a-managed-exchange) removes all of it.
+Nothing is kept on a server. [Removing the
+exchange](#removing-a-managed-exchange) erases all of it.
 
 ### When a column name stops the save
 
@@ -334,8 +334,8 @@ notification](#the-between-visit-notification)), so you hear about a miss before
 the pattern is reached.
 
 Repeated misses do not pause the schedule: the app keeps trying at each window
-and tells you. Two things stop the attempts. Deleting the exchange stops them
-all (see [Deleting a managed exchange](#deleting-a-managed-exchange)). Answering
+and tells you. Two things stop the attempts. Removing the exchange stops them
+all (see [Removing a managed exchange](#removing-a-managed-exchange)). Answering
 "something does not add up" at a failure check holds every window after it until
 you clear it (see [Telling a desync from an
 attack](#telling-a-desync-from-an-attack)); those windows are recorded as
@@ -377,7 +377,7 @@ stands the site can read and write everything in that folder, not only the
 input, the results, and the backup it uses there (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)).
 The app itself reads one name there and lists nothing (see [The input file each
-run](#the-input-file-each-run)). Deleting the exchange drops the grant with the
+run](#the-input-file-each-run)). Removing the exchange drops the grant with the
 record.
 
 What keeping the file in the browser means for the operator, stated where they
@@ -394,11 +394,11 @@ put an exchange on a schedule and again where they collect the results:
   later run that keeps results of its own. That is not a timer: an exchange
   nobody revisits, and that never runs again, keeps the bytes on disk past the
   30 days until one of those happens.
-- **Deleting the exchange removes them at once**, in the same one step that
-  removes everything else (see [Deleting a managed
-  exchange](#deleting-a-managed-exchange)).
+- **Removing the exchange takes them at once**, in the same one step that
+  removes everything else (see [Removing a managed
+  exchange](#removing-a-managed-exchange)).
 - **Downloading them does not remove them.** The download is a copy; the
-  retention, the clear, or the delete is what removes the kept file.
+  retention, the clear, or removing the exchange is what removes the kept file.
 - **A run this browser would not store the results of says so.** The operator
   meets that state at the next visit, beside the run's date, rather than finding
   nothing where results should be -- and the run itself stands: it rotated the
@@ -413,7 +413,7 @@ put an exchange on a schedule and again where they collect the results:
   failed. The run itself stands here too.
 - **A clear control removes what is kept here, now.** One step removes the
   results, the notes saying where results were written, and the states recorded
-  where results were not kept, without deleting the exchange. Results already in
+  where results were not kept, without removing the exchange. Results already in
   a folder stay in it, and the accounting of disclosures is untouched.
 
 **A run heading for a result too large to keep is warned about first.** Once an
@@ -875,7 +875,7 @@ save leaves the exchange here and you can export again; declining keeps the
 exchange on this device.
 
 Once you confirm, the exchange here shows as handed off, with the date, and
-offers no Run and no scheduled runs. You can delete it, or bring it back only by
+offers no Run and no scheduled runs. You can remove it, or bring it back only by
 importing that file here again. Import the file on the other device to run it
 there (see [Eviction recovery is the import
 flow](#eviction-recovery-is-the-import-flow)). Results its earlier scheduled
@@ -993,7 +993,7 @@ fresh exchange:
 
 - **An artifact older than the last rotation** has a secret no spent record
   here holds, so nothing matches it.
-- **Deleting the handed-off exchange** takes away the record the match is made
+- **Removing the handed-off exchange** takes away the record the match is made
   against -- the operator's own choice, and the same cooperation every
   single-owner rule here rests on.
 
@@ -1391,7 +1391,7 @@ Three things clear a standing condition, and nothing else does:
   and a short acknowledgement clears it.
 - **A re-invite**, which drops it with the run bookkeeping in the same rotation
   that installs the fresh secret.
-- **Deleting the exchange**, which takes it along with the record.
+- **Removing the exchange**, which takes it along with the record.
 
 A no-show never clears one, and neither does a successful run on its own: the
 operator clears it, or a re-invite does.
@@ -1521,9 +1521,9 @@ recurring exchange rather than updating the superseded one: nothing links an
 accept to a stored partnership, and no duplicate is detected, merged, or retired.
 The acceptor is left holding two records for one partnership, the superseded one
 still offering a run that fails closed -- showing as the unexplained tier this
-recovery exists to clear. So the acceptor's recovery names the step: delete the
+recovery exists to clear. So the acceptor's recovery names the step: remove the
 superseded exchange once the fresh one is saved. It stays the operator's own act
-on their own record store -- nothing is deleted for them, and nothing blocks the
+on their own record store -- nothing is removed for them, and nothing blocks the
 second exchange from being saved.
 
 Every re-invite puts a fresh setup secret on the channel you send invitations
@@ -1557,7 +1557,7 @@ different partner, or linkage terms this app does not edit, still take a new
 exchange (see [Where the schedule is agreed, and where it
 lives](#where-the-schedule-is-agreed-and-where-it-lives)). Agreeing
 or changing a cadence is not in that class (a schedule is neither a term nor a
-credential), and neither are this party's own local acts: pausing, deleting,
+credential), and neither are this party's own local acts: pausing, removing,
 migrating the exchange to another device, dropping the next extract in the
 exchange's folder under the agreed name, or changing which of its own columns its result file holds, whether
 that file names the key each match was made on, how its
@@ -1749,10 +1749,10 @@ exchange's own page, below its run history.
   there is no record to file; the run history above says what happened instead.
 - **It is exportable.** One action writes the whole accounting as a CSV, one row
   per run, for handing to a compliance reader.
-- **It stays in this browser, and is deleted with the exchange.** Nothing prunes
+- **It stays in this browser, and is removed with the exchange.** Nothing prunes
   it -- a silently dropped entry would falsify the account -- and it is not
   included in the export/import artifact, which migrates the runnable exchange
-  rather than its history. Export the accounting before deleting or handing off
+  rather than its history. Export the accounting before removing or handing off
   the exchange; the record files offered at a run's completion stand in only for
   the runs somebody was there to download one from.
 
@@ -1779,7 +1779,7 @@ exchange's page shows it at your next visit, above the entries:
   instead.** The record is still stored; this version of the app will not read
   it, so it cannot be added to the accounting either. That run is recorded in
   your own compliance material too.
-- **It is deleted with the exchange**, like the accounting itself, and it is not
+- **It is removed with the exchange**, like the accounting itself, and it is not
   in the export/import artifact.
 
 Filing can fail for the same reason the run's own filing did. The commonest is an
@@ -1834,11 +1834,11 @@ only way to let the exchange file again.
    stored in, with nothing lost. It is a file for your own records -- keep it
    with your compliance material. It is not a run's record file, so neither the
    verify page nor this app will read it back.
-2. **Start a fresh accounting.** This deletes the stored records permanently and
+2. **Start a fresh accounting.** This removes the stored records permanently and
    lets the exchange file its disclosures again from its next run. It asks you to
    confirm, and it keeps the exchange itself -- the agreed terms, the shared
    secret, the schedule, and the run history are untouched. You do not have to
-   delete the exchange to recover its accounting.
+   remove the exchange to recover its accounting.
 
 A cleared accounting displays as empty until the next run files into it. Where
 the run history beside it records a completed run, the page names the two ways
@@ -1882,7 +1882,7 @@ If a reload lands this page again, the newer version is no longer being served
 -- a deployment rolled back past the record-format change -- and the reload
 remedy cannot converge. Every further run from this build keeps disclosing and
 filing nothing, so do not leave the exchange running in this state. Take the
-stored-records download first; after that, deleting the exchange is the one
+stored-records download first; after that, removing the exchange is the one
 exit this build offers, and the downloaded records stay intact for a build that
 reads them.
 
@@ -2092,7 +2092,7 @@ it is chosen. A record revived in place on the profile that handed it off keeps
 the grant it already had, so the import names the folder only when that record
 no longer holds one.
 
-## Deleting a managed exchange
+## Removing a managed exchange
 
 Removing a managed exchange is a fully supported, always-available action, and
 it removes **everything the browser holds for it in one step**: the record, the
@@ -2101,11 +2101,11 @@ secret, the working-folder grant, the schedule, the run bookkeeping, its
 scheduled run kept](#where-a-scheduled-runs-results-go) -- which is why the
 confirm says to download those results and export the accounting first if they
 must be kept.
-Deletion is local and unilateral -- it does not notify the partner, whose own
-copy stands until they delete it or the partnership is re-established by
+Removal is local and unilateral -- it does not notify the partner, whose own
+copy stands until they remove it or the partnership is re-established by
 re-invite -- and it is not secret expiry: an inactivity limit (when set) caps how long
-the shared secret stays usable, while deletion removes this party's stored
-information entirely, whatever the secret's state. One custody note: deletion
+the shared secret stays usable, while removal erases this party's stored
+information entirely, whatever the secret's state. One custody note: removal
 covers the browser's storage only; an exported backup file is under the
 operator's own custody and is disposed of by the operator (see [Moving the
 exchange to another device](#moving-the-exchange-to-another-device) for what it

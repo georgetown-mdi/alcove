@@ -118,7 +118,7 @@ The web application serves no signaling, so the controls belong in front of the 
 
 ## The project's hosted web deployment
 
-The project runs one public deployment of the web application, for evaluation and demonstration rather than production exchanges of real records; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. This section is about that deployment alone. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
+The project runs one public deployment of the web application, suitable for real exchanges and operated on a best-effort basis with no uptime commitment; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. This section is about that deployment alone. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
 
 The site is served by a Cloudflare Pages project with no Git source: GitHub Actions builds it and uploads each build. The Pages project, its custom domains and the zone settings below are declared in the [OpenTofu root](../infra/hosted/README.md), which the maintainer applies from outside the container and nothing in the repository runs.
 

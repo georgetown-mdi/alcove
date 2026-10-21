@@ -413,7 +413,7 @@ export function InviterExchangeSection({
               <p className={styles.small}>
                 {shareLink
                   ? "Your partner opens the link in the Alcove web app, or "
-                  : 'Your partner pastes the invitation under "Accept an invitation you were sent" on the Alcove web app\'s start page, or '}
+                  : 'Your partner pastes the invitation under "Have an invitation? Paste it here" on the Alcove web app\'s start page, or '}
                 accepts with <span className={styles.mono}>alcove accept</span>{" "}
                 on the command line, while this exchange is still waiting.
               </p>

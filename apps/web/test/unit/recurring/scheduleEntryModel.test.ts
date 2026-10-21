@@ -591,7 +591,7 @@ describe("the working-folder grant the surfaces offer", () => {
       "Riverbend results",
     );
     expect(workingFolderGrantedNote("Riverbend results")).toContain(
-      "deleting this exchange",
+      "removing this exchange",
     );
   });
 

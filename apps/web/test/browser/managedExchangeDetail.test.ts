@@ -44,6 +44,7 @@ import {
   NO_ALLOWED_RELAY_NOTE,
   REMOVE_ALLOWED_RELAYS_LABEL,
 } from "@recurring/localDocumentFieldsModel";
+import { MANAGED_SCHEDULE_SECTION_ID } from "@recurring/managedSectionIds";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -1276,6 +1277,27 @@ describe("managed exchange detail run schedule", () => {
         }),
       )
       .toBeInTheDocument();
+  });
+
+  test("the schedule section scrolls into view and takes focus when the fragment names it", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    window.history.replaceState(null, "", `#${MANAGED_SCHEDULE_SECTION_ID}`);
+    try {
+      renderWithSchedule(schedule(-60 * 60 * 1000));
+
+      await expect
+        .element(page.getByRole("heading", { name: "Run schedule" }))
+        .toBeInTheDocument();
+      // The landing runs in a passive effect, after the commit the locator saw.
+      await flushPendingUpdates();
+      const section = document.getElementById(MANAGED_SCHEDULE_SECTION_ID);
+      expect(section).not.toBeNull();
+      expect(document.activeElement).toBe(section);
+      expect(scrolled.mock.contexts).toEqual([section]);
+    } finally {
+      scrolled.mockRestore();
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   });
 
   test("an open window is named as open, beside the agreed cadence", async () => {
@@ -3068,7 +3090,7 @@ describe("recovering an accounting this version cannot read", () => {
       )
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: "Delete these records" }).click();
+    await page.getByRole("button", { name: "Remove these records" }).click();
 
     await vi.waitFor(() => expect(onResetAccounting).toHaveBeenCalledTimes(1));
   });
@@ -3122,7 +3144,7 @@ describe("recovering an accounting this version cannot read", () => {
     // cannot know which one the confirm is re-offering. Queried by role and
     // name, which is how that user reaches it.
     await expect
-      .element(page.getByRole("button", { name: "Delete these records" }))
+      .element(page.getByRole("button", { name: "Remove these records" }))
       .toBeInTheDocument();
     expect(download().elements()).toHaveLength(1);
 
@@ -3239,7 +3261,7 @@ describe("recovering an accounting this version cannot read", () => {
     await page
       .getByRole("button", { name: "Start a fresh accounting" })
       .click();
-    await page.getByRole("button", { name: "Delete these records" }).click();
+    await page.getByRole("button", { name: "Remove these records" }).click();
 
     // A destructive step that did not take must not be treated as one that did: the
     // confirm stands, so the operator retries rather than believing it is done.
@@ -3247,7 +3269,7 @@ describe("recovering an accounting this version cannot read", () => {
       .element(page.getByText("That accounting could not be reset"))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: "Delete these records" }))
+      .element(page.getByRole("button", { name: "Remove these records" }))
       .toBeInTheDocument();
   });
 

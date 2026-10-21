@@ -80,9 +80,7 @@ describe("store opens but the read fails", () => {
 
     // The lobby's one-off cards must not stand in for the loss.
     expect(
-      page
-        .getByRole("heading", { name: "Invite someone to exchange data" })
-        .query(),
+      page.getByRole("heading", { name: "Invite a partner" }).query(),
     ).toBeNull();
   });
 
@@ -282,7 +280,7 @@ describe("importing a backup whose stored copy cannot be read here", () => {
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("delete that exchange from the list on this page", {
+        page.getByText("remove that exchange from the list on this page", {
           exact: false,
         }),
       )

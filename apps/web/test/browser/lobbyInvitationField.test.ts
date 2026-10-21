@@ -132,6 +132,17 @@ describe.each([
   { buildName: "hosted", isConsole: false },
   { buildName: "console", isConsole: true },
 ])("lobby invitation field ($buildName build)", ({ isConsole }) => {
+  test("the field is named by its card heading", async () => {
+    build.console = isConsole;
+    app.render(createElement(Lobby));
+    const field = page.getByRole("textbox", {
+      name: "Have an invitation? Paste it here",
+      exact: true,
+    });
+    await expect.element(field).toBeInTheDocument();
+    expect(field.element().id).toBe(PASTE_INVITATION_FIELD_ID);
+  });
+
   test("a pasted full-length invitation link leaves the field and page size unchanged", async () => {
     build.console = isConsole;
     app.render(createElement(Lobby));
@@ -160,7 +171,7 @@ describe.each([
 describe("lobby pointer to the other ways to use Alcove", () => {
   const line =
     "For SFTP, a shared folder, or scheduled runs on your own servers, see " +
-    "the other ways to use Alcove.";
+    "the other ways to use Alcove (on GitHub) (opens in a new tab).";
   const pointer = () => page.getByText(/^For SFTP, a shared folder/);
 
   test("the hosted build in a browser tab shows it and links the README", async () => {
@@ -170,14 +181,28 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     await expect
       .element(
         page.getByText(
-          "Find records you have in common while keeping your PII private, " +
-            "then exchange data about those records.",
+          "Find records you have in common while keeping PII private, then " +
+            "exchange data about those records.",
           { exact: true },
         ),
       )
       .toBeInTheDocument();
     await expect.element(pointer()).toHaveTextContent(line);
-    const link = page.getByRole("link", { name: "other ways to use Alcove" });
+    const heading = page.getByRole("heading", {
+      name: "More options",
+    });
+    await expect.element(heading).toBeInTheDocument();
+    const headingEl = heading.element();
+    const pointerEl = pointer().element();
+    expect(
+      headingEl.compareDocumentPosition(pointerEl) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(headingEl.nextElementSibling).toBe(pointerEl);
+    const link = page.getByRole("link", {
+      name: "other ways to use Alcove (on GitHub) (opens in a new tab)",
+      exact: true,
+    });
     await expect
       .element(link)
       .toHaveAttribute(
@@ -203,4 +228,49 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
     await expect.element(pointer()).not.toBeInTheDocument();
   });
+});
+
+describe("the site footer", () => {
+  const builtBy =
+    "Alcove is open-source software built by Georgetown's Massive Data " +
+    "Institute (opens in a new tab).";
+
+  test.each([
+    ["hosted", false],
+    ["console", true],
+  ])(
+    "the %s build names who builds Alcove and links its project pages on GitHub",
+    async (_name, isConsole) => {
+      build.console = isConsole;
+      app.render(createElement(Lobby));
+      const footer = page.getByRole("contentinfo");
+      await expect.element(footer.getByText(builtBy)).toBeInTheDocument();
+      const institute = footer.getByRole("link", {
+        name: "Georgetown's Massive Data Institute (opens in a new tab)",
+        exact: true,
+      });
+      await expect
+        .element(institute)
+        .toHaveAttribute("href", "https://mdi.georgetown.edu/pets/");
+      await expect.element(institute).toHaveAttribute("target", "_blank");
+      await expect.element(institute).toHaveAttribute("rel", "noreferrer");
+      const repository = "https://github.com/georgetown-mdi/alcove";
+      for (const [name, href] of [
+        ["Privacy", `${repository}/blob/main/PRIVACY.md`],
+        ["Security", `${repository}/blob/main/SECURITY.md`],
+        ["Support", `${repository}/blob/main/SUPPORT.md`],
+        ["Source code", repository],
+      ] as const) {
+        const link = footer.getByRole("link", {
+          name: `${name} (opens in a new tab)`,
+          exact: true,
+        });
+        await expect.element(link).toHaveAttribute("href", href);
+        await expect.element(link).toHaveAttribute("target", "_blank");
+      }
+      await expect
+        .element(footer.getByText("On GitHub:", { exact: true }))
+        .toBeInTheDocument();
+    },
+  );
 });

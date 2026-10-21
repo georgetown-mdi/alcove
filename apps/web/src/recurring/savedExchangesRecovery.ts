@@ -43,7 +43,7 @@ export interface RecoveryRow {
   /** The display label for the row text (see the interface doc). */
   label: string;
   /** The raw operator label the delete confirm names -- empty when unlabeled, so the
-   * confirm reads "Delete this exchange?" exactly as the normal list's does, not the
+   * confirm reads "Remove this exchange?" exactly as the normal list's does, not the
    * transformed row text. Always empty on an unreadable row. */
   deleteLabel: string;
   /** This party's side, or the channel for a configuration on one that names

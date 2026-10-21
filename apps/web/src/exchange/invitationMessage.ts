@@ -33,7 +33,7 @@ export function invitationMessage({
   if (practiceOrigin !== undefined)
     paragraphs.push(
       "To try Alcove with sample data first, open " +
-        `${practiceOrigin}/quick and choose "Start with sample data".`,
+        `${practiceOrigin}/quick and choose "See how it works with example data".`,
     );
   const name = inviterName.trim();
   if (name !== "") paragraphs.push(name);

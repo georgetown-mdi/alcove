@@ -168,7 +168,7 @@ export function custodyUnreadableImportReason(label: string): string {
     `This browser could not read the note it keeps beside ${named} - the one ` +
     "recording whether this copy was handed off somewhere else - so nothing " +
     "was imported. If you handed this exchange off, it runs from the files you " +
-    "saved then and there is nothing here to import. If you did not, delete " +
+    "saved then and there is nothing here to import. If you did not, remove " +
     "that exchange from the list on this page, then import the backup file " +
     "again."
   );
@@ -211,7 +211,7 @@ export function custodyUnreadablePairImportReason(label: string): string {
   return (
     `This browser could not read the note it keeps beside ${named} - the one ` +
     "recording whether this copy was handed off somewhere else - so nothing " +
-    "was imported. Delete that exchange from the list on this page, then " +
+    "was imported. Remove that exchange from the list on this page, then " +
     "import the alcove.yaml and .alcove.key again. If you handed it off to " +
     "the command line, stop the scheduled run there first."
   );

@@ -391,28 +391,32 @@ describe("lobby: review invitation", () => {
     }
   });
 
-  test("Review invitation is disabled until the field holds a usable token", async () => {
+  test("Review invitation stays enabled and names the missing invitation when the field holds no usable token", async () => {
     app.render(createElement(Lobby));
     const review = page.getByRole("button", { name: "Review invitation" });
-    // Empty field: nothing to review, so the action is withheld.
-    await expect.element(review).toBeDisabled();
-
-    await userEvent.fill(page.getByLabelText("Invitation"), "MYTOKEN");
+    const required = page.getByText("An invitation is required");
+    // Empty field: the action is offered, and clicking it says what is missing.
     await expect.element(review).toBeEnabled();
+    await userEvent.click(review);
+    await expect.element(required).toBeInTheDocument();
 
-    // Whitespace alone is not a usable token (tokenFromInput trims), so the gate
-    // closes again rather than offering an action that would no-op.
+    // Typing clears the error.
     await userEvent.fill(page.getByLabelText("Invitation"), "   ");
-    await expect.element(review).toBeDisabled();
+    expect(required.query()).toBeNull();
+
+    // Whitespace alone is not a usable token (tokenFromInput trims).
+    await userEvent.click(review);
+    await expect.element(required).toBeInTheDocument();
 
     // A URL whose fragment is empty also extracts to no token.
     await userEvent.fill(
       page.getByLabelText("Invitation"),
       "https://example.test/accept#",
     );
-    await expect.element(review).toBeDisabled();
+    await userEvent.click(review);
+    await expect.element(required).toBeInTheDocument();
 
-    // No navigation happened while the field was empty or whitespace-only.
+    // No navigation happened while the field held no usable token.
     expect(navigation.calls).toEqual([]);
   });
 });
@@ -2328,7 +2332,9 @@ describe("acceptor screen: run and completion", () => {
     expect(ledger.textContent).toContain(
       "1,847 matched rows + enrollment_date, program_code",
     );
-    expect(ledger.textContent).toContain("Your file never left this browser.");
+    expect(ledger.textContent).toContain(
+      "Data was encrypted locally in your browser before being sent to your partner.",
+    );
 
     // The downloads exist only in this page and none was taken, so leaving
     // asks first.

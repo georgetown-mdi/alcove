@@ -1895,7 +1895,7 @@ describe("console lobby direct-exchange card", () => {
   test("offers a third card that links to the direct-exchange route", async () => {
     stubJobApi();
     app.render(createElement(Lobby));
-    const link = page.getByRole("link", { name: "Run a quick exchange" });
+    const link = page.getByRole("link", { name: "Start", exact: true });
     await expect.element(link).toBeInTheDocument();
     await expect.element(link).toHaveAttribute("href", "/direct");
   });
@@ -1946,10 +1946,41 @@ describe("console lobby copy and sample data", () => {
     ).toBeNull();
   });
 
+  test("names the direct path as one with no invitation and frames the relay as peer-to-peer only", async () => {
+    stubJobApi();
+    app.render(createElement(Lobby));
+    await expect
+      .element(
+        page.getByRole("heading", { name: "Skip the invitation", exact: true }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "Use an agreed server or shared folder, and run it together with " +
+            "your partner.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("If using peer-to-peer, some workplace networks", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("link", { name: "relay settings" }))
+      .toHaveAttribute("href", "/relay");
+  });
+
   test("asks the console to write the samples, and offers the download when it cannot", async () => {
     const api = stubJobApi();
     app.render(createElement(Lobby));
-    await page.getByRole("button", { name: "Start with sample data" }).click();
+    await page
+      .getByRole("button", { name: "See how it works with example data" })
+      .click();
     await expect
       .element(
         page.getByText("nowhere to write the sample files", { exact: false }),

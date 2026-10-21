@@ -1243,8 +1243,8 @@ const ACCEPTOR_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
       "unchanged.",
     "Saving the accepted invitation as a recurring exchange adds a second one " +
       "rather than updating this one, and nothing here reconciles the two. " +
-      "Once you have saved it, delete this superseded exchange with the " +
-      "Delete button below, or the one beside it in your recurring exchanges " +
+      "Once you have saved it, remove this superseded exchange with the " +
+      "Remove button below, or the one beside it in your recurring exchanges " +
       "list. Left in place, it still offers a run that fails, because its " +
       "secret is the one the fresh invitation replaces.",
   ],

@@ -197,14 +197,12 @@ describe("home route: conditional on a stored exchange existing", () => {
     // The first-run landing is the quick (invite/accept) path: its two primary
     // actions, not the list's designed empty state.
     await expect
-      .element(
-        page.getByRole("heading", { name: "Invite someone to exchange data" }),
-      )
+      .element(page.getByRole("heading", { name: "Invite a partner" }))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByRole("heading", {
-          name: "Accept an invitation you were sent",
+          name: "Have an invitation? Paste it here",
         }),
       )
       .toBeInTheDocument();
@@ -227,7 +225,11 @@ describe("lobby: the recurring-exchange pointer is gated on a saved exchange", (
     // The restore path must stay discoverable with nothing saved: a wholesale
     // eviction leaves no rows yet is exactly when a backup import matters.
     await expect
-      .element(page.getByText("Cleared this browser", { exact: false }))
+      .element(
+        page.getByText("Have a backup file from a saved exchange?", {
+          exact: false,
+        }),
+      )
       .toBeInTheDocument();
     // Nothing to run again, so that framing is not offered.
     expect(
@@ -304,14 +306,16 @@ describe("saved list route: the always-list surface", () => {
     expect(page.getByRole("button", { name: "Run" }).query()).toBeNull();
   });
 
-  test("the empty state's create link points at the quick path, accept at the accept flow", async () => {
+  test("the empty state's create link points at the invite flow, accept at the accept flow", async () => {
     app.render(createElement(SavedExchanges));
 
     const createLink = page.getByRole("link", {
       name: "Set up a recurring exchange",
     });
     await expect.element(createLink).toBeInTheDocument();
-    expect((await createLink.element()).getAttribute("href")).toBe("/quick");
+    expect((await createLink.element()).getAttribute("href")).toBe(
+      "/exchange?recurring=1",
+    );
     const accept = page.getByRole("link", { name: "Accept it" });
     await expect.element(accept).toBeInTheDocument();
     expect((await accept.element()).getAttribute("href")).toBe("/accept");
@@ -329,9 +333,11 @@ describe("saved list route: the always-list surface", () => {
     await expect
       .element(page.getByText("Backed up as of", { exact: false }))
       .toBeInTheDocument();
-    await expect
-      .element(page.getByText("Back up this exchange"))
-      .toBeInTheDocument();
+    const backUp = page.getByRole("link", {
+      name: "Not backed up - back up now",
+    });
+    await expect.element(backUp).toBeInTheDocument();
+    expect((await backUp.element()).getAttribute("href")).toBe("/saved/$id");
   });
 
   test("a populated list offers the quick path as a one-off alternative", async () => {
@@ -340,13 +346,13 @@ describe("saved list route: the always-list surface", () => {
     app.render(createElement(SavedExchanges));
 
     const quick = page.getByRole("link", {
-      name: "Set up or accept an exchange",
+      name: "Start or accept a one-time exchange",
     });
     await expect.element(quick).toBeInTheDocument();
     expect((await quick.element()).getAttribute("href")).toBe("/quick");
   });
 
-  test("a populated list offers a primary create entry into the invite/configure flow", async () => {
+  test("a populated list offers a create entry into the invite/configure flow and an accept entry", async () => {
     await createRunnableExchange(newExchange());
 
     app.render(createElement(SavedExchanges));
@@ -355,7 +361,12 @@ describe("saved list route: the always-list surface", () => {
       name: "Set up a recurring exchange",
     });
     await expect.element(create).toBeInTheDocument();
-    expect((await create.element()).getAttribute("href")).toBe("/exchange");
+    expect((await create.element()).getAttribute("href")).toBe(
+      "/exchange?recurring=1",
+    );
+    const accept = page.getByRole("link", { name: "Accept an invitation" });
+    await expect.element(accept).toBeInTheDocument();
+    expect((await accept.element()).getAttribute("href")).toBe("/quick");
   });
 
   test("the side facet is readable at a glance: an inviter and an acceptor row", async () => {
@@ -369,10 +380,10 @@ describe("saved list route: the always-list surface", () => {
     app.render(createElement(SavedExchanges));
 
     await expect
-      .element(page.getByText("You invite", { exact: false }))
+      .element(page.getByText("You sent the invitation", { exact: false }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("You accept", { exact: false }))
+      .element(page.getByText("You accepted", { exact: false }))
       .toBeInTheDocument();
   });
 });
@@ -446,7 +457,7 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     ).toBeNull();
   });
 
-  test("the second consecutive miss raises the coordination line, naming both checks", async () => {
+  test("the second consecutive miss raises the coordination line, linking to the schedule", async () => {
     await createRunnableExchange(
       newExchange({
         label: "Drifting partnership",
@@ -457,16 +468,19 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     app.render(createElement(SavedExchanges));
 
     await expect
-      .element(page.getByText("2 scheduled runs in a row", { exact: false }))
+      .element(page.getByText("2 scheduled runs were missed.", { exact: true }))
       .toBeInTheDocument();
-    // The likely cause, a schedule that differs from the partner's, and
-    // this device's own clock.
+    // The likely cause, with the steps to compare left to the exchange's page.
     await expect
-      .element(page.getByText("open different windows", { exact: false }))
+      .element(
+        page.getByText("Your schedule may not line up with your partner's.", {
+          exact: false,
+        }),
+      )
       .toBeInTheDocument();
-    await expect
-      .element(page.getByText("this device's clock", { exact: false }))
-      .toBeInTheDocument();
+    const compare = page.getByRole("link", { name: "Compare schedules" });
+    await expect.element(compare).toBeInTheDocument();
+    expect((await compare.element()).getAttribute("href")).toBe("/saved/$id");
   });
 
   test("the coordination line is styled as caution, never as a failure", async () => {
@@ -480,7 +494,7 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     app.render(createElement(SavedExchanges));
 
     await expect
-      .element(page.getByText("2 scheduled runs in a row", { exact: false }))
+      .element(page.getByText("2 scheduled runs were missed.", { exact: true }))
       .toBeInTheDocument();
     // The escalation is a state to look into, not a failure: it takes the same
     // caution treatment the exchange's own surface renders it in, and the failure
@@ -488,8 +502,8 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     // from being (docs/notes/managed-exchange-design.md, "Repeated misses
     // surface, they do not auto-pause").
     expect(
-      app.container.querySelector(`.${styles.statusLineWarn}`)?.textContent,
-    ).toMatch(/2 scheduled runs in a row/);
+      app.container.querySelector(`.${styles.savedRowMiss}`)?.textContent,
+    ).toMatch(/2 scheduled runs were missed/);
     // The danger class reaches no part of the row, not just not this line.
     expect(app.container.innerHTML).not.toContain(styles.statusLineDanger);
   });
@@ -505,23 +519,23 @@ describe("saved list route: delete is a fully supported, always-available action
       .element(page.getByText("Riverbend quarterly"))
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     // The confirm names the exchange and says the partner is not notified.
     await expect
       .element(
-        page.getByText('Delete "Riverbend quarterly"?', { exact: false }),
+        page.getByText('Remove "Riverbend quarterly"?', { exact: false }),
       )
       .toBeInTheDocument();
     await expect
       .element(page.getByText("your partner is not notified", { exact: false }))
       .toBeInTheDocument();
 
-    // Confirm the delete: the modal's own Delete, scoped to the dialog so the row's
-    // Delete (behind the overlay) is never the target.
+    // Confirm the delete: the modal's own Remove, scoped to the dialog so the row's
+    // Remove (behind the overlay) is never the target.
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     // The row is gone and the empty state stands in its place.
@@ -542,7 +556,7 @@ describe("saved list route: delete is a fully supported, always-available action
     await expect
       .element(page.getByText("Backed up as of", { exact: false }))
       .toBeInTheDocument();
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     await expect
       .element(
@@ -565,7 +579,7 @@ describe("saved list route: delete is a fully supported, always-available action
 
     app.render(createElement(SavedExchanges));
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     await expect
       .element(page.getByText("your partner is not notified", { exact: false }))
@@ -595,7 +609,7 @@ describe("saved list route: delete is a fully supported, always-available action
 
     app.render(createElement(SavedExchanges));
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     await expect
       .element(
@@ -632,7 +646,7 @@ describe("saved list route: delete is a fully supported, always-available action
 
     app.render(createElement(SavedExchanges));
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     await expect
       .element(
@@ -646,7 +660,7 @@ describe("saved list route: delete is a fully supported, always-available action
     ).toBeNull();
   });
 
-  test("a spent (handed-off) row offers Open and Delete", async () => {
+  test("a spent (handed-off) row offers Open and Remove", async () => {
     const created = await createRunnableExchange(
       newExchange({ label: "Handed off partnership" }),
     );
@@ -662,7 +676,7 @@ describe("saved list route: delete is a fully supported, always-available action
       .element(page.getByRole("button", { name: "Open" }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: "Delete" }))
+      .element(page.getByRole("button", { name: "Remove" }))
       .toBeInTheDocument();
     // A spent row does not offer Run.
     expect(page.getByRole("button", { name: "Run" }).query()).toBeNull();
@@ -715,10 +729,10 @@ describe("saved list route: delete is a fully supported, always-available action
       .element(page.getByText("Riverbend quarterly"))
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     // The failure is visible, the modal stays open, and the row is still listed.
@@ -742,10 +756,10 @@ describe("saved list route: delete is a fully supported, always-available action
 
     app.render(createElement(SavedExchanges));
 
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
     await expect
       .element(
@@ -755,10 +769,10 @@ describe("saved list route: delete is a fully supported, always-available action
       )
       .toBeInTheDocument();
 
-    // Cancel the modal, then reopen it via the row's Delete button: the failure
+    // Cancel the modal, then reopen it via the row's Remove button: the failure
     // from the last attempt must not appear in the fresh confirm.
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
 
     expect(
       page
@@ -767,7 +781,7 @@ describe("saved list route: delete is a fully supported, always-available action
     ).toBeNull();
     await expect
       .element(
-        page.getByText('Delete "Riverbend quarterly"?', { exact: false }),
+        page.getByText('Remove "Riverbend quarterly"?', { exact: false }),
       )
       .toBeInTheDocument();
 
@@ -775,7 +789,7 @@ describe("saved list route: delete is a fully supported, always-available action
     deleteOverride = undefined;
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Delete" })
+      .getByRole("button", { name: "Remove" })
       .click();
 
     await expect

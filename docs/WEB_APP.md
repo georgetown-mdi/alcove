@@ -4,7 +4,7 @@ title: "Alcove Web App"
 
 # Using the Alcove web app
 
-The web app runs an exchange between two browsers. Your file is read and matched inside your browser and is never uploaded; your browser connects directly to your partner's. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install. While you set up or run an exchange, **Help** in the top bar opens this guide in a new tab.
+The web app runs an exchange between two browsers. Your file is read and matched inside your browser and never uploaded to our servers. What is sent to your partner is encrypted first. A coordination server helps the two sides find each other. It never sees your data. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install. While you set up or run an exchange, **Help** in the top bar opens this guide in a new tab.
 
 This guide covers one exchange: creating an invitation, accepting one you were sent, reading the results, and keeping and checking the exchange record. Intended readers are analysts and program staff at either party. To run the same exchange again on a schedule, see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md); to run exchanges from the command line or over an SFTP server, see [CLI.md](CLI.md).
 
@@ -17,7 +17,7 @@ This guide covers one exchange: creating an invitation, accepting one you were s
 
 ## Practicing with sample data
 
-On the start page, choose **Start with sample data**. Alcove downloads two synthetic CSVs, `alcove-sample-inviter.csv` and `alcove-sample-partner.csv`, and starts an invitation using the first. Open the invitation link in a second browser window or on a second computer, and use the second file there. The repository's [`test_data/`](../test_data/) folder holds two more synthetic files for the same purpose.
+On the start page, choose **See how it works with example data**. Alcove downloads two synthetic CSVs, `alcove-sample-inviter.csv` and `alcove-sample-partner.csv`, and starts an invitation using the first. Open the invitation link in another browser tab, a second browser window, or on a second computer, and use the second file there. The repository's [`test_data/`](../test_data/) folder holds two more synthetic files for the same purpose.
 
 ## Creating an invitation
 
@@ -60,7 +60,7 @@ A key loaded from a document can match only where one side's record has no valid
 
 ## Accepting an invitation
 
-You received a link from a partner. Open it in your browser, or paste the whole link or the code under **Accept an invitation you were sent** on the start page and choose **Review invitation**. Your partner's browser must be open on their invitation while you accept.
+You received a link from a partner. Open it in your browser, or paste the whole link or the code under **Have an invitation? Paste it here** on the start page and choose **Review invitation**. Your partner's browser must be open on their invitation while you accept.
 
 1. **Review the terms.** The page shows who sent the invitation, what you would disclose, what the exchange produces, what you receive, and how records are matched. The sender's name is what your partner typed; Alcove does not verify it. If the invitation names a legal agreement, check its reference, purpose, and expiration against the agreement you signed. A matching key marked **(less certain)** is built only from first name, last name and date of birth fields. A line under the fields matched on says that some keys are marked, and its info button, like the one beside each marked key under **Matching strategies**, says why and that to leave such keys out you ask your partner for an invitation without them. A key that matches only where one side has no valid date of birth says so under its fields, and that a match through it tells whoever receives the result which record had none. The same line, after the key's name, is under the fields matched on, so it shows with **Matching strategies** closed. Where no other key matches on the date of birth, the fields matched on list it as `date of birth (only whether it is present)`. Below the terms, **Allowed relays** limits the relay servers this exchange may use to the hosts you list, one per line, and the terms mark each relay the invitation names as kept or left out. Left empty, as it starts, it allows every relay the run lists ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 2. **Consent & your file.** Tick the box to consent to the terms, enter your name or your organization's name, and choose your CSV.

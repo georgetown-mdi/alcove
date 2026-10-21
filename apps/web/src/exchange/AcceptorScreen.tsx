@@ -634,8 +634,8 @@ function AcceptorInvitationScreen({
 
   // The file-assurance line for the acceptor's own intake: the console reads the
   // file itself, so the acceptor opts into the mounted-directory claim explicitly
-  // (as the inviter's YourFileSection does), while the hosted build keeps the
-  // browser-only line. Not FILE_ASSURANCE_LINE alone -- that resolves to no claim
+  // (as the inviter's YourFileSection does), while the hosted build keeps
+  // HOSTED_FILE_ASSURANCE. Not FILE_ASSURANCE_LINE alone -- that resolves to no claim
   // on the console, which would leave this accurate surface silent.
   const acceptAssuranceLine = consoleBuild
     ? APPLIANCE_FILE_ASSURANCE
@@ -816,7 +816,7 @@ function AcceptorInvitationScreen({
   const token = ready ? decode.invitation.token : undefined;
   // Whether this accept runs as a server job on the console (a console file-drop)
   // rather than in the browser: the one signal behind the "How it runs" ledger row
-  // and the settled footer's "never left this browser" claim.
+  // and the settled footer's "encrypted locally in your browser" claim.
   const acceptServerJob =
     ready && acceptorRunsAsServerJob(decode.invitation.endpoint, consoleBuild);
   // The ledger's "How it runs" phrasing, from the accepted endpoint's run mode: a
@@ -1115,7 +1115,7 @@ function AcceptorInvitationScreen({
 
   // The ledger settles once the exchange completes: the tag names who it was
   // agreed with, the rows relabel past tense with the actual outcome, and the
-  // footer states the file never left. Until then it mirrors the partner's
+  // footer states what was sent and how. Until then it mirrors the partner's
   // proposal, with the columns step's local-only footer swapped in.
   const settled = outputs !== undefined;
   const ledger =
@@ -1462,9 +1462,8 @@ function AcceptorInvitationScreen({
             <h1 tabIndex={-1}>Consent &amp; your file</h1>
             <p className={`${styles.small} ${styles.sub}`}>
               This invitation should have reached you over a trusted channel.
-              {consoleBuild
-                ? " This console runs the exchange from your working folder."
-                : " Your browser connects directly to your partner."}
+              {consoleBuild &&
+                " This console runs the exchange from your working folder."}
             </p>
             {legalAgreementDisplay !== undefined && (
               <fieldset className={styles.fieldset}>

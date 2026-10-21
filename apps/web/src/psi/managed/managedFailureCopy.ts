@@ -37,15 +37,19 @@ import type {
  */
 export const REPEATED_MISS_ESCALATION = 2;
 
-/** The escalated coordination state, phrased for every surface: the list's quiet
- * line, the notification's body, and the detail view's prompt. */
+/** The escalated coordination state, phrased for every surface: the list's
+ * short row, the notification's body, and the detail view's prompt. */
 export interface RepeatedMissCoordination {
   /** The consecutive-miss count the record holds, at or above
    * {@link REPEATED_MISS_ESCALATION}. */
   misses: number;
-  /** The one-line form: the state and both checks, deferring the rest to the
-   * exchange's own surface. */
+  /** The notification's one-line form: the state and both checks, deferring
+   * the rest to the exchange's own surface. */
   line: string;
+  /** The saved-exchanges row's short form, whose link to the exchange's page
+   * leads to the steps: the bold lead sentence, then the likely cause. */
+  rowLead: string;
+  rowDetail: string;
   /** The detail view's coordination prompt. */
   prompt: string;
 }
@@ -77,6 +81,8 @@ export function repeatedMissCoordination(
       `${happened}. Compare the next window in UTC, the repeat, and the ` +
       `window length under Run schedule on this exchange's page with your ` +
       `partner's, and check this device's clock.`,
+    rowLead: `${misses.toString()} scheduled runs were missed.`,
+    rowDetail: "Your schedule may not line up with your partner's.",
     prompt:
       `${happened}; nothing has been paused, and the schedule stands. ` +
       `Ask your partner for their copy of the schedule and compare its ` +

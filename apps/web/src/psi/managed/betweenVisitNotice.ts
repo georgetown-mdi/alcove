@@ -236,7 +236,7 @@ function skippedNotice(
       `run, and scheduled runs stay stopped until you clear that answer. ` +
       `Once your partner confirms on a channel you trust, open this exchange ` +
       `from ${RECURRING_EXCHANGES_SCREEN} in this app and choose ` +
-      `"${COMPROMISE_ACKNOWLEDGE_LABEL}", or delete the exchange.`,
+      `"${COMPROMISE_ACKNOWLEDGE_LABEL}", or remove the exchange.`,
     tag: noticeTag(record.id, "skipped"),
   };
 }
