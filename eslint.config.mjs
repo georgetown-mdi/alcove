@@ -4,6 +4,7 @@ import {
   crossWorkspaceImportBans,
   noBareRootLoglevelEmit,
   noBareStringLengthBound,
+  noRegexInToMatchObject,
 } from "./eslint.boundaries.mjs";
 
 function scopeToDir(dir, configs) {
@@ -372,9 +373,18 @@ export default tseslint.config(
     // and reports the route healthy. The three narrower blocks below re-carry it
     // beside their own entries, since flat config replaces a rule's options
     // rather than merging them.
+    //
+    // The regex-in-toMatchObject ban rides here too: this is the one block that
+    // covers the test trees of packages/ and apps/cli, and the narrower blocks
+    // below are all src-only, so none of them needs to re-carry it. apps/web's
+    // test tree takes it in apps/web/eslint.config.js.
     files: ["packages/**/*.{ts,tsx}", "apps/cli/**/*.{ts,tsx,mts}"],
     rules: {
-      "no-restricted-syntax": ["error", ...noDisplayableAsErrorArgument],
+      "no-restricted-syntax": [
+        "error",
+        ...noDisplayableAsErrorArgument,
+        noRegexInToMatchObject,
+      ],
     },
   },
   {

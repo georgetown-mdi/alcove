@@ -240,8 +240,9 @@ describe("refusals from the real relay", () => {
       openParty("inviter", { relayKey: OTHER_RELAY_KEY }),
     ).rejects.toMatchObject({
       kind: "transport",
-      message:
+      message: expect.stringMatching(
         /^The WebSocket relay refused this side's proof: the key it holds/,
+      ),
     });
   });
 

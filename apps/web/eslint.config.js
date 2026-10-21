@@ -6,6 +6,7 @@ import {
   crossWorkspaceImportBans,
   noBareRootLoglevelEmit,
   noBareStringLengthBound,
+  noRegexInToMatchObject,
 } from "../../eslint.boundaries.mjs";
 
 // The sensitive-file YAML-parse ban (shared by the broad block and the rawRows
@@ -449,6 +450,15 @@ export default [
     // (skipWaiting, clients) it reaches through `self`.
     files: ["public/serviceWorker.js"],
     languageOptions: { sourceType: "script" },
+  },
+  {
+    // The test tree takes the one ban that is about how a test asserts. A block
+    // of its own: the blocks that set no-restricted-syntax above are all
+    // src/ and server/, which the test tree is outside of.
+    files: ["test/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": ["error", noRegexInToMatchObject],
+    },
   },
   {
     // The enumerated rawRows consumers keep the sensitive-parse and warning-sink
