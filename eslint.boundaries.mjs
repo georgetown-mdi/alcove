@@ -162,3 +162,18 @@ export const noBareStringLengthBound = Array.from(
 )
   .flat()
   .map((selector) => ({ selector, message: BARE_STRING_BOUND_MESSAGE }));
+
+// Ban a regex literal as a value inside a `toMatchObject` argument. The matcher
+// compares a RegExp value against the received property by equality, not by
+// test, so `toMatchObject({ message: /re/ })` passes whatever the message is.
+// `expect.stringMatching(/re/)` inside the object, or `rejects.toThrow(/re/)`
+// where only the message is asserted, tests the pattern. A regex that is the
+// argument of another call (`expect.stringMatching(/re/)`) is not a property
+// value and is not matched; nor is one in the received value, outside the
+// argument list.
+export const noRegexInToMatchObject = {
+  selector:
+    "CallExpression[callee.property.name='toMatchObject'] > :matches(ObjectExpression, ArrayExpression) :matches(Property, ArrayExpression) > Literal[regex]",
+  message:
+    "A regex value inside toMatchObject is compared by equality, not tested, so it passes whatever the received value is. Write expect.stringMatching(/re/) in its place, or rejects.toThrow(/re/) where the assertion checks only the message.",
+};

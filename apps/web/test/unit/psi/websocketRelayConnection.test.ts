@@ -195,7 +195,10 @@ describe("the hello", () => {
         relayKey: RELAY_KEY,
         createSocket,
       }),
-    ).rejects.toMatchObject({ kind: "usage", message: /wss:\/\// });
+    ).rejects.toMatchObject({
+      kind: "usage",
+      message: expect.stringMatching(/wss:\/\//),
+    });
     expect(createSocket).not.toHaveBeenCalled();
   });
 
@@ -261,7 +264,9 @@ describe("the hello", () => {
     expect(error).toBeInstanceOf(ConnectionError);
     expect(error).toMatchObject({
       kind: "usage",
-      message: /^Could not build this side's proof for the WebSocket relay/,
+      message: expect.stringMatching(
+        /^Could not build this side's proof for the WebSocket relay/,
+      ),
     });
   });
 
@@ -277,7 +282,9 @@ describe("the hello", () => {
       socket.fromRelay(partnerFrames("early")[0]);
       await expect(pending).rejects.toMatchObject({
         kind: "protocol",
-        message: /passed on exchange data before both parties had started/,
+        message: expect.stringMatching(
+          /passed on exchange data before both parties had started/,
+        ),
       });
       expect(socket.closedWith).toBe(4000);
     },
@@ -526,7 +533,7 @@ describe("the inbound path", () => {
       socket.fromRelay(datagram);
     await expect(mc.receive()).rejects.toMatchObject({
       kind: "protocol",
-      message: /exceeds its 40000-byte size limit/,
+      message: expect.stringMatching(/exceeds its 40000-byte size limit/),
     });
     expect(socket.closedWith).toBe(4000);
   });
@@ -547,7 +554,7 @@ describe("the inbound path", () => {
     socket.fromRelay(last);
     await expect(mc.receive()).rejects.toMatchObject({
       kind: "protocol",
-      message: /exceeds its 4-chunk reassembly limit/,
+      message: expect.stringMatching(/exceeds its 4-chunk reassembly limit/),
     });
   });
 
@@ -556,7 +563,9 @@ describe("the inbound path", () => {
     socket.fromRelay(START);
     await expect(mc.receive()).rejects.toMatchObject({
       kind: "protocol",
-      message: /sent a control message after the exchange started/,
+      message: expect.stringMatching(
+        /sent a control message after the exchange started/,
+      ),
     });
     expect(socket.closedWith).toBe(4000);
   });
@@ -565,7 +574,7 @@ describe("the inbound path", () => {
     const { socket, mc } = await openStarted({ inactivityTimeoutMs: 30 });
     await expect(mc.receive()).rejects.toMatchObject({
       kind: "transport",
-      message: /no message arrived within 30 ms/,
+      message: expect.stringMatching(/no message arrived within 30 ms/),
     });
     expect(socket.closedWith).toBe(4000);
   });
