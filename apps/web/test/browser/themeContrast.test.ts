@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { createElement } from "react";
@@ -165,6 +165,44 @@ function contrast(a: string, b: string): number {
   const [hi, lo] = la > lb ? [la, lb] : [lb, la];
   return (hi + 0.05) / (lo + 0.05);
 }
+
+describe("the color scheme the app starts in", () => {
+  // Mantine resolves the "auto" scheme through window.matchMedia, so a stub
+  // standing in for the operating system's setting decides it here.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  for (const scheme of ["light", "dark"] as const)
+    test(`follows a ${scheme} system setting`, async () => {
+      const realMatchMedia = window.matchMedia.bind(window);
+      vi.stubGlobal("matchMedia", (query: string): MediaQueryList => {
+        if (query !== "(prefers-color-scheme: dark)")
+          return realMatchMedia(query);
+        return {
+          matches: scheme === "dark",
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          dispatchEvent: () => false,
+        };
+      });
+      document.documentElement.setAttribute(
+        "data-mantine-color-scheme",
+        scheme === "dark" ? "light" : "dark",
+      );
+      app.render(createElement(FilledButton, null, "Continue"));
+      await waitForEl(".mantine-Button-root");
+      await expect
+        .poll(() =>
+          document.documentElement.getAttribute("data-mantine-color-scheme"),
+        )
+        .toBe(scheme);
+    });
+});
 
 describe("rendered filled-primary contrast (WCAG 2.1 AA)", () => {
   // A single >= 4.5 floor covers both schemes; expectedText pins which text
@@ -496,6 +534,42 @@ describe("rendered app-token surface contrast (WCAG 2.1 AA)", () => {
       expect(
         contrast(style.borderTopColor, style.backgroundColor),
       ).toBeGreaterThanOrEqual(3);
+    });
+  }
+
+  // --app-caution colours the cleaning editor's notices, which sit on a Mantine
+  // Paper (--mantine-color-body). Light keeps Mantine's orange-8, which is under
+  // the 4.5:1 floor there; dark is tuned to clear it.
+  for (const scheme of ["light", "dark"] as const) {
+    test(`caution notice text on a Paper surface (${scheme})`, async () => {
+      app.render(
+        createElement(
+          "div",
+          {
+            "data-testid": "surface",
+            style: { background: "var(--mantine-color-body)" },
+          },
+          createElement(
+            "p",
+            {
+              "data-testid": "caution",
+              style: { color: "var(--app-caution)" },
+            },
+            "This value appears in more than one rule",
+          ),
+        ),
+        { forceColorScheme: scheme },
+      );
+      const text = await waitForEl('[data-testid="caution"]');
+      const surface = await waitForEl('[data-testid="surface"]');
+      const color = getComputedStyle(text).color;
+      expect(color).toBe(
+        scheme === "light" ? "rgb(232, 89, 12)" : "rgb(255, 169, 77)",
+      );
+      if (scheme === "dark")
+        expect(
+          contrast(color, getComputedStyle(surface).backgroundColor),
+        ).toBeGreaterThanOrEqual(4.5);
     });
   }
 });

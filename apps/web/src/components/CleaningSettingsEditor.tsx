@@ -142,12 +142,12 @@ export function CleaningSettingsEditor({
         />
         <div aria-live="polite">
           {[...valueNotices, ...lastNameNotices].map(({ key, notice }) => (
-            <Text key={key} size="xs" c="orange.8">
+            <Text key={key} size="xs" c="var(--app-caution)">
               {notice}
             </Text>
           ))}
           {halfFilledNotice !== undefined && (
-            <Text size="xs" c="orange.8">
+            <Text size="xs" c="var(--app-caution)">
               {halfFilledNotice}
             </Text>
           )}

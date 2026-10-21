@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { ColorSchemeScript } from "@mantine/core";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
 import {
   hostedRouteDocuments,
   routeDocumentFileName,
@@ -175,7 +179,11 @@ describe("the hosted build's route documents", () => {
   test("start from the root route's head and the color-scheme script", () => {
     const { html, tags } = resolvedPlugin().transformIndexHtml(templateHtml);
 
-    expect(html).toContain('<script data-mantine-script="true">');
+    expect(html).toContain(
+      renderToStaticMarkup(
+        createElement(ColorSchemeScript, { defaultColorScheme: "auto" }),
+      ),
+    );
     const title = rootDocumentHead.meta.find((entry) => "title" in entry);
     expect(tags).toContainEqual(
       expect.objectContaining({ tag: "title", children: title?.title }),

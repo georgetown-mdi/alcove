@@ -5,6 +5,7 @@ import { ColorSchemeScript } from "@mantine/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { APP_COLOR_SCHEME } from "../src/theme.ts";
 import { rootDocumentHead } from "../src/utils/documentHead.ts";
 
 import { declaredRoutes, matchesRoutePattern } from "./declaredRoutes.ts";
@@ -148,7 +149,7 @@ export function hostedRouteDocuments(templateFileName: string): Plugin {
       return {
         html: html.replace(
           "</head>",
-          `  ${renderToStaticMarkup(createElement(ColorSchemeScript))}\n  </head>`,
+          `  ${renderToStaticMarkup(createElement(ColorSchemeScript, { defaultColorScheme: APP_COLOR_SCHEME }))}\n  </head>`,
         ),
         tags: rootHeadTags(),
       };
