@@ -816,35 +816,42 @@ describe("the web exchange's PSI engine factory", () => {
     userAgent: `Mozilla/5.0 (${agent}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36`,
   });
 
-  test("on macOS runs one worker, which shares its key with no one", () => {
+  const mac = chrome("MacIntel", "Macintosh; Intel Mac OS X 10_15_7");
+  const linux = chrome("Linux x86_64", "X11; Linux x86_64");
+
+  test.each([
+    ["joiner", "client"],
+    ["starter", "server"],
+  ] as const)(
+    "on macOS runs one worker for the %s, which shares its key with no one",
+    (role, id) => {
+      const { spawn, workers } = fakeSpawner();
+      createPooledBrowserPsiEngineFactory(spawn, mac)(
+        role,
+        id,
+        "identifier-revealing",
+      ).dispose();
+      expect(workers.map((worker) => worker.seed)).toEqual([
+        {
+          role,
+          id,
+          mode: "identifier-revealing",
+          shard: "primary",
+          helpers: 0,
+        },
+      ]);
+      expect(workers[0].keyPorts).toEqual([]);
+    },
+  );
+
+  test("elsewhere runs the joiner on the core count up to four, one primary and the rest helpers", () => {
     const { spawn, workers } = fakeSpawner();
-    const mac = chrome("MacIntel", "Macintosh; Intel Mac OS X 10_15_7");
-    createPooledBrowserPsiEngineFactory(spawn, mac)(
+    createPooledBrowserPsiEngineFactory(spawn, linux)(
       "joiner",
       "client",
-      "identifier-revealing",
-    ).dispose();
-    expect(workers.map((worker) => worker.seed)).toEqual([
-      {
-        role: "joiner",
-        id: "client",
-        mode: "identifier-revealing",
-        shard: "primary",
-        helpers: 0,
-      },
-    ]);
-    expect(workers[0].keyPorts).toEqual([]);
-  });
-
-  test("elsewhere runs the core count up to four, one primary and the rest helpers", () => {
-    const { spawn, workers } = fakeSpawner();
-    const linux = chrome("Linux x86_64", "X11; Linux x86_64");
-    createPooledBrowserPsiEngineFactory(spawn, linux)(
-      "starter",
-      "server",
       "count-only",
     ).dispose();
-    const seed = { role: "starter", id: "server", mode: "count-only" };
+    const seed = { role: "joiner", id: "client", mode: "count-only" };
     expect(workers.map((worker) => worker.seed)).toEqual([
       { ...seed, shard: "primary", helpers: 3 },
       { ...seed, shard: "helper" },
@@ -852,5 +859,32 @@ describe("the web exchange's PSI engine factory", () => {
       { ...seed, shard: "helper" },
     ]);
     expect(workers[0].keyPorts[0]?.ports).toHaveLength(3);
+  });
+
+  test("elsewhere runs the starter on one worker, which answers the request with no split", async () => {
+    const { spawn, workers } = fakeSpawner();
+    const engine = createPooledBrowserPsiEngineFactory(spawn, linux)(
+      "starter",
+      "server",
+      "count-only",
+    );
+    expect(workers.map((worker) => worker.seed)).toEqual([
+      {
+        role: "starter",
+        id: "server",
+        mode: "count-only",
+        shard: "primary",
+        helpers: 0,
+      },
+    ]);
+    const [worker] = workers as [FakeWorker];
+    const done = engine.processClientRequest(EMPTY_REQUEST);
+    await vi.waitFor(() => expect(worker.requests).toHaveLength(1));
+    worker.answer(EMPTY_REQUEST);
+    expect(await done).toEqual(EMPTY_REQUEST);
+    engine.dispose();
+    expect(worker.keyPorts).toEqual([]);
+    expect(worker.splits).toEqual([]);
+    expect(workers).toHaveLength(1);
   });
 });

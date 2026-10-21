@@ -271,23 +271,30 @@ export function startPsiWorkerPool(
 }
 
 /**
- * The {@link RunExchangeOptions.psiEngineFactory} of a web exchange: as many
- * PSI workers as {@link browserPsiShardCount} gives for `environment`, one
- * worker where it gives one.
+ * The {@link RunExchangeOptions.psiEngineFactory} of a web exchange. The
+ * joiner, which creates the request, runs as many PSI workers as
+ * {@link browserPsiShardCount} gives for `environment`. The starter, which
+ * answers it, runs one worker: a pooled answer at the browser's set ceiling
+ * ran the renderer out of memory where one worker did not
+ * (docs/spec/PROTOCOL.md, "The browser runs its masking across a pool of PSI
+ * workers").
  */
 export function createPooledBrowserPsiEngineFactory(
   spawn: SpawnPsiCryptoWorker,
   environment: BrowserPsiShardEnvironment,
 ): BrowserPsiEngineFactory {
+  const singleWorker = createBrowserPsiEngineFactory(spawn);
   const shardCount = browserPsiShardCount(environment);
-  if (shardCount === 1) return createBrowserPsiEngineFactory(spawn);
+  if (shardCount === 1) return singleWorker;
   return (role, id, mode) =>
-    startPsiWorkerPool(
-      spawn,
-      role,
-      id,
-      mode,
-      shardCount,
-      BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
-    );
+    role === "starter"
+      ? singleWorker(role, id, mode)
+      : startPsiWorkerPool(
+          spawn,
+          role,
+          id,
+          mode,
+          shardCount,
+          BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
+        );
 }

@@ -28,8 +28,9 @@ export const defaultSpawnPsiCryptoWorker: SpawnPsiCryptoWorker = (init) =>
   }) as unknown as PsiCryptoWorker;
 
 /**
- * The PSI engine factory a web exchange runs: the worker pool this browser's
- * platform and core count give (./psiShardPolicy.ts), over the real worker.
+ * The PSI engine factory a web exchange runs, over the real worker: for the
+ * joiner the worker pool this browser's platform and core count give
+ * (./psiShardPolicy.ts), for the starter one worker.
  */
 export function browserPsiEngineFactory(): BrowserPsiEngineFactory {
   return createPooledBrowserPsiEngineFactory(
