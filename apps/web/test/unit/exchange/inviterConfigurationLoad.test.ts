@@ -2688,3 +2688,55 @@ describe("keys from an opened configuration", () => {
     expect(keysView(closed).openedConfigurationNote).toBe(false);
   });
 });
+
+describe("a configuration holding a missing-field condition", () => {
+  function conditionedTerms(): LinkageTerms {
+    const terms = getDefaultLinkageTerms("County Health", documentColumns());
+    return {
+      ...terms,
+      linkageKeys: [
+        ...terms.linkageKeys,
+        {
+          name: "FN + LN, no date of birth",
+          elements: [{ field: "first_name" }, { field: "last_name" }],
+          condition: { missingField: "date_of_birth" },
+        },
+      ],
+    };
+  }
+
+  test("opens, reviews and saves back its keys unchanged", () => {
+    const document = conditionedTerms();
+    expect(document.linkageFields.map((field) => field.name)).toContain(
+      "date_of_birth",
+    );
+    const state = withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({ linkageTerms: document, metadata: documentColumns() }),
+      ),
+    );
+    const editor = state.editor;
+    if (editor === undefined) throw new Error("expected an editor");
+    expect(editor.draft.keys.every((entry) => entry.enabled)).toBe(true);
+    expect(noticesOf(state)).toEqual([]);
+
+    const validation = reviewValidation(editor);
+    expect(validation.errors).toEqual({});
+    const terms = validation.terms;
+    if (terms === undefined) throw new Error("expected reviewed terms");
+    expect(terms.linkageKeys).toEqual(document.linkageKeys);
+    expect(terms.linkageFields).toEqual(document.linkageFields);
+    expect(termsEditedSinceOpened(state.loadedTermsBaseline, editor)).toBe(
+      false,
+    );
+
+    const saved = configurationHandBack({
+      editor,
+      terms,
+      csvDelimiter: undefined,
+      receipts: RECEIPTS_DEFAULT,
+    });
+    expect(saved.linkageTerms.linkageKeys).toEqual(document.linkageKeys);
+  });
+});

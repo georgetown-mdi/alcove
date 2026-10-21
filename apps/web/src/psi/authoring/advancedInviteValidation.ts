@@ -20,6 +20,7 @@ import {
   countOnlyTransmitsColumn,
   decideLinkageTermsVerdict,
   disclosedColumnNames,
+  keyConditionRefusal,
   loneSurrogateIndex,
   safeParseLinkageTerms,
   sanitizeForDisplay,
@@ -38,6 +39,10 @@ import {
 } from "../standardizationAuthoring";
 import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 
+import {
+  REVEAL_IDENTIFIERS_INSTEAD,
+  keyConditionRefusalMessage,
+} from "./keyCondition";
 import {
   buildAdvancedTerms,
   importedCitationDropCause,
@@ -245,11 +250,6 @@ const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
   payload: "payload",
 };
 
-/** The way out every count-only message offers besides fixing the setting it
- * names: the other Matching method, quoted as the control labels it. */
-const REVEAL_IDENTIFIERS_INSTEAD =
-  'set Matching method to "Reveal the matched identifiers (standard)".';
-
 /** What a count-only document outside the specified shape tells the operator to
  * change, in this editor's own words rather than core's refusal text -- the same
  * split {@link messageForField} keeps for a schema failure, whose Zod message is
@@ -455,6 +455,7 @@ export function validateAdvancedInvite(
     draft.standardization,
   );
   const enabledKeys = draft.keys.filter((entry) => entry.enabled);
+  const conditionRefusal = keyConditionRefusal(terms);
   // At least one key must be active. The schema's linkageKeys .min(1) also
   // catches the none-enabled case, but a dedicated message reads better against
   // the key list.
@@ -472,6 +473,10 @@ export function validateAdvancedInvite(
     errors.keys = someKeyIsSupplyable
       ? "Enable at least one linkage key."
       : UNSUPPLYABLE_KEY_MESSAGE;
+  } else if (conditionRefusal !== undefined) {
+    // Ahead of the unsupplyable check: a condition naming a field the columns
+    // cannot supply is also undeclared, and core's refusal names the condition.
+    errors.keys = keyConditionRefusalMessage(conditionRefusal, draft.keys);
   } else if (
     enabledKeys.some((entry) => !keyIsSupplyable(entry.key, declarable))
   ) {
