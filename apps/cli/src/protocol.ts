@@ -63,10 +63,8 @@ import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
-import {
-  FinalFrameUnconfirmedError,
-  openWebRtcMessageConnection,
-} from "./connection/webrtc/webrtcMessageConnection";
+import { openWebRtcWithRelayFallback } from "./connection/webrtc/relayFallback";
+import { FinalFrameUnconfirmedError } from "./connection/webrtc/webrtcMessageConnection";
 import { persistPartnerFingerprint } from "./config";
 import {
   enrollAtInvitationRelay,
@@ -764,12 +762,16 @@ async function openRunTransport(params: {
     // socket and peer connection on an abort, so Ctrl-C during a
     // rendezvous does not wait out that budget. The post-dial guard below
     // still stands, for the window between the dial settling and the
-    // transport being assigned.
-    const dialed = await openWebRtcMessageConnection({
-      ...build.webRtcDial.options,
-      signal: interrupted.signal,
-      onRegistered: onSignalingRegistered,
-    });
+    // transport being assigned. The WebSocket relay list is empty:
+    // docs/spec/PROTOCOL.md, No run dials one.
+    const dialed = await openWebRtcWithRelayFallback(
+      {
+        ...build.webRtcDial.options,
+        signal: interrupted.signal,
+        onRegistered: onSignalingRegistered,
+      },
+      [],
+    );
     build.transport = dialed;
     run.opened = true;
 
