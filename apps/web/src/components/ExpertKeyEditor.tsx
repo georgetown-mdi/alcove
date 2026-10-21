@@ -27,6 +27,11 @@ import { useReducedMotion } from "@mantine/hooks";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import {
+  KEY_CONDITION_CONTROL,
+  keyConditionOptions,
+  withKeyCondition,
+} from "@psi/authoring/keyCondition";
+import {
   addElement,
   addKey,
   moveElement,
@@ -122,10 +127,11 @@ function elementIdentifier(element: LinkageKeyElement): string {
  * The expert key-authoring surface: an ordered list of linkage keys, each
  * fully editable element-by-element. A key has a name, an ordered list of
  * elements (each a field reference chosen from the declared list, an optional
- * alias, a transform pipeline, and an optional fuzzy expansion), and an
- * optional two-of-N swap over its own element identifiers. Keys and elements
- * add, remove, and reorder with keyboard-operable controls, and one control
- * removes every key.
+ * alias, a transform pipeline, and an optional fuzzy expansion), an optional
+ * two-of-N swap over its own element identifiers, and an optional field it
+ * matches only where one side is missing ({@link keyConditionOptions}). Keys
+ * and elements add, remove, and reorder with keyboard-operable controls, and
+ * one control removes every key.
  *
  * Presentational over the draft: it computes the next draft with the pure helpers
  * in {@link advancedInvite} and emits it through {@link onChange}; the host owns
@@ -649,6 +655,19 @@ export function ExpertKeyEditor({
                           }
                         />
                       </Group>
+                      <Select
+                        label={KEY_CONDITION_CONTROL.label}
+                        description={KEY_CONDITION_CONTROL.description}
+                        placeholder={KEY_CONDITION_CONTROL.placeholder}
+                        data={keyConditionOptions(declaredFields, key)}
+                        value={key.condition?.missingField ?? null}
+                        clearable
+                        size="xs"
+                        style={{ maxWidth: 480 }}
+                        onChange={(value) =>
+                          editKey(keyIndex, (k) => withKeyCondition(k, value))
+                        }
+                      />
                     </Stack>
                   </Collapse>
                 </div>

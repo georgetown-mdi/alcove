@@ -20,6 +20,7 @@ import {
   countOnlyTransmitsColumn,
   decideLinkageTermsVerdict,
   disclosedColumnNames,
+  keyConditionRefusal,
   loneSurrogateIndex,
   safeParseLinkageTerms,
   sanitizeForDisplay,
@@ -50,6 +51,7 @@ import {
   draftOffersBuiltInKeys,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
+import { keyConditionRefusalMessage } from "./keyCondition";
 import { outputForDirection } from "./advancedInviteTypes";
 
 import type {
@@ -455,6 +457,7 @@ export function validateAdvancedInvite(
     draft.standardization,
   );
   const enabledKeys = draft.keys.filter((entry) => entry.enabled);
+  const conditionRefusal = keyConditionRefusal(terms);
   // At least one key must be active. The schema's linkageKeys .min(1) also
   // catches the none-enabled case, but a dedicated message reads better against
   // the key list.
@@ -472,6 +475,10 @@ export function validateAdvancedInvite(
     errors.keys = someKeyIsSupplyable
       ? "Enable at least one linkage key."
       : UNSUPPLYABLE_KEY_MESSAGE;
+  } else if (conditionRefusal !== undefined) {
+    // Ahead of the unsupplyable check: a condition naming a field the columns
+    // cannot supply is also undeclared, and core's refusal names the condition.
+    errors.keys = keyConditionRefusalMessage(conditionRefusal);
   } else if (
     enabledKeys.some((entry) => !keyIsSupplyable(entry.key, declarable))
   ) {
