@@ -562,9 +562,9 @@ Order determines the meaning here:
 
 The `first_name` list is the `last_name` list with twelve values added, each a
 whole value a record system writes in place of a first name it does not have:
-`BABY`, `BOY` and `MALE`, which are surnames as well, `BABY BOY` and `BABY GIRL`
-and their initials `BB` and `BG`, `UNKNOWN MALE` and `UNKNOWN FEMALE`, `TWIN A`
-and `TWIN B`, and `FNU`, for first name unknown.
+`BABY`, `BOY` and `MALE`, `BABY BOY` and `BABY GIRL` and their initials `BB` and
+`BG`, `UNKNOWN MALE` and `UNKNOWN FEMALE`, `TWIN A` and `TWIN B`, and `FNU`, for
+first name unknown.
 
 Each name field has its own placeholder list, and an operator may
 edit either one for their own data (see
