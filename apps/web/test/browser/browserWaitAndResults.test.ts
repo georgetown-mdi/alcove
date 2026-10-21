@@ -224,6 +224,7 @@ describe("the inviting seat's wait for its partner", () => {
     const waiting = lifecycleCall(0)
       .acquire({
         signal: controller.signal,
+        onCloseOutcome: () => undefined,
         onStage: () => undefined,
         onStages: () => undefined,
         onPsiProgress: () => undefined,

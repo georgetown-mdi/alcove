@@ -10,11 +10,14 @@ import {
   minimalPreparedExchange,
 } from "@alcove/core/testing";
 
+import {
+  openOneShotPeerConnection,
+  runExchangeLifecycle,
+} from "../../../src/psi/exchangeLifecycle.js";
 import { beginManagedRendezvous } from "../../../src/psi/managed/managedRendezvous.js";
 import { createPooledBrowserPsiEngineFactory } from "../../../src/psi/workers/psiWorkerPool.js";
 import { defaultSpawnPsiCryptoWorker } from "../../../src/psi/workers/psiCryptoWorkerClient.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
-import { runExchangeLifecycle } from "../../../src/psi/exchangeLifecycle.js";
 import { runManagedExchangeInBrowser } from "../../../src/psi/managed/managedRunDriver.js";
 
 import type { DataConnection } from "peerjs";
@@ -200,19 +203,21 @@ describe("the PSI engine factory of a web exchange", () => {
     vi.mocked(openPeerMessageConnection).mockResolvedValue(inertConnection());
 
     await runExchangeLifecycle({
-      acquire: () =>
-        Promise.resolve({
-          peer: new FakePeer() as unknown as Peer,
-          conn: new FakeConn() as unknown as DataConnection,
-          psi: Promise.resolve({} as PSILibrary),
-          prepared: {
-            metadata: [],
-            linkageTerms: getDefaultLinkageTerms("Pooled factory fixture"),
-            dataset: new StandardizedDataset([], []),
-            rawRows: [],
-            rowCount: 0,
-          },
-        }),
+      acquire: async (context) => ({
+        ...(await openOneShotPeerConnection(
+          new FakePeer() as unknown as Peer,
+          new FakeConn() as unknown as DataConnection,
+          context,
+        )),
+        psi: Promise.resolve({} as PSILibrary),
+        prepared: {
+          metadata: [],
+          linkageTerms: getDefaultLinkageTerms("Pooled factory fixture"),
+          dataset: new StandardizedDataset([], []),
+          rawRows: [],
+          rowCount: 0,
+        },
+      }),
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       sharedSecret: "test-shared-secret",

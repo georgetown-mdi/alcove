@@ -11,11 +11,12 @@ import {
 
 import { authenticateExchange } from "./authenticateExchange";
 import { browserPsiEngineFactory } from "./workers/psiCryptoWorkerClient";
-import { openPeerMessageConnection } from "./transport/peerMessageConnection";
+import { openPeerRunConnection } from "./transport/runConnection";
 
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 import type { PeerCloseOutcome } from "./transport/waitForPeerClose";
+import type { RunConnection } from "./transport/runConnection";
 
 import type {
   BuiltExchangeRecord,
@@ -147,10 +148,10 @@ function classifyExchangeFailure(
     : "exchange";
 }
 
-/** The live resources an {@link Acquire} hands the owner on success. */
-export interface AcquiredExchange {
-  peer: Peer;
-  conn: DataConnection;
+/** The live resources an {@link Acquire} hands the owner on success: the open
+ * connection to the partner, whichever transport opened it, with the release
+ * of what that transport holds beside it. */
+export interface AcquiredExchange extends RunConnection {
   /** The PSI WASM library. Resolved already for the client (it awaits early, to
    * fail before publishing its peer id); still pending for the server (the
    * responder must attach its inbound listener before the library resolves), so
@@ -163,8 +164,11 @@ export interface AcquiredExchange {
 /** The `signal` and stage-reporting hooks an {@link Acquire} uses while it
  * loads/prepares and draws in the peer. Every hook no-ops once `signal`
  * aborts. */
-interface AcquireContext {
+export interface AcquireContext {
   signal: AbortSignal;
+  /** Take how the clean close's wait for the peer ended, which the open
+   * connection reports once it is closed ({@link CLOSE_OUTCOME_WARNINGS}). */
+  onCloseOutcome: (outcome: PeerCloseOutcome) => void;
   /** Activate a stage (e.g. "waiting for peer" immediately before a wait). */
   onStage: (stageId: string) => void;
   /** Take a report on the first-round count the check before sending takes
@@ -178,13 +182,34 @@ interface AcquireContext {
 }
 
 /**
- * Role-specific acquisition: load/prepare locally, then draw in the peer (last
- * step), returning the live resources. The only role difference in the
- * lifecycle. Must be atomic: a failure inside acquisition tears down anything it
- * built (e.g. `peer.destroy()`) before rejecting, so the owner's teardown latch
- * only ever covers a successfully-returned `{peer, conn}`.
+ * Role-specific acquisition: load/prepare locally, then draw in the peer and
+ * open the connection to it (last step), returning the live resources. The
+ * only role difference in the lifecycle. Must be atomic: a failure inside
+ * acquisition tears down anything it built (e.g. `peer.destroy()`) before
+ * rejecting, so the owner's teardown latch only ever covers a
+ * successfully-returned connection.
  */
 export type Acquire = (context: AcquireContext) => Promise<AcquiredExchange>;
+
+/**
+ * Open the connection over the PeerJS channel a one-shot acquisition drew in.
+ * The broker socket drops on the first inbound frame while the data channel
+ * stays open for the exchange, and an abort while the channel opens closes it
+ * at once. Atomic, as {@link Acquire} requires: a failed open closes the
+ * channel and disconnects the peer before it rejects.
+ */
+export function openOneShotPeerConnection(
+  peer: Peer,
+  conn: DataConnection,
+  context: Pick<AcquireContext, "signal" | "onCloseOutcome">,
+): Promise<RunConnection> {
+  return openPeerRunConnection(peer, conn, {
+    signal: context.signal,
+    onCloseOutcome: context.onCloseOutcome,
+    dropBrokerOnFirstFrame: true,
+    closeChannelOnAbort: true,
+  });
+}
 
 /** The two exchange-record downloads: the shareable record and its private
  * verification keys, offered as separate files (mirroring the CLI's two-file
@@ -393,10 +418,12 @@ interface RunExchangeLifecycleOptions<
  *   run failure core attached a record to and an `"output"` failure of a
  *   completed run report it on {@link ExchangeFailure.record}, so the owner
  *   can still offer it for download.
- * - **The broker socket drops on the first inbound frame** (F4), while the data
- *   channel stays open for the exchange. Best-effort: a throw in that listener
- *   cannot fail the exchange.
- * - **Abort tears down in any phase** (F1, F3). On abort the owner closes the
+ * - **The broker socket drops on the first inbound frame** (F4) on the PeerJS
+ *   path, while the data channel stays open for the exchange: armed by
+ *   {@link openOneShotPeerConnection} inside `acquire`. Best-effort: a throw in
+ *   that listener cannot fail the exchange.
+ * - **Abort tears down in any phase** (F1, F3). An abort while the connection
+ *   opens is `acquire`'s to tear down; after that the owner closes the
  *   connection regardless of phase; an in-flight `runExchange` then rejects with
  *   a `closed` ConnectionError and lands in the same latched teardown. Every
  *   owner-driven hook no-ops once aborted, so no setState fires after unmount on
@@ -465,6 +492,10 @@ export async function runExchangeLifecycle<
   try {
     acquired = await acquire({
       signal,
+      onCloseOutcome: (outcome) => {
+        const warning = CLOSE_OUTCOME_WARNINGS[outcome];
+        if (warning !== undefined) emitWarning(warning);
+      },
       onStage: emitStage,
       onStages: emitStages,
       onPsiProgress: emitPsiProgress,
@@ -482,25 +513,10 @@ export async function runExchangeLifecycle<
     return;
   }
 
-  const { peer, conn, psi, prepared } = acquired;
-  let mc: MessageConnection | undefined;
+  const { connection: mc, release, psi, prepared } = acquired;
   // The AEAD wrapper over `mc` once the handshake has produced it; closing it
   // closes `mc` beneath it.
   let secure: MessageConnection | undefined;
-
-  // F4 trigger: drop the broker signaling socket on the first inbound frame,
-  // keeping the data channel (already open and bidirectional by the time a frame
-  // flows) alive for the exchange. Best-effort and non-throwing: it fires from a
-  // PeerJS listener the run's try/finally cannot catch, and a failed early
-  // disconnect must not fail an otherwise-successful exchange - the end-of-life
-  // latch still drops the peer.
-  const dropBrokerOnFirstFrame = () => {
-    try {
-      peer.disconnect();
-    } catch (err) {
-      log.error("early broker disconnect failed:", err);
-    }
-  };
 
   // Run-once teardown latch (stronger than idempotent): the effect runs exactly
   // once even if the function is invoked twice by a timeout/abort race, and it
@@ -509,39 +525,27 @@ export async function runExchangeLifecycle<
   const teardown = async () => {
     if (toreDown) return;
     toreDown = true;
-    // A late inbound frame must not fire a stray disconnect post-teardown.
-    conn.off("data", dropBrokerOnFirstFrame);
     try {
-      if (mc !== undefined) {
-        // Flushing close: waits for the peer to take the final outbound frame
-        // and detaches the channel listeners. On a run that reported its
-        // result, a wait that ends on anything but the peer's close raises the
-        // matching operator warning through emitWarning (see
-        // openPeerMessageConnection), which is why teardown can emit after the
-        // run's terminal event; a failed or cancelled run drains the same
-        // close silently.
-        await (secure ?? mc).close();
-      } else {
-        // The wrapper never materialized (abort/timeout before the open await
-        // resolved); hard-close the raw channel so a pending open rejects.
-        conn.close();
-      }
+      // Flushing close: waits for the peer to take the final outbound frame
+      // and detaches the transport listeners. On a run that reported its
+      // result, a wait that ends on anything but the peer's close raises the
+      // matching operator warning through emitWarning (the acquire context's
+      // onCloseOutcome), which is why teardown can emit after the run's
+      // terminal event; a failed or cancelled run drains the same close
+      // silently.
+      await (secure ?? mc).close();
     } catch (err) {
       log.error("teardown: closing the connection failed:", err);
     }
-    // disconnect() frees the broker id and leaves the data channel alive by
-    // design: the close above waits for the peer to take the final frame, and
-    // on its ceiling path the frame can still be in flight (the send/close
-    // delivery contract; see docs/COMMUNICATION.md and the Connection interface
-    // in core). Do NOT upgrade this to peer.destroy(): it routes through the
-    // abrupt RTCPeerConnection.close(), which discards buffered outbound data
-    // and would drop the final frame. The local connection is still reaped --
-    // via the data channel's native onclose on a clean close, or by
-    // ICE-failure detection if the peer vanished.
+    // Released after the close, which may still have the final frame in
+    // flight on its ceiling path (the send/close delivery contract; see
+    // docs/COMMUNICATION.md and the Connection interface in core): the PeerJS
+    // release frees the broker id and leaves the data channel alive, never
+    // destroying the peer.
     try {
-      peer.disconnect();
+      release();
     } catch (err) {
-      log.error("teardown: disconnecting the peer failed:", err);
+      log.error("teardown: releasing the transport failed:", err);
     }
   };
 
@@ -555,24 +559,8 @@ export async function runExchangeLifecycle<
     void teardown();
   };
   signal.addEventListener("abort", onAbort, { once: true });
-  conn.once("data", dropBrokerOnFirstFrame);
 
   try {
-    // Fixed order. openPeerMessageConnection attaches the QueuedMessageConnection's
-    // inbound `data` listener synchronously in its constructor (the server's
-    // listener-first guarantee, F6), so the initiator's first frame -- its
-    // handshake frame -- is buffered rather than dropped no matter how long
-    // this side then takes to read it.
-    mc = await openPeerMessageConnection(conn, {
-      onCloseOutcome: (outcome) => {
-        const warning = CLOSE_OUTCOME_WARNINGS[outcome];
-        if (warning !== undefined) emitWarning(warning);
-      },
-      // The run's signal reaches the transport only here: it is what lets a
-      // cancel cut the clean close's wait for the peer, whose duration is
-      // otherwise the peer's to choose up to the ceiling.
-      signal,
-    });
     // Authenticate the peer before any PSI frame is sent: the P-256 key exchange
     // fails closed on a wrong secret or tampered/malformed frame, so an
     // unauthenticated peer never reaches runExchange. The exchange runs on the

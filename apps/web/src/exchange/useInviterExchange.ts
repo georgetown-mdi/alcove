@@ -59,6 +59,7 @@ import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
+import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
@@ -104,6 +105,7 @@ import {
   timeOfDayLabel,
 } from "./exchangeRun";
 
+import type { DataConnection } from "peerjs";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import type {
@@ -1236,6 +1238,7 @@ export function useInviterExchange({
     // and the lifecycle awaits it late (after the message connection opens).
     const acquire: Acquire = async ({
       signal,
+      onCloseOutcome,
       onStage,
       onStages,
       onPsiProgress,
@@ -1279,7 +1282,7 @@ export function useInviterExchange({
       // Listen on the derived inviter id, then await the acceptor's inbound
       // connection. Destroy the peer on a wait failure so acquisition stays
       // atomic (the lifecycle's teardown only ever covers a returned
-      // {peer, conn}).
+      // connection); the open below tears down its own failure.
       const relayPlan = await relayPlanForRun(
         minted.sharedSecret,
         undefined,
@@ -1299,16 +1302,21 @@ export function useInviterExchange({
         ),
       );
       if (!signal.aborted) setListeningUntil(waitUntil);
+      let conn: DataConnection;
       try {
-        const conn = await waitForIncomingConnection(peer, {
+        conn = await waitForIncomingConnection(peer, {
           signal,
           until: waitUntil,
         });
-        return { peer, conn, psi, prepared };
       } catch (error) {
         peer.destroy();
         throw error;
       }
+      const connection = await openOneShotPeerConnection(peer, conn, {
+        signal,
+        onCloseOutcome,
+      });
+      return { ...connection, psi, prepared };
     };
 
     const browserDriver = (): ExchangeDriver<RunOutputs> =>

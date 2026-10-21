@@ -12,6 +12,7 @@ import {
   exchangeRecordFromFailure,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  packCloseSentinel,
   runExchange,
   statesItsOwnNextStep,
 } from "@alcove/core";
@@ -26,6 +27,7 @@ import {
   CLOSE_OUTCOME_WARNINGS,
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_WARNING,
   FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_WARNING,
+  openOneShotPeerConnection,
   runExchangeLifecycle,
 } from "../../../src/psi/exchangeLifecycle.js";
 import {
@@ -35,6 +37,7 @@ import {
 } from "../../../src/psi/transport/rendezvous.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
+import { openWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
 
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
@@ -220,16 +223,21 @@ function authenticatedOver(
   };
 }
 
+/** An acquire that hands the owner the one-shot connection over a fake peer
+ * and channel, as the inviter and acceptor acquisitions do. */
 function makeResources(overrides?: { peer?: FakePeer; conn?: FakeConn }) {
   const peer = overrides?.peer ?? new FakePeer();
   const conn = overrides?.conn ?? new FakeConn();
-  const acquired: AcquiredExchange = {
-    peer: peer as unknown as Peer,
-    conn: conn as unknown as DataConnection,
+  const acquire: Acquire = async (context) => ({
+    ...(await openOneShotPeerConnection(
+      peer as unknown as Peer,
+      conn as unknown as DataConnection,
+      context,
+    )),
     psi: Promise.resolve({} as PSILibrary),
     prepared: STUB_PREPARED,
-  };
-  return { acquired, peer, conn };
+  });
+  return { acquire, peer, conn };
 }
 
 // The per-test option bundle that does not vary: the React callbacks plus the
@@ -282,8 +290,7 @@ describe("runExchangeLifecycle", () => {
   test("success: reports the result with the handshake's rotated secret, then tears down", async () => {
     const { mc, close } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired, peer } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire, peer } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -317,8 +324,7 @@ describe("runExchangeLifecycle", () => {
       // and must not share one sentence.
       const { mc } = makeFakeMc();
       mockedOpen.mockResolvedValue(mc);
-      const { acquired, conn } = makeResources();
-      const acquire: Acquire = () => Promise.resolve(acquired);
+      const { acquire, conn } = makeResources();
       const s = seams();
       const controller = new AbortController();
 
@@ -380,8 +386,7 @@ describe("runExchangeLifecycle", () => {
       mockedAuthenticate.mockRejectedValue(
         new ConnectionError("key exchange authentication failed", "security"),
       );
-      const { acquired } = makeResources();
-      const acquire: Acquire = () => Promise.resolve(acquired);
+      const { acquire } = makeResources();
       const s = seams();
 
       await runExchangeLifecycle({
@@ -415,8 +420,7 @@ describe("runExchangeLifecycle", () => {
       // gate every other callback takes.
       const { mc } = makeFakeMc();
       mockedOpen.mockResolvedValue(mc);
-      const { acquired } = makeResources();
-      const acquire: Acquire = () => Promise.resolve(acquired);
+      const { acquire } = makeResources();
       const s = seams();
       const controller = new AbortController();
 
@@ -650,8 +654,7 @@ describe("runExchangeLifecycle", () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
     mockedRunExchange.mockRejectedValue(new Error("protocol blew up"));
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -674,11 +677,11 @@ describe("runExchangeLifecycle", () => {
     const failure = new ConnectionError("peer closed the channel", "closed");
     attachedRecords.set(failure, STUB_RECORD);
     mockedRunExchange.mockRejectedValue(failure);
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -696,11 +699,11 @@ describe("runExchangeLifecycle", () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
     mockedRunExchange.mockRejectedValue(new Error("failed before the send"));
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -718,11 +721,11 @@ describe("runExchangeLifecycle", () => {
     mockedRecordFromFailure.mockImplementationOnce(() => {
       throw new Error("the cause chain refused to be read");
     });
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -746,8 +749,7 @@ describe("runExchangeLifecycle", () => {
     mockedRunExchange.mockRejectedValue(
       new StandardizationTermsError("mid-run standardization error"),
     );
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -767,8 +769,7 @@ describe("runExchangeLifecycle", () => {
   test("authenticates the peer over mc before runExchange", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -801,8 +802,7 @@ describe("runExchangeLifecycle", () => {
       "security",
     );
     mockedAuthenticate.mockRejectedValue(trustFailure);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -843,8 +843,7 @@ describe("runExchangeLifecycle", () => {
       },
     );
     mockedAuthenticate.mockRejectedValue(wrapped);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -866,8 +865,7 @@ describe("runExchangeLifecycle", () => {
     mockedAuthenticate.mockRejectedValue(
       new ConnectionError("peer connection closed", "transport"),
     );
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -896,11 +894,11 @@ describe("runExchangeLifecycle", () => {
       wire.push(await partnerRaw.receive());
       return STUB_EXCHANGE_RESULT;
     });
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -933,11 +931,11 @@ describe("runExchangeLifecycle", () => {
     tampered[tampered.length - 1] ^= 0x01;
     await partnerRaw.send(tampered);
     await partnerRaw.send(second);
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -985,11 +983,11 @@ describe("runExchangeLifecycle", () => {
       });
       const [first, second] = await seal([{ round: 1 }, { round: 2 }]);
       for (const frame of frames(first, second)) await partnerRaw.send(frame);
-      const { acquired } = makeResources();
+      const { acquire } = makeResources();
       const s = seams();
 
       await runExchangeLifecycle({
-        acquire: () => Promise.resolve(acquired),
+        acquire,
         exchangeRole: "initiator",
         signal: new AbortController().signal,
         ...s,
@@ -1014,8 +1012,7 @@ describe("runExchangeLifecycle", () => {
   test("a generateOutput failure is category 'output' (the exchange succeeded)", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
     s.generateOutput.mockImplementation(() => {
       throw new Error("could not build CSV");
@@ -1042,7 +1039,7 @@ describe("runExchangeLifecycle", () => {
       ...STUB_EXCHANGE_RESULT,
       audit: STUB_RECORD,
     });
-    const { acquired } = makeResources();
+    const { acquire } = makeResources();
     const s = seams();
     const buildFailure = new Error("partner payload is missing rows");
     s.generateOutput.mockImplementation(() => {
@@ -1050,7 +1047,7 @@ describe("runExchangeLifecycle", () => {
     });
 
     await runExchangeLifecycle({
-      acquire: () => Promise.resolve(acquired),
+      acquire,
       exchangeRole: "initiator",
       signal: new AbortController().signal,
       ...s,
@@ -1068,8 +1065,7 @@ describe("runExchangeLifecycle", () => {
     const { mc, close } = makeFakeMc();
     close.mockImplementation(() => Promise.reject(new Error("close blew up")));
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -1095,10 +1091,9 @@ describe("runExchangeLifecycle", () => {
   });
 
   test("drops the broker on the first inbound frame, armed before the open await", async () => {
-    const { acquired, peer, conn } = makeResources();
+    const { acquire, peer, conn } = makeResources();
     const opened = deferred<MessageConnection>();
     mockedOpen.mockReturnValue(opened.promise);
-    const acquire: Acquire = () => Promise.resolve(acquired);
     const s = seams();
 
     const run = runExchangeLifecycle({
@@ -1108,8 +1103,8 @@ describe("runExchangeLifecycle", () => {
       ...s,
     });
 
-    // Let acquire resolve so the owner has attached conn.once("data") and is now
-    // parked on the (still pending) open await.
+    // Let acquire attach conn.once("data") and park on the (still pending)
+    // open await.
     await tick();
     expect(peer.disconnect).not.toHaveBeenCalled();
     conn.emit("data", "first frame");
@@ -1126,9 +1121,8 @@ describe("runExchangeLifecycle", () => {
     peer.disconnect.mockImplementationOnce(() => {
       throw new Error("disconnect boom");
     });
-    const { acquired, conn } = makeResources({ peer });
+    const { acquire, conn } = makeResources({ peer });
     mockedOpen.mockResolvedValue(makeFakeMc().mc);
-    const acquire: Acquire = () => Promise.resolve(acquired);
     const s = seams();
 
     const run = runExchangeLifecycle({
@@ -1148,7 +1142,7 @@ describe("runExchangeLifecycle", () => {
     // -- and the swallowed failure is logged rather than leaked to stderr.
     expect(
       logCapture.errors.some((e) =>
-        e.includes("teardown: disconnecting the peer failed"),
+        e.includes("teardown: releasing the transport failed"),
       ),
     ).toBe(true);
   });
@@ -1164,10 +1158,9 @@ describe("runExchangeLifecycle", () => {
     peer.disconnect.mockImplementationOnce(() => {
       throw new Error("disconnect boom");
     });
-    const { acquired, conn } = makeResources({ peer });
+    const { acquire, conn } = makeResources({ peer });
     const opened = deferred<MessageConnection>();
     mockedOpen.mockReturnValue(opened.promise);
-    const acquire: Acquire = () => Promise.resolve(acquired);
     const s = seams();
 
     const run = runExchangeLifecycle({
@@ -1203,8 +1196,7 @@ describe("runExchangeLifecycle", () => {
       return STUB_EXCHANGE_RESULT;
     });
     const controller = new AbortController();
-    const { acquired, peer } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire, peer } = makeResources();
     const s = seams();
 
     const run = runExchangeLifecycle({
@@ -1234,8 +1226,7 @@ describe("runExchangeLifecycle", () => {
       async (c) => (await c.receive()) as AuthenticatedExchange,
     );
     const controller = new AbortController();
-    const { acquired, peer } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire, peer } = makeResources();
     const s = seams();
 
     const run = runExchangeLifecycle({
@@ -1287,8 +1278,7 @@ describe("runExchangeLifecycle", () => {
   test("already-aborted before the run starts tears down the acquired resources", async () => {
     const controller = new AbortController();
     controller.abort();
-    const { acquired, peer, conn } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire, peer, conn } = makeResources();
     const s = seams();
 
     await runExchangeLifecycle({
@@ -1298,11 +1288,45 @@ describe("runExchangeLifecycle", () => {
       ...s,
     });
 
-    // acquire resolved but the signal was already aborted: tear down what it
-    // handed us (no mc yet -> hard close the raw channel) and stay silent.
+    // The signal was already aborted when the channel came to be opened: the
+    // open refuses, hard-closes the raw channel and frees the peer, and the
+    // run stays silent.
     expect(conn.close).toHaveBeenCalled();
     expect(peer.disconnect).toHaveBeenCalled();
     expect(mockedOpen).not.toHaveBeenCalled();
+    expect(s.onError).not.toHaveBeenCalled();
+    expect(s.onResult).not.toHaveBeenCalled();
+  });
+
+  test("an abort as acquire resolves closes and releases the handed connection, no exchange", async () => {
+    const controller = new AbortController();
+    const { mc, close } = makeFakeMc();
+    const release = vi.fn();
+    const acquire: Acquire = () => {
+      controller.abort();
+      return Promise.resolve({
+        connection: mc,
+        release,
+        psi: Promise.resolve({} as PSILibrary),
+        prepared: STUB_PREPARED,
+      });
+    };
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: controller.signal,
+      ...s,
+    });
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(close.mock.invocationCallOrder[0]).toBeLessThan(
+      release.mock.invocationCallOrder[0],
+    );
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
+    expect(mockedRunExchange).not.toHaveBeenCalled();
     expect(s.onError).not.toHaveBeenCalled();
     expect(s.onResult).not.toHaveBeenCalled();
   });
@@ -1356,8 +1380,7 @@ describe("runExchangeLifecycle", () => {
     // the resolved pair to the status slot ahead of them.
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
     const { cardinalityNotice, pairTableAdvisory } =
       describeResolvedRunShape(OVER_BOUND_SHAPE);
@@ -1390,8 +1413,7 @@ describe("runExchangeLifecycle", () => {
     // fails, and the callback fired long before the failure.
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
     const { cardinalityNotice, pairTableAdvisory } =
       describeResolvedRunShape(OVER_BOUND_SHAPE);
@@ -1423,8 +1445,7 @@ describe("runExchangeLifecycle", () => {
     // exchange had finished, goes to the status slot on its own.
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
     const shape: ResolvedRunShape = {
       cardinality: "one-to-one",
@@ -1453,8 +1474,7 @@ describe("runExchangeLifecycle", () => {
   test("raises the cardinality alone when the projection is within the bound", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    const acquire: Acquire = () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
     const s = seams();
     const shape: ResolvedRunShape = {
       cardinality: "one-to-many",
@@ -1486,8 +1506,8 @@ describe("the PSI progress reporter", () => {
   function acquireStub(): Acquire {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
-    const { acquired } = makeResources();
-    return () => Promise.resolve(acquired);
+    const { acquire } = makeResources();
+    return acquire;
   }
 
   test("reaches runExchange and reports through the owner's sink", async () => {
@@ -1559,5 +1579,105 @@ describe("the PSI progress reporter", () => {
     });
 
     expect(onPsiProgress).not.toHaveBeenCalled();
+  });
+});
+
+/** A browser `WebSocket` to the relay, as the relay transport uses it, with
+ * the relay's side driven by the test. */
+class FakeRelaySocket extends EventTarget {
+  binaryType: BinaryType = "blob";
+  readyState = 0;
+  bufferedAmount = 0;
+  readonly sent: Array<string | Uint8Array> = [];
+  closedWith: number | undefined;
+
+  send(data: string | Uint8Array): void {
+    this.sent.push(data);
+  }
+
+  close(code?: number): void {
+    if (this.readyState >= 2) return;
+    this.closedWith = code;
+    this.readyState = 3;
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.dispatchEvent(new Event("open"));
+  }
+
+  fromRelay(data: string | Uint8Array): void {
+    const payload =
+      typeof data === "string"
+        ? data
+        : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    this.dispatchEvent(new MessageEvent("message", { data: payload }));
+  }
+}
+
+describe("runExchangeLifecycle over a WebSocket relay connection", () => {
+  test("a relay-carried acquisition reaches the key exchange and closes through the relay", async () => {
+    mockedAuthenticate.mockImplementation((connection) =>
+      Promise.resolve(authenticatedOver(connection)),
+    );
+    mockedRunExchange.mockResolvedValue(STUB_EXCHANGE_RESULT);
+    const sockets: Array<FakeRelaySocket> = [];
+    const release = vi.fn();
+    let relayConnection: MessageConnection | undefined;
+    const acquire: Acquire = async ({ signal, onCloseOutcome }) => {
+      relayConnection = await openWebSocketRelayConnection({
+        url: "wss://relay.example/relay",
+        exchangeId: "exchange-1",
+        role: "acceptor",
+        relayKey:
+          "1d970dcfd9f445a4c83c4ee3b03845209f891b2931e8b7bb2b41a17dd2249a9e",
+        signal,
+        onCloseOutcome,
+        createSocket: () => {
+          const socket = new FakeRelaySocket();
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+      });
+      return {
+        connection: relayConnection,
+        release,
+        psi: Promise.resolve({} as PSILibrary),
+        prepared: STUB_PREPARED,
+      };
+    };
+    const s = seams();
+
+    const run = runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    const socket = sockets[0];
+    socket.open();
+    socket.fromRelay('{"type":"paired"}');
+    socket.fromRelay('{"type":"start"}');
+    await vi.waitFor(() =>
+      expect(socket.sent.at(-1)).toEqual(packCloseSentinel()),
+    );
+    socket.fromRelay(packCloseSentinel());
+    await run;
+
+    expect(relayConnection).toBeDefined();
+    expect(mockedOpen).not.toHaveBeenCalled();
+    expect(mockedAuthenticate).toHaveBeenCalledWith(
+      relayConnection,
+      "initiator",
+      SHARED_SECRET,
+      EXPIRES,
+    );
+    expect(mockedRunExchange.mock.calls[0][0]).toBe(relayConnection);
+    expect(s.onResult).toHaveBeenCalledTimes(1);
+    expect(s.onError).not.toHaveBeenCalled();
+    expect(s.onWarning).not.toHaveBeenCalled();
+    expect(socket.closedWith).toBe(1000);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });

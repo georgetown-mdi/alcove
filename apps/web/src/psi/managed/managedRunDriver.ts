@@ -12,7 +12,7 @@
  * `runExchangeLifecycle` bundles the handshake and the data exchange into one
  * unit with no call site to persist the rotated secret between them, so a
  * managed re-run cannot drive it directly. The shared primitives it composes
- * ({@link openPeerMessageConnection}, {@link authenticateExchange},
+ * ({@link openPeerRunConnection}, {@link authenticateExchange},
  * {@link runExchange}, {@link buildRunOutputs}) are standalone, so this composes
  * them with the rotation interposed and the one-shot flows are untouched.
  *
@@ -50,7 +50,7 @@ import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
 import { authenticateExchange } from "../authenticateExchange";
 import { browserPsiEngineFactory } from "../workers/psiCryptoWorkerClient";
 import { noteUnfiledDisclosureRun } from "../unfiledDisclosureStore";
-import { openPeerMessageConnection } from "../transport/peerMessageConnection";
+import { openPeerRunConnection } from "../transport/runConnection";
 import { waitForIncomingConnection } from "../transport/waitForConnection";
 
 import {
@@ -96,6 +96,7 @@ import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedRerunOptions } from "./managedRun";
 import type { PeerCloseOutcome } from "../transport/waitForPeerClose";
+import type { RunConnection } from "../transport/runConnection";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
 
 const log = getLogger("managedRunDriver");
@@ -108,14 +109,13 @@ interface ManagedRerunInput {
 
 /** The held value the handshake phase hands the data exchange through the lock:
  * the open message connection, the resolved PSI library, the prepared exchange,
- * the live peer/channel for teardown, and what the data exchange reads off the
- * record the handshake ran. */
+ * the run connection whose transport the teardown releases, and what the data
+ * exchange reads off the record the handshake ran. */
 interface ManagedRerunCarried {
   /** The AEAD-wrapped connection {@link authenticateExchange} returned. */
   mc: MessageConnection;
   psiLibrary: PSILibrary;
-  peer: Peer;
-  conn: DataConnection;
+  runConnection: RunConnection;
   prepared: ReturnType<typeof prepareManagedRerunExchange>;
   exchangeRole: HandshakeRole;
   csvDelimiter: RunnableManagedExchangeRecord["exchangeFile"]["csvDelimiter"];
@@ -263,10 +263,10 @@ export function runManagedExchangeInBrowser(
   // run's single-writer lock spans the payload exchange, so a partner that
   // stalls holds the record's lock until this close cuts the wait.
   let openTransport:
-    { peer: Peer; conn: DataConnection; mc: MessageConnection } | undefined;
+    { runConnection: RunConnection; mc: MessageConnection } | undefined;
   const cutRunOnCancel = () => {
     if (openTransport !== undefined)
-      void teardown(openTransport.peer, openTransport.conn, openTransport.mc);
+      void teardown(openTransport.runConnection, openTransport.mc);
   };
   signal.addEventListener("abort", cutRunOnCancel);
 
@@ -343,22 +343,21 @@ export function runManagedExchangeInBrowser(
           throw error;
         }
 
-        // Closure-scoped so the catch's teardown reads whatever the try assigned:
-        // a failure AFTER the wrapper opened (a failed authentication) drains it
-        // through mc.close(), and only a pre-open failure hard-closes the raw
-        // channel -- the same at-call-time read the one-shot lifecycle's teardown
-        // uses.
-        let mc: MessageConnection | undefined;
+        // A failed open hard-closes the raw channel and frees the broker id
+        // before it rejects. The signal is what lets a cancel cut the clean
+        // close's wait for the peer, on this teardown and on the data
+        // exchange's: without it the wait stands until the peer takes the final
+        // frame or the ceiling expires, a duration the peer chooses.
+        const runConnection = await openPeerRunConnection(peer, conn, {
+          onCloseOutcome: emitCloseWarning,
+          signal,
+        });
+        // Closure-scoped so the catch's teardown closes whatever the try last
+        // assigned: the opened connection, or the AEAD wrapper over it once the
+        // handshake has produced it.
+        let mc = runConnection.connection;
         try {
-          // The signal is what lets a cancel cut the clean close's wait for the
-          // peer, on this teardown and on the data exchange's: without it the
-          // wait stands until the peer takes the final frame or the ceiling
-          // expires, a duration the peer chooses.
-          mc = await openPeerMessageConnection(conn, {
-            onCloseOutcome: emitCloseWarning,
-            signal,
-          });
-          openTransport = { peer, conn, mc };
+          openTransport = { runConnection, mc };
           // A cancel that landed while the channel was opening fired the
           // listener above with nothing yet to close, and an aborted signal
           // never fires it again, so the state is read once here.
@@ -386,12 +385,11 @@ export function runManagedExchangeInBrowser(
           // runs on it, and a cancel or teardown closes it, which closes the
           // opened connection beneath it.
           mc = auth.connection;
-          openTransport = { peer, conn, mc };
+          openTransport = { runConnection, mc };
           const carried: ManagedRerunCarried = {
             mc,
             psiLibrary,
-            peer,
-            conn,
+            runConnection,
             prepared: input.prepared,
             exchangeRole,
             csvDelimiter: current.exchangeFile.csvDelimiter,
@@ -412,7 +410,7 @@ export function runManagedExchangeInBrowser(
           // hold the single-writer lock over this record for a duration the
           // partner picks (see {@link teardown}), so the failure below is what
           // the run reports; the drain still runs to completion on its own.
-          void teardown(peer, conn, mc);
+          void teardown(runConnection, mc);
           throw error;
         }
       },
@@ -515,7 +513,7 @@ export function runManagedExchangeInBrowser(
           // withhold this run's outputs -- and the success bookkeeping behind
           // them -- for a duration the partner picks, so the drain runs on its
           // own while the outputs go to the caller.
-          void teardown(carried.peer, carried.conn, carried.mc);
+          void teardown(carried.runConnection, carried.mc);
           await registerRotatedKey(carried);
         }
       },
@@ -728,11 +726,11 @@ async function fileTerminatedDisclosure(
 }
 
 /**
- * Tear down the run's live resources: free the broker id, then drain and close
- * the message connection (or hard-close the raw channel when the wrapper never
- * materialized). Never throws -- a teardown fault must not clobber a more
- * accurate outcome -- which is what lets both the failed handshake and the data
- * exchange start it without awaiting it.
+ * Tear down the run's live resources: release the transport (on the PeerJS
+ * path, free the broker id), then drain and close the message connection.
+ * Never throws -- a teardown fault must not clobber a more accurate outcome --
+ * which is what lets both the failed handshake and the data exchange start it
+ * without awaiting it.
  *
  * The disconnect is issued FIRST: neither call site awaits this, so the run's
  * outcome resolves and the single-writer lock releases while the drain is still
@@ -749,18 +747,19 @@ async function fileTerminatedDisclosure(
  * drop that frame.
  */
 async function teardown(
-  peer: Peer,
-  conn: DataConnection,
-  mc: MessageConnection | undefined,
+  runConnection: RunConnection,
+  mc: MessageConnection,
 ): Promise<void> {
   try {
-    peer.disconnect();
+    runConnection.release();
   } catch (error) {
-    log.error("managed re-run teardown: disconnecting the peer failed:", error);
+    log.error(
+      "managed re-run teardown: releasing the transport failed:",
+      error,
+    );
   }
   try {
-    if (mc !== undefined) await mc.close();
-    else conn.close();
+    await mc.close();
   } catch (error) {
     log.error("managed re-run teardown: closing the connection failed:", error);
   }
