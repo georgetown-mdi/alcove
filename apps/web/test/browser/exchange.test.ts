@@ -1257,14 +1257,14 @@ describe("inviter screen", () => {
 
       await page
         .getByRole("button", {
-          name: "Download inviter sample CSV",
+          name: "download the inviter sample CSV",
           exact: true,
         })
         .click();
       expect(fileNames()).toEqual(["alcove-sample-inviter.csv"]);
       await page
         .getByRole("button", {
-          name: "Download partner sample CSV",
+          name: "download the partner sample CSV",
           exact: true,
         })
         .click();
@@ -1287,7 +1287,7 @@ describe("inviter screen", () => {
 
   test("while the sample is loaded, the ledger offers the partner CSV again until a real file replaces it", async () => {
     const line =
-      "The partner CSV, alcove-sample-partner.csv, was downloaded for the other tab. If it did not arrive, download the partner CSV again.";
+      "The other tab needs the partner CSV, alcove-sample-partner.csv. If you do not have it, download the partner CSV.";
     const downloadAgain = () =>
       page.getByRole("button", {
         name: "download the partner CSV",

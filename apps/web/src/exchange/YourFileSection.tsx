@@ -225,8 +225,8 @@ export function YourFileSection({
               >
                 load it into this exchange
               </Anchor>
-              , which also downloads the partner CSV for the other side, or
-              download <SampleCsvLinks />.
+              , which also downloads the partner CSV for the other side, or{" "}
+              <SampleCsvLinks />.
             </p>
           )}
           {acquired !== undefined && (

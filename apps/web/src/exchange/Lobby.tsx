@@ -230,7 +230,8 @@ export function Lobby() {
         </p>
         {sampleFailure !== undefined && (
           <p className={`${styles.sub} ${styles.small}`} role="alert">
-            {sampleFailure} Download <SampleCsvLinks />.
+            {sampleFailure} You can <SampleCsvLinks /> and put it in your
+            folder.
           </p>
         )}
         <div className={styles.howItWorks}>

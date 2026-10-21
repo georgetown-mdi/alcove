@@ -85,7 +85,7 @@ export function ConsoleSampleData({
         >
           Add sample files to my folder
         </Anchor>
-        , or download <SampleCsvLinks />.
+        , or <SampleCsvLinks /> and put it in your folder.
       </p>
       <div role="status" aria-live="polite">
         {state.status === "added" && (
