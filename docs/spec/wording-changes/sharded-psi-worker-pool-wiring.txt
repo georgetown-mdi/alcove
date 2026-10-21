@@ -37,7 +37,7 @@
 - - -> Once every helper has set up, the page tells the primary so, and the primary splits the set, sends each helper its part over the channel its key took, masks its own part last, so that every helper has its part before the primary's thread is taken, and takes each helper's output back on the same channel.
 - - -> `psiWorkerPool.test.ts` checks that the only result a split posts to the page is the merged message.
 - - -> **A worker that stops fails the run.**
-- - -> A fault in any worker during a split operation fails that operation, and so the run, at once, by the path a fault in one worker takes: a helper's failed reply reaches the primary, and a helper's error event the page.
+- - -> A fault in any worker during a split operation fails that operation, and so the run, at once, by the path a fault in one worker takes: a helper's failed reply, or its report of a part it could not read, reaches the primary, and a helper's error event the page.
 - - -> No worker is retried or started again.
 - - -> **The progress timeout.**
 - - -> A worker of a split operation that reports neither a processed count nor its result for `BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS`, 33 minutes, is treated as stopped, and the run fails with `Encrypting the data made no progress for 33 minutes.

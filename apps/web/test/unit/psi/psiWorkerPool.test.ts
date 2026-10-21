@@ -360,6 +360,34 @@ describe("the PSI worker pool's key path", () => {
       pool.dispose();
     }
   }, 10_000);
+
+  // TIMEOUT_MS, the primary's progress timeout for each part, is longer than
+  // this test's own.
+  test("a helper's port that fails a delivery after setup fails the run at once", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn, toPage, toWorkers } = inProcessSpawner(
+      () => () => Promise.resolve({ library, backend: "wasm" }),
+    );
+    const pool = joinerPool(spawn, "identifier-revealing", 3);
+    try {
+      await vi.waitFor(() =>
+        expect(
+          toPage.filter((message) => kindOf(message) === "helper-setup"),
+        ).toHaveLength(2),
+      );
+      const [helperPort] = (
+        toWorkers.find(
+          (message) => kindOf(message) === "key-ports",
+        ) as PsiKeyPortsMessage
+      ).ports;
+      helperPort.dispatchEvent(new MessageEvent("messageerror"));
+      await expect(pool.createClientRequest(values(3072))).rejects.toEqual(
+        new Error("PSI crypto worker failed"),
+      );
+    } finally {
+      pool.dispose();
+    }
+  }, 10_000);
 });
 
 const primarySeed = (helpers: number): string =>

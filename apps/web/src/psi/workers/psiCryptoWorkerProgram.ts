@@ -49,6 +49,13 @@ export interface PsiCryptoWorkerScope {
 export type LoadPsiWorkerLibrary = () => Promise<PsiBackendSelection>;
 
 const HELPER_WITHOUT_KEY = "the PSI helper worker received no key";
+const WORKER_FAILED = "PSI crypto worker failed";
+
+// What a helper posts its primary when a part fails to reach it. It names no
+// request, so the primary fails every call pending on that helper.
+interface PsiHelperFault {
+  readonly kind: "helper-fault";
+}
 
 /** Run the PSI worker named by `scope.name`'s seed in `scope`. */
 export function runPsiCryptoWorker(
@@ -180,15 +187,21 @@ function helperOverPort(port: MessagePort): PsiWorkerHandle {
   return {
     postMessage: (request) => port.postMessage(request),
     setHandlers: ({ onMessage, onError }) => {
-      port.onmessage = (event: MessageEvent<PsiWorkerResponse>) => {
+      port.onmessage = (
+        event: MessageEvent<PsiWorkerResponse | PsiHelperFault>,
+      ) => {
+        const message = event.data;
+        if ("kind" in message) {
+          onError(new Error(WORKER_FAILED));
+          return;
+        }
         try {
-          onMessage(event.data);
+          onMessage(message);
         } catch (error) {
           onError(error instanceof Error ? error : new Error(String(error)));
         }
       };
-      port.onmessageerror = () =>
-        onError(new Error("PSI crypto worker failed"));
+      port.onmessageerror = () => onError(new Error(WORKER_FAILED));
     },
     terminate: () => port.close(),
   };
@@ -238,6 +251,10 @@ async function startHelper(
     );
     port.onmessage = (event: MessageEvent<PsiWorkerRequest>) =>
       servePrimary(event.data);
+    port.onmessageerror = () => {
+      const fault: PsiHelperFault = { kind: "helper-fault" };
+      port.postMessage(fault);
+    };
     scope.postMessage({ kind: "helper-setup", ready: true });
     return servePsiEngine(engine, (response) => scope.postMessage(response));
   } catch (error) {
