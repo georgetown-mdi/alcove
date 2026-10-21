@@ -52,20 +52,35 @@ const PAST_ACCEPTOR_REVIEW = new Set([
   "launched",
 ]);
 
+/** The acceptor's position tokens that render the admitted rows. */
+const ACCEPTOR_ROWS_STEPS = new Set([
+  "columns",
+  "columns:cleaning",
+  "launched",
+]);
+
 /** The position token to restore for `token`: the token itself when its backing
  * state still exists. `launched` reads the run the launch drives, which a
  * back-to-columns recovery clears, so without a launch it settles on `columns`
  * -- the nearest step whose state (the acquired file and confirmed columns)
  * that recovery leaves intact. Every step the launch has not yet reached reads
  * what the review step committed when the operator continued from it, which an
- * edit there voids, so without that commit it settles on `review`. */
+ * edit there voids, so without that commit it settles on `review`. The columns
+ * step reads the rows the consent gate admitted, which choosing another file
+ * clears, so without them it settles on `consent`. */
 export function restorablePosition(
   token: string,
-  preconditions: { hasLaunch: boolean; reviewCommitted: boolean },
+  preconditions: {
+    hasLaunch: boolean;
+    reviewCommitted: boolean;
+    hasAcquired: boolean;
+  },
 ): string {
   if (token === "launched" && preconditions.hasLaunch) return token;
   if (PAST_ACCEPTOR_REVIEW.has(token) && !preconditions.reviewCommitted)
     return "review";
+  if (ACCEPTOR_ROWS_STEPS.has(token) && !preconditions.hasAcquired)
+    return "consent";
   if (token === "launched") return "columns";
   return token;
 }

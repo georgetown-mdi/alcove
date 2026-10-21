@@ -14,6 +14,7 @@ import {
   acceptorLaunchPayload,
 } from "@exchange/acceptorColumnsModel";
 import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
+import { restorablePosition } from "@exchange/stepRestore";
 import { samplePartnerFile } from "@exchange/sampleData";
 
 import type {
@@ -842,28 +843,119 @@ describe("the sample partner file", () => {
     expect(acceptedWith(state, realFile).acceptedSample).toBe(false);
   });
 
-  test("a real file dropped after going back from the admitted sample ends the sample state", () => {
+  function backToConsent(state: AcceptorScreenState): AcceptorScreenState {
+    return acceptorScreenReducer(state, {
+      type: "step-shown",
+      step: "consent",
+      columnsSection: "columns",
+    });
+  }
+
+  function columnsRestorable(state: AcceptorScreenState): boolean {
+    return (
+      restorablePosition("columns", {
+        hasLaunch: state.launched !== undefined,
+        reviewCommitted: true,
+        hasAcquired: state.acquired !== undefined,
+      }) === "columns"
+    );
+  }
+
+  const realCsv: AcceptorAcquiredCsv = {
+    fileName: "mine.csv",
+    sizeBytes: 16,
+    columns: ["first_name"],
+    rawRows: [{ first_name: "Ann" }],
+    rowCount: 1,
+  };
+
+  test("a real file dropped after going back from the admitted sample clears the sample rows", () => {
     const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
       type: "file-selected",
       file: sampleFile,
       sample: true,
     });
-    const sampleAdmitted = acceptedWith(sample, sampleFile);
-    const back = acceptorScreenReducer(sampleAdmitted, {
-      type: "step-shown",
-      step: "consent",
-      columnsSection: "columns",
-    });
+    const back = backToConsent(acceptedWith(sample, sampleFile));
     expect(acceptorSampleInUse(back)).toBe(true);
+    expect(columnsRestorable(back)).toBe(true);
+
     const swapped = acceptorScreenReducer(back, {
       type: "file-selected",
       file: realFile,
     });
+    expect(swapped.acquired).toBeUndefined();
+    expect(swapped.columnsState).toBeUndefined();
+    expect(swapped.acceptedFile).toBeUndefined();
     expect(swapped.acceptedSample).toBe(false);
+    expect(columnsRestorable(swapped)).toBe(false);
     expect(acceptorSampleInUse(swapped)).toBe(false);
-    const realAdmitted = acceptedWith(swapped, realFile);
-    expect(realAdmitted.acceptedSample).toBe(false);
+
+    const realAdmitted = acceptorScreenReducer(swapped, {
+      type: "file-accepted",
+      name: "Sam Rivera",
+      deduplicate: false,
+      csvDelimiter: undefined,
+      positions: [],
+      file: realFile,
+      acquired: realCsv,
+    });
+    expect(realAdmitted.acquired).toBe(realCsv);
+    expect(realAdmitted.acceptedFile).toBe(realFile);
     expect(acceptorSampleInUse(realAdmitted)).toBe(false);
+  });
+
+  test("the sample chosen after going back from an admitted real file clears the real rows", () => {
+    const real = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: realFile,
+    });
+    const back = backToConsent(acceptedWith(real, realFile));
+    expect(acceptorSampleInUse(back)).toBe(false);
+
+    const swapped = acceptorScreenReducer(back, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    expect(swapped.acquired).toBeUndefined();
+    expect(swapped.columnsState).toBeUndefined();
+    expect(columnsRestorable(swapped)).toBe(false);
+    expect(acceptorSampleInUse(swapped)).toBe(true);
+
+    const sampleAdmitted = acceptedWith(swapped, sampleFile);
+    expect(sampleAdmitted.acceptedSample).toBe(true);
+    expect(acceptorSampleInUse(sampleAdmitted)).toBe(true);
+  });
+
+  test("admitted rows, not the chosen file, decide whether the sample is in use", () => {
+    const realAdmitted = acceptedWith(
+      acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+        type: "file-selected",
+        file: realFile,
+      }),
+      realFile,
+    );
+    expect(acceptorSampleInUse({ ...realAdmitted, chosenSample: true })).toBe(
+      false,
+    );
+  });
+
+  test("a launched run keeps its rows when another file is chosen", () => {
+    const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    const launched = acceptorScreenReducer(acceptedWith(sample, sampleFile), {
+      type: "exchange-launched",
+      edits: { metadata: [], standardization: [] },
+    });
+    const swapped = acceptorScreenReducer(backToConsent(launched), {
+      type: "file-selected",
+      file: realFile,
+    });
+    expect(swapped.acquired).toBe(launched.acquired);
+    expect(acceptorSampleInUse(swapped)).toBe(true);
   });
 
   test("Clear returns the step to no file chosen", () => {

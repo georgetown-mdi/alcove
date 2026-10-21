@@ -69,8 +69,15 @@ describe("the record of sample invitations this browser created", () => {
     await recordSampleInvitation(SAMPLE_INVITATION, IN_AN_HOUR, NOW);
     const raw = storage.getItem(SAMPLE_INVITATIONS_STORAGE_KEY) ?? "";
     expect(raw).not.toContain(SAMPLE_INVITATION);
-    expect(raw).toMatch(/"digest":"[0-9a-f]{64}"/);
-    expect(raw).toContain(IN_AN_HOUR);
+    expect(JSON.parse(raw)).toStrictEqual({
+      v: 1,
+      entries: [
+        {
+          digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expires: IN_AN_HOUR,
+        },
+      ],
+    });
   });
 
   test("an expired invitation is not offered, and its entry is dropped", async () => {

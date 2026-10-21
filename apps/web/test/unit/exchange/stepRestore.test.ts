@@ -100,21 +100,31 @@ describe("restorablePosition", () => {
       restorablePosition("launched", {
         hasLaunch: false,
         reviewCommitted: true,
+        hasAcquired: true,
       }),
     ).toBe("columns");
   });
 
   test("keeps launched when the launch is still present", () => {
     for (const reviewCommitted of [true, false])
-      expect(
-        restorablePosition("launched", { hasLaunch: true, reviewCommitted }),
-      ).toBe("launched");
+      for (const hasAcquired of [true, false])
+        expect(
+          restorablePosition("launched", {
+            hasLaunch: true,
+            reviewCommitted,
+            hasAcquired,
+          }),
+        ).toBe("launched");
   });
 
   test("restores a step with intact backing state unchanged", () => {
     for (const token of ["review", "consent", "columns", "columns:cleaning"])
       expect(
-        restorablePosition(token, { hasLaunch: false, reviewCommitted: true }),
+        restorablePosition(token, {
+          hasLaunch: false,
+          reviewCommitted: true,
+          hasAcquired: true,
+        }),
       ).toBe(token);
   });
 
@@ -124,8 +134,33 @@ describe("restorablePosition", () => {
   test("clamps every step before the run to review while the review is uncommitted", () => {
     for (const token of ["consent", "columns", "columns:cleaning", "launched"])
       expect(
-        restorablePosition(token, { hasLaunch: false, reviewCommitted: false }),
+        restorablePosition(token, {
+          hasLaunch: false,
+          reviewCommitted: false,
+          hasAcquired: true,
+        }),
       ).toBe("review");
+  });
+
+  // Choosing another file on the consent step clears the admitted rows, so a
+  // Forward lands back on that step rather than on columns read from the
+  // earlier file.
+  test("clamps every step that renders the rows to consent while none are admitted", () => {
+    for (const token of ["columns", "columns:cleaning", "launched"])
+      expect(
+        restorablePosition(token, {
+          hasLaunch: false,
+          reviewCommitted: true,
+          hasAcquired: false,
+        }),
+      ).toBe("consent");
+    expect(
+      restorablePosition("consent", {
+        hasLaunch: false,
+        reviewCommitted: true,
+        hasAcquired: false,
+      }),
+    ).toBe("consent");
   });
 
   test("passes a token naming no step through for the caller to ignore", () => {
@@ -133,6 +168,7 @@ describe("restorablePosition", () => {
       restorablePosition("retired-step", {
         hasLaunch: false,
         reviewCommitted: false,
+        hasAcquired: false,
       }),
     ).toBe("retired-step");
   });

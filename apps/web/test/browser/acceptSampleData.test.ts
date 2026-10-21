@@ -286,13 +286,91 @@ describe("the sample partner file on the consent step", () => {
     ).toBeNull();
     expect(ledger().textContent).toContain(SAMPLE_NOTICE);
   });
+
+  test("a sample run in flight does not prompt on unload; a real run does", async () => {
+    await reachConsentOnSampleInvitation();
+    await acceptSample();
+    await startRun();
+    await expect
+      .element(page.getByRole("heading", { name: "Exchange in progress" }))
+      .toBeInTheDocument();
+    await flushPendingUpdates();
+    expect(unloadPrompted()).toBe(false);
+    app.unmount();
+    lifecycleCalls.length = 0;
+
+    await reachConsentOnSampleInvitation();
+    await uploadRealFile();
+    await userEvent.click(page.getByRole("checkbox"));
+    await userEvent.fill(page.getByLabelText("Your name"), "Sam Alvarez");
+    await page.getByRole("button", { name: "Accept and continue" }).click();
+    await startRun();
+    await vi.waitFor(() => expect(unloadPrompted()).toBe(true));
+  });
+
+  test("a real file dropped after going back from the admitted sample needs a new accept", async () => {
+    await reachConsentOnSampleInvitation();
+    await acceptSample();
+
+    window.history.back();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    await uploadRealFile();
+    await expect.element(page.getByText("mine.csv")).toBeInTheDocument();
+
+    // Forward does not reach the columns read from the sample.
+    const forwarded = new Promise((resolve) =>
+      window.addEventListener("popstate", resolve, { once: true }),
+    );
+    window.history.forward();
+    await forwarded;
+    await flushPendingUpdates();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    expect(
+      page.getByRole("heading", { name: "Confirm your columns" }).query(),
+    ).toBeNull();
+    expect(ledger().textContent).not.toContain(SAMPLE_NOTICE);
+
+    await page.getByRole("button", { name: "Accept and continue" }).click();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+    expect(
+      page
+        .getByRole("combobox", {
+          name: `How column ${isolatedColumnName("dob")} is used`,
+          exact: true,
+        })
+        .query(),
+    ).toBeNull();
+    expect(ledger().textContent).not.toContain(SAMPLE_NOTICE);
+  });
 });
+
+/** Drop a real two-column file on the consent step's dropzone. */
+async function uploadRealFile() {
+  const fileInput = document.querySelector('input[type="file"]');
+  await userEvent.upload(
+    page.elementLocator(fileInput as HTMLElement),
+    new File(["first_name,last_name\nAnn,Lee\n"], "mine.csv", {
+      type: "text/csv",
+    }),
+  );
+}
+
+/** Start the exchange from the columns step; the run stays in flight. */
+async function startRun() {
+  await page.getByRole("button", { name: "Start the exchange" }).click();
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
+}
 
 /** Start the exchange from the columns step and complete its run with a
  * rotated secret, the condition the recurring offer appears on. */
 async function completeRun() {
-  await page.getByRole("button", { name: "Start the exchange" }).click();
-  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
+  await startRun();
   const run = lifecycleCall(0);
   run.onStages(
     stagesFor(

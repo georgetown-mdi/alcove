@@ -168,9 +168,8 @@ export interface AcceptorScreenState {
   file: File | undefined;
   /** Whether the chosen file is the sample partner file. */
   chosenSample: boolean;
-  /** Whether the file the consent gate last admitted was the sample partner
-   * file: the rows the columns step and the run hold. A real file chosen in
-   * its place clears it. */
+  /** Whether the rows the consent gate admitted (`acquired`) came from the
+   * sample partner file. Cleared with them. */
   acceptedSample: boolean;
   /** The original file whose parse produced `acquired`, captured at the same commit
    * so the server-job path submits the exact bytes the browser path parsed (no
@@ -443,20 +442,18 @@ export function acceptOffersAllowedRelays(
 
 /**
  * Whether the acceptor is working on the sample partner file, which shows the
- * sample notice and disarms the unload prompts: the launched rows once a run
- * exists, and before that either the chosen file or the rows the consent gate
- * admitted, since browser history can return to the columns step without a
- * new accept while no other file is chosen.
+ * sample notice and disarms the unload prompts: the admitted rows decide once
+ * the consent gate has admitted any, and the chosen file only before that.
  */
 export function acceptorSampleInUse(
   state: Pick<
     AcceptorScreenState,
-    "launched" | "chosenSample" | "acceptedSample"
+    "launched" | "acquired" | "chosenSample" | "acceptedSample"
   >,
 ): boolean {
-  return state.launched !== undefined
+  return state.launched !== undefined || state.acquired !== undefined
     ? state.acceptedSample
-    : state.chosenSample || state.acceptedSample;
+    : state.chosenSample;
 }
 
 /** The column seed for `columns` under the decoded invitation's algorithm. With
@@ -534,9 +531,17 @@ export function acceptorScreenReducer(
         fieldErrors: { ...state.fieldErrors, file: false },
         file: action.file,
         chosenSample: action.sample === true,
-        // A real file supersedes admitted sample rows: Accept and continue
-        // must pass again before any rows are used.
-        acceptedSample: action.sample === true && state.acceptedSample,
+        // Rows admitted from an earlier file go, so Accept and continue must
+        // pass again before any rows are used. A launched run keeps the rows
+        // it holds.
+        ...(state.acquired !== undefined && state.launched === undefined
+          ? {
+              acquired: undefined,
+              columnsState: undefined,
+              acceptedFile: undefined,
+              acceptedSample: false,
+            }
+          : {}),
       };
     case "sample-cleared":
       return {
@@ -582,6 +587,7 @@ export function acceptorScreenReducer(
         ...state,
         consoleSource: undefined,
         acquired: undefined,
+        acceptedSample: false,
         columnsState: undefined,
         sanitizedColumnPositions: [],
         parseAlert: undefined,
