@@ -13,8 +13,10 @@
 - - -> **Where the start goes.**
 - - -> The inviter sends its start on one paired relay: the first the partner's start arrived on, else the first paired in the run's list order, else the first to pair.
 - - -> If that relay fails, it sends its start on the next by the same rule.
+- - -> If that relay's pairing ends while the partner's start waits on another relay, it closes that relay, as the relay client closes an unused socket, and sends its start on the one holding the partner's start.
+- - -> While no other relay holds the partner's start, its start stays on the relay whose pairing ended, which may pair again.
 - - -> The acceptor sends its start on every relay that is paired or pairs later, and keeps the one the inviter's start arrives on.
-- - -> Only one inviter start exists, so both parties end on one relay.
+- - -> Only one relay at a time holds the inviter's start, so both parties end on one relay.
 - - -> **WebRTC after the start.**
 - - -> Sending the start does not stop the WebRTC wait: its attempts go on until the partner's start arrives, which abandons it at once.
 - - -> A WebRTC wait that fails once this side has sent its start leaves the exchange to the relays.

@@ -8,6 +8,7 @@ import {
   setLogLevel,
 } from "@alcove/core";
 
+import { RELAY_ABANDON_CLOSE_CODE } from "../../../src/connection/webrtc/websocketRelayConnection";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 
 import type { MessageConnection, RendezvousRole } from "@alcove/core";
@@ -103,10 +104,14 @@ class FakeRelay implements ParkedWebSocketRelay {
     return this.starting.promise;
   }
 
+  /** The code the real relay closes with, by {@link ParkedWebSocketRelay.close}'s contract. */
+  closeCode: number | undefined;
+
   close(): void {
     if (this.opened || this.closed || this.failure !== undefined) return;
     this.closed = true;
     this.closeCalls += 1;
+    this.closeCode = this.startSent ? RELAY_ABANDON_CLOSE_CODE : 1000;
     this.listeners.clear();
     this.starting?.reject(new ConnectionError("stopped", "closed"));
   }
@@ -117,6 +122,11 @@ class FakeRelay implements ParkedWebSocketRelay {
 
   get isClosed(): boolean {
     return this.closed;
+  }
+
+  /** Whether this side's start is out on this relay and the relay may still carry it. */
+  get holdsStart(): boolean {
+    return this.startSent && !this.closed && this.failure === undefined;
   }
 
   pair(): void {
@@ -218,6 +228,24 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function relays(...urls: string[]): FakeRelay[] {
   return urls.map((url) => new FakeRelay(`wss://${url}.test/relay`));
+}
+
+/**
+ * Record, at each start sent on one of `group`, how many others of `group`
+ * already hold this side's start.
+ */
+function recordStartsHeldElsewhere(group: FakeRelay[]): number[] {
+  const held: number[] = [];
+  for (const relay of group) {
+    const start = relay.start.bind(relay);
+    relay.start = () => {
+      held.push(
+        group.filter((other) => other !== relay && other.holdsStart).length,
+      );
+      return start();
+    };
+  }
+  return held;
 }
 
 test("a channel that opens first carries the exchange and closes every relay unused", async () => {
@@ -407,7 +435,7 @@ test("an abandoned WebRTC wait with every relay failed fails with the relay's re
   });
 });
 
-test("the partner leaving a parked pairing keeps the inviter's start on that relay", async () => {
+test("the partner leaving a parked pairing, with no start on another relay, keeps the inviter's start on that relay", async () => {
   const [a, b] = relays("a", "b");
   a.pair();
   b.pair();
@@ -415,11 +443,53 @@ test("the partner leaving a parked pairing keeps the inviter's start on that rel
   webRtc.pathFails();
   await settle();
   a.partnerLeaves();
+  await settle();
   expect([a.startSent, b.startSent]).toEqual([true, false]);
+  expect(a.isClosed).toBe(false);
   a.pair();
   a.partnerStarts();
   expect((await outcome).path).toEqual({ kind: "websocket-relay", url: a.url });
   expect(a.startCalls).toBe(1);
+});
+
+test("the partner leaving the inviter's relay and starting on another moves the inviter's start there, closing the first", async () => {
+  const [a, b] = relays("a", "b");
+  a.pair();
+  b.pair();
+  const { outcome, webRtc } = race("inviter", [a, b]);
+  webRtc.pathFails();
+  await settle();
+  a.partnerLeaves();
+  b.partnerStarts();
+  expect(a.isClosed).toBe(true);
+  expect(a.closeCode).toBe(RELAY_ABANDON_CLOSE_CODE);
+  expect(b.startSent).toBe(true);
+  const result = await outcome;
+  expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
+  expect(result.connection).toBe(b.connection);
+  expect(a.startCalls).toBe(1);
+});
+
+test("the inviter's start is never held by two relays at once", async () => {
+  const [a, b, c] = relays("a", "b", "c");
+  const held = recordStartsHeldElsewhere([a, b, c]);
+  a.pair();
+  b.pair();
+  c.pair();
+  const { outcome, webRtc } = race("inviter", [a, b, c]);
+  webRtc.pathFails();
+  await settle();
+  a.partnerLeaves();
+  await settle();
+  a.pair();
+  a.partnerLeaves();
+  await settle();
+  expect([a.startSent, b.startSent, c.startSent]).toEqual([true, false, false]);
+  c.partnerStarts();
+  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: c.url });
+  expect([a.isClosed, b.isClosed]).toEqual([true, true]);
+  expect([a.startSent, b.startSent]).toEqual([true, false]);
+  expect(held).toEqual([0, 0]);
 });
 
 test("a partner that left before the start gets the acceptor's start once it pairs again", async () => {

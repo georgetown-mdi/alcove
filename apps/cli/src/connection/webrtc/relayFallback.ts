@@ -62,9 +62,12 @@ export interface RelayFallbackRace {
  * to open, closing every other.
  *
  * This side sends its start on the first WebRTC path failure or on the
- * partner's start on any relay, which also abandons WebRTC. An inviter sends it on one paired relay, the first the
- * partner's start arrived on or else the first paired in list order; an
- * acceptor sends it on every relay that is or becomes paired.
+ * partner's start on any relay, which also abandons WebRTC. An inviter sends
+ * it on one paired relay, the first the partner's start arrived on or else
+ * the first paired in list order, and moves it to the next by that rule when
+ * that relay fails, or when its pairing has ended and the partner's start
+ * waits on another relay, closing that relay first; an acceptor sends it on
+ * every relay that is or becomes paired.
  *
  * @throws the WebRTC failure when it is not a path failure or is a
  *   certificate that did not verify, or when every relay has failed too; a
@@ -88,6 +91,7 @@ class FallbackRace {
   private abandoned = false;
   private chosen: ParkedWebSocketRelay | undefined;
   private readonly started = new Set<ParkedWebSocketRelay>();
+  private readonly dropped = new Set<ParkedWebSocketRelay>();
   private readonly abandon = new AbortController();
   private readonly removeListeners: Array<() => void> = [];
   private resolve!: (outcome: RelayFallbackOutcome) => void;
@@ -149,21 +153,42 @@ class FallbackRace {
   /** Send this side's start wherever its role sends it now. */
   private advance(): void {
     if (this.settled || !this.startSent) return;
-    const live = this.race.relays.filter(
-      (relay) => relay.failure === undefined,
-    );
+    const live = this.race.relays.filter((relay) => this.isLive(relay));
     if (this.race.role === "acceptor") {
       for (const relay of live)
         if (relay.paired && !this.started.has(relay)) this.startOn(relay);
       return;
     }
-    if (this.chosen !== undefined && this.chosen.failure === undefined) return;
+    const chosen = this.chosen;
+    if (chosen !== undefined && this.isLive(chosen)) {
+      if (chosen.paired) return;
+      const partnerStart = live.find(
+        (relay) => relay !== chosen && relay.partnerStarted,
+      );
+      if (partnerStart === undefined) return;
+      // A start sent into a pairing that has ended reaches nobody, and the
+      // chosen relay would send it again on re-pairing: close it first, so
+      // one live relay at a time holds the inviter's start.
+      this.dropped.add(chosen);
+      chosen.close();
+      log.debug(
+        "the exchange partner left the WebSocket relay at " +
+          `${redactAndSanitizeForDisplay(chosen.url)} and started on the ` +
+          `one at ${redactAndSanitizeForDisplay(partnerStart.url)}, so this ` +
+          "side starts there",
+      );
+    }
     const pick =
       live.find((relay) => relay.partnerStarted) ??
       live.find((relay) => relay.paired);
     if (pick === undefined) return;
     this.chosen = pick;
     this.startOn(pick);
+  }
+
+  /** Whether a relay can still carry the exchange: not failed, and not closed by this race. */
+  private isLive(relay: ParkedWebSocketRelay): boolean {
+    return relay.failure === undefined && !this.dropped.has(relay);
   }
 
   private startOn(relay: ParkedWebSocketRelay): void {
@@ -175,7 +200,7 @@ class FallbackRace {
   }
 
   private onRelayChange(relay: ParkedWebSocketRelay): void {
-    if (this.settled) return;
+    if (this.settled || this.dropped.has(relay)) return;
     if (relay.partnerStarted && relay.failure === undefined) {
       this.abandonWebRtc();
       this.sendStart();
@@ -252,7 +277,7 @@ class FallbackRace {
    */
   private endIfExhausted(): void {
     if (this.settled || !this.webRtcEnded) return;
-    if (this.race.relays.some((relay) => relay.failure === undefined)) return;
+    if (this.race.relays.some((relay) => this.isLive(relay))) return;
     const refusals = this.race.relays.flatMap((relay) =>
       relay.failure === undefined ? [] : [relay.failure],
     );
