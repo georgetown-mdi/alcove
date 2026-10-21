@@ -88,6 +88,44 @@ describe("the record of sample invitations this browser created", () => {
     expect(raw).not.toContain(IN_AN_HOUR);
   });
 
+  test("an accept-path lookup drops expired entries from storage", async () => {
+    await recordSampleInvitation(SAMPLE_INVITATION, IN_AN_HOUR, NOW);
+    await recordSampleInvitation(
+      "another-sample",
+      "2026-10-21T15:00:00.000Z",
+      NOW,
+    );
+    const later = new Date("2026-10-21T14:00:00.000Z");
+    expect(await createdFromSampleInThisBrowser(REAL_INVITATION, later)).toBe(
+      false,
+    );
+    const raw = storage.getItem(SAMPLE_INVITATIONS_STORAGE_KEY) ?? "";
+    expect(raw).not.toContain(IN_AN_HOUR);
+    expect(raw).toContain("2026-10-21T15:00:00.000Z");
+
+    const muchLater = new Date("2026-10-21T16:00:00.000Z");
+    expect(
+      await createdFromSampleInThisBrowser("another-sample", muchLater),
+    ).toBe(false);
+    expect(storage.getItem(SAMPLE_INVITATIONS_STORAGE_KEY)).toBeNull();
+  });
+
+  test("a failed write-back does not change a lookup's answer", async () => {
+    await recordSampleInvitation(SAMPLE_INVITATION, IN_AN_HOUR, NOW);
+    await recordSampleInvitation(
+      "another-sample",
+      "2026-10-21T15:00:00.000Z",
+      NOW,
+    );
+    storage.setItem = () => {
+      throw new Error("quota exceeded");
+    };
+    const later = new Date("2026-10-21T14:00:00.000Z");
+    expect(await createdFromSampleInThisBrowser("another-sample", later)).toBe(
+      true,
+    );
+  });
+
   test("keeps the eight most recent, dropping the oldest", async () => {
     for (let index = 0; index < 9; index += 1)
       await recordSampleInvitation(`sample-${index}`, IN_AN_HOUR, NOW);

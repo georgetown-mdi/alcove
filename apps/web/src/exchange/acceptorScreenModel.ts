@@ -169,7 +169,8 @@ export interface AcceptorScreenState {
   /** Whether the chosen file is the sample partner file. */
   chosenSample: boolean;
   /** Whether the file the consent gate last admitted was the sample partner
-   * file: the rows the columns step and the run hold. */
+   * file: the rows the columns step and the run hold. A real file chosen in
+   * its place clears it. */
   acceptedSample: boolean;
   /** The original file whose parse produced `acquired`, captured at the same commit
    * so the server-job path submits the exact bytes the browser path parsed (no
@@ -445,7 +446,7 @@ export function acceptOffersAllowedRelays(
  * sample notice and disarms the unload prompts: the launched rows once a run
  * exists, and before that either the chosen file or the rows the consent gate
  * admitted, since browser history can return to the columns step without a
- * new accept.
+ * new accept while no other file is chosen.
  */
 export function acceptorSampleInUse(
   state: Pick<
@@ -533,6 +534,9 @@ export function acceptorScreenReducer(
         fieldErrors: { ...state.fieldErrors, file: false },
         file: action.file,
         chosenSample: action.sample === true,
+        // A real file supersedes admitted sample rows: Accept and continue
+        // must pass again before any rows are used.
+        acceptedSample: action.sample === true && state.acceptedSample,
       };
     case "sample-cleared":
       return {

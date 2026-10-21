@@ -842,19 +842,25 @@ describe("the sample partner file", () => {
     expect(acceptedWith(state, realFile).acceptedSample).toBe(false);
   });
 
-  test("a real file admitted after the sample was admits real rows", () => {
+  test("a real file dropped after going back from the admitted sample ends the sample state", () => {
     const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
       type: "file-selected",
       file: sampleFile,
       sample: true,
     });
     const sampleAdmitted = acceptedWith(sample, sampleFile);
-    const swapped = acceptorScreenReducer(sampleAdmitted, {
+    const back = acceptorScreenReducer(sampleAdmitted, {
+      type: "step-shown",
+      step: "consent",
+      columnsSection: "columns",
+    });
+    expect(acceptorSampleInUse(back)).toBe(true);
+    const swapped = acceptorScreenReducer(back, {
       type: "file-selected",
       file: realFile,
     });
-    // Until the gate passes again the columns step still holds the sample rows.
-    expect(acceptorSampleInUse(swapped)).toBe(true);
+    expect(swapped.acceptedSample).toBe(false);
+    expect(acceptorSampleInUse(swapped)).toBe(false);
     const realAdmitted = acceptedWith(swapped, realFile);
     expect(realAdmitted.acceptedSample).toBe(false);
     expect(acceptorSampleInUse(realAdmitted)).toBe(false);

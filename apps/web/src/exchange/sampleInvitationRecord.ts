@@ -70,7 +70,8 @@ function isEntry(value: unknown): value is Entry {
 }
 
 /** The unexpired entries kept, oldest first; empty where none are kept or the
- * value does not read. */
+ * value does not read. Where the stored list holds any other entry, the kept
+ * ones are written back in its place. */
 function readEntries(now: Date): Array<Entry> {
   let raw: string | null;
   try {
@@ -88,10 +89,12 @@ function readEntries(now: Date): Array<Entry> {
   if (parsed === null || typeof parsed !== "object") return [];
   const { v, entries } = parsed as Record<string, unknown>;
   if (v !== RECORD_VERSION || !Array.isArray(entries)) return [];
-  return entries
+  const kept = entries
     .filter(isEntry)
     .filter((entry) => invitationUsable(entry.expires, now))
     .slice(-MAX_ENTRIES);
+  if (kept.length !== entries.length) writeEntries(kept);
+  return kept;
 }
 
 function writeEntries(entries: Array<Entry>): void {
