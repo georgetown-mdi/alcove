@@ -28,3 +28,11 @@ export function sampleInviterFile(): File {
     type: "text/csv",
   });
 }
+
+/** Build the in-memory {@link File} the acceptor's sample choice selects: the
+ * partner sample CSV, passed through the same intake as a dropped file. */
+export function samplePartnerFile(): File {
+  return new File([SAMPLE_PARTNER_CSV], SAMPLE_PARTNER_FILE_NAME, {
+    type: "text/csv",
+  });
+}

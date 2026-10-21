@@ -23,6 +23,11 @@ import { minimalPreparedExchange } from "@alcove/core/testing";
 
 import { STEP_STATE_KEY } from "@exchange/stepHistory";
 
+import {
+  SAMPLE_INVITATIONS_STORAGE_KEY,
+  createdFromSampleInThisBrowser,
+} from "@exchange/sampleInvitationRecord";
+
 import { Lobby } from "@exchange/Lobby";
 
 import { InvitationFileError } from "@psi/invitation";
@@ -1198,8 +1203,20 @@ describe("inviter screen", () => {
       expect(
         page.getByRole("button", { name: "download the partner CSV" }).query(),
       ).toBeNull();
+
+      // The mint is noted in this browser, so the accept screen in another
+      // of its tabs offers the sample partner file for this invitation.
+      await page.getByRole("button", { name: "Show full link" }).click();
+      const deepLink = (
+        document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
+      ).value;
+      const encoded = deepLink.slice(deepLink.indexOf("#") + 1);
+      await vi.waitFor(async () =>
+        expect(await createdFromSampleInThisBrowser(encoded)).toBe(true),
+      );
     } finally {
       window.history.replaceState(window.history.state, "", before);
+      window.localStorage.removeItem(SAMPLE_INVITATIONS_STORAGE_KEY);
     }
   });
 

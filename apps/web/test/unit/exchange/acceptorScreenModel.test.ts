@@ -5,6 +5,7 @@ import { setColumnDisclosure } from "@psi/metadataEditing";
 import {
   ACCEPTOR_SCREEN_INITIAL,
   acceptOffersAllowedRelays,
+  acceptorSampleInUse,
   acceptorScreenReducer,
 } from "@exchange/acceptorScreenModel";
 import {
@@ -13,6 +14,7 @@ import {
   acceptorLaunchPayload,
 } from "@exchange/acceptorColumnsModel";
 import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
+import { samplePartnerFile } from "@exchange/sampleData";
 
 import type {
   AcceptorScreenAction,
@@ -766,6 +768,125 @@ describe("the managed-exchange offer", () => {
       type: "manage-offer-deposited",
     });
     expect(state.manageOffer).toEqual({ status: "deposited" });
+  });
+});
+
+describe("the sample partner file", () => {
+  const sampleFile = samplePartnerFile();
+  const realFile = new File(["first_name\nAnn\n"], "mine.csv", {
+    type: "text/csv",
+  });
+
+  function acceptedWith(
+    state: AcceptorScreenState,
+    file: File,
+  ): AcceptorScreenState {
+    return acceptorScreenReducer(state, {
+      type: "file-accepted",
+      name: "Sam Rivera",
+      deduplicate: false,
+      csvDelimiter: undefined,
+      positions: [],
+      file,
+      acquired: csv,
+    });
+  }
+
+  test("is offered only where the decode says this browser created the invitation from it", () => {
+    const decoded = (sampleOffered?: boolean) =>
+      acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+        type: "invitation-decoded",
+        invitation,
+        rendezvous: { configured: false },
+        ...(sampleOffered !== undefined ? { sampleOffered } : {}),
+      });
+    expect(decoded(true).sampleOffered).toBe(true);
+    expect(decoded(false).sampleOffered).toBe(false);
+    expect(decoded().sampleOffered).toBe(false);
+  });
+
+  test("chosen, it is the chosen file the consent gate admits", () => {
+    const refused = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "consent-refused",
+      errors: { file: true },
+    });
+    const state = acceptorScreenReducer(refused, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    expect(state.file).toBe(sampleFile);
+    expect(state.chosenSample).toBe(true);
+    expect(state.fieldErrors.file).toBe(false);
+    expect(acceptorSampleInUse(state)).toBe(true);
+
+    const admitted = acceptedWith(state, sampleFile);
+    expect(admitted.acceptedFile).toBe(sampleFile);
+    expect(admitted.acceptedSample).toBe(true);
+    expect(admitted.columnsState).toBeDefined();
+  });
+
+  test("a real file chosen in its place clears the sample state", () => {
+    const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    const state = acceptorScreenReducer(sample, {
+      type: "file-selected",
+      file: realFile,
+    });
+    expect(state.file).toBe(realFile);
+    expect(state.chosenSample).toBe(false);
+    expect(acceptorSampleInUse(state)).toBe(false);
+    expect(acceptedWith(state, realFile).acceptedSample).toBe(false);
+  });
+
+  test("a real file admitted after the sample was admits real rows", () => {
+    const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    const sampleAdmitted = acceptedWith(sample, sampleFile);
+    const swapped = acceptorScreenReducer(sampleAdmitted, {
+      type: "file-selected",
+      file: realFile,
+    });
+    // Until the gate passes again the columns step still holds the sample rows.
+    expect(acceptorSampleInUse(swapped)).toBe(true);
+    const realAdmitted = acceptedWith(swapped, realFile);
+    expect(realAdmitted.acceptedSample).toBe(false);
+    expect(acceptorSampleInUse(realAdmitted)).toBe(false);
+  });
+
+  test("Clear returns the step to no file chosen", () => {
+    const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    const state = acceptorScreenReducer(sample, { type: "sample-cleared" });
+    expect(state.file).toBeUndefined();
+    expect(state.chosenSample).toBe(false);
+    expect(acceptorSampleInUse(state)).toBe(false);
+  });
+
+  test("a launched run is a sample run only where the sample rows were admitted", () => {
+    const sample = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-selected",
+      file: sampleFile,
+      sample: true,
+    });
+    const launched = (state: AcceptorScreenState) =>
+      acceptorScreenReducer(state, {
+        type: "exchange-launched",
+        edits: { metadata: [], standardization: [] },
+      });
+    expect(
+      acceptorSampleInUse(launched(acceptedWith(sample, sampleFile))),
+    ).toBe(true);
+    expect(acceptorSampleInUse(launched(accepted()))).toBe(false);
   });
 });
 

@@ -160,9 +160,17 @@ export interface AcceptorScreenState {
    * control stays editable after the file is accepted, and a later choice did
    * not read the rows the run holds. Undefined reads and writes commas. */
   committedCsvDelimiter: string | undefined;
+  /** Whether the consent step offers the sample partner file: only for an
+   * invitation this browser created from the sample data. */
+  sampleOffered: boolean;
   /** The chosen file, held as an unparsed handle until "Accept and continue"
    * fires and passes the gate. */
   file: File | undefined;
+  /** Whether the chosen file is the sample partner file. */
+  chosenSample: boolean;
+  /** Whether the file the consent gate last admitted was the sample partner
+   * file: the rows the columns step and the run hold. */
+  acceptedSample: boolean;
   /** The original file whose parse produced `acquired`, captured at the same commit
    * so the server-job path submits the exact bytes the browser path parsed (no
    * re-serialization of rawRows). Fixed alongside `acquired` and the committed name. */
@@ -243,7 +251,10 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   allowedRelaysChangedAtStart: false,
   committedAllowedRelays: undefined,
   committedCsvDelimiter: undefined,
+  sampleOffered: false,
   file: undefined,
+  chosenSample: false,
+  acceptedSample: false,
   acceptedFile: undefined,
   consoleSource: undefined,
   acquired: undefined,
@@ -277,6 +288,7 @@ export type AcceptorScreenAction =
       invitation: AcceptableInvitation;
       rendezvous: JobRendezvousConfig;
       heldSignalingServer?: SignalingServerProjection | null;
+      sampleOffered?: boolean;
     }
   /** The work column shows a step and, on the columns step, its sub-section. The
    * browser's own history push is the screen's. */
@@ -303,9 +315,12 @@ export type AcceptorScreenAction =
   /** Start met Allowed relays edited since the review step's Continue, so the
    * launch waits for that step to commit them again. */
   | { type: "start-held-for-allowed-relays" }
-  /** A file was chosen from the dropzone: the prior read's refusals and stripped
-   * positions go with it, since both describe a file this one replaces. */
-  | { type: "file-selected"; file: File }
+  /** A file was chosen from the dropzone, or the sample partner file was
+   * (`sample`): the prior read's refusals and stripped positions go with it,
+   * since both describe a file this one replaces. */
+  | { type: "file-selected"; file: File; sample?: true }
+  /** The sample notice's Clear: no file is chosen. */
+  | { type: "sample-cleared" }
   /** The dropzone turned a file away over its size or type. */
   | { type: "file-rejected"; message: string }
   /** A read left a column with no name at all: refused, and the positions it
@@ -425,6 +440,24 @@ export function acceptOffersAllowedRelays(
   );
 }
 
+/**
+ * Whether the acceptor is working on the sample partner file, which shows the
+ * sample notice and disarms the unload prompts: the launched rows once a run
+ * exists, and before that either the chosen file or the rows the consent gate
+ * admitted, since browser history can return to the columns step without a
+ * new accept.
+ */
+export function acceptorSampleInUse(
+  state: Pick<
+    AcceptorScreenState,
+    "launched" | "chosenSample" | "acceptedSample"
+  >,
+): boolean {
+  return state.launched !== undefined
+    ? state.acceptedSample
+    : state.chosenSample || state.acceptedSample;
+}
+
 /** The column seed for `columns` under the decoded invitation's algorithm. With
  * no decoded invitation it seeds as count-only, so no column starts sent. */
 function seedColumns(
@@ -452,6 +485,7 @@ export function acceptorScreenReducer(
         ...state,
         rendezvous: action.rendezvous,
         heldSignalingServer: action.heldSignalingServer ?? null,
+        sampleOffered: action.sampleOffered === true,
         decode: { status: "ready", invitation: action.invitation },
       };
     case "step-shown":
@@ -498,6 +532,16 @@ export function acceptorScreenReducer(
         sanitizedColumnPositions: [],
         fieldErrors: { ...state.fieldErrors, file: false },
         file: action.file,
+        chosenSample: action.sample === true,
+      };
+    case "sample-cleared":
+      return {
+        ...state,
+        rejectionMessage: undefined,
+        parseAlert: undefined,
+        sanitizedColumnPositions: [],
+        file: undefined,
+        chosenSample: false,
       };
     case "file-rejected":
       return { ...state, rejectionMessage: action.message };
@@ -564,6 +608,7 @@ export function acceptorScreenReducer(
         committedDeduplicate: action.deduplicate,
         committedCsvDelimiter: action.csvDelimiter,
         acceptedFile: action.file,
+        acceptedSample: state.chosenSample && state.file === action.file,
         acquired: action.acquired,
         columnsState: seedColumns(state, action.acquired.columns),
       };
