@@ -365,10 +365,10 @@ describe("quick path", () => {
     ).toHaveTextContent(
       "Alcove encrypts the fields you match on and compares " +
         "them using a method called private set intersection, so neither " +
-        "of you sees the other's records that don't match. Data is " +
-        "encrypted before leaving your machine. A coordination server " +
-        "only helps the two browsers find " +
-        "each other to establish a secure peer-to-peer connection.",
+        "of you sees the other's records that don't match. Your file is " +
+        "never uploaded to our servers. What is sent to your partner is " +
+        "encrypted first. A coordination server helps the two sides find " +
+        "each other. It never sees your data.",
     );
 
     const setUpLink = Array.from(document.querySelectorAll("a")).find(
@@ -1122,8 +1122,7 @@ describe("inviter screen", () => {
   });
 
   test("?recurring=1 opens on the line saying where saving happens; a plain visit does not", async () => {
-    const note =
-      "You can save this exchange to run again when you share the invitation.";
+    const note = "You can save this exchange to run again once it finishes.";
     const before = window.location.href;
     window.history.replaceState(
       window.history.state,

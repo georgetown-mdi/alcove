@@ -64,7 +64,7 @@ export interface ClientConfig {
   LOG_LEVEL: (typeof LOG_LEVELS)[number];
   /**
    * `hosted` (the default) is the public browser-only deployment: the server
-   * never receives a file, so the browser-only file-assurance copy holds and
+   * never receives a file, so the hosted file-assurance copy holds and
    * every filedrop/sftp transport saves an exchange file. A deployment whose
    * server legitimately runs exchanges (the console) opts in via
    * `VITE_DEPLOYMENT_PROFILE=console`, which drops that assurance copy and

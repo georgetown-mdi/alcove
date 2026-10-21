@@ -24,7 +24,11 @@ import styles from "@styles/app.module.css";
 
 import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
 import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
+import { HOSTED_FILE_ASSURANCE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
+
+/** The paste card's heading, which names the invitation field. */
+const PASTE_INVITATION_HEADING_ID = "paste-invitation-heading";
 
 /**
  * The quick path's screen: two primary actions side by side -- invite a partner to a
@@ -137,11 +141,13 @@ export function Lobby() {
             </p>
           </div>
           <div className={styles.actionCard}>
-            <h3>Have an invitation? Paste it here</h3>
+            <h3 id={PASTE_INVITATION_HEADING_ID}>
+              Have an invitation? Paste it here
+            </h3>
             <Textarea
               id={PASTE_INVITATION_FIELD_ID}
               ref={invitationFieldRef}
-              aria-label="Invitation"
+              aria-labelledby={PASTE_INVITATION_HEADING_ID}
               placeholder="Paste the invitation link or text"
               rows={2}
               value={invitation}
@@ -160,18 +166,18 @@ export function Lobby() {
             </p>
           </div>
           {/* The console's third path: a direct exchange the two parties arranged
-              out of band (a shared server, no invitation). Console-only -- it drives
-              the console's job API, which a hosted deployment does not run. */}
+              out of band (a shared server or folder, no invitation). Console-only --
+              it drives the console's job API, which a hosted deployment does not run. */}
           {isConsoleBuild() && (
             <div className={styles.actionCard}>
-              <h3>Enter server information</h3>
+              <h3>Skip the invitation</h3>
               <p className={`${styles.small} ${styles.sub}`}>
-                You and your partner already have a server you will use. No
-                invitation needed.
+                Use an agreed server or shared folder, and run it together with
+                your partner.
               </p>
               <p>
                 <Button component={Link} to="/direct" variant="outline">
-                  Run a quick exchange
+                  Start
                 </Button>
               </p>
             </div>
@@ -212,6 +218,7 @@ export function Lobby() {
                 rel="noreferrer"
               >
                 public Alcove web app
+                <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
               </Anchor>{" "}
               with the second file.
             </>
@@ -237,10 +244,10 @@ export function Lobby() {
           <p>
             {isConsoleBuild()
               ? "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
-              : "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. Data is encrypted before leaving your machine. A coordination server only helps the two browsers find each other to establish a secure peer-to-peer connection."}
+              : `Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. ${HOSTED_FILE_ASSURANCE} A coordination server helps the two sides find each other. It never sees your data.`}
           </p>
         </div>
-        <h2 className={styles.lobbyHelpHeading}>Other connection options</h2>
+        <h2 className={styles.lobbyHelpHeading}>More options</h2>
         {!isConsoleBuild() && !isInstalledRuntime() && (
           <p className={`${styles.sub} ${styles.small}`}>
             For SFTP, a shared folder, or scheduled runs on your own servers,
@@ -278,7 +285,7 @@ export function Lobby() {
         <p className={`${styles.sub} ${styles.small}`}>
           {isConsoleBuild()
             ? "If using peer-to-peer, some workplace networks may block the connection. Your IT team can give you a relay server address to enter in "
-            : "Some workplace networks block the default peer-to-peer approach. Your IT team can give you a relay server address to enter in "}
+            : "If you can't connect to your partner, your IT team can give you a relay server address to enter in "}
           <Anchor inherit component={Link} to="/relay">
             relay settings
           </Anchor>

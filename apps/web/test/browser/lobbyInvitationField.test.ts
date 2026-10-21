@@ -132,6 +132,17 @@ describe.each([
   { buildName: "hosted", isConsole: false },
   { buildName: "console", isConsole: true },
 ])("lobby invitation field ($buildName build)", ({ isConsole }) => {
+  test("the field is named by its card heading", async () => {
+    build.console = isConsole;
+    app.render(createElement(Lobby));
+    const field = page.getByRole("textbox", {
+      name: "Have an invitation? Paste it here",
+      exact: true,
+    });
+    await expect.element(field).toBeInTheDocument();
+    expect(field.element().id).toBe(PASTE_INVITATION_FIELD_ID);
+  });
+
   test("a pasted full-length invitation link leaves the field and page size unchanged", async () => {
     build.console = isConsole;
     app.render(createElement(Lobby));
@@ -170,16 +181,15 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     await expect
       .element(
         page.getByText(
-          "Match records with a partner using data that remains encrypted. " +
-            "Then exchange the fields you select for the records you have " +
-            "in common.",
+          "Find records you have in common while keeping PII private, then " +
+            "exchange data about those records.",
           { exact: true },
         ),
       )
       .toBeInTheDocument();
     await expect.element(pointer()).toHaveTextContent(line);
     const heading = page.getByRole("heading", {
-      name: "Other connection options",
+      name: "More options",
     });
     await expect.element(heading).toBeInTheDocument();
     const headingEl = heading.element();
@@ -222,7 +232,7 @@ describe("lobby pointer to the other ways to use Alcove", () => {
 describe("the site footer", () => {
   const builtBy =
     "Alcove is open-source software built by Georgetown's Massive Data " +
-    "Institute.";
+    "Institute (opens in a new tab).";
 
   test.each([
     ["hosted", false],
@@ -235,7 +245,7 @@ describe("the site footer", () => {
       const footer = page.getByRole("contentinfo");
       await expect.element(footer.getByText(builtBy)).toBeInTheDocument();
       const institute = footer.getByRole("link", {
-        name: "Georgetown's Massive Data Institute",
+        name: "Georgetown's Massive Data Institute (opens in a new tab)",
         exact: true,
       });
       await expect
@@ -250,12 +260,15 @@ describe("the site footer", () => {
         ["Support", `${repository}/blob/main/SUPPORT.md`],
         ["Source code", repository],
       ] as const) {
-        const link = footer.getByRole("link", { name, exact: true });
+        const link = footer.getByRole("link", {
+          name: `${name} (opens in a new tab)`,
+          exact: true,
+        });
         await expect.element(link).toHaveAttribute("href", href);
         await expect.element(link).toHaveAttribute("target", "_blank");
       }
       await expect
-        .element(footer.getByText("(all on GitHub)"))
+        .element(footer.getByText("On GitHub:", { exact: true }))
         .toBeInTheDocument();
     },
   );

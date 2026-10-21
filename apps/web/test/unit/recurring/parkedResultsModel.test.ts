@@ -338,12 +338,12 @@ describe("what the operator is told about keeping results here", () => {
     );
     expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain("disk");
     expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain(days);
-    expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain("deleting the exchange");
+    expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain("removing the exchange");
   });
 
   test("the collection statement names the same retention the store enforces", () => {
     expect(PARKED_RESULTS_RETENTION_NOTE).toContain(days);
-    expect(PARKED_RESULTS_RETENTION_NOTE).toContain("deleting this exchange");
+    expect(PARKED_RESULTS_RETENTION_NOTE).toContain("removing this exchange");
   });
 
   test.each([
@@ -352,7 +352,7 @@ describe("what the operator is told about keeping results here", () => {
   ])("%s names the clear as a removal the operator can take now", (_, note) => {
     // The control stands beside both statements, so a list of what removes
     // these results that omitted it would send the operator to the retention or
-    // to deleting the exchange for something one click does.
+    // to removing the exchange for something one click does.
     expect(note).toContain("Clearing what is kept here");
   });
 
@@ -395,7 +395,7 @@ describe("what the operator is told about keeping results here", () => {
     expect(UNREADABLE_PARKED_RESULTS_NOTE).toContain(
       "Clearing what is kept here removes it",
     );
-    expect(UNREADABLE_PARKED_RESULTS_NOTE).toContain("deleting the exchange");
+    expect(UNREADABLE_PARKED_RESULTS_NOTE).toContain("removing the exchange");
     expect(UNREADABLE_PARKED_RESULTS_NOTE).not.toContain("only way");
   });
 

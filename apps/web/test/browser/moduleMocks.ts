@@ -30,11 +30,27 @@ export interface ReactRouterMockOptions {
    * unset, navigation is a silent no-op.
    */
   onNavigate?: (options: unknown) => void;
+  /**
+   * Render a Link's `href` as the path it resolves to: each `$name` segment of
+   * `to` filled from `params`, and `#hash` appended. Left unset, the `href` is
+   * the unresolved `to` template.
+   */
+  resolveLinks?: boolean;
+}
+
+/** A Link's `to` with its `$name` segments filled from `params`, plus `#hash`. */
+function resolvedLinkHref(to: string, params: unknown, hash: unknown): string {
+  const values = (params ?? {}) as Record<string, string>;
+  const path = to.replace(/\$(\w+)/g, (_segment, name: string) =>
+    encodeURIComponent(values[name] ?? ""),
+  );
+  return typeof hash === "string" && hash !== "" ? `${path}#${hash}` : path;
 }
 
 /**
  * Stubs `@tanstack/react-router` down to the boundary the component suites touch:
- * `Link` as a plain anchor exposing `to` as its `href`, and `useNavigate` as a
+ * `Link` as a plain anchor exposing `to` as its `href` (resolved, under
+ * {@link ReactRouterMockOptions.resolveLinks}), and `useNavigate` as a
  * function returning a navigate that does nothing beyond `onNavigate`.
  *
  * A real `RouterProvider` trips a duplicate-React dispatcher error in the browser
@@ -51,12 +67,25 @@ export function reactRouterMock(options: ReactRouterMockOptions = {}) {
       to?: string;
       children?: ReactNode;
       [prop: string]: unknown;
-    }) =>
-      createElement(
+    }) => {
+      if (options.resolveLinks === true) {
+        const { params, hash, ...anchorProps } = rest;
+        return createElement(
+          "a",
+          {
+            ...anchorProps,
+            href:
+              typeof to === "string" ? resolvedLinkHref(to, params, hash) : "#",
+          },
+          children,
+        );
+      }
+      return createElement(
         "a",
         { ...rest, href: typeof to === "string" ? to : "#" },
         children,
-      ),
+      );
+    },
     useNavigate: () => (navigateOptions: unknown) => {
       options.onNavigate?.(navigateOptions);
       return undefined;

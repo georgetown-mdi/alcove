@@ -77,7 +77,7 @@ export const OUTDATED_IMPORT_REASON =
   "This backup was written by an earlier version of this app and cannot be " +
   "restored. Check that you chose the backup file you exported and that it " +
   "was not modified. Set up a new exchange with your partner instead. " +
-  "Delete the old exchange if this browser still holds it.";
+  "Remove the old exchange if this browser still holds it.";
 
 /**
  * Which refusal an import error is shown as. A command-line configuration this

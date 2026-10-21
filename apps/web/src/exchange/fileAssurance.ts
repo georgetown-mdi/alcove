@@ -3,10 +3,11 @@ import { isConsoleBuild } from "@utils/clientConfig";
 /**
  * The file-step assurance line on the hosted build. It shows before a channel
  * is chosen, and a save-file flow leaves the encrypting to the command-line
- * tool on the operator's machine, so it names the machine, not the browser.
+ * tool on the operator's machine, so it names no place the encrypting happens.
  */
-export const BROWSER_ONLY_FILE_ASSURANCE =
-  "Data is encrypted before leaving your machine.";
+export const HOSTED_FILE_ASSURANCE =
+  "Your file is never uploaded to our servers. What is sent to your partner " +
+  "is encrypted first.";
 
 /**
  * The file-assurance line for a console surface that reads input from the
@@ -25,7 +26,7 @@ export const APPLIANCE_FILE_ASSURANCE =
 export function fileAssuranceLine(
   serverReceivesFiles: boolean,
 ): string | undefined {
-  return serverReceivesFiles ? undefined : BROWSER_ONLY_FILE_ASSURANCE;
+  return serverReceivesFiles ? undefined : HOSTED_FILE_ASSURANCE;
 }
 
 /**

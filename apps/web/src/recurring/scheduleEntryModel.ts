@@ -613,7 +613,7 @@ export function workingFolderGrantedNote(name: string): string {
     `the previous run wrote, so keep ${name} readable only by you on this ` +
     `device, and delete any other backup of this exchange there once you no ` +
     `longer need it. Runs keep using that folder until you choose another or ` +
-    `stop using it, and deleting this exchange also ends this site's access ` +
+    `stop using it, and removing this exchange also ends this site's access ` +
     `to it.`
   );
 }
