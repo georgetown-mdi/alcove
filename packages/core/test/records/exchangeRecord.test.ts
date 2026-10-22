@@ -646,6 +646,40 @@ describe("governance metadata", () => {
     expect(names).toContain(`(20): ${longNames[0]}`);
   });
 
+  test("a basis field only a key condition reads is built where the run had no column for it", async () => {
+    // With no column for it, every record lacked the field, which is what the
+    // condition read; a field a key element reads is still refused.
+    const conditioned: LinkageTerms = {
+      ...termsWithGovernance,
+      linkageKeys: [
+        {
+          name: "LN + SSN4",
+          elements: [{ field: "ln" }, { field: "ssn4" }],
+          condition: { missingField: "dob" },
+        },
+      ],
+    };
+    const inputs: ExchangeRecordInputs = {
+      ...governanceInputs,
+      localTerms: conditioned,
+      partnerTerms: { ...conditioned, identity: "Party B" },
+    };
+    const { record } = await buildExchangeRecord(
+      { ...inputs, contributedLinkageFields: ["ln", "ssn4"] },
+      fixedRandomness,
+    );
+    expect(record.governance.matchingBasis.map((field) => field.name)).toEqual([
+      "dob",
+      "ln",
+      "ssn4",
+    ]);
+    const refusal = await refuseBuild({
+      ...inputs,
+      contributedLinkageFields: ["dob", "ln"],
+    });
+    expect((refusal?.cause as Error).message).toContain("(1): ssn4");
+  });
+
   test("a matching basis the contributed fields cover is built, extras and all", async () => {
     // The basis is the fields the keys reference, so a contributed field no key
     // reads -- a column the input supplies for a field the terms declare but
@@ -1263,7 +1297,7 @@ describe("serialize / parse", () => {
           ...baseInputs.localTerms,
           linkageRuleSet: {
             fieldSet: { name: "baseline-pii", version: "1.3.0" },
-            keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+            keySet: { name: "precision-ranked-rules", version: "2.5.0" },
           },
         },
       },
@@ -1273,7 +1307,7 @@ describe("serialize / parse", () => {
     // the record still states what the declaring party claimed.
     expect(record.governance.linkageRuleSet).toEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
     });
     expect(record.governance.linkageRuleSetVerdict).toEqual({
       fieldSet: "contradicted",
@@ -1339,7 +1373,7 @@ describe("serialize / parse", () => {
       ...baseInputs.localTerms,
       linkageRuleSet: {
         fieldSet: { name: "baseline-pii", version: "1.3.0" },
-        keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+        keySet: { name: "precision-ranked-rules", version: "2.5.0" },
       },
     };
     const accepted = deriveAcceptedLinkageTerms(inviterTerms, "Party B");

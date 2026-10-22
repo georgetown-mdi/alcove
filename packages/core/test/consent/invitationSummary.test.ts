@@ -37,7 +37,10 @@ import {
 import { declaredTransformParamType } from "../../src/config/transformParamTypes.js";
 import { camelizeKeys } from "../../src/utils/camelizeKeys.js";
 import { runPipeline } from "../../src/standardization.js";
-import { sanitizeForDisplay } from "../../src/utils/sanitizeForDisplay.js";
+import {
+  DISPLAY_TRUNCATION_MARKER,
+  sanitizeForDisplay,
+} from "../../src/utils/sanitizeForDisplay.js";
 import { DATE_COLLAPSE_PROBES } from "../../src/linkageSatisfiability.js";
 
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
@@ -1154,6 +1157,49 @@ describe("the consent summary's fields read by a key condition", () => {
     ]);
     expect(summary.linkageKeys[1].headerFields.at(-1)).toBe(
       "date of birth (only whether it is present)",
+    );
+  });
+
+  test("states one key's condition in a line of its own, as the key does", () => {
+    const summary = summaryOf([conditionedKey]);
+    expect(summary.conditionLines).toEqual([
+      {
+        keyNames: ["FN + LN + SSN4"],
+        statement: summary.linkageKeys[0].condition,
+      },
+    ]);
+  });
+
+  test("states a condition line whole around the longest field name it shows", () => {
+    const summary = summaryOf([
+      { ...conditionedKey, condition: { missingField: "x".repeat(4096) } },
+    ]);
+    const statement = summary.linkageKeys[0].condition ?? "";
+    expect(statement).toMatch(/^Matches only where one of the two records /);
+    expect(statement).toContain(
+      "Your partner also learns how many of your records not yet matched " +
+        "have no valid x",
+    );
+    expect(statement.endsWith(`x${DISPLAY_TRUNCATION_MARKER}.`)).toBe(true);
+    expect(summary.conditionLines[0].statement).toBe(statement);
+  });
+
+  test("names keys sharing a condition in one line, skipping a key with none", () => {
+    const summary = summaryOf([
+      conditionedKey,
+      {
+        name: "SSN4 + LN + DOB",
+        elements: [{ field: "ssn4" }, { field: "last_name" }, { field: "dob" }],
+      },
+      { ...conditionedKey, name: "FN + LN" },
+    ]);
+    expect(summary.conditionLines).toHaveLength(1);
+    expect(summary.conditionLines[0].keyNames).toEqual([
+      "FN + LN + SSN4",
+      "FN + LN",
+    ]);
+    expect(summary.conditionLines[0].statement).toMatch(
+      /^Each matches only where .* A match through one of these keys /,
     );
   });
 

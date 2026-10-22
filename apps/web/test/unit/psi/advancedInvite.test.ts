@@ -1944,14 +1944,15 @@ describe("draftFromTerms binds an imported field of a type no built-in key uses"
   test("a metadata edit after the import leaves the field on its column", () => {
     // The other door the widened default serves, `reconcileStandardization`: it adds
     // a default binding only for a semantic type the kept set does not cover, so the
-    // freshly-typed column gains its own cleaning while the imported field keeps both
-    // its name and its column.
+    // freshly-typed columns gain their own cleaning while the imported field keeps
+    // both its name and its column, though the edit makes built-in phone keys
+    // supplyable.
     const metadata: Metadata = [
       ...linkageColumns([
         ["phone_col", "phone_number"],
-        ["first_col", "first_name"],
         ["last_col", "last_name"],
       ]),
+      { name: "first_col", type: "other", role: "ignored", isPayload: false },
       { name: "birthday", type: "other", role: "ignored", isPayload: false },
     ];
     const seed = seedFor(metadata);
@@ -1963,7 +1964,11 @@ describe("draftFromTerms binds an imported field of a type no built-in key uses"
     );
     const edited = setDraftMetadataKeepingKeys(
       imported,
-      setColumnType(imported.metadata, "birthday", "date_of_birth").metadata,
+      setColumnType(
+        setColumnType(imported.metadata, "first_col", "first_name").metadata,
+        "birthday",
+        "date_of_birth",
+      ).metadata,
       [],
     );
 
@@ -3259,8 +3264,8 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
     expect(blocked.errors.keys).toMatch(/cannot supply/);
   });
 
-  test("a key conditioned on a field the columns cannot supply arrives disabled with the unsupplyable-key guidance", () => {
-    const document: LinkageTerms = {
+  describe("a key conditioned on a field the columns cannot supply", () => {
+    const conditionedDocument = (dateField: string): LinkageTerms => ({
       version: "1.0.0",
       identity: "Inviter",
       date: "2026-06-20",
@@ -3272,7 +3277,7 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
         { name: "first_name", type: "first_name" },
         { name: "last_name", type: "last_name" },
         { name: "ssn4", type: "ssn4" },
-        { name: "date_of_birth", type: "date_of_birth" },
+        { name: dateField, type: "date_of_birth" },
       ],
       linkageKeys: [
         {
@@ -3282,26 +3287,81 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
             { field: "last_name" },
             { field: "ssn4" },
           ],
-          condition: { missingField: "date_of_birth" },
+          condition: { missingField: dateField },
         },
       ],
-    };
-    expect(safeParseLinkageTerms(document).success).toBe(true);
+    });
     const noDateMetadata: Metadata = [
       { name: "fn", type: "first_name", role: "linkage", isPayload: false },
       { name: "ln", type: "last_name", role: "linkage", isPayload: false },
       { name: "s4", type: "ssn4", role: "linkage", isPayload: false },
     ];
     const seed = seedFor(["fn", "ln", "s4"], noDateMetadata);
-    const imported = draftFromTerms(document, seed, 3600, []);
 
-    expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": false });
-    const validation = validateAdvancedInvite(imported, seed, NOW);
-    expect(validation.canGenerate).toBe(false);
-    expect(validation.errors.keys).toContain(
-      "Turn on Expert authoring to see which field each key has no column for",
-    );
-    expect(validation.errors.keys).not.toContain("missing_field");
+    test("arrives enabled where the built-in fields declare it, every record lacking it", () => {
+      const document = conditionedDocument("date_of_birth");
+      expect(safeParseLinkageTerms(document).success).toBe(true);
+      const imported = draftFromTerms(document, seed, 3600, []);
+
+      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": true });
+      expect(
+        buildAdvancedTerms(imported).linkageFields.map((field) => field.name),
+      ).toEqual(document.linkageFields.map((field) => field.name));
+      const validation = validateAdvancedInvite(imported, seed, NOW);
+      expect(validation.errors).toEqual({});
+      expect(validation.canGenerate).toBe(true);
+    });
+
+    test("arrives enabled under the document's own declaration where the built-in fields do not declare it", () => {
+      const document = conditionedDocument("intake_dob");
+      expect(safeParseLinkageTerms(document).success).toBe(true);
+      const imported = draftFromTerms(document, seed, 3600, []);
+
+      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": true });
+      const fields = buildAdvancedTerms(imported).linkageFields;
+      expect(fields.map((field) => field.name)).toEqual(
+        document.linkageFields.map((field) => field.name),
+      );
+      expect(fields.find((field) => field.name === "intake_dob")).toEqual({
+        name: "intake_dob",
+        type: "date_of_birth",
+      });
+      const validation = validateAdvancedInvite(imported, seed, NOW);
+      expect(validation.errors).toEqual({});
+      expect(validation.canGenerate).toBe(true);
+    });
+
+    test("keeps the document's declaration of the field, its constraints and position", () => {
+      const base = conditionedDocument("date_of_birth");
+      const declared = {
+        name: "date_of_birth",
+        type: "date_of_birth" as const,
+        constraints: { validOnly: true },
+      };
+      // The other fields as the editor emits them, so only the condition's
+      // field can diverge from the document.
+      const document: LinkageTerms = {
+        ...base,
+        linkageFields: [
+          declared,
+          ...buildAdvancedTerms(
+            draftFromTerms(base, seed, 3600, []),
+          ).linkageFields.filter((field) => field.name !== "date_of_birth"),
+        ],
+      };
+      expect(safeParseLinkageTerms(document).success).toBe(true);
+      const imported = draftFromTerms(document, seed, 3600, []);
+
+      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": true });
+      const fields = buildAdvancedTerms(imported).linkageFields;
+      expect(fields.map((field) => field.name)).toEqual(
+        document.linkageFields.map((field) => field.name),
+      );
+      expect(fields[0]).toEqual(declared);
+      expect(importedConstraintDivergenceMessage(document, seed)).toBe(
+        undefined,
+      );
+    });
   });
 
   test("import enables a key iff building it alone yields schema-valid terms (disable/build lockstep)", () => {

@@ -453,8 +453,8 @@ export function validateAdvancedInvite(
       "Choose an invitation duration between 1 second and one year.";
   }
 
-  // A key is supplyable when the inviter's columns can declare every field it
-  // references; one that is not dangles the built terms (the referential-integrity
+  // A key is supplyable when every field it references can be declared
+  // (keyIsSupplyable); one that is not dangles the built terms (the referential-integrity
   // refine rejects the undeclared field) and blocks generation. The two checks below
   // set the accurate keys message up front so it wins over the generic
   // schema-failure mapping, which collapses every linkageKeys-path issue to
@@ -477,17 +477,31 @@ export function validateAdvancedInvite(
     // field the columns cannot supply), "turn one on" would mislead, so name the
     // real obstacle instead.
     const someKeyIsSupplyable = draft.keys.some((entry) =>
-      keyIsSupplyable(entry.key, declarable),
+      keyIsSupplyable(
+        entry.key,
+        declarable,
+        draft.importedLinkageFields,
+        draft.metadata,
+      ),
     );
     errors.keys = someKeyIsSupplyable
       ? "Enable at least one linkage key."
       : UNSUPPLYABLE_KEY_MESSAGE;
   } else if (conditionRefusal !== undefined) {
-    // Ahead of the unsupplyable check: a condition naming a field the columns
-    // cannot supply is also undeclared, and core's refusal names the condition.
+    // Ahead of the unsupplyable check: a condition field the columns cannot
+    // supply and that has no columnlessConditionField is also undeclared, and
+    // core's refusal names the condition.
     errors.keys = keyConditionRefusalMessage(conditionRefusal, draft.keys);
   } else if (
-    enabledKeys.some((entry) => !keyIsSupplyable(entry.key, declarable))
+    enabledKeys.some(
+      (entry) =>
+        !keyIsSupplyable(
+          entry.key,
+          declarable,
+          draft.importedLinkageFields,
+          draft.metadata,
+        ),
+    )
   ) {
     // An enabled key references a field the columns cannot supply: the built terms
     // dangle, so block with the accurate message rather than the misleading no-keys
@@ -1324,5 +1338,12 @@ function draftHasSupplyableKey(draft: AdvancedInviteDraft): boolean {
     draft.metadata,
     draft.standardization,
   );
-  return draft.keys.some((entry) => keyIsSupplyable(entry.key, declarable));
+  return draft.keys.some((entry) =>
+    keyIsSupplyable(
+      entry.key,
+      declarable,
+      draft.importedLinkageFields,
+      draft.metadata,
+    ),
+  );
 }

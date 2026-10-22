@@ -83,10 +83,6 @@ export const ALLOWED_OMISSIONS = new Map([
     "A key-element option the built-in keys the template writes do not use.",
   ],
   [
-    "linkage_terms.linkage_keys.condition",
-    "A key option the built-in keys the template writes do not use; the reference documents it.",
-  ],
-  [
     "linkage_terms.payload",
     "Derived from the metadata block's is_payload columns when init reads an input file, and the receive list is set by the first exchange, which the template states.",
   ],

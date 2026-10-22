@@ -1,13 +1,11 @@
-import {
-  linkageKeyFieldNames,
-  referencedLinkageFieldNames,
-} from "../config/linkageTermsSchema";
+import { referencedLinkageFieldNames } from "../config/linkageTermsSchema";
 import type {
   LinkageRuleSetReference,
   LinkageSetIdentity,
   LinkageTerms,
   LinkageField,
   LinkageKey,
+  LinkageKeyCondition,
   LinkageKeyElement,
   TransformStep,
 } from "../config/linkageTermsSchema";
@@ -129,7 +127,7 @@ export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
  * evidence attaches to the name and version together, so an edited set
  * holding the old version makes that record describe rules nobody ran.
  */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.4.0";
+export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.5.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
@@ -229,6 +227,11 @@ const DOB_DAY_MONTH: LinkageKeyElement = {
   generateFuzzyComparisons: "day_month_swaps",
 };
 
+// The contact rules without a date of birth run only where one side's record
+// has none, so a pair whose two records both hold a valid date is left to the
+// rules that compare it.
+const NO_DATE_OF_BIRTH: LinkageKeyCondition = { missingField: "date_of_birth" };
+
 /**
  * The linkage key combinations of the {@link DEFAULT_LINKAGE_KEY_SET_NAME}
  * key set, in the catalog's cascade order: an earlier key claims a record
@@ -302,13 +305,33 @@ const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
   },
   { name: "split(LN) + FN + DOB", elements: [SPLIT_LN, FN, DOB] },
   { name: "LN + FN + YOB + MOB + ZIP5", elements: [LN, FN, YOB_MOB, ZIP5] },
+  {
+    name: "LN + FN + PHONE",
+    elements: [LN, FN, PHONE],
+    condition: NO_DATE_OF_BIRTH,
+  },
+  {
+    name: "PHONE + soundex(LN) + FN",
+    elements: [PHONE, SDX_LN, FN],
+    condition: NO_DATE_OF_BIRTH,
+  },
+  { name: "FN + PHONE", elements: [FN, PHONE], condition: NO_DATE_OF_BIRTH },
   { name: "FN + DOB + EMAIL", elements: [FN, DOB, EMAIL] },
+  {
+    name: "LN + FN + EMAIL",
+    elements: [LN, FN, EMAIL],
+    condition: NO_DATE_OF_BIRTH,
+  },
+  {
+    name: "EMAIL + soundex(LN) + FN",
+    elements: [EMAIL, SDX_LN, FN],
+    condition: NO_DATE_OF_BIRTH,
+  },
 ];
 
 /**
  * Every rule of the catalog in its order, each with its band
- * ({@link LinkageRuleBand}), including the rules that need an element Alcove
- * does not build yet. Bands do not travel: a terms document
+ * ({@link LinkageRuleBand}). Bands do not travel: a terms document
  * holds the keys a floor selected, never the floor or a band.
  */
 const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
@@ -347,32 +370,12 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
   { rule: "swap(LN, FN) + DOB", band: 95 },
   { rule: "split(LN) + FN + DOB", band: 95 },
   { rule: "LN + FN + YOB + MOB + ZIP5", band: 95 },
-  {
-    rule: "LN + FN + SFX + PHONE",
-    band: 95,
-    needs: "a per-side missing-date condition",
-  },
-  {
-    rule: "PHONE + soundex(LN) + FN + SFX",
-    band: 95,
-    needs: "a per-side missing-date condition",
-  },
-  {
-    rule: "FN + SFX + PHONE",
-    band: 95,
-    needs: "a per-side missing-date condition",
-  },
+  { rule: "LN + FN + PHONE", band: 95 },
+  { rule: "PHONE + soundex(LN) + FN", band: 95 },
+  { rule: "FN + PHONE", band: 95 },
   { rule: "FN + DOB + EMAIL", band: 95 },
-  {
-    rule: "LN + FN + SFX + EMAIL",
-    band: 95,
-    needs: "a per-side missing-date condition",
-  },
-  {
-    rule: "EMAIL + soundex(LN) + FN + SFX",
-    band: 95,
-    needs: "a per-side missing-date condition",
-  },
+  { rule: "LN + FN + EMAIL", band: 95 },
+  { rule: "EMAIL + soundex(LN) + FN", band: 95 },
 ];
 
 /**
@@ -847,9 +850,10 @@ export function linkageRuleSetReferenceFor(
  * a party runs when it authors none of its own.
  *
  * The keys are those `selection` selects ({@link linkageKeysAtPrecisionFloor}).
- * When metadata are provided, only those whose fields
- * ({@link linkageKeyFieldNames}) can be satisfied by the present columns are
- * included; metadata declaring no column satisfies none. Either way the
+ * When metadata are provided, only those whose element fields can be satisfied
+ * by the present columns are included; metadata declaring no column satisfies
+ * none. A key condition's field needs no column: an input without one runs the
+ * key with every record lacking the field. Either way the
  * emitted keys are a subset of the set, never an addition to it: what the
  * input supports narrows the set, and nothing widens it -- which is what
  * makes the emitted citation accurate, an upper bound on what was tried
@@ -873,8 +877,8 @@ export function linkageTermsFromRuleSet(
     // is dropped here instead of built unusable.
     const availableTypes = fieldTypesSuppliedByDefault(metadata);
     linkageKeys = linkageKeys.filter((key) =>
-      linkageKeyFieldNames(key).every((field) =>
-        availableTypes.has(field as SemanticType),
+      key.elements.every((element) =>
+        availableTypes.has(element.field as SemanticType),
       ),
     );
   }
@@ -919,8 +923,9 @@ export function getDefaultLinkageTerms(
 /**
  * The contact and location types, phone, email and ZIP, whose values many
  * people can share (a shelter's phone, a site's ZIP code). The catalog matches
- * on each only beside a name and a date, so a file can hold one of these
- * columns while the terms derived from it declare no field for it.
+ * on each only beside a name, and on a ZIP code only beside a date of birth
+ * too, so a file can hold one of these columns while the terms derived from it
+ * declare no field for it.
  */
 export const CONTACT_AND_LOCATION_FIELD_TYPES = [
   "phone_number",

@@ -11,7 +11,6 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
-  linkageKeyFieldNames,
   linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
 } from "@alcove/core";
@@ -23,7 +22,10 @@ import {
 import { encodeKeyForComparison } from "../linkageComparison";
 import { normalizeForEditor } from "../metadataEditing";
 
-import { buildAdvancedTerms } from "./advancedInviteTerms";
+import {
+  buildAdvancedTerms,
+  columnlessConditionField,
+} from "./advancedInviteTerms";
 import { directionForOutput } from "./advancedInviteTypes";
 
 import type {
@@ -878,17 +880,31 @@ export function draftWithFieldAdded(
   };
 }
 
-/** Whether the inviter's columns can supply every field `key` reads (each
- * element's `field` and its condition's field are declarable -- see
- * {@link declarableFieldNames}). A key that is not supplyable dangles the built
- * terms, so the import disables it ({@link draftFromTerms}) and
+/** Whether the inviter's columns can supply every field `key` reads: each
+ * element's `field` is declarable ({@link declarableFieldNames}), and so is its
+ * condition's field or it has a {@link columnlessConditionField}, from
+ * `importedFields` (the draft's {@link AdvancedInviteDraft.importedLinkageFields})
+ * or the built-in fields, where `metadata` holds no linkage column of its type.
+ * A key that is not supplyable dangles the built terms,
+ * so the import disables it ({@link draftFromTerms}) and
  * {@link validateAdvancedInvite} messages it distinctly from a draft whose keys
  * were merely turned off. */
 export function keyIsSupplyable(
   key: LinkageKey,
   declarable: ReadonlySet<string>,
+  importedFields: ReadonlyArray<LinkageField> | undefined,
+  metadata: Metadata,
 ): boolean {
-  return linkageKeyFieldNames(key).every((field) => declarable.has(field));
+  return (
+    key.elements.every((element) => declarable.has(element.field)) &&
+    (key.condition === undefined ||
+      declarable.has(key.condition.missingField) ||
+      columnlessConditionField(
+        key.condition.missingField,
+        importedFields,
+        metadata,
+      ) !== undefined)
+  );
 }
 
 // --- Expert key / element authoring ------------------------------------------
@@ -1304,7 +1320,12 @@ export function draftFromTerms(
         : { kind: "uncited" },
     keys: terms.linkageKeys.map((key) => ({
       key,
-      enabled: keyIsSupplyable(key, declarable),
+      enabled: keyIsSupplyable(
+        key,
+        declarable,
+        terms.linkageFields,
+        seed.metadata,
+      ),
     })),
   };
   const citation = draft.importedRuleSetCitation;
@@ -1398,8 +1419,18 @@ export function draftWithConfigurationCleaning(
   const after = declarableFieldNames(draft.metadata, next);
   const keys = draft.keys.map((entry) =>
     !entry.enabled &&
-    !keyIsSupplyable(entry.key, before) &&
-    keyIsSupplyable(entry.key, after)
+    !keyIsSupplyable(
+      entry.key,
+      before,
+      draft.importedLinkageFields,
+      draft.metadata,
+    ) &&
+    keyIsSupplyable(
+      entry.key,
+      after,
+      draft.importedLinkageFields,
+      draft.metadata,
+    )
       ? { ...entry, enabled: true }
       : entry,
   );

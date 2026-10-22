@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 
 import {
   Alert,
@@ -1364,19 +1364,22 @@ export function InvitationTerms({
             </LessCertainInfo>
           )}
           {/* Outside the collapse as well: what a match through a key with a
-              missing-field condition discloses, core's line for each such key
-              after the key's name. */}
-          {summary.linkageKeys.map(
-            (key) =>
-              key.condition !== undefined && (
-                <Text key={key.id} size="sm">
+              missing-field condition discloses, one line per condition naming
+              its keys. Keyed by index: the lines and their names are fixed for
+              a given terms document. */}
+          {summary.conditionLines.map((line, index) => (
+            <Text key={index} size="sm">
+              {line.keyNames.map((name, at) => (
+                <Fragment key={at}>
+                  {at > 0 && ", "}
                   <Text span size="sm" fw={500}>
-                    {key.name}
+                    {name}
                   </Text>
-                  : {key.condition}
-                </Text>
-              ),
-          )}
+                </Fragment>
+              ))}
+              : {line.statement}
+            </Text>
+          ))}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's
               flow content) so AT announces the set; keyed by each key's stable id

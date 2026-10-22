@@ -366,7 +366,7 @@ describe("linkageTermsFromRuleSet", () => {
     expect(terms.linkageRuleSet).toStrictEqual(ruleSet.reference);
   });
 
-  test("a key is dropped where the columns lack its condition's field", () => {
+  test("a key is kept, its condition's field declared, where the columns lack that field", () => {
     const conditioned: LinkageKey = {
       name: "SSN",
       elements: [{ field: "ssn" }],
@@ -383,16 +383,18 @@ describe("linkageTermsFromRuleSet", () => {
       ],
       linkageKeys: [conditioned],
     };
+    for (const metadata of [
+      [col("s", "ssn")],
+      [col("s", "ssn"), col("d", "date_of_birth")],
+    ]) {
+      const terms = linkageTermsFromRuleSet(ruleSet, "Party A", metadata);
+      expect(terms.linkageKeys).toEqual([conditioned]);
+      expect(terms.linkageFields).toEqual(ruleSet.linkageFields);
+    }
     expect(
-      linkageTermsFromRuleSet(ruleSet, "Party A", [col("s", "ssn")])
+      linkageTermsFromRuleSet(ruleSet, "Party A", [col("d", "date_of_birth")])
         .linkageKeys,
     ).toEqual([]);
-    expect(
-      linkageTermsFromRuleSet(ruleSet, "Party A", [
-        col("s", "ssn"),
-        col("d", "date_of_birth"),
-      ]).linkageKeys,
-    ).toEqual([conditioned]);
   });
 });
 

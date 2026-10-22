@@ -22,16 +22,18 @@ The key set it describes is the first built-in key set, 1.0.0 over
 `baseline-pii` 1.0.0. Both are retired: a citation of either names a set this
 build does not ship. The built-in key set is the catalog of
 [linkage-rule-catalog.md](linkage-rule-catalog.md), published as
-`precision-ranked-rules` 2.4.0 over `baseline-pii` 1.3.0, which adds
+`precision-ranked-rules` 2.5.0 over `baseline-pii` 1.3.0, which adds
 `phone_number`, `email_address`, `zip_code`, `state`, `county` and
 `street_number`. The catalog's earlier versions, 2.0.0 over 1.1.0, 2.1.0
-over 1.2.0, and 2.2.0 and 2.3.0 over 1.3.0, are retired the same way. 2.1.0
-adds the ZIP3, state and county rules and 1.2.0 the `state` and `county`
-fields; 2.2.0 adds the street number rule and 1.3.0 the `street_number`
-field; 2.3.0 drops the condition that offered the three name and date rules
-only to files from one state or one metropolitan area, offering them for any
-pair of files, marked less certain; 2.4.0 requires a first name of at least
-two letters in every rule on the full first name._
+over 1.2.0, and 2.2.0, 2.3.0 and 2.4.0 over 1.3.0, are retired the same way.
+2.1.0 adds the ZIP3, state and county rules and 1.2.0 the `state` and
+`county` fields; 2.2.0 adds the street number rule and 1.3.0 the
+`street_number` field; 2.3.0 drops the condition that offered the three name
+and date rules only to files from one state or one metropolitan area,
+offering them for any pair of files, marked less certain; 2.4.0 requires a
+first name of at least two letters in every rule on the full first name;
+2.5.0 adds the five contact rules with no date of birth, each matching only
+where one of the two records has no valid date of birth._
 
 This is design rationale. Nothing here binds an implementation.
 
@@ -47,7 +49,7 @@ constraints it has. The elements are `ssn`, `ssn4`, `first_name`, `last_name`,
 on and how each element is cleaned and bounded, and says nothing about what
 constitutes a match.
 
-The key set names the **linkage keys**: the thirty-six combinations built from
+The key set names the **linkage keys**: the forty-one combinations built from
 those fields, applied in the order the set lists them. It is the specific
 artifact -- which combinations count as a match, and in what cascade order.
 That order is the catalog's precision order, the 99% band before the 95% band;
@@ -194,14 +196,16 @@ not an oversight to be closed by adding keys casually: rules for those fields wo
 precision/recall consequences and are not covered by the validation these keys
 rest on, so they need their own grounding before they could ship as built-in.
 
-The catalog closes the gap with that grounding. `precision-ranked-rules` 2.4.0
+The catalog closes the gap with that grounding. `precision-ranked-rules` 2.5.0
 matches on each of those types, each rule with the band
 [linkage-rule-catalog.md](linkage-rule-catalog.md) gives it, and `baseline-pii`
 1.3.0 declares the three fields. Where a refinement sits in the order is in
 [linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
 
 Each such rule is compound -- the type beside a name and a birth date, or its
-year and month -- and never the type alone, on two grounds that agree. A key
+year and month, or a phone or email beside a name where one of the two
+records has no valid date of birth -- and never the type alone, on two
+grounds that agree. A key
 over a single identifier is a membership oracle: a party holding a candidate
 value learns from the result whether its holder is in the other party's file,
 which is the differencing exposure [SECURITY_DESIGN.md](../SECURITY_DESIGN.md)

@@ -260,7 +260,9 @@ function agreeingValue(
  *
  * A key declaring `swap` gets the exchanged arrangement instead -- the two
  * named elements' values crossed -- which is the arrangement the receiver
- * builds for such a key, and which no other built-in key relates.
+ * builds for such a key, and which no other built-in key relates. A key with a
+ * missing-field condition matches only where one side lacks the field, so
+ * party B's row leaves that field empty.
  */
 function counterpartRow(
   key: LinkageKey,
@@ -276,6 +278,8 @@ function counterpartRow(
       values[field.name],
     );
   }
+  if (key.condition !== undefined)
+    values[fieldOf({ field: key.condition.missingField }).name] = "";
   if (key.swap !== undefined) {
     const swapped = key.swap.map((identifier) => {
       const element = key.elements.find(

@@ -15,6 +15,7 @@ import {
   linkageRuleSetReferenceForDraft,
   seedAdvancedInvite,
   setDraftMetadata,
+  validateAdvancedInvite,
 } from "../../../src/psi/authoring/advancedInvite.js";
 import { generateInvitation } from "../../../src/psi/invitation.js";
 import { prepareManagedRerunExchange } from "../../../src/psi/managed/managedPreparedExchange.js";
@@ -159,6 +160,46 @@ describe("a key a column edit newly makes offerable", () => {
     expect(
       linkageRuleSetReferenceForDraft(buildAdvancedTerms(edited())),
     ).toStrictEqual(DEFAULT_LINKAGE_RULE_SET.reference);
+  });
+});
+
+describe("a file with no date-of-birth column", () => {
+  const UNDATED = ["first_name", "last_name", "phone", "email"];
+  const undatedRows: Array<CSVRow> = [
+    {
+      first_name: "Maria",
+      last_name: "Alvarez",
+      phone: "(312) 555-0142",
+      email: "Maria.Alvarez@example.org",
+    },
+  ];
+  const seeded = () => seedAdvancedInvite("Inviter", UNDATED, undatedRows);
+
+  test("is offered the contact rules that run where one side has no date", () => {
+    const { draft } = seeded();
+    expect(draft.keys.map((entry) => entry.key)).toStrictEqual(
+      getDefaultLinkageTerms("Inviter", draft.metadata).linkageKeys,
+    );
+    expect(draft.keys.map((entry) => entry.key.name)).toStrictEqual([
+      "LN + FN + PHONE",
+      "PHONE + soundex(LN) + FN",
+      "FN + PHONE",
+      "LN + FN + EMAIL",
+      "EMAIL + soundex(LN) + FN",
+    ]);
+  });
+
+  test("builds the quick path's terms, citing the catalog, and can generate", () => {
+    const { draft, seed } = seeded();
+    const terms = buildAdvancedTerms(draft);
+    expect(terms.linkageKeys).toStrictEqual(seed.terms.linkageKeys);
+    expect(terms.linkageFields).toStrictEqual(seed.terms.linkageFields);
+    expect(linkageRuleSetReferenceForDraft(terms)).toStrictEqual(
+      DEFAULT_LINKAGE_RULE_SET.reference,
+    );
+    const validation = validateAdvancedInvite(draft, seed);
+    expect(validation.errors).toEqual({});
+    expect(validation.canGenerate).toBe(true);
   });
 });
 

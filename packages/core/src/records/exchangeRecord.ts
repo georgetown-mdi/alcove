@@ -503,7 +503,8 @@ export interface ExchangeRecordInputs {
   localTerms: LinkageTerms;
   partnerTerms: LinkageTerms;
   /** The standardized linkage fields this party's input bound a column to.
-   * A matching basis naming a field not listed here is refused. */
+   * A matching basis naming a field not listed here that a key element reads
+   * is refused. */
   contributedLinkageFields: readonly string[];
   /** This party's own input row count. */
   recordsExposed: number;
@@ -549,8 +550,8 @@ export interface BuiltExchangeRecord {
  * matching basis come from this party's agreed terms, the verdict from this
  * build's rule sets, the matching from both terms, and the payload column
  * sets from the committed payloads, which are what flowed (the dictionary
- * adds descriptions only). A basis naming a field the run contributed none
- * of is refused, not narrowed. See
+ * adds descriptions only). A basis naming a field a key element reads and
+ * the run contributed none of is refused, not narrowed. See
  * docs/spec/EXCHANGE_RECORD.md#the-matching-basis-against-what-the-run-contributed.
  */
 function governanceFromTerms(
@@ -590,11 +591,18 @@ function governanceFromTerms(
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
   );
 
-  // Partner-authored names go in a cause link of their own, after the count,
-  // each redacted so a planted marker cannot take the names after it.
+  // A field only a key condition reads needs no column: an input without one
+  // ran the key with every record lacking it. Partner-authored names go in a
+  // cause link of their own, after the count, each redacted so a planted
+  // marker cannot take the names after it.
   const contributed = new Set(contributedLinkageFields);
+  const elementFields = new Set(
+    terms.linkageKeys.flatMap((key) => key.elements.map((e) => e.field)),
+  );
   const uncontributed = matchingBasis
-    .filter((field) => !contributed.has(field.name))
+    .filter(
+      (field) => elementFields.has(field.name) && !contributed.has(field.name),
+    )
     .map((field) => redactPrivateKeyMaterial(field.name));
   if (uncontributed.length > 0)
     throw new Error(
