@@ -338,6 +338,42 @@ test(
 );
 
 test(
+  "the coordination server's socket dropping ends the inviter's wait with PeerJS's error, as a path failure",
+  { timeout: 30_000 },
+  async () => {
+    const secret = generateSharedSecret();
+    const peer = new Peer(await deriveRendezvousPeerId(secret, "inviter"), {
+      host: brokerHost,
+      port: brokerPort,
+      path: "/api/",
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        peer.once("open", () => resolve());
+        peer.once("error", reject);
+      });
+      const pathFailures: Array<WebRtcPathFailure> = [];
+      const waiting = waitForIncomingConnection(peer, {
+        timeoutMs: 20_000,
+        onPathFailed: (failure) => pathFailures.push(failure),
+      });
+      const signaling = (peer as unknown as { socket: { _socket?: unknown } })
+        .socket._socket;
+      expect(signaling).toBeInstanceOf(WebSocket);
+      (signaling as WebSocket).close();
+
+      await expect(waiting).rejects.toMatchObject({
+        type: "network",
+        message: "Lost connection to server.",
+      });
+      expect(pathFailures).toEqual(["signaling-unreachable"]);
+    } finally {
+      peer.destroy();
+    }
+  },
+);
+
+test(
   "with WebRTC open the relay sockets close unused",
   { timeout: 60_000 },
   async () => {

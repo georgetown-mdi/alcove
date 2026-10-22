@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { default as EventEmitter } from "eventemitter3";
+
 import {
   ConnectionError,
   getDiagnosticSink,
@@ -8,6 +10,10 @@ import {
   setDiagnosticSink,
 } from "@alcove/core";
 
+import {
+  PartnerNoShowError,
+  waitForIncomingConnection,
+} from "@psi/transport/waitForConnection";
 import {
   WEB_RELAY_FALLBACK,
   openRunConnectionWithRelayFallback,
@@ -19,6 +25,7 @@ import type {
   RendezvousRole,
   WebRtcPathFailure,
 } from "@alcove/core";
+import type Peer from "peerjs";
 import type { RunConnection } from "@psi/transport/runConnection";
 import type { WebRtcPathHooks } from "@psi/transport/relayFallback";
 
@@ -328,4 +335,86 @@ test("a listed relay closes unused on the run's interrupt and the open fails as 
   interrupt.abort();
   await expect(opening).rejects.toMatchObject({ kind: "closed" });
   expect(record.closes).toEqual([1000]);
+});
+
+/** Long enough that a run still waiting for its partner shows as waiting. */
+const PARTNER_WAIT_MS = 60_000;
+
+/**
+ * The inviter's WebRTC open up to its wait for the partner's connection, on a
+ * PeerJS peer the test drives.
+ */
+function inviterWaitingOn(peer: EventEmitter) {
+  return async ({ signal, onPathFailed }: WebRtcPathHooks) => {
+    await waitForIncomingConnection(peer as unknown as Peer, {
+      signal,
+      timeoutMs: PARTNER_WAIT_MS,
+      ...(onPathFailed !== undefined && { onPathFailed }),
+    });
+    return { connection: fakeConnection(), release: () => {} };
+  };
+}
+
+/** What PeerJS emits as its socket to the coordination server drops. */
+function dropCoordinationServer(peer: EventEmitter): Error {
+  const lost = Object.assign(new Error("Lost connection to server."), {
+    type: "network",
+  });
+  peer.emit("error", lost);
+  peer.emit("disconnected", "inviter-id");
+  return lost;
+}
+
+/** `promise`'s rejection, or "still waiting" if it has not settled within `ms`. */
+function rejectionWithin(
+  promise: Promise<unknown>,
+  ms: number,
+): Promise<unknown> {
+  return Promise.race([
+    promise.then(
+      () => "resolved",
+      (error: unknown) => error,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), ms)),
+  ]);
+}
+
+test("with every listed relay failed, losing the coordination server during the inviter's wait fails the open with that failure, not as a no-show", async () => {
+  const record = { sent: [] as Array<unknown>, closes: [] as Array<number> };
+  const peer = new EventEmitter();
+  const opening = openRunConnectionWithRelayFallback(
+    {
+      role: "inviter",
+      sharedSecret: SHARED_SECRET,
+      relays: [{ url: "wss://relay.test/relay", exchangeId: "exchange" }],
+      signal: new AbortController().signal,
+      onCloseOutcome: () => {},
+      openWebRtc: inviterWaitingOn(peer),
+    },
+    { createSocket: () => idleSocket(record), pairingTimeoutMs: 20 },
+  );
+  opening.catch(() => {});
+  await vi.waitFor(() => expect(peer.listenerCount("disconnected")).toBe(1));
+  const lost = dropCoordinationServer(peer);
+
+  const failure = await rejectionWithin(opening, 5_000);
+  expect(failure).toBe(lost);
+  expect(failure).not.toBeInstanceOf(PartnerNoShowError);
+});
+
+test("with no relay listed, losing the coordination server during the inviter's wait fails the open at once with that failure", async () => {
+  const peer = new EventEmitter();
+  const opening = openRunConnectionWithRelayFallback({
+    role: "inviter",
+    sharedSecret: SHARED_SECRET,
+    relays: [],
+    signal: new AbortController().signal,
+    onCloseOutcome: () => {},
+    openWebRtc: inviterWaitingOn(peer),
+  });
+  opening.catch(() => {});
+  await vi.waitFor(() => expect(peer.listenerCount("disconnected")).toBe(1));
+  const lost = dropCoordinationServer(peer);
+
+  expect(await rejectionWithin(opening, 1_000)).toBe(lost);
 });

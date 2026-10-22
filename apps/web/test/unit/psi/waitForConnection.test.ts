@@ -147,7 +147,17 @@ describe("waitForIncomingConnection", () => {
     await expect(promise).rejects.toThrow("aborted");
   });
 
-  test("reports the coordination server lost while it waits, and waits on", async () => {
+  /** What PeerJS emits as its socket to the coordination server drops. */
+  function dropCoordinationServer(fake: FakePeer): Error {
+    const lost = Object.assign(new Error("Lost connection to server."), {
+      type: "network",
+    });
+    fake.emit("error", lost);
+    fake.emit("disconnected", "inviter-id");
+    return lost;
+  }
+
+  test("losing the coordination server reports a path failure and ends the wait with the peer's error", async () => {
     const { fake, peer } = makePeer();
     const failures: Array<string> = [];
     const promise = waitForIncomingConnection(peer, {
@@ -155,12 +165,49 @@ describe("waitForIncomingConnection", () => {
       onPathFailed: (failure) => failures.push(failure),
     });
 
-    fake.emit("disconnected");
+    const lost = dropCoordinationServer(fake);
     expect(failures).toEqual(["signaling-unreachable"]);
+
+    const rejection = await promise.catch((error: unknown) => error);
+    expect(rejection).toBe(lost);
+    expect(rejection).not.toBeInstanceOf(PartnerNoShowError);
+    expect(fake.listenerCount("connection")).toBe(0);
+    expect(fake.listenerCount("error")).toBe(0);
+    expect(fake.listenerCount("disconnected")).toBe(0);
+  });
+
+  test("losing the coordination server ends a wait that takes no path failure", async () => {
+    const { fake, peer } = makePeer();
+    const promise = waitForIncomingConnection(peer, { timeoutMs: 10_000 });
+
+    const lost = dropCoordinationServer(fake);
+
+    await expect(promise).rejects.toBe(lost);
+  });
+
+  test("a disconnect with no error before it ends the wait as a lost coordination server", async () => {
+    const { fake, peer } = makePeer();
+    const promise = waitForIncomingConnection(peer, { timeoutMs: 10_000 });
+
+    fake.emit("disconnected", "inviter-id");
+
+    const rejection = await promise.catch((error: unknown) => error);
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection).not.toBeInstanceOf(PartnerNoShowError);
+    expect((rejection as Error).message).toBe("Lost connection to server.");
+  });
+
+  test("a peer error before the partner's connection arrives does not end the wait", async () => {
+    const { fake, peer } = makePeer();
+    const promise = waitForIncomingConnection(peer, { timeoutMs: 10_000 });
+
+    fake.emit(
+      "error",
+      Object.assign(new Error("negotiation"), { type: "webrtc" }),
+    );
     const conn = { id: "c1" } as unknown as DataConnection;
     fake.emit("connection", conn);
 
     expect(await promise).toBe(conn);
-    expect(fake.listenerCount("disconnected")).toBe(0);
   });
 });

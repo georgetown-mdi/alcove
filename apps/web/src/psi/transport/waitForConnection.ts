@@ -40,10 +40,12 @@ export class PartnerNoShowError extends Error {
 
 /**
  * Resolves with the first incoming {@link DataConnection} on `peer`, or
- * rejects with a {@link PartnerNoShowError} at the deadline, or with a plain
- * abort error if `signal` aborts first. A settle-once guard, independent of
- * any caller's teardown, runs cleanup exactly once for whichever of
- * {connection, timeout, abort} wins, even when two fire in the same tick.
+ * rejects with a {@link PartnerNoShowError} at the deadline, with the error
+ * the peer reported on losing the coordination server, or with a plain abort
+ * error if `signal` aborts first. A settle-once guard, independent of any
+ * caller's teardown, runs cleanup exactly once for whichever of
+ * {connection, lost coordination server, timeout, abort} wins, even when two
+ * fire in the same tick.
  *
  * @param peer     The local PeerJS peer awaiting an inbound connection.
  * @param options  `timeoutMs` overrides the {@link DEFAULT_PEER_WAIT_TIMEOUT_MS}
@@ -53,8 +55,8 @@ export class PartnerNoShowError extends Error {
  *                 owner cancel the wait (on unmount or a sibling teardown)
  *                 and settle it promptly rather than leaving the promise
  *                 pending until the timer fires; `onPathFailed` takes the
- *                 peer losing the coordination server while it waits as a
- *                 path failure, and the wait goes on.
+ *                 peer losing the coordination server as a path failure,
+ *                 before the wait rejects.
  */
 export function waitForIncomingConnection(
   peer: Peer,
@@ -77,6 +79,7 @@ export function waitForIncomingConnection(
       if (settled) return;
       settled = true;
       peer.off("connection", onConnection);
+      peer.off("error", onPeerError);
       peer.off("disconnected", onDisconnected);
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
@@ -88,9 +91,21 @@ export function waitForIncomingConnection(
       watchIceGathering(conn);
       settle(() => resolve(conn));
     };
+    // The wait ends with the last error the peer emitted before
+    // `disconnected`: PeerJS's account of why it left the coordination server
+    // (test/browser/relayFallback.test.ts drives the real one).
+    let signalingLost: unknown;
+    const onPeerError = (err: unknown) => {
+      signalingLost = err;
+    };
     // A PeerJS peer does not register again once its socket has gone, so no
     // partner's connection can reach this wait after it.
-    const onDisconnected = () => onPathFailed?.("signaling-unreachable");
+    const onDisconnected = () => {
+      onPathFailed?.("signaling-unreachable");
+      settle(() =>
+        reject(signalingLost ?? new Error("Lost connection to server.")),
+      );
+    };
     const onAbort = () =>
       settle(() =>
         reject(new Error("waiting for the other party to connect was aborted")),
@@ -112,7 +127,8 @@ export function waitForIncomingConnection(
       return;
     }
     peer.once("connection", onConnection);
-    if (onPathFailed !== undefined) peer.on("disconnected", onDisconnected);
+    peer.on("error", onPeerError);
+    peer.on("disconnected", onDisconnected);
     signal?.addEventListener("abort", onAbort);
   });
 }
