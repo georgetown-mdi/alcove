@@ -448,8 +448,9 @@ describe("quick path", () => {
           "See how it works with example data. This opens the invite " +
             "screen with sample data loaded. To run both sides, open the " +
             "invitation in another tab of this browser, where accepting it " +
-            "offers the sample partner file. In a different browser, " +
-            "download the partner CSV from the invite screen.",
+            "offers the sample partner file. To accept it in a different " +
+            "browser, download the partner CSV from the invite screen " +
+            "and choose it there.",
         );
 
       await demoLink.click();
@@ -1319,8 +1320,8 @@ describe("inviter screen", () => {
           .element()
           .closest("p"),
       ).toHaveTextContent(
-        "Use sample data: load it into this exchange, or download the " +
-          "inviter sample CSV or download the partner sample CSV.",
+        "Use sample data: load it into this exchange. You can also " +
+          "download the inviter sample CSV or download the partner sample CSV.",
       );
 
       await page

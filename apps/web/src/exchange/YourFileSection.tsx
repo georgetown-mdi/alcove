@@ -221,7 +221,7 @@ export function YourFileSection({
               >
                 load it into this exchange
               </Anchor>
-              , or <SampleCsvLinks />.
+              . You can also <SampleCsvLinks />.
             </p>
           )}
           {acquired !== undefined && (
