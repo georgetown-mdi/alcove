@@ -6,6 +6,7 @@ import {
   PartnerNoShowError,
   waitForIncomingConnection,
 } from "../../../src/psi/transport/waitForConnection.js";
+import { recordRendezvousIds } from "../../../src/psi/transport/peerLogging.js";
 
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
@@ -147,14 +148,24 @@ describe("waitForIncomingConnection", () => {
     await expect(promise).rejects.toThrow("aborted");
   });
 
+  /** An error as PeerJS emits one: an `Error` with its `type`. */
+  function peerError(type: string, message: string): Error {
+    return Object.assign(new Error(message), { type });
+  }
+
+  /** PeerJS leaving the coordination server: `error`, then `disconnected`. */
+  function leaveCoordinationServer(fake: FakePeer, error: Error): Error {
+    fake.emit("error", error);
+    fake.emit("disconnected", "inviter-id");
+    return error;
+  }
+
   /** What PeerJS emits as its socket to the coordination server drops. */
   function dropCoordinationServer(fake: FakePeer): Error {
-    const lost = Object.assign(new Error("Lost connection to server."), {
-      type: "network",
-    });
-    fake.emit("error", lost);
-    fake.emit("disconnected", "inviter-id");
-    return lost;
+    return leaveCoordinationServer(
+      fake,
+      peerError("network", "Lost connection to server."),
+    );
   }
 
   test("losing the coordination server reports a path failure and ends the wait with the peer's error", async () => {
@@ -185,16 +196,95 @@ describe("waitForIncomingConnection", () => {
     await expect(promise).rejects.toBe(lost);
   });
 
-  test("a disconnect with no error before it ends the wait as a lost coordination server", async () => {
+  test.each(["network", "socket-error", "socket-closed"])(
+    "a %s error before the disconnect is a path failure",
+    async (type) => {
+      const { fake, peer } = makePeer();
+      const failures: Array<string> = [];
+      const promise = waitForIncomingConnection(peer, {
+        timeoutMs: 10_000,
+        onPathFailed: (failure) => failures.push(failure),
+      });
+
+      const lost = leaveCoordinationServer(fake, peerError(type, "socket"));
+
+      await expect(promise).rejects.toBe(lost);
+      expect(failures).toEqual(["signaling-unreachable"]);
+    },
+  );
+
+  // The PeerJS error type each refusal from the coordination server emits
+  // before its disconnect: test/browser/relayFallback.test.ts drives the real
+  // client through each.
+  test.each([
+    ["an ERROR message", "server-error", "the server refused the client"],
+    ["ID-TAKEN", "unavailable-id", 'ID "inviter-id" is taken'],
+    ["INVALID-KEY", "invalid-key", 'API KEY "peerjs" is invalid'],
+    [
+      "a frame over the signaling bound",
+      "server-error",
+      "the coordination server sent a frame larger than the limit",
+    ],
+  ])(
+    "a refusal from the coordination server (%s) ends the wait with no path failure",
+    async (_refusal, type, message) => {
+      const { fake, peer } = makePeer();
+      const failures: Array<string> = [];
+      const promise = waitForIncomingConnection(peer, {
+        timeoutMs: 10_000,
+        onPathFailed: (failure) => failures.push(failure),
+      });
+
+      const refusal = leaveCoordinationServer(fake, peerError(type, message));
+
+      const rejection = await promise.catch((error: unknown) => error);
+      expect(rejection).toBe(refusal);
+      expect(rejection).not.toBeInstanceOf(PartnerNoShowError);
+      expect(failures).toEqual([]);
+      expect(fake.listenerCount("error")).toBe(0);
+      expect(fake.listenerCount("disconnected")).toBe(0);
+    },
+  );
+
+  test("a disconnect with no error before it ends the wait with no path failure", async () => {
     const { fake, peer } = makePeer();
-    const promise = waitForIncomingConnection(peer, { timeoutMs: 10_000 });
+    const failures: Array<string> = [];
+    const promise = waitForIncomingConnection(peer, {
+      timeoutMs: 10_000,
+      onPathFailed: (failure) => failures.push(failure),
+    });
 
     fake.emit("disconnected", "inviter-id");
 
     const rejection = await promise.catch((error: unknown) => error);
     expect(rejection).toBeInstanceOf(Error);
     expect(rejection).not.toBeInstanceOf(PartnerNoShowError);
-    expect((rejection as Error).message).toBe("Lost connection to server.");
+    expect((rejection as Error).message).toBe(
+      "the connection to the coordination server closed while waiting for " +
+        "the other party to connect",
+    );
+    expect(failures).toEqual([]);
+  });
+
+  test("the error the wait ends with has the peer's rendezvous ids redacted", async () => {
+    const { fake, peer } = makePeer();
+    recordRendezvousIds(fake, ["inviter-derived-id", "acceptor-derived-id"]);
+    const promise = waitForIncomingConnection(peer, { timeoutMs: 10_000 });
+
+    leaveCoordinationServer(
+      fake,
+      peerError(
+        "unavailable-id",
+        'ID "inviter-derived-id" is taken, for acceptor-derived-id',
+      ),
+    );
+
+    const rejection = (await promise.catch((error: unknown) => error)) as Error;
+    expect(rejection.message).toBe(
+      'ID "[redacted-peer-id]" is taken, for [redacted-peer-id]',
+    );
+    expect(rejection.stack).not.toContain("derived-id");
+    expect(rejection).toMatchObject({ type: "unavailable-id" });
   });
 
   test("a peer error before the partner's connection arrives does not end the wait", async () => {

@@ -418,3 +418,64 @@ test("with no relay listed, losing the coordination server during the inviter's 
 
   expect(await rejectionWithin(opening, 1_000)).toBe(lost);
 });
+
+const RELAY_START = '{"type":"start"}';
+
+/**
+ * The inviter's open with one listed relay whose socket opens and is paired
+ * with the partner's, waiting for the partner's connection on `peer`.
+ */
+async function inviterWaitingWithRelayPaired(peer: EventEmitter) {
+  const record = { sent: [] as Array<unknown>, closes: [] as Array<number> };
+  const socket = idleSocket(record);
+  const opening = openRunConnectionWithRelayFallback(
+    {
+      role: "inviter",
+      sharedSecret: SHARED_SECRET,
+      relays: [{ url: "wss://relay.test/relay", exchangeId: "exchange" }],
+      signal: new AbortController().signal,
+      onCloseOutcome: () => {},
+      openWebRtc: inviterWaitingOn(peer),
+    },
+    { createSocket: () => socket },
+  );
+  opening.catch(() => {});
+  await vi.waitFor(() => expect(peer.listenerCount("disconnected")).toBe(1));
+  Object.assign(socket, { readyState: 1 });
+  socket.dispatchEvent(new Event("open"));
+  socket.dispatchEvent(
+    new MessageEvent("message", { data: '{"type":"paired"}' }),
+  );
+  expect(record.sent).toHaveLength(1);
+  return { opening, record };
+}
+
+test("with a paired relay listed, the coordination server's socket dropping during the inviter's wait sends this side's start on it", async () => {
+  const peer = new EventEmitter();
+  const { opening, record } = await inviterWaitingWithRelayPaired(peer);
+
+  dropCoordinationServer(peer);
+
+  await vi.waitFor(() => expect(record.sent).toContain(RELAY_START));
+  expect(await rejectionWithin(opening, 50)).toBe("still waiting");
+});
+
+test.each([
+  ["an ERROR message", "server-error", "the server refused the client"],
+  ["ID-TAKEN", "unavailable-id", 'ID "inviter-id" is taken'],
+  ["INVALID-KEY", "invalid-key", 'API KEY "peerjs" is invalid'],
+])(
+  "with a paired relay listed, a refusal from the coordination server (%s) during the inviter's wait fails the run with no start sent",
+  async (_refusal, type, message) => {
+    const peer = new EventEmitter();
+    const { opening, record } = await inviterWaitingWithRelayPaired(peer);
+
+    const refusal = Object.assign(new Error(message), { type });
+    peer.emit("error", refusal);
+    peer.emit("disconnected", "inviter-id");
+
+    expect(await rejectionWithin(opening, 1_000)).toBe(refusal);
+    expect(record.sent).not.toContain(RELAY_START);
+    expect(record.closes).toEqual([1000]);
+  },
+);

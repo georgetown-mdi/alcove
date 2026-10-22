@@ -121,3 +121,24 @@ export function redactErrorIds(
     return redacted;
   }
 }
+
+const rendezvousIdsByPeer = new WeakMap<object, ReadonlyArray<string>>();
+
+/**
+ * Record the derived rendezvous ids of the run `peer` serves, so that code
+ * handed the peer redacts them from its errors ({@link redactRendezvousIds}).
+ */
+export function recordRendezvousIds(
+  peer: object,
+  ids: ReadonlyArray<string>,
+): void {
+  rendezvousIdsByPeer.set(peer, ids);
+}
+
+/**
+ * {@link redactErrorIds} with the ids {@link recordRendezvousIds} recorded for
+ * `peer`, none where it recorded none.
+ */
+export function redactRendezvousIds(peer: object, err: unknown): unknown {
+  return redactErrorIds(err, rendezvousIdsByPeer.get(peer) ?? []);
+}

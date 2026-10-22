@@ -16,6 +16,7 @@ import { peerjsDebugLevel } from "@utils/clientConfig";
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
+  signalingSocketFailed,
 } from "./waitForConnection";
 import {
   OWN_SIGNALING_PATH,
@@ -24,6 +25,7 @@ import {
 } from "./signalingAddress";
 import {
   createRedactingLogFunction,
+  recordRendezvousIds,
   redactErrorIds,
   resolvePeerDebugLevel,
 } from "./peerLogging";
@@ -351,27 +353,16 @@ function waitForPeerOpen(
   });
 }
 
-/** PeerJS's error types for a coordination server socket that failed or
- * closed, as against an answer from the server. */
-const UNREACHABLE_SIGNALING_ERROR_TYPES: ReadonlySet<unknown> = new Set([
-  "network",
-  "socket-error",
-  "socket-closed",
-]);
-
 /**
  * Whether a registration or a registered socket failed with no refusal from
- * the coordination server: its socket failed or closed, or the registration
- * bound passed ({@link waitForPeerOpen}'s `transport` error). A browser does
- * not say why a WebSocket failed, so a certificate it refused is one of these.
+ * the coordination server: its socket failed or closed
+ * ({@link signalingSocketFailed}), or the registration bound passed
+ * ({@link waitForPeerOpen}'s `transport` error). A browser does not say why a
+ * WebSocket failed, so a certificate it refused is one of these.
  */
 function signalingUnreachable(err: unknown): boolean {
   if (err instanceof ConnectionError) return err.kind === "transport";
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    UNREACHABLE_SIGNALING_ERROR_TYPES.has((err as { type?: unknown }).type)
-  );
+  return signalingSocketFailed(err);
 }
 
 // Called after the (fast) async id derivation, so an abort during it is still
@@ -434,6 +425,7 @@ export async function listenAsInviter(
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
   recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
+  recordRendezvousIds(peer, [inviterId, acceptorId]);
   try {
     await waitForPeerOpen(peer, {
       signal,

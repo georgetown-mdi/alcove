@@ -17,10 +17,14 @@ import { AEAD_ENVELOPE_VERSION } from "@alcove/core/testing";
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
+  MAX_SIGNALING_FRAME_BYTES,
+  boundPeerSignaling,
+} from "@psi/transport/signalingBounds";
+import { dialAsAcceptor, listenAsInviter } from "@psi/transport/rendezvous";
+import {
   openOneShotPeerConnection,
   runExchangeLifecycle,
 } from "@psi/exchangeLifecycle";
-import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 
@@ -337,36 +341,100 @@ test(
   },
 );
 
+/** The inviter registered on the test broker as a run registers it. */
+function listenOnTestBroker(secret: string): Promise<Peer> {
+  return listenAsInviter(secret, {
+    peerFactory: (id, options) =>
+      boundPeerSignaling(
+        new Peer(id, {
+          ...options,
+          host: brokerHost,
+          port: brokerPort,
+          path: "/api/",
+          secure: false,
+        }),
+      ),
+  });
+}
+
+/** The registered peer's socket to the coordination server. */
+function signalingSocketOf(peer: Peer): WebSocket {
+  const socket = (peer as unknown as { socket: { _socket?: unknown } }).socket
+    ._socket;
+  expect(socket).toBeInstanceOf(WebSocket);
+  return socket as WebSocket;
+}
+
 test(
   "the coordination server's socket dropping ends the inviter's wait with PeerJS's error, as a path failure",
   { timeout: 30_000 },
   async () => {
-    const secret = generateSharedSecret();
-    const peer = new Peer(await deriveRendezvousPeerId(secret, "inviter"), {
-      host: brokerHost,
-      port: brokerPort,
-      path: "/api/",
-    });
+    const peer = await listenOnTestBroker(generateSharedSecret());
     try {
-      await new Promise<void>((resolve, reject) => {
-        peer.once("open", () => resolve());
-        peer.once("error", reject);
-      });
       const pathFailures: Array<WebRtcPathFailure> = [];
       const waiting = waitForIncomingConnection(peer, {
         timeoutMs: 20_000,
         onPathFailed: (failure) => pathFailures.push(failure),
       });
-      const signaling = (peer as unknown as { socket: { _socket?: unknown } })
-        .socket._socket;
-      expect(signaling).toBeInstanceOf(WebSocket);
-      (signaling as WebSocket).close();
+      signalingSocketOf(peer).close();
 
       await expect(waiting).rejects.toMatchObject({
         type: "network",
         message: "Lost connection to server.",
       });
       expect(pathFailures).toEqual(["signaling-unreachable"]);
+    } finally {
+      peer.destroy();
+    }
+  },
+);
+
+test.each([
+  {
+    refusal: "an ERROR message",
+    frame: '{"type":"ERROR","payload":{"msg":"the server refused"}}',
+    type: "server-error",
+    message: "the server refused",
+  },
+  {
+    refusal: "ID-TAKEN",
+    frame: '{"type":"ID-TAKEN"}',
+    type: "unavailable-id",
+    message: 'ID "[redacted-peer-id]" is taken',
+  },
+  {
+    refusal: "INVALID-KEY",
+    frame: '{"type":"INVALID-KEY"}',
+    type: "invalid-key",
+    message: 'API KEY "peerjs" is invalid',
+  },
+  {
+    refusal: "a frame over the signaling bound",
+    frame: "x".repeat(MAX_SIGNALING_FRAME_BYTES + 1),
+    type: "server-error",
+    message: `the coordination server sent a frame larger than the ${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
+  },
+])(
+  "a refusal from the coordination server ($refusal) ends the inviter's wait with PeerJS's error, ids redacted, as no path failure",
+  { timeout: 30_000 },
+  async ({ frame, type, message }) => {
+    const secret = generateSharedSecret();
+    const inviterId = await deriveRendezvousPeerId(secret, "inviter");
+    const peer = await listenOnTestBroker(secret);
+    try {
+      const pathFailures: Array<WebRtcPathFailure> = [];
+      const waiting = waitForIncomingConnection(peer, {
+        timeoutMs: 20_000,
+        onPathFailed: (failure) => pathFailures.push(failure),
+      });
+      signalingSocketOf(peer).dispatchEvent(
+        new MessageEvent("message", { data: frame }),
+      );
+
+      const rejection = await waiting.catch((error: unknown) => error);
+      expect(rejection).toMatchObject({ type, message });
+      expect((rejection as Error).stack ?? "").not.toContain(inviterId);
+      expect(pathFailures).toEqual([]);
     } finally {
       peer.destroy();
     }
