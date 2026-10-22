@@ -8,6 +8,7 @@ import type {
 import type { ColumnMetadata } from "../config/metadata.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import { SSN4_STEPS, SSN_MAX_PEOPLE_PER_VALUE, SSN_STEPS } from "./ssnSteps.js";
+import { SECONDARY_UNIT_DESIGNATORS } from "./secondaryUnitDesignators.js";
 
 // --- Step arrays -------------------------------------------------------------
 
@@ -223,21 +224,65 @@ const FOLD_SPACES_AND_DROP_BLANK_STEPS: StandardizationStep[] = [
   { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
 ];
 
-const STREET_NAME_AND_CITY_STEPS: StandardizationStep[] = [
+const CITY_STEPS: StandardizationStep[] = [
   ...PLACE_NAME_FOLD_STEPS,
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
 ];
 
-// The whole unit, designator included, with every punctuation mark deleted,
-// a hyphen too, so 4-B and 4B, and #4B and 4B, agree.
+// Whole cleaned values only. UNKNOWN is the value the Project US@ specification
+// writes for an unknown address part and says not to match on; UNK and NONE are
+// the name lists' words for a value nobody recorded.
+const ADDRESS_PLACEHOLDERS: readonly string[] = ["UNKNOWN", "UNK", "NONE"];
+
+const STREET_NAME_STEPS: StandardizationStep[] = [
+  ...CITY_STEPS,
+  { function: "usps_street_name" },
+  { function: "null_if", params: { values: [...ADDRESS_PLACEHOLDERS] } },
+];
+
+const UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER: readonly string[] = [
+  ...new Set(
+    SECONDARY_UNIT_DESIGNATORS.filter(
+      (designator) => !designator.standsAlone,
+    ).flatMap((designator) => [designator.name, designator.abbreviation]),
+  ),
+];
+
+// A designator that needs an identifier is deleted as a word, or where it is
+// written against the digit that starts one (APT4B), so the identifier is what
+// remains: APT 4B, UNIT 4B, APT-4B and 4B agree. One that stands alone names
+// the unit, and is kept in its abbreviation. Punctuation is deleted after, a
+// hyphen too, so 4-B and 4B, and #4B and 4B, agree.
 const UNIT_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "squash_spaces" },
   { function: "remove_accents" },
   { function: "remove_non_ascii" },
   { function: "to_upper_case" },
+  {
+    function: "replace_regex",
+    params: {
+      pattern: `\\b(?:${UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER.join("|")})(?:\\b|([0-9]))`,
+      replacement: "$1",
+    },
+  },
+  ...SECONDARY_UNIT_DESIGNATORS.filter(
+    (designator) =>
+      designator.standsAlone && designator.name !== designator.abbreviation,
+  ).map((designator): StandardizationStep => ({
+    function: "replace_regex",
+    params: {
+      pattern: `\\b${designator.name}\\b`,
+      replacement: designator.abbreviation,
+    },
+  })),
   { function: "remove_punctuation" },
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+  // NA is N/A, written where an address has no unit.
+  {
+    function: "null_if",
+    params: { values: [...ADDRESS_PLACEHOLDERS, "NA"] },
+  },
 ];
 
 // A county name with the word COUNTY and a leading "COUNTY OF" removed.
@@ -303,8 +348,9 @@ function stepsForType(
     case "street_number":
       return STREET_NUMBER_STEPS;
     case "street_name":
+      return STREET_NAME_STEPS;
     case "city":
-      return STREET_NAME_AND_CITY_STEPS;
+      return CITY_STEPS;
     case "unit":
       return UNIT_STEPS;
     case "zip_code":

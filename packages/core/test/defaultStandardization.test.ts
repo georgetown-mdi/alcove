@@ -5,6 +5,7 @@ import {
   getDefaultStandardization,
 } from "../src/defaults/builtInStandardization";
 import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
+import { SECONDARY_UNIT_DESIGNATORS } from "../src/defaults/secondaryUnitDesignators";
 import {
   createDateFormatInferrer,
   inferDateFormat,
@@ -305,8 +306,9 @@ describe("getDefaultStandardization — structure", () => {
           ),
       ),
     );
-    // first_name, last_name, date_of_birth, ssn and ssn4 each hold one.
-    expect(placeholderLists).toHaveLength(5);
+    // first_name, last_name, date_of_birth, ssn, ssn4, street_name and unit
+    // each hold one.
+    expect(placeholderLists).toHaveLength(7);
   });
 
   test("each transformation has a non-empty steps array", () => {
@@ -1958,14 +1960,19 @@ describe.each(["street_name", "unit", "city"] as const)(
     );
 
     test("folds case and surrounding and repeated whitespace", () => {
-      expect(run("  oak \t  hill ")).toBe("OAK HILL");
-      expect(run("Oak Hill")).toBe(run("OAK  HILL"));
-      expect(run("oak\u00a0hill")).toBe("OAK HILL");
+      expect(run("  old \t  oak ")).toBe("OLD OAK");
+      expect(run("Old Oak")).toBe(run("OLD  OAK"));
+      expect(run("old\u00a0oak")).toBe("OLD OAK");
     });
 
     test("removes punctuation", () => {
-      expect(run("Oak. Hill,")).toBe("OAK HILL");
+      expect(run("Old. Oak,")).toBe("OLD OAK");
       expect(run("O'Hara")).toBe("OHARA");
+    });
+
+    test("drops the placeholder UNKNOWN", () => {
+      if (type === "city") expect(run("Unknown")).toBe("UNKNOWN");
+      else expect(run("Unknown")).toBeNull();
     });
 
     test("keeps digits", () => {
@@ -1994,14 +2001,53 @@ describe("default street_name pipeline", () => {
     expect(run("Wilkes\u2013Barre Blvd")).toBe("WILKES BARRE BLVD");
   });
 
-  test("abbreviates and spells out no word", () => {
-    expect(run("Main Street")).toBe("MAIN STREET");
-    expect(run("North Main St")).not.toBe(run("N Main St"));
+  test.each([
+    ["Main Street", "MAIN ST"],
+    ["North Bay Street", "N BAY ST"],
+    ["Bay Drive West", "BAY DR W"],
+    ["North E. Main Street", "NE MAIN ST"],
+    ["East-West Hwy", "E WEST HWY"],
+    ["Bay W. Drive", "BAY WEST DR"],
+    ["North Avenue", "NORTH AVE"],
+    ["Main Avenue Drive", "MAIN AVENUE DR"],
+    ["Ave. E", "AVENUE E"],
+  ])("writes the suffix and directionals of %j as %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test("abbreviates a suffix and a directional only in their positions", () => {
+    expect(run("St. Mary's Rd")).toBe("ST MARYS RD");
+    expect(run("North Ave")).toBe("NORTH AVE");
+    expect(run("North Main St")).toBe(run("N Main St"));
+  });
+
+  test("keeps a numbered name as written", () => {
+    expect(run("Fifth Ave")).not.toBe(run("5th Ave"));
+  });
+
+  test.each(["UNK", "None", "unknown"])("drops the placeholder %j", (input) => {
+    expect(run(input)).toBeNull();
   });
 
   test("two parties with differently written street names agree", () => {
-    const inviter = ["Main St.", "st. mary's rd", "Wilkes-Barre  Blvd"];
-    const acceptor = ["MAIN ST", "St Marys Rd", "Wilkes Barre Blvd"];
+    const inviter = [
+      "Main St.",
+      "st. mary's rd",
+      "Wilkes-Barre  Blvd",
+      "North Main Street",
+      "Bay Dr. W.",
+      "S.W. 8th Street",
+      "Main Ave. Dr.",
+    ];
+    const acceptor = [
+      "MAIN STREET",
+      "St Marys Road",
+      "Wilkes Barre Boulevard",
+      "N MAIN ST",
+      "Bay Drive West",
+      "Southwest 8th St",
+      "Main Avenue Drive",
+    ];
     expect(inviter.map(run)).toEqual(acceptor.map(run));
   });
 });
@@ -2010,27 +2056,82 @@ describe("default unit pipeline", () => {
   const run = (input: string) => runDefaultFor("unit", input);
 
   test.each([
-    ["Apt 4B", "APT 4B"],
-    ["apt. 4-b", "APT 4B"],
+    ["Apt 4B", "4B"],
+    ["apt. 4-b", "4B"],
     ["#4B", "4B"],
     ["# 4B", "4B"],
     ["4-B", "4B"],
     ["4\u2013B", "4B"],
-    ["  Unit  12 ", "UNIT 12"],
-    ["Ste 200", "STE 200"],
-    ["N/A", "NA"],
+    ["  Unit  12 ", "12"],
+    ["Ste 200", "200"],
+    ["Suite200", "200"],
+    ["Bldg 3 Apt 12", "3 12"],
+    ["Basement", "BSMT"],
+    ["Rear Apt", "REAR"],
+    ["Penthouse B", "PH B"],
+    ["Flat 3", "FLAT 3"],
   ])("cleans %j to %j", (input, expected) => {
     expect(run(input)).toBe(expected);
   });
 
-  test("keeps the designator as written", () => {
-    expect(run("Apt 4B")).not.toBe(run("4B"));
-    expect(run("Apt 4B")).not.toBe(run("Unit 4B"));
+  test("Apt 4B, Apartment 4B, Unit 4B, #4B, Apt-4B and 4B clean to one value", () => {
+    const written = [
+      "Apt 4B",
+      "Apartment 4B",
+      "Unit 4B",
+      "#4B",
+      "Apt-4B",
+      "4B",
+    ];
+    expect(new Set(written.map(run))).toEqual(new Set(["4B"]));
+  });
+
+  test("deletes each designator that needs an identifier, in either spelling", () => {
+    for (const designator of SECONDARY_UNIT_DESIGNATORS.filter(
+      (d) => !d.standsAlone,
+    )) {
+      expect(run(`${designator.name} 7`), designator.name).toBe("7");
+      expect(run(`${designator.abbreviation} 7`), designator.abbreviation).toBe(
+        "7",
+      );
+      expect(run(designator.name), designator.name).toBeNull();
+    }
+  });
+
+  test("keeps each designator that stands alone, in its abbreviation", () => {
+    for (const designator of SECONDARY_UNIT_DESIGNATORS.filter(
+      (d) => d.standsAlone,
+    )) {
+      expect(run(designator.name), designator.name).toBe(
+        designator.abbreviation,
+      );
+      expect(run(designator.abbreviation), designator.abbreviation).toBe(
+        designator.abbreviation,
+      );
+    }
+  });
+
+  test.each(["N/A", "n/a", "NA", "None", "UNK", "Unknown", "Apt Unknown"])(
+    "drops the placeholder %j",
+    (input) => {
+      expect(run(input)).toBeNull();
+    },
+  );
+
+  test("an operator's edited placeholder list drops only what it lists", () => {
+    const [t] = getDefaultStandardization(
+      [{ name: "COLUMN", type: "unit", role: "linkage", isPayload: false }],
+      { ...minimalTerms, linkageFields: [{ name: "unit", type: "unit" }] },
+    );
+    const edited = withPlaceholders(t.steps!, "NA", ["VACANT"]);
+    expect(runPipeline("N/A", edited)).toBe("NA");
+    expect(runPipeline("Vacant", edited)).toBeNull();
+    expect(runPipeline("Apt 4B", edited)).toBe("4B");
   });
 
   test("two parties with differently written units agree", () => {
-    const inviter = ["Apt. 4-B", "#12", "unit  3a"];
-    const acceptor = ["APT 4B", "12", "Unit 3A"];
+    const inviter = ["Apt. 4-B", "#12", "unit  3a", "Basement", "Suite 200"];
+    const acceptor = ["4B", "Apt 12", "Unit 3A", "BSMT", "Ste. 200"];
     expect(inviter.map(run)).toEqual(acceptor.map(run));
   });
 });

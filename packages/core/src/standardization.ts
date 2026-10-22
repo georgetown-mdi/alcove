@@ -27,6 +27,7 @@ import {
 } from "./config/transformParamTypes.js";
 import type { TransformParamType } from "./config/transformParamTypes.js";
 import { usStateCode } from "./usStateCodes.js";
+import { uspsStreetName } from "./uspsStreetName.js";
 import type { ScanBudget } from "./utils/linearRegex.js";
 import type {
   NullIfLastName,
@@ -955,6 +956,7 @@ const STANDARDIZING_FUNCTIONS = frozenLookupTable({
   phonetic: phoneticFactory,
   zip3: (_params) => zip3,
   state_code: (_params) => usStateCode,
+  usps_street_name: noParamFactory(uspsStreetName),
   null_if: nullIfFactory,
   replace_regex: replaceRegexFactory,
   extract_regex: extractRegexFactory,
@@ -1351,6 +1353,14 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     label: "State code",
     blurb:
       "Replace a US state, DC or territory name with its two-letter postal abbreviation, keeping an abbreviation as it is; drop any other value.",
+    tier: "standard",
+    params: noParams,
+  },
+  usps_street_name: {
+    name: "usps_street_name",
+    label: "USPS street name",
+    blurb:
+      "Abbreviate a street name's suffix and directionals to their USPS forms by position (MAIN STREET NORTH to MAIN ST N), keeping the other words.",
     tier: "standard",
     params: noParams,
   },
