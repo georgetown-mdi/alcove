@@ -1360,7 +1360,7 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     name: "usps_street_name",
     label: "USPS street name",
     blurb:
-      "Abbreviate a street name's suffix and directionals to their USPS forms by position (MAIN STREET NORTH to MAIN ST N), keeping the other words.",
+      "Write a street name's suffix and directionals in their USPS forms by position, abbreviating or spelling each out (MAIN STREET NORTH to MAIN ST N, N AVE to NORTH AVE), keeping the other words.",
     tier: "standard",
     params: noParams,
   },

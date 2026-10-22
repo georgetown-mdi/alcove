@@ -1535,7 +1535,7 @@ describe("the consent summary's geography elements", () => {
     ]);
     expect(key.headerFields).toEqual(["last name", "street name"]);
     expect(key.elements[1].transforms[0].description).toMatch(
-      /^Abbreviates a street name's suffix and directionals to their USPS forms/,
+      /^Writes a street name's suffix and directionals in their USPS forms before matching, abbreviating or spelling each out by its position/,
     );
   });
 });

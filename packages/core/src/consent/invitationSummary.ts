@@ -151,7 +151,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   state_code:
     "Replaces a US state, DC or territory name with its two-letter postal abbreviation before matching, so a name and its abbreviation can match; any other value is dropped.",
   usps_street_name:
-    "Abbreviates a street name's suffix and directionals to their USPS forms before matching, so Main Street North and Main St N can match.",
+    "Writes a street name's suffix and directionals in their USPS forms before matching, abbreviating or spelling each out by its position, so Main Street North and Main St N can match.",
   null_if: "Treats listed values as empty, dropping them from matching.",
   replace_regex:
     "Rewrites the parts of the value matching a pattern before matching.",
