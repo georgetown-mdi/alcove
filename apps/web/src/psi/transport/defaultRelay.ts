@@ -10,7 +10,8 @@
  * relay's registrar without a token (`enrollRelayKeyWithinWait` in core),
  * right before it connects. The key and the exchange id it is enrolled under
  * both derive from the run's current shared secret. Switched off, a run lists
- * it only where the invitation it accepted names it.
+ * each of the two urls only where the invitation it accepted names that url,
+ * and enrolls only where the invitation names the TURN url.
  */
 
 import {
@@ -48,27 +49,31 @@ export function defaultRelayInUse(
   return offer.kind === "on" || switchedOn() ? offer.relay : undefined;
 }
 
-/**
- * Whether `relay`, an invitation's, names the default relay: its TURN url or
- * its WebSocket relay url.
- */
-export function namesDefaultRelay(
+// The part of `defaultRelay` that `relay`, an invitation's, names, service by
+// service: none where it does not name the TURN url, since the TURN url is
+// what a run enrolls for, and the WebSocket relay url only where it names that
+// url too.
+function defaultRelayAnInvitationNames(
   relay: RelayUrls | undefined,
   defaultRelay: DefaultRelaySetting,
-): boolean {
-  return (
-    (relay?.turn ?? []).includes(defaultRelay.turnUrl) ||
-    (defaultRelay.websocketUrl !== undefined &&
-      relay?.websocket === defaultRelay.websocketUrl)
-  );
+): DefaultRelaySetting | undefined {
+  if (!(relay?.turn ?? []).includes(defaultRelay.turnUrl)) return undefined;
+  const { websocketUrl, ...turnAndRegistrar } = defaultRelay;
+  return websocketUrl !== undefined && relay?.websocket === websocketUrl
+    ? defaultRelay
+    : turnAndRegistrar;
 }
 
 /**
  * The default relay a run uses. `in-use`: {@link defaultRelayInUse} names
  * it. `invited`: the build offers it switched off, this browser has not
- * turned it on, and the invitation the run accepted names it, so the run uses
- * it as one in use. `off`: the build offers it switched off and the run does
- * not use it; `relay` is the one left out. `none`: the build names none.
+ * turned it on, and the invitation the run accepted names its TURN url, so
+ * the run uses that url as one in use; `relay` names the WebSocket relay url
+ * only where the invitation names that url too. `off`: the build offers it
+ * switched off and the run does not use its TURN url, including where the
+ * invitation names only its WebSocket relay url, which the run lists as it
+ * lists any WebSocket relay an invitation names; `relay` is the one left out.
+ * `none`: the build names none.
  */
 export type DefaultRelayForRun =
   | { kind: "in-use" | "invited" | "off"; relay: DefaultRelaySetting }
@@ -85,10 +90,10 @@ export function defaultRelayForRun(
   if (offer.kind === "none") return { kind: "none" };
   const inUse = defaultRelayInUse(() => offer, switchedOn);
   if (inUse !== undefined) return { kind: "in-use", relay: inUse };
-  return {
-    kind: namesDefaultRelay(invitationRelay, offer.relay) ? "invited" : "off",
-    relay: offer.relay,
-  };
+  const invited = defaultRelayAnInvitationNames(invitationRelay, offer.relay);
+  return invited !== undefined
+    ? { kind: "invited", relay: invited }
+    : { kind: "off", relay: offer.relay };
 }
 
 /**

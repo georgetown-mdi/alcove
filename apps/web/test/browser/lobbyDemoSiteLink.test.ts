@@ -73,6 +73,18 @@ describe("a demo-site invitation pasted on the start page", () => {
     expect(navigations).toEqual([]);
   });
 
+  test("a full link whose host ends in a dot is refused too", async () => {
+    await review(deepLinkFor(`${DEMO_SITE_ORIGIN}.`, CODE), {
+      kind: "opt-in",
+      relay: SITE_RELAY,
+    });
+
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(DEMO_SITE_LINK_REFUSAL);
+    expect(navigations).toEqual([]);
+  });
+
   test("its bare code proceeds to the review", async () => {
     await review(CODE, { kind: "opt-in", relay: SITE_RELAY });
 
@@ -86,6 +98,11 @@ describe("a demo-site invitation pasted on the start page", () => {
     [
       "a link from another site",
       deepLinkFor("https://alcove.example.org", CODE),
+      { kind: "opt-in", relay: SITE_RELAY },
+    ],
+    [
+      "a link from a host that only starts with the demo site's",
+      deepLinkFor(`${DEMO_SITE_ORIGIN}.example.org`, CODE),
       { kind: "opt-in", relay: SITE_RELAY },
     ],
     [

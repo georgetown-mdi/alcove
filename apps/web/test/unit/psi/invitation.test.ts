@@ -32,6 +32,7 @@ import {
   generateInvitation,
   invitationSignalingAddress,
   invitationWebrtcEndpoint,
+  isDemoSiteInvitationLink,
   tokenFromInput,
   webrtcEndpointFromAddress,
 } from "../../../src/psi/invitation.js";
@@ -2108,6 +2109,29 @@ describe("deepLinkFor", () => {
       "https://example.org/accept#TOKEN123",
     );
     expect(ACCEPT_ROUTE_PATH).toBe("/accept");
+  });
+});
+
+describe("isDemoSiteInvitationLink", () => {
+  test.each([
+    "https://demo.data-bridge.org/accept#CODE",
+    "  https://DEMO.data-bridge.org:443/accept#CODE\n",
+    "https://demo.data-bridge.org./accept#CODE",
+  ])("%j is a demo-site link", (input) => {
+    expect(isDemoSiteInvitationLink(input)).toBe(true);
+  });
+
+  test.each([
+    "CODE",
+    "https://demo.data-bridge.org/accept",
+    "http://demo.data-bridge.org/accept#CODE",
+    "https://demo.data-bridge.org:8443/accept#CODE",
+    "https://demo.data-bridge.org../accept#CODE",
+    "https://demo.data-bridge.org.example.org/accept#CODE",
+    "https://xdemo.data-bridge.org/accept#CODE",
+    "not a url#CODE",
+  ])("%j is not", (input) => {
+    expect(isDemoSiteInvitationLink(input)).toBe(false);
   });
 });
 

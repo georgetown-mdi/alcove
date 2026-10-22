@@ -81,9 +81,10 @@ the rest of this record stands.
   exchange there uses no relay the project runs, TURN or WebSocket, unless a
   party turned it on in relay settings, so the project learns no party's
   address through its relay by default. An acceptor follows its inviter: an
-  invitation created with the relay on puts it in the acceptor's run, and the
-  acceptor's review says the exchange may connect through it
-  ([DEPLOYMENT.md](../DEPLOYMENT.md#the-default-relay)).
+  invitation that names the relay, whichever site or party made it, puts in
+  the acceptor's run each of the relay's urls it names and no other, and the
+  acceptor's review says the exchange may connect through it where it names
+  the TURN url ([DEPLOYMENT.md](../DEPLOYMENT.md#the-default-relay)).
 - **The demo site lists it in every browser exchange**, as the 2026-10-14
   default had it for production ([DEPLOYMENT.md](../DEPLOYMENT.md#the-demo-site)).
 

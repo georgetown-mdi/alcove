@@ -276,20 +276,31 @@ export function tokenFromInput(input: string): string {
  * refuses on its start page. */
 export const DEMO_SITE_ORIGIN = "https://demo.data-bridge.org";
 
+const DEMO_SITE_URL = new URL(DEMO_SITE_ORIGIN);
+
 /**
  * Whether `input`, pasted on the start page, is a full invitation link made
- * on the demo site: a url whose origin is {@link DEMO_SITE_ORIGIN}, with the
- * invitation in its fragment. A bare code is not.
+ * on the demo site: a url with the scheme, host and port of
+ * {@link DEMO_SITE_ORIGIN}, its host compared with one trailing dot removed,
+ * and the invitation in its fragment. A bare code is not.
  */
 export function isDemoSiteInvitationLink(input: string): boolean {
   const trimmed = input.trim();
   const hash = trimmed.indexOf("#");
   if (hash === -1) return false;
+  let url: URL;
   try {
-    return new URL(trimmed.slice(0, hash)).origin === DEMO_SITE_ORIGIN;
+    url = new URL(trimmed.slice(0, hash));
   } catch {
     return false;
   }
+  // URL drops a scheme's default port, so with the schemes equal, equal
+  // `port` strings are equal effective ports.
+  return (
+    url.protocol === DEMO_SITE_URL.protocol &&
+    url.port === DEMO_SITE_URL.port &&
+    url.hostname.replace(/\.$/, "") === DEMO_SITE_URL.hostname
+  );
 }
 
 /**

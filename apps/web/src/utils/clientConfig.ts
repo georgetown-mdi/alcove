@@ -126,8 +126,8 @@ export type { DefaultRelayMode, DefaultRelaySetting };
 
 /**
  * How a build offers its default relay to the browser exchanges it runs.
- * `opt-in` lists it only once this browser's user turns it on, or where an
- * invitation a run accepts names it; `on` lists it in every one.
+ * `opt-in` lists it only once this browser's user turns it on, or, url by
+ * url, where an invitation a run accepts names it; `on` lists it in every one.
  */
 export type DefaultRelayBuild =
   { kind: "none" } | { kind: DefaultRelayMode; relay: DefaultRelaySetting };

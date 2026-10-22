@@ -65,11 +65,12 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
 /**
  * The relay a browser run dials with. Its default relay is the one
  * `defaultRelayForRun` names: the one in use, or, where the build offers it
- * switched off, the build's only where `invitationRelay` names it; `setting`
- * replaces that choice. Every TURN url it would list, this browser's own, the
- * invitation's and that default relay's, is kept or left out by
- * `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every url). Where
- * it is set, the urls kept and left out are shown through
+ * switched off, the build's only where `invitationRelay` names its TURN url,
+ * with its WebSocket relay url only where `invitationRelay` names that too;
+ * `setting` replaces that choice. Every TURN url it would list, this
+ * browser's own, the invitation's and that default relay's, is kept or left
+ * out by `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every url).
+ * Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept. Each WebSocket relay it
  * lists names the exchange id its proof is made under, decided by the url:
@@ -140,9 +141,9 @@ export async function relayPlanForRun(
   };
 }
 
-// The WebSocket relays a run lists, the default relay's url left out unless
-// the run's enrollment there confirmed, even where another source names it,
-// as the default relay's TURN url is.
+// The WebSocket relays a run lists. Where the run uses the default relay's
+// WebSocket relay url, that url is left out unless the run's enrollment there
+// confirmed, even where another source names it, as its TURN url is.
 async function webSocketRelaysWithExchangeIds(
   sharedSecret: string,
   sources: {
