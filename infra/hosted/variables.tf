@@ -3,7 +3,7 @@
 
 variable "cloudflare_zone_id" {
   type        = string
-  description = "The Cloudflare zone both public names are in. Its settings apply to every name in the zone, not only these two."
+  description = "The Cloudflare zone every name in this root is in. Its settings apply to every name in the zone, not only these."
 }
 
 variable "public_names" {
@@ -18,7 +18,7 @@ variable "public_names" {
 
 variable "cloudflare_account_id" {
   type        = string
-  description = "The Cloudflare account the Pages project is in: the deploy workflow's CLOUDFLARE_ACCOUNT_ID secret."
+  description = "The Cloudflare account the Pages projects are in: the deploy workflows' CLOUDFLARE_ACCOUNT_ID secret."
 }
 
 variable "pages_project_name" {
@@ -34,4 +34,14 @@ variable "site_pages_project_name" {
 variable "site_name" {
   type        = string
   description = "The name the project site is served on: the zone apex."
+}
+
+variable "demo_pages_project_name" {
+  type        = string
+  description = "The Cloudflare Pages project the demo site is uploaded to: the deploy workflow's CLOUDFLARE_DEMO_PAGES_PROJECT variable."
+}
+
+variable "demo_name" {
+  type        = string
+  description = "The name the demo site is served on."
 }

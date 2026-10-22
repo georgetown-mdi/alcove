@@ -118,7 +118,7 @@ The web application serves no signaling, so the controls belong in front of the 
 
 ## The project's hosted web deployment
 
-The project runs one public deployment of the web application, suitable for real exchanges and operated on a best-effort basis with no uptime commitment; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. This section is about that deployment alone. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
+The project runs a public deployment of the web application at `psi.data-bridge.org`, suitable for real exchanges and operated on a best-effort basis with no uptime commitment; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. Its `staging` builds are served at `staging.data-bridge.org`, and a second deployment, [the demo site](#the-demo-site), at `demo.data-bridge.org`. This section is about those deployments alone. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
 
 The site is served by a Cloudflare Pages project with no Git source: GitHub Actions builds it and uploads each build. The Pages project, its custom domains and the zone settings below are declared in the [OpenTofu root](../infra/hosted/README.md), which the maintainer applies from outside the container and nothing in the repository runs.
 
@@ -127,31 +127,32 @@ The site is served by a Cloudflare Pages project with no Git source: GitHub Acti
 The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to the Pages project by direct upload:
 
 - **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building. The gate tests the full branch ref, so a tag named like a branch does not deploy; as a second guard, give each environment a deployment branch rule allowing only its branch under Settings -> Environments.
-- **Path filter:** the push trigger lists the sources the build reads and leaves out the test trees and documentation, so a push changing nothing under those paths deploys nothing: a merge that touches only scripts, documentation, tests or `infra/` leaves both deployments on the last build uploaded. A manual dispatch on the branch uploads its current tip. [`scripts/check-deploy-trigger-graph.mjs`](../scripts/check-deploy-trigger-graph.mjs) builds the site and fails when a source the build reads matches no entry of the list.
+- **Path filter:** the push trigger lists the sources the build reads and leaves out the test trees and documentation, so a push changing nothing under those paths deploys nothing: a merge that touches only scripts, documentation, tests or `infra/` leaves each deployment on the last build uploaded. A manual dispatch on the branch uploads its current tip. [`scripts/check-deploy-trigger-graph.mjs`](../scripts/check-deploy-trigger-graph.mjs) builds the site and fails when a source the build reads matches no entry of the list.
 - **Gate:** it runs the web build and test workflow, [`web_build_and_test.yaml`](../.github/workflows/web_build_and_test.yaml), and uploads only when every suite in it passes.
-- **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps `apps/web/dist/hosted/` as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
-- **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). It and the project site's upload job ([The project site](#the-project-site)) are the only jobs in any workflow that hold the deploy credentials, and neither runs repository code; the same check holds both.
+- **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps `apps/web/dist/hosted/` as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate. The same job then builds [the demo site](#the-demo-site) and keeps it as a second artifact.
+- **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). After that upload, the same job uploads the demo site's artifact to the demo site's project the same way. It and the project site's upload job ([The project site](#the-project-site)) are the only jobs in any workflow that hold the deploy credentials, and neither runs repository code; the same check holds both.
 
-It reads two secrets and four variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` and the two default relay variables are read by the gate's build, which runs in no environment, so they are repository variables, under Settings -> Secrets and variables -> Actions.
+It reads two secrets and six variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and the two Pages project names are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` and the default relay variables are read by the gate's builds, which run in no environment, so they are repository variables, under Settings -> Secrets and variables -> Actions.
 
 | Name | Kind | Set on | What it is |
 | ---- | ---- | ------ | ---------- |
 | `CLOUDFLARE_API_TOKEN` | Secret | Environments `Production` and `Staging` | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else |
 | `CLOUDFLARE_ACCOUNT_ID` | Secret | Environments `Production` and `Staging` | The Cloudflare account the project is in |
 | `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
-| `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site |
-| `VITE_DEFAULT_RELAY_TURN_URL` | Variable | Repository | The project relay's TURN url, `turns:turn.data-bridge.org:443?transport=tcp`, built into the site as [the default relay](#the-default-relay); unset, the site names none |
+| `CLOUDFLARE_DEMO_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The demo site's Pages project's name; unset, the job skips the demo site's upload |
+| `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site and the demo site |
+| `VITE_DEFAULT_RELAY_TURN_URL` | Variable | Repository | The project relay's TURN url, `turns:turn.data-bridge.org:443?transport=tcp`, built into the site and the demo site as [the default relay](#the-default-relay); unset, neither names one |
 | `VITE_DEFAULT_RELAY_REGISTRAR_URL` | Variable | Repository | That relay's registrar, `https://registrar.data-bridge.org`; set with the variable above or not at all |
-| `VITE_DEFAULT_RELAY_WEBSOCKET_URL` | Variable | Repository | That relay host's WebSocket relay, the `wss://` address its front routes to the relay, built into the site as [the default relay's](#the-default-relay); set only beside the two above, and unset until the relay host runs it |
+| `VITE_DEFAULT_RELAY_WEBSOCKET_URL` | Variable | Repository | That relay host's WebSocket relay, the `wss://` address its front routes to the relay, built into the site as [the default relay's](#the-default-relay); set only beside the two above, and unset until the relay host runs it. The demo site's build does not read it |
 
 ### Custom domains and zone settings
 
-Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
+Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias. The demo site's name is a custom domain of the demo site's project in the same way, its record pointing at that project's `pages.dev` name. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
 
 | Setting | Value |
 | ------- | ----- |
 | SSL/TLS mode | `Full (strict)` |
-| Always Use HTTPS | On, so plain HTTP to either public name is answered `301` at the edge |
+| Always Use HTTPS | On, so plain HTTP to any of these names is answered `301` at the edge |
 | HSTS | On, `max-age=15552000`, without `includeSubDomains` and without preload |
 
 ### Headers, caching and the fallback document
@@ -165,12 +166,22 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 
 [PRIVACY.md](../PRIVACY.md#hosted-web-application) lists each log's fields and how long each is kept.
 
-- **The project keeps no log of page requests.** The Pages project has no Functions, Cloudflare Web Analytics is off, and the zone has no Logpush job. Cloudflare's own request records are under Cloudflare's retention, not the project's.
+- **The project keeps no log of page requests.** The web application's Pages project has no Functions, Cloudflare Web Analytics is off, and the zone has no Logpush job. Cloudflare's own request records are under Cloudflare's retention, not the project's. The demo site is uploaded the same way, so its project has no Functions either; whether its Web Analytics is off has not been measured.
 - **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which runs the broker, its nginx TLS front and the relay (coturn). One listener on port 443, the relay's 443 front, routes each connection by the server name it asks for: to the broker's front unopened, or to coturn, terminating the TURN client's TLS itself and passing coturn the client's address; the broker's front also answers on 8443.
 - **Their logs are in that host's system journal:** the 443 front's error log, the broker front's access log and error log, the broker's output and coturn's output. The containers write to it through Docker's `journald` log driver, and nothing ships the journal off the host.
 - **The 443 front keeps no access log.** Its error log names a client's IP address, beside the local port of the service it asked for, when that service refuses the connection, does not accept it in time, or resets it. coturn's lines name the client's address, which the front passes it. The broker front's lines for a request through 443 name the front's address, `127.0.0.1`, in place of the client's.
 - **The broker front's access log records the request path without the query string,** so the rendezvous identifier and client token in a signaling URL are not written to it.
 - **Retention is bounded by the host's journald configuration.** That configuration is [`infra/relay/journald-alcove-relay.conf`](../infra/relay/journald-alcove-relay.conf); the broker's units and its front's configuration are in [`infra/broker/`](../infra/broker/README.md), and the relay's in [`infra/relay/`](../infra/relay/README.md).
+
+### The demo site
+
+The demo site, at `demo.data-bridge.org`, is a second deployment of the web application from `main`, in a Cloudflare Pages project of its own. The project, its custom domain and its DNS record are declared in the same [OpenTofu root](../infra/hosted/README.md).
+
+- **What its build sets:** `VITE_SIGNALING_SERVER_URL` from the same repository variable as the site's build, so its invitations and its `/alcove.json` name the same coordination server as production; and `VITE_DEFAULT_RELAY_TURN_URL` and `VITE_DEFAULT_RELAY_REGISTRAR_URL` from the same repository variables, so it names the project's relay as [the default relay](#the-default-relay). It leaves `VITE_DEFAULT_RELAY_WEBSOCKET_URL` unset.
+- **Where data can flow by default:** a browser exchange on the demo site uses the project's coordination server and Google's STUN server, lists the project's TURN relay and enrolls at its registrar, as one on the production or staging site does, and the pages come from Cloudflare. [PRIVACY.md](../PRIVACY.md#hosted-web-application) states what each of those services can observe.
+- **When it deploys:** the packaging job of the deploy gate builds it beside the site, and the upload job uploads it to the demo site's project after the site's own upload. A push to `main` is the demo project's production deployment, served at `demo.data-bridge.org`; a push to `staging` is a preview on the demo project's `staging` branch alias, `staging.<demo project>.pages.dev`, which no custom domain names.
+- **What a failed upload does:** the site's own upload has already finished, so the site stays deployed and the run fails.
+- **Turning the upload on:** the upload job skips the demo site's steps while its environment sets no `CLOUDFLARE_DEMO_PAGES_PROJECT`. Set it on both environments only after the demo project exists ([infra/hosted/README.md](../infra/hosted/README.md#adopting-the-live-resources)).
 
 ## The project site
 

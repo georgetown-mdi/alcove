@@ -2,8 +2,9 @@ name: Deploy to Cloudflare Pages
 
 # Uploads the hosted static build (apps/web/dist/hosted) to the Cloudflare
 # Pages project by direct upload. A push to main is the production deployment;
-# a push to staging is a preview deployment on the `staging` branch alias.
-# The two secrets and two variables it reads:
+# a push to staging is a preview deployment on the `staging` branch alias. The
+# demo site's build goes to the demo site's Pages project the same way.
+# The secrets and variables it reads:
 # docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
 on:
   push:
@@ -62,8 +63,8 @@ jobs:
     uses: ./.github/workflows/web_build_and_test.yaml
 
   # The only job given the Cloudflare credentials. It checks out nothing and
-  # runs no repository code: it downloads the site the gate built and tested,
-  # and uploads it.
+  # runs no repository code: it downloads the sites the gate built and tested,
+  # and uploads them.
   deploy:
     name: Upload to Cloudflare Pages
     needs: build-and-test
@@ -93,3 +94,21 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
           command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+      # The demo site, after the site above, so a failed demo upload leaves
+      # the site deployed and fails the run. Skipped while the job's
+      # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT, which is set once
+      # the demo project exists (docs/DEPLOYMENT.md, "The demo site").
+      - name: Download the demo site
+        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-and-test.outputs.demoArtifactName }}
+          path: demo-site
+      - name: Deploy the demo site
+        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}

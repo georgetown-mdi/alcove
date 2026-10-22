@@ -7,6 +7,9 @@ pages_project_name    = "<CLOUDFLARE_PAGES_PROJECT>"
 site_pages_project_name = "<CLOUDFLARE_SITE_PAGES_PROJECT>"
 site_name               = "<zone apex>"
 
+demo_pages_project_name = "<CLOUDFLARE_DEMO_PAGES_PROJECT>"
+demo_name               = "<demo site name>"
+
 public_names = {
   production = "<production public name>"
   staging    = "<staging public name>"
