@@ -426,6 +426,43 @@ describe("quick path", () => {
     expect(paragraphSize(demoElement)).toBe("14px");
     expect(linkSize(demoElement)).toBe(paragraphSize(demoElement));
   });
+
+  test("the example-data link opens the invite screen and downloads nothing", async () => {
+    const downloads = captureDownloads();
+    const destinations: Array<string> = [];
+    const refuseNavigation = (event: NavigateEvent) => {
+      const destination = new URL(event.destination.url);
+      destinations.push(`${destination.pathname}${destination.search}`);
+      event.preventDefault();
+    };
+    navigation.addEventListener("navigate", refuseNavigation);
+    try {
+      app.render(createElement(Lobby));
+      const demoLink = page.getByRole("button", {
+        name: "See how it works with example data",
+      });
+      await expect.element(demoLink).toBeInTheDocument();
+      await expect
+        .element(demoLink.element().closest("p") as HTMLElement)
+        .toHaveTextContent(
+          "See how it works with example data. This opens the invite " +
+            "screen with sample data loaded. To run both sides, open the " +
+            "invitation in another tab of this browser, where accepting it " +
+            "offers the sample partner file. To accept it in a different " +
+            "browser, download the partner CSV from the invite screen " +
+            "and choose it there.",
+        );
+
+      await demoLink.click();
+      await vi.waitFor(() =>
+        expect(destinations).toEqual(["/exchange?demo=1"]),
+      );
+      expect(downloads.captured).toEqual([]);
+    } finally {
+      navigation.removeEventListener("navigate", refuseNavigation);
+      downloads.restore();
+    }
+  });
 });
 
 describe("inviter screen", () => {
@@ -1266,11 +1303,26 @@ describe("inviter screen", () => {
     }
   });
 
-  test("each sample link downloads one file, and loading the sample downloads the partner CSV", async () => {
+  test("each sample link downloads one file, and loading the sample downloads nothing", async () => {
     const downloads = captureDownloads();
     try {
       app.render(createElement(InviterScreen));
       const fileNames = () => downloads.captured.map((entry) => entry.fileName);
+
+      await expect
+        .element(
+          page.getByRole("button", { name: "load it into this exchange" }),
+        )
+        .toBeInTheDocument();
+      expect(
+        page
+          .getByRole("button", { name: "load it into this exchange" })
+          .element()
+          .closest("p"),
+      ).toHaveTextContent(
+        "Use sample data: load it into this exchange. You can also " +
+          "download the inviter sample CSV or download the partner sample CSV.",
+      );
 
       await page
         .getByRole("button", {
@@ -1296,16 +1348,19 @@ describe("inviter screen", () => {
       await expect
         .element(page.getByText("alcove-sample-inviter.csv"))
         .toBeInTheDocument();
-      expect(fileNames().slice(2)).toEqual(["alcove-sample-partner.csv"]);
+      expect(fileNames()).toEqual([
+        "alcove-sample-inviter.csv",
+        "alcove-sample-partner.csv",
+      ]);
     } finally {
       downloads.restore();
     }
   });
 
-  test("while the sample is loaded, the ledger offers the partner CSV again until a real file replaces it", async () => {
+  test("while the sample is loaded, the ledger offers the partner CSV until a real file replaces it", async () => {
     const line =
-      "Another tab of this browser can accept the invitation with the sample partner file it offers. A different browser needs the partner CSV, alcove-sample-partner.csv: if you do not have it, download the partner CSV.";
-    const downloadAgain = () =>
+      "Another tab of this browser can accept the invitation with the sample partner file it offers. A different browser needs the partner CSV, alcove-sample-partner.csv. To get it, download the partner CSV.";
+    const downloadPartner = () =>
       page.getByRole("button", {
         name: "download the partner CSV",
         exact: true,
@@ -1317,8 +1372,9 @@ describe("inviter screen", () => {
     try {
       // The lobby's seed.
       app.render(createElement(InviterScreen));
-      await expect.element(downloadAgain()).toBeInTheDocument();
-      await downloadAgain().click();
+      await expect.element(downloadPartner()).toBeInTheDocument();
+      expect(fileNames()).toEqual([]);
+      await downloadPartner().click();
       expect(fileNames()).toEqual(["alcove-sample-partner.csv"]);
       app.unmount();
     } finally {
@@ -1333,17 +1389,17 @@ describe("inviter screen", () => {
           page.getByRole("button", { name: "load it into this exchange" }),
         )
         .toBeInTheDocument();
-      expect(downloadAgain().query()).toBeNull();
+      expect(downloadPartner().query()).toBeNull();
       await page
         .getByRole("button", { name: "load it into this exchange" })
         .click();
-      await expect.element(downloadAgain()).toBeInTheDocument();
+      await expect.element(downloadPartner()).toBeInTheDocument();
       await expect
         .element(page.getByRole("status").filter({ hasText: line }))
         .toHaveAttribute("aria-live", "polite");
-      await downloadAgain().click();
+      expect(fileNames()).toEqual(["alcove-sample-partner.csv"]);
+      await downloadPartner().click();
       expect(fileNames()).toEqual([
-        "alcove-sample-partner.csv",
         "alcove-sample-partner.csv",
         "alcove-sample-partner.csv",
       ]);
@@ -1359,7 +1415,7 @@ describe("inviter screen", () => {
         ),
       );
       await expect.element(page.getByText("mine.csv")).toBeInTheDocument();
-      expect(downloadAgain().query()).toBeNull();
+      expect(downloadPartner().query()).toBeNull();
     } finally {
       downloads.restore();
     }
