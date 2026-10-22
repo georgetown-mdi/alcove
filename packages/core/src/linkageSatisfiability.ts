@@ -424,6 +424,7 @@ const VALUE_PRESERVING_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "to_lower_case",
   "remove_accents",
   "remove_affixes",
+  "usps_street_name",
   "pad_left",
   "replace_regex",
   "split_on",

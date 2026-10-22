@@ -10,6 +10,8 @@ import { getDefaultStandardization } from "../../src/defaults/builtInStandardiza
 import { runPipeline, suffixes, titles } from "../../src/standardization";
 import { SEMANTIC_TYPES } from "../../src/types";
 import { US_STATE_CODES } from "../../src/usStateCodes";
+import { DIRECTIONALS, STREET_SUFFIXES } from "../../src/uspsStreetName";
+import { SECONDARY_UNIT_DESIGNATORS } from "../../src/defaults/secondaryUnitDesignators";
 import { snakeizeKeys } from "../../src/utils/camelizeKeys";
 import {
   CANDIDATE_DATE_FORMATS,
@@ -95,6 +97,9 @@ function parseDocument() {
   const parameterRows: string[][] = [];
   const affixRows: string[][] = [];
   const stateCodeRows: string[][] = [];
+  const streetSuffixRows: string[][] = [];
+  const directionalRows: string[][] = [];
+  const unitDesignatorRows: string[][] = [];
   const affixExamples: Array<{ input: string; result: string | null }> = [];
   const derivedSsn4: TypeSection = { stepsYaml: "", examples: [] };
   let currentType: string | undefined;
@@ -182,6 +187,12 @@ function parseDocument() {
       parameterRows.push(...tableRows(i));
     if (/^\| List \| Words \|/.test(line)) affixRows.push(...tableRows(i));
     if (/^\| Code \| Names \|/.test(line)) stateCodeRows.push(...tableRows(i));
+    if (/^\| Suffix name \| Forms \| Abbreviation \|/.test(line))
+      streetSuffixRows.push(...tableRows(i));
+    if (/^\| Directional \| Abbreviation \|/.test(line))
+      directionalRows.push(...tableRows(i));
+    if (/^\| Designator \| Abbreviation \| Stands alone \|/.test(line))
+      unitDesignatorRows.push(...tableRows(i));
   }
 
   return {
@@ -191,6 +202,9 @@ function parseDocument() {
     affixRows,
     affixExamples,
     stateCodeRows,
+    streetSuffixRows,
+    directionalRows,
+    unitDesignatorRows,
     derivedSsn4,
   };
 }
@@ -202,6 +216,9 @@ const {
   affixRows,
   affixExamples,
   stateCodeRows,
+  streetSuffixRows,
+  directionalRows,
+  unitDesignatorRows,
   derivedSsn4,
 } = parseDocument();
 
@@ -402,6 +419,36 @@ describe("DEFAULT_STANDARDIZATION.md state table", () => {
       names: names.split(",").map(unwrapCodeSpan),
     }));
     expect(documented).toEqual(US_STATE_CODES);
+  });
+});
+
+describe("DEFAULT_STANDARDIZATION.md street name and unit tables", () => {
+  test("lists exactly the suffix rows usps_street_name reads", () => {
+    const documented = streetSuffixRows.map(([name, forms, abbreviation]) => ({
+      name: unwrapCodeSpan(name),
+      forms: forms.split(",").map(unwrapCodeSpan),
+      abbreviation: unwrapCodeSpan(abbreviation),
+    }));
+    expect(documented).toEqual(STREET_SUFFIXES);
+  });
+
+  test("lists exactly the directionals usps_street_name reads", () => {
+    const documented = directionalRows.map(([word, abbreviation]) => ({
+      word: unwrapCodeSpan(word),
+      abbreviation: unwrapCodeSpan(abbreviation),
+    }));
+    expect(documented).toEqual(DIRECTIONALS);
+  });
+
+  test("lists exactly the designators the unit pipeline reads", () => {
+    const documented = unitDesignatorRows.map(
+      ([names, abbreviation, standsAlone]) => ({
+        names: names.split(",").map(unwrapCodeSpan),
+        abbreviation: unwrapCodeSpan(abbreviation),
+        standsAlone: standsAlone === "yes",
+      }),
+    );
+    expect(documented).toEqual(SECONDARY_UNIT_DESIGNATORS);
   });
 });
 

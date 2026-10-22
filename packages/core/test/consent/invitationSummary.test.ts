@@ -1528,6 +1528,16 @@ describe("the consent summary's geography elements", () => {
       /^Replaces a US state, DC or territory name with its two-letter postal abbreviation/,
     );
   });
+
+  test("a usps_street_name element states its abbreviation and no marker", () => {
+    const key = keyFor({ name: "street_name", type: "street_name" }, [
+      { function: "usps_street_name" },
+    ]);
+    expect(key.headerFields).toEqual(["last name", "street name"]);
+    expect(key.elements[1].transforms[0].description).toMatch(
+      /^Writes a street name's suffix and directionals in their USPS forms before matching, abbreviating or spelling each out by its position/,
+    );
+  });
 });
 
 describe("the consent summary's padded-slice marker", () => {

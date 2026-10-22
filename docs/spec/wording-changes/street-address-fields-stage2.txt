@@ -1,0 +1,408 @@
+- The step sequences, the worked examples, the alias table, and the date-format inference parameters below are checked against the shipped registries by `packages/core/test/config/defaultStandardizationDoc.test.ts`: an edit to either side that is not mirrored in the other fails the unit suite. -> The step sequences, the worked examples, the alias table, the affix, state, street suffix, directional and unit designator tables, and the date-format inference parameters below are checked against the shipped registries by `packages/core/test/config/defaultStandardizationDoc.test.ts`: an edit to either side that is not mirrored in the other fails the unit suite.
+- The `first_name`, `last_name` and `date_of_birth` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped. -> The `first_name`, `last_name`, `date_of_birth`, `street_name`, `unit` and `city` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped.
+- In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), and each name field's list is that field's own step parameter. -> In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), the `unit` list is the `street_name` list with one value added (see [`unit`](#unit)), the `city` list is the `street_name` list (see [`city`](#city)), and each field's list is that field's own step parameter.
+- An operator may edit any of the three lists in their own standardization, to add a filler their system writes or to keep a value the list drops. -> An operator may edit any of these lists in their own standardization, to add a filler their system writes or to keep a value the list drops.
+- Result: the street name in uppercase, its words separated by single spaces, with punctuation removed. -> Result: the street name in uppercase, its words separated by single spaces, with punctuation removed and its suffix and directionals written in their USPS Publication 28 forms.
+- A value left with no letter or digit, a blank or all-punctuation value, is dropped. -> -
+- No word is abbreviated or spelled out: `Main Street` and `Main St` stay different, as do `North Main St` and `N Main St`, and `Fifth Ave` and `5th Ave`. -> A numbered name is kept as written, as the standard keeps it: `Fifth Ave` and `5th Ave` stay different.
+- A whole address line typed `street_name` keeps its house number and unit, so it agrees only with a party whose column contains the same parts. -> A whole address line typed `street_name` keeps its house number and unit, so its last word is not read as a suffix, and it agrees only with a party whose column contains the same parts.
+- `"St. Mary's Rd"` | `"ST MARYS RD"` -> `"St. Mary's Rd"` | `"ST MARYS RD"` | A suffix form elsewhere is kept.
+- `"Main Street"` | `"MAIN STREET"` -> `"Main Street"` | `"MAIN ST"` | A suffix form ending the name is abbreviated.
+- Result: the apartment, suite or other unit of an address, as written, in uppercase, its words separated by single spaces, with punctuation removed. -> Result: the identifier of the apartment, suite or other unit of an address, in uppercase, its words separated by single spaces, with punctuation removed.
+- Every punctuation mark is deleted, a hyphen included, so `4-B` and `4B`, and `#4B` and `4B`, agree. -> Every punctuation mark is then deleted, a hyphen included, so `4-B` and `4B`, and `#4B` and `4B`, agree.
+- A designator such as `Apt`, `Unit` or `Ste` is kept as written, so `Apt 4B` and `4B` stay different, as do `Apt 4B` and `Unit 4B`. -> -
+- No placeholder is dropped: `N/A` cleans to `NA`. -> The closing `null_if` is the placeholder list (see [Per-party placeholder lists](#per-party-placeholder-lists)): the [`street_name`](#street_name) list and `NA`, the cleaned form of `N/A`, written where an address has no unit.
+- `"Apt 4B"` | `"APT 4B"` -> `"Apt 4B"` | `"4B"`
+- `"apt. 4-b"` | `"APT 4B"` -> `"apt. 4-b"` | `"4B"`
+- `"4-B"` | `"4B"` -> -
+- `" Unit 12 "` | `"UNIT 12"` -> `" Unit 12 "` | `"12"`
+- `"N/A"` | `"NA"` -> `"N/A"` | `null`
+- The steps are those of [`street_name`](#street_name): -> The steps before `usps_street_name` are those of [`city`](#city) before its placeholder list:
+- The steps are those of [`county`](#county) without its removal of the word `COUNTY`: -> The steps before the placeholder list are those of [`county`](#county) without its removal of the word `COUNTY`:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: null_if
+- - -> - function: null_if
+- - -> - function: null_if
+- - -> values: ["UNKNOWN", "UNK", "NONE"]
+- - -> `"Unknown"` | `null`
+- - -> `"Unknown"` | `null`
+- - -> `"Unknown"` | `null`
+- - -> The closing `null_if` is the placeholder list (see [Per-party placeholder lists](#per-party-placeholder-lists)), the [`street_name`](#street_name) list: the Project US@ specification says not to match on `UNKNOWN` for any part of an address.
+- - -> replacement: "$1"
+- - -> - function: usps_street_name
+- - -> values: ["UNKNOWN", "UNK", "NONE"]
+- - -> `usps_street_name` then writes the suffix and the directionals as the [street name abbreviations](#street-name-abbreviations) below state, so `Main Street` and `Main St` agree, as do `North Main St` and `N Main St`.
+- - -> The closing `null_if` is the placeholder list (see [Per-party placeholder lists](#per-party-placeholder-lists)).
+- - -> `UNKNOWN` is the value the ONC Project US@ Technical Specification writes for an address part nobody recorded, and says not to match on.
+- - -> `UNK` and `NONE` are the words the name lists drop for a value nobody recorded.
+- - -> `"Fifth Ave"` | `"FIFTH AVE"`
+- - -> Street name abbreviations
+- - -> `usps_street_name` writes a street name's suffix and directionals in the forms of USPS Publication 28, as the ONC Project US@ Technical Specification v1.0 applies it to a street address line.
+- - -> It splits the value into words at runs of whitespace, compares each word in any ASCII letter case, and rejoins the words with one space.
+- - -> A word it does not rewrite is kept as written.
+- - -> It reads each word by its position, in this order:
+- - -> Two directional words that start or end the value and combine are read as one directional: `NORTH` or `SOUTH` followed by `EAST` or `WEST`, each spelled out or abbreviated, is the two-letter directional, so `NORTH E` is `NE`.
+- - -> `NORTH SOUTH` and `EAST WEST` do not combine.
+- - -> A directional that ends the value, after at least one other word, is the postdirectional, and is abbreviated.
+- - -> A suffix form that ends what remains, after at least one other word, is the suffix, and is written as its row's abbreviation.
+- - -> A directional that starts what remains, before at least one other word, is the predirectional, and is abbreviated.
+- - -> The words left are the street name.
+- - -> A name of one word that is a directional or a suffix form is spelled out.
+- - -> In a longer name, a directional right after the predirectional is spelled out, and so is the word right before the suffix where it is a directional or a suffix form.
+- - -> Every other word is kept.
+- - -> A directional is spelled out as its word and abbreviated as its abbreviation in the [directional table](#directionals).
+- - -> A suffix form is spelled out as its row's suffix name and abbreviated as its row's abbreviation in the [suffix table](#street-suffixes).
+- - -> A form two rows list is read by the first row listing it: `MDW`, a form of `MEADOWS` and the abbreviation of `MEADOW`, stays `MDW`, and `PKWY` is spelled out as `PARKWAY`.
+- - -> Input | Result | Rule
+- - -> `"North Bay Street"` | `"N BAY ST"` | A leading directional is abbreviated.
+- - -> `"Bay Drive West"` | `"BAY DR W"` | A trailing directional is abbreviated.
+- - -> `"North E. Main Street"` | `"NE MAIN ST"` | Two leading directionals that combine are one.
+- - -> `"Main St North East"` | `"MAIN ST NE"` | Two trailing directionals that combine are one.
+- - -> `"East-West Hwy"` | `"E WEST HWY"` | Of `EAST WEST` or `NORTH SOUTH`, the second is part of the name, spelled out.
+- - -> `"Bay W. Drive"` | `"BAY WEST DR"` | A directional between the name and the suffix is part of the name, spelled out.
+- - -> `"North Avenue"` | `"NORTH AVE"` | A directional that is the whole name is spelled out.
+- - -> `"N. Ave"` | `"NORTH AVE"` | A directional that is the whole name is spelled out.
+- - -> `"Southeast Freeway North"` | `"SOUTHEAST FWY N"` | A directional that is the whole name is spelled out.
+- - -> `"Main Avenue Drive"` | `"MAIN AVENUE DR"` | Of two suffix forms, the first is part of the name, spelled out.
+- - -> `"Main Ave. Dr."` | `"MAIN AVENUE DR"` | Of two suffix forms, the first is part of the name, spelled out.
+- - -> `"Ave. E"` | `"AVENUE E"` | A suffix form that is the whole name is spelled out.
+- - -> `"E 1700 S"` | `"E 1700 S"` | A numbered name keeps the directionals on either side.
+- - -> `"Avenue of the Americas"` | `"AVENUE OF THE AMERICAS"` | A value ending in no suffix form keeps its other words.
+- - -> Where the standard decides from the street itself, this reading decides by position alone, the same way for both parties:
+- - -> A one-letter street name that is also a directional is read as the directional: `N St NW` cleans to `NORTH ST NW`, which still matches itself.
+- - -> Highway names, which the Project US@ specification writes from a separate table (its Appendix C), are not rewritten: `Hwy 64` and `Highway 64` stay different, and the `ROAD` of `County Road N East` is abbreviated as a suffix, to `COUNTY RD NE`.
+- - -> A suffix form in another position is never rewritten, so `Mt Vernon Ave` and `Mount Vernon Ave`, and `St Charles Ave` and `Saint Charles Ave`, stay different.
+- - -> A Spanish directional is not translated, so `Calle 3 NO` is kept as it is.
+- - -> Directionals
+- - -> Directional | Abbreviation
+- - -> `NORTH` | `N`
+- - -> `SOUTH` | `S`
+- - -> `EAST` | `E`
+- - -> `WEST` | `W`
+- - -> `NORTHEAST` | `NE`
+- - -> `NORTHWEST` | `NW`
+- - -> `SOUTHEAST` | `SE`
+- - -> `SOUTHWEST` | `SW`
+- - -> Street suffixes
+- - -> The street suffix table of USPS Publication 28, as Appendix B of the Project US@ Technical Specification v1.0 reproduces it, row for row and in its order: the primary street suffix name, the forms commonly written for it, and its standard abbreviation.
+- - -> A row's suffix name and abbreviation are forms of it as well.
+- - -> Suffix name | Forms | Abbreviation
+- - -> `ALLEY` | `ALLEE`, `ALLEY`, `ALLY`, `ALY` | `ALY`
+- - -> `ANEX` | `ANEX`, `ANNEX`, `ANNX`, `ANX` | `ANX`
+- - -> `ARCADE` | `ARC`, `ARCADE` | `ARC`
+- - -> `AVENUE` | `AV`, `AVE`, `AVEN`, `AVENU`, `AVENUE`, `AVN`, `AVNUE` | `AVE`
+- - -> `BAYOU` | `BAYOO`, `BAYOU` | `BYU`
+- - -> `BEACH` | `BCH`, `BEACH` | `BCH`
+- - -> `BEND` | `BEND`, `BND` | `BND`
+- - -> `BLUFF` | `BLF`, `BLUF`, `BLUFF` | `BLF`
+- - -> `BLUFFS` | `BLUFFS` | `BLFS`
+- - -> `BOTTOM` | `BOT`, `BTM`, `BOTTM`, `BOTTOM` | `BTM`
+- - -> `BOULEVARD` | `BLVD`, `BOUL`, `BOULEVARD`, `BOULV` | `BLVD`
+- - -> `BRANCH` | `BR`, `BRNCH`, `BRANCH` | `BR`
+- - -> `BRIDGE` | `BRDGE`, `BRG`, `BRIDGE` | `BRG`
+- - -> `BROOK` | `BRK`, `BROOK` | `BRK`
+- - -> `BROOKS` | `BROOKS` | `BRKS`
+- - -> `BURG` | `BURG` | `BG`
+- - -> `BURGS` | `BURGS` | `BGS`
+- - -> `BYPASS` | `BYP`, `BYPA`, `BYPAS`, `BYPASS`, `BYPS` | `BYP`
+- - -> `CAMP` | `CAMP`, `CP`, `CMP` | `CP`
+- - -> `CANYON` | `CANYN`, `CANYON`, `CNYN` | `CYN`
+- - -> `CAPE` | `CAPE`, `CPE` | `CPE`
+- - -> `CAUSEWAY` | `CAUSEWAY`, `CAUSWA`, `CSWY` | `CSWY`
+- - -> `CENTER` | `CEN`, `CENT`, `CENTER`, `CENTR`, `CENTRE`, `CNTER`, `CNTR`, `CTR` | `CTR`
+- - -> `CENTERS` | `CENTERS` | `CTRS`
+- - -> `CIRCLE` | `CIR`, `CIRC`, `CIRCL`, `CIRCLE`, `CRCL`, `CRCLE` | `CIR`
+- - -> `CIRCLES` | `CIRCLES` | `CIRS`
+- - -> `CLIFF` | `CLF`, `CLIFF` | `CLF`
+- - -> `CLIFFS` | `CLFS`, `CLIFFS` | `CLFS`
+- - -> `CLUB` | `CLB`, `CLUB` | `CLB`
+- - -> `COMMON` | `COMMON` | `CMN`
+- - -> `COMMONS` | `COMMONS` | `CMNS`
+- - -> `CORNER` | `COR`, `CORNER` | `COR`
+- - -> `CORNERS` | `CORNERS`, `CORS` | `CORS`
+- - -> `COURSE` | `COURSE`, `CRSE` | `CRSE`
+- - -> `COURT` | `COURT`, `CT` | `CT`
+- - -> `COURTS` | `COURTS`, `CTS` | `CTS`
+- - -> `COVE` | `COVE`, `CV` | `CV`
+- - -> `COVES` | `COVES` | `CVS`
+- - -> `CREEK` | `CREEK`, `CRK` | `CRK`
+- - -> `CRESCENT` | `CRESCENT`, `CRES`, `CRSENT`, `CRSNT` | `CRES`
+- - -> `CREST` | `CREST` | `CRST`
+- - -> `CROSSING` | `CROSSING`, `CRSSNG`, `XING` | `XING`
+- - -> `CROSSROAD` | `CROSSROAD` | `XRD`
+- - -> `CROSSROADS` | `CROSSROADS` | `XRDS`
+- - -> `CURVE` | `CURVE` | `CURV`
+- - -> `DALE` | `DALE`, `DL` | `DL`
+- - -> `DAM` | `DAM`, `DM` | `DM`
+- - -> `DIVIDE` | `DIV`, `DIVIDE`, `DV`, `DVD` | `DV`
+- - -> `DRIVE` | `DR`, `DRIV`, `DRIVE`, `DRV` | `DR`
+- - -> `DRIVES` | `DRIVES` | `DRS`
+- - -> `ESTATE` | `EST`, `ESTATE` | `EST`
+- - -> `ESTATES` | `ESTATES`, `ESTS` | `ESTS`
+- - -> `EXPRESSWAY` | `EXP`, `EXPR`, `EXPRESS`, `EXPRESSWAY`, `EXPW`, `EXPY` | `EXPY`
+- - -> `EXTENSION` | `EXT`, `EXTENSION`, `EXTN`, `EXTNSN` | `EXT`
+- - -> `EXTENSIONS` | `EXTS` | `EXTS`
+- - -> `FALL` | `FALL` | `FALL`
+- - -> `FALLS` | `FALLS`, `FLS` | `FLS`
+- - -> `FERRY` | `FERRY`, `FRRY`, `FRY` | `FRY`
+- - -> `FIELD` | `FIELD`, `FLD` | `FLD`
+- - -> `FIELDS` | `FIELDS`, `FLDS` | `FLDS`
+- - -> `FLAT` | `FLAT`, `FLT` | `FLT`
+- - -> `FLATS` | `FLATS`, `FLTS` | `FLTS`
+- - -> `FORD` | `FORD`, `FRD` | `FRD`
+- - -> `FORDS` | `FORDS` | `FRDS`
+- - -> `FOREST` | `FOREST`, `FORESTS`, `FRST` | `FRST`
+- - -> `FORGE` | `FORG`, `FORGE`, `FRG` | `FRG`
+- - -> `FORGES` | `FORGES` | `FRGS`
+- - -> `FORK` | `FORK`, `FRK` | `FRK`
+- - -> `FORKS` | `FORKS`, `FRKS` | `FRKS`
+- - -> `FORT` | `FORT`, `FRT`, `FT` | `FT`
+- - -> `FREEWAY` | `FREEWAY`, `FREEWY`, `FRWAY`, `FRWY`, `FWY` | `FWY`
+- - -> `GARDEN` | `GARDEN`, `GARDN`, `GRDEN`, `GRDN` | `GDN`
+- - -> `GARDENS` | `GARDENS`, `GDNS`, `GRDNS` | `GDNS`
+- - -> `GATEWAY` | `GATEWAY`, `GATEWY`, `GATWAY`, `GTWAY`, `GTWY` | `GTWY`
+- - -> `GLEN` | `GLEN`, `GLN` | `GLN`
+- - -> `GLENS` | `GLENS` | `GLNS`
+- - -> `GREEN` | `GREEN`, `GRN` | `GRN`
+- - -> `GREENS` | `GREENS` | `GRNS`
+- - -> `GROVE` | `GROV`, `GROVE`, `GRV` | `GRV`
+- - -> `GROVES` | `GROVES` | `GRVS`
+- - -> `HARBOR` | `HARB`, `HARBOR`, `HARBR`, `HBR`, `HRBOR` | `HBR`
+- - -> `HARBORS` | `HARBORS` | `HBRS`
+- - -> `HAVEN` | `HAVEN`, `HVN` | `HVN`
+- - -> `HEIGHTS` | `HT`, `HTS` | `HTS`
+- - -> `HIGHWAY` | `HIGHWAY`, `HIGHWY`, `HIWAY`, `HIWY`, `HWAY`, `HWY` | `HWY`
+- - -> `HILL` | `HILL`, `HL` | `HL`
+- - -> `HILLS` | `HILLS`, `HLS` | `HLS`
+- - -> `HOLLOW` | `HLLW`, `HOLLOW`, `HOLLOWS`, `HOLW`, `HOLWS` | `HOLW`
+- - -> `INLET` | `INLT` | `INLT`
+- - -> `ISLAND` | `IS`, `ISLAND`, `ISLND` | `IS`
+- - -> `ISLANDS` | `ISLANDS`, `ISLNDS`, `ISS` | `ISS`
+- - -> `ISLE` | `ISLE`, `ISLES` | `ISLE`
+- - -> `JUNCTION` | `JCT`, `JCTION`, `JCTN`, `JUNCTION`, `JUNCTN`, `JUNCTON` | `JCT`
+- - -> `JUNCTIONS` | `JCTNS`, `JCTS`, `JUNCTIONS` | `JCTS`
+- - -> `KEY` | `KEY`, `KY` | `KY`
+- - -> `KEYS` | `KEYS`, `KYS` | `KYS`
+- - -> `KNOLL` | `KNL`, `KNOL`, `KNOLL` | `KNL`
+- - -> `KNOLLS` | `KNLS`, `KNOLLS` | `KNLS`
+- - -> `LAKE` | `LK`, `LAKE` | `LK`
+- - -> `LAKES` | `LKS`, `LAKES` | `LKS`
+- - -> `LAND` | `LAND` | `LAND`
+- - -> `LANDING` | `LANDING`, `LNDG`, `LNDNG` | `LNDG`
+- - -> `LANE` | `LANE`, `LN` | `LN`
+- - -> `LIGHT` | `LGT`, `LIGHT` | `LGT`
+- - -> `LIGHTS` | `LIGHTS` | `LGTS`
+- - -> `LOAF` | `LF`, `LOAF` | `LF`
+- - -> `LOCK` | `LCK`, `LOCK` | `LCK`
+- - -> `LOCKS` | `LCKS`, `LOCKS` | `LCKS`
+- - -> `LODGE` | `LDG`, `LDGE`, `LODG`, `LODGE` | `LDG`
+- - -> `LOOP` | `LOOP`, `LOOPS` | `LOOP`
+- - -> `MALL` | `MALL` | `MALL`
+- - -> `MANOR` | `MNR`, `MANOR` | `MNR`
+- - -> `MANORS` | `MANORS`, `MNRS` | `MNRS`
+- - -> `MEADOW` | `MEADOW` | `MDW`
+- - -> `MEADOWS` | `MDW`, `MDWS`, `MEADOWS`, `MEDOWS` | `MDWS`
+- - -> `MEWS` | `MEWS` | `MEWS`
+- - -> `MILL` | `MILL` | `ML`
+- - -> `MILLS` | `MILLS` | `MLS`
+- - -> `MISSION` | `MISSN`, `MSSN` | `MSN`
+- - -> `MOTORWAY` | `MOTORWAY` | `MTWY`
+- - -> `MOUNT` | `MNT`, `MT`, `MOUNT` | `MT`
+- - -> `MOUNTAIN` | `MNTAIN`, `MNTN`, `MOUNTAIN`, `MOUNTIN`, `MTIN`, `MTN` | `MTN`
+- - -> `MOUNTAINS` | `MNTNS`, `MOUNTAINS` | `MTNS`
+- - -> `NECK` | `NCK`, `NECK` | `NCK`
+- - -> `ORCHARD` | `ORCH`, `ORCHARD`, `ORCHRD` | `ORCH`
+- - -> `OVAL` | `OVAL`, `OVL` | `OVAL`
+- - -> `OVERPASS` | `OVERPASS` | `OPAS`
+- - -> `PARK` | `PARK`, `PRK` | `PARK`
+- - -> `PARKS` | `PARKS` | `PARK`
+- - -> `PARKWAY` | `PARKWAY`, `PARKWY`, `PKWAY`, `PKWY`, `PKY` | `PKWY`
+- - -> `PARKWAYS` | `PARKWAYS`, `PKWYS` | `PKWY`
+- - -> `PASS` | `PASS` | `PASS`
+- - -> `PASSAGE` | `PASSAGE` | `PSGE`
+- - -> `PATH` | `PATH`, `PATHS` | `PATH`
+- - -> `PIKE` | `PIKE`, `PIKES` | `PIKE`
+- - -> `PINE` | `PINE` | `PNE`
+- - -> `PINES` | `PINES`, `PNES` | `PNES`
+- - -> `PLACE` | `PL` | `PL`
+- - -> `PLAIN` | `PLAIN`, `PLN` | `PLN`
+- - -> `PLAINS` | `PLAINS`, `PLNS` | `PLNS`
+- - -> `PLAZA` | `PLAZA`, `PLZ`, `PLZA` | `PLZ`
+- - -> `POINT` | `POINT`, `PT` | `PT`
+- - -> `POINTS` | `POINTS`, `PTS` | `PTS`
+- - -> `PORT` | `PORT`, `PRT` | `PRT`
+- - -> `PORTS` | `PORTS`, `PRTS` | `PRTS`
+- - -> `PRAIRIE` | `PR`, `PRAIRIE`, `PRR` | `PR`
+- - -> `RADIAL` | `RAD`, `RADIAL`, `RADIEL`, `RADL` | `RADL`
+- - -> `RAMP` | `RAMP` | `RAMP`
+- - -> `RANCH` | `RANCH`, `RANCHES`, `RNCH`, `RNCHS` | `RNCH`
+- - -> `RAPID` | `RAPID`, `RPD` | `RPD`
+- - -> `RAPIDS` | `RAPIDS`, `RPDS` | `RPDS`
+- - -> `REST` | `REST`, `RST` | `RST`
+- - -> `RIDGE` | `RDG`, `RDGE`, `RIDGE` | `RDG`
+- - -> `RIDGES` | `RDGS`, `RIDGES` | `RDGS`
+- - -> `RIVER` | `RIV`, `RIVER`, `RVR`, `RIVR` | `RIV`
+- - -> `ROAD` | `RD`, `ROAD` | `RD`
+- - -> `ROADS` | `ROADS`, `RDS` | `RDS`
+- - -> `ROUTE` | `ROUTE` | `RTE`
+- - -> `ROW` | `ROW` | `ROW`
+- - -> `RUE` | `RUE` | `RUE`
+- - -> `RUN` | `RUN` | `RUN`
+- - -> `SHOAL` | `SHL`, `SHOAL` | `SHL`
+- - -> `SHOALS` | `SHLS`, `SHOALS` | `SHLS`
+- - -> `SHORE` | `SHOAR`, `SHORE`, `SHR` | `SHR`
+- - -> `SHORES` | `SHOARS`, `SHORES`, `SHRS` | `SHRS`
+- - -> `SKYWAY` | `SKYWAY` | `SKWY`
+- - -> `SPRING` | `SPG`, `SPNG`, `SPRING`, `SPRNG` | `SPG`
+- - -> `SPRINGS` | `SPGS`, `SPNGS`, `SPRINGS`, `SPRNGS` | `SPGS`
+- - -> `SPUR` | `SPUR` | `SPUR`
+- - -> `SPURS` | `SPURS` | `SPUR`
+- - -> `SQUARE` | `SQ`, `SQR`, `SQRE`, `SQU`, `SQUARE` | `SQ`
+- - -> `SQUARES` | `SQRS`, `SQUARES` | `SQS`
+- - -> `STATION` | `STA`, `STATION`, `STATN`, `STN` | `STA`
+- - -> `STRAVENUE` | `STRA`, `STRAV`, `STRAVEN`, `STRAVENUE`, `STRAVN`, `STRVN`, `STRVNUE` | `STRA`
+- - -> `STREAM` | `STREAM`, `STREME`, `STRM` | `STRM`
+- - -> `STREET` | `STREET`, `STRT`, `ST`, `STR` | `ST`
+- - -> `STREETS` | `STREETS` | `STS`
+- - -> `SUMMIT` | `SMT`, `SUMIT`, `SUMITT`, `SUMMIT` | `SMT`
+- - -> `TERRACE` | `TER`, `TERR`, `TERRACE` | `TER`
+- - -> `THROUGHWAY` | `THROUGHWAY` | `TRWY`
+- - -> `TRACE` | `TRACE`, `TRACES`, `TRCE` | `TRCE`
+- - -> `TRACK` | `TRACK`, `TRACKS`, `TRAK`, `TRK`, `TRKS` | `TRAK`
+- - -> `TRAFFICWAY` | `TRAFFICWAY` | `TRFY`
+- - -> `TRAIL` | `TRAIL`, `TRAILS`, `TRL`, `TRLS` | `TRL`
+- - -> `TRAILER` | `TRAILER`, `TRLR`, `TRLRS` | `TRLR`
+- - -> `TUNNEL` | `TUNEL`, `TUNL`, `TUNLS`, `TUNNEL`, `TUNNELS`, `TUNNL` | `TUNL`
+- - -> `TURNPIKE` | `TRNPK`, `TURNPIKE`, `TURNPK` | `TPKE`
+- - -> `UNDERPASS` | `UNDERPASS` | `UPAS`
+- - -> `UNION` | `UN`, `UNION` | `UN`
+- - -> `UNIONS` | `UNIONS` | `UNS`
+- - -> `VALLEY` | `VALLEY`, `VALLY`, `VLLY`, `VLY` | `VLY`
+- - -> `VALLEYS` | `VALLEYS`, `VLYS` | `VLYS`
+- - -> `VIADUCT` | `VDCT`, `VIA`, `VIADCT`, `VIADUCT` | `VIA`
+- - -> `VIEW` | `VIEW`, `VW` | `VW`
+- - -> `VIEWS` | `VIEWS`, `VWS` | `VWS`
+- - -> `VILLAGE` | `VILL`, `VILLAG`, `VILLAGE`, `VILLG`, `VILLIAGE`, `VLG` | `VLG`
+- - -> `VILLAGES` | `VILLAGES`, `VLGS` | `VLGS`
+- - -> `VILLE` | `VILLE`, `VL` | `VL`
+- - -> `VISTA` | `VIS`, `VIST`, `VISTA`, `VST`, `VSTA` | `VIS`
+- - -> `WALK` | `WALK` | `WALK`
+- - -> `WALKS` | `WALKS` | `WALK`
+- - -> `WALL` | `WALL` | `WALL`
+- - -> `WAY` | `WY`, `WAY` | `WAY`
+- - -> `WAYS` | `WAYS` | `WAYS`
+- - -> `WELL` | `WELL` | `WL`
+- - -> `WELLS` | `WELLS`, `WLS` | `WLS`
+- - -> pattern: "\\b(?:APARTMENT|APT|BUILDING|BLDG|DEPARTMENT|DEPT|FLOOR|FL|HANGAR|HANGER|HNGR|KEY|LOT|PIER|ROOM|RM|SLIP|SPACE|SPC|STOP|SUITE|STE|TRAILER|TRLR|UNIT)(?:\\b|([0-9]))"
+- - -> pattern: "\\b(?:BASEMENT|BSMT)(?:\\b|([0-9]))"
+- - -> replacement: "BSMT $1"
+- - -> pattern: "\\b(?:FRONT|FRNT)(?:\\b|([0-9]))"
+- - -> replacement: "FRNT $1"
+- - -> pattern: "\\b(?:LOBBY|LBBY)(?:\\b|([0-9]))"
+- - -> replacement: "LBBY $1"
+- - -> pattern: "\\b(?:LOWER|LOWR)(?:\\b|([0-9]))"
+- - -> replacement: "LOWR $1"
+- - -> pattern: "\\b(?:OFFICE|OFC)(?:\\b|([0-9]))"
+- - -> replacement: "OFC $1"
+- - -> pattern: "\\b(?:PENTHOUSE|PH)(?:\\b|([0-9]))"
+- - -> replacement: "PH $1"
+- - -> pattern: "\\bREAR(?:\\b|([0-9]))"
+- - -> replacement: "REAR $1"
+- - -> pattern: "\\bSIDE(?:\\b|([0-9]))"
+- - -> replacement: "SIDE $1"
+- - -> pattern: "\\b(?:UPPER|UPPR)(?:\\b|([0-9]))"
+- - -> replacement: "UPPR $1"
+- - -> pattern: "\\b(?:NUMBER|NUM|NO)(?: +([A-Z]*[0-9])|([0-9]))"
+- - -> replacement: "$1$2"
+- - -> values: ["UNKNOWN", "UNK", "NONE", "NA"]
+- - -> A designator that stands alone is kept in its abbreviation instead.
+- - -> The first `replace_regex` deletes each designator in the [designator table](#secondary-unit-designators) that needs an identifier, spelled out or abbreviated, as a whole word or where it is written against the digit that starts the identifier.
+- - -> `Apt 4B`, `Apartment 4B`, `Unit 4B`, `Apt-4B` and `Apt4B` all keep `4B`.
+- - -> The nine `replace_regex` steps after it each write one designator that stands alone, spelled out or abbreviated, as its abbreviation followed by a space.
+- - -> Each matches the designator as a whole word or where it is written against a digit, so `Basement` becomes `BSMT`, and `Penthouse 2`, `Penthouse2` and `PH2` all become `PH 2`.
+- - -> The later `squash_spaces` and `trim_whitespace` steps fold the added space away.
+- - -> The `replace_regex` after it deletes a number marker, `NO`, `NUM` or `NUMBER`, written before a word that contains a digit, after a space or against the digit.
+- - -> `Apt No 4`, `Apt Number 4`, `Apt 4` and `#4` all keep `4`.
+- - -> A marker with no such word after it is kept, since a `NO` with no number after it may be the identifier itself: `Apt No` keeps `NO`.
+- - -> The Project US@ specification names `NUM`, `NO`, `NUMBER` and `#` among the words an address leaves out before a number.
+- - -> A value left with no letter or digit is dropped: a blank or all-punctuation value, and a designator written with no identifier, such as `Apt`.
+- - -> The designator is left out because it depends on who wrote the value.
+- - -> The Project US@ specification lets a writer who does not know the right designator write `#` in its place, so `#4B` and `Apt 4B` can name the same unit, and keeping the designator would leave that pair unmatched.
+- - -> Two units at one address that differ only by designator, such as `Bldg 2` and `Apt 2`, clean to the same value.
+- - -> A value naming several parts keeps the identifier of each: `Bldg 3 Apt 12` cleans to `3 12`, which does not agree with `Apt 12`.
+- - -> A designator that stands alone, such as `REAR` or `BSMT`, needs no identifier: it is the whole of what tells that unit from the others at the address, so it is kept.
+- - -> `"Apartment 4B"` | `"4B"`
+- - -> `"Unit 4B"` | `"4B"`
+- - -> `"Apt-4B"` | `"4B"`
+- - -> `"4B"` | `"4B"`
+- - -> `"Suite200"` | `"200"`
+- - -> `"Hangar 3"` | `"3"`
+- - -> `"Hanger 3"` | `"3"`
+- - -> `"Apt No. 4"` | `"4"`
+- - -> `"Unit Number 12"` | `"12"`
+- - -> `"No.4B"` | `"4B"`
+- - -> `"Apt No"` | `"NO"`
+- - -> `"Bldg 3 Apt 12"` | `"3 12"`
+- - -> `"Basement"` | `"BSMT"`
+- - -> `"Rear"` | `"REAR"`
+- - -> `"Rear Apt"` | `"REAR"`
+- - -> `"Penthouse B"` | `"PH B"`
+- - -> `"Penthouse 2"` | `"PH 2"`
+- - -> `"Penthouse2"` | `"PH 2"`
+- - -> `"PH2"` | `"PH 2"`
+- - -> `"Apt"` | `null`
+- - -> Secondary unit designators
+- - -> The secondary unit designators of USPS Publication 28, as Table 1 of the Project US@ Technical Specification v1.0 lists them, in its order.
+- - -> A designator that stands alone needs no number or letter after it.
+- - -> Publication 28 spells one designator `HANGAR` and Table 1 prints it `HANGER`.
+- - -> Both spellings are accepted, with the one abbreviation `HNGR`, because the two sources spell it differently.
+- - -> Designator | Abbreviation | Stands alone
+- - -> `APARTMENT` | `APT` | no
+- - -> `BASEMENT` | `BSMT` | yes
+- - -> `BUILDING` | `BLDG` | no
+- - -> `DEPARTMENT` | `DEPT` | no
+- - -> `FLOOR` | `FL` | no
+- - -> `FRONT` | `FRNT` | yes
+- - -> `HANGAR`, `HANGER` | `HNGR` | no
+- - -> `KEY` | `KEY` | no
+- - -> `LOBBY` | `LBBY` | yes
+- - -> `LOT` | `LOT` | no
+- - -> `LOWER` | `LOWR` | yes
+- - -> `OFFICE` | `OFC` | yes
+- - -> `PENTHOUSE` | `PH` | yes
+- - -> `PIER` | `PIER` | no
+- - -> `REAR` | `REAR` | yes
+- - -> `ROOM` | `RM` | no
+- - -> `SIDE` | `SIDE` | yes
+- - -> `SLIP` | `SLIP` | no
+- - -> `SPACE` | `SPC` | no
+- - -> `STOP` | `STOP` | no
+- - -> `SUITE` | `STE` | no
+- - -> `TRAILER` | `TRLR` | no
+- - -> `UNIT` | `UNIT` | no
+- - -> `UPPER` | `UPPR` | yes
+- - -> The Project US@ specification spells a city name out in its entirety but lists no city abbreviations, so no table rewrites one.

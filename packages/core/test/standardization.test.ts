@@ -4333,6 +4333,7 @@ describe("buildKeyStrings", () => {
       phonetic: { algorithm: "soundex" },
       zip3: undefined,
       state_code: undefined,
+      usps_street_name: undefined,
       null_if: { values: ["EXCLUDED"] },
       replace_regex: { pattern: "[A-Z]+", replacement: "" },
       extract_regex: { pattern: "([0-9]+)" },

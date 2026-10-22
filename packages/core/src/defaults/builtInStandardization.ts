@@ -8,6 +8,7 @@ import type {
 import type { ColumnMetadata } from "../config/metadata.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import { SSN4_STEPS, SSN_MAX_PEOPLE_PER_VALUE, SSN_STEPS } from "./ssnSteps.js";
+import { SECONDARY_UNIT_DESIGNATORS } from "./secondaryUnitDesignators.js";
 
 // --- Step arrays -------------------------------------------------------------
 
@@ -223,21 +224,85 @@ const FOLD_SPACES_AND_DROP_BLANK_STEPS: StandardizationStep[] = [
   { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
 ];
 
-const STREET_NAME_AND_CITY_STEPS: StandardizationStep[] = [
+// Whole cleaned values only. UNKNOWN is the value the Project US@ specification
+// writes for an unknown address part and says not to match on; UNK and NONE are
+// the name lists' words for a value nobody recorded.
+const ADDRESS_PLACEHOLDERS: readonly string[] = ["UNKNOWN", "UNK", "NONE"];
+
+const ADDRESS_PLACEHOLDER_STEP: StandardizationStep = {
+  function: "null_if",
+  params: { values: [...ADDRESS_PLACEHOLDERS] },
+};
+
+const CITY_STEPS: StandardizationStep[] = [
   ...PLACE_NAME_FOLD_STEPS,
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+  ADDRESS_PLACEHOLDER_STEP,
 ];
 
-// The whole unit, designator included, with every punctuation mark deleted,
-// a hyphen too, so 4-B and 4B, and #4B and 4B, agree.
+const STREET_NAME_STEPS: StandardizationStep[] = [
+  ...PLACE_NAME_FOLD_STEPS,
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+  { function: "usps_street_name" },
+  ADDRESS_PLACEHOLDER_STEP,
+];
+
+// A regex alternation matching any one of `words` as written.
+function wordAlternation(words: readonly string[]): string {
+  const distinct = [...new Set(words)];
+  return distinct.length === 1 ? distinct[0] : `(?:${distinct.join("|")})`;
+}
+
+const UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER: readonly string[] =
+  SECONDARY_UNIT_DESIGNATORS.filter(
+    (designator) => !designator.standsAlone,
+  ).flatMap((designator) => [...designator.names, designator.abbreviation]);
+
+// Words written before a unit's number, as # is: Project US@ leaves NUMBER, NUM
+// and NO out of an address. One is deleted only before a word with a digit,
+// since a NO with none after it may be the identifier itself.
+const UNIT_NUMBER_MARKERS: readonly string[] = ["NUMBER", "NUM", "NO"];
+
+// A designator that needs an identifier is deleted as a word or against the
+// digit starting one, so APT 4B, APT4B and 4B agree. One that stands alone is
+// written in its abbreviation and a space, so PENTHOUSE 2, PENTHOUSE2 and PH2
+// agree. Punctuation is deleted after, a hyphen too, so 4-B, #4B and 4B agree.
 const UNIT_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "squash_spaces" },
   { function: "remove_accents" },
   { function: "remove_non_ascii" },
   { function: "to_upper_case" },
+  {
+    function: "replace_regex",
+    params: {
+      pattern: `\\b${wordAlternation(UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER)}(?:\\b|([0-9]))`,
+      replacement: "$1",
+    },
+  },
+  ...SECONDARY_UNIT_DESIGNATORS.filter(
+    (designator) => designator.standsAlone,
+  ).map((designator): StandardizationStep => ({
+    function: "replace_regex",
+    params: {
+      pattern: `\\b${wordAlternation([...designator.names, designator.abbreviation])}(?:\\b|([0-9]))`,
+      replacement: `${designator.abbreviation} $1`,
+    },
+  })),
   { function: "remove_punctuation" },
+  {
+    function: "replace_regex",
+    params: {
+      pattern: `\\b${wordAlternation(UNIT_NUMBER_MARKERS)}(?: +([A-Z]*[0-9])|([0-9]))`,
+      replacement: "$1$2",
+    },
+  },
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+  // NA is N/A, written where an address has no unit.
+  {
+    function: "null_if",
+    params: { values: [...ADDRESS_PLACEHOLDERS, "NA"] },
+  },
 ];
 
 // A county name with the word COUNTY and a leading "COUNTY OF" removed.
@@ -303,8 +368,9 @@ function stepsForType(
     case "street_number":
       return STREET_NUMBER_STEPS;
     case "street_name":
+      return STREET_NAME_STEPS;
     case "city":
-      return STREET_NAME_AND_CITY_STEPS;
+      return CITY_STEPS;
     case "unit":
       return UNIT_STEPS;
     case "zip_code":
