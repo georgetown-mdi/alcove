@@ -557,7 +557,11 @@ const REINVITE: ManagedReinvite = {
   deepLink: "https://example.org/accept#encoded-invitation",
   sharedSecret: "fresh-secret",
   tokenExpires: "2026-10-08T12:00:00.000Z",
-  rotation: { sharedSecret: "fresh-secret", expires: null },
+  rotation: {
+    sharedSecret: "fresh-secret",
+    expires: null,
+    signalingServer: { host: "signaling.example.org" },
+  },
 };
 
 function foldSurface(

@@ -1508,13 +1508,15 @@ or out-of-sync token (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#recurring-exchange-authentication)). Both
 parties discard the desynced secret and re-establish one from a fresh invitation.
 It is fast because the saved exchange keeps everything a re-invite needs except
-the secret: its terms and where the two of you connect. A re-invite reuses them
-and only creates and sends a new setup secret, without setting the exchange up
-again.
+the secret: its terms. A re-invite reuses them and creates and sends a new setup
+secret, without setting the exchange up again. Its invitation names the
+coordination server a new invitation from that browser names, the one set in
+relay settings or else the site's, so a re-invite also moves a saved exchange
+whose server changed.
 
 The two sides recover differently, and only one has cleanup to do. The inviter
 creates the new invitation from its saved exchange, which replaces that
-exchange's secret in place. The acceptor cannot create an invitation for the
+exchange's secret and coordination server in place. The acceptor cannot create an invitation for the
 inviter's exchange, so it recovers by
 accepting a fresh one -- and saving that accepted invitation adds a **new**
 recurring exchange rather than updating the superseded one: nothing links an
@@ -1584,8 +1586,10 @@ A re-invite reopens **the secret, not the agreement**. On the inviter's side
 nothing is re-authored: the fresh invitation is composed from the stored
 document alone, reusing its linkage terms, with the columns it sends stated
 from its stored metadata as a first invitation states them, and the setup
-setup secret is the only new part, alongside a rendezvous locator rebuilt from
-where the app is running and the invitation's own fresh setup lifetime (see [Recovery: fast
+secret is the only new part, alongside the coordination server a new
+invitation from that browser names (the one set in relay settings, or else the
+site's), which the saved exchange's later runs then use, and the invitation's
+own fresh setup lifetime (see [Recovery: fast
 re-invite](#recovery-fast-re-invite)). The accepting side is not a no-op,
 though. Only the inviter can create one from a saved exchange, so the partner's
 route is to accept a fresh invitation: it walks the accept flow again and

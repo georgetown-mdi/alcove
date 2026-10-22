@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Alert, Button, Group, TextInput } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import {
   parseCoordinationServerUrl,
@@ -8,6 +9,8 @@ import {
   writeCoordinationServerSetting,
 } from "@psi/transport/coordinationServerSetting";
 import styles from "@styles/app.module.css";
+
+import type { CoordinationServerRead } from "@psi/transport/coordinationServerSetting";
 
 /** What the coordination server section opens with: what the server is for,
  * what it learns, and which server an invitation names by default. */
@@ -31,7 +34,8 @@ export function coordinationServerFieldDescription(
 
 /** What the section reports once a server is set. */
 export const COORDINATION_SERVER_SET =
-  "Set. Invitations you create from now on name this coordination server.";
+  "Set. Invitations you create from now on name this coordination server. " +
+  "It is first contacted when you create one.";
 
 /** What the section reports once the setting is cleared. */
 export const COORDINATION_SERVER_CLEARED =
@@ -42,6 +46,43 @@ export const COORDINATION_SERVER_CLEARED =
 export const COORDINATION_SERVER_NOT_SAVED =
   "This browser did not save the setting. Check that site storage is " +
   "allowed for this site, then try again.";
+
+/** What the section says where the stored setting cannot be read, until a
+ * Set or Clear replaces it. */
+export const COORDINATION_SERVER_UNREADABLE =
+  "Invitations you create name this site's coordination server until you " +
+  "set yours again. Enter its address and choose Set coordination server.";
+
+/** What Review & create says where the stored setting cannot be read, before
+ * the invitation is created. */
+export const COORDINATION_SERVER_UNREADABLE_AT_INVITE =
+  "Your saved coordination server could not be read, so this invitation " +
+  "will name this site's coordination server. To use yours, set it again " +
+  "in relay settings before you create the invitation.";
+
+/**
+ * Review & create's warning that the invitation about to be created names
+ * this site's coordination server because the stored setting cannot be read.
+ * Renders nothing where the setting is unset or readable.
+ */
+export function UnreadableCoordinationServerNotice({
+  read = () => readCoordinationServerSetting(window.location.protocol),
+}: {
+  /** Read the stored setting; this page's own when unset. */
+  read?: () => CoordinationServerRead;
+}) {
+  if (read().kind !== "unreadable") return null;
+  return (
+    <Alert
+      role="note"
+      color="yellow"
+      icon={<IconAlertTriangle aria-hidden />}
+      mt="md"
+    >
+      {COORDINATION_SERVER_UNREADABLE_AT_INVITE}
+    </Alert>
+  );
+}
 
 type Status = "idle" | "set" | "cleared" | "failed";
 
@@ -61,6 +102,7 @@ export function CoordinationServerSection({
   const [text, setText] = useState(initial.kind === "set" ? initial.url : "");
   const [error, setError] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<Status>("idle");
+  const [unreadable, setUnreadable] = useState(initial.kind === "unreadable");
   const scheme = pageProtocol === "https:" ? "wss" : "ws";
 
   function set() {
@@ -77,6 +119,7 @@ export function CoordinationServerSection({
       setStatus("failed");
       return;
     }
+    setUnreadable(false);
     if (entry.url !== undefined) setText(entry.url);
     setStatus(entry.url === undefined ? "cleared" : "set");
   }
@@ -89,6 +132,7 @@ export function CoordinationServerSection({
       setStatus("failed");
       return;
     }
+    setUnreadable(false);
     setText("");
     setStatus("cleared");
   }
@@ -99,13 +143,12 @@ export function CoordinationServerSection({
       <p className={`${styles.small} ${styles.sub}`}>
         {COORDINATION_SERVER_INTRO}
       </p>
-      {initial.kind === "unreadable" && status === "idle" && (
+      {unreadable && (
         <Alert
           color="yellow"
           title="The saved coordination server could not be read"
         >
-          Invitations you create name this site&apos;s coordination server until
-          you set one again.
+          {COORDINATION_SERVER_UNREADABLE}
         </Alert>
       )}
       <TextInput

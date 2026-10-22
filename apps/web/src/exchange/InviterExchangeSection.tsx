@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Alert, Button } from "@mantine/core";
+import { Alert, Anchor, Button, VisuallyHidden } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
 import { describeResolvedMatching } from "@alcove/core";
@@ -236,10 +236,13 @@ export function InviterExchangeSection({
     !serverJob && phase === "done" && leftBehind.length > 0,
   );
 
+  // An unanswered coordination server of this browser's setting also offers a
+  // fresh invitation beside the retry: clearing the setting and starting over
+  // names a server that answers, where waiting on the same one may never.
   const offersStartOver =
-    !retryable &&
-    !termsApplied &&
     failure !== undefined &&
+    (!retryable || failure.coordinationServerUnreachable === true) &&
+    !termsApplied &&
     failure.category !== "output";
 
   // The phase-level focus throughline. The console host moves focus to the h1
@@ -317,6 +320,14 @@ export function InviterExchangeSection({
                   ". Agree a time with your partner, then choose Keep waiting."
                 : "Your invitation has expired. Start over with a fresh " +
                   "invitation and send it to your partner."}
+            </p>
+          )}
+          {failure.coordinationServerUnreachable === true && (
+            <p>
+              <Anchor href="/relay" target="_blank" rel="noreferrer">
+                Open relay settings
+                <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+              </Anchor>
             </p>
           )}
           {retryable && (

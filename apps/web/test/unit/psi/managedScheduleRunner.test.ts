@@ -424,6 +424,7 @@ describe("a due window in the open runtime", () => {
       new ManagedSignalingEndpointRefusedError(
         "Riverbend quarterly",
         "names a host that is not a host name or IP address alone (an IPv6 address in square brackets), so this app does not connect to it",
+        "acceptor",
       ),
     ]) {
       const runner = harness({
@@ -1005,6 +1006,7 @@ describe("a due window under the operator's compromise response", () => {
       applyManagedExchangeReinviteRotation(storedRecord(runner, record.id), {
         sharedSecret: generateSharedSecret(),
         expires: null,
+        signalingServer: { host: "signaling.example.org" },
       }),
     );
     runner.advanceClock(WEEK_MS);

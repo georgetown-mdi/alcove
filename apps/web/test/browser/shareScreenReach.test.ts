@@ -11,6 +11,12 @@ import "@mantine/core/styles.css";
 import { InviterExchangeSection } from "@exchange/InviterExchangeSection";
 import { initialRun } from "@exchange/exchangeRun";
 
+import {
+  coordinationServerUnreachableMessage,
+  failureFor,
+} from "@exchange/useInviterExchange";
+import { CoordinationServerUnreachableError } from "@psi/transport/signalingAddress";
+
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
 import type { GeneratedInvitation } from "@psi/invitation";
@@ -201,5 +207,56 @@ describe("share screen for a console WebRTC invitation", () => {
     expect(app.container.textContent).toContain(
       "Have an invitation? Paste it here",
     );
+  });
+});
+
+describe("an unanswered coordination server of this browser's setting", () => {
+  const SERVER = "wss://coordination.agency.example/signal/";
+
+  test("offers a fresh invitation beside Try again, and relay settings in a new tab", async () => {
+    app.render(
+      createElement(InviterExchangeSection, {
+        invitation: invitationAt("https://psi.data-bridge.org"),
+        inviterName: "County Health Department",
+        run: initialRun("inviter"),
+        outputs: undefined,
+        failure: failureFor(
+          "exchange",
+          new CoordinationServerUnreachableError(SERVER),
+          undefined,
+          "browser",
+        ),
+        runRecord: undefined,
+        warnings: [],
+        partnerAcceptsByCli: false,
+        serverJob: false,
+        jobId: undefined,
+        reattached: undefined,
+        reattaching: false,
+        onTryAgain: () => {},
+        onStartOver: () => {},
+        onReviewAppliedTerms: () => {},
+        onAbandon: () => {},
+      }),
+    );
+
+    await expect
+      .element(page.getByText(coordinationServerUnreachableMessage(SERVER)))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .toBeEnabled();
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Start over with a fresh invitation",
+        }),
+      )
+      .toBeEnabled();
+    const link = page.getByRole("link", {
+      name: "Open relay settings (opens in a new tab)",
+    });
+    await expect.element(link).toHaveAttribute("href", "/relay");
+    await expect.element(link).toHaveAttribute("target", "_blank");
   });
 });

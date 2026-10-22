@@ -730,31 +730,26 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
  * no stored kind of its own, since a new stored kind would change the saved
  * record's schema: the record stamps it as a transport failure, so a later
  * visit reads the generic transport state. The same record refuses identically
- * every time, so it is not the retry state. A fresh invitation from the
- * partner saves a new address, the acceptor's re-invite recovery; an
- * inviter's re-invite names the same saved address, so it has none. */
+ * every time, so it is not the retry state. Both sides recover by re-invite:
+ * a fresh invitation from the partner saves a new address on the acceptor's
+ * side, and an inviter's re-invite names this browser's current
+ * coordination server and stores it on the record. */
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
 ): ManagedRunFailureAlert {
-  const stopped =
-    `${error.refusal} The run stopped before connecting, so your partner ` +
-    "was not contacted and nothing left this device. Running it again " +
-    "stops the same way; ";
-  return error.side === "acceptor"
-    ? {
-        kind: "saved-address-refused",
-        title: "The saved coordination server address cannot be used",
-        message: `${stopped}this exchange needs a fresh invitation.`,
-        recovery: "reinvite",
-      }
-    : {
-        kind: "saved-address-refused",
-        title: "The saved coordination server address cannot be used",
-        message:
-          `${stopped}create a new invitation for your partner and save ` +
-          "that exchange instead.",
-        recovery: "none",
-      };
+  return {
+    kind: "saved-address-refused",
+    title: "The saved coordination server address cannot be used",
+    message:
+      `${error.refusal} The run stopped before connecting, so your partner ` +
+      "was not contacted and nothing left this device. Running it again " +
+      "stops the same way; " +
+      (error.side === "acceptor"
+        ? "this exchange needs a fresh invitation."
+        : "re-invite your partner to name this browser's current " +
+          "coordination server."),
+    recovery: "reinvite",
+  };
 }
 
 /** The recorded transport state: a connection or data-exchange drop, not a

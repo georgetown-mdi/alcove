@@ -29,6 +29,12 @@ import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
 import { RUN_DIAGNOSTICS_DEFAULT } from "@psi/runDiagnosticsModel";
 import { ReviewCreateSection } from "@exchange/ReviewCreateSection";
 
+import {
+  parseCoordinationServerUrl,
+  writeCoordinationServerSetting,
+} from "@psi/transport/coordinationServerSetting";
+import { COORDINATION_SERVER_UNREADABLE_AT_INVITE } from "@exchange/CoordinationServerSection";
+
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
@@ -248,6 +254,52 @@ describe("ReviewCreateSection: the inert-coalesce notice", () => {
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeEnabled();
+  });
+});
+
+describe("ReviewCreateSection: an unreadable coordination server setting", () => {
+  const unreadableWarning = () =>
+    page.getByText(COORDINATION_SERVER_UNREADABLE_AT_INVITE);
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  test("warns that the invitation will name this site's server", async () => {
+    window.localStorage.setItem("alcove-own-coordination-server", "{not json");
+    render(editorFromCsv("Dana Okafor", csv));
+
+    expect(COORDINATION_SERVER_UNREADABLE_AT_INVITE).toBe(
+      "Your saved coordination server could not be read, so this " +
+        "invitation will name this site's coordination server. To use " +
+        "yours, set it again in relay settings before you create the " +
+        "invitation.",
+    );
+    await expect.element(unreadableWarning()).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .toBeEnabled();
+  });
+
+  test("shows nothing where the setting is unset or readable", async () => {
+    render(editorFromCsv("Dana Okafor", csv));
+    await expect
+      .element(page.getByRole("heading", { name: "Review & create" }))
+      .toBeInTheDocument();
+    expect(unreadableWarning().query()).toBeNull();
+
+    app.unmount();
+    const entry = parseCoordinationServerUrl(
+      `${window.location.protocol === "https:" ? "wss" : "ws"}://coordination.agency.example/`,
+      window.location.protocol,
+    );
+    if (!entry.ok) throw new Error(entry.message);
+    writeCoordinationServerSetting(entry.url);
+    render(editorFromCsv("Dana Okafor", csv));
+    await expect
+      .element(page.getByRole("heading", { name: "Review & create" }))
+      .toBeInTheDocument();
+    expect(unreadableWarning().query()).toBeNull();
   });
 });
 

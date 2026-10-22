@@ -43,22 +43,30 @@ function schemeForPage(pageProtocol: string): "wss" | "ws" {
 export function coordinationServerFormMessage(pageProtocol: string): string {
   const scheme = schemeForPage(pageProtocol);
   return (
-    `Enter the coordination server's ${scheme}:// address: a host, an ` +
-    "optional port and path, and no user name, password, query, fragment " +
-    `or percent sign. For example: ${scheme}://signaling.example.org/api/`
+    `Enter the coordination server's address starting with ${scheme}://, ` +
+    `for example ${scheme}://signaling.example.org/api/. It cannot contain ` +
+    "a user name, password, space, @, ?, # or %."
   );
 }
 
 /** The refusal of a web app's address, which names a coordination server
  * only through the file the app publishes. */
-const WEB_APP_ADDRESS_NOTE = "A web app's address does not work here. ";
+export function webAppAddressMessage(pageProtocol: string): string {
+  return (
+    "This is a web page's address, not a coordination server's. Whoever " +
+    `runs the server can give you its ${schemeForPage(pageProtocol)}:// ` +
+    "address."
+  );
+}
 
 /**
  * Read a coordination server address from `text` for a page served with
  * `pageProtocol`: core's {@link publishedSignalingServerURL} rule, the one
  * the console and a build's own setting are held to, with the page's scheme
  * (`wss:` under `https`, `ws:` otherwise) and a port that can be dialed.
- * Blank text names none.
+ * An address the URL parser would store percent-escaped, such as one with a
+ * space in its path, is refused too, since that rule refuses the stored form
+ * when it is read back. Blank text names none.
  */
 export function parseCoordinationServerUrl(
   text: string,
@@ -66,18 +74,16 @@ export function parseCoordinationServerUrl(
 ): CoordinationServerEntry {
   const trimmed = text.trim();
   if (trimmed === "") return { ok: true };
+  if (/^https?:\/\//i.test(trimmed))
+    return { ok: false, message: webAppAddressMessage(pageProtocol) };
   const url = publishedSignalingServerURL(trimmed);
   if (
     url === undefined ||
     url.protocol !== `${schemeForPage(pageProtocol)}:` ||
-    url.port === "0"
+    url.port === "0" ||
+    url.href.includes("%")
   )
-    return {
-      ok: false,
-      message:
-        (/^https?:\/\//i.test(trimmed) ? WEB_APP_ADDRESS_NOTE : "") +
-        coordinationServerFormMessage(pageProtocol),
-    };
+    return { ok: false, message: coordinationServerFormMessage(pageProtocol) };
   return { ok: true, url: url.href };
 }
 

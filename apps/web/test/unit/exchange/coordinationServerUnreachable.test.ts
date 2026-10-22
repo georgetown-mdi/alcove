@@ -88,21 +88,25 @@ describe("an inviter's unanswered registration", () => {
     expect(failure.title).toBe("Your coordination server did not answer");
     expect(failure.message).toBe(coordinationServerUnreachableMessage(server));
     expect(failure.message).toBe(
-      "This page could not connect to the coordination server set in Relay " +
-        "settings, wss://coordination.agency.example/signal/, which this " +
-        "invitation names. Check that the server is running and try again, " +
-        "or clear the address in Relay settings to use this site's " +
-        "coordination server and create a new invitation.",
+      "This page could not connect to " +
+        "wss://coordination.agency.example/signal/, the coordination server " +
+        "set in relay settings, which this invitation names. Your partner " +
+        "cannot use this invitation until that server answers. Ask whoever " +
+        "runs it to check it, then choose Try again. Or clear the address " +
+        "under Coordination server in relay settings, choose Start over " +
+        "with a fresh invitation, and send your partner the new one.",
     );
+    expect(failure.retry).toBe("offered");
+    expect(failure.coordinationServerUnreachable).toBe(true);
   });
 
   test("at the build's own server keeps the generic failure", async () => {
     const error = await listenUnanswered(BUILD_SERVER);
 
     expect(error).not.toBeInstanceOf(CoordinationServerUnreachableError);
-    expect(failureFor("exchange", error, undefined, "browser").title).toBe(
-      "Exchange failed",
-    );
+    const failure = failureFor("exchange", error, undefined, "browser");
+    expect(failure.title).toBe("Exchange failed");
+    expect(failure.coordinationServerUnreachable).toBeUndefined();
   });
 
   test("an invitation naming no webrtc endpoint is refused before any contact", async () => {

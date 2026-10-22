@@ -231,9 +231,10 @@ A new invitation names this browser's own coordination server where the user
 set one on the relay settings page, and the deployment's address otherwise.
 The browser setting is kept in the browser's storage for the page's origin,
 and is held to the rule the published file's reader applies
-(`publishedSignalingServerURL` in core) with the page's scheme and a port from
-1 to 65535; an address failing it is refused when entered, and a stored one
-failing it on a later read names no server. Its address states the port, the
+(`publishedSignalingServerURL` in core) with the page's scheme, a port from
+1 to 65535, and no character the URL parser stores percent-escaped, such as a
+space in the path; an address failing it is refused when entered, and a
+stored one failing it on a later read names no server. Its address states the port, the
 scheme's default included. A web app's `http:` or `https:` address is refused,
 since the hosted build's `_headers` gives its published file
 ([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin`
@@ -241,9 +242,13 @@ header for a page on another origin to read it under.
 
 An inviter registers at the endpoint its invitation names. A saved exchange's
 later runs register at the endpoint the inviter's record stored from that
-invitation, after the validation an acceptor's dial applies (below), and a
-re-invite from the record names that endpoint. A change to the browser
-setting therefore moves no invitation already created and no saved exchange.
+invitation, after the validation an acceptor's dial applies (below). A
+re-invite from the record names the endpoint a new invitation names, from the
+browser setting or the deployment's address, and stores it on the record,
+where the inviter's later runs then register
+([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)).
+A change to the browser setting therefore moves no invitation already
+created, and moves a saved exchange only when its inviter re-invites from it.
 
 An accepting party never dials its own deployment's address. A fresh accept
 dials the endpoint its invitation names, from any deployment, and a saved

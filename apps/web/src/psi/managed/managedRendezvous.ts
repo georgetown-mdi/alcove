@@ -17,7 +17,8 @@
  * ({@link managedSignalingEndpoint}): the inviter registers there and the
  * acceptor dials it, so two parties on different deployments keep reaching
  * each other, and a change to this browser's coordination server setting
- * moves no saved exchange. The stored connection block is read for four
+ * moves no saved exchange until the inviter re-invites, which stores the
+ * server its invitation names. The stored connection block is read for four
  * things: its `channel` discriminant, to reject a non-webrtc record before any
  * connection, the saved signaling server, the `invitationRelay` an acceptor's
  * record keeps from the invitation it accepted, and the record's own
@@ -102,12 +103,14 @@ export class ManagedSignalingEndpointRefusedError extends Error {
    * full stop; the message continues it with the remedy. */
   readonly refusal: string;
   /** The side of the record whose saved address was refused, which decides
-   * the remedy: a re-invite names the same saved address. */
+   * the remedy: an acceptor accepts a new invitation from its partner, and an
+   * inviter re-invites, which names this browser's current coordination
+   * server. */
   readonly side: ManagedRendezvousRecord["side"];
   constructor(
     label: string,
     reason: string,
-    side: ManagedRendezvousRecord["side"] = "acceptor",
+    side: ManagedRendezvousRecord["side"],
   ) {
     const name =
       label.trim() === ""
@@ -118,7 +121,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
       `${refusal} ${
         side === "acceptor"
           ? "Ask your partner for a new invitation and accept it."
-          : "Create a new invitation for your partner and save that exchange instead."
+          : "Re-invite your partner with the same terms to name this browser's current coordination server."
       }`,
     );
     this.name = "ManagedSignalingEndpointRefusedError";

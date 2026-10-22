@@ -7,10 +7,11 @@
  *
  * The record write reuses {@link persistManagedExchangeReinvite}: it replaces the
  * desynced secret with the fresh setup secret (the field-scoped rotation write over
- * the secret and the record's own `expires`), drops the stale `lastRun`, and clears
- * the backup and import markers in the same cross-store transaction. The write is
- * awaited before the operator forwards the invitation, so this party's own re-run
- * listens on the rendezvous the fresh secret derives. On an exchange enrolled at a
+ * the secret, the record's own `expires` and the document's coordination server),
+ * drops the stale `lastRun`, and clears the backup and import markers in the same
+ * cross-store transaction. The write is awaited before the operator forwards the
+ * invitation, so this party's own re-run listens on the rendezvous the fresh secret
+ * derives, at the server the invitation names. On an exchange enrolled at a
  * relay registrar, the same step registers the fresh secret's relay key, signed with
  * the replaced secret's ({@link registerReinvitedManagedRelayKey}).
  */
@@ -34,7 +35,8 @@ import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
 /** The dependencies the re-invite driver injects, defaulted to the real platform
  * wiring but overridable in a test. */
 interface ManagedReinviteDriverDeps {
-  /** Read this page's location for the fresh webrtc endpoint. */
+  /** Read this page's origin and the coordination server a new invitation
+   * names, for the fresh webrtc endpoint. */
   location: () => ReturnType<typeof invitationLocation>;
   /** Mint a fresh setup secret. */
   generateSecret: () => string;

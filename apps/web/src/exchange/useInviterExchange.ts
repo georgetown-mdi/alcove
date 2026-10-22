@@ -169,6 +169,10 @@ export interface RunFailure {
   /** Set when the partner never connected in the time this page waited. The
    * seat offers its retry as "Keep waiting", on the same invitation. */
   partnerNoShow?: true;
+  /** Set when the coordination server this browser's setting named did not
+   * answer the inviter's registration. The seat offers a fresh invitation
+   * beside its retry, and a link to relay settings. */
+  coordinationServerUnreachable?: true;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -850,6 +854,7 @@ function failureContentFor(
       category: "exchange",
       title: "Your coordination server did not answer",
       message: coordinationServerUnreachableMessage(error.server),
+      coordinationServerUnreachable: true,
     };
   // A failure whose own message states the cause and the next step -- relayed
   // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised marked in this
@@ -909,17 +914,18 @@ function failureContentFor(
 /**
  * What the run's alert says when the coordination server this browser's
  * setting named, `server`, did not answer: the server, then how to retry or
- * clear the setting.
+ * clear the setting and start over.
  *
  * @internal exported for testing
  */
 export function coordinationServerUnreachableMessage(server: string): string {
   return (
-    "This page could not connect to the coordination server set in Relay " +
-    `settings, ${sanitizeForDisplay(server)}, which this invitation names. ` +
-    "Check that the server is running and try again, or clear the address " +
-    "in Relay settings to use this site's coordination server and create a " +
-    "new invitation."
+    `This page could not connect to ${sanitizeForDisplay(server)}, the ` +
+    "coordination server set in relay settings, which this invitation " +
+    "names. Your partner cannot use this invitation until that server " +
+    "answers. Ask whoever runs it to check it, then choose Try again. Or " +
+    "clear the address under Coordination server in relay settings, choose " +
+    "Start over with a fresh invitation, and send your partner the new one."
   );
 }
 

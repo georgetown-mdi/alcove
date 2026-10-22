@@ -16,6 +16,7 @@ import {
   coordinationServerFormMessage,
   parseCoordinationServerUrl,
   readCoordinationServerSetting,
+  webAppAddressMessage,
   writeCoordinationServerSetting,
 } from "../../../src/psi/transport/coordinationServerSetting.js";
 import {
@@ -452,6 +453,8 @@ describe("parseCoordinationServerUrl", () => {
     "wss://coordination.agency.example/#x",
     "wss://coordination.agency.example/%2e%2e/",
     "wss://coordination.agency.example:0/",
+    "wss://coordination.agency.example/a@b/",
+    "wss://coordination.agency.example/a b/",
   ])("refuses %j under an https page, naming the wss form", (text) => {
     expect(parseCoordinationServerUrl(text, "https:")).toEqual({
       ok: false,
@@ -459,27 +462,29 @@ describe("parseCoordinationServerUrl", () => {
     });
   });
 
-  test("refuses a web app's address, saying it does not work here", () => {
-    const entry = parseCoordinationServerUrl(
-      "https://psi.data-bridge.org",
-      "https:",
-    );
-    expect(entry.ok).toBe(false);
-    if (entry.ok) return;
-    expect(entry.message).toBe(
-      "A web app's address does not work here. " +
-        coordinationServerFormMessage("https:"),
-    );
-  });
+  test.each(["https://psi.data-bridge.org", "http://psi.data-bridge.org/"])(
+    "refuses %j as a web page's address, saying who gives the server's",
+    (text) => {
+      expect(parseCoordinationServerUrl(text, "https:")).toEqual({
+        ok: false,
+        message:
+          "This is a web page's address, not a coordination server's. " +
+          "Whoever runs the server can give you its wss:// address.",
+      });
+      expect(webAppAddressMessage("https:")).toContain("its wss:// address");
+      expect(webAppAddressMessage("http:")).toContain("its ws:// address");
+    },
+  );
 
   test("the message names the wss form under https and the ws form under http", () => {
     expect(coordinationServerFormMessage("https:")).toBe(
-      "Enter the coordination server's wss:// address: a host, an optional " +
-        "port and path, and no user name, password, query, fragment or " +
-        "percent sign. For example: wss://signaling.example.org/api/",
+      "Enter the coordination server's address starting with wss://, for " +
+        "example wss://signaling.example.org/api/. It cannot contain a user " +
+        "name, password, space, @, ?, # or %.",
     );
     expect(coordinationServerFormMessage("http:")).toContain(
-      "Enter the coordination server's ws:// address",
+      "Enter the coordination server's address starting with ws://, for " +
+        "example ws://signaling.example.org/api/.",
     );
     expect(parseCoordinationServerUrl("wss://a.example/", "http:").ok).toBe(
       false,

@@ -64,6 +64,7 @@ import type {
   ManagedExchangeLocalEdits,
   ManagedExchangeReadableRecords,
   ManagedExchangeRecord,
+  ManagedExchangeReinviteRotation,
   ManagedExchangeRotation,
   ManagedExchangeScheduleAdvance,
   ManagedTermsChangeWrite,
@@ -1221,7 +1222,9 @@ export class ManagedReinviteWithheldError extends Error {
  * re-invite consumes the failure `lastRun` recorded: leaving it in place, with the
  * import marker now cleared, would re-derive a stale `auth` failure as the attack
  * tier, resurrecting a framing the operator already recovered from (see
- * {@link ./managedFailureTiers.ts}). The record write is field-scoped through
+ * {@link ./managedFailureTiers.ts}). The same write stores the coordination server
+ * the re-invite named as the document's webrtc `server`, where the inviter's later
+ * runs register. The record write is field-scoped through
  * {@link applyManagedExchangeReinviteRotation} (which re-validates), so it cannot
  * include a stale secret or document.
  *
@@ -1258,7 +1261,7 @@ export class ManagedReinviteWithheldError extends Error {
  */
 export async function persistManagedExchangeReinvite(
   id: string,
-  rotation: ManagedExchangeRotation,
+  rotation: ManagedExchangeReinviteRotation,
   registerReinvitedKey?: (
     replaced: RunnableManagedExchangeRecord,
     written: RunnableManagedExchangeRecord,

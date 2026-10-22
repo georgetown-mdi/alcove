@@ -1127,6 +1127,16 @@ export interface ManagedExchangeRotation {
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
 }
 
+/** A re-invite's rotation: the {@link ManagedExchangeRotation} fields plus the
+ * coordination server the re-invite's invitation names, which replaces the
+ * stored document's webrtc `server` so the inviter's later runs register
+ * where the partner's accept of that invitation dials. */
+export interface ManagedExchangeReinviteRotation extends ManagedExchangeRotation {
+  /** The host, port and path of the coordination server the invitation
+   * names. */
+  signalingServer: Pick<WebRTCExchangeLocator, "host" | "port" | "path">;
+}
+
 /** Why a pending relay registration cannot be confirmed by a run
  * ({@link ManagedExchangeRecord.relayRegistrationPendingReason}). */
 export type ManagedRelayRegistrationPendingReason = "reinvite";
@@ -1520,18 +1530,39 @@ export function applyManagedExchangeSentColumns(
  * once the import marker is cleared in the same rotation, a stale `auth`
  * failure would re-derive as the attack tier. Clearing it in the same
  * field-scoped write makes the post-re-invite record treated as holding no
- * failure to tier (see {@link ./managedFailureTiers.ts}). The document, the
- * label, the schedule, and the handle remain untouched; the input record is not
- * mutated.
+ * failure to tier (see {@link ./managedFailureTiers.ts}). The document's
+ * webrtc `server` becomes the rotation's `signalingServer`, the coordination
+ * server the re-invite named, holding only its host, port and path as a
+ * fresh invitation's expanded locator does. The rest of the document, the
+ * label, the schedule, and the handle remain untouched; the input record is
+ * not mutated.
  *
- * @throws {ZodError} if the rotated record is invalid (a malformed secret).
+ * @throws {Error} if the record's connection is not webrtc.
+ * @throws {ZodError} if the rotated record is invalid (a malformed secret or
+ *   server).
  */
 export function applyManagedExchangeReinviteRotation(
   record: RunnableManagedExchangeRecord,
-  rotation: ManagedExchangeRotation,
+  rotation: ManagedExchangeReinviteRotation,
 ): RunnableManagedExchangeRecord {
+  const { connection } = record.exchangeFile;
+  if (connection.channel !== "webrtc")
+    throw new Error(
+      "a re-invite names a coordination server, so it requires a webrtc " +
+        `exchange; stored connection channel is ${connection.channel}`,
+    );
+  const { host, port, path } = rotation.signalingServer;
+  const server = {
+    host,
+    ...(port !== undefined ? { port } : {}),
+    ...(path !== undefined ? { path } : {}),
+  };
   const next: ManagedExchangeRecord = {
     ...record,
+    exchangeFile: {
+      ...record.exchangeFile,
+      connection: { ...connection, server },
+    },
     sharedSecret: rotation.sharedSecret,
   };
   if (rotation.expires === null) delete next.expires;

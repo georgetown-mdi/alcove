@@ -84,6 +84,12 @@ export const RELAY_PAGE_INTRO =
   "connect through a TURN relay. If you run the relay, create the invitation " +
   "so your partner uses it too.";
 
+/** Where the hosted app's relay settings page points to the coordination
+ * server section below, under {@link RELAY_PAGE_INTRO}. */
+export const RELAY_PAGE_COORDINATION_SERVER_NOTE =
+  "This page also sets the coordination server your invitations use, under " +
+  "Coordination server below.";
+
 /**
  * What the relay must hold for each run's credential, shown under the page's
  * opening paragraph and stated in docs/COMMUNICATION.md.
@@ -261,6 +267,11 @@ export function RelaySettingsScreen({
     <WorkShell>
       <h1>Relay server</h1>
       <p className={`${styles.small} ${styles.sub}`}>{RELAY_PAGE_INTRO}</p>
+      {!consoleBuild && (
+        <p className={`${styles.small} ${styles.sub}`}>
+          {RELAY_PAGE_COORDINATION_SERVER_NOTE}
+        </p>
+      )}
       <p className={`${styles.small} ${styles.sub}`}>
         {consoleBuild
           ? "Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."

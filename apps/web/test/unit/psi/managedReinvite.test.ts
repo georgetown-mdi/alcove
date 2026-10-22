@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   decodeInvitation,
   deriveAcceptedLinkageTerms,
@@ -6,34 +7,56 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
-import { describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
+  applyManagedExchangeReinviteRotation,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  assertManagedRendezvousPossible,
+  beginManagedRendezvous,
+} from "@psi/managed/managedRendezvous";
+import {
   canReinviteFromRecord,
   composeManagedReinvite,
 } from "@psi/managed/managedReinvite";
-import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
+import { NoSignalingAddressError } from "@psi/invitation";
+import { invitationLocation } from "@psi/invitationLocation";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
+import { writeCoordinationServerSetting } from "@psi/transport/coordinationServerSetting";
 
+import type { InvitationToken, WebRTCEndpoint } from "@alcove/core";
 import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { InvitationLocation } from "@psi/invitation";
-import type { InvitationToken } from "@alcove/core";
+import type Peer from "peerjs";
+
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../../utils/clientConfigMock")).clientConfigMock(
+    importOriginal,
+    {
+      isConsoleBuild: () => false,
+      signalingServerSetting: () => ({
+        secure: true,
+        host: "signaling.example.org",
+        path: "/api/",
+      }),
+    },
+  ),
+);
 
 // Fast re-invite from a stored record, tested in Node: the fresh invitation is
-// composed from the record's OWN document (terms + committed send set + saved
-// signaling server), mints only a fresh secret -- so the partner's accept
-// re-derives its perspective, receiving the same send set, and saves the server
-// this party's re-runs register at, and the operator re-authors nothing. Only
-// the inviter side re-mints.
+// composed from the record's OWN document (terms + committed send set), mints a
+// fresh secret, and names the coordination server a new invitation from this
+// browser names, which its rotation stores on the record -- so the partner's
+// accept re-derives its perspective, receiving the same send set, and saves the
+// server this party's re-runs register at, and the operator re-authors nothing.
+// Only the inviter side re-mints.
 
 // `encodeInvitation` re-checks the token's `expires` against the real wall clock, so
 // NOW must be ahead of it for the setup lifetime to encode; anchored to the actual run
@@ -124,30 +147,50 @@ describe("composeManagedReinvite", () => {
     ).not.toThrow();
   });
 
-  test("the endpoint names the server the record saved, not the current location", async () => {
+  test("the endpoint names the location's coordination server, not the one the record saved, and the rotation stores it", async () => {
     const record = inviterRecord();
     const reinvite = await composeManagedReinvite(record, location, seams);
     const token = await decodeInvitation(reinvite.encoded);
 
     expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "saved-signaling.example.org",
-      port: 9999,
-      path: "/signal/",
+      host: "example.org",
+      port: 3000,
+      path: "/api/",
+    });
+    expect(reinvite.rotation.signalingServer).toStrictEqual({
+      host: "example.org",
+      port: 3000,
+      path: "/api/",
     });
     expect(reinvite.deepLink.startsWith(`${location.origin}/`)).toBe(true);
   });
 
-  test("a record whose saved server fails validation mints nothing", async () => {
+  test("a record whose saved server fails validation is repointed, not refused", async () => {
     const record = inviterRecord({
       exchangeFile: composeManagedExchangeFile({
         connection: { channel: "webrtc", host: "a@b", path: "/api/" },
         linkageTerms: getDefaultLinkageTerms("County Health Dept"),
       }),
     });
+    const reinvite = await composeManagedReinvite(record, location, seams);
+
+    expect(reinvite.rotation.signalingServer.host).toBe("example.org");
+    const repointed = applyManagedExchangeReinviteRotation(
+      record,
+      reinvite.rotation,
+    );
+    expect(() => assertManagedRendezvousPossible(repointed)).not.toThrow();
+  });
+
+  test("a location naming no coordination server mints nothing", async () => {
     await expect(
-      composeManagedReinvite(record, location, seams),
-    ).rejects.toThrow(ManagedSignalingEndpointRefusedError);
+      composeManagedReinvite(
+        inviterRecord(),
+        { origin: location.origin, signaling: undefined },
+        seams,
+      ),
+    ).rejects.toThrow(NoSignalingAddressError);
   });
 
   test("names the inviter's own relay urls and no credential", async () => {
@@ -162,9 +205,9 @@ describe("composeManagedReinvite", () => {
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "saved-signaling.example.org",
-      port: 9999,
-      path: "/signal/",
+      host: "example.org",
+      port: 3000,
+      path: "/api/",
       relay: ownRelay,
     });
   });
@@ -366,6 +409,102 @@ describe("composeManagedReinvite", () => {
     await expect(
       composeManagedReinvite(record, location, seams),
     ).rejects.toThrow(/only the inviter/i);
+  });
+});
+
+describe("a re-invite under this browser's coordination server setting", () => {
+  const SETTING_SERVER = "wss://coordination.agency.example/signal/";
+  const SETTING_ENDPOINT = {
+    host: "coordination.agency.example",
+    port: 443,
+    path: "/signal/",
+  };
+  const SAVED_ENDPOINT = {
+    host: "saved-signaling.example.org",
+    port: 9999,
+    path: "/signal/",
+  };
+  const relayPlan = { relaysLeftOut: [], websocketRelays: [] };
+
+  /** Begin a run of `record` and return the endpoint its inviter registered at. */
+  async function registeredAt(
+    record: RunnableManagedExchangeRecord,
+  ): Promise<WebRTCEndpoint> {
+    const endpoints: Array<WebRTCEndpoint> = [];
+    await beginManagedRendezvous(record, {
+      relayPlan,
+      flows: {
+        listenAsInviter: (_secret, endpoint) => {
+          endpoints.push(endpoint);
+          return Promise.resolve({} as Peer);
+        },
+        dialAsAcceptor: () => Promise.reject(new Error("not the acceptor")),
+      },
+    });
+    expect(endpoints).toHaveLength(1);
+    return endpoints[0];
+  }
+
+  beforeEach(() => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    });
+    vi.stubGlobal("window", {
+      location: {
+        origin: "https://app.example.org",
+        protocol: "https:",
+        hostname: "app.example.org",
+        port: "",
+      },
+    });
+    writeCoordinationServerSetting(SETTING_SERVER);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("a record at server A with the setting naming B: the re-invite names B, the record then holds B, and its runs register where the record says", async () => {
+    const record = inviterRecord();
+    expect(await registeredAt(record)).toStrictEqual({
+      channel: "webrtc",
+      ...SAVED_ENDPOINT,
+    });
+
+    const reinvite = await composeManagedReinvite(
+      record,
+      invitationLocation(),
+      seams,
+    );
+    const token = await decodeInvitation(reinvite.encoded);
+    expect(token.connectionEndpoint).toStrictEqual({
+      channel: "webrtc",
+      ...SETTING_ENDPOINT,
+    });
+
+    const reinvited = applyManagedExchangeReinviteRotation(
+      record,
+      reinvite.rotation,
+    );
+    expect(reinvited.exchangeFile.connection).toMatchObject({
+      channel: "webrtc",
+      server: SETTING_ENDPOINT,
+    });
+    expect(reinvited.sharedSecret).toBe(FRESH_SECRET);
+    expect(await registeredAt(reinvited)).toStrictEqual({
+      channel: "webrtc",
+      ...SETTING_ENDPOINT,
+    });
+  });
+
+  test("a run with no re-invite registers at the record's server whatever the setting names", async () => {
+    expect(await registeredAt(inviterRecord())).toStrictEqual({
+      channel: "webrtc",
+      ...SAVED_ENDPOINT,
+    });
   });
 });
 

@@ -205,7 +205,11 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     const reason =
       "names a host that is not a host name or IP address alone (an IPv6 address in square brackets), so this app does not connect to it";
     const failure = classifyAgainstOneRecord(
-      new ManagedSignalingEndpointRefusedError("Riverbend quarterly", reason),
+      new ManagedSignalingEndpointRefusedError(
+        "Riverbend quarterly",
+        reason,
+        "acceptor",
+      ),
       record({ lastRun: failed("transport") }),
       undefined,
       NOW,
@@ -226,7 +230,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/try again/i);
 
     const unlabelled = classifyAgainstOneRecord(
-      new ManagedSignalingEndpointRefusedError(" ", reason),
+      new ManagedSignalingEndpointRefusedError(" ", reason, "acceptor"),
       record(),
       undefined,
       NOW,
@@ -235,7 +239,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unlabelled.message).toMatch(/^This saved exchange cannot run:/);
   });
 
-  test("an inviter's refused saved signaling address offers no re-invite, which would name the same address", () => {
+  test("an inviter's refused saved signaling address offers the re-invite, which names this browser's server", () => {
     const reason = "is not a complete host, port and path";
     const failure = classifyAgainstOneRecord(
       new ManagedSignalingEndpointRefusedError(
@@ -255,9 +259,9 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
         'The saved exchange "Riverbend quarterly" cannot run: the coordination ' +
         `server address it saved ${reason}. The run stopped before ` +
         "connecting, so your partner was not contacted and nothing left " +
-        "this device. Running it again stops the same way; create a new " +
-        "invitation for your partner and save that exchange instead.",
-      recovery: "none",
+        "this device. Running it again stops the same way; re-invite your " +
+        "partner to name this browser's current coordination server.",
+      recovery: "reinvite",
     });
     expect(managedRunRetryable(failure)).toBe(false);
   });

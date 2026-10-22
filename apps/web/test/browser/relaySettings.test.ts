@@ -12,6 +12,7 @@ import {
   COORDINATION_SERVER_CLEARED,
   COORDINATION_SERVER_INTRO,
   COORDINATION_SERVER_SET,
+  COORDINATION_SERVER_UNREADABLE,
   coordinationServerFieldDescription,
 } from "@exchange/CoordinationServerSection";
 import {
@@ -21,6 +22,7 @@ import {
   NO_RELAY_SET,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
+  RELAY_PAGE_COORDINATION_SERVER_NOTE,
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
   STUN_FIELD_DESCRIPTION,
@@ -334,6 +336,10 @@ describe("RelaySettingsScreen: the coordination server", () => {
     await userEvent.fill(serverField(), SERVER);
     await userEvent.click(setButton());
 
+    expect(COORDINATION_SERVER_SET).toBe(
+      "Set. Invitations you create from now on name this coordination " +
+        "server. It is first contacted when you create one.",
+    );
     await expect
       .element(serverStatus())
       .toHaveTextContent(COORDINATION_SERVER_SET);
@@ -360,7 +366,8 @@ describe("RelaySettingsScreen: the coordination server", () => {
   test.each([
     [
       "https://psi.data-bridge.org",
-      `A web app's address does not work here. ${formMessage}`,
+      "This is a web page's address, not a coordination server's. Whoever " +
+        `runs the server can give you its ${scheme}:// address.`,
     ],
     [
       `${scheme === "wss" ? "ws" : "wss"}://coordination.agency.example/`,
@@ -385,17 +392,56 @@ describe("RelaySettingsScreen: the coordination server", () => {
     },
   );
 
+  const unreadableAlert = () =>
+    page.getByRole("status", {
+      name: "The saved coordination server could not be read",
+    });
+
   test("a stored value this page cannot read says invitations name the site's server", async () => {
     window.localStorage.setItem("alcove-own-coordination-server", "{not json");
     await mountScreen();
 
-    const alert = page.getByRole("status", {
-      name: "The saved coordination server could not be read",
-    });
-    await expect.element(alert).toBeVisible();
-    expect(alert.element().textContent).toContain(
+    expect(COORDINATION_SERVER_UNREADABLE).toBe(
       "Invitations you create name this site's coordination server until " +
-        "you set one again.",
+        "you set yours again. Enter its address and choose Set coordination " +
+        "server.",
+    );
+    await expect.element(unreadableAlert()).toBeVisible();
+    expect(unreadableAlert().element().textContent).toContain(
+      COORDINATION_SERVER_UNREADABLE,
+    );
+  });
+
+  test("the unreadable notice stays gone after a server is set and the address is edited again", async () => {
+    window.localStorage.setItem("alcove-own-coordination-server", "{not json");
+    await mountScreen();
+    await expect.element(unreadableAlert()).toBeVisible();
+
+    await userEvent.fill(serverField(), SERVER);
+    await userEvent.click(setButton());
+    await expect
+      .element(serverStatus())
+      .toHaveTextContent(COORDINATION_SERVER_SET);
+    await userEvent.type(serverField(), "x");
+
+    await expect.element(serverField()).toHaveValue(`${SERVER}x`);
+    expect(unreadableAlert().query()).toBeNull();
+  });
+
+  test("the page intro points to this section on the hosted app, not the console", async () => {
+    await mountScreen();
+    expect(RELAY_PAGE_COORDINATION_SERVER_NOTE).toBe(
+      "This page also sets the coordination server your invitations use, " +
+        "under Coordination server below.",
+    );
+    await expect
+      .element(page.getByText(RELAY_PAGE_COORDINATION_SERVER_NOTE))
+      .toBeVisible();
+
+    build.console = true;
+    await mountScreen();
+    expect(page.getByText(RELAY_PAGE_COORDINATION_SERVER_NOTE).query()).toBe(
+      null,
     );
   });
 

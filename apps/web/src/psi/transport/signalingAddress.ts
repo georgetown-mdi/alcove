@@ -172,7 +172,7 @@ export function settingServerNamedBy(
 /**
  * An inviter's registration at the coordination server this browser's
  * setting named failed with no answer from it. The message names the server
- * and how to clear the setting.
+ * and where it was set.
  */
 export class CoordinationServerUnreachableError extends Error {
   /** The server's address, as {@link settingServerNamedBy} states it. */
@@ -180,7 +180,7 @@ export class CoordinationServerUnreachableError extends Error {
   constructor(server: string, options?: ErrorOptions) {
     super(
       `This page could not connect to ${server}, the coordination server ` +
-        "set in Relay settings that this invitation names.",
+        "set in relay settings, which this invitation names.",
       options,
     );
     this.name = "CoordinationServerUnreachableError";
