@@ -3,6 +3,10 @@ import { vi } from "vitest";
 import { createElement } from "react";
 
 import type * as ExchangeLifecycleModule from "@psi/exchangeLifecycle";
+import type {
+  ParkedWebSocketRelayConnection,
+  WebSocketRelayConnectionOptions,
+} from "@psi/transport/websocketRelayConnection";
 import type { ReactNode } from "react";
 import type { RunCompletion } from "@psi/exchangeLifecycle";
 import type { RunOutputs } from "@psi/runOutputs";
@@ -166,5 +170,34 @@ export async function exchangeLifecycleMock(
     // the screens' type.
     runExchangeLifecycle:
       runExchangeLifecycle as ExchangeLifecycleExports["runExchangeLifecycle"],
+  };
+}
+
+/** Each relay {@link unpairedRelay} parked: its options and whether it closed. */
+export const parkedRelays: Array<{
+  options: WebSocketRelayConnectionOptions;
+  closed: boolean;
+}> = [];
+
+/**
+ * A `parkWebSocketRelayConnection` stand-in for a suite with no relay to
+ * reach: the relay never pairs, so WebRTC alone settles the run, and each call
+ * is recorded in {@link parkedRelays}.
+ */
+export function unpairedRelay(
+  options: WebSocketRelayConnectionOptions,
+): ParkedWebSocketRelayConnection {
+  const record = { options, closed: false };
+  parkedRelays.push(record);
+  return {
+    url: options.url,
+    paired: false,
+    partnerStarted: false,
+    failure: undefined,
+    onChange: () => () => {},
+    start: () => new Promise<never>(() => {}),
+    close: () => {
+      record.closed = true;
+    },
   };
 }

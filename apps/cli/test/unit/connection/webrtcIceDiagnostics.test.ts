@@ -12,6 +12,7 @@ import {
   iceFailureDetails,
   readIceCandidateReport,
   readIceStats,
+  relaysLeftOutDetails,
 } from "../../../src/connection/webrtc/iceDiagnostics";
 
 import type { RTCPeerConnection } from "werift";
@@ -148,6 +149,28 @@ test("a failure names the TURN urls allowed_relays left out, then the remedy, an
       "connection.allowed_relays, or remove the setting",
   ]);
   expect(iceFailureDetails(gathered)).toHaveLength(3);
+});
+
+test("a failure names the WebSocket relay urls allowed_relays left out after the TURN urls, then the remedy once", () => {
+  const gathered = readIceCandidateReport(
+    report([localCandidate("L1", "host")]),
+  );
+  expect(
+    iceFailureDetails(
+      gathered,
+      ["turn:left-out.example.org"],
+      ["wss://relay.example.net/relay"],
+    ).slice(3),
+  ).toEqual([
+    "TURN urls left out by connection.allowed_relays: turn:left-out.example.org",
+    "WebSocket relay urls left out by connection.allowed_relays: " +
+      "wss://relay.example.net/relay",
+    "to let a run try a relay left out, add its host to " +
+      "connection.allowed_relays, or remove the setting",
+  ]);
+  expect(
+    relaysLeftOutDetails([], ["wss://relay.example.net/relay"]),
+  ).toHaveLength(2);
 });
 
 test("a succeeded pair is counted where one exists", () => {

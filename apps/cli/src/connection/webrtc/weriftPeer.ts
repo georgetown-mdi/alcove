@@ -402,6 +402,12 @@ export interface WebRtcPeerOptions {
    */
   relaysLeftOut?: string[];
   /**
+   * The WebSocket relay urls `allowed_relays` left out of this run, as the
+   * connection or the invitation names them; a failure with no channel names
+   * them after the TURN urls.
+   */
+  webSocketRelaysLeftOut?: string[];
+  /**
    * Resolves the ICE servers each attempt after the first is built with. Absent,
    * every attempt is built from `iceServers`.
    */
@@ -1072,6 +1078,7 @@ export async function openWebRtcPeerSession(
     sharedSecret,
     iceServers,
     relaysLeftOut,
+    webSocketRelaysLeftOut,
     attemptIceServers,
     rendezvousTimeoutMs = DEFAULT_RENDEZVOUS_TIMEOUT_MS,
     attemptMs = WEBRTC_ATTEMPT_MS,
@@ -1265,6 +1272,7 @@ export async function openWebRtcPeerSession(
       channelOpenTimeoutMs,
       unreportedOfferResendMs,
       relaysLeftOut,
+      webSocketRelaysLeftOut,
       arrivalTimeout,
       partnerRestart: previous?.partnerRestart,
       signal,
@@ -1399,6 +1407,8 @@ interface NegotiationOptions {
   unreportedOfferResendMs: number;
   /** See {@link WebRtcPeerOptions.relaysLeftOut}; named in a failure. */
   relaysLeftOut?: string[];
+  /** See {@link WebRtcPeerOptions.webSocketRelaysLeftOut}; named in a failure. */
+  webSocketRelaysLeftOut?: string[];
   /** The failure the wait's last attempt ends with when the partner never sent a description. */
   arrivalTimeout: () => ConnectionError;
   /** The partner's new connection the attempt before this one ended on, which this one answers. */
@@ -1633,10 +1643,11 @@ class Negotiation {
   private async iceDiagnosis(summary: string): Promise<ConnectionError> {
     const report = await readIceStats(this.peer, this.options.signal);
     const relaysLeftOut = this.options.relaysLeftOut ?? [];
+    const webSocketRelaysLeftOut = this.options.webSocketRelaysLeftOut ?? [];
     const details =
       report === undefined
-        ? relaysLeftOutDetails(relaysLeftOut)
-        : iceFailureDetails(report, relaysLeftOut);
+        ? relaysLeftOutDetails(relaysLeftOut, webSocketRelaysLeftOut)
+        : iceFailureDetails(report, relaysLeftOut, webSocketRelaysLeftOut);
     return new ConnectionError(
       summary,
       "transport",

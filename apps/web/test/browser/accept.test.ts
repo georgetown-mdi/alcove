@@ -50,7 +50,6 @@ import {
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
-import { parkWebSocketRelayConnection } from "@psi/transport/websocketRelayConnection";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { Lobby } from "@exchange/Lobby";
@@ -78,6 +77,7 @@ import {
   TEST_RUN_COMPLETION,
   lifecycleCall,
   lifecycleCalls,
+  parkedRelays,
 } from "./moduleMocks";
 
 import type {
@@ -163,9 +163,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 
 vi.mock("@psi/transport/websocketRelayConnection", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  parkWebSocketRelayConnection: vi.fn(() => {
-    throw new Error("a run parked a WebSocket relay");
-  }),
+  parkWebSocketRelayConnection: vi.fn(
+    (await import("./moduleMocks")).unpairedRelay,
+  ),
 }));
 
 // Stub the run lifecycle so launching an exchange never dials: record each
@@ -3012,7 +3012,8 @@ describe("acceptor screen: run and completion", () => {
     expect(lifecycleCalls).toHaveLength(0);
   });
 
-  test("a run whose relays include a WebSocket relay dials none (PROTOCOL.md, No run dials one)", async () => {
+  test("a run parks the WebSocket relay its own setting names, as acceptor, beside the WebRTC dial", async () => {
+    parkedRelays.length = 0;
     writeOwnRelaySetting({
       turn: [],
       stun: [],
@@ -3031,7 +3032,15 @@ describe("acceptor screen: run and completion", () => {
         })
         .catch(() => undefined);
       expect(vi.mocked(dialAsAcceptor)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(parkWebSocketRelayConnection)).not.toHaveBeenCalled();
+      expect(parkedRelays).toEqual([
+        {
+          options: expect.objectContaining({
+            url: "wss://wsrelay.example.org/relay",
+            role: "acceptor",
+          }) as unknown,
+          closed: true,
+        },
+      ]);
     } finally {
       writeOwnRelaySetting({ turn: [], stun: [] });
       vi.mocked(dialAsAcceptor).mockReset();

@@ -6,9 +6,11 @@ import {
   ConnectionError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
+  deriveRelayKey,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
+  generateSharedSecret,
   getDefaultLinkageTerms,
   getLogger,
   loadPsiBackend,
@@ -178,7 +180,7 @@ vi.mock(
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     parkWebSocketRelayConnection: vi.fn(() => {
-      throw new Error("a run parked a WebSocket relay");
+      throw new Error("a run parked a WebSocket relay the test did not list");
     }),
   }),
 );
@@ -465,26 +467,43 @@ describe("runManagedExchangeInBrowser", () => {
   );
 
   test.each(["inviter", "acceptor"] as const)(
-    "the %s's run whose relays include a WebSocket relay dials none (PROTOCOL.md, No run dials one)",
+    "the %s's run parks each WebSocket relay its plan lists, under the key the secret derives, and closes it once WebRTC opens",
     async (side) => {
       const { mc } = makeParkedCloseMc();
       mockedOpen.mockResolvedValue(mc);
       acquireResources(side);
+      const url = "wss://relay.example.org/relay";
       vi.mocked(managedRunRelayPlan).mockResolvedValueOnce({
         relaysLeftOut: [],
-        websocketRelays: [
-          { url: "wss://relay.example.org/relay", exchangeId: "exchange" },
-        ],
+        websocketRelays: [{ url, exchangeId: "exchange" }],
+      });
+      const close = vi.fn();
+      vi.mocked(parkWebSocketRelayConnection).mockImplementationOnce(() => ({
+        url,
+        paired: false,
+        partnerStarted: false,
+        failure: undefined,
+        onChange: () => () => {},
+        start: () => new Promise<never>(() => {}),
+        close,
+      }));
+      const sharedSecret = generateSharedSecret();
+
+      await runDriver(new AbortController().signal, undefined, {
+        ...recordForSide(side),
+        sharedSecret,
       });
 
-      await runDriver(
-        new AbortController().signal,
-        undefined,
-        recordForSide(side),
-      );
-
       expect(mockedAuthenticate).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(parkWebSocketRelayConnection)).not.toHaveBeenCalled();
+      expect(vi.mocked(parkWebSocketRelayConnection)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url,
+          exchangeId: "exchange",
+          role: side,
+          relayKey: await deriveRelayKey(sharedSecret),
+        }),
+      );
+      expect(close).toHaveBeenCalled();
     },
   );
 

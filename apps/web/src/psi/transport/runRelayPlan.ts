@@ -1,4 +1,8 @@
-import { deriveRelayExchangeId, turnUrlIsAllowed } from "@alcove/core";
+import {
+  deriveRelayExchangeId,
+  turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
+} from "@alcove/core";
 
 import { defaultRelayForRun, relayWithDefaultForRun } from "./defaultRelay";
 import {
@@ -29,7 +33,8 @@ export interface WebSocketRelayForRun {
 export interface RunRelayPlan {
   /** The relay its peer connection gathers against; none when absent. */
   relay?: RunRelay;
-  /** The TURN urls the allowed relays left out, named by a failed open. */
+  /** The TURN urls and then the WebSocket relay urls the allowed relays left
+   * out, named by a failed open. */
   relaysLeftOut: ReadonlyArray<string>;
   /**
    * The WebSocket relays it lists: this browser's own, then the
@@ -39,8 +44,8 @@ export interface RunRelayPlan {
    */
   websocketRelays: ReadonlyArray<WebSocketRelayForRun>;
   /** Present where the build offers its default relay switched off, the run
-   * does not list it, and `allowedRelays` keep its TURN url, so a failed open
-   * points at the switch. */
+   * does not list it, and `allowedRelays` keep its TURN url or its WebSocket
+   * relay url, so a failed open points at the switch. */
   defaultRelayOff?: true;
 }
 
@@ -67,11 +72,11 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
  * `defaultRelayForRun` names: the one in use, or, where the build offers it
  * switched off, the build's only where `invitationRelay` or this browser's
  * own relay names its TURN url, with its WebSocket relay url only where that
- * same relay names it too; `setting` replaces that choice. Every TURN url it
- * would list, this browser's own, the invitation's and that default relay's,
- * is kept or left out by `allowedRelays` (`turnUrlIsAllowed` in core; unset
- * keeps every url).
- * Where it is set, the urls kept and left out are shown through
+ * same relay names it too; `setting` replaces that choice. Every TURN and
+ * WebSocket relay url it would list, this browser's own, the invitation's and
+ * that default relay's, is kept or left out by `allowedRelays`
+ * (`turnUrlIsAllowed` and `webSocketRelayUrlIsAllowed` in core; unset keeps
+ * every url). Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept. Each WebSocket relay it
  * lists names the exchange id its proof is made under, decided by the url:
@@ -118,11 +123,30 @@ export async function relayPlanForRun(
       ...(site !== undefined ? [site.turnUrl] : []),
     ]),
   ];
-  const kept = listed.filter((url) => turnUrlIsAllowed(url, allowedRelays));
-  const relaysLeftOut = listed.filter(
-    (url) => !turnUrlIsAllowed(url, allowedRelays),
-  );
-  if (allowedRelays !== undefined && listed.length > 0)
+  const listedWebSocket = [
+    ...new Set([
+      ...(own.kind === "set" && own.relay.websocket !== undefined
+        ? [own.relay.websocket]
+        : []),
+      ...(invitationRelay?.websocket !== undefined
+        ? [invitationRelay.websocket]
+        : []),
+      ...(site?.websocketUrl !== undefined ? [site.websocketUrl] : []),
+    ]),
+  ];
+  const kept = [
+    ...listed.filter((url) => turnUrlIsAllowed(url, allowedRelays)),
+    ...listedWebSocket.filter((url) =>
+      webSocketRelayUrlIsAllowed(url, allowedRelays),
+    ),
+  ];
+  const relaysLeftOut = [
+    ...listed.filter((url) => !turnUrlIsAllowed(url, allowedRelays)),
+    ...listedWebSocket.filter(
+      (url) => !webSocketRelayUrlIsAllowed(url, allowedRelays),
+    ),
+  ];
+  if (allowedRelays !== undefined && kept.length + relaysLeftOut.length > 0)
     defaultRelay.onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
   const { relay, defaultWebSocketRelay } = await relayWithDefaultForRun(
     sharedSecret,
@@ -143,7 +167,12 @@ export async function relayPlanForRun(
     relaysLeftOut,
     websocketRelays,
     ...(forRun?.kind === "off" &&
-      turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) && {
+      (turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) ||
+        (forRun.relay.websocketUrl !== undefined &&
+          webSocketRelayUrlIsAllowed(
+            forRun.relay.websocketUrl,
+            allowedRelays,
+          ))) && {
         defaultRelayOff: true as const,
       }),
   };

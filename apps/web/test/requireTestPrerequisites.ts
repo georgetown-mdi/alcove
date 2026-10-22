@@ -80,7 +80,7 @@ export function webTestPrerequisites(): Array<TestPrerequisite> {
       name: "loopback TLS certificate",
       available: loopbackTlsCert !== null,
       covers:
-        "the signaling suites' HTTPS legs (upgrade hardening and socket guards over TLS)",
+        "the signaling suites' HTTPS legs (upgrade hardening and socket guards over TLS) and the WebSocket relay fallback cases over wss",
       remedy:
         "an `openssl` that mints a self-signed EC certificate (`openssl req -x509 -newkey ec ...`); a LibreSSL build takes those flags differently",
     },

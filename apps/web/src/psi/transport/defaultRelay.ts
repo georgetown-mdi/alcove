@@ -133,12 +133,12 @@ export interface DefaultRelayDependencies {
  * The relay an invitation names: `ownRelay`, followed by the TURN url of
  * `defaultRelay`, the one in use ({@link defaultRelayInUse}), when it is set
  * and `allowedRelays` keeps it, once, and only where the locator has room for
- * it under {@link MAX_RELAY_LOCATOR_URLS}. Where the result names that url, it
+ * it under {@link MAX_RELAY_LOCATOR_URLS}. Where `ownRelay` names no WebSocket
+ * relay, the result names the default relay's when it names one and
+ * `allowedRelays` keeps it. Where the result names either default url, it
  * also names the default relay's registrar, where a command-line party enrolls
- * without a token. Where `ownRelay` names no WebSocket relay, the result names
- * the default relay's when it names one and `allowedRelays` keeps it. A new
- * invitation and a managed re-invite both name it this way; with none in use,
- * the result is `ownRelay`.
+ * without a token. A new invitation and a managed re-invite both name it this
+ * way; with none in use, the result is `ownRelay`.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
@@ -151,16 +151,18 @@ export function invitationRelayWithDefault(
     defaultRelay,
     allowedRelays,
   );
-  if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays)) return relay;
+  const registrar = { registrar: defaultRelay.registrarUrl };
+  const withoutTurn =
+    defaultRelay.websocketUrl !== undefined &&
+    relay?.websocket === defaultRelay.websocketUrl
+      ? { ...relay, ...registrar }
+      : relay;
+  if (!turnUrlIsAllowed(defaultRelay.turnUrl, allowedRelays))
+    return withoutTurn;
   const turn = relay?.turn ?? [];
-  if (turn.includes(defaultRelay.turnUrl))
-    return { ...relay, registrar: defaultRelay.registrarUrl };
-  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return relay;
-  return {
-    ...relay,
-    turn: [...turn, defaultRelay.turnUrl],
-    registrar: defaultRelay.registrarUrl,
-  };
+  if (turn.includes(defaultRelay.turnUrl)) return { ...relay, ...registrar };
+  if (turn.length >= MAX_RELAY_LOCATOR_URLS) return withoutTurn;
+  return { ...relay, turn: [...turn, defaultRelay.turnUrl], ...registrar };
 }
 
 // `relay` naming the default WebSocket relay where it names none of its own,
@@ -202,16 +204,15 @@ export interface RelayWithDefault {
  * invitation's (`relayForRun`), then the build's default relay once one
  * attempt to enroll the run's key at its registrar confirms, within
  * {@link DEFAULT_RELAY_DIAL_WAIT_MS}: its TURN url, and its WebSocket relay
- * url as `defaultWebSocketRelay`. A same-key repeat confirms. Otherwise the
+ * url as `defaultWebSocketRelay`, each where the run uses it and
+ * `allowedRelays` keeps it. A same-key repeat confirms. Otherwise the
  * default relay's TURN url is left out, even where the invitation names it,
  * and the run dials with the rest. A refused, unreachable or unanswered
  * enrollment shows {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through
  * `onRunNotice`, once, before this returns; a cancelled one shows nothing.
- * A default relay whose TURN url `allowedRelays` leaves out is not enrolled
- * at, and neither of its urls is listed, even where `allowedRelays` keeps its
- * WebSocket relay url (docs/spec/PROTOCOL.md, "Enrolling at a default
- * relay"). That url is listed only where `allowedRelays` keeps it too; unset
- * keeps both.
+ * A default relay neither of whose urls the run uses and `allowedRelays`
+ * keeps is not enrolled at (docs/spec/PROTOCOL.md, "Enrolling at a default
+ * relay"); unset keeps both.
  */
 export async function relayWithDefaultForRun(
   sharedSecret: string,
@@ -222,7 +223,12 @@ export async function relayWithDefaultForRun(
   const unchanged = relay !== undefined ? { relay } : {};
   const setting = (dependencies.setting ?? defaultRelayInUse)();
   if (setting === undefined) return unchanged;
-  if (!turnUrlIsAllowed(setting.turnUrl, allowedRelays)) return unchanged;
+  const { turnUrl, websocketUrl } = setting;
+  const turnKept = turnUrlIsAllowed(turnUrl, allowedRelays);
+  const websocketKept =
+    websocketUrl !== undefined &&
+    webSocketRelayUrlIsAllowed(websocketUrl, allowedRelays);
+  if (!turnKept && !websocketKept) return unchanged;
   const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;
   const enrollment = await enroll(
     { registrarUrl: setting.registrarUrl, sharedSecret },
@@ -241,10 +247,9 @@ export async function relayWithDefaultForRun(
     dependencies.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
   }
   const enrolled = enrollment.kind === "enrolled";
-  const others = (relay?.turn ?? []).filter((url) => url !== setting.turnUrl);
-  const turn = enrolled ? [...others, setting.turnUrl] : others;
+  const others = (relay?.turn ?? []).filter((url) => url !== turnUrl);
+  const turn = enrolled && turnKept ? [...others, turnUrl] : others;
   const stun = [...(relay?.stun ?? [])];
-  const websocketUrl = setting.websocketUrl;
   return {
     ...(turn.length + stun.length > 0 && {
       relay: {
@@ -256,8 +261,7 @@ export async function relayWithDefaultForRun(
       },
     }),
     ...(enrolled &&
-      websocketUrl !== undefined &&
-      webSocketRelayUrlIsAllowed(websocketUrl, allowedRelays) && {
+      websocketKept && {
         defaultWebSocketRelay: websocketUrl,
       }),
   };

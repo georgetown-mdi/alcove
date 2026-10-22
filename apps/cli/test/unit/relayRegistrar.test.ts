@@ -4,6 +4,7 @@ import type { ConnectionConfig, RelayRegistrar } from "@alcove/core";
 
 import {
   REMOVED_CREDENTIAL_TEXT,
+  REMOVED_EXCHANGE_ID_TEXT,
   relayRegistrarForRun,
   sendRelayRegistration,
 } from "../../src/relayRegistrar";
@@ -103,7 +104,7 @@ describe("sendRelayRegistration", () => {
       {
         kind: "refused",
         status: 409,
-        reason: "exchange-id exchange-1 is not enrolled",
+        reason: `exchange-id ${REMOVED_EXCHANGE_ID_TEXT} is not enrolled`,
       },
     ],
     [

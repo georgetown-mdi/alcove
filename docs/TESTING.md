@@ -392,9 +392,14 @@ included, fails the run at once with its last lines of output.
 
 The browser project's second setup (`apps/web/test/devServer/websocketRelay.ts`)
 runs the WebSocket relay (`packages/websocket-relay`) in the test runner's
-process on a loopback port, for the relay fallback suite. That suite dials it over `ws`
-through the relay client's socket factory, enrolls each exchange's key through
-a test route beside it, and reads back what the relay forwarded through another.
+process on a loopback port, for the relay fallback suite. It serves `wss` under
+the loopback TLS certificate (`apps/web/test/devServer/relayTls.ts`), and the
+project launches Chromium with `--ignore-certificate-errors-spki-list` naming
+that certificate's key, so the page accepts it and no other; without the switch
+Chromium refuses the socket (`ERR_CERT_AUTHORITY_INVALID`). The suite lists the
+relay from this browser's own relay setting, as a run does, dials it through the
+production client, enrolls each exchange's key through a test route beside it,
+and reads back what the relay forwarded through another.
 
 ```sh
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server
@@ -503,6 +508,19 @@ Everything else is each runtime's own: the CLI's argv, configuration, key file,
 PSI backend and result CSV; the web app's handshake and application-layer AEAD
 wrap, its acceptor assembly, its invitation creation
 and inviter spec assembly, and its browser WASM PSI engine.
+
+`cliWebRelayFallback.test.ts` meets the CLI party over the WebSocket relay
+instead, with WebRTC blocked. The CLI waits at the standalone broker and parks
+at a `wss` relay the test runs on loopback; the web party lists that relay from
+its own relay setting and races it through the app's fallback. Its WebRTC open
+is the harness's: Node cannot stand up a browser peer connection, so it reports
+the path failed at once, and the CLI abandons WebRTC on the web party's start
+and follows it onto the relay. The CLI trusts the relay's loopback certificate
+through `NODE_EXTRA_CA_CERTS`, and the web party through Node's default CA list
+(`tls.setDefaultCACertificates`) for the file's duration. A run between a CLI
+party and a browser party with WebRTC open, whose relay sockets close unused,
+needs a browser peer and is not covered; the browser suite covers that case
+between two browser parties.
 
 It runs on both `cli_build_and_test.yaml` and `web_build_and_test.yaml`. That is
 by design rather than redundant: the drift it exists to catch can land on

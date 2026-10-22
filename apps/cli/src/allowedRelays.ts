@@ -1,10 +1,14 @@
 // The words a CLI run, the acceptance review and `alcove doctor relay` use for
-// the TURN urls `connection.allowed_relays` keeps and leaves out
-// (`selectRunRelay` in core). Operator page: docs/EXCHANGE_REFERENCE.md,
-// connection.allowed_relays.
+// the TURN and WebSocket relay urls `connection.allowed_relays` keeps and
+// leaves out (`selectRunRelay` in core). Operator page:
+// docs/EXCHANGE_REFERENCE.md, connection.allowed_relays.
 
 import { redactAndSanitizeForDisplay } from "@alcove/core";
-import type { RunRelaySelection, RunTurnServer } from "@alcove/core";
+import type {
+  RunRelaySelection,
+  RunTurnServer,
+  RunWebSocketRelay,
+} from "@alcove/core";
 
 /** The mark of a TURN url the setting keeps. */
 export const KEPT_BY_ALLOWED_RELAYS = "kept by connection.allowed_relays";
@@ -27,26 +31,34 @@ export const ALLOWED_RELAYS_REMEDY =
   "to let a run try a relay left out, add its host to " +
   "connection.allowed_relays, or remove the setting";
 
-/** A TURN url as a run's own line names it: an invitation's escaped. */
-export function runTurnUrlForDisplay(server: RunTurnServer): string {
+/** A relay url as a run's own line names it: an invitation's escaped. */
+export function runTurnUrlForDisplay(
+  server: RunTurnServer | RunWebSocketRelay,
+): string {
   return server.source === "own"
     ? server.url
     : redactAndSanitizeForDisplay(server.url);
 }
 
-function urlList(servers: ReadonlyArray<RunTurnServer>): string {
+function urlList(
+  servers: ReadonlyArray<RunTurnServer | RunWebSocketRelay>,
+): string {
   return servers.map(runTurnUrlForDisplay).join(", ");
 }
 
 /**
  * The line a run prints when the connection sets `allowed_relays`: the TURN
- * urls it keeps and the ones it leaves out, then {@link ALLOWED_RELAYS_SCOPE}.
+ * and WebSocket relay urls it keeps and the ones it leaves out, then
+ * {@link ALLOWED_RELAYS_SCOPE}.
  */
 export function allowedRelaysRunNotice(selection: RunRelaySelection): string {
-  const kept = selection.turn ?? [];
-  const leftOut = selection.turnLeftOut ?? [];
+  const kept = [...(selection.turn ?? []), ...(selection.websocket ?? [])];
+  const leftOut = [
+    ...(selection.turnLeftOut ?? []),
+    ...(selection.websocketLeftOut ?? []),
+  ];
   const keeps =
-    kept.length === 0 ? "keeps no TURN url" : `keeps ${urlList(kept)}`;
+    kept.length === 0 ? "keeps no relay url" : `keeps ${urlList(kept)}`;
   const leaves =
     leftOut.length === 0 ? "leaves out none" : `leaves out ${urlList(leftOut)}`;
   return `connection.allowed_relays ${keeps} and ${leaves} for this run. ${ALLOWED_RELAYS_SCOPE}`;

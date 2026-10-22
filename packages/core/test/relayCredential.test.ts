@@ -338,7 +338,7 @@ describe("runEnrollsAtInvitationRegistrar", () => {
     ).toBe(false);
   });
 
-  test("an own entry first, the invitation naming a WebSocket relay beside its registrar: no enrollment", () => {
+  test("an own entry first, the invitation naming a WebSocket relay beside its registrar: enrollment for that relay", () => {
     expect(
       runEnrollsAtInvitationRegistrar({
         turn: [{ url: "turn:own-minted.example:3478" }],
@@ -347,7 +347,7 @@ describe("runEnrollsAtInvitationRegistrar", () => {
           websocket: "wss://partner.example/relay",
         },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("an invitation relay naming no registrar: no enrollment", () => {

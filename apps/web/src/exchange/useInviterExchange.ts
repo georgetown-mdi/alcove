@@ -1298,9 +1298,7 @@ export function useInviterExchange({
       const connection = await openRunConnectionWithRelayFallback({
         role: "inviter",
         sharedSecret: minted.sharedSecret,
-        // The WebSocket relay list is empty: docs/spec/PROTOCOL.md, No run
-        // dials one.
-        relays: [],
+        relays: relayPlan.websocketRelays,
         signal,
         onCloseOutcome,
         onRunNotice,

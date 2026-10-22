@@ -26,7 +26,9 @@ import {
   runExchangeLifecycle,
 } from "@psi/exchangeLifecycle";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
+import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
+import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import {
   canReachServer,
@@ -46,22 +48,21 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { PeerCloseOutcome } from "@psi/transport/waitForPeerClose";
 import type { PeerOptions } from "peerjs";
 import type { RunConnection } from "@psi/transport/runConnection";
+import type { WebSocketRelayForRun } from "@psi/transport/runRelayPlan";
 
 // The fallback from WebRTC to the WebSocket relay, both browser parties in real
 // Chromium over the standalone broker and the relay the browser project's
 // globalSetup runs: with WebRTC blocked the exchange completes over the relay,
 // every message after the key exchange an AEAD envelope as read at the relay;
-// with WebRTC open the relay sockets close unused. The relay is reached through
-// the relay client's socket factory over loopback `ws`, as the production
-// client dials `wss` only.
+// with WebRTC open the relay sockets close unused. Each party lists the relay
+// as a run does, from this browser's own relay setting (`relayPlanForRun`), and
+// dials it over `wss`; the relay client's socket factory only records each
+// socket it opens.
 
 const brokerPort = inject("signalingBrokerPort") ?? 0;
 const relayAddress = inject("websocketRelay");
 const brokerHost = "127.0.0.1";
 const hostString = `http://${brokerHost}:${String(brokerPort)}`;
-
-/** The relay address the parties list; its socket goes to the test relay. */
-const LISTED_RELAY_URL = "wss://relay.invalid/relay";
 
 /** A TLS relay under a reserved name that never resolves (RFC 6761). Held to
  * relay candidates alone, a party with only this relay has no WebRTC path,
@@ -72,10 +73,25 @@ const UNREACHABLE_TURN_URL = "turns:relay.invalid:443";
 const OPEN_TIMEOUT_MS = 8_000;
 
 beforeEach(async (ctx) => {
-  if (relayAddress === undefined) ctx.skip("no WebSocket relay was provided");
+  if (relayAddress === undefined)
+    return ctx.skip("no WebSocket relay was provided");
   if (!(await canReachServer(hostString)))
     ctx.skip(`PeerJS coordination server at ${hostString} unreachable`);
+  writeOwnRelaySetting({ turn: [], stun: [], websocket: relayAddress.url });
+  return () => writeOwnRelaySetting({ turn: [], stun: [] });
 });
+
+/** The WebSocket relays a run lists from this browser's own relay setting,
+ * with no default relay in the build. */
+async function listedRelays(secret: string) {
+  const plan = await relayPlanForRun(secret, undefined, undefined, {
+    build: () => ({ kind: "none" }),
+  });
+  expect(plan.websocketRelays.map((relay) => relay.url)).toEqual([
+    relayAddress?.url,
+  ]);
+  return plan.websocketRelays;
+}
 
 function relayOnly(options: PeerOptions): PeerOptions {
   return {
@@ -121,13 +137,13 @@ async function enroll(secret: string): Promise<{
 function party(
   role: RendezvousRole,
   secret: string,
-  exchangeId: string,
+  relays: ReadonlyArray<WebSocketRelayForRun>,
   blocked: boolean,
 ): Party {
   const sockets: SocketRecord = { opened: [], sent: [], closedWith: [] };
   const pathFailures: Array<WebRtcPathFailure> = [];
-  const createSocket = (): WebSocket => {
-    const socket = new WebSocket(relayAddress?.url ?? "");
+  const createSocket = (url: string): WebSocket => {
+    const socket = new WebSocket(url);
     sockets.opened.push(socket);
     const send = socket.send.bind(socket);
     socket.send = (data) => {
@@ -220,7 +236,7 @@ function party(
         {
           role,
           sharedSecret: secret,
-          relays: [{ url: LISTED_RELAY_URL, exchangeId }],
+          relays,
           signal,
           onCloseOutcome,
           onRunNotice: (notice) => {
@@ -303,10 +319,11 @@ test(
   { timeout: 120_000 },
   async () => {
     const secret = generateSharedSecret();
-    const { exchangeId, relayKey } = await enroll(secret);
+    const { relayKey } = await enroll(secret);
+    const relays = await listedRelays(secret);
     const psiLibrary = await (PSI() as Promise<PSILibrary>);
-    const inviter = party("inviter", secret, exchangeId, true);
-    const acceptor = party("acceptor", secret, exchangeId, true);
+    const inviter = party("inviter", secret, relays, true);
+    const acceptor = party("acceptor", secret, relays, true);
 
     const [inviterRun, acceptorRun] = await Promise.all([
       runParty(inviter, secret, psiLibrary),
@@ -316,7 +333,8 @@ test(
     expect(inviterRun).toEqual({ results: 1, errors: [] });
     expect(acceptorRun).toEqual({ results: 1, errors: [] });
     const relayNotice =
-      "This exchange runs over the WebSocket relay at wss://relay.invalid.";
+      "This exchange runs over the WebSocket relay at " +
+      `${new URL(relayAddress?.url ?? "").origin}.`;
     expect(inviter.notices).toEqual([relayNotice]);
     expect(acceptor.notices).toEqual([relayNotice]);
     // Chromium reports no ICE failure for a party with no candidate, so the
@@ -484,9 +502,10 @@ test(
   { timeout: 60_000 },
   async () => {
     const secret = generateSharedSecret();
-    const { exchangeId, relayKey } = await enroll(secret);
-    const inviter = party("inviter", secret, exchangeId, false);
-    const acceptor = party("acceptor", secret, exchangeId, false);
+    const { relayKey } = await enroll(secret);
+    const relays = await listedRelays(secret);
+    const inviter = party("inviter", secret, relays, false);
+    const acceptor = party("acceptor", secret, relays, false);
     const context = {
       signal: new AbortController().signal,
       onCloseOutcome: () => {},

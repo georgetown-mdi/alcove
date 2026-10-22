@@ -3,6 +3,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   RELAY_REGISTRATION_CANCELLED_REASON,
   REMOVED_CREDENTIAL_TEXT,
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
+  enrollRelayKey,
   enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,
   registerRelayKey,
@@ -150,6 +153,60 @@ describe("sendRelayRegistration", () => {
       expect(reason).not.toContain(form(token));
     },
   );
+
+  test.each([
+    ["as sent", (value: string) => value],
+    ["URL-encoded", (value: string) => encodeURIComponent(value)],
+    ["JSON-escaped", (value: string) => JSON.stringify(value).slice(1, -1)],
+    ["base64-encoded", (value: string) => btoa(value)],
+  ])(
+    "a registrar echoing the exchange id and the relay key %s repeats neither",
+    async (_, form) => {
+      const key = 'relay key/with "quotes"+=';
+      const answer = await sendRelayRegistration(
+        {
+          registrar: REGISTRAR,
+          method: "POST",
+          body: JSON.stringify({ key, maxAgeDays: null }),
+        },
+        {
+          fetch: answering([
+            [
+              409,
+              {
+                error: `no row for ${form(REGISTRAR.exchangeId)} under ${form(key)}`,
+              },
+            ],
+          ]),
+        },
+      );
+      expect(answer).toEqual({
+        kind: "refused",
+        status: 409,
+        reason: `no row for ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`,
+      });
+    },
+  );
+
+  test("an exchange id echoed overlapping the relay key leaves no part of either", async () => {
+    const key = "1".padEnd(64, "f");
+    const answer = await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "POST",
+        body: JSON.stringify({ key, maxAgeDays: null }),
+      },
+      {
+        fetch: answering([
+          [409, { error: `held: exchange-${key} and ${key}exchange-1.` }],
+        ]),
+      },
+    );
+    expect(answer.kind === "refused" && answer.reason).toBe(
+      `held: ${REMOVED_EXCHANGE_ID_TEXT} and ` +
+        `${REMOVED_RELAY_KEY_TEXT}${REMOVED_EXCHANGE_ID_TEXT}.`,
+    );
+  });
 
   function failingWith(cause: unknown): typeof globalThis.fetch {
     return (() =>
@@ -691,4 +748,107 @@ describe("enrollRelayKeyWithinWait", () => {
     });
     expect(fetch.authorizations).toEqual([]);
   });
+});
+
+describe("a registrar repeating the exchange id and relay key a request sent", () => {
+  /** A registrar refusing each request with an `error` that repeats the
+   * exchange id from the request path and the relay key from the body;
+   * `echoed` records both. */
+  function echoingRegistrar(): typeof globalThis.fetch & {
+    echoed: string[];
+  } {
+    const echoed: string[] = [];
+    const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const exchangeId = decodeURIComponent(
+        String(input).split("/").pop() ?? "",
+      );
+      const { key } = JSON.parse(String(init?.body)) as { key: string };
+      echoed.push(exchangeId, key);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: `exchange ${exchangeId} holds no key ${key}`,
+          }),
+          { status: 409 },
+        ),
+      );
+    }) as typeof globalThis.fetch & { echoed: string[] };
+    fetch.echoed = echoed;
+    return fetch;
+  }
+
+  const secret = generateSharedSecret();
+  test.each<
+    [
+      string,
+      (fetch: typeof globalThis.fetch) => Promise<string>,
+      () => Promise<string[]>,
+    ]
+  >([
+    [
+      "an enrollment with a token",
+      async (fetch) => {
+        const outcome = await enrollRelayKey(
+          {
+            registrar: REGISTRAR,
+            sharedSecret: secret,
+            maxAgeDays: null,
+            ownerToken: "owner-token",
+            replace: false,
+          },
+          { fetch },
+        );
+        return outcome.kind === "registered"
+          ? ""
+          : relayRegistrationOutcomeDetail(outcome);
+      },
+      async () => [REGISTRAR.exchangeId, await deriveRelayKey(secret)],
+    ],
+    [
+      "an enrollment without a token",
+      async (fetch) => {
+        const enrollment = await enrollRelayKeyWithinWait(
+          {
+            registrarUrl: "https://registrar.example.org",
+            sharedSecret: secret,
+          },
+          { waitMs: 3_000, fetch },
+        );
+        return enrollment.kind === "failed" ? enrollment.detail : "";
+      },
+      async () => [
+        await deriveRelayExchangeId(secret),
+        await deriveRelayKey(secret),
+      ],
+    ],
+    [
+      "a signed registration",
+      async (fetch) => {
+        const outcome = await registerRelayKey(
+          {
+            registrar: REGISTRAR,
+            signingSecret: secret,
+            registeredSecret: secret,
+            maxAgeDays: null,
+          },
+          { fetch },
+        );
+        return outcome.kind === "registered"
+          ? ""
+          : relayRegistrationOutcomeDetail(outcome);
+      },
+      async () => [REGISTRAR.exchangeId, await deriveRelayKey(secret)],
+    ],
+  ])(
+    "%s states the refusal holding neither",
+    async (_, register, expectedEchoes) => {
+      const fetch = echoingRegistrar();
+      const detail = await register(fetch);
+      expect(fetch.echoed).toEqual(await expectedEchoes());
+      expect(detail).toBe(
+        `HTTP 409: exchange ${REMOVED_EXCHANGE_ID_TEXT} holds no key ` +
+          REMOVED_RELAY_KEY_TEXT,
+      );
+    },
+  );
 });

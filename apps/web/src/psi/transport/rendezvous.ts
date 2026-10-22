@@ -384,7 +384,7 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      from it.
  * @param options       `signal` cancels the listen before or during broker
  *                      registration; `relay` is the relay this run gathers
- *                      against, none when absent; `relaysLeftOut` are the TURN
+ *                      against, none when absent; `relaysLeftOut` are the relay
  *                      urls the allowed relays left out, named by a failed
  *                      open, which is `failedWithDefaultRelayOff` where
  *                      `defaultRelayOff`; `peerFactory` injects the

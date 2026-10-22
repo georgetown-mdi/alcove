@@ -2,8 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MAX_RELAY_LOCATOR_URLS,
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
+  deriveRelayExchangeId,
+  deriveRelayKey,
   enrollRelayKeyWithinWait,
   generateSharedSecret,
+  getLogger,
 } from "@alcove/core";
 
 import {
@@ -191,6 +196,37 @@ describe("relayWithDefaultForRun", () => {
     );
   });
 
+  test("a registrar repeating the exchange id and relay key gets neither into the log", async () => {
+    const secret = generateSharedSecret();
+    const exchangeId = await deriveRelayExchangeId(secret);
+    const key = await deriveRelayKey(secret);
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: `exchange ${exchangeId} holds no ${key}` }),
+          { status: 409 },
+        ),
+      ),
+    );
+    const warn = vi.spyOn(getLogger("defaultRelay"), "warn");
+    try {
+      await relayWithDefaultForRun(secret, OWN, NO_RESTRICTION, {
+        setting: () => DEFAULT_RELAY,
+        enroll: enrollingThrough(fetch),
+      });
+      expect(warn).toHaveBeenCalledOnce();
+      const logged = String(warn.mock.calls[0]?.[0]);
+      expect(logged).toContain(
+        `(HTTP 409: exchange ${REMOVED_EXCHANGE_ID_TEXT} holds no ` +
+          `${REMOVED_RELAY_KEY_TEXT})`,
+      );
+      expect(logged).not.toContain(exchangeId);
+      expect(logged).not.toContain(key);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("leaves out the default relay an invitation names when this run could not enroll", async () => {
     const invited = { turn: [...OWN.turn, DEFAULT_RELAY.turnUrl], stun: [] };
     const run = await relayWithDefaultForRun(
@@ -267,18 +303,19 @@ describe("relayWithDefaultForRun", () => {
       ).toEqual({ ...WITH_DEFAULT, defaultWebSocketRelay: WEBSOCKET });
     });
 
-    test("is neither enrolled for nor listed where the allowed relays keep only its host", async () => {
+    test("is enrolled for and listed, without the TURN url, where the allowed relays keep only its host", async () => {
       const enroll = answering(ENROLLED);
-      const onRunNotice = vi.fn();
       const run = await relayWithDefaultForRun(
         generateSharedSecret(),
         OWN,
         ["wsrelay.example.org"],
-        { setting: withWebSocket, enroll, onRunNotice },
+        { setting: withWebSocket, enroll },
       );
-      expect(enroll).not.toHaveBeenCalled();
-      expect(onRunNotice).not.toHaveBeenCalled();
-      expect(run).toEqual(WITHOUT_DEFAULT);
+      expect(enroll).toHaveBeenCalledTimes(1);
+      expect(run).toEqual({
+        ...WITHOUT_DEFAULT,
+        defaultWebSocketRelay: WEBSOCKET,
+      });
     });
 
     test("is left out where the allowed relays keep only the TURN url", async () => {
@@ -506,12 +543,15 @@ describe("invitationRelayWithDefault", () => {
       });
     });
 
-    test("is named or left out by the allowed relays apart from the TURN url, the registrar only beside that url", () => {
+    test("is named or left out by the allowed relays apart from the TURN url, with the registrar either way", () => {
       expect(
         invitationRelayWithDefault(undefined, withWebSocket, [
           "wsrelay.example.org",
         ]),
-      ).toEqual({ websocket: WEBSOCKET });
+      ).toEqual({
+        websocket: WEBSOCKET,
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
       expect(
         invitationRelayWithDefault(undefined, withWebSocket, [
           "turn.example.org",
@@ -522,7 +562,7 @@ describe("invitationRelayWithDefault", () => {
       });
     });
 
-    test("is named, with no registrar, when the locator's TURN list is full", () => {
+    test("is named with its registrar when the locator's TURN list is full", () => {
       const full = {
         turn: Array.from(
           { length: MAX_RELAY_LOCATOR_URLS },
@@ -531,7 +571,11 @@ describe("invitationRelayWithDefault", () => {
       };
       expect(
         invitationRelayWithDefault(full, withWebSocket, NO_RESTRICTION),
-      ).toEqual({ ...full, websocket: WEBSOCKET });
+      ).toEqual({
+        ...full,
+        websocket: WEBSOCKET,
+        registrar: DEFAULT_RELAY.registrarUrl,
+      });
     });
 
     test("a WebSocket relay of this browser's own names no registrar where the default TURN url is left out", () => {
@@ -556,9 +600,7 @@ describe("invitationRelayWithDefault", () => {
     });
   });
 
-  // A decoder admits a registrar beside a WebSocket relay url alone, and no
-  // build mints one (docs/spec/PROTOCOL.md, "The invitation's relay locator").
-  test("names the registrar beside the default TURN url only, whatever WebSocket relay url it names", () => {
+  test("names the registrar beside either default url only, whatever other WebSocket relay url it names", () => {
     const WEBSOCKET = "wss://wsrelay.example.org/relay";
     const OWN_WEBSOCKET = "wss://own.example.org/relay";
     const fullTurn = Array.from(
@@ -598,11 +640,12 @@ describe("invitationRelayWithDefault", () => {
             defaultRelay,
             allowedRelays,
           });
-          const namesDefaultTurnUrl = (relay?.turn ?? []).includes(
-            defaultRelay.turnUrl,
-          );
+          const namesDefaultUrl =
+            (relay?.turn ?? []).includes(defaultRelay.turnUrl) ||
+            (defaultRelay.websocketUrl !== undefined &&
+              relay?.websocket === defaultRelay.websocketUrl);
           expect(relay?.registrar, label).toBe(
-            namesDefaultTurnUrl ? defaultRelay.registrarUrl : undefined,
+            namesDefaultUrl ? defaultRelay.registrarUrl : undefined,
           );
         }
   });

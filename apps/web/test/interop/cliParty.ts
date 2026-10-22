@@ -28,17 +28,20 @@ export interface CliRun {
   timedOut: boolean;
 }
 
-/** Spawn one `alcove` invocation and collect everything it wrote. */
+/** Spawn one `alcove` invocation, with `env` added to this process's
+ * environment, and collect everything it wrote. */
 export function startCli(params: {
   args: Array<string>;
   cwd: string;
   timeoutMs: number;
+  env?: NodeJS.ProcessEnv;
 }): Promise<CliRun> {
-  const { args, cwd, timeoutMs } = params;
+  const { args, cwd, timeoutMs, env } = params;
   return new Promise<CliRun>((resolve, reject) => {
     const child = spawn(process.execPath, [cliEntry, ...args], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...env },
     });
     let output = "";
     let timedOut = false;
@@ -138,7 +141,12 @@ export function fillInFileDropConnection(params: {
   pollIntervalMs: number;
   peerTimeoutMs: number;
 }): void {
-  const { configPath } = params;
+  fillInConnection(params.configPath, fileDropConnectionBlock(params));
+}
+
+/** Replace the configuration's connection block with `block`, as
+ * {@link fillInFileDropConnection} does. */
+export function fillInConnection(configPath: string, block: string): void {
   const lines = readFileSync(configPath, "utf8").split("\n");
   const start = lines.findIndex((line) => line === "connection:");
   if (start === -1)
@@ -147,11 +155,7 @@ export function fillInFileDropConnection(params: {
   while (end < lines.length && /^\s+\S/.test(lines[end])) end += 1;
   writeFileSync(
     configPath,
-    [
-      ...lines.slice(0, start),
-      fileDropConnectionBlock(params).trimEnd(),
-      ...lines.slice(end),
-    ].join("\n"),
+    [...lines.slice(0, start), block.trimEnd(), ...lines.slice(end)].join("\n"),
   );
 }
 

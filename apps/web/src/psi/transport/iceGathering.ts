@@ -37,7 +37,7 @@ export interface IceGatheringRecord {
   gatheringComplete: boolean;
   /** Distinct url and code errors against a configured relay url, at most {@link MAX_RECORDED_ICE_ERRORS}. */
   turnErrors: Array<IceServerError>;
-  /** The TURN urls the allowed relays left out of the run. */
+  /** The TURN and WebSocket relay urls the allowed relays left out of the run. */
   relaysLeftOut: ReadonlyArray<string>;
   /** Whether the run left out the build's default relay because it is
    * switched off in this browser. */
@@ -78,7 +78,7 @@ const PEER_CONNECTION_ERROR_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Record the TURN urls the allowed relays left out of the run `peer` serves,
+ * Record the relay urls the allowed relays left out of the run `peer` serves,
  * and whether it left out the default relay because it is switched off, so a
  * connection of it that does not open names the urls, and is
  * {@link failedWithDefaultRelayOff} where the default relay was left out.
@@ -220,7 +220,7 @@ const RELAY_REMEDY =
  * end before a working relay has answered. Chromium was measured taking about
  * 40 seconds to report an unanswered UDP relay, past the open timeout.
  *
- * Where the allowed relays left TURN urls out of the run, the message names
+ * Where the allowed relays left relay urls out of the run, the message names
  * them and {@link ALLOWED_RELAYS_REMEDY} after the relay failure.
  *
  * The url and error text are raw here and escaped where the failure is shown.

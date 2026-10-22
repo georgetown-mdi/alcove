@@ -24,7 +24,12 @@ import { prepareAcceptorExchange } from "@exchange/acceptorExchange";
 
 import { HarnessFileDropClient } from "./fileDropTransport";
 
-import type { CSVRow, PreparedExchange } from "@alcove/core";
+import type {
+  CSVRow,
+  HandshakeRole,
+  MessageConnection,
+  PreparedExchange,
+} from "@alcove/core";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 /** The CSV a party links on, parsed through the same core reader both runtimes
@@ -199,26 +204,38 @@ export async function runWebPartyExchange(params: {
     const transport = fromEventConnection(connection, {
       inactivityTimeoutMs: peerTimeoutMs,
     });
-    const { connection: secure } = await authenticateExchange(
-      transport,
-      handshakeRole,
-      setup.sharedSecret,
-      setup.expires,
-    );
-
-    const { library } = await loadPsiBackend(
-      { loadWasm: () => PSI() as Promise<PSILibrary> },
-      { isNode: false },
-    );
-    const result = await runExchange(secure, handshakeRole, setup.prepared, {
-      psiLibrary: library,
-      verbosity: -1,
-    });
-    return {
-      partnerIdentity: result.partnerTerms.identity,
-      pairs: matchedPairs(result.associationTable),
-    };
+    return await exchangeOver(transport, handshakeRole, setup);
   } finally {
     await connection.close().catch(() => {});
   }
+}
+
+/**
+ * Authenticate over `transport` in `handshakeRole` and run the PSI rounds on
+ * the browser WASM engine the app selects, as {@link runWebPartyExchange} does
+ * over its file-drop directory.
+ */
+export async function exchangeOver(
+  transport: MessageConnection,
+  handshakeRole: HandshakeRole,
+  setup: WebPartySetup,
+): Promise<WebPartyOutcome> {
+  const { connection: secure } = await authenticateExchange(
+    transport,
+    handshakeRole,
+    setup.sharedSecret,
+    setup.expires,
+  );
+  const { library } = await loadPsiBackend(
+    { loadWasm: () => PSI() as Promise<PSILibrary> },
+    { isNode: false },
+  );
+  const result = await runExchange(secure, handshakeRole, setup.prepared, {
+    psiLibrary: library,
+    verbosity: -1,
+  });
+  return {
+    partnerIdentity: result.partnerTerms.identity,
+    pairs: matchedPairs(result.associationTable),
+  };
 }

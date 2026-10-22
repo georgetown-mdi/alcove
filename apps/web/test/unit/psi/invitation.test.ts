@@ -385,7 +385,7 @@ describe("generateInvitation", () => {
         return endpoint.relay;
       }
 
-      test("beside this browser's own WebSocket relay and the default TURN url, at the default registrar when it allocates on that TURN url", async () => {
+      test("beside this browser's own WebSocket relay and the default TURN url, at the default registrar whichever relay it allocates on", async () => {
         stubOwnRelay({
           turn: [],
           stun: [],
@@ -405,10 +405,10 @@ describe("generateInvitation", () => {
             turn: CLI_OWN_TURN,
             invitationRelay: relay,
           }),
-        ).toBe(false);
+        ).toBe(true);
       });
 
-      test("beside the default WebSocket relay, at the default registrar only when it allocates on the default TURN url", async () => {
+      test("beside the default WebSocket relay, at the default registrar whichever relay it allocates on", async () => {
         const relay = await invitationRelay(() => ({
           ...DEFAULT_RELAY,
           websocketUrl: "wss://wsrelay.example.org/relay",
@@ -422,14 +422,14 @@ describe("generateInvitation", () => {
             turn: CLI_OWN_TURN,
             invitationRelay: relay,
           }),
-        ).toBe(false);
+        ).toBe(true);
         expect(
           runEnrollsAtInvitationRegistrar({ invitationRelay: relay }),
         ).toBe(true);
       });
     });
 
-    test("names the default WebSocket relay, and no registrar, where the allowed relays keep only its host", async () => {
+    test("names the default WebSocket relay and its registrar where the allowed relays keep only its host", async () => {
       const minted = await generateInvitation({
         inviterName: "County Health Dept",
         profiledColumns: ["ssn", "first_name", "last_name", "dob"],
@@ -444,7 +444,10 @@ describe("generateInvitation", () => {
         (await decodeInvitation(minted.encoded)).connectionEndpoint,
       ).toStrictEqual({
         ...WEBRTC_ENDPOINT,
-        relay: { websocket: "wss://wsrelay.example.org/relay" },
+        relay: {
+          websocket: "wss://wsrelay.example.org/relay",
+          registrar: DEFAULT_RELAY.registrarUrl,
+        },
       });
     });
 
@@ -2067,7 +2070,7 @@ describe("invitationWebrtcEndpoint", () => {
     expect(decoded.connectionEndpoint).toStrictEqual(endpoint);
   });
 
-  test("names a registrar only beside a TURN url", () => {
+  test("names a registrar only beside a TURN url or a WebSocket relay url", () => {
     const registrar = "https://registrar.example.org";
     expect(
       invitationWebrtcEndpoint(location, {
@@ -2083,7 +2086,10 @@ describe("invitationWebrtcEndpoint", () => {
         websocket: "wss://wsrelay.example.org/relay",
         registrar,
       }).relay,
-    ).toStrictEqual({ websocket: "wss://wsrelay.example.org/relay" });
+    ).toStrictEqual({
+      websocket: "wss://wsrelay.example.org/relay",
+      registrar,
+    });
     expect(
       invitationWebrtcEndpoint(location, {
         stun: ["stun:relay.example.org:3478"],
