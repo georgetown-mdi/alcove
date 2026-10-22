@@ -442,8 +442,8 @@ describe("DEFAULT_STANDARDIZATION.md street name and unit tables", () => {
 
   test("lists exactly the designators the unit pipeline reads", () => {
     const documented = unitDesignatorRows.map(
-      ([name, abbreviation, standsAlone]) => ({
-        name: unwrapCodeSpan(name),
+      ([names, abbreviation, standsAlone]) => ({
+        names: names.split(",").map(unwrapCodeSpan),
         abbreviation: unwrapCodeSpan(abbreviation),
         standsAlone: standsAlone === "yes",
       }),

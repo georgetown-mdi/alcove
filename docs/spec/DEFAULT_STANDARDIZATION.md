@@ -72,12 +72,13 @@ surface rather than a local formatting choice.
 
 ### Per-party placeholder lists
 
-The `first_name`, `last_name`, `date_of_birth`, `street_name` and `unit`
-pipelines each end in a placeholder list: a `null_if` whose `values` are
+The `first_name`, `last_name`, `date_of_birth`, `street_name`, `unit` and
+`city` pipelines each end in a placeholder list: a `null_if` whose `values` are
 dropped. In the defaults the `first_name` list is the `last_name` list with
 twelve values added (see [`first_name`](#first_name)), the `unit` list is the
-`street_name` list with one value added (see [`unit`](#unit)), and each field's
-list is that field's own step parameter. An operator may edit any of these
+`street_name` list with one value added (see [`unit`](#unit)), the `city` list
+is the `street_name` list (see [`city`](#city)), and each field's list is that
+field's own step parameter. An operator may edit any of these
 lists in their own standardization, to add a filler their system writes or to
 keep a value the list drops. The `first_name` transformation also drops `JOHN` or `JANE` beside
 the last name `DOE`, by a rule outside its list that an operator may edit or
@@ -1094,7 +1095,7 @@ steps:
 Result: the street name in uppercase, its words separated by single spaces,
 with punctuation removed and its suffix and directionals written in their USPS
 Publication 28 forms. The steps before `usps_street_name` are those of
-[`city`](#city):
+[`city`](#city) before its placeholder list:
 
 - An accented letter becomes its base letter, so a name written with an
   n-tilde agrees with one written with a plain n.
@@ -1445,37 +1446,49 @@ steps:
   - function: to_upper_case
   - function: replace_regex
     params:
-      pattern: "\\b(?:APARTMENT|APT|BUILDING|BLDG|DEPARTMENT|DEPT|FLOOR|FL|HANGER|HNGR|KEY|LOT|PIER|ROOM|RM|SLIP|SPACE|SPC|STOP|SUITE|STE|TRAILER|TRLR|UNIT)(?:\\b|([0-9]))"
+      pattern: "\\b(?:APARTMENT|APT|BUILDING|BLDG|DEPARTMENT|DEPT|FLOOR|FL|HANGAR|HANGER|HNGR|KEY|LOT|PIER|ROOM|RM|SLIP|SPACE|SPC|STOP|SUITE|STE|TRAILER|TRLR|UNIT)(?:\\b|([0-9]))"
       replacement: "$1"
   - function: replace_regex
     params:
-      pattern: "\\bBASEMENT\\b"
-      replacement: "BSMT"
+      pattern: "\\b(?:BASEMENT|BSMT)(?:\\b|([0-9]))"
+      replacement: "BSMT $1"
   - function: replace_regex
     params:
-      pattern: "\\bFRONT\\b"
-      replacement: "FRNT"
+      pattern: "\\b(?:FRONT|FRNT)(?:\\b|([0-9]))"
+      replacement: "FRNT $1"
   - function: replace_regex
     params:
-      pattern: "\\bLOBBY\\b"
-      replacement: "LBBY"
+      pattern: "\\b(?:LOBBY|LBBY)(?:\\b|([0-9]))"
+      replacement: "LBBY $1"
   - function: replace_regex
     params:
-      pattern: "\\bLOWER\\b"
-      replacement: "LOWR"
+      pattern: "\\b(?:LOWER|LOWR)(?:\\b|([0-9]))"
+      replacement: "LOWR $1"
   - function: replace_regex
     params:
-      pattern: "\\bOFFICE\\b"
-      replacement: "OFC"
+      pattern: "\\b(?:OFFICE|OFC)(?:\\b|([0-9]))"
+      replacement: "OFC $1"
   - function: replace_regex
     params:
-      pattern: "\\bPENTHOUSE\\b"
-      replacement: "PH"
+      pattern: "\\b(?:PENTHOUSE|PH)(?:\\b|([0-9]))"
+      replacement: "PH $1"
   - function: replace_regex
     params:
-      pattern: "\\bUPPER\\b"
-      replacement: "UPPR"
+      pattern: "\\bREAR(?:\\b|([0-9]))"
+      replacement: "REAR $1"
+  - function: replace_regex
+    params:
+      pattern: "\\bSIDE(?:\\b|([0-9]))"
+      replacement: "SIDE $1"
+  - function: replace_regex
+    params:
+      pattern: "\\b(?:UPPER|UPPR)(?:\\b|([0-9]))"
+      replacement: "UPPR $1"
   - function: remove_punctuation
+  - function: replace_regex
+    params:
+      pattern: "\\b(?:NUMBER|NUM|NO)(?: +([A-Z]*[0-9])|([0-9]))"
+      replacement: "$1$2"
   - function: squash_spaces
   - function: trim_whitespace
   - function: filter_regex
@@ -1495,11 +1508,21 @@ A designator that stands alone is kept in its abbreviation instead.
   spelled out or abbreviated, as a whole word or where it is written against
   the digit that starts the identifier. `Apt 4B`, `Apartment 4B`, `Unit 4B`,
   `Apt-4B` and `Apt4B` all keep `4B`.
-- The seven `replace_regex` steps after it write each designator that stands
-  alone in its abbreviation, as a whole word, so `Basement` becomes `BSMT`.
-  `REAR` and `SIDE` are spelled as their abbreviations and need no step.
+- The nine `replace_regex` steps after it each write one designator that
+  stands alone, spelled out or abbreviated, as its abbreviation followed by a
+  space. Each matches the designator as a whole word or where it is written
+  against a digit, so `Basement` becomes `BSMT`, and `Penthouse 2`,
+  `Penthouse2` and `PH2` all become `PH 2`. The later `squash_spaces` and
+  `trim_whitespace` steps fold the added space away.
 - Every punctuation mark is then deleted, a hyphen included, so `4-B` and
   `4B`, and `#4B` and `4B`, agree.
+- The `replace_regex` after it deletes a number marker, `NO`, `NUM` or
+  `NUMBER`, written before a word that contains a digit, after a space or
+  against the digit. `Apt No 4`, `Apt Number 4`, `Apt 4` and `#4` all keep
+  `4`. A marker with no such word after it is kept, since a `NO` with no
+  number after it may be the identifier itself: `Apt No` keeps `NO`. The
+  Project US@ specification names `NUM`, `NO`, `NUMBER` and `#` among the
+  words an address leaves out before a number.
 - A value left with no letter or digit is dropped: a blank or all-punctuation
   value, and a designator written with no identifier, such as `Apt`.
 - The closing `null_if` is the placeholder list (see
@@ -1537,11 +1560,20 @@ metadata matches on it.
 | `"apt. 4-b"` | `"4B"` |
 | `"Suite200"` | `"200"` |
 | `"  Unit  12 "` | `"12"` |
+| `"Hangar 3"` | `"3"` |
+| `"Hanger 3"` | `"3"` |
+| `"Apt No. 4"` | `"4"` |
+| `"Unit Number 12"` | `"12"` |
+| `"No.4B"` | `"4B"` |
+| `"Apt No"` | `"NO"` |
 | `"Bldg 3 Apt 12"` | `"3 12"` |
 | `"Basement"` | `"BSMT"` |
 | `"Rear"` | `"REAR"` |
 | `"Rear Apt"` | `"REAR"` |
 | `"Penthouse B"` | `"PH B"` |
+| `"Penthouse 2"` | `"PH 2"` |
+| `"Penthouse2"` | `"PH 2"` |
+| `"PH2"` | `"PH 2"` |
 | `"Apt"` | `null` |
 | `"N/A"` | `null` |
 | `"Unknown"` | `null` |
@@ -1554,6 +1586,10 @@ The secondary unit designators of USPS Publication 28, as Table 1 of the
 Project US@ Technical Specification v1.0 lists them, in its order. A
 designator that stands alone needs no number or letter after it.
 
+Publication 28 spells one designator `HANGAR` and Table 1 prints it `HANGER`.
+Both spellings are accepted, with the one abbreviation `HNGR`, because the two
+sources spell it differently.
+
 | Designator | Abbreviation | Stands alone |
 | ---------- | ------------ | ------------ |
 | `APARTMENT` | `APT` | no |
@@ -1562,7 +1598,7 @@ designator that stands alone needs no number or letter after it.
 | `DEPARTMENT` | `DEPT` | no |
 | `FLOOR` | `FL` | no |
 | `FRONT` | `FRNT` | yes |
-| `HANGER` | `HNGR` | no |
+| `HANGAR`, `HANGER` | `HNGR` | no |
 | `KEY` | `KEY` | no |
 | `LOBBY` | `LBBY` | yes |
 | `LOT` | `LOT` | no |
@@ -1600,11 +1636,14 @@ steps:
   - function: filter_regex
     params:
       pattern: "[A-Z0-9]"
+  - function: null_if
+    params:
+      values: ["UNKNOWN", "UNK", "NONE"]
 ```
 
 Result: the city name in uppercase, its words separated by single spaces, with
-punctuation removed. The steps are those of [`county`](#county) without its
-removal of the word `COUNTY`:
+punctuation removed. The steps before the placeholder list are those of
+[`county`](#county) without its removal of the word `COUNTY`:
 
 - An accented letter becomes its base letter.
 - A hyphen or typographic dash becomes a space, so `Winston-Salem` and
@@ -1612,6 +1651,11 @@ removal of the word `COUNTY`:
 - Other punctuation is deleted, so `Coeur d'Alene` and `Coeur dAlene` agree.
 - A value left with no letter or digit, a blank or all-punctuation value, is
   dropped.
+
+The closing `null_if` is the placeholder list (see
+[Per-party placeholder lists](#per-party-placeholder-lists)), the
+[`street_name`](#street_name) list: the Project US@ specification says not to
+match on `UNKNOWN` for any part of an address.
 
 No word is abbreviated or spelled out: `St Louis` and `Saint Louis` stay
 different. The Project US@ specification spells a city name out in its
@@ -1630,6 +1674,7 @@ The type is inferred from `city`, `city_name` and `cityname`
 | `"Winston-Salem"` | `"WINSTON SALEM"` |
 | `"Coeur d'Alene"` | `"COEUR DALENE"` |
 | `"Espa\u00f1ola"` | `"ESPANOLA"` |
+| `"Unknown"` | `null` |
 | `"..."` | `null` |
 | `""` | `null` |
 

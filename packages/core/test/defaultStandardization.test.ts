@@ -306,9 +306,9 @@ describe("getDefaultStandardization — structure", () => {
           ),
       ),
     );
-    // first_name, last_name, date_of_birth, ssn, ssn4, street_name and unit
-    // each hold one.
-    expect(placeholderLists).toHaveLength(7);
+    // first_name, last_name, date_of_birth, ssn, ssn4, street_name, unit and
+    // city each hold one.
+    expect(placeholderLists).toHaveLength(8);
   });
 
   test("each transformation has a non-empty steps array", () => {
@@ -1970,9 +1970,21 @@ describe.each(["street_name", "unit", "city"] as const)(
       expect(run("O'Hara")).toBe("OHARA");
     });
 
-    test("drops the placeholder UNKNOWN", () => {
-      if (type === "city") expect(run("Unknown")).toBe("UNKNOWN");
-      else expect(run("Unknown")).toBeNull();
+    test.each(["Unknown", "UNK", "None", " unknown. "])(
+      "drops the placeholder %j",
+      (input) => {
+        expect(run(input)).toBeNull();
+      },
+    );
+
+    test("an operator's edited placeholder list drops only what it lists", () => {
+      const [t] = getDefaultStandardization(
+        [{ name: "COLUMN", type, role: "linkage", isPayload: false }],
+        { ...minimalTerms, linkageFields: [{ name: type, type }] },
+      );
+      const edited = withPlaceholders(t.steps!, "UNKNOWN", ["VACANT"]);
+      expect(runPipeline("Unknown", edited)).toBe("UNKNOWN");
+      expect(runPipeline("Vacant", edited)).toBeNull();
     });
 
     test("keeps digits", () => {
@@ -2023,10 +2035,6 @@ describe("default street_name pipeline", () => {
 
   test("keeps a numbered name as written", () => {
     expect(run("Fifth Ave")).not.toBe(run("5th Ave"));
-  });
-
-  test.each(["UNK", "None", "unknown"])("drops the placeholder %j", (input) => {
-    expect(run(input)).toBeNull();
   });
 
   test("two parties with differently written street names agree", () => {
@@ -2086,15 +2094,15 @@ describe("default unit pipeline", () => {
     expect(new Set(written.map(run))).toEqual(new Set(["4B"]));
   });
 
-  test("deletes each designator that needs an identifier, in either spelling", () => {
+  test("deletes each designator that needs an identifier, in every spelling", () => {
     for (const designator of SECONDARY_UNIT_DESIGNATORS.filter(
       (d) => !d.standsAlone,
     )) {
-      expect(run(`${designator.name} 7`), designator.name).toBe("7");
-      expect(run(`${designator.abbreviation} 7`), designator.abbreviation).toBe(
-        "7",
-      );
-      expect(run(designator.name), designator.name).toBeNull();
+      for (const written of [...designator.names, designator.abbreviation]) {
+        expect(run(`${written} 7`), written).toBe("7");
+        expect(run(`${written}7`), written).toBe("7");
+        expect(run(written), written).toBeNull();
+      }
     }
   });
 
@@ -2102,14 +2110,67 @@ describe("default unit pipeline", () => {
     for (const designator of SECONDARY_UNIT_DESIGNATORS.filter(
       (d) => d.standsAlone,
     )) {
-      expect(run(designator.name), designator.name).toBe(
-        designator.abbreviation,
-      );
-      expect(run(designator.abbreviation), designator.abbreviation).toBe(
-        designator.abbreviation,
-      );
+      for (const written of [...designator.names, designator.abbreviation]) {
+        expect(run(written), written).toBe(designator.abbreviation);
+        expect(run(`${written} 2`), written).toBe(
+          `${designator.abbreviation} 2`,
+        );
+        expect(run(`${written}2`), written).toBe(
+          `${designator.abbreviation} 2`,
+        );
+      }
     }
   });
+
+  test("Penthouse 2, Penthouse2, PH 2 and PH2 clean to one value", () => {
+    const written = ["Penthouse 2", "Penthouse2", "PH 2", "PH2", "ph-2"];
+    expect(new Set(written.map(run))).toEqual(new Set(["PH 2"]));
+  });
+
+  test("accepts both spellings of the hangar designator", () => {
+    expect(run("Hangar 3")).toBe("3");
+    expect(run("Hanger 3")).toBe("3");
+    expect(run("HNGR3")).toBe("3");
+  });
+
+  test("Apt No. 4, Apt Number 4, Apt 4 and #4 clean to one value", () => {
+    const written = [
+      "Apt No. 4",
+      "Apt No 4",
+      "Apt Number 4",
+      "Apt Num. 4",
+      "No. 4",
+      "No.4",
+      "Apt 4",
+      "#4",
+      "4",
+    ];
+    expect(new Set(written.map(run))).toEqual(new Set(["4"]));
+  });
+
+  test.each([
+    ["No. 4B", "4B"],
+    ["Unit No. B4", "B4"],
+    ["No. A-4", "A4"],
+    ["Penthouse No. 2", "PH 2"],
+  ])(
+    "deletes a number marker before an identifier with a digit: %j to %j",
+    (input, expected) => {
+      expect(run(input)).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["Apt No", "NO"],
+    ["Apt No B", "NO B"],
+    ["North 4", "NORTH 4"],
+    ["Nor 4", "NOR 4"],
+  ])(
+    "keeps NO with no digit after it, and a word NO starts: %j to %j",
+    (input, expected) => {
+      expect(run(input)).toBe(expected);
+    },
+  );
 
   test.each(["N/A", "n/a", "NA", "None", "UNK", "Unknown", "Apt Unknown"])(
     "drops the placeholder %j",

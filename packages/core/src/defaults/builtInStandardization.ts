@@ -224,35 +224,49 @@ const FOLD_SPACES_AND_DROP_BLANK_STEPS: StandardizationStep[] = [
   { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
 ];
 
-const CITY_STEPS: StandardizationStep[] = [
-  ...PLACE_NAME_FOLD_STEPS,
-  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
-];
-
 // Whole cleaned values only. UNKNOWN is the value the Project US@ specification
 // writes for an unknown address part and says not to match on; UNK and NONE are
 // the name lists' words for a value nobody recorded.
 const ADDRESS_PLACEHOLDERS: readonly string[] = ["UNKNOWN", "UNK", "NONE"];
 
+const ADDRESS_PLACEHOLDER_STEP: StandardizationStep = {
+  function: "null_if",
+  params: { values: [...ADDRESS_PLACEHOLDERS] },
+};
+
+const CITY_STEPS: StandardizationStep[] = [
+  ...PLACE_NAME_FOLD_STEPS,
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+  ADDRESS_PLACEHOLDER_STEP,
+];
+
 const STREET_NAME_STEPS: StandardizationStep[] = [
-  ...CITY_STEPS,
+  ...PLACE_NAME_FOLD_STEPS,
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
   { function: "usps_street_name" },
-  { function: "null_if", params: { values: [...ADDRESS_PLACEHOLDERS] } },
+  ADDRESS_PLACEHOLDER_STEP,
 ];
 
-const UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER: readonly string[] = [
-  ...new Set(
-    SECONDARY_UNIT_DESIGNATORS.filter(
-      (designator) => !designator.standsAlone,
-    ).flatMap((designator) => [designator.name, designator.abbreviation]),
-  ),
-];
+// A regex alternation matching any one of `words` as written.
+function wordAlternation(words: readonly string[]): string {
+  const distinct = [...new Set(words)];
+  return distinct.length === 1 ? distinct[0] : `(?:${distinct.join("|")})`;
+}
 
-// A designator that needs an identifier is deleted as a word, or where it is
-// written against the digit that starts one (APT4B), so the identifier is what
-// remains: APT 4B, UNIT 4B, APT-4B and 4B agree. One that stands alone names
-// the unit, and is kept in its abbreviation. Punctuation is deleted after, a
-// hyphen too, so 4-B and 4B, and #4B and 4B, agree.
+const UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER: readonly string[] =
+  SECONDARY_UNIT_DESIGNATORS.filter(
+    (designator) => !designator.standsAlone,
+  ).flatMap((designator) => [...designator.names, designator.abbreviation]);
+
+// Words written before a unit's number, as # is: Project US@ leaves NUMBER, NUM
+// and NO out of an address. One is deleted only before a word with a digit,
+// since a NO with none after it may be the identifier itself.
+const UNIT_NUMBER_MARKERS: readonly string[] = ["NUMBER", "NUM", "NO"];
+
+// A designator that needs an identifier is deleted as a word or against the
+// digit starting one, so APT 4B, APT4B and 4B agree. One that stands alone is
+// written in its abbreviation and a space, so PENTHOUSE 2, PENTHOUSE2 and PH2
+// agree. Punctuation is deleted after, a hyphen too, so 4-B, #4B and 4B agree.
 const UNIT_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "squash_spaces" },
@@ -262,21 +276,27 @@ const UNIT_STEPS: StandardizationStep[] = [
   {
     function: "replace_regex",
     params: {
-      pattern: `\\b(?:${UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER.join("|")})(?:\\b|([0-9]))`,
+      pattern: `\\b${wordAlternation(UNIT_DESIGNATORS_NEEDING_AN_IDENTIFIER)}(?:\\b|([0-9]))`,
       replacement: "$1",
     },
   },
   ...SECONDARY_UNIT_DESIGNATORS.filter(
-    (designator) =>
-      designator.standsAlone && designator.name !== designator.abbreviation,
+    (designator) => designator.standsAlone,
   ).map((designator): StandardizationStep => ({
     function: "replace_regex",
     params: {
-      pattern: `\\b${designator.name}\\b`,
-      replacement: designator.abbreviation,
+      pattern: `\\b${wordAlternation([...designator.names, designator.abbreviation])}(?:\\b|([0-9]))`,
+      replacement: `${designator.abbreviation} $1`,
     },
   })),
   { function: "remove_punctuation" },
+  {
+    function: "replace_regex",
+    params: {
+      pattern: `\\b${wordAlternation(UNIT_NUMBER_MARKERS)}(?: +([A-Z]*[0-9])|([0-9]))`,
+      replacement: "$1$2",
+    },
+  },
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
   // NA is N/A, written where an address has no unit.
   {

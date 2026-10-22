@@ -1,6 +1,6 @@
 - The step sequences, the worked examples, the alias table, and the date-format inference parameters below are checked against the shipped registries by `packages/core/test/config/defaultStandardizationDoc.test.ts`: an edit to either side that is not mirrored in the other fails the unit suite. -> The step sequences, the worked examples, the alias table, the affix, state, street suffix, directional and unit designator tables, and the date-format inference parameters below are checked against the shipped registries by `packages/core/test/config/defaultStandardizationDoc.test.ts`: an edit to either side that is not mirrored in the other fails the unit suite.
-- The `first_name`, `last_name` and `date_of_birth` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped. -> The `first_name`, `last_name`, `date_of_birth`, `street_name` and `unit` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped.
-- In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), and each name field's list is that field's own step parameter. -> In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), the `unit` list is the `street_name` list with one value added (see [`unit`](#unit)), and each field's list is that field's own step parameter.
+- The `first_name`, `last_name` and `date_of_birth` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped. -> The `first_name`, `last_name`, `date_of_birth`, `street_name`, `unit` and `city` pipelines each end in a placeholder list: a `null_if` whose `values` are dropped.
+- In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), and each name field's list is that field's own step parameter. -> In the defaults the `first_name` list is the `last_name` list with twelve values added (see [`first_name`](#first_name)), the `unit` list is the `street_name` list with one value added (see [`unit`](#unit)), the `city` list is the `street_name` list (see [`city`](#city)), and each field's list is that field's own step parameter.
 - An operator may edit any of the three lists in their own standardization, to add a filler their system writes or to keep a value the list drops. -> An operator may edit any of these lists in their own standardization, to add a filler their system writes or to keep a value the list drops.
 - Result: the street name in uppercase, its words separated by single spaces, with punctuation removed. -> Result: the street name in uppercase, its words separated by single spaces, with punctuation removed and its suffix and directionals written in their USPS Publication 28 forms.
 - A value left with no letter or digit, a blank or all-punctuation value, is dropped. -> -
@@ -17,7 +17,8 @@
 - `"4-B"` | `"4B"` -> -
 - `" Unit 12 "` | `"UNIT 12"` -> `" Unit 12 "` | `"12"`
 - `"N/A"` | `"NA"` -> `"N/A"` | `null`
-- The steps are those of [`street_name`](#street_name): -> The steps before `usps_street_name` are those of [`city`](#city):
+- The steps are those of [`street_name`](#street_name): -> The steps before `usps_street_name` are those of [`city`](#city) before its placeholder list:
+- The steps are those of [`county`](#county) without its removal of the word `COUNTY`: -> The steps before the placeholder list are those of [`county`](#county) without its removal of the word `COUNTY`:
 - - -> params:
 - - -> params:
 - - -> params:
@@ -28,6 +29,13 @@
 - - -> params:
 - - -> params:
 - - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> params:
+- - -> - function: replace_regex
+- - -> - function: replace_regex
+- - -> - function: replace_regex
 - - -> - function: replace_regex
 - - -> - function: replace_regex
 - - -> - function: replace_regex
@@ -38,8 +46,12 @@
 - - -> - function: replace_regex
 - - -> - function: null_if
 - - -> - function: null_if
+- - -> - function: null_if
+- - -> values: ["UNKNOWN", "UNK", "NONE"]
 - - -> `"Unknown"` | `null`
 - - -> `"Unknown"` | `null`
+- - -> `"Unknown"` | `null`
+- - -> The closing `null_if` is the placeholder list (see [Per-party placeholder lists](#per-party-placeholder-lists)), the [`street_name`](#street_name) list: the Project US@ specification says not to match on `UNKNOWN` for any part of an address.
 - - -> replacement: "$1"
 - - -> - function: usps_street_name
 - - -> values: ["UNKNOWN", "UNK", "NONE"]
@@ -305,27 +317,38 @@
 - - -> `WAYS` | `WAYS` | `WAYS`
 - - -> `WELL` | `WELL` | `WL`
 - - -> `WELLS` | `WELLS`, `WLS` | `WLS`
-- - -> pattern: "\\b(?:APARTMENT|APT|BUILDING|BLDG|DEPARTMENT|DEPT|FLOOR|FL|HANGER|HNGR|KEY|LOT|PIER|ROOM|RM|SLIP|SPACE|SPC|STOP|SUITE|STE|TRAILER|TRLR|UNIT)(?:\\b|([0-9]))"
-- - -> pattern: "\\bBASEMENT\\b"
-- - -> replacement: "BSMT"
-- - -> pattern: "\\bFRONT\\b"
-- - -> replacement: "FRNT"
-- - -> pattern: "\\bLOBBY\\b"
-- - -> replacement: "LBBY"
-- - -> pattern: "\\bLOWER\\b"
-- - -> replacement: "LOWR"
-- - -> pattern: "\\bOFFICE\\b"
-- - -> replacement: "OFC"
-- - -> pattern: "\\bPENTHOUSE\\b"
-- - -> replacement: "PH"
-- - -> pattern: "\\bUPPER\\b"
-- - -> replacement: "UPPR"
+- - -> pattern: "\\b(?:APARTMENT|APT|BUILDING|BLDG|DEPARTMENT|DEPT|FLOOR|FL|HANGAR|HANGER|HNGR|KEY|LOT|PIER|ROOM|RM|SLIP|SPACE|SPC|STOP|SUITE|STE|TRAILER|TRLR|UNIT)(?:\\b|([0-9]))"
+- - -> pattern: "\\b(?:BASEMENT|BSMT)(?:\\b|([0-9]))"
+- - -> replacement: "BSMT $1"
+- - -> pattern: "\\b(?:FRONT|FRNT)(?:\\b|([0-9]))"
+- - -> replacement: "FRNT $1"
+- - -> pattern: "\\b(?:LOBBY|LBBY)(?:\\b|([0-9]))"
+- - -> replacement: "LBBY $1"
+- - -> pattern: "\\b(?:LOWER|LOWR)(?:\\b|([0-9]))"
+- - -> replacement: "LOWR $1"
+- - -> pattern: "\\b(?:OFFICE|OFC)(?:\\b|([0-9]))"
+- - -> replacement: "OFC $1"
+- - -> pattern: "\\b(?:PENTHOUSE|PH)(?:\\b|([0-9]))"
+- - -> replacement: "PH $1"
+- - -> pattern: "\\bREAR(?:\\b|([0-9]))"
+- - -> replacement: "REAR $1"
+- - -> pattern: "\\bSIDE(?:\\b|([0-9]))"
+- - -> replacement: "SIDE $1"
+- - -> pattern: "\\b(?:UPPER|UPPR)(?:\\b|([0-9]))"
+- - -> replacement: "UPPR $1"
+- - -> pattern: "\\b(?:NUMBER|NUM|NO)(?: +([A-Z]*[0-9])|([0-9]))"
+- - -> replacement: "$1$2"
 - - -> values: ["UNKNOWN", "UNK", "NONE", "NA"]
 - - -> A designator that stands alone is kept in its abbreviation instead.
 - - -> The first `replace_regex` deletes each designator in the [designator table](#secondary-unit-designators) that needs an identifier, spelled out or abbreviated, as a whole word or where it is written against the digit that starts the identifier.
 - - -> `Apt 4B`, `Apartment 4B`, `Unit 4B`, `Apt-4B` and `Apt4B` all keep `4B`.
-- - -> The seven `replace_regex` steps after it write each designator that stands alone in its abbreviation, as a whole word, so `Basement` becomes `BSMT`.
-- - -> `REAR` and `SIDE` are spelled as their abbreviations and need no step.
+- - -> The nine `replace_regex` steps after it each write one designator that stands alone, spelled out or abbreviated, as its abbreviation followed by a space.
+- - -> Each matches the designator as a whole word or where it is written against a digit, so `Basement` becomes `BSMT`, and `Penthouse 2`, `Penthouse2` and `PH2` all become `PH 2`.
+- - -> The later `squash_spaces` and `trim_whitespace` steps fold the added space away.
+- - -> The `replace_regex` after it deletes a number marker, `NO`, `NUM` or `NUMBER`, written before a word that contains a digit, after a space or against the digit.
+- - -> `Apt No 4`, `Apt Number 4`, `Apt 4` and `#4` all keep `4`.
+- - -> A marker with no such word after it is kept, since a `NO` with no number after it may be the identifier itself: `Apt No` keeps `NO`.
+- - -> The Project US@ specification names `NUM`, `NO`, `NUMBER` and `#` among the words an address leaves out before a number.
 - - -> A value left with no letter or digit is dropped: a blank or all-punctuation value, and a designator written with no identifier, such as `Apt`.
 - - -> The designator is left out because it depends on who wrote the value.
 - - -> The Project US@ specification lets a writer who does not know the right designator write `#` in its place, so `#4B` and `Apt 4B` can name the same unit, and keeping the designator would leave that pair unmatched.
@@ -337,15 +360,26 @@
 - - -> `"Apt-4B"` | `"4B"`
 - - -> `"4B"` | `"4B"`
 - - -> `"Suite200"` | `"200"`
+- - -> `"Hangar 3"` | `"3"`
+- - -> `"Hanger 3"` | `"3"`
+- - -> `"Apt No. 4"` | `"4"`
+- - -> `"Unit Number 12"` | `"12"`
+- - -> `"No.4B"` | `"4B"`
+- - -> `"Apt No"` | `"NO"`
 - - -> `"Bldg 3 Apt 12"` | `"3 12"`
 - - -> `"Basement"` | `"BSMT"`
 - - -> `"Rear"` | `"REAR"`
 - - -> `"Rear Apt"` | `"REAR"`
 - - -> `"Penthouse B"` | `"PH B"`
+- - -> `"Penthouse 2"` | `"PH 2"`
+- - -> `"Penthouse2"` | `"PH 2"`
+- - -> `"PH2"` | `"PH 2"`
 - - -> `"Apt"` | `null`
 - - -> Secondary unit designators
 - - -> The secondary unit designators of USPS Publication 28, as Table 1 of the Project US@ Technical Specification v1.0 lists them, in its order.
 - - -> A designator that stands alone needs no number or letter after it.
+- - -> Publication 28 spells one designator `HANGAR` and Table 1 prints it `HANGER`.
+- - -> Both spellings are accepted, with the one abbreviation `HNGR`, because the two sources spell it differently.
 - - -> Designator | Abbreviation | Stands alone
 - - -> `APARTMENT` | `APT` | no
 - - -> `BASEMENT` | `BSMT` | yes
@@ -353,7 +387,7 @@
 - - -> `DEPARTMENT` | `DEPT` | no
 - - -> `FLOOR` | `FL` | no
 - - -> `FRONT` | `FRNT` | yes
-- - -> `HANGER` | `HNGR` | no
+- - -> `HANGAR`, `HANGER` | `HNGR` | no
 - - -> `KEY` | `KEY` | no
 - - -> `LOBBY` | `LBBY` | yes
 - - -> `LOT` | `LOT` | no
