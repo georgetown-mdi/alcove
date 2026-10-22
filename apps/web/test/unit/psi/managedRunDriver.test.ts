@@ -478,18 +478,15 @@ describe("runManagedExchangeInBrowser", () => {
         websocketRelays: [{ url, exchangeId: "exchange" }],
       });
       const close = vi.fn();
-      vi.mocked(parkWebSocketRelayConnection).mockImplementationOnce(
-        () =>
-          ({
-            url,
-            paired: false,
-            partnerStarted: false,
-            failure: undefined,
-            onChange: () => () => {},
-            start: () => new Promise<never>(() => {}),
-            close,
-          }) as unknown as ReturnType<typeof parkWebSocketRelayConnection>,
-      );
+      vi.mocked(parkWebSocketRelayConnection).mockImplementationOnce(() => ({
+        url,
+        paired: false,
+        partnerStarted: false,
+        failure: undefined,
+        onChange: () => () => {},
+        start: () => new Promise<never>(() => {}),
+        close,
+      }));
       const sharedSecret = generateSharedSecret();
 
       await runDriver(new AbortController().signal, undefined, {

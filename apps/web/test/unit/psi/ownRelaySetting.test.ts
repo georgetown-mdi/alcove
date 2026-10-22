@@ -467,7 +467,7 @@ describe("the WebSocket relays a run's plan lists", () => {
         exchangeId: await deriveRelayExchangeId(secret),
       },
     ]);
-    const leftOut = [...(OWN.turn ?? []), SITE.turnUrl, WEBSOCKET];
+    const leftOut = [...OWN.turn, SITE.turnUrl, WEBSOCKET];
     expect(plan.relaysLeftOut).toEqual(leftOut);
     expect(onRunNotice).toHaveBeenCalledWith(
       `Your allowed relays keep ${site.websocketUrl} and leave out ` +
