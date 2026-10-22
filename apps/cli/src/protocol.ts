@@ -697,8 +697,9 @@ async function openRunTransport(params: {
       );
     // Once per run, before the first connection attempt: the attempts after
     // it reuse the key this enrolls, which only a rotation changes. werift
-    // allocates on the first TURN url alone, so the registrar is contacted
-    // only when that url is one the invitation names.
+    // allocates on the first TURN url alone; the registrar is contacted when
+    // that url is one the invitation names, or when the run dials the
+    // invitation's WebSocket relay under the derived id.
     const invitationRegistrar = connection.invitationRelay?.registrar;
     const enrolls = runEnrollsAtInvitationRegistrar(connection);
     const allocatingTurn = selectRunRelay(connection).turn?.[0];
@@ -726,7 +727,15 @@ async function openRunTransport(params: {
               "not name, at"),
         redactAndSanitizeForDisplay(allocatingTurn.url),
       );
-    else if (invitationRegistrar !== undefined && !enrolls)
+    else if (
+      invitationRegistrar !== undefined &&
+      !enrolls &&
+      (selectRunRelay(connection).websocket ?? []).some(
+        (relay) =>
+          relay.url === connection.invitationRelay?.websocket &&
+          relay.exchangeId !== undefined,
+      )
+    )
       log.info(
         "the relay registrar that your partner's invitation names was not " +
           "contacted, because this run allocates on no TURN relay, and " +

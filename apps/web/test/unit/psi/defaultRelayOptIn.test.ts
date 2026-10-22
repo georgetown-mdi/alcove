@@ -269,6 +269,35 @@ describe("relayPlanForRun on a build offering the relay switched off", () => {
     expect(result).not.toHaveProperty("defaultRelayOff");
   });
 
+  describe("a build whose WebSocket relay is on another host than its TURN relay", () => {
+    const SPLIT_SITE = {
+      ...SITE,
+      websocketUrl: "wss://relay-socket.example.com/relay",
+    };
+    const SPLIT: DefaultRelayBuild = { kind: "opt-in", relay: SPLIT_SITE };
+
+    test("off, allowed relays that keep only the relay's WebSocket relay url still say it is off", async () => {
+      const { result, enroll } = await plan(
+        undefined,
+        false,
+        ["relay-socket.example.com"],
+        SPLIT,
+      );
+      expect(enroll).not.toHaveBeenCalled();
+      expect(result.defaultRelayOff).toBe(true);
+    });
+
+    test("off, allowed relays that keep neither of the relay's urls do not say it is off", async () => {
+      const { result } = await plan(
+        undefined,
+        false,
+        ["partner.example.net"],
+        SPLIT,
+      );
+      expect(result).not.toHaveProperty("defaultRelayOff");
+    });
+  });
+
   test("off, the acceptor's allowed relays still leave out the relay an invitation names", async () => {
     const { result, enroll } = await plan(
       { turn: [PARTNER_URL, SITE.turnUrl] },

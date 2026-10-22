@@ -1355,6 +1355,19 @@ test("a run proving to the invitation's WebSocket relay under the inviter's own 
   );
 });
 
+test("a run whose own turn entry is left out by allowed_relays, with no WebSocket relay kept, states no WebSocket reason", async () => {
+  const { requests } = await runPairEnrollingAt([], {
+    ownTurn: { url: INVITATION_TURN_URL },
+    allowedRelays: ["unrelated.example.org"],
+  });
+  expect(requests).toHaveLength(0);
+  expect(
+    mockState.logLines.some((line) =>
+      line.includes("proves to the invitation's WebSocket relay"),
+    ),
+  ).toBe(false);
+});
+
 test("a run listing the invitation's WebSocket relay url, allocating on the invitation's TURN url, enrolls once", async () => {
   const { requests } = await runPairEnrollingAt(
     [registrationAnswer(null, "2026-01-01T01:10:00Z")],
