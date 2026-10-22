@@ -446,21 +446,33 @@ describe("the WebSocket relays a run's plan lists", () => {
     expect(enroll).toHaveBeenCalledOnce();
   });
 
-  test("a run whose allowed relays keep only the default WebSocket relay url enrolls nowhere and lists it not", async () => {
+  test("a run whose allowed relays keep only the default WebSocket relay url enrolls there and lists it, naming the urls left out", async () => {
     const enroll = vi.fn(enrolled);
     const onRunNotice = vi.fn();
     const site = {
       ...SITE,
       websocketUrl: "wss://site-wsrelay.example.com/relay",
     };
+    const secret = generateSharedSecret();
     const plan = await relayPlanForRun(
-      generateSharedSecret(),
+      secret,
       { websocket: site.websocketUrl },
       ["site-wsrelay.example.com"],
       { readOwn: ownWithWebSocket, setting: () => site, enroll, onRunNotice },
     );
-    expect(enroll).not.toHaveBeenCalled();
-    expect(plan.websocketRelays).toEqual([]);
+    expect(enroll).toHaveBeenCalledTimes(1);
+    expect(plan.websocketRelays).toEqual([
+      {
+        url: site.websocketUrl,
+        exchangeId: await deriveRelayExchangeId(secret),
+      },
+    ]);
+    const leftOut = [...(OWN.turn ?? []), SITE.turnUrl, WEBSOCKET];
+    expect(plan.relaysLeftOut).toEqual(leftOut);
+    expect(onRunNotice).toHaveBeenCalledWith(
+      `Your allowed relays keep ${site.websocketUrl} and leave out ` +
+        `${leftOut.join(", ")} for this run.`,
+    );
     expect(onRunNotice).not.toHaveBeenCalledWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );

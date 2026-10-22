@@ -1,28 +1,32 @@
-import { createServer } from "node:http";
+import { createServer } from "node:https";
 import { once } from "node:events";
 
 import { RELAY_PATH } from "@alcove/websocket-relay/protocol";
 import { attachWebSocketRelay } from "@alcove/websocket-relay";
 
+import { relayTlsCert } from "./relayTls";
+
 import type { AddressInfo } from "node:net";
 import type { TestProject } from "vitest/node";
 
 // Vitest globalSetup for the `browser` project: the repository's WebSocket
-// relay (packages/websocket-relay), attached to a loopback HTTP server in this
+// relay (packages/websocket-relay), attached to a loopback HTTPS server in this
 // process, for the relay fallback suite (test/browser/relayFallback.test.ts).
-// A page dials it over `ws` through the relay client's socket factory. The
-// same server answers two test routes, open to any origin since the page's
-// is not this one:
+// A page dials it over `wss` under the certificate ./relayTls.ts mints, which
+// the project's Chromium launch trusts. The same server answers two test
+// routes, open to any origin since the page's is not this one:
 // - `GET /enroll?exchange_id=&key=` enrolls a relay key under an exchange id;
 // - `GET /forwarded?key=` lists each binary message the relay forwarded on
 //   that key's pairing, as read at the relay: its sender and its base64 bytes.
+// Where no certificate can be minted it provides nothing, and the suite skips
+// (the run's prerequisite gate names the missing certificate).
 
 declare module "vitest" {
   interface ProvidedContext {
     websocketRelay?: {
-      /** The relay's `ws://` url, its path included. */
+      /** The relay's `wss://` url, its path included. */
       url: string;
-      /** The `http://` origin of the test routes. */
+      /** The `https://` origin of the test routes. */
       testOrigin: string;
     };
   }
@@ -37,10 +41,12 @@ export interface ForwardedMessage {
 export default async function setup({
   provide,
 }: TestProject): Promise<() => Promise<void>> {
+  const credentials = relayTlsCert();
+  if (credentials === null) return () => Promise.resolve();
   const enrolled = new Map<string, string>();
   const forwarded = new Map<string, Array<ForwardedMessage>>();
-  const server = createServer((request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  const server = createServer(credentials, (request, response) => {
+    const url = new URL(request.url ?? "/", "https://127.0.0.1");
     response.setHeader("Access-Control-Allow-Origin", "*");
     const exchangeId = url.searchParams.get("exchange_id");
     const key = url.searchParams.get("key");
@@ -74,8 +80,8 @@ export default async function setup({
   const { port } = server.address() as AddressInfo;
   console.log(`[websocket-relay] on port ${port}`);
   provide("websocketRelay", {
-    url: `ws://127.0.0.1:${port}${RELAY_PATH}`,
-    testOrigin: `http://127.0.0.1:${port}`,
+    url: `wss://127.0.0.1:${port}${RELAY_PATH}`,
+    testOrigin: `https://127.0.0.1:${port}`,
   });
   return async () => {
     relay.close();

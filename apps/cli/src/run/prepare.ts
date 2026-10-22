@@ -138,7 +138,7 @@ export function webRtcDialFrom(
   if (role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
   const location = brokerLocationFromConnection(connection.server);
   const iceServers = iceServersFromConnection(connection, runRelayCredential);
-  const { turnLeftOut } = selectRunRelay(connection);
+  const { turnLeftOut, websocketLeftOut } = selectRunRelay(connection);
   // peer_timeout_ms bounds the partner's arrival (the rendezvous) and
   // inactivity_timeout_ms a present partner's silence on the open channel.
   // Neither reaches the channel open between them: once both descriptions are
@@ -158,6 +158,9 @@ export function webRtcDialFrom(
       }),
       ...(turnLeftOut !== undefined && {
         relaysLeftOut: turnLeftOut.map((server) => server.url),
+      }),
+      ...(websocketLeftOut !== undefined && {
+        webSocketRelaysLeftOut: websocketLeftOut.map((relay) => relay.url),
       }),
       ...(peerTimeoutMs !== undefined && {
         rendezvousTimeoutMs: peerTimeoutMs,

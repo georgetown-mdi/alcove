@@ -327,9 +327,7 @@ export function runManagedExchangeInBrowser(
         const runConnection = await openRunConnectionWithRelayFallback({
           role: current.side,
           sharedSecret: current.sharedSecret,
-          // The WebSocket relay list is empty: docs/spec/PROTOCOL.md, No run
-          // dials one.
-          relays: [],
+          relays: relayPlan.websocketRelays,
           signal,
           onCloseOutcome: emitCloseWarning,
           onRunNotice: emitRunNotice,

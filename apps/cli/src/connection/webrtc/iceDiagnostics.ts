@@ -55,6 +55,8 @@ const REMOTE_CANDIDATES_LABEL = "remote candidates received: ";
 const CANDIDATE_PAIRS_LABEL = "candidate pairs: ";
 const RELAYS_LEFT_OUT_LABEL = `TURN urls ${LEFT_OUT_BY_ALLOWED_RELAYS}: `;
 
+const WEBSOCKET_RELAYS_LEFT_OUT_LABEL = `WebSocket relay urls ${LEFT_OUT_BY_ALLOWED_RELAYS}: `;
+
 /**
  * The stats report shape these diagnostics read: the map `getStats()` resolves
  * to. Declared structurally rather than as werift's `RTCStatsReport` so a test
@@ -218,6 +220,7 @@ export function describeSelectedCandidatePair(
 export function iceFailureDetails(
   report: IceCandidateReport,
   relaysLeftOut: ReadonlyArray<string> = [],
+  webSocketRelaysLeftOut: ReadonlyArray<string> = [],
 ): [string, ...string[]] {
   const relay = report.localRelayGathered
     ? "relay candidate gathered"
@@ -236,24 +239,33 @@ export function iceFailureDetails(
     ),
     fittedCauseLink(REMOTE_CANDIDATES_LABEL, describeTally(report.remote)),
     fittedCauseLink(CANDIDATE_PAIRS_LABEL, pairs),
-    ...relaysLeftOutDetails(relaysLeftOut),
+    ...relaysLeftOutDetails(relaysLeftOut, webSocketRelaysLeftOut),
   ];
 }
 
 /**
- * The cause links naming the TURN urls `allowed_relays` left out of a failed
- * run, then the remedy; none when it left none out. A failure whose stats
- * could not be read reports these alone.
+ * The cause links naming the TURN urls and then the WebSocket relay urls
+ * `allowed_relays` left out of a failed run, then the remedy; none when it
+ * left none out. A failure whose stats could not be read reports these alone.
  */
 export function relaysLeftOutDetails(
   relaysLeftOut: ReadonlyArray<string>,
+  webSocketRelaysLeftOut: ReadonlyArray<string> = [],
 ): string[] {
-  return relaysLeftOut.length === 0
-    ? []
-    : [
-        fittedCauseLink(RELAYS_LEFT_OUT_LABEL, relaysLeftOut.join(", ")),
-        ALLOWED_RELAYS_REMEDY,
-      ];
+  const links = [
+    ...(relaysLeftOut.length === 0
+      ? []
+      : [fittedCauseLink(RELAYS_LEFT_OUT_LABEL, relaysLeftOut.join(", "))]),
+    ...(webSocketRelaysLeftOut.length === 0
+      ? []
+      : [
+          fittedCauseLink(
+            WEBSOCKET_RELAYS_LEFT_OUT_LABEL,
+            webSocketRelaysLeftOut.join(", "),
+          ),
+        ]),
+  ];
+  return links.length === 0 ? [] : [...links, ALLOWED_RELAYS_REMEDY];
 }
 
 /**

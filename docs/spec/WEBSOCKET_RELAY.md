@@ -94,6 +94,8 @@ The quotas key on the exchange's relay key, not on a client's address: behind th
 | Byte rate | 2,000,000 bytes a second from each party of a pairing (`RELAY_PAIRING_BYTES_PER_SECOND`), after a burst of 2,000,000 bytes (`RELAY_PAIRING_BURST_BYTES`) | A party that sends faster is not read again until the rate has paid back the excess, as backpressure holds a source, so it is paced and not disconnected. coturn's `max-bps` |
 | Idle bound | 65 minutes (`RELAY_IDLE_TIMEOUT_MS`) | A pairing no message has crossed either way for that long, a party still waiting for its partner included, is closed with 4009 on each socket. A ping or a pong is not a message here. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The one-hour parked-receive budget plus the five-minute close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), so a party's own budget expires first |
 
+**A stated limit: every rendezvous holds a pairing.** A party parks its socket on each relay its run lists as its rendezvous starts ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)), so every rendezvous that names the relay counts toward the concurrent pairings from its first verified hello until its sockets close, a rendezvous that WebRTC carries included. One past the cap is refused (4008) and has no fallback through this relay, while its WebRTC path still runs. The cap has not been measured against that use.
+
 ## Keepalive
 
 - **A party's ping.** The relay answers it with a pong and forwards nothing.

@@ -1246,8 +1246,8 @@ export interface RelayLocator {
    * port, where a run enrolls the exchange's relay key without a token before
    * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Held as
    * its origin; present only beside `turn` or `websocket`. It enrolls the key
-   * of the locator's TURN relay; which registrar a WebSocket relay's key is
-   * enrolled at is decided when a run first dials one, and no run does yet.
+   * of the locator's TURN relay, and of its WebSocket relay where the locator
+   * names no `websocketExchangeId`.
    */
   registrar?: string;
 }
@@ -1652,9 +1652,11 @@ export interface WebRTCConnectionConfig {
    * {@link stun}, with the TURN credential minted from the shared secret,
    * and enrolls at its `registrar`, when it names one, before it dials if the
    * relay it allocates on is one this locator names and takes the minted
-   * credential (`runEnrollsAtInvitationRegistrar` in relayCredential.ts).
-   * Its `websocket` url is listed after {@link websocketRelay}, proven under
-   * its `websocketExchangeId` where it names one.
+   * credential, or if it dials this locator's `websocket` url under the id
+   * derived from the secret (`runEnrollsAtInvitationRegistrar` in
+   * relayCredential.ts). Its `websocket` url is listed after
+   * {@link websocketRelay}, proven under its `websocketExchangeId` where it
+   * names one.
    */
   invitationRelay?: RelayLocator;
   /**

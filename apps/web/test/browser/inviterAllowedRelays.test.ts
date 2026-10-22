@@ -25,7 +25,7 @@ import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { createAppMount } from "./renderApp";
 
-import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
+import { lifecycleCall, lifecycleCalls, parkedRelays } from "./moduleMocks";
 
 // The hosted inviter sets its exchange's own Allowed relays in the browser
 // transport card of the review step. Creating the invitation commits them:
@@ -47,9 +47,9 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
 
 vi.mock("@psi/transport/websocketRelayConnection", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  parkWebSocketRelayConnection: vi.fn(() => {
-    throw new Error("a run parked a WebSocket relay");
-  }),
+  parkWebSocketRelayConnection: vi.fn(
+    (await import("./moduleMocks")).unpairedRelay,
+  ),
 }));
 
 const KEPT_URL = "turns:relay.example.org:443?transport=tcp";
@@ -204,7 +204,8 @@ describe("InviterScreen: the review's Allowed relays", () => {
     expect(options.relaysLeftOut).toEqual([]);
   });
 
-  test("a run whose relays include a WebSocket relay dials none (PROTOCOL.md, No run dials one)", async () => {
+  test("a run parks the WebSocket relay its own setting names, as inviter, and closes it when the run ends", async () => {
+    parkedRelays.length = 0;
     writeOwnRelaySetting({
       turn: [KEPT_URL],
       stun: [],
@@ -214,7 +215,16 @@ describe("InviterScreen: the review's Allowed relays", () => {
     await create();
 
     await runListen();
-    expect(vi.mocked(parkWebSocketRelayConnection)).not.toHaveBeenCalled();
+    expect(vi.mocked(parkWebSocketRelayConnection)).toHaveBeenCalledTimes(1);
+    expect(parkedRelays).toEqual([
+      {
+        options: expect.objectContaining({
+          url: "wss://wsrelay.example.org/relay",
+          role: "inviter",
+        }) as unknown,
+        closed: true,
+      },
+    ]);
   });
 
   test("Back from the created invitation shows the field fixed on the list it took", async () => {

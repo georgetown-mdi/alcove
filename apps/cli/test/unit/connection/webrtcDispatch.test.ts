@@ -41,6 +41,8 @@ const mockState = vi.hoisted(() => ({
   logLines: [] as Array<string>,
   /** Every `log.warn` line, joined the same way. */
   warnLines: [] as Array<string>,
+  /** Every WebSocket relay a run parked, none of which ever pairs. */
+  parkedRelays: [] as Array<{ dial: unknown; closed: boolean }>,
 }));
 
 vi.mock("@openmined/psi.js", () => ({
@@ -138,8 +140,20 @@ vi.mock(
     ...(await importActual<
       typeof import("../../../src/connection/webrtc/websocketRelayConnection")
     >()),
-    parkWebSocketRelay: vi.fn(() => {
-      throw new Error("a run parked a WebSocket relay");
+    parkWebSocketRelay: vi.fn((dial: { url: string }) => {
+      const record = { dial, closed: false };
+      mockState.parkedRelays.push(record);
+      return {
+        url: dial.url,
+        paired: false,
+        partnerStarted: false,
+        failure: undefined,
+        onChange: () => () => {},
+        start: () => new Promise<never>(() => {}),
+        close: () => {
+          record.closed = true;
+        },
+      };
     }),
   }),
 );
@@ -276,6 +290,7 @@ beforeEach(() => {
   mockState.reportEncryptionOff = false;
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
+  mockState.parkedRelays.length = 0;
 });
 
 afterEach(() => {
@@ -330,7 +345,7 @@ test("both parties complete an authenticated exchange over the data channel", as
   expect(vi.mocked(assertFirstRoundWithinSetMaximum)).toHaveBeenCalledTimes(2);
 });
 
-test("a run whose connection lists a WebSocket relay dials no relay (PROTOCOL.md, No run dials one)", async () => {
+test("a run whose connection lists a WebSocket relay parks it under the derived id and closes it once WebRTC carries the exchange", async () => {
   await Promise.all(
     (["inviter", "acceptor"] as const).map((role) => {
       const keyFilePath = path.join(tmpDir, `${role}.key`);
@@ -349,6 +364,34 @@ test("a run whose connection lists a WebSocket relay dials no relay (PROTOCOL.md
     }),
   );
   expect(mockState.exchangeConnections).toHaveLength(2);
+  const exchangeId = await deriveRelayExchangeId(SECRET);
+  const relayKey = await deriveRelayKey(SECRET);
+  expect(
+    mockState.parkedRelays
+      .map(({ dial }) => dial)
+      .sort((a, b) =>
+        String((a as { role: string }).role).localeCompare(
+          String((b as { role: string }).role),
+        ),
+      ),
+  ).toEqual(
+    (["acceptor", "inviter"] as const).map((role) => ({
+      url: "wss://relay.example.org/relay",
+      exchangeId,
+      relayKey,
+      role,
+    })),
+  );
+  expect(mockState.parkedRelays.every(({ closed }) => closed)).toBe(true);
+  expect(
+    mockState.logLines.filter(
+      (line) => line === "the exchange runs over the WebRTC connection",
+    ),
+  ).toHaveLength(2);
+});
+
+test("a run whose connection lists no WebSocket relay parks none", async () => {
+  await Promise.all([runParty("inviter"), runParty("acceptor")]);
   expect(vi.mocked(parkWebSocketRelay)).not.toHaveBeenCalled();
 });
 
@@ -783,6 +826,18 @@ test("allowed_relays decides the TURN urls the dial lists, and the ones a failur
     connection.invitationRelay.turn,
   );
   expect(unset).not.toHaveProperty("relaysLeftOut");
+  expect(unset).not.toHaveProperty("webSocketRelaysLeftOut");
+  expect(
+    webRtcDialFrom(
+      {
+        ...connection,
+        websocketRelay: "wss://left-out.example.org/relay",
+        allowedRelays: ["kept.example.org:3478"],
+      },
+      SECRET,
+      credential,
+    ).options.webSocketRelaysLeftOut,
+  ).toEqual(["wss://left-out.example.org/relay"]);
 });
 
 test("a run whose every TURN url allowed_relays leaves out continues, naming them", () => {
@@ -1093,15 +1148,21 @@ const INVITATION_TURN_URL = "turns:default-relay.example.net:443?transport=tcp";
 /** Run the pair, the acceptor's connection naming an invitation relay with a
  * registrar and, with `ownTurn`, that `turn` entry of its own, against a
  * registrar that answers with `answers`. With `invitationWebSocket` the
- * invitation relay names that WebSocket relay url too. */
+ * invitation relay names that WebSocket relay url too, with
+ * `invitationWebSocketExchangeId` beside it, and `allowedRelays` sets the
+ * acceptor's setting. */
 async function runPairEnrollingAt(
   answers: Response[],
   {
     ownTurn,
     invitationWebSocket,
+    invitationWebSocketExchangeId,
+    allowedRelays,
   }: {
     ownTurn?: { url: string; username?: string; credential?: string };
     invitationWebSocket?: string;
+    invitationWebSocketExchangeId?: string;
+    allowedRelays?: string[];
   } = {},
 ) {
   const registrar = fakeRegistrar(answers);
@@ -1121,10 +1182,14 @@ async function runPairEnrollingAt(
         connection: {
           ...webrtcConnection("acceptor"),
           ...(ownTurn !== undefined && { turn: [ownTurn] }),
+          ...(allowedRelays !== undefined && { allowedRelays }),
           invitationRelay: {
             turn: [INVITATION_TURN_URL],
             ...(invitationWebSocket !== undefined && {
               websocket: invitationWebSocket,
+            }),
+            ...(invitationWebSocketExchangeId !== undefined && {
+              websocketExchangeId: invitationWebSocketExchangeId,
             }),
             registrar: INVITATION_REGISTRAR,
           },
@@ -1256,16 +1321,37 @@ test("a run with a turn entry of its own contacts no invitation registrar and sa
   );
 });
 
-test("a run listing the invitation's WebSocket relay url, allocating on its own turn entry, contacts no invitation registrar", async () => {
+test("a run dialing the invitation's WebSocket relay, allocating on its own turn entry, enrolls at the invitation registrar once", async () => {
+  const { requests, acceptorDialsAtEachRequest } = await runPairEnrollingAt(
+    [registrationAnswer(null, "2026-01-01T01:10:00Z")],
+    {
+      ownTurn: { url: OWN_TURN_URL },
+      invitationWebSocket: "wss://default-relay.example.net/relay",
+    },
+  );
+  expect(requests).toHaveLength(1);
+  expect(acceptorDialsAtEachRequest).toEqual([0]);
+  expect(
+    mockState.logLines.some((line) =>
+      line.startsWith(
+        "the relay registrar that your partner's invitation names was not",
+      ),
+    ),
+  ).toBe(false);
+});
+
+test("a run proving to the invitation's WebSocket relay under the inviter's own id, on no TURN relay, contacts no invitation registrar and says why", async () => {
   const { requests } = await runPairEnrollingAt([], {
-    ownTurn: { url: OWN_TURN_URL },
-    invitationWebSocket: "wss://default-relay.example.net/relay",
+    invitationWebSocket: "wss://ws-relay.example.net/relay",
+    invitationWebSocketExchangeId: "inviter-id",
+    allowedRelays: ["ws-relay.example.net"],
   });
   expect(requests).toHaveLength(0);
   expect(mockState.logLines).toContain(
     "the relay registrar that your partner's invitation names was not " +
-      "contacted, because this run allocates its relay on a relay the " +
-      `invitation did not name, at ${OWN_TURN_URL}`,
+      "contacted, because this run allocates on no TURN relay, and proves " +
+      "to the invitation's WebSocket relay under the exchange id your " +
+      "partner enrolled there",
   );
 });
 

@@ -804,11 +804,11 @@ connection:
     - backup-relay.example.org:443
 ```
 
-- **What it decides.** A run lists only the TURN urls an entry names, so it allocates on the first url it keeps, and enrolls at an invitation's registrar only when that is the invitation's relay ([which relay a run uses](spec/PROTOCOL.md#the-invitations-relay-locator)), and an invitation it creates names only the `turn` entries it keeps. A host entry names the `turn:` and `turns:` forms of that host, on any port and transport; no name is resolved.
+- **What it decides.** A run lists only the TURN and WebSocket relay urls an entry names, so it allocates on the first TURN url it keeps, dials only the WebSocket relays it keeps, and enrolls at an invitation's registrar only for a relay of the invitation's it keeps ([which relay a run uses](spec/PROTOCOL.md#the-invitations-relay-locator)), and an invitation it creates names only the `turn` entries and `websocket_relay` it keeps. A host entry names the `turn:` and `turns:` forms of that host, on any port and transport; no name is resolved.
 - **What it does not decide.** Your partner's side can still connect through a relay the setting leaves out, and that relay then learns your network address. Your own [`relay_registrar`](#registering-the-relay-key-at-your-relay), where set, still receives each rotated relay key.
 - **When it keeps no relay.** A run whose every TURN url the setting leaves out continues without a relay and warns, naming those urls; where the connection lists no `stun` url the warning also names the default STUN server, which learns the host's public address. To use a relay, add its host to `allowed_relays`, or remove the setting. The setting does not change `stun`.
-- **What a run says.** Each run states the TURN urls it keeps and the ones it leaves out, and [`alcove doctor relay`](#checking-the-relay-of-a-webrtc-exchange) contacts no relay it leaves out and names each as left out.
-- **When the run does not connect.** The failure names the TURN urls the setting left out after what ICE found, with the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
+- **What a run says.** Each run states the TURN and WebSocket relay urls it keeps and the ones it leaves out, and [`alcove doctor relay`](#checking-the-relay-of-a-webrtc-exchange) contacts no relay it leaves out and names each as left out.
+- **When the run does not connect.** The failure names the TURN and WebSocket relay urls the setting left out after what ICE found, with the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
 
 #### Registering the relay key at your relay
 
@@ -847,9 +847,9 @@ connection:
   websocket_relay: wss://wsrelay.example.org/relay
 ```
 
-- **No run dials it yet.** A run takes the relay only when no WebRTC path opens, and that fallback is not turned on yet, so a run with the setting connects over WebRTC as one without it.
+- **A run falls back to it.** A run dials the relay as it starts waiting for your partner, and moves the exchange onto it only when no WebRTC path opens or your partner's side has already moved there; it logs which path carried the exchange ([WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)). An invitation's WebSocket relay is dialed the same way.
 - **Your invitations name it.** An invitation you create names the relay where [`allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays) keeps it, with the `exchange_id` of `relay_registrar` beside it where that is set, and the review before you accept an invitation shows the WebSocket relay that invitation names.
-- **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. Once the fallback dials the relay, a run with no shared secret will refuse it before dialing (exit 64).
+- **The relay needs the exchange's key.** A run proves the exchange's relay key to it with a proof made from the shared secret, so enroll the exchange at the registrar of the relay's host as [above](#registering-the-relay-key-at-your-relay); which exchange id the run names is in the reference. A run with no shared secret is refused before it dials (exit 64).
 
 #### When a WebRTC exchange does not connect
 
@@ -858,7 +858,7 @@ A rendezvous that ends without a data channel names what ICE found, so the failu
 - **No relay candidate was gathered, and no `turn` entry or invitation relay is configured.** A relay that is not configured cannot be gathered, so this is what a direct-only connection reports when no direct path was found. Arrange a direct path between the two parties -- the same network, or a VPN -- or [configure a relay](#turn).
 - **No relay candidate was gathered from a configured `turn` entry or invitation relay.** Nothing on this host could reach the one relay the run tries, its first `turn` entry or else the invitation's first TURN url -- the network blocked it, the credentials were wrong, or the relay presented a certificate this host does not trust. Fix the relay, or arrange a direct path; waiting longer changes nothing.
 - **A relay candidate was gathered and no candidate pair succeeded.** Both sides had addresses to try and none of the pairs worked. This is a path problem between the two parties, so the partner's side is where to look next.
-- **Any of these, with relays left out by [`allowed_relays`](#using-only-the-relays-you-choose).** The failure also names the TURN urls the setting left out and the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
+- **Any of these, with relays left out by [`allowed_relays`](#using-only-the-relays-you-choose).** The failure also names the TURN and WebSocket relay urls the setting left out and the remedy: add a host both sides can reach to `allowed_relays`, or remove the setting.
 
 The failure states whether a relay candidate was gathered, how many remote candidates the partner sent, and how many pairs were tried. A report of no relay candidate is the first case or the second according to your own `turn` configuration and the `invitation_relay` beside it, which the failure does not read. A completed exchange reports the candidate pair it settled on at `--log-level debug`, which is what tells you whether a run that worked went direct or through the relay.
 

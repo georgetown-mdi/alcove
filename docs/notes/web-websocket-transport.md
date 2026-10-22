@@ -4,7 +4,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; of it, the relay proof derivation, the relay service, the browser's relay transport, and the relay locator and settings are built ([Implementation items implied, not filed](#implementation-items-implied-not-filed)).
+_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback; its disclosure documents and its stress-tier run remain ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only.
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
@@ -466,14 +466,17 @@ Relay path, in order:
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
   Built: `packages/websocket-relay`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
 - **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front should a per-address quota be added, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
-  Built, not yet installed on the project's host: [infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay); the client's address is not passed on.
+  Built, and installed on the project's host on 2026-10-19: [infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay); the client's address is not passed on.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
-  Built: `apps/web/src/psi/transport/websocketRelayConnection.ts`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#the-web-applications-client); no exchange runs on it until the relay locator and settings select it.
+  Built: `apps/web/src/psi/transport/websocketRelayConnection.ts`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#the-web-applications-client).
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
+  Built: `apps/cli/src/connection/webrtc/websocketRelayConnection.ts`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#the-command-line-client).
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
+  Built differently: the web wraps every WebRTC exchange too, and `authenticateExchange` (`apps/web/src/psi/authenticateExchange.ts`) requests and applies the wrap on whichever connection a run opened, a relay connection included ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
 - **Relay locator and settings** -- the `wss` url on the invitation locator, the Relay settings page, and the CLI's connection block, selected per kind.
-  Built: the locator's `websocket` url ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)), the Relay server page's WebSocket relay field on the hosted build (`apps/web/src/exchange/RelaySettingsScreen.tsx`), a build's default WebSocket relay (`VITE_DEFAULT_RELAY_WEBSOCKET_URL`), and the per-kind listing under the allowed relays (`selectRunRelay` in `packages/core/src/relayCredential.ts`, `webSocketRelaysForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`); no run dials a listed relay until the fallback.
+  Built: the locator's `websocket` url ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)), the Relay server page's WebSocket relay field on the hosted build (`apps/web/src/exchange/RelaySettingsScreen.tsx`), a build's default WebSocket relay (`VITE_DEFAULT_RELAY_WEBSOCKET_URL`), and the per-kind listing under the allowed relays (`selectRunRelay` in `packages/core/src/relayCredential.ts`, `webSocketRelaysForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`).
 - **Automatic fallback** -- the start frame, the parked relay socket during the WebRTC rendezvous, and the hand-over.
+  Built: the race both applications run (`packages/core/src/connection/relayFallback.ts`) over each client's parked socket and each run's relay list, specified in [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay).
 - **Disclosure documents** -- PRIVACY and SHARED_RESPONSIBILITY rows, the SECURITY_DESIGN channel-security paragraph, the wrap table row and its "no such transport exists" sentence in CHANNEL_SECURITY, COMMUNICATION's supporting services, DEPLOYMENT, CLI.md, the planned `connect-src` allowlist ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)).
 - **Tests** -- relay unit tests with the shared refusal fixtures, a relayed exchange in the browser suite, a CLI-to-browser relayed run in the interop suite ([TESTING.md](../TESTING.md#cross-runtime-interop-suite)), and a stress-tier run at the largest size.
 

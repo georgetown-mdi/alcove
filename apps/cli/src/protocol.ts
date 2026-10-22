@@ -64,6 +64,7 @@ import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { openWebRtcWithRelayFallback } from "./connection/webrtc/relayFallback";
+import { webSocketRelayDialsFor } from "./connection/webrtc/websocketRelayDial";
 import { FinalFrameUnconfirmedError } from "./connection/webrtc/webrtcMessageConnection";
 import { persistPartnerFingerprint } from "./config";
 import {
@@ -725,6 +726,13 @@ async function openRunTransport(params: {
               "not name, at"),
         redactAndSanitizeForDisplay(allocatingTurn.url),
       );
+    else if (invitationRegistrar !== undefined && !enrolls)
+      log.info(
+        "the relay registrar that your partner's invitation names was not " +
+          "contacted, because this run allocates on no TURN relay, and " +
+          "proves to the invitation's WebSocket relay under the exchange id " +
+          "your partner enrolled there",
+      );
     if (invitationRegistrar !== undefined && enrolls) {
       const enrollment = await enrollAtInvitationRelay(
         invitationRegistrar,
@@ -762,15 +770,18 @@ async function openRunTransport(params: {
     // socket and peer connection on an abort, so Ctrl-C during a
     // rendezvous does not wait out that budget. The post-dial guard below
     // still stands, for the window between the dial settling and the
-    // transport being assigned. The WebSocket relay list is empty:
-    // docs/spec/PROTOCOL.md, No run dials one.
+    // transport being assigned.
     const dialed = await openWebRtcWithRelayFallback(
       {
         ...build.webRtcDial.options,
         signal: interrupted.signal,
         onRegistered: onSignalingRegistered,
       },
-      [],
+      await webSocketRelayDialsFor(
+        connection,
+        build.webRtcDial.options.sharedSecret,
+        build.webRtcDial.options.role,
+      ),
     );
     build.transport = dialed;
     run.opened = true;

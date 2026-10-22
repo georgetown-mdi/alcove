@@ -359,25 +359,31 @@ export function allowedRelaysLeaveOutInvitationRelay(
 
 /**
  * Whether a webrtc run enrolls at the registrar its connection's
- * `invitationRelay` names: only when the TURN server it allocates on, the
- * first {@link selectRunRelay} lists, has a url the invitation names and is
- * presented the minted credential, the one the registrar enrolls the key of.
- * Decided by the url, not the entry's `source`, so an own url-only entry
- * naming the invitation's url enrolls too. The invitation's WebSocket relay
- * url does not decide it (docs/spec/PROTOCOL.md, "No run dials one").
+ * `invitationRelay` names: when the TURN server it allocates on, the first
+ * {@link selectRunRelay} lists, has a url the invitation names and is
+ * presented the minted credential, or when it dials the invitation's
+ * WebSocket relay under the exchange id derived from the secret, the one an
+ * enrollment without a token uses. Each is decided by the url, not the
+ * entry's `source`, so an own entry naming the invitation's url enrolls too
+ * (docs/spec/PROTOCOL.md, "Enrolling at a default relay").
  */
 export function runEnrollsAtInvitationRegistrar(
   connection: RunRelayConnection,
 ): boolean {
   const invitation = connection.invitationRelay;
   if (invitation?.registrar === undefined) return false;
-  const allocating = selectRunRelay(connection).turn?.[0];
-  if (allocating === undefined) return false;
-  return (
+  const { turn, websocket } = selectRunRelay(connection);
+  const allocating = turn?.[0];
+  const allocatesThere =
+    allocating !== undefined &&
     (invitation.turn ?? []).includes(allocating.url) &&
     allocating.username === undefined &&
-    allocating.credential === undefined
+    allocating.credential === undefined;
+  const dialsThere = (websocket ?? []).some(
+    (relay) =>
+      relay.url === invitation.websocket && relay.exchangeId === undefined,
   );
+  return allocatesThere || dialsThere;
 }
 
 /**

@@ -392,9 +392,14 @@ included, fails the run at once with its last lines of output.
 
 The browser project's second setup (`apps/web/test/devServer/websocketRelay.ts`)
 runs the WebSocket relay (`packages/websocket-relay`) in the test runner's
-process on a loopback port, for the relay fallback suite. That suite dials it over `ws`
-through the relay client's socket factory, enrolls each exchange's key through
-a test route beside it, and reads back what the relay forwarded through another.
+process on a loopback port, for the relay fallback suite. It serves `wss` under
+the loopback TLS certificate (`apps/web/test/devServer/relayTls.ts`), and the
+project launches Chromium with `--ignore-certificate-errors-spki-list` naming
+that certificate's key, so the page accepts it and no other; without the switch
+Chromium refuses the socket (`ERR_CERT_AUTHORITY_INVALID`). The suite lists the
+relay from this browser's own relay setting, as a run does, dials it through the
+production client, enrolls each exchange's key through a test route beside it,
+and reads back what the relay forwarded through another.
 
 ```sh
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server

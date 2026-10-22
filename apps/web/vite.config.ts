@@ -16,8 +16,9 @@ import { ConfigManager } from "./src/utils/serverConfig.ts";
 import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 import { defaultRelayConfigProblems } from "./src/utils/defaultRelayConfig.ts";
 
-// A type-only import, erased before either config loader resolves anything.
+// Type-only imports, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
+import type * as relayTls from "./test/devServer/relayTls.ts";
 import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 import type { Vitest } from "vitest/node";
 
@@ -42,6 +43,18 @@ const liveWebrtcLegCommands = underVitest
       )) as typeof liveWebrtcLeg
     ).liveWebrtcLegCommands
   : {};
+
+// The switch that has the test Chromium accept the certificate its WebSocket
+// relays serve `wss` under, loaded the way the leg's commands are above.
+const relayTlsLaunchArgs = underVitest
+  ? (
+      (await import(
+        pathToFileURL(
+          path.resolve(import.meta.dirname, "test/devServer/relayTls.ts"),
+        ).href
+      )) as typeof relayTls
+    ).relayTlsLaunchArgs()
+  : [];
 
 logLibrary.setDefaultLevel(config.LOG_LEVEL);
 
@@ -455,10 +468,11 @@ export default defineConfig((configEnv) => {
               // never opens and the exchange hangs. Disabling the mDNS
               // obfuscation exposes the real loopback host candidate so the peers
               // connect directly. Test browser only -- no effect on the dev
-              // server or `npm run build`.
+              // server or `npm run build`. The relay fallback suite dials its
+              // relay over `wss`, under the certificate the last switch trusts.
               provider: playwright({
                 launchOptions: {
-                  args: [browserDisableFeaturesSwitch],
+                  args: [browserDisableFeaturesSwitch, ...relayTlsLaunchArgs],
                 },
               }),
               headless: true,

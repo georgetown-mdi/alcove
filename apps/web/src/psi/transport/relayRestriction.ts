@@ -183,7 +183,7 @@ function urlList(urls: ReadonlyArray<string>): string {
 }
 
 /**
- * The run notice a run shows when the setting is set: the TURN urls it keeps
+ * The run notice a run shows when the setting is set: the relay urls it keeps
  * and the ones it leaves out, escaped, since an invitation's are partner text.
  */
 export function allowedRelaysRunNotice(
@@ -191,7 +191,7 @@ export function allowedRelaysRunNotice(
   leftOut: ReadonlyArray<string>,
 ): string {
   const keeps =
-    kept.length === 0 ? "keep no TURN url" : `keep ${urlList(kept)}`;
+    kept.length === 0 ? "keep no relay url" : `keep ${urlList(kept)}`;
   const leaves =
     leftOut.length === 0 ? "leave out none" : `leave out ${urlList(leftOut)}`;
   return `Your allowed relays ${keeps} and ${leaves} for this run.`;
