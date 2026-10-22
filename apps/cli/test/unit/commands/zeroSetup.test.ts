@@ -725,6 +725,34 @@ test("handler: a file with house number and ZIP columns runs the street number r
   }
 });
 
+test("handler: street name, unit and city columns leave the terms as a file without them has", async () => {
+  // No built-in key reads these types, so a partner whose file lacks them
+  // presents the same terms.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroaddress-"));
+  const exitSpy = captureProcessExit();
+  try {
+    const withAddress = await termsFromZeroSetupRun(
+      dir,
+      "Tester",
+      "first_name,last_name,date_of_birth,street_name,apt,city,zip\n" +
+        "Bob,Jones,1990-01-02,Main St,4B,Baltimore,21201\n",
+    );
+    const withoutAddress = await termsFromZeroSetupRun(
+      dir,
+      "Tester",
+      "first_name,last_name,date_of_birth,zip\n" +
+        "Bob,Jones,1990-01-02,21201\n",
+    );
+    expect(withAddress.linkageKeys).toStrictEqual(withoutAddress.linkageKeys);
+    expect(withAddress.linkageFields).toStrictEqual(
+      withoutAddress.linkageFields,
+    );
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("handler: a supplied --identity rides into the terms, trimmed", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroidentity-"));
   const exitSpy = captureProcessExit();

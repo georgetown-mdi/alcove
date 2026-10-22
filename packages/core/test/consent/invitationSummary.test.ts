@@ -1177,6 +1177,56 @@ describe("the consent summary's fields read by a key condition", () => {
   });
 });
 
+describe("the consent summary's street name, unit and city fields", () => {
+  const baseTerms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+  // Each field's name is partner free text the summary never shows.
+  const summary = summarizeInvitation({
+    linkageTerms: {
+      ...baseTerms,
+      linkageFields: [
+        ...baseTerms.linkageFields,
+        { name: "road", type: "street_name" },
+        { name: "apt_line", type: "unit" },
+        { name: "town", type: "city" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+street name+unit+city",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "road" },
+            { field: "apt_line" },
+            { field: "town" },
+          ],
+        },
+      ],
+    },
+  });
+
+  test("names each field in plain words in the field list", () => {
+    const labels = summary.linkageFields.map((field) => field.label);
+    expect(labels).toContain("Street name");
+    expect(labels).toContain("Apartment or unit number");
+    expect(labels).toContain("City");
+  });
+
+  test("names each field in plain words in the key's one-line summary", () => {
+    expect(summary.linkageKeys[0].headerFields).toEqual([
+      "last name",
+      "first name",
+      "date of birth",
+      "street name",
+      "unit number",
+      "city",
+    ]);
+  });
+});
+
 describe("the consent summary's date-collapse marker", () => {
   const metadata = inferMetadata(LINKAGE_ONLY_COLUMNS, []);
   const baseTerms = getDefaultLinkageTerms("Inviter", metadata);

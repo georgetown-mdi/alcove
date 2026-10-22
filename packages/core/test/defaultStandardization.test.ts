@@ -57,6 +57,9 @@ const minimalTerms: LinkageTerms = {
     { name: "phone_number", type: "phone_number" },
     { name: "email_address", type: "email_address" },
     { name: "street_number", type: "street_number" },
+    { name: "street_name", type: "street_name" },
+    { name: "unit", type: "unit" },
+    { name: "city", type: "city" },
     { name: "zip_code", type: "zip_code" },
     { name: "state", type: "state" },
     { name: "county", type: "county" },
@@ -83,6 +86,9 @@ const fullMetadata: ColumnMetadata[] = [
     role: "linkage",
     isPayload: false,
   },
+  { name: "STREET", type: "street_name", role: "linkage", isPayload: false },
+  { name: "APT", type: "unit", role: "linkage", isPayload: false },
+  { name: "CITY", type: "city", role: "linkage", isPayload: false },
   { name: "ZIP", type: "zip_code", role: "linkage", isPayload: false },
   { name: "STATE", type: "state", role: "linkage", isPayload: false },
   { name: "COUNTY", type: "county", role: "linkage", isPayload: false },
@@ -112,7 +118,7 @@ function withPlaceholders(
 describe("getDefaultStandardization — structure", () => {
   test("returns one transformation per matching linkage field", () => {
     const result = getDefaultStandardization(fullMetadata, minimalTerms);
-    expect(result).toHaveLength(11);
+    expect(result).toHaveLength(14);
   });
 
   test("output names match linkage field names", () => {
@@ -126,6 +132,9 @@ describe("getDefaultStandardization — structure", () => {
     expect(outputs).toContain("phone_number");
     expect(outputs).toContain("email_address");
     expect(outputs).toContain("street_number");
+    expect(outputs).toContain("street_name");
+    expect(outputs).toContain("unit");
+    expect(outputs).toContain("city");
     expect(outputs).toContain("zip_code");
     expect(outputs).toContain("state");
     expect(outputs).toContain("county");
@@ -238,6 +247,9 @@ describe("getDefaultStandardization — structure", () => {
         role: "linkage",
         isPayload: false,
       },
+      { name: "Town", type: "city", role: "linkage", isPayload: false },
+      { name: "Suite", type: "unit", role: "linkage", isPayload: false },
+      { name: "Road", type: "street_name", role: "linkage", isPayload: false },
       { name: "notes", type: "other", role: "payload", isPayload: true },
       {
         name: "eMail",
@@ -355,8 +367,8 @@ describe('default chains: a blank input yields null, never ""', () => {
   const transformations = getDefaultStandardization(fullMetadata, minimalTerms);
 
   // Guard: every default linkage field is exercised, so this is not a vacuous pass.
-  test("covers all eleven default linkage fields", () => {
-    expect(transformations).toHaveLength(11);
+  test("covers all fourteen default linkage fields", () => {
+    expect(transformations).toHaveLength(14);
   });
 
   for (const t of transformations) {
@@ -1919,6 +1931,135 @@ describe("default street_number pipeline", () => {
   test("two parties with differently written addresses agree", () => {
     const inviter = ["123 Main St Apt 4", "0042 Elm", "7-9 Oak Ave"];
     const acceptor = ["123", "42", "7 Oak Avenue"];
+    expect(inviter.map(run)).toEqual(acceptor.map(run));
+  });
+});
+
+// --- Street name, unit and city pipelines ------------------------------------
+
+function runDefaultFor(type: "street_name" | "unit" | "city", input: string) {
+  const [t] = getDefaultStandardization(
+    [{ name: "COLUMN", type, role: "linkage", isPayload: false }],
+    { ...minimalTerms, linkageFields: [{ name: type, type }] },
+  );
+  return runPipeline(input, t.steps!);
+}
+
+describe.each(["street_name", "unit", "city"] as const)(
+  "default %s pipeline: what every address part shares",
+  (type) => {
+    const run = (input: string) => runDefaultFor(type, input);
+
+    test.each(["", "   ", "\t", "...", "#", "--", "-.-", "&/'"])(
+      "drops the blank or all-punctuation value %j",
+      (input) => {
+        expect(run(input)).toBeNull();
+      },
+    );
+
+    test("folds case and surrounding and repeated whitespace", () => {
+      expect(run("  oak \t  hill ")).toBe("OAK HILL");
+      expect(run("Oak Hill")).toBe(run("OAK  HILL"));
+      expect(run("oak\u00a0hill")).toBe("OAK HILL");
+    });
+
+    test("removes punctuation", () => {
+      expect(run("Oak. Hill,")).toBe("OAK HILL");
+      expect(run("O'Hara")).toBe("OHARA");
+    });
+
+    test("keeps digits", () => {
+      expect(run("42")).toBe("42");
+    });
+  },
+);
+
+describe("default street_name pipeline", () => {
+  const run = (input: string) => runDefaultFor("street_name", input);
+
+  test.each([
+    ["Main St", "MAIN ST"],
+    ["MAIN ST.", "MAIN ST"],
+    ["N. Main St.", "N MAIN ST"],
+    ["Martin Luther King Jr. Blvd", "MARTIN LUTHER KING JR BLVD"],
+    ["St. Mary's Rd", "ST MARYS RD"],
+    ["5th Ave", "5TH AVE"],
+    ["Calle Pe\u00f1a", "CALLE PENA"],
+  ])("cleans %j to %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test("turns a hyphen or typographic dash into a space", () => {
+    expect(run("Wilkes-Barre Blvd")).toBe("WILKES BARRE BLVD");
+    expect(run("Wilkes\u2013Barre Blvd")).toBe("WILKES BARRE BLVD");
+  });
+
+  test("abbreviates and spells out no word", () => {
+    expect(run("Main Street")).toBe("MAIN STREET");
+    expect(run("North Main St")).not.toBe(run("N Main St"));
+  });
+
+  test("two parties with differently written street names agree", () => {
+    const inviter = ["Main St.", "st. mary's rd", "Wilkes-Barre  Blvd"];
+    const acceptor = ["MAIN ST", "St Marys Rd", "Wilkes Barre Blvd"];
+    expect(inviter.map(run)).toEqual(acceptor.map(run));
+  });
+});
+
+describe("default unit pipeline", () => {
+  const run = (input: string) => runDefaultFor("unit", input);
+
+  test.each([
+    ["Apt 4B", "APT 4B"],
+    ["apt. 4-b", "APT 4B"],
+    ["#4B", "4B"],
+    ["# 4B", "4B"],
+    ["4-B", "4B"],
+    ["4\u2013B", "4B"],
+    ["  Unit  12 ", "UNIT 12"],
+    ["Ste 200", "STE 200"],
+    ["N/A", "NA"],
+  ])("cleans %j to %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test("keeps the designator as written", () => {
+    expect(run("Apt 4B")).not.toBe(run("4B"));
+    expect(run("Apt 4B")).not.toBe(run("Unit 4B"));
+  });
+
+  test("two parties with differently written units agree", () => {
+    const inviter = ["Apt. 4-B", "#12", "unit  3a"];
+    const acceptor = ["APT 4B", "12", "Unit 3A"];
+    expect(inviter.map(run)).toEqual(acceptor.map(run));
+  });
+});
+
+describe("default city pipeline", () => {
+  const run = (input: string) => runDefaultFor("city", input);
+
+  test.each([
+    ["Baltimore", "BALTIMORE"],
+    ["  baltimore ", "BALTIMORE"],
+    ["St. Louis", "ST LOUIS"],
+    ["Winston-Salem", "WINSTON SALEM"],
+    ["Coeur d'Alene", "COEUR DALENE"],
+    ["Espa\u00f1ola", "ESPANOLA"],
+  ])("cleans %j to %j", (input, expected) => {
+    expect(run(input)).toBe(expected);
+  });
+
+  test("keeps the word COUNTY, which only the county pipeline removes", () => {
+    expect(run("Ocean County")).toBe("OCEAN COUNTY");
+  });
+
+  test("abbreviates and spells out no word", () => {
+    expect(run("St. Louis")).not.toBe(run("Saint Louis"));
+  });
+
+  test("two parties with differently written cities agree", () => {
+    const inviter = ["Winston-Salem", "st. louis", "  BALTIMORE"];
+    const acceptor = ["Winston Salem", "St Louis", "Baltimore"];
     expect(inviter.map(run)).toEqual(acceptor.map(run));
   });
 });

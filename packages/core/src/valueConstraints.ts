@@ -295,6 +295,9 @@ export function checkValueConstraints(
     case "phone_number":
     case "email_address":
     case "street_number":
+    case "street_name":
+    case "unit":
+    case "city":
     case "zip_code":
     case "state":
     case "county":

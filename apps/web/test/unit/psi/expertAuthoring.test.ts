@@ -551,3 +551,103 @@ describe("a key over a street number cleans as its partner does", () => {
     }
   });
 });
+
+describe("a key over a street name, unit and city cleans as its partner does", () => {
+  // The inviter's columns are inferred by name; the acceptor's are typed by its
+  // operator. Both write the same address differently.
+  const ADDRESS_FIELDS = ["street_name", "unit", "city"] as const;
+  const INVITER_COLUMNS = ["last_name", "street_name", "apt", "city"];
+  const INVITER_ROWS: Array<CSVRow> = [
+    {
+      last_name: "Lovelace",
+      street_name: "St. Mary's Rd.",
+      apt: "#4-B",
+      city: "winston-salem",
+    },
+  ];
+  const ACCEPTOR_COLUMNS = ["last_name", "road", "address2", "town"];
+  const ACCEPTOR_ROWS: Array<CSVRow> = [
+    {
+      last_name: "Lovelace",
+      road: "ST MARYS RD",
+      address2: "4B",
+      town: " Winston  Salem ",
+    },
+  ];
+
+  function keyedDraft(): AdvancedInviteDraft {
+    const { draft } = seedAdvancedInvite(
+      "Inviter",
+      INVITER_COLUMNS,
+      INVITER_ROWS,
+    );
+    let keyed = addKey({ ...draft, keys: [] }, "last_name");
+    for (const field of ADDRESS_FIELDS) keyed = addElement(keyed, 0, field);
+    return keyed;
+  }
+
+  test("the draft holds no cleaning for them until a key uses the fields", () => {
+    const { draft } = seedAdvancedInvite(
+      "Inviter",
+      INVITER_COLUMNS,
+      INVITER_ROWS,
+    );
+    const cleaned = draft.standardization.map((t) => t.output);
+    for (const field of ADDRESS_FIELDS) expect(cleaned).not.toContain(field);
+  });
+
+  test("the inviter's cleaning is the pipeline the accepting party derives", () => {
+    const keyed = keyedDraft();
+    const terms = buildAdvancedTerms(keyed);
+    expect(safeParseLinkageTerms(terms).success).toBe(true);
+    const acceptorStandardization = getDefaultStandardization(
+      keyed.metadata,
+      deriveAcceptedLinkageTerms(terms, "Acceptor"),
+    );
+    for (const field of ADDRESS_FIELDS) {
+      const stepsFor = (standardization: Standardization) =>
+        standardization.find((t) => t.output === field)?.steps;
+      expect(stepsFor(acceptorStandardization)).toBeDefined();
+      expect(stepsFor(keyed.standardization)).toEqual(
+        stepsFor(acceptorStandardization),
+      );
+    }
+  });
+
+  test("differently written addresses match as the same values", () => {
+    const keyed = keyedDraft();
+    const terms = buildAdvancedTerms(keyed);
+    const acceptorMetadata: Metadata = [
+      ...inferMetadata(ACCEPTOR_COLUMNS, []),
+      { name: "road", type: "street_name", role: "linkage", isPayload: false },
+      { name: "address2", type: "unit", role: "linkage", isPayload: false },
+      { name: "town", type: "city", role: "linkage", isPayload: false },
+    ];
+    const inviter = prepareForExchange(
+      inviterExchangeDataSpec(terms, {
+        metadata: keyed.metadata,
+        standardization: keyed.standardization,
+      }),
+      "Inviter",
+      INVITER_ROWS,
+      INVITER_COLUMNS,
+    );
+    const acceptor = prepareForExchange(
+      {
+        metadata: acceptorMetadata,
+        linkageTerms: deriveAcceptedLinkageTerms(terms, "Acceptor"),
+      },
+      "Acceptor",
+      ACCEPTOR_ROWS,
+      ACCEPTOR_COLUMNS,
+    );
+    const valuesOf = (prepared: typeof inviter) =>
+      ADDRESS_FIELDS.map((field) => prepared.dataset.getField(field)?.get(0));
+    expect(valuesOf(inviter)).toEqual([
+      ["ST MARYS RD"],
+      ["4B"],
+      ["WINSTON SALEM"],
+    ]);
+    expect(valuesOf(acceptor)).toEqual(valuesOf(inviter));
+  });
+});

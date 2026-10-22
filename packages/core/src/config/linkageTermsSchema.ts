@@ -454,6 +454,23 @@ interface StreetNumberField {
   type: "street_number";
   constraints?: AnyConstraints;
 }
+/** The name of a street, without the house number or the unit. */
+interface StreetNameField {
+  name: string;
+  type: "street_name";
+  constraints?: AnyConstraints;
+}
+/** The apartment, suite or other unit of a street address. */
+interface UnitField {
+  name: string;
+  type: "unit";
+  constraints?: AnyConstraints;
+}
+interface CityField {
+  name: string;
+  type: "city";
+  constraints?: AnyConstraints;
+}
 interface ZipCodeField {
   name: string;
   type: "zip_code";
@@ -489,6 +506,9 @@ export type LinkageField =
   | PhoneNumberField
   | EmailAddressField
   | StreetNumberField
+  | StreetNameField
+  | UnitField
+  | CityField
   | ZipCodeField
   | StateField
   | CountyField;
@@ -526,6 +546,18 @@ const LinkageFieldSchema: z.ZodType<LinkageField> = z.discriminatedUnion(
     }),
     z.object({
       type: z.literal("street_number"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("street_name"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("unit"),
+      ...linkageFieldBase(AnyConstraintsSchema),
+    }),
+    z.object({
+      type: z.literal("city"),
       ...linkageFieldBase(AnyConstraintsSchema),
     }),
     z.object({
