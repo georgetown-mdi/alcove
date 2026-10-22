@@ -208,6 +208,8 @@ of them hold operator meaning: `ID-TAKEN` is the symmetric-role
 misconfiguration (both parties set the same `role`), and an `ERROR` whose
 payload names an invalid key is the wrong `server.key`.
 
+A browser run removes the rendezvous peer ids from a coordination server's error only in its message and stack: a field the server adds to an ERROR frame, or a frame whose `__proto__` key replaces the error's prototype, brings an id the server put there into the run's error report, and an ERROR frame whose message or name cannot be turned into text and that has no stack fails the registration with a `TypeError` in place of the server's refusal; only a coordination server can do either, and it already holds the ids.
+
 ### The browser party's own signaling address
 
 A browser party resolves one address for the signaling server its own
