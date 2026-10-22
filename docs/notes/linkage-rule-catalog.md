@@ -5,8 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here that needs no missing feature is a key of the built-in key set `precision-ranked-rules` 2.4.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
-A rule whose entry names a feature the built-in set does not use yet has a band and no key, and no floor selects it.
+Every rule here is a key of the built-in key set `precision-ranked-rules` 2.5.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 
@@ -25,9 +24,7 @@ A rule matches two records only when every element agrees exactly.
   `LN3` and `LN4` are the first three or four letters of the last name.
   `FN1` and `FN3` are the first letter and the first three letters of the first name.
   `FN` is a first name of at least two letters: cleaning keeps a one-letter first name for the `FN1` rules, and every rule on `FN` drops it, since a shared initial is much weaker evidence than a shared full first name.
-- `SFX` is a name suffix (JR, SR, II, III, IV).
-  No suffix field is built, so the five rules that name it (35, 36, 36a, 38 and 39) have no key; they are to run through the per-side missing-date condition instead, and are not yet built-in keys ([Status](#status)).
-  Suffixes stay stripped from `LN` and `FN`.
+  Name suffixes (JR, SR, II, III, IV) are stripped from `LN` and `FN`, and no rule matches on one ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
 - `DOB` is the full date of birth.
   `YOB + MOB` is the year and month of birth without the day.
 - `ZIP5` is the five-digit ZIP code of the person's own address, and `ZIP3` its first three digits.
@@ -42,6 +39,7 @@ A rule matches two records only when every element agrees exactly.
   `DOB +/-1 day` matches a date one day earlier or later.
   `DOB day/month exchanged` matches the date with those two parts swapped.
   Each also matches the exact date.
+- Rules 35, 36, 36a, 38 and 39 have no date of birth and match only where one of the two records has no valid date of birth, a 01/01 filler date included ([The contact rules without a date of birth](#the-contact-rules-without-a-date-of-birth)).
 
 A party supplies the person's own ZIP, never the ZIP of the site that serves the person: everyone served at one site shares it.
 A former address's ZIP, such as the person's last permanent address, may be supplied as the person's ZIP; where the other party records a current address it costs matches, not precision (reasoning).
@@ -131,13 +129,7 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Every rule below is a key of the built-in key set, except a rule whose entry names a feature the built-in set does not use yet:
-
-- A per-side missing-date condition: rules 35, 36, 36a, 38 and 39, the contact rules with no date of birth.
-  Each would run without the suffix, only where one party's record has no date of birth.
-  No suffix field is built ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
-  The condition is built ([Follow-on, unbanded until measured](#follow-on-unbanded-until-measured)); these rules are not yet keys of the set.
-
+Every rule below is a key of the built-in key set.
 Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
 ## The 99% band
@@ -503,31 +495,32 @@ Hillestad et al. (2008) put first + last name + birth year + ZIP at about one po
 
 ### Rules with a phone or an email
 
-#### 35. `LN + FN + SFX + PHONE`
+#### 35. `LN + FN + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
+95%. Any coverage. Measured, under the missing-date condition.
 
-Catches any date-of-birth error with no SSN.
-Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%.
+Catches a date of birth missing on one side, with no SSN.
+Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%, with no date.
+Under the missing-date condition the rule accepts a subset of the candidate pairs that measurement covers, as a refinement does ([The contact rules without a date of birth](#the-contact-rules-without-a-date-of-birth)).
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
-A suffix would remove that pair only where both sides record one, and no suffix field is built.
-The rule is to run instead through the per-side missing-date condition, and is not yet a built-in key: it would run without the suffix, only where one party's record has no date of birth, so a parent and child whose records both hold a date are left to the rules that compare it (reasoning).
-Goel et al.'s (2020) Figure A.3 shows requiring the suffix cut same-name, same-date, same-address duplicates from about 1.25% to 0.65% of records in Mississippi and from 0.9% to 0.27% in DC, but no source measures the phone case.
+The condition keeps that pair out where both records hold a date, leaving it to the rules that compare the date; where one record has none, the pair remains (reasoning).
+A name suffix would separate the pair only where both sides record one, and no rule matches on a suffix ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
 Bernstam et al. (2022) measured a cell phone alone at 95.6%.
 
-#### 36. `PHONE + soundex(LN) + FN + SFX`
+#### 36. `PHONE + soundex(LN) + FN`
 
-95%. Any coverage. One loosening on rule 35. Needs a per-side missing-date condition.
+95%. Any coverage. One loosening on rule 35, under the missing-date condition.
 
 As rule 35, with a last name that keeps its Soundex code; it runs after rule 35, a refinement of it.
 The people most likely to share a phone are relatives, who share the surname exactly, so the Soundex code adds little (reasoning).
 
-#### 36a. `FN + SFX + PHONE`
+#### 36a. `FN + PHONE`
 
-95%. Any coverage. Measured without the suffix. Needs a per-side missing-date condition.
+95%. Any coverage. Measured, under the missing-date condition.
 
-Catches a changed last name and any date-of-birth error with no SSN.
-Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites.
+Catches a changed last name and a date of birth missing on one side, with no SSN.
+Polubriaginof et al. (2018) measured first name + phone at 98.9% and 98.8% at two sites, with no date.
+Under the missing-date condition the rule accepts a subset of the candidate pairs that measurement covers, as rule 35 does.
 It is offered only because the default cleaning drops a phone or email held by more than five distinct people in a party's file.
 Without that screen, a shelter's, clinic's or case manager's number on many clients gives each client one unique first-name-plus-phone value, which the one-to-one rule cannot catch, and no source measures numbers shared by an organization.
 The same screen shrinks the sharing floor of every phone and email rule.
@@ -539,19 +532,31 @@ The same screen shrinks the sharing floor of every phone and email rule.
 The email counterpart of rule 24.
 See [The email rules](#the-email-rules).
 
-#### 38. `LN + FN + SFX + EMAIL`
+#### 38. `LN + FN + EMAIL`
 
-95%. Any coverage. The maintainer's judgment, pending evidence. Needs a per-side missing-date condition.
+95%. Any coverage. The maintainer's judgment, pending evidence, under the missing-date condition.
 
-Catches any date-of-birth error with no SSN, for records with an email address.
+Catches a date of birth missing on one side, with no SSN, for records with an email address.
 Kim et al. (2019) is its nearest measurement.
 It is stricter than first name + email in the N3C configuration and the last name + email token Bell et al. (2026) list among Datavant's recommended tokens.
 
-#### 39. `EMAIL + soundex(LN) + FN + SFX`
+#### 39. `EMAIL + soundex(LN) + FN`
 
-95%. Any coverage. One loosening on rule 38. Needs a per-side missing-date condition.
+95%. Any coverage. One loosening on rule 38, under the missing-date condition.
 
 As rule 38, with a last name that keeps its Soundex code; it runs after rule 38, a refinement of it, on the reasoning of rule 36.
+
+### The contact rules without a date of birth
+
+Rules 35, 36, 36a, 38 and 39 have no date of birth and run under the per-side missing-date condition: each matches only where one of the two records has no valid date of birth, a 01/01 filler date included ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#keys-that-run-only-where-a-field-is-missing)).
+Each runs as two rounds, one per side lacking the date.
+A party whose file has no date-of-birth column takes part with every record, since none of its records has a date.
+
+- **The band.** A pair whose two records both hold a valid date never matches through these rules, so each accepts a subset of the candidate pairs of the same rule without the condition, the rule Polubriaginof et al. (2018) measured for rules 35 and 36a; that is the refinement kind of evidence ([The evidence standard](#the-evidence-standard)).
+  The same-name parent and child on a household phone or email is the floor where one record has no date, so the bands stay at 95% (reasoning).
+- **What they cost.** A pair whose two dates are both present but differ by an error the date rules do not tolerate is not recovered by these rules.
+  A match through one of them tells a party receiving the result which of the two records had no valid date of birth, and every terms review and consent screen states it under the rule.
+  Each rule takes two rounds where a rule without the condition takes one.
 
 ### The Soundex-surname rules
 
@@ -581,7 +586,7 @@ Two forms of one mailbox, with dots or a plus tag, produce different values, whi
 ## Follow-on, unbanded until measured
 
 `FN + LN + SSN4`, when one side has no valid date of birth, catches a date that is missing or a filler.
-Its per-side missing-field condition is built: an operator authors the rule with `condition: { missing_field: date_of_birth }` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#keys-that-run-only-where-a-field-is-missing)), and a 01/01 date counts as missing.
+It runs under the per-side missing-field condition the contact rules without a date of birth run under: an operator authors the rule with `condition: { missing_field: date_of_birth }` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#keys-that-run-only-where-a-field-is-missing)), and a 01/01 date counts as missing.
 It has no band until it is measured, so neither floor selects it and it is not a key of the built-in set ([linkage-rule-grounding.md](linkage-rule-grounding.md#rule-features-the-evidence-calls-for)).
 
 ## Not offered

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LINKAGE_RULE_SET,
   authoredLinkageFields,
   decideLinkageTermsVerdict,
   getDefaultLinkageTerms,
@@ -81,7 +82,8 @@ function reconcileImportedFields(
     if (referenced.has(field.name)) {
       const authoredField = authoredByName.get(field.name);
       // Not derivable from the inviter's columns: leave it undeclared so the
-      // referencing key dangles and blocks (lockstep with declarableFieldNames).
+      // referencing key dangles and blocks (lockstep with keyIsSupplyable). A
+      // condition's field is declared after, by withColumnlessConditionFields.
       if (authoredField === undefined) continue;
       // Emit the editor's authored field (type-default constraints), except preserve a
       // benign empty `constraints: {}` verbatim, or the imported field's own
@@ -109,6 +111,48 @@ function reconcileImportedFields(
       result.push(field);
       emitted.add(field.name);
     }
+  }
+  return result;
+}
+
+/**
+ * The field a key condition names, as the built-in field set declares it: the
+ * declaration {@link buildAdvancedTerms} gives a condition's field that no
+ * column of the inviter's supplies, since with no column every record lacks the
+ * field, which is all a condition reads. `undefined` for a name the built-in
+ * set does not declare.
+ */
+export function columnlessConditionField(
+  name: string,
+): LinkageField | undefined {
+  return DEFAULT_LINKAGE_RULE_SET.linkageFields.find(
+    (field) => field.name === name,
+  );
+}
+
+/**
+ * `fields` with a {@link columnlessConditionField} declaration for each
+ * condition field of `keys` they do not declare, placed in the built-in field
+ * set's order, so a guided draft emits the fields `getDefaultLinkageTerms` does.
+ */
+function withColumnlessConditionFields(
+  fields: Array<LinkageField>,
+  keys: ReadonlyArray<LinkageKey>,
+): Array<LinkageField> {
+  const order = DEFAULT_LINKAGE_RULE_SET.linkageFields.map(
+    (field) => field.name,
+  );
+  const result = [...fields];
+  for (const key of keys) {
+    if (key.condition === undefined) continue;
+    const name = key.condition.missingField;
+    if (result.some((field) => field.name === name)) continue;
+    const declaration = columnlessConditionField(name);
+    if (declaration === undefined) continue;
+    const next = result.findIndex(
+      (field) => order.indexOf(field.name) > order.indexOf(name),
+    );
+    result.splice(next === -1 ? result.length : next, 0, declaration);
   }
   return result;
 }
@@ -274,7 +318,8 @@ function payloadWithHeldSettings(
  * direction, and the optional legal agreement come from the draft (free
  * text NFC-normalized and trimmed); linkage keys are the enabled ones in draft
  * order, and linkage fields are filtered to those the enabled keys reference
- * (mirroring `getDefaultLinkageTerms`).
+ * (mirroring `getDefaultLinkageTerms`), a condition's field no column supplies
+ * declared as the built-in fields declare it ({@link columnlessConditionField}).
  *
  * The rule-set citation is re-decided against the built terms rather than
  * taken from the seed: an edited draft cites nothing, an unedited one still
@@ -313,7 +358,7 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
   // the imported declaration so the round-trip preserves its field ORDER and any
   // declared-but-unreferenced field, rather than re-emitting in the fixed authored
   // order and dropping the unreferenced ones (see reconcileImportedFields).
-  const linkageFields =
+  const linkageFields = withColumnlessConditionFields(
     draft.importedLinkageFields === undefined
       ? authored.filter((field) => referenced.has(field.name))
       : reconcileImportedFields(
@@ -322,7 +367,9 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
           authored,
           referenced,
           draft.heldTermsSettings !== undefined,
-        );
+        ),
+    enabledKeys,
+  );
 
   const terms: LinkageTerms = {
     ...baseTerms,

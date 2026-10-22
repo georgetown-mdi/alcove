@@ -11,7 +11,6 @@ import {
   inferDateFormat,
   inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
-  linkageKeyFieldNames,
   linkageTermsFromRuleSet,
   referencedLinkageFieldNames,
 } from "@alcove/core";
@@ -23,7 +22,10 @@ import {
 import { encodeKeyForComparison } from "../linkageComparison";
 import { normalizeForEditor } from "../metadataEditing";
 
-import { buildAdvancedTerms } from "./advancedInviteTerms";
+import {
+  buildAdvancedTerms,
+  columnlessConditionField,
+} from "./advancedInviteTerms";
 import { directionForOutput } from "./advancedInviteTypes";
 
 import type {
@@ -878,17 +880,22 @@ export function draftWithFieldAdded(
   };
 }
 
-/** Whether the inviter's columns can supply every field `key` reads (each
- * element's `field` and its condition's field are declarable -- see
- * {@link declarableFieldNames}). A key that is not supplyable dangles the built
- * terms, so the import disables it ({@link draftFromTerms}) and
- * {@link validateAdvancedInvite} messages it distinctly from a draft whose keys
- * were merely turned off. */
+/** Whether the inviter's columns can supply every field `key` reads: each
+ * element's `field` is declarable ({@link declarableFieldNames}), and so is its
+ * condition's field or it has a {@link columnlessConditionField}. A key that is
+ * not supplyable dangles the built terms, so the import disables it
+ * ({@link draftFromTerms}) and {@link validateAdvancedInvite} messages it
+ * distinctly from a draft whose keys were merely turned off. */
 export function keyIsSupplyable(
   key: LinkageKey,
   declarable: ReadonlySet<string>,
 ): boolean {
-  return linkageKeyFieldNames(key).every((field) => declarable.has(field));
+  return (
+    key.elements.every((element) => declarable.has(element.field)) &&
+    (key.condition === undefined ||
+      declarable.has(key.condition.missingField) ||
+      columnlessConditionField(key.condition.missingField) !== undefined)
+  );
 }
 
 // --- Expert key / element authoring ------------------------------------------

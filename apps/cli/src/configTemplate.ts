@@ -236,7 +236,9 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       path: ["linkage_terms", "linkage_keys"],
       lines: [
         "Ordered keys, tried in turn. The keys written list the highest-precision",
-        "rules first, then the rules broader matching adds.",
+        "rules first, then the rules broader matching adds. A key with",
+        "condition: missing_field: date_of_birth matches only where one side's",
+        "record has no valid date of birth.",
       ],
     },
     {
@@ -259,7 +261,9 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
         "SSN4 + LN4 + YOB + MOB, LN + FN + DOB + ZIP3,",
         "ZIP5 + soundex(LN) + FN + DOB, ZIP5 + LN + FN + DOB +/-1 year,",
         "LN + FN + DOB + STATE, LN + FN + DOB + COUNTY,",
-        "LN + FN + YOB + MOB + ZIP5, and FN + DOB + EMAIL.",
+        "LN + FN + YOB + MOB + ZIP5, LN + FN + PHONE, PHONE + soundex(LN) + FN,",
+        "FN + PHONE, FN + DOB + EMAIL, LN + FN + EMAIL, and",
+        "EMAIL + soundex(LN) + FN.",
         "A key your input file cannot supply is not written.",
       ],
     },

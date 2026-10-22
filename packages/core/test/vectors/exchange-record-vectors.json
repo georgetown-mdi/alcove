@@ -1183,7 +1183,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           }
         },
@@ -1221,7 +1221,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           }
         },
@@ -1254,7 +1254,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "9JcxNlxYj_aqt7zdr0VoFlwzS__Z_leitGlR99Kgl-o",
+        "termsHash": "cKbNbY5gHe9ywwzZqkxk-qcxVVC77eLwDFUWbVPiLsI",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1272,7 +1272,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           },
           "linkageRuleSetVerdict": {
@@ -1365,7 +1365,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           }
         },
@@ -1425,7 +1425,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           }
         },
@@ -1455,7 +1455,7 @@
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "9lmGyOqpMO2Xe_LcGCeXH4idej2ZziW6vxPl6AUSkiE",
+        "termsHash": "5RbvPYTv6D5-tx2KjR4cV2EXpI98clYsTxTJjQx9AgI",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1481,7 +1481,7 @@
             },
             "keySet": {
               "name": "precision-ranked-rules",
-              "version": "2.4.0"
+              "version": "2.5.0"
             }
           },
           "linkageRuleSetVerdict": {

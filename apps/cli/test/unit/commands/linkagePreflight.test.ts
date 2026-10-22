@@ -677,7 +677,7 @@ test("a declared field no linkage key references is not named", () => {
   expect(links.join("\n")).not.toContain("unreferenced");
 });
 
-test("a key condition's field the CSV has no column for is named", () => {
+test("a CSV with no column for a key condition's field passes, every record lacking it", () => {
   const terms: LinkageTerms = {
     ...dobTerms(),
     linkageFields: [
@@ -698,11 +698,13 @@ test("a key condition's field the CSV has no column for is named", () => {
       },
     ],
   };
-  const links = refusalLinks(["first_name", "last_name", "ssn4"], terms);
-  expect(links.slice(1)).toEqual([
-    "this CSV has no column of type date_of_birth for linkage field date_of_birth",
-    "linkage key the CSV cannot produce: FN + LN + SSN4",
-  ]);
+  expect(() =>
+    checkLinkageSatisfiability(
+      ["first_name", "last_name", "ssn4"],
+      terms,
+      messaging,
+    ),
+  ).not.toThrow();
 });
 
 test("a dead key's refusal names the key and no field at all", () => {

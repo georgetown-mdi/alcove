@@ -161,6 +161,26 @@ describe("a key authored with the control", () => {
     );
   });
 
+  test("on a file with no date of birth column, declares the built-in field and can generate", () => {
+    const { draft, seed } = draftWithNamesAndSsn4([
+      "first_name",
+      "last_name",
+      "ssn4",
+    ]);
+    const authored = updateKeyAt(draft, 0, (key) =>
+      withKeyCondition(key, "date_of_birth"),
+    );
+    const terms = buildAdvancedTerms(authored);
+    expect(terms.linkageFields).toContainEqual({
+      name: "date_of_birth",
+      type: "date_of_birth",
+    });
+    expect(safeParseLinkageTerms(terms).success).toBe(true);
+    const validation = validateAdvancedInvite(authored, seed);
+    expect(validation.errors).toEqual({});
+    expect(validation.canGenerate).toBe(true);
+  });
+
   test("clearing the choice builds the key's terms without the condition", () => {
     const { draft } = draftWithNamesAndSsn4();
     const set = updateKeyAt(draft, 0, (key) =>
@@ -196,7 +216,7 @@ describe("Generate is held where core refuses, in the web app's words", () => {
       "ssn4",
     ]);
     const authored = updateKeyAt(behindAKeyThatIsOff(draft), 1, (key) =>
-      withKeyCondition(key, "date_of_birth"),
+      withKeyCondition(key, "intake_dob"),
     );
     const refusal = expectedRefusal(authored);
     expect(refusal.rule).toBe("undeclared");
@@ -291,7 +311,7 @@ describe("Generate is held where core refuses, in the web app's words", () => {
 });
 
 describe("whether a key can be supplied from the file", () => {
-  test("counts its condition's field", () => {
+  test("needs no column for its condition's field where the built-in fields declare it", () => {
     const withoutDob = draftWithNamesAndSsn4([
       "first_name",
       "last_name",
@@ -305,6 +325,12 @@ describe("whether a key can be supplied from the file", () => {
     expect(
       keyIsSupplyable(
         withKeyCondition(NAMES_AND_SSN4, "date_of_birth"),
+        declarable,
+      ),
+    ).toBe(true);
+    expect(
+      keyIsSupplyable(
+        withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
         declarable,
       ),
     ).toBe(false);

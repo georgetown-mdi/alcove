@@ -422,16 +422,47 @@ describe("the rounds a conditioned key runs as", () => {
     expect(roundMatchedKeyName(senderHalf, true, fields)).toBe(PARTNER);
   });
 
-  test("an input with no column for the condition's field cannot run the key", () => {
+  test("an input with no column for the condition's field can run the key", () => {
     const verdict = decideLinkageTermsVerdict(
       ["first_name", "last_name", "ssn4"],
       { ...TERMS, linkageKeys: [NO_DATE_KEY] },
     );
     expect(verdict.keys).toEqual([
+      { key: NO_DATE_KEY, fitness: "satisfiable" },
+    ]);
+    expect(verdict.unsatisfiedFieldColumns).toEqual([]);
+    expect(verdict.fullySatisfied).toBe(true);
+  });
+
+  test("an input with no column for a field a key element also reads cannot run that key, and can run the conditioned one", () => {
+    const verdict = decideLinkageTermsVerdict(
+      ["first_name", "last_name", "ssn4"],
+      { ...TERMS, linkageKeys: [TERMS.linkageKeys[0], NO_DATE_KEY] },
+    );
+    expect(verdict.keys.map((graded) => graded.fitness)).toEqual([
+      "unsatisfiable",
+      "satisfiable",
+    ]);
+    expect(
+      verdict.unsatisfiedFieldColumns.map(({ field }) => field.name),
+    ).toEqual(["date_of_birth"]);
+  });
+
+  test("a condition naming an undeclared field cannot run the key", () => {
+    const verdict = decideLinkageTermsVerdict(
+      ["first_name", "last_name", "ssn4", "dob"],
       {
-        key: NO_DATE_KEY,
+        ...TERMS,
+        linkageKeys: [
+          { ...NO_DATE_KEY, condition: { missingField: "birth_day" } },
+        ],
+      },
+    );
+    expect(verdict.keys).toEqual([
+      {
+        key: { ...NO_DATE_KEY, condition: { missingField: "birth_day" } },
         fitness: "unsatisfiable",
-        missingField: "date_of_birth",
+        missingField: "birth_day",
       },
     ]);
   });

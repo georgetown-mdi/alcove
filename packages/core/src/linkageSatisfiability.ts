@@ -19,7 +19,6 @@ import type {
   LinkageTerms,
   TransformStep,
 } from "./config/linkageTermsSchema.js";
-import { linkageKeyFieldNames } from "./config/linkageTermsSchema.js";
 import { inferMetadata } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import { DEFAULT_DATE_OUTPUT_FORMAT } from "./keyElementWidth.js";
@@ -339,6 +338,9 @@ export function assertTransformsCompile(
  * uses, so this verdict cannot pass a field the builder cannot produce. Pass
  * `metadata` to match an exchange run from an explicit metadata block; omit it
  * for name-based inference, the accept-path default.
+ *
+ * A field only a key's missing-field condition reads is not listed: an input
+ * with no column for it runs the key with every record lacking the field.
  */
 export function unsatisfiedLinkageFields(
   columns: string[],
@@ -380,12 +382,33 @@ export function unsatisfiedFieldColumns(
     // A column list this is handed, not a read of its own (see resolveExchangeInputs).
     metadata ?? inferMetadata(columns, []),
   );
+  const conditionOnly = conditionOnlyFieldNames(terms.linkageKeys);
   return terms.linkageFields.flatMap((field) => {
+    if (conditionOnly.has(field.name)) return [];
     const column = resolution.get(field.name)?.column;
     return column === undefined || !present.has(column)
       ? [{ field, column }]
       : [];
   });
+}
+
+/**
+ * The fields a key's missing-field condition names that no key element
+ * reads: fields an input may lack a column for, every record then lacking the
+ * field.
+ */
+function conditionOnlyFieldNames(keys: ReadonlyArray<LinkageKey>): Set<string> {
+  const elementFields = new Set(
+    keys.flatMap((key) => key.elements.map((element) => element.field)),
+  );
+  return new Set(
+    keys.flatMap((key) =>
+      key.condition === undefined ||
+      elementFields.has(key.condition.missingField)
+        ? []
+        : [key.condition.missingField],
+    ),
+  );
 }
 
 /**
@@ -945,8 +968,8 @@ interface LinkageSatisfiability {
 /**
  * Per-key coverage of `columns` against `terms`, projected from
  * {@link decideLinkageTermsVerdict}. A key is satisfiable only when every
- * field it reads (`linkageKeyFieldNames`) is declared and producible. Column
- * shape only: a column whose
+ * element field is declared and producible and its condition's field, if any,
+ * is declared. Column shape only: a column whose
  * every row standardizes to empty still counts, which can over-claim but never
  * wrongly block. Callers own wording and display sanitization.
  */
@@ -971,7 +994,8 @@ export function assessLinkageSatisfiability(
 
 /**
  * How one declared linkage key fares against an input's columns:
- * `unsatisfiable` when a field it reads cannot be produced, `dead` when the
+ * `unsatisfiable` when an element field cannot be produced or the condition's
+ * field is undeclared, `dead` when the
  * fields resolve but an element's cleaning drops every record
  * ({@link pipelineAlwaysDrops}; fixed in the terms, not the input), else
  * `satisfiable`.
@@ -980,9 +1004,9 @@ export type LinkageKeyFitness = "satisfiable" | "unsatisfiable" | "dead";
 
 /**
  * One declared linkage key and its {@link LinkageKeyFitness}. An
- * `unsatisfiable` key names `missingField`, the first field it reads that the
- * columns cannot produce; the field name is the terms' text, which the
- * caller escapes for display.
+ * `unsatisfiable` key names `missingField`, the first element field the
+ * columns cannot produce, else its undeclared condition field; the field name
+ * is the terms' text, which the caller escapes for display.
  */
 export type GradedLinkageKey =
   | { key: LinkageKey; fitness: "satisfiable" | "dead" }
@@ -1003,8 +1027,8 @@ export interface LinkageTermsVerdict {
   /** The declared keys graded `dead`, in declaration order. */
   deadKeys: LinkageKey[];
   /** The linkage fields the columns cannot produce, each beside the column it
-   * expects. Can be empty while keys are unsatisfiable, when an element names an
-   * undeclared field. */
+   * expects ({@link unsatisfiedFieldColumns}). Can be empty while keys are
+   * unsatisfiable, when an element names an undeclared field. */
   unsatisfiedFieldColumns: UnsatisfiedFieldColumn[];
 }
 
@@ -1027,21 +1051,24 @@ export function decideLinkageTermsVerdict(
     metadata,
   );
   const unsatisfiedNames = new Set(missing.map(({ field }) => field.name));
+  const declaredNames = new Set(terms.linkageFields.map((f) => f.name));
   // Declared and producible. The schema refuses an element naming an undeclared
   // field; this still grades one unsatisfiable for terms built without a parse.
   const producibleNames = new Set(
-    terms.linkageFields
-      .map((f) => f.name)
-      .filter((name) => !unsatisfiedNames.has(name)),
+    [...declaredNames].filter((name) => !unsatisfiedNames.has(name)),
   );
   // Compiles each measured step once (pinned in linkageProbeCost.test.ts).
-  // A condition's field is read to tell which records lack it, so a key whose
-  // condition field the input cannot bind is graded as one whose element field
-  // it cannot bind.
+  // A condition's field needs only its declaration: an input with no column
+  // for it runs the key with every record lacking the field.
   const keys: GradedLinkageKey[] = terms.linkageKeys.map((key) => {
-    const missing = linkageKeyFieldNames(key).find(
-      (field) => !producibleNames.has(field),
-    );
+    const missing =
+      key.elements
+        .map((element) => element.field)
+        .find((field) => !producibleNames.has(field)) ??
+      (key.condition !== undefined &&
+      !declaredNames.has(key.condition.missingField)
+        ? key.condition.missingField
+        : undefined);
     if (missing !== undefined)
       return { key, fitness: "unsatisfiable", missingField: missing };
     return {

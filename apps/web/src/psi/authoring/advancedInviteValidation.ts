@@ -453,8 +453,8 @@ export function validateAdvancedInvite(
       "Choose an invitation duration between 1 second and one year.";
   }
 
-  // A key is supplyable when the inviter's columns can declare every field it
-  // references; one that is not dangles the built terms (the referential-integrity
+  // A key is supplyable when every field it references can be declared
+  // (keyIsSupplyable); one that is not dangles the built terms (the referential-integrity
   // refine rejects the undeclared field) and blocks generation. The two checks below
   // set the accurate keys message up front so it wins over the generic
   // schema-failure mapping, which collapses every linkageKeys-path issue to
@@ -483,8 +483,9 @@ export function validateAdvancedInvite(
       ? "Enable at least one linkage key."
       : UNSUPPLYABLE_KEY_MESSAGE;
   } else if (conditionRefusal !== undefined) {
-    // Ahead of the unsupplyable check: a condition naming a field the columns
-    // cannot supply is also undeclared, and core's refusal names the condition.
+    // Ahead of the unsupplyable check: a condition naming a field neither the
+    // columns nor the built-in fields supply is also undeclared, and core's
+    // refusal names the condition.
     errors.keys = keyConditionRefusalMessage(conditionRefusal, draft.keys);
   } else if (
     enabledKeys.some((entry) => !keyIsSupplyable(entry.key, declarable))

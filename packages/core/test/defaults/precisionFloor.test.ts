@@ -41,17 +41,28 @@ describe("the catalog's bands", () => {
     expect(names(catalog.linkageKeys)).toStrictEqual(bandedRules);
   });
 
-  test("name a rule that needs an element no field supplies, with no key", () => {
-    const unbuilt = bands.filter((band) => band.needs !== undefined);
-    expect(unbuilt.map((band) => band.rule)).toStrictEqual([
-      "LN + FN + SFX + PHONE",
-      "PHONE + soundex(LN) + FN + SFX",
-      "FN + SFX + PHONE",
-      "LN + FN + SFX + EMAIL",
-      "EMAIL + soundex(LN) + FN + SFX",
+  test("name no rule without a key", () => {
+    expect(bands.filter((band) => band.needs !== undefined)).toStrictEqual([]);
+  });
+
+  test("run the contact rules without a date of birth only where one side has none, at 95%", () => {
+    const conditioned = catalog.linkageKeys.filter(
+      (key) => key.condition !== undefined,
+    );
+    expect(names(conditioned)).toStrictEqual([
+      "LN + FN + PHONE",
+      "PHONE + soundex(LN) + FN",
+      "FN + PHONE",
+      "LN + FN + EMAIL",
+      "EMAIL + soundex(LN) + FN",
     ]);
-    for (const band of unbuilt)
-      expect(names(catalog.linkageKeys)).not.toContain(band.rule);
+    for (const key of conditioned) {
+      expect(key.condition).toStrictEqual({ missingField: "date_of_birth" });
+      expect(key.elements.map((element) => element.field)).not.toContain(
+        "date_of_birth",
+      );
+      expect(bandOf(key.name)?.band).toBe(95);
+    }
   });
 
   test("run the 99% band before the 95% band", () => {
@@ -283,7 +294,12 @@ describe("the geography rules", () => {
       "LN + FN + DOB",
       "swap(LN, FN) + DOB",
       "split(LN) + FN + DOB",
+      "LN + FN + PHONE",
+      "PHONE + soundex(LN) + FN",
+      "FN + PHONE",
       "FN + DOB + EMAIL",
+      "LN + FN + EMAIL",
+      "EMAIL + soundex(LN) + FN",
     ]);
     expect(terms.linkageFields.map((field) => field.name)).toStrictEqual([
       "ssn",
@@ -465,7 +481,7 @@ describe("the citation", () => {
     expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
     expect(catalog.reference).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
     });
   });
 

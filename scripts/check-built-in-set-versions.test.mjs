@@ -440,9 +440,9 @@ describe("the check driven end to end", () => {
   it.each([
     ["a band", "band: 99 }", "band: 95 }"],
     [
-      "an unbuilt rule's need",
-      'needs: "a per-side missing-date condition"',
-      'needs: "a name suffix"',
+      "a key condition",
+      '{ missingField: "date_of_birth" }',
+      '{ missingField: "dob" }',
     ],
   ])(
     "fails %s of the shipped catalog moved with no bump",

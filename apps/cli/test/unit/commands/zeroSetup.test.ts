@@ -668,7 +668,7 @@ test("handler: a file with ZIP, state and county columns runs the geography rule
     ]);
     expect(terms.linkageRuleSet).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
     });
   } finally {
     exitSpy.mockRestore();
@@ -717,7 +717,7 @@ test("handler: a file with house number and ZIP columns runs the street number r
     ]);
     expect(terms.linkageRuleSet).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.4.0" },
+      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
     });
   } finally {
     exitSpy.mockRestore();
