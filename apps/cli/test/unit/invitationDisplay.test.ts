@@ -2159,6 +2159,44 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines.some((line) => /runs as/.test(line))).toBe(false);
   });
 
+  test("displayInvitation: the built-in two-character filter reads in plain words", () => {
+    const log = getLogger("accept-display-two-character-filter-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(log, {
+      ...sampleToken(FUTURE()),
+      linkageTerms: probeTermsWithTransform([
+        { function: "filter_regex", params: { pattern: "^.{2,}$" } },
+      ]),
+    }).split("\n");
+
+    expect(lines).toContain("          transform: filter_regex");
+    expect(lines.some((line) => line.includes("at least two characters"))).toBe(
+      true,
+    );
+    expect(lines.some((line) => line.includes("do not match a pattern"))).toBe(
+      false,
+    );
+  });
+
+  test("displayInvitation: any other filter pattern still shows raw, labelled as a pattern", () => {
+    const log = getLogger("accept-display-other-filter-pattern-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(log, {
+      ...sampleToken(FUTURE()),
+      linkageTerms: probeTermsWithTransform([
+        { function: "filter_regex", params: { pattern: "^.{3,}$" } },
+      ]),
+    }).split("\n");
+
+    expect(lines).toContain(
+      "            Drops values that do not match a pattern, removing them from matching.",
+    );
+    expect(lines).toContain("            - pattern: ^.{3,}$");
+    expect(lines.some((line) => line.includes("at least two characters"))).toBe(
+      false,
+    );
+  });
+
   test("displayInvitation: a param is named as the document writes it", () => {
     // The acceptor meets this name on this line and in the message of a
     // refusal of the same param, both in the schema's snake_case spelling. The

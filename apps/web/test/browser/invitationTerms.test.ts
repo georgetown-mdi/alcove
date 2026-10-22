@@ -626,6 +626,43 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     expect(recognized.textContent).not.toContain(UNRECOGNIZED_TRANSFORM_NOTE);
   });
 
+  test("the built-in two-character filter reads in plain words; any other pattern stays raw and labelled", async () => {
+    // Only the exact built-in pattern is paraphrased. A partner can write any
+    // other pattern, so it keeps the glossary line that calls it a pattern and
+    // its raw text beneath.
+    const termsWithFilter = (pattern: string): LinkageTerms => ({
+      ...terms,
+      linkageKeys: [
+        {
+          name: "SSN + FN1",
+          elements: [
+            { field: "ssn" },
+            {
+              field: "first_name",
+              transform: [{ function: "filter_regex", params: { pattern } }],
+            },
+          ],
+        },
+      ],
+    });
+
+    await renderTerms(termsWithFilter("^.{2,}$"));
+    await userEvent.click(toggle("Matching strategies"));
+    const builtIn = await readyPanel("SSN + FN1");
+    expect(builtIn.textContent).toContain("at least two characters");
+    expect(builtIn.textContent).not.toContain("do not match a pattern");
+
+    app.unmount();
+    await renderTerms(termsWithFilter("^.{3,}$"));
+    await userEvent.click(toggle("Matching strategies"));
+    const other = await readyPanel("SSN + FN1");
+    expect(other.textContent).toContain(
+      "Drops values that do not match a pattern",
+    );
+    expect(other.textContent).toContain("pattern: ^.{3,}$");
+    expect(other.textContent).not.toContain("at least two characters");
+  });
+
   // The matching-keys list is a NAMED region: its role="list" derives its accessible
   // name from the visible "Matching strategies" caption via aria-labelledby, not a
   // second, separately-authored aria-label that could drift from it -- the same

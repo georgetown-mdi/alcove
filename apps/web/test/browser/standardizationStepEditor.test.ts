@@ -453,6 +453,64 @@ describe("StandardizationStepEditor raw-pattern authoring (per-party, ungated)",
       .toBeInTheDocument();
   });
 
+  test("the built-in two-character filter is labelled in plain words", async () => {
+    app.render(
+      createElement(EditorWithPreview, {
+        field: FIRST_NAME,
+        inputColumn: "n",
+        initialSteps: [
+          { function: "filter_regex", params: { pattern: "^.{2,}$" } },
+        ],
+        rawRows: [{ n: "MARY" }],
+      }),
+    );
+    await expect
+      .element(page.getByText("Keep values of at least two characters"))
+      .toBeInTheDocument();
+    expect(page.getByText("Filter (regex)").elements()).toHaveLength(0);
+  });
+
+  test("any other filter pattern keeps the raw filter label and its pattern input", async () => {
+    app.render(
+      createElement(EditorWithPreview, {
+        field: FIRST_NAME,
+        inputColumn: "n",
+        initialSteps: [
+          { function: "filter_regex", params: { pattern: "^.{3,}$" } },
+        ],
+        rawRows: [{ n: "MARY" }],
+      }),
+    );
+    await expect.element(page.getByText("Filter (regex)")).toBeInTheDocument();
+    await expect
+      .element(page.getByRole("textbox", { name: "Pattern" }))
+      .toHaveValue("^.{3,}$");
+    expect(page.getByText(/at least two characters/).elements()).toHaveLength(
+      0,
+    );
+  });
+
+  test("editing the built-in pattern returns the step to the raw filter label", async () => {
+    app.render(
+      createElement(EditorWithPreview, {
+        field: FIRST_NAME,
+        inputColumn: "n",
+        initialSteps: [
+          { function: "filter_regex", params: { pattern: "^.{2,}$" } },
+        ],
+        rawRows: [{ n: "MARY" }],
+      }),
+    );
+    await userEvent.fill(
+      page.getByRole("textbox", { name: "Pattern" }),
+      "^.{2,}$ ",
+    );
+    await expect.element(page.getByText("Filter (regex)")).toBeInTheDocument();
+    expect(page.getByText(/at least two characters/).elements()).toHaveLength(
+      0,
+    );
+  });
+
   test("adding a regex step exposes an editable pattern the preview reflects", async () => {
     app.render(
       createElement(EditorWithPreview, {

@@ -24,8 +24,10 @@ import { redactAndSanitizeForDisplay } from "../utils/sanitizeErrorForDisplay.js
 import { redactAndDisplayPartyIdentity } from "../records/partyIdentityDisplay.js";
 
 import {
+  AT_LEAST_TWO_CHARACTERS_LABEL,
   declaredParamEntries,
   describedTransformParamEntry,
+  isAtLeastTwoCharactersFilter,
   MAX_DISPLAYED_PARAMS,
 } from "../config/transformParamDisplay.js";
 import { endpointRequiresRetainedFiles } from "../config/invitation.js";
@@ -173,6 +175,12 @@ const COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION =
   "only where an earlier rule left it empty, and only by a text default. " +
   "Records pass through this step unchanged.";
 
+/**
+ * Description of the one `filter_regex` a display states in plain words
+ * ({@link isAtLeastTwoCharactersFilter}), in place of the glossary's.
+ */
+const AT_LEAST_TWO_CHARACTERS_FILTER_DESCRIPTION = `Keeps only values of ${AT_LEAST_TWO_CHARACTERS_LABEL}, removing shorter values from matching.`;
+
 /** Legal-agreement context, with the partner-controlled free text sanitized. */
 export interface InvitationLegalAgreementSummary {
   /** Agreement identifier (e.g. "MOU-2025-0042"), sanitized for display. */
@@ -263,7 +271,9 @@ interface InvitationTransformSummary {
   /**
    * Description from {@link TRANSFORM_FUNCTION_GLOSSARY}; absent for an
    * unrecognized name. A `coalesce` that substitutes nothing takes
-   * {@link COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION} instead.
+   * {@link COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION} instead, and the
+   * built-in two-character filter takes
+   * {@link AT_LEAST_TWO_CHARACTERS_FILTER_DESCRIPTION}.
    */
   description?: string;
   /**
@@ -681,6 +691,8 @@ function summarizeTransform(
   if (effect !== undefined) summary.effect = effect;
   else if (step.function === "coalesce" && !substitutesFallback)
     summary.description = COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION;
+  else if (isAtLeastTwoCharactersFilter(step))
+    summary.description = AT_LEAST_TWO_CHARACTERS_FILTER_DESCRIPTION;
   else {
     const glossed = frozenLookupTableEntry(
       TRANSFORM_FUNCTION_GLOSSARY,
