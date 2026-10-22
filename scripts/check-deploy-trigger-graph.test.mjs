@@ -461,6 +461,75 @@ describe("wiring", () => {
     ).toBe(true);
   });
 
+  // The demo upload follows the site's own upload in the one deploy job, so a
+  // failed demo upload leaves the site deployed, and the packaging job rebuilds
+  // BUILD_OUTPUT for the demo only after uploading the site from it.
+  it("uploads the demo site's build after the site, built with the default relay", () => {
+    const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
+    const jobs = Object.entries(workflow.jobs);
+    const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
+    const [, deploy] = jobs.find(([, job]) =>
+      (job.steps ?? []).some((step) =>
+        (step.uses ?? "").startsWith(DEPLOY_ACTION),
+      ),
+    );
+    const usesStep = (prefix) => (step) => (step.uses ?? "").startsWith(prefix);
+    const [siteUpload, demoUpload, ...extraUploads] = deploy.steps.filter(
+      usesStep(DEPLOY_ACTION),
+    );
+    const [siteDownload, demoDownload, ...extraDownloads] = deploy.steps.filter(
+      usesStep("actions/download-artifact@"),
+    );
+    expect(extraUploads).toEqual([]);
+    expect(extraDownloads).toEqual([]);
+    expect(siteUpload.if).toBeUndefined();
+    expect(siteUpload.with.command).toContain(
+      `pages deploy ${siteDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_PAGES_PROJECT }} `,
+    );
+    expect(demoDownload.with.name).toBe(
+      `\${{ needs.${gate}.outputs.demoArtifactName }}`,
+    );
+    expect(demoUpload.with.command).toContain(
+      `pages deploy ${demoDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} `,
+    );
+    for (const step of [demoDownload, demoUpload]) {
+      expect(step.if).toBe("vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''");
+    }
+    const order = (step) => deploy.steps.indexOf(step);
+    expect(order(siteUpload)).toBeLessThan(order(demoDownload));
+    expect(order(demoDownload)).toBeLessThan(order(demoUpload));
+
+    const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
+    const output =
+      gateWorkflow.on.workflow_call.outputs.demoArtifactName.value.match(
+        /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.demoArtifactName\s*\}\}$/,
+      );
+    expect(output).not.toBeNull();
+    const packager = gateWorkflow.jobs[output[1]];
+    const [siteBuild, demoBuild, ...extraBuilds] = packager.steps.filter(
+      (step) => (step.run ?? "").includes(BUILD_COMMAND),
+    );
+    const [siteArtifact, demoArtifact, ...extraArtifacts] =
+      packager.steps.filter(usesStep("actions/upload-artifact@"));
+    expect(extraBuilds).toEqual([]);
+    expect(extraArtifacts).toEqual([]);
+    expect(demoArtifact.with.path).toBe(BUILD_OUTPUT);
+    expect(demoArtifact.with.name).toBe("${{env.DEMO_ARTIFACT_NAME}}");
+    expect(Object.keys(demoBuild.env).sort()).toEqual([
+      "VITE_DEFAULT_RELAY_REGISTRAR_URL",
+      "VITE_DEFAULT_RELAY_TURN_URL",
+      "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
+      "VITE_SIGNALING_SERVER_URL",
+    ]);
+    for (const name of Object.keys(demoBuild.env)) {
+      expect(demoBuild.env[name], name).toBe(siteBuild.env[name]);
+    }
+    const built = (step) => packager.steps.indexOf(step);
+    expect(built(siteBuild)).toBeLessThan(built(siteArtifact));
+    expect(built(siteArtifact)).toBeLessThan(built(demoBuild));
+    expect(built(demoBuild)).toBeLessThan(built(demoArtifact));
+  });
+
   // The check reads the deploy filter, so a pull request editing only that file
   // has to reach the workflow that runs the check.
   it("triggers that workflow on a change to the deploy filter itself", () => {

@@ -1,7 +1,7 @@
 ---
 title: "Alcove Compliance"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-21"
+last_reviewed: "2026-10-22"
 ---
 
 # Alcove compliance
@@ -35,7 +35,7 @@ The split is stated area by area, separately for the container deployment and th
 | Which NIST SP 800-53 controls does it address? | The control mapping, with what each row does and does not claim. | [NIST SP 800-53](#nist-sp-800-53) |
 | What happens if the shared secret leaks? | Treat it as invalid immediately, notify the partner, delete both key files, and re-invite over an uncompromised channel. | [SECURITY_DESIGN.md](SECURITY_DESIGN.md#compromise-response) |
 | Do you use FIPS 140-validated cryptography? | A scoped claim, and the scope is the whole of the answer: the default container image and the browser application embed no validated cryptographic module, and a separate `-fips` image embeds one, which is not the same as being one. Read the section before relying on it either way. | [FIPS 140](#fips-140) |
-| Do you hold an ATO, or a FedRAMP authorization? | Neither, and neither is available to software as such: an ATO is granted to a deployment in an authorizing environment. The services the project operates for its hosted site hold no FedRAMP or StateRAMP authorization either. | [Authority to Operate](#authority-to-operate) and [FedRAMP and StateRAMP](#fedramp-and-stateramp) |
+| Do you hold an ATO, or a FedRAMP authorization? | Neither, and neither is available to software as such: an ATO is granted to a deployment in an authorizing environment. The services the project operates for its hosted sites hold no FedRAMP or StateRAMP authorization either. | [Authority to Operate](#authority-to-operate) and [FedRAMP and StateRAMP](#fedramp-and-stateramp) |
 | Where do we report a gap this document does not address? | A public issue for a compliance gap, the private process for a security-sensitive one. | [Reporting compliance gaps](#reporting-compliance-gaps) |
 
 ### How the rest of this document is arranged
@@ -96,17 +96,17 @@ Alcove is software, not a service, so it is not in scope for FedRAMP or StateRAM
 
 - **The container over SFTP or a shared folder** uses no service the project operates. The exchange runs between the two parties' machines and the server or folder they agree on.
 - **A WebRTC exchange** needs a coordination server, which helps the two sides find each other, and normally uses a STUN server, which tells each side its public network address. It can also use a relay. The coordination server is the one the invitation names, and the accepting party dials it from whichever deployment it uses. The container uses the STUN server and relay its configuration names, which can be the agency's own; with no STUN server named, it uses Google's public one ([CLI.md](CLI.md#stun-and-what-it-discloses)).
-- **An agency's own copy of the web app, or its container,** uses the agency's coordination server and relay for the invitations it creates ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)). When it accepts an invitation created on the project's hosted site, it uses the project's coordination server instead, and the reverse holds for the hosted site accepting an agency's invitation. Every copy of the web app also uses Google's public STUN server unless the user names their own STUN server in relay settings ([WEB_APP.md](WEB_APP.md#relay-settings)).
-- **The project's hosted site, `psi.data-bridge.org`,** uses:
+- **An agency's own copy of the web app, or its container,** uses the agency's coordination server and relay for the invitations it creates ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)). When it accepts an invitation created on one of the project's hosted sites, it uses the project's coordination server instead, and the reverse holds for a hosted site accepting an agency's invitation. Every copy of the web app also uses Google's public STUN server unless the user names their own STUN server in relay settings ([WEB_APP.md](WEB_APP.md#relay-settings)).
+- **The project's hosted sites,** `psi.data-bridge.org`, its staging site `staging.data-bridge.org`, and the demo site `demo.data-bridge.org`, are builds of the web app that name the same coordination server and list the project's relay by default ([DEPLOYMENT.md](DEPLOYMENT.md#the-demo-site)). Each uses:
   - Cloudflare Pages, which delivers the app's code. That web server receives nothing about an exchange. The browser does go back to it for more of the app's code and to check for updates.
   - A coordination server, a relay, and the relay's registrar, which the project operates on AWS in `us-west-2`.
   - Google's public STUN server, unless the user names their own STUN server in relay settings.
 
-The project holds no FedRAMP or StateRAMP authorization for the hosted site or for the services it operates. To keep Google's STUN server out of an exchange, each party names its own STUN server, in relay settings on the web app or in `stun` on the command line app: each party follows its own setting. On the hosted site, a party can leave the project's relay out of an exchange under Allowed relays ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); to keep it out of the exchange, both parties leave it out. To keep the project's coordination server out of an exchange, the invitation must come from your own copy of the web app or from your container's configuration, which name your own.
+The project holds no FedRAMP or StateRAMP authorization for the hosted sites or for the services it operates. To keep Google's STUN server out of an exchange, each party names its own STUN server, in relay settings on the web app or in `stun` on the command line app: each party follows its own setting. On a hosted site, a party can leave the project's relay out of an exchange under Allowed relays ([COMMUNICATION.md](COMMUNICATION.md#stunturn)); to keep it out of the exchange, both parties leave it out. To keep the project's coordination server out of an exchange, the invitation must come from your own copy of the web app or from your container's configuration, which name your own.
 
 **The relay.** A relay forwards encrypted traffic it cannot read and stores none of it, like other network equipment. Its operator sees each side's network address and when it connected. The project's relay runs on AWS in `us-west-2`. You can use your own relay instead and leave the project's out.
 
-An agency that relies on the project's hosted site, or runs the web app as a hosted service of its own, decides whether FedRAMP or StateRAMP applies to that use and is responsible for any authorization it needs.
+An agency that relies on the project's hosted sites, or runs the web app as a hosted service of its own, decides whether FedRAMP or StateRAMP applies to that use and is responsible for any authorization it needs.
 
 ### FIPS 140
 

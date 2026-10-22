@@ -115,3 +115,40 @@ resource "cloudflare_pages_domain" "site" {
   project_name = cloudflare_pages_project.site.name
   name         = var.site_name
 }
+
+# The demo site, a second deployment of the web app, in a Pages project of its
+# own. Direct upload, as above: pages_deploy.yaml uploads the demo build, a
+# deployment to main is the production one, and one to staging is a preview on
+# that branch's alias.
+resource "cloudflare_pages_project" "demo" {
+  account_id        = var.cloudflare_account_id
+  name              = var.demo_pages_project_name
+  production_branch = "main"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The demo site's name, proxied to the demo project's pages.dev name. No name
+# points at its staging alias.
+resource "cloudflare_dns_record" "demo_name" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.demo_name
+  type    = "CNAME"
+  content = cloudflare_pages_project.demo.subdomain
+  proxied = true
+  ttl     = 1
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The demo site's name on the demo project. It verifies once the record above
+# points at the project's pages.dev name.
+resource "cloudflare_pages_domain" "demo" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.demo.name
+  name         = var.demo_name
+}

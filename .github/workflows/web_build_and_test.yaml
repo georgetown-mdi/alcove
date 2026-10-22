@@ -23,6 +23,9 @@ on:
       artifactName:
         description: "Name of the uploaded hosted static site artifact"
         value: ${{jobs.package.outputs.artifactName}}
+      demoArtifactName:
+        description: "Name of the uploaded demo site artifact"
+        value: ${{jobs.package.outputs.demoArtifactName}}
 
 # Cancel a superseded PR run when a newer commit lands on the same PR/branch.
 # NOT keyed on github.workflow: in a workflow_call invocation the github context
@@ -43,6 +46,7 @@ permissions:
 
 env:
   ARTIFACT_NAME: hosted-site-${{ github.sha }}
+  DEMO_ARTIFACT_NAME: demo-site-${{ github.sha }}
 
 jobs:
   scope:
@@ -107,11 +111,11 @@ jobs:
             !packages/testkit/**/*.md
             !.github/actions/setup/**/*.md
 
-  # The deploy artifact's producer: the hosted static site, `_headers`
-  # included, as pages_deploy.yaml uploads it. A job of its own rather than a
-  # leg of the suite matrix below because it carries the workflow_call output
-  # the deploy workflow reads, and because the matrix legs run in parallel with
-  # it rather than behind it.
+  # The deploy artifacts' producer: the hosted static site, `_headers`
+  # included, and the demo site's build of it, as pages_deploy.yaml uploads
+  # them. A job of its own rather than a leg of the suite matrix below because
+  # it carries the workflow_call outputs the deploy workflow reads, and because
+  # the matrix legs run in parallel with it rather than behind it.
   #
   # The upload does not wait on the suite legs, so an artifact exists for a sha
   # whose tests went red. Nothing deploys such an artifact: a deploy job needs
@@ -128,6 +132,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       artifactName: ${{steps.artifact-name.outputs.artifactName}}
+      demoArtifactName: ${{steps.artifact-name.outputs.demoArtifactName}}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v7
@@ -155,9 +160,27 @@ jobs:
           path: apps/web/dist/hosted
           retention-days: 1
           if-no-files-found: error
-      - name: Output artifact name
+      # The demo site's build (docs/DEPLOYMENT.md, "The demo site"). It rebuilds
+      # dist/hosted, so it runs after the site's upload above.
+      - name: Build the demo site
+        env:
+          VITE_SIGNALING_SERVER_URL: ${{ github.event_name == 'pull_request' && (vars.VITE_SIGNALING_SERVER_URL || 'wss://signaling.example.invalid/api/') || vars.VITE_SIGNALING_SERVER_URL }}
+          VITE_DEFAULT_RELAY_TURN_URL: ${{ vars.VITE_DEFAULT_RELAY_TURN_URL }}
+          VITE_DEFAULT_RELAY_REGISTRAR_URL: ${{ vars.VITE_DEFAULT_RELAY_REGISTRAR_URL }}
+          VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
+        run: npm run build -w apps/web
+      - name: Upload the demo site artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{env.DEMO_ARTIFACT_NAME}}
+          path: apps/web/dist/hosted
+          retention-days: 1
+          if-no-files-found: error
+      - name: Output artifact names
         id: artifact-name
-        run: echo "artifactName=${{env.ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "artifactName=${{env.ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
+          echo "demoArtifactName=${{env.DEMO_ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
 
   # The four suites this gate runs share no mutable state, so they run as
   # parallel legs of one matrix rather than as serial steps of one job, and the
