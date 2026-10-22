@@ -51,6 +51,7 @@ import { keysFromOpenedConfiguration as derivedKeysFromOpenedConfiguration } fro
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
 
 import { activate, control } from "./keyboardOnly";
+import { disclosureToggle, openDisclosure } from "./collapsePanels";
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
@@ -1321,9 +1322,13 @@ describe("KeysTab: a key element's split left unfinished", () => {
         }),
       }),
     );
-    const toggle = page.getByRole("button", { name: keyName, exact: true });
-    await userEvent.click(toggle);
-    await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+    // Wait out the card's opening transition: a click aimed inside it scrolls
+    // the clipped panel rather than the page, the panel's growth then carries
+    // "Add a transform" below the viewport, and the menu hides its dropdown.
+    await openDisclosure(keyName);
+    await expect
+      .element(disclosureToggle(keyName))
+      .toHaveAttribute("aria-expanded", "true");
     expect(document.body.textContent).not.toContain("Finish, fix, or remove");
 
     await userEvent.click(
