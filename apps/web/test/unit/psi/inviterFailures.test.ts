@@ -35,8 +35,13 @@ import {
   WEBRTC_ENDPOINT_PATH_REFUSED,
   dialAsAcceptor,
 } from "@psi/transport/rendezvous";
+import {
+  recordRelaysLeftOut,
+  withPeerRelaysLeftOut,
+} from "@psi/transport/iceGathering";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
+import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { failureFor } from "@exchange/useInviterExchange";
 
 import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
@@ -243,6 +248,57 @@ describe("failureFor", () => {
       "The exchange could not be completed - usually a temporary " +
         "connection problem rather than an issue with your data.",
     );
+  });
+
+  describe("a connection that did not open with this site's relay switched off", () => {
+    const negotiationFailure = (defaultRelayOff: boolean, type = "webrtc") => {
+      const peer = {};
+      recordRelaysLeftOut(peer, [], defaultRelayOff);
+      return withPeerRelaysLeftOut(
+        peer,
+        Object.assign(new Error("Negotiation of connection failed."), { type }),
+      );
+    };
+    const generic =
+      "The exchange could not be completed - usually a temporary " +
+      "connection problem rather than an issue with your data.";
+
+    test.each(["inviter", "acceptor"] as const)(
+      "the %s's alert names the switch in its own message, once, and not in the report",
+      (seat) => {
+        const failure = failureFor(
+          "exchange",
+          negotiationFailure(true),
+          undefined,
+          "browser",
+          seat,
+        );
+        expect(failure.message).toBe(`${generic} ${DEFAULT_RELAY_OFF_REMEDY}`);
+        expect(failure.message.split(DEFAULT_RELAY_OFF_REMEDY)).toHaveLength(2);
+        expect(failure.reportedCause).toBe("Negotiation of connection failed.");
+        expect(failure.retry).toBe("offered");
+      },
+    );
+
+    test("the remedy names the switch, the page and the start page's link", () => {
+      expect(DEFAULT_RELAY_OFF_REMEDY).toBe(
+        "This site's relay server is off in this browser. If a network " +
+          "blocks direct connections, or blocks connections to TURN relays, " +
+          'turning on "Use this site\'s relay server" on the Relay server ' +
+          "page (the relay settings link on the start page) and trying " +
+          "again may let the exchange connect.",
+      );
+    });
+
+    test("a run that listed the relay, or a coordination-server failure, keeps the plain message", () => {
+      for (const error of [
+        negotiationFailure(false),
+        negotiationFailure(true, "server-error"),
+      ])
+        expect(
+          failureFor("exchange", error, undefined, "browser").message,
+        ).toBe(generic);
+    });
   });
 
   test("the exchange failure reports its cause outside the fixed copy", () => {

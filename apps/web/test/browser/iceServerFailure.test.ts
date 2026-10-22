@@ -10,7 +10,13 @@ import {
   generateSharedSecret,
 } from "@alcove/core";
 
+import {
+  DEFAULT_RELAY_OFF_REMEDY,
+  DEFAULT_RELAY_SWITCH_LABEL,
+} from "@psi/transport/defaultRelaySwitch";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
+import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
+import { failureFor } from "@exchange/useInviterExchange";
 import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 
@@ -21,7 +27,9 @@ import type { PeerOptions } from "peerjs";
 /**
  * A browser exchange whose only relay cannot be reached, in real Chromium over
  * the standalone broker: both seats fail naming the relay url and the error the
- * browser reported for it, rather than a bare open timeout.
+ * browser reported for it, rather than a bare open timeout. A seat with no
+ * relay, the site's relay switched off, fails with an alert whose own message
+ * names the switch instead.
  *
  * Both peers run on one machine, where a host candidate would connect them
  * whatever the relay does, so each is held to relay candidates alone -- the
@@ -114,6 +122,60 @@ test(
         expectNamesRelay(inviterResult.reason);
       if (acceptorResult.status === "rejected")
         expectNamesRelay(acceptorResult.reason);
+    } finally {
+      inviterPeer.destroy();
+    }
+  },
+);
+
+test(
+  "a run with the site's relay switched off that does not connect names the setting that turns it on",
+  { timeout: 60_000 },
+  async (ctx) => {
+    if (!(await canReachServer(hostString)))
+      return ctx.skip(
+        `PeerJS coordination server at ${hostString} unreachable`,
+      );
+    const secret = generateSharedSecret();
+    const inviterPeer = new Peer(
+      await deriveRendezvousPeerId(secret, "inviter"),
+      relayOnly({ host: brokerHost, port: brokerPort, path: "/api/" }),
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        inviterPeer.once("open", () => resolve());
+        inviterPeer.once("error", reject);
+      });
+      const failure: unknown = await dialAsAcceptor(
+        secret,
+        {
+          channel: "webrtc",
+          host: brokerHost,
+          port: brokerPort,
+          path: "/api/",
+        },
+        {
+          defaultRelayOff: true,
+          openTimeoutMs: 3_000,
+          totalTimeoutMs: 20_000,
+          peerFactory: (id, options) => new Peer(id, relayOnly(options)),
+        },
+      ).catch((err: unknown) => err);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failedWithDefaultRelayOff(failure)).toBe(true);
+      expect((failure as Error).message).not.toContain(
+        DEFAULT_RELAY_OFF_REMEDY,
+      );
+      const alert = failureFor(
+        "exchange",
+        failure,
+        undefined,
+        "browser",
+        "acceptor",
+      );
+      expect(alert.message).toContain(DEFAULT_RELAY_OFF_REMEDY);
+      expect(alert.message).toContain(`"${DEFAULT_RELAY_SWITCH_LABEL}"`);
+      expect(alert.reportedCause).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
     } finally {
       inviterPeer.destroy();
     }

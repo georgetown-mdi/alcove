@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { defaultRelayBuildOf, parseClientConfig } from "@utils/clientConfig";
 import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
-import { parseClientConfig } from "@utils/clientConfig";
 
 describe("parseClientConfig", () => {
   test("an empty build environment resolves every default", () => {
@@ -14,6 +14,7 @@ describe("parseClientConfig", () => {
       DEFAULT_RELAY_TURN_URL: "",
       DEFAULT_RELAY_REGISTRAR_URL: "",
       DEFAULT_RELAY_WEBSOCKET_URL: "",
+      DEFAULT_RELAY_MODE: "opt-in",
     });
   });
 
@@ -40,6 +41,7 @@ describe("parseClientConfig", () => {
       DEFAULT_RELAY_TURN_URL: "",
       DEFAULT_RELAY_REGISTRAR_URL: "",
       DEFAULT_RELAY_WEBSOCKET_URL: "",
+      DEFAULT_RELAY_MODE: "opt-in",
     });
   });
 
@@ -266,6 +268,47 @@ describe("parseClientConfig", () => {
     });
     expect(config.DEFAULT_RELAY_WEBSOCKET_URL).toBe(
       "wss://wsrelay.example.org/relay",
+    );
+  });
+});
+
+describe("defaultRelayBuildOf", () => {
+  const RELAY = {
+    DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443",
+    DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org",
+  };
+  const relay = {
+    turnUrl: RELAY.DEFAULT_RELAY_TURN_URL,
+    registrarUrl: RELAY.DEFAULT_RELAY_REGISTRAR_URL,
+  };
+  const buildOf = (data: Record<string, unknown>) =>
+    defaultRelayBuildOf(parseClientConfig(data));
+
+  test("names no relay where the build names none, whatever its mode", () => {
+    expect(buildOf({})).toEqual({ kind: "none" });
+    expect(buildOf({ DEFAULT_RELAY_MODE: "on" })).toEqual({ kind: "none" });
+  });
+
+  test.each([undefined, "", " opt-in "])(
+    "offers the relay switched off where the mode is %j",
+    (mode) => {
+      expect(buildOf({ ...RELAY, DEFAULT_RELAY_MODE: mode })).toEqual({
+        kind: "opt-in",
+        relay,
+      });
+    },
+  );
+
+  test("turns the relay on where the mode is on", () => {
+    expect(buildOf({ ...RELAY, DEFAULT_RELAY_MODE: "on" })).toEqual({
+      kind: "on",
+      relay,
+    });
+  });
+
+  test("refuses any other mode", () => {
+    expect(() => buildOf({ ...RELAY, DEFAULT_RELAY_MODE: "off" })).toThrow(
+      /VITE_DEFAULT_RELAY_MODE: must be opt-in or on/,
     );
   });
 });

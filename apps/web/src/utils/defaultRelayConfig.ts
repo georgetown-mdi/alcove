@@ -1,9 +1,10 @@
 /**
  * The rule for the build variables naming a default relay,
- * `VITE_DEFAULT_RELAY_TURN_URL`, `VITE_DEFAULT_RELAY_REGISTRAR_URL` and
- * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`, shared by the client's configuration
- * (`./clientConfig.ts`) and the build's own refusal (`vite.config.ts`), so a
- * value the page would refuse at load also stops the build.
+ * `VITE_DEFAULT_RELAY_TURN_URL`, `VITE_DEFAULT_RELAY_REGISTRAR_URL`,
+ * `VITE_DEFAULT_RELAY_WEBSOCKET_URL` and `VITE_DEFAULT_RELAY_MODE`, shared by
+ * the client's configuration (`./clientConfig.ts`) and the build's own refusal
+ * (`vite.config.ts`), so a value the page would refuse at load also stops the
+ * build.
  */
 
 import {
@@ -23,13 +24,32 @@ export interface DefaultRelaySetting {
   websocketUrl?: string;
 }
 
+/**
+ * How a build offers its default relay (`VITE_DEFAULT_RELAY_MODE`): `opt-in`,
+ * the default, switched off until this browser's user turns it on; `on`, in
+ * every browser exchange.
+ */
+export type DefaultRelayMode = "opt-in" | "on";
+
 /** One refused default relay variable, by its unprefixed name. */
 export interface DefaultRelayConfigProblem {
   variable:
     | "DEFAULT_RELAY_TURN_URL"
     | "DEFAULT_RELAY_REGISTRAR_URL"
-    | "DEFAULT_RELAY_WEBSOCKET_URL";
+    | "DEFAULT_RELAY_WEBSOCKET_URL"
+    | "DEFAULT_RELAY_MODE";
   message: string;
+}
+
+/**
+ * The mode the trimmed `VITE_DEFAULT_RELAY_MODE` names, `opt-in` where it is
+ * blank, or `undefined` where it names no mode.
+ */
+export function defaultRelayModeOf(
+  value: string,
+): DefaultRelayMode | undefined {
+  if (value === "" || value === "opt-in") return "opt-in";
+  return value === "on" ? "on" : undefined;
 }
 
 const PAIRING =
@@ -60,14 +80,21 @@ export function defaultRelayRegistrarOrigin(registrarUrl: string): string {
  * value must be one `turn:` / `turns:` url, an `https://` url naming only a
  * host and an optional port, and a `wss://` url; the first two are set
  * together or not at all, and the third only beside them, since the
- * WebSocket relay admits only the keys that registrar enrolls.
+ * WebSocket relay admits only the keys that registrar enrolls. The mode, set
+ * or not, must be `opt-in` or `on`.
  */
 export function defaultRelayConfigProblems(
   turnUrl: string,
   registrarUrl: string,
   websocketUrl = "",
+  mode = "",
 ): Array<DefaultRelayConfigProblem> {
   const problems: Array<DefaultRelayConfigProblem> = [];
+  if (defaultRelayModeOf(mode) === undefined)
+    problems.push({
+      variable: "DEFAULT_RELAY_MODE",
+      message: "must be opt-in or on",
+    });
   if (turnUrl !== "" && !TurnUrlSchema.safeParse(turnUrl).success)
     problems.push({
       variable: "DEFAULT_RELAY_TURN_URL",

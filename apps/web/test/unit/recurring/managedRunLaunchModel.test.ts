@@ -44,6 +44,11 @@ import {
   missedRun,
   storageFailureRun,
 } from "@psi/managed/managedRunRotate";
+import {
+  recordRelaysLeftOut,
+  withPeerRelaysLeftOut,
+} from "@psi/transport/iceGathering";
+import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
@@ -1182,6 +1187,29 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     expect(failure.kind).toBe("transport");
     expect(failure.recovery).toBe("retry");
     expect(failure.message).not.toMatch(/attack|tamper|desync/i);
+    expect(failure.message).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
+  });
+
+  test("a connection that did not open with this site's relay switched off names the switch in the state's own copy, not the report", () => {
+    const peer = {};
+    recordRelaysLeftOut(peer, [], true);
+    const error = withPeerRelaysLeftOut(
+      peer,
+      Object.assign(new Error("Negotiation of connection failed."), {
+        type: "webrtc",
+      }),
+    );
+    const failure = classifyAgainstOneRecord(
+      error,
+      record({ lastRun: failed("transport") }),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("transport");
+    expect(failure.message.endsWith(` ${DEFAULT_RELAY_OFF_REMEDY}`)).toBe(true);
+    expect(failure.message.split(DEFAULT_RELAY_OFF_REMEDY)).toHaveLength(2);
+    expect(failure.reportedCause).toBe("Negotiation of connection failed.");
   });
 });
 

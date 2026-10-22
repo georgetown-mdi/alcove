@@ -64,6 +64,12 @@ export const ALLOWLIST = [
       "the hosted web app, filled into the console's coordination-server field only when the operator asks; the console reads its /alcove.json only once the operator sets it, as PRIVACY.md's console entry states, and the host is named there",
   },
   {
+    url: "https://demo.data-bridge.org",
+    match: "exact",
+    reason:
+      "the demo site's origin, compared with the origin of an invitation link pasted on the start page and never contacted",
+  },
+  {
     url: "https://peerjs",
     match: "exact",
     reason:

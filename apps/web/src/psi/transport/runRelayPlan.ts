@@ -1,18 +1,19 @@
 import { deriveRelayExchangeId, turnUrlIsAllowed } from "@alcove/core";
 
-import { defaultRelaySetting } from "@utils/clientConfig";
-
+import { defaultRelayForRun, relayWithDefaultForRun } from "./defaultRelay";
 import {
   readOwnRelaySetting,
   relayForRun,
   webSocketRelaysForRun,
 } from "./ownRelaySetting";
 import { allowedRelaysRunNotice } from "./relayRestriction";
-import { relayWithDefaultForRun } from "./defaultRelay";
 
+import type {
+  DefaultRelayBuild,
+  DefaultRelaySetting,
+} from "@utils/clientConfig";
 import type { OwnRelayRead, RelayUrls } from "./ownRelaySetting";
 import type { DefaultRelayDependencies } from "./defaultRelay";
-import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { RunRelay } from "./rendezvous";
 
 /** One WebSocket relay a browser run lists, and the exchange id its proof to
@@ -37,10 +38,20 @@ export interface RunRelayPlan {
    * relays leave out.
    */
   websocketRelays: ReadonlyArray<WebSocketRelayForRun>;
+  /** Present where the build offers its default relay switched off, the run
+   * does not list it, and `allowedRelays` keep its TURN url, so a failed open
+   * points at the switch. */
+  defaultRelayOff?: true;
 }
 
 /** What {@link relayPlanForRun} reads: injectable for tests. */
 export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
+  /** The build's default relay and its mode, read where `setting` is unset;
+   * the build's own when unset. */
+  build?: () => DefaultRelayBuild;
+  /** This browser's default relay switch, read where `setting` is unset; the
+   * stored one when unset. */
+  switchedOn?: () => boolean;
   /** This browser's own relay; the stored setting when unset. */
   readOwn?: () => OwnRelayRead;
   /**
@@ -52,10 +63,14 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
 }
 
 /**
- * The relay a browser run dials with. Every TURN url it would list, this
- * browser's own, the invitation's and the build's default relay's, is kept or
- * left out by `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every
- * url). Where it is set, the urls kept and left out are shown through
+ * The relay a browser run dials with. Its default relay is the one
+ * `defaultRelayForRun` names: the one in use, or, where the build offers it
+ * switched off, the build's only where `invitationRelay` names its TURN url,
+ * with its WebSocket relay url only where `invitationRelay` names that too;
+ * `setting` replaces that choice. Every TURN url it would list, this
+ * browser's own, the invitation's and that default relay's, is kept or left
+ * out by `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every url).
+ * Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept. Each WebSocket relay it
  * lists names the exchange id its proof is made under, decided by the url:
@@ -73,10 +88,21 @@ export async function relayPlanForRun(
   const {
     readOwn = readOwnRelaySetting,
     ownRelayExchangeId,
+    build,
+    switchedOn,
     ...defaultRelay
   } = dependencies;
   const own = readOwn();
-  const site = (defaultRelay.setting ?? defaultRelaySetting)();
+  const forRun =
+    defaultRelay.setting === undefined
+      ? defaultRelayForRun(invitationRelay, build, switchedOn)
+      : undefined;
+  const site =
+    forRun === undefined
+      ? defaultRelay.setting?.()
+      : forRun.kind === "in-use" || forRun.kind === "invited"
+        ? forRun.relay
+        : undefined;
   const listed = [
     ...new Set([
       ...(own.kind === "set" ? own.relay.turn : []),
@@ -94,7 +120,7 @@ export async function relayPlanForRun(
     sharedSecret,
     relayForRun(invitationRelay, allowedRelays, () => own),
     allowedRelays,
-    defaultRelay,
+    { ...defaultRelay, setting: () => site },
   );
   const websocketRelays = await webSocketRelaysWithExchangeIds(sharedSecret, {
     invitationRelay,
@@ -108,12 +134,16 @@ export async function relayPlanForRun(
     ...(relay !== undefined && { relay }),
     relaysLeftOut,
     websocketRelays,
+    ...(forRun?.kind === "off" &&
+      turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) && {
+        defaultRelayOff: true as const,
+      }),
   };
 }
 
-// The WebSocket relays a run lists, the default relay's url left out unless
-// the run's enrollment there confirmed, even where another source names it,
-// as the default relay's TURN url is.
+// The WebSocket relays a run lists. Where the run uses the default relay's
+// WebSocket relay url, that url is left out unless the run's enrollment there
+// confirmed, even where another source names it, as its TURN url is.
 async function webSocketRelaysWithExchangeIds(
   sharedSecret: string,
   sources: {

@@ -8,10 +8,14 @@ import {
 } from "./signalingScheme";
 import {
   defaultRelayConfigProblems,
+  defaultRelayModeOf,
   defaultRelayRegistrarOrigin,
 } from "./defaultRelayConfig";
 
-import type { DefaultRelaySetting } from "./defaultRelayConfig";
+import type {
+  DefaultRelayMode,
+  DefaultRelaySetting,
+} from "./defaultRelayConfig";
 import type { LogLevelDesc } from "loglevel";
 import type { ZodType } from "zod";
 
@@ -91,10 +95,11 @@ export interface ClientConfig {
    */
   SIGNALING_SERVER_URL: SignalingServerSetting | undefined;
   /**
-   * The default relay every browser exchange this build runs lists: a
-   * `turn:` or `turns:` url, its credential minted from the exchange's shared
-   * secret. Empty, the build has none. Set with
-   * {@link ClientConfig.DEFAULT_RELAY_REGISTRAR_URL} or not at all.
+   * The default relay this build offers its browser exchanges, as
+   * {@link ClientConfig.DEFAULT_RELAY_MODE} says: a `turn:` or `turns:` url,
+   * its credential minted from the exchange's shared secret. Empty, the build
+   * has none. Set with {@link ClientConfig.DEFAULT_RELAY_REGISTRAR_URL} or not
+   * at all.
    */
   DEFAULT_RELAY_TURN_URL: string;
   /**
@@ -109,9 +114,23 @@ export interface ClientConfig {
    * empty, the build names none.
    */
   DEFAULT_RELAY_WEBSOCKET_URL: string;
+  /**
+   * How the build offers its default relay: `opt-in`, the default, until
+   * this browser's user turns it on; `on`, in every browser exchange. Read
+   * only beside a default relay.
+   */
+  DEFAULT_RELAY_MODE: DefaultRelayMode;
 }
 
-export type { DefaultRelaySetting };
+export type { DefaultRelayMode, DefaultRelaySetting };
+
+/**
+ * How a build offers its default relay to the browser exchanges it runs.
+ * `opt-in` lists it only once this browser's user turns it on, or, url by
+ * url, where an invitation a run accepts names it; `on` lists it in every one.
+ */
+export type DefaultRelayBuild =
+  { kind: "none" } | { kind: DefaultRelayMode; relay: DefaultRelaySetting };
 
 // Vite hands every env value over as a string, so a number arrives as its
 // decimal text; a blank one is refused rather than read as zero.
@@ -203,12 +222,14 @@ const clientConfigSchema: ZodType<ClientConfig> = z
     DEFAULT_RELAY_TURN_URL: z.string().trim().default(""),
     DEFAULT_RELAY_REGISTRAR_URL: z.string().trim().default(""),
     DEFAULT_RELAY_WEBSOCKET_URL: z.string().trim().default(""),
+    DEFAULT_RELAY_MODE: z.string().trim().default(""),
   })
   .superRefine((value, context) => {
     for (const problem of defaultRelayConfigProblems(
       value.DEFAULT_RELAY_TURN_URL,
       value.DEFAULT_RELAY_REGISTRAR_URL,
       value.DEFAULT_RELAY_WEBSOCKET_URL,
+      value.DEFAULT_RELAY_MODE,
     ))
       context.addIssue({
         code: "custom",
@@ -221,6 +242,8 @@ const clientConfigSchema: ZodType<ClientConfig> = z
     DEFAULT_RELAY_REGISTRAR_URL: defaultRelayRegistrarOrigin(
       value.DEFAULT_RELAY_REGISTRAR_URL,
     ),
+    DEFAULT_RELAY_MODE:
+      defaultRelayModeOf(value.DEFAULT_RELAY_MODE) ?? "opt-in",
   }));
 
 /**
@@ -298,16 +321,32 @@ export function signalingServerSetting(): SignalingServerSetting | undefined {
   return config.SIGNALING_SERVER_URL;
 }
 
-/** The default relay this build names, or undefined when it names none. */
-export function defaultRelaySetting(): DefaultRelaySetting | undefined {
-  if (config.DEFAULT_RELAY_TURN_URL === "") return undefined;
+/**
+ * The {@link DefaultRelayBuild} `resolved` names.
+ *
+ * @internal exported for testing
+ */
+export function defaultRelayBuildOf(resolved: ClientConfig): DefaultRelayBuild {
+  if (resolved.DEFAULT_RELAY_TURN_URL === "") return { kind: "none" };
   return {
-    turnUrl: config.DEFAULT_RELAY_TURN_URL,
-    registrarUrl: config.DEFAULT_RELAY_REGISTRAR_URL,
-    ...(config.DEFAULT_RELAY_WEBSOCKET_URL !== "" && {
-      websocketUrl: config.DEFAULT_RELAY_WEBSOCKET_URL,
-    }),
+    kind: resolved.DEFAULT_RELAY_MODE,
+    relay: {
+      turnUrl: resolved.DEFAULT_RELAY_TURN_URL,
+      registrarUrl: resolved.DEFAULT_RELAY_REGISTRAR_URL,
+      ...(resolved.DEFAULT_RELAY_WEBSOCKET_URL !== "" && {
+        websocketUrl: resolved.DEFAULT_RELAY_WEBSOCKET_URL,
+      }),
+    },
   };
+}
+
+/**
+ * The default relay this build names and how it offers it. Which relay a run
+ * or an invitation uses is `defaultRelayInUse` or `defaultRelayForRun`, in
+ * psi/transport/defaultRelay.ts, which read this browser's switch too.
+ */
+export function defaultRelayBuild(): DefaultRelayBuild {
+  return defaultRelayBuildOf(config);
 }
 
 /** The PeerJS client's log level before diagnostic mode raises it. */

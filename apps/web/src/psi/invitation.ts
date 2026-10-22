@@ -20,8 +20,6 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
-import { defaultRelaySetting } from "@utils/clientConfig";
-
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
@@ -30,7 +28,10 @@ import { ownColumnsField } from "./ownColumnsModel";
 import { ownRelayForInvitation } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
-import { invitationRelayWithDefault } from "./transport/defaultRelay";
+import {
+  defaultRelayInUse,
+  invitationRelayWithDefault,
+} from "./transport/defaultRelay";
 
 import type {
   CSVRow,
@@ -270,6 +271,38 @@ export function tokenFromInput(input: string): string {
   return stripInvitationWhitespace(token);
 }
 
+/** The origin of the project's demo site (docs/DEPLOYMENT.md, The demo site),
+ * whose invitation links a build offering its default relay switched off
+ * refuses on its start page. */
+export const DEMO_SITE_ORIGIN = "https://demo.data-bridge.org";
+
+const DEMO_SITE_URL = new URL(DEMO_SITE_ORIGIN);
+
+/**
+ * Whether `input`, pasted on the start page, is a full invitation link made
+ * on the demo site: a url with the scheme, host and port of
+ * {@link DEMO_SITE_ORIGIN}, its host compared with one trailing dot removed,
+ * and the invitation in its fragment. A bare code is not.
+ */
+export function isDemoSiteInvitationLink(input: string): boolean {
+  const trimmed = input.trim();
+  const hash = trimmed.indexOf("#");
+  if (hash === -1) return false;
+  let url: URL;
+  try {
+    url = new URL(trimmed.slice(0, hash));
+  } catch {
+    return false;
+  }
+  // URL drops a scheme's default port, so with the schemes equal, equal
+  // `port` strings are equal effective ports.
+  return (
+    url.protocol === DEMO_SITE_URL.protocol &&
+    url.port === DEMO_SITE_URL.port &&
+    url.hostname.replace(/\.$/, "") === DEMO_SITE_URL.hostname
+  );
+}
+
 /**
  * The endpoint to put in an invitation: `{ channel: "webrtc" }` for this
  * app's signaling locator, a webrtc endpoint naming its host for a server
@@ -379,7 +412,7 @@ export async function generateInvitation(params: {
   /** Whether the inviter's result file names the key each pair matched on,
    * narrowed against the emitted terms and returned. Omitted is off. */
   includeMatchingKey?: boolean;
-  /** Reads the build's default relay; {@link defaultRelaySetting} when
+  /** Reads the default relay in use; {@link defaultRelayInUse} when
    * omitted. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
   /**
@@ -536,7 +569,7 @@ export async function generateInvitation(params: {
   const resolvedEndpoint = resolveConnectionEndpoint(
     connectionEndpoint,
     location,
-    params.defaultRelay ?? defaultRelaySetting,
+    params.defaultRelay ?? defaultRelayInUse,
     params.allowedRelays,
   );
   const token: InvitationToken = {

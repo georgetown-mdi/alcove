@@ -6,25 +6,35 @@ import {
   Button,
   Group,
   Stack,
+  Switch,
   TextInput,
   Textarea,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
-import { defaultRelaySetting, isConsoleBuild } from "@utils/clientConfig";
+import {
+  DEFAULT_RELAY_SWITCH_LABEL,
+  readDefaultRelaySwitch,
+  writeDefaultRelaySwitch,
+} from "@psi/transport/defaultRelaySwitch";
+import { defaultRelayBuild, isConsoleBuild } from "@utils/clientConfig";
 import {
   parseRelayUrlLines,
   parseWebSocketRelayUrl,
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { defaultRelayInUse } from "@psi/transport/defaultRelay";
 import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
 import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
-import type { DefaultRelaySetting } from "@utils/clientConfig";
+import type {
+  DefaultRelayBuild,
+  DefaultRelaySetting,
+} from "@utils/clientConfig";
 import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
 /**
@@ -37,6 +47,31 @@ export const RELAY_OPERATOR_DISCLOSURE =
   "The relay's operator learns each party's network address for every exchange " +
   "that uses it, even when no traffic is relayed. The relay passes only " +
   "encrypted traffic and cannot read the exchange.";
+
+/**
+ * What the switch for a default relay the build offers switched off does,
+ * then {@link RELAY_OPERATOR_DISCLOSURE}, as `DefaultRelayNotice` states them.
+ */
+export const DEFAULT_RELAY_SWITCH_DESCRIPTION =
+  "When it is on, exchanges that run in your browser on this site use the " +
+  "site's relay server, unless an exchange's allowed relays leave it out, " +
+  "and invitations you create name it, so your partner's exchange can use " +
+  "it too. When it is off, an exchange uses it " +
+  `only where an invitation you accept names it. ${RELAY_OPERATOR_DISCLOSURE}`;
+
+/** The switch's error where this browser did not store its new state. */
+export const DEFAULT_RELAY_SWITCH_NOT_SAVED =
+  "This browser did not save the setting. Check that site storage is " +
+  "allowed for this site, then try again.";
+
+/** What the page reports where this browser has no relay of its own set and
+ * this site's relay server is not in use. */
+export const NO_RELAY_SET = "No relay is set. Exchanges connect without one.";
+
+/** What the page reports where this browser has no relay of its own set and
+ * this site's relay server is in use. */
+export const NO_OWN_RELAY_SITE_RELAY_IN_USE =
+  "No relay of your own is set. Exchanges use this site's relay server.";
 
 /** The relay settings page's opening paragraph: when a relay is needed, and
  * which party sets it up. */
@@ -102,15 +137,24 @@ type SaveStatus =
  * relay's operator learns. The hosted app and a console each hold their own; a
  * console runs no exchange over a WebSocket relay, so it offers no WebSocket
  * relay field. The relays an exchange may use are that exchange's own, set
- * where it is authored, so none is set here.
+ * where it is authored, so none is set here. Where the build offers its
+ * default relay switched off, the page has the switch that turns it on in
+ * this browser, which takes effect when it is changed.
  */
 export function RelaySettingsScreen({
-  defaultRelay = defaultRelaySetting,
+  build = defaultRelayBuild,
+  defaultRelay = () => defaultRelayInUse(build),
 }: {
-  /** The build's default relay; {@link defaultRelaySetting} when unset. */
+  /** The build's default relay and its mode; the build's own when unset. */
+  build?: () => DefaultRelayBuild;
+  /** The default relay in use; {@link defaultRelayInUse} of `build` when
+   * unset. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
 }) {
   const consoleBuild = isConsoleBuild();
+  const [offersSwitch] = useState(() => build().kind === "opt-in");
+  const [switchOn, setSwitchOn] = useState(readDefaultRelaySwitch);
+  const [switchNotSaved, setSwitchNotSaved] = useState(false);
   const [initial] = useState(readOwnRelaySetting);
   const [turnText, setTurnText] = useState(
     initial.kind === "set" ? initial.relay.turn.join("\n") : "",
@@ -141,9 +185,22 @@ export function RelaySettingsScreen({
     attempted && !websocketEntry.ok ? websocketEntry.message : undefined;
   const unsavedTurnChanges =
     !turnLines.ok || turnLines.urls.join("\n") !== savedTurn.join("\n");
+  const siteRelayInUse = defaultRelay() !== undefined;
 
   function refreshTestTargets(turn: ReadonlyArray<string>) {
     setSavedTurn(turn);
+    setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
+  }
+
+  function switchDefaultRelay(on: boolean) {
+    try {
+      writeDefaultRelaySwitch(on);
+    } catch {
+      setSwitchNotSaved(true);
+      return;
+    }
+    setSwitchOn(on);
+    setSwitchNotSaved(false);
     setTestTargets(relayTestTargets(readOwnRelaySetting, defaultRelay));
   }
 
@@ -201,10 +258,27 @@ export function RelaySettingsScreen({
         {RELAY_KEY_NOTICE}
       </p>
 
+      {offersSwitch && (
+        <Switch
+          mt="md"
+          label={DEFAULT_RELAY_SWITCH_LABEL}
+          description={DEFAULT_RELAY_SWITCH_DESCRIPTION}
+          checked={switchOn}
+          error={
+            switchNotSaved ? (
+              <span role="alert">{DEFAULT_RELAY_SWITCH_NOT_SAVED}</span>
+            ) : undefined
+          }
+          onChange={(event) => switchDefaultRelay(event.currentTarget.checked)}
+        />
+      )}
+
       {initial.kind === "unreadable" && status.kind === "idle" && (
         <Alert color="yellow" title="The saved relay could not be read">
-          Exchanges in this browser use no relay until it is saved again. Enter
-          the relay&apos;s addresses and save.
+          {siteRelayInUse
+            ? NO_OWN_RELAY_SITE_RELAY_IN_USE
+            : "Exchanges in this browser use no relay until it is saved again."}{" "}
+          Enter the relay&apos;s addresses and save.
         </Alert>
       )}
 
@@ -261,7 +335,7 @@ export function RelaySettingsScreen({
           {status.kind === "saved" &&
             "Saved. Exchanges started from now on use this relay."}
           {status.kind === "removed" &&
-            "No relay is set. Exchanges connect without one."}
+            (siteRelayInUse ? NO_OWN_RELAY_SITE_RELAY_IN_USE : NO_RELAY_SET)}
           {status.kind === "failed" &&
             "This browser did not save the setting. Check that site storage is allowed for this site, then save again."}
         </p>

@@ -9,12 +9,20 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  DEFAULT_RELAY_SWITCH_DESCRIPTION,
+  DEFAULT_RELAY_SWITCH_NOT_SAVED,
+  NO_OWN_RELAY_SITE_RELAY_IN_USE,
+  NO_RELAY_SET,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
   STUN_FIELD_DESCRIPTION,
 } from "@exchange/RelaySettingsScreen";
+import {
+  DEFAULT_RELAY_SWITCH_LABEL,
+  readDefaultRelaySwitch,
+} from "@psi/transport/defaultRelaySwitch";
 import {
   RELAY_TEST_FAILED,
   RELAY_TEST_INTRO,
@@ -576,3 +584,152 @@ const TWO_TARGETS: Array<RelayTestTarget> = [
   { url: TURN_URL, source: "own", transport: "tls" },
   { url: SITE_RELAY.turnUrl, source: "site", transport: "udp" },
 ];
+
+describe("the switch for a site relay offered switched off", () => {
+  const siteSwitch = () =>
+    page.getByRole("switch", { name: DEFAULT_RELAY_SWITCH_LABEL });
+  const siteRelayListed = () =>
+    page.getByRole("listitem").filter({ hasText: SITE_RELAY.turnUrl });
+
+  test("starts off, states what the relay's operator learns, and turning it on or off takes one action", async () => {
+    app.render(
+      createElement(RelaySettingsScreen, {
+        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
+      }),
+    );
+
+    await expect.element(siteSwitch()).not.toBeChecked();
+    await expect
+      .element(siteSwitch())
+      .toHaveAccessibleDescription(DEFAULT_RELAY_SWITCH_DESCRIPTION);
+    expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toContain(
+      RELAY_OPERATOR_DISCLOSURE,
+    );
+    expect(siteRelayListed().query()).toBeNull();
+    expect(readDefaultRelaySwitch()).toBe(false);
+
+    await userEvent.click(siteSwitch());
+
+    await expect.element(siteSwitch()).toBeChecked();
+    expect(readDefaultRelaySwitch()).toBe(true);
+    await expect.element(siteRelayListed()).toBeVisible();
+
+    await userEvent.click(siteSwitch());
+
+    await expect.element(siteSwitch()).not.toBeChecked();
+    expect(readDefaultRelaySwitch()).toBe(false);
+    await expect.poll(() => siteRelayListed().query()).toBeNull();
+  });
+
+  test("its description says invitations name it for the partner's exchange too", () => {
+    expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toContain(
+      "and invitations you create name it, so your partner's exchange can " +
+        "use it too.",
+    );
+  });
+
+  test("a switch the browser did not save announces the error as an alert", async () => {
+    app.render(
+      createElement(RelaySettingsScreen, {
+        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
+      }),
+    );
+    await expect.element(siteSwitch()).not.toBeChecked();
+    const refused = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+    try {
+      await userEvent.click(siteSwitch());
+    } finally {
+      refused.mockRestore();
+    }
+
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent(DEFAULT_RELAY_SWITCH_NOT_SAVED);
+    await expect
+      .element(siteSwitch())
+      .toHaveAccessibleDescription(
+        new RegExp(DEFAULT_RELAY_SWITCH_NOT_SAVED.replace(/\./g, "\\.")),
+      );
+    await expect.element(siteSwitch()).not.toBeChecked();
+    expect(readDefaultRelaySwitch()).toBe(false);
+  });
+
+  test("removing the relay with the site's relay turned on says exchanges use it, and turning it off says they use none", async () => {
+    writeOwnRelaySetting({ turn: [TURN_URL], stun: [] });
+    app.render(
+      createElement(RelaySettingsScreen, {
+        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
+      }),
+    );
+    await userEvent.click(siteSwitch());
+    await expect.element(siteSwitch()).toBeChecked();
+
+    await userEvent.click(removeButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent(NO_OWN_RELAY_SITE_RELAY_IN_USE);
+    expect(NO_OWN_RELAY_SITE_RELAY_IN_USE).toBe(
+      "No relay of your own is set. Exchanges use this site's relay server.",
+    );
+
+    await userEvent.click(siteSwitch());
+
+    await expect.element(statusLine()).toHaveTextContent(NO_RELAY_SET);
+  });
+
+  test("saving no relay on a build that turns the site's relay on says exchanges use it", async () => {
+    app.render(
+      createElement(RelaySettingsScreen, {
+        build: () => ({ kind: "on" as const, relay: SITE_RELAY }),
+      }),
+    );
+    await expect.element(turnField()).toBeInTheDocument();
+
+    await userEvent.click(saveButton());
+
+    await expect
+      .element(statusLine())
+      .toHaveTextContent(NO_OWN_RELAY_SITE_RELAY_IN_USE);
+  });
+
+  test.each([
+    [
+      "in use",
+      { kind: "on" as const, relay: SITE_RELAY },
+      NO_OWN_RELAY_SITE_RELAY_IN_USE,
+    ],
+    [
+      "offered and off",
+      { kind: "opt-in" as const, relay: SITE_RELAY },
+      "Exchanges in this browser use no relay until it is saved again.",
+    ],
+  ])(
+    "an unreadable saved relay with the site's relay %s says what exchanges use",
+    async (_state, offer, said) => {
+      window.localStorage.setItem("alcove-own-relay", "{not json");
+      app.render(createElement(RelaySettingsScreen, { build: () => offer }));
+
+      const alert = page.getByRole("status", {
+        name: "The saved relay could not be read",
+      });
+      await expect.element(alert).toBeVisible();
+      expect(alert.element().textContent).toContain(
+        `${said} Enter the relay's addresses and save.`,
+      );
+    },
+  );
+
+  test.each([
+    ["names no relay", { kind: "none" as const }],
+    ["turns the relay on", { kind: "on" as const, relay: SITE_RELAY }],
+  ])("a build that %s offers no switch", async (_build, offer) => {
+    app.render(createElement(RelaySettingsScreen, { build: () => offer }));
+    await expect.element(turnField()).toBeInTheDocument();
+    expect(siteSwitch().query()).toBeNull();
+  });
+});

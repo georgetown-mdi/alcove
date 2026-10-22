@@ -1,13 +1,17 @@
 /**
  * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL`,
  * `VITE_DEFAULT_RELAY_REGISTRAR_URL` and, optionally,
- * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`). An invitation this build creates names
+ * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`), in use where the build turns it on
+ * (`VITE_DEFAULT_RELAY_MODE=on`) or this browser's user did
+ * (./defaultRelaySwitch.ts). In use, an invitation this browser creates names
  * it, its registrar and its WebSocket relay, and every browser run lists its
  * TURN url and its WebSocket relay url beside any relay the invitation or this
  * browser's own setting names, once the run has enrolled its relay key at the
  * relay's registrar without a token (`enrollRelayKeyWithinWait` in core),
  * right before it connects. The key and the exchange id it is enrolled under
- * both derive from the run's current shared secret.
+ * both derive from the run's current shared secret. Switched off, a run lists
+ * each of the two urls only where the invitation it accepted names that url,
+ * and enrolls only where the invitation names the TURN url.
  */
 
 import {
@@ -18,13 +22,79 @@ import {
   webSocketRelayUrlIsAllowed,
 } from "@alcove/core";
 
-import { defaultRelaySetting } from "@utils/clientConfig";
+import { defaultRelayBuild } from "@utils/clientConfig";
 
-import type { DefaultRelaySetting } from "@utils/clientConfig";
+import { readDefaultRelaySwitch } from "./defaultRelaySwitch";
+
+import type {
+  DefaultRelayBuild,
+  DefaultRelaySetting,
+} from "@utils/clientConfig";
 import type { RelayUrls } from "./ownRelaySetting";
 import type { RunRelay } from "./rendezvous";
 
 const log = getLogger("defaultRelay");
+
+/**
+ * The default relay this browser's exchanges use: the build's where the build
+ * turns it on, or offers it switched off and this browser's user turned it
+ * on; none otherwise.
+ */
+export function defaultRelayInUse(
+  build: () => DefaultRelayBuild = defaultRelayBuild,
+  switchedOn: () => boolean = readDefaultRelaySwitch,
+): DefaultRelaySetting | undefined {
+  const offer = build();
+  if (offer.kind === "none") return undefined;
+  return offer.kind === "on" || switchedOn() ? offer.relay : undefined;
+}
+
+// The part of `defaultRelay` that `relay`, an invitation's, names, service by
+// service: none where it does not name the TURN url, since the TURN url is
+// what a run enrolls for, and the WebSocket relay url only where it names that
+// url too.
+function defaultRelayAnInvitationNames(
+  relay: RelayUrls | undefined,
+  defaultRelay: DefaultRelaySetting,
+): DefaultRelaySetting | undefined {
+  if (!(relay?.turn ?? []).includes(defaultRelay.turnUrl)) return undefined;
+  const { websocketUrl, ...turnAndRegistrar } = defaultRelay;
+  return websocketUrl !== undefined && relay?.websocket === websocketUrl
+    ? defaultRelay
+    : turnAndRegistrar;
+}
+
+/**
+ * The default relay a run uses. `in-use`: {@link defaultRelayInUse} names
+ * it. `invited`: the build offers it switched off, this browser has not
+ * turned it on, and the invitation the run accepted names its TURN url, so
+ * the run uses that url as one in use; `relay` names the WebSocket relay url
+ * only where the invitation names that url too. `off`: the build offers it
+ * switched off and the run does not use its TURN url, including where the
+ * invitation names only its WebSocket relay url, which the run lists as it
+ * lists any WebSocket relay an invitation names; `relay` is the one left out.
+ * `none`: the build names none.
+ */
+export type DefaultRelayForRun =
+  | { kind: "in-use" | "invited" | "off"; relay: DefaultRelaySetting }
+  | { kind: "none" };
+
+/** The {@link DefaultRelayForRun} of a run whose accepted invitation names
+ * `invitationRelay`, which an inviter's own run passes as `undefined`. */
+export function defaultRelayForRun(
+  invitationRelay: RelayUrls | undefined,
+  build: () => DefaultRelayBuild = defaultRelayBuild,
+  switchedOn: () => boolean = readDefaultRelaySwitch,
+): DefaultRelayForRun {
+  const offer = build();
+  if (offer.kind === "none") return { kind: "none" };
+  const inUse = defaultRelayInUse(() => offer, switchedOn);
+  if (inUse !== undefined) return { kind: "in-use", relay: inUse };
+  const invited = defaultRelayAnInvitationNames(invitationRelay, offer.relay);
+  return invited !== undefined
+    ? { kind: "invited", relay: invited }
+    : { kind: "off", relay: offer.relay };
+}
 
 /**
  * How long a dial waits for its enrollment at the default relay's registrar
@@ -38,7 +108,7 @@ export const DEFAULT_RELAY_DIAL_WAIT_MS = 3_000;
 /** What the default relay's enrollment reads from its surroundings, and where
  * it reports a failure: injectable for tests. */
 export interface DefaultRelayDependencies {
-  /** The build's default relay; {@link defaultRelaySetting} when unset. */
+  /** The default relay in use; {@link defaultRelayInUse} when unset. */
   setting?: () => DefaultRelaySetting | undefined;
   /** The bounded enrollment; core's {@link enrollRelayKeyWithinWait}. */
   enroll?: typeof enrollRelayKeyWithinWait;
@@ -52,14 +122,15 @@ export interface DefaultRelayDependencies {
 }
 
 /**
- * The relay an invitation names: `ownRelay`, followed by the default relay's
- * TURN url when the build names one and `allowedRelays` keeps it, once, and
- * only where the locator has room for it under {@link MAX_RELAY_LOCATOR_URLS}.
- * Where the result names that url, it also names the default relay's
- * registrar, where a command-line party enrolls without a token. Where
- * `ownRelay` names no WebSocket relay, the result names the default relay's
- * when the build names one and `allowedRelays` keeps it. A new invitation and
- * a managed re-invite both name it this way.
+ * The relay an invitation names: `ownRelay`, followed by the TURN url of
+ * `defaultRelay`, the one in use ({@link defaultRelayInUse}), when it is set
+ * and `allowedRelays` keeps it, once, and only where the locator has room for
+ * it under {@link MAX_RELAY_LOCATOR_URLS}. Where the result names that url, it
+ * also names the default relay's registrar, where a command-line party enrolls
+ * without a token. Where `ownRelay` names no WebSocket relay, the result names
+ * the default relay's when it names one and `allowedRelays` keeps it. A new
+ * invitation and a managed re-invite both name it this way; with none in use,
+ * the result is `ownRelay`.
  */
 export function invitationRelayWithDefault(
   ownRelay: RelayUrls | undefined,
@@ -141,7 +212,7 @@ export async function relayWithDefaultForRun(
   dependencies: DefaultRelayDependencies = {},
 ): Promise<RelayWithDefault> {
   const unchanged = relay !== undefined ? { relay } : {};
-  const setting = (dependencies.setting ?? defaultRelaySetting)();
+  const setting = (dependencies.setting ?? defaultRelayInUse)();
   if (setting === undefined) return unchanged;
   if (!turnUrlIsAllowed(setting.turnUrl, allowedRelays)) return unchanged;
   const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;

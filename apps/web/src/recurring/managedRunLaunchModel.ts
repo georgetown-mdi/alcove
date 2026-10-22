@@ -55,8 +55,10 @@ import {
   importedSinceLastSuccess,
   rotationInFlightUnansweredAtLaunch,
 } from "@psi/managed/managedFailureTiers";
+import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
+import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
 
 import {
   HandlePermissionError,
@@ -1112,7 +1114,10 @@ export function withShownCause(
  *
  * Whatever state it lands on, the launch error reaches the operator only
  * through {@link managedRunCausePlacement}, and never on the not-runnable
- * copy ({@link NOT_RUNNABLE_FAILURE}).
+ * copy ({@link NOT_RUNNABLE_FAILURE}). The transport state of a connection
+ * that did not open with this site's relay switched off
+ * (`failedWithDefaultRelayOff`) adds {@link DEFAULT_RELAY_OFF_REMEDY} to its
+ * own copy.
  */
 export function classifyManagedRunFailure(
   error: unknown,
@@ -1128,9 +1133,16 @@ export function classifyManagedRunFailure(
     now,
     dataExchangeStarted,
   );
-  return state.kind === "handed-off" || state === NOT_RUNNABLE_FAILURE
-    ? state
-    : withShownCause(state, error, managedRunCausePlacement(state.kind));
+  if (state.kind === "handed-off" || state === NOT_RUNNABLE_FAILURE)
+    return state;
+  const shown = withShownCause(
+    state,
+    error,
+    managedRunCausePlacement(state.kind),
+  );
+  return state.kind === "transport" && failedWithDefaultRelayOff(error)
+    ? { ...shown, message: `${shown.message} ${DEFAULT_RELAY_OFF_REMEDY}` }
+    : shown;
 }
 
 /** The state a launch failure lands on, before the launch error is offered to

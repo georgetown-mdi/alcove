@@ -9,9 +9,13 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import { listManagedLocalState } from "@psi/managed/managedLocalState";
 
-import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
+import {
+  PASTE_INVITATION_FIELD_ID,
+  isDemoSiteInvitationLink,
+  tokenFromInput,
+} from "@psi/invitation";
 
-import { isConsoleBuild } from "@utils/clientConfig";
+import { defaultRelayBuild, isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 
 import { addSampleInputs } from "@psi/jobClient/workInputClient";
@@ -30,6 +34,16 @@ import { downloadSamplePartnerCsv } from "./sampleData";
 
 /** The paste card's heading, which names the invitation field. */
 const PASTE_INVITATION_HEADING_ID = "paste-invitation-heading";
+
+/**
+ * The paste field's error for a full invitation link made on the demo site,
+ * on a build that offers its default relay switched off.
+ *
+ * @internal exported for testing
+ */
+export const DEMO_SITE_LINK_REFUSAL =
+  "This link opens an invitation on the demo site, so it was not opened " +
+  "here. Open the link itself in your browser to accept it there.";
 
 /**
  * The quick path's screen: two primary actions side by side -- invite a partner to a
@@ -74,8 +88,17 @@ export function Lobby() {
   // "Review invitation" peels the token out of whatever was pasted -- a bare code
   // or a deep-link URL -- via the shared tokenFromInput helper, and routes to the
   // accept console with the token in the URL fragment, never a search param. An
-  // empty extraction shows the inline field error and does not navigate.
+  // empty extraction shows the inline field error and does not navigate, as
+  // does a demo-site link where this build offers its default relay switched
+  // off; the demo site is the build whose relay is on (docs/DEPLOYMENT.md).
   function reviewInvitation() {
+    if (
+      defaultRelayBuild().kind === "opt-in" &&
+      isDemoSiteInvitationLink(invitation)
+    ) {
+      setInvitationError(DEMO_SITE_LINK_REFUSAL);
+      return;
+    }
     const token = tokenFromInput(invitation);
     if (token === "") {
       setInvitationError("An invitation is required");
