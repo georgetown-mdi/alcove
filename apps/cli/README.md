@@ -1,12 +1,17 @@
 ## Quickstart
 
-Node and NPM must be installed.
+Node.js `>=26` is required, the `engines.node` range in the root `package.json`.
+The root `.npmrc` sets `engine-strict=true`, so npm stops the install on an older Node.js instead of warning.
 
-From the repository root, run:
+From the repository root, run these in order:
 
-1. `npm i . -w packages/core -w apps/cli`
-2. `npm run -w packages/core build`
-3. `npm run -w apps/cli build`
+1. `npm ci -w packages/core -w packages/cli-contract -w apps/cli`
+2. `npm run build -w packages/core`
+3. `npm run build -w packages/cli-contract`
+4. `npm run build -w apps/cli`
+
+Build in this order: `packages/cli-contract` compiles against core's declarations, and the CLI reads both packages from their `dist/` folders.
+If you skip step 3, the CLI build still finishes, with "Cannot find module" warnings, and the CLI then stops at start with the same error for `@alcove/cli-contract`.
 
 To connect:
 
@@ -14,16 +19,19 @@ To connect:
 npm run dev -w apps/cli sftp://USER:PASSWORD@HOST/PATH INPUT_FILE [OUTPUT_FOLDER]
 ```
 
+Put `--` after `npm run dev -w apps/cli` before any flag you pass to the CLI.
+Without it, npm warns `Unknown cli config` and keeps the flag for itself, so the CLI never receives it.
+
 To avoid using a password on the command line, place it in a plain-text file and execute:
 
 ```sh
-npm run dev -w apps/cli --server-password=@PASSWORD_FILE sftp://USER@HOST/PATH INPUT_FILE 
+npm run dev -w apps/cli -- --server-password=@PASSWORD_FILE sftp://USER@HOST/PATH INPUT_FILE
 ```
 
 Similarly, to use a private key:
 
 ```sh
-npm run dev -w apps/cli --server-private-key=@PEM_FILE sftp://USER@HOST/PATH INPUT_FILE 
+npm run dev -w apps/cli -- --server-private-key=@PEM_FILE sftp://USER@HOST/PATH INPUT_FILE
 ```
 
 ## To build for the GitHub Container Registry
