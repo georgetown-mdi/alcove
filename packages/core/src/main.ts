@@ -182,6 +182,18 @@ export type {
   InboundFrameLimits,
   InboundOutcome,
 } from "./connection/webrtcInboundBounds";
+// The race from WebRTC to the WebSocket relay. Published because each app
+// races its own transports, outside this package, and the two parties must
+// follow one set of rules on the wire.
+export { raceWebRtcAgainstRelays } from "./connection/relayFallback";
+export type {
+  ExchangePath,
+  ParkedRelay,
+  RelayFallbackAdapter,
+  RelayFallbackOutcome,
+  RelayFallbackRace,
+  WebRtcPathFailure,
+} from "./connection/relayFallback";
 export {
   formatLogPrefix,
   getLogger,

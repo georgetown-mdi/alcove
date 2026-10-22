@@ -28,9 +28,10 @@ describe("WebRTC provider_options unread check", () => {
       expect(readsIn(readSource(file), file)).toEqual([]);
   });
 
-  it("CORE_FILES names the framing and reassembly files in core, all on disk", () => {
+  it("CORE_FILES names the framing, reassembly and relay fallback files in core, all on disk", () => {
     expect(CORE_FILES).toEqual([
       "packages/core/src/connection/peerjsWire.ts",
+      "packages/core/src/connection/relayFallback.ts",
       "packages/core/src/connection/webrtcInboundBounds.ts",
     ]);
     for (const file of CORE_FILES) expect(() => readSource(file)).not.toThrow();

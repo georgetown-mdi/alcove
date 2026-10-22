@@ -6,9 +6,9 @@
 // transport reads `connection.provider_options`.
 //
 // Scans CLI_FILES, every file under apps/cli/src/connection/webrtc/ (the CLI's
-// transport), checked against the directory listing; CORE_FILES, the framing and
-// bounded reassembly the CLI's transport uses, which live in core, each checked
-// to exist; and WEB_FILES, rendezvous.ts,
+// transport), checked against the directory listing; CORE_FILES, the framing,
+// bounded reassembly and relay fallback race the CLI's transport uses, which
+// live in core, each checked to exist; and WEB_FILES, rendezvous.ts,
 // managedRendezvous.ts and peerMessageConnection.ts plus every local module they
 // import statically, one hop out, checked against their import statements
 // through `ts.resolveModuleName`. A file outside these lists is unexamined, not
@@ -32,7 +32,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The CLI's WebRTC transport; its framing and bounded reassembly live in core, under `CORE_FILES`. */
+/** The CLI's WebRTC transport; its framing, bounded reassembly and relay fallback race live in core, under `CORE_FILES`. */
 export const CLI_WEBRTC_DIR = "apps/cli/src/connection/webrtc";
 
 /** `CLI_WEBRTC_DIR`'s files, repository-relative, held to the real listing. */
@@ -47,9 +47,10 @@ export const CLI_FILES = [
   "apps/cli/src/connection/webrtc/weriftPeer.ts",
 ];
 
-/** The framing and bounded reassembly in core that the CLI's transport uses, repository-relative; each must exist. */
+/** The framing, bounded reassembly and relay fallback race in core that the CLI's transport uses, repository-relative; each must exist. */
 export const CORE_FILES = [
   "packages/core/src/connection/peerjsWire.ts",
+  "packages/core/src/connection/relayFallback.ts",
   "packages/core/src/connection/webrtcInboundBounds.ts",
 ];
 

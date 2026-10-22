@@ -4,15 +4,24 @@ import logLibrary from "loglevel";
 import {
   AuthenticationError,
   ConnectionError,
+  raceWebRtcAgainstRelays,
+  redactAndSanitizeForDisplay,
   setDiagnosticSink,
   setLogLevel,
 } from "@alcove/core";
 
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 
-import type { MessageConnection, RendezvousRole } from "@alcove/core";
-import type { ParkedWebSocketRelay } from "../../../src/connection/webrtc/websocketRelayConnection";
-import type { WebRtcPathFailure } from "../../../src/connection/webrtc/weriftPeer";
+import type {
+  MessageConnection,
+  ParkedRelay,
+  RendezvousRole,
+  WebRtcPathFailure,
+} from "@alcove/core";
+
+// The CLI's side of core's fallback race: what it resolves with, which
+// failure stays fatal, what it closes and how it logs. The race itself is
+// held in packages/core/test/connection/relayFallback.test.ts.
 
 const webRtcDials = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
@@ -31,7 +40,7 @@ vi.mock(
   }),
 );
 
-const { openWebRtcWithRelayFallback, raceWebRtcAgainstRelays } =
+const { CLI_RELAY_FALLBACK, openWebRtcWithRelayFallback } =
   await import("../../../src/connection/webrtc/relayFallback");
 
 snapshotDiagnosticSinkAndLevel();
@@ -39,6 +48,16 @@ snapshotDiagnosticSinkAndLevel();
 afterEach(() => {
   webRtcDials.length = 0;
 });
+
+/** Capture every logged line at `level` and above. */
+function captureLines(level: logLibrary.LogLevelNumbers): Array<string> {
+  const lines: Array<string> = [];
+  setDiagnosticSink((_method, _prefix, args) => {
+    lines.push(args.map(String).join(" "));
+  });
+  setLogLevel(level);
+  return lines;
+}
 
 /** A connection that records its close. */
 function fakeConnection(): MessageConnection & { closes: number } {
@@ -54,114 +73,42 @@ function fakeConnection(): MessageConnection & { closes: number } {
 }
 
 /**
- * A parked relay the test drives: pairing, the partner's start and a failure
- * are set by hand, and `start()` resolves as the real one does, once this
- * side has started and the partner's start has arrived on a pairing.
+ * A parked relay as made: its start opens at once where the partner is
+ * paired and started on it, and waits otherwise until it fails.
  */
-class FakeRelay implements ParkedWebSocketRelay {
-  paired = false;
-  partnerStarted = false;
+class FakeRelay implements ParkedRelay {
   failure: ConnectionError | undefined;
-  startCalls = 0;
   closeCalls = 0;
-  /** The socket closes as this side's start is sent, failing the relay. */
-  failOnStart = false;
   readonly connection = fakeConnection();
-  private opened = false;
-  private closed = false;
   private readonly listeners = new Set<() => void>();
-  private starting:
-    | {
-        promise: Promise<MessageConnection>;
-        resolve: (connection: MessageConnection) => void;
-        reject: (error: unknown) => void;
-      }
-    | undefined;
+  private rejectStart: ((error: unknown) => void) | undefined;
 
-  constructor(readonly url: string) {}
+  constructor(
+    readonly url: string,
+    readonly paired = false,
+    readonly partnerStarted = false,
+  ) {}
 
   onChange(listener: () => void): () => void {
-    const call = (): void => listener();
-    this.listeners.add(call);
-    return () => this.listeners.delete(call);
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   start(): Promise<MessageConnection> {
-    this.startCalls += 1;
-    if (this.starting === undefined) {
-      let resolve!: (connection: MessageConnection) => void;
-      let reject!: (error: unknown) => void;
-      const promise = new Promise<MessageConnection>((res, rej) => {
-        resolve = res;
-        reject = rej;
-      });
-      this.starting = { promise, resolve, reject };
-      if (this.failure !== undefined) reject(this.failure);
-      else if (this.failOnStart) queueMicrotask(() => this.fail());
-      else this.openIfReady();
-    }
-    return this.starting.promise;
+    if (this.paired && this.partnerStarted)
+      return Promise.resolve(this.connection);
+    return new Promise((_resolve, reject) => {
+      this.rejectStart = reject;
+    });
   }
 
   close(): void {
     this.closeCalls += 1;
-    if (this.opened || this.closed || this.failure !== undefined) return;
-    this.closed = true;
-    this.listeners.clear();
-    this.starting?.reject(new ConnectionError("stopped", "closed"));
   }
 
-  get startSent(): boolean {
-    return this.starting !== undefined;
-  }
-
-  get isClosed(): boolean {
-    return this.closed;
-  }
-
-  /** Whether this side's start is out on this relay and the relay may still carry it. */
-  get holdsStart(): boolean {
-    return this.startSent && !this.closed && this.failure === undefined;
-  }
-
-  pair(): void {
-    this.paired = true;
-    this.notify();
-  }
-
-  partnerLeaves(): void {
-    this.paired = false;
-    this.partnerStarted = false;
-    this.notify();
-  }
-
-  partnerStarts(): void {
-    this.partnerStarted = true;
-    this.openIfReady();
-    this.notify();
-  }
-
-  fail(message = `refused at ${this.url}`): void {
+  fail(message: string): void {
     this.failure = new ConnectionError(message, "transport");
-    this.paired = false;
-    this.partnerStarted = false;
-    this.starting?.reject(this.failure);
-    this.notify();
-  }
-
-  private openIfReady(): void {
-    if (
-      this.starting === undefined ||
-      this.failOnStart ||
-      !this.paired ||
-      !this.partnerStarted
-    )
-      return;
-    this.opened = true;
-    this.starting.resolve(this.connection);
-  }
-
-  private notify(): void {
+    this.rejectStart?.(this.failure);
     for (const listener of [...this.listeners]) listener();
   }
 }
@@ -170,20 +117,18 @@ class FakeRelay implements ParkedWebSocketRelay {
 function fakeWebRtc({ ignoresAbort = false } = {}) {
   let resolve!: (connection: MessageConnection) => void;
   let reject!: (error: unknown) => void;
-  let hooks:
-    | {
-        signal: AbortSignal;
-        onPathFailed: (failure: WebRtcPathFailure) => void;
-      }
-    | undefined;
+  let onPathFailed: ((failure: WebRtcPathFailure) => void) | undefined;
   const connection = fakeConnection();
-  const open = (given: NonNullable<typeof hooks>): Promise<MessageConnection> =>
+  const open = (hooks: {
+    signal: AbortSignal;
+    onPathFailed: (failure: WebRtcPathFailure) => void;
+  }): Promise<MessageConnection> =>
     new Promise((res, rej) => {
-      hooks = given;
+      onPathFailed = hooks.onPathFailed;
       resolve = res;
       reject = rej;
       if (ignoresAbort) return;
-      given.signal.addEventListener("abort", () =>
+      hooks.signal.addEventListener("abort", () =>
         rej(
           new ConnectionError("the WebRTC rendezvous was cancelled", "closed"),
         ),
@@ -192,28 +137,21 @@ function fakeWebRtc({ ignoresAbort = false } = {}) {
   return {
     open,
     connection,
-    pathFails: (failure: WebRtcPathFailure = "channel-not-opened") =>
-      hooks?.onPathFailed(failure),
+    pathFails: () => onPathFailed?.("channel-not-opened"),
     opens: () => resolve(connection),
     fails: (error: unknown) => reject(error),
-    get aborted(): boolean {
-      return hooks?.signal.aborted === true;
-    },
   };
 }
 
 function race(
   role: RendezvousRole,
-  relays: FakeRelay[],
+  relays: Array<FakeRelay>,
   webRtc = fakeWebRtc(),
-  signal?: AbortSignal,
 ) {
-  const outcome = raceWebRtcAgainstRelays({
-    role,
-    relays,
-    openWebRtc: webRtc.open,
-    signal,
-  });
+  const outcome = raceWebRtcAgainstRelays(
+    { role, relays, openWebRtc: webRtc.open },
+    CLI_RELAY_FALLBACK,
+  );
   outcome.catch(() => {});
   return { outcome, webRtc };
 }
@@ -221,179 +159,29 @@ function race(
 /** Let promise callbacks run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function relays(...urls: string[]): FakeRelay[] {
-  return urls.map((url) => new FakeRelay(`wss://${url}.test/relay`));
-}
-
-/**
- * Record, at each start sent on one of `group`, how many others of `group`
- * already hold this side's start.
- */
-function recordStartsHeldElsewhere(group: FakeRelay[]): number[] {
-  const held: number[] = [];
-  for (const relay of group) {
-    const start = relay.start.bind(relay);
-    relay.start = () => {
-      held.push(
-        group.filter((other) => other !== relay && other.holdsStart).length,
-      );
-      return start();
-    };
-  }
-  return held;
-}
-
-test("a channel that opens first carries the exchange and closes every relay unused", async () => {
-  const [a, b] = relays("a", "b");
-  b.pair();
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  webRtc.opens();
+test("a relay that carries the exchange resolves with its own connection", async () => {
+  const relay = new FakeRelay("wss://a.test/relay", true, true);
+  const { outcome } = race("inviter", [relay]);
   const result = await outcome;
-  expect(result.path).toEqual({ kind: "webrtc" });
-  expect(result.connection).toBe(webRtc.connection);
-  expect([a.startSent, b.startSent]).toEqual([false, false]);
-  expect([a.isClosed, b.isClosed]).toEqual([true, true]);
-});
-
-test("the inviter sends its start on the first paired relay in list order only", async () => {
-  const [a, b, c] = relays("a", "b", "c");
-  b.pair();
-  c.pair();
-  const { outcome, webRtc } = race("inviter", [a, b, c]);
-  webRtc.pathFails();
-  await settle();
-  expect([a.startSent, b.startSent, c.startSent]).toEqual([false, true, false]);
-  expect(webRtc.aborted).toBe(false);
-  b.partnerStarts();
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
-  expect(result.connection).toBe(b.connection);
-  expect(webRtc.aborted).toBe(true);
-  expect([a.isClosed, c.isClosed]).toEqual([true, true]);
-});
-
-test("an inviter with no paired relay sends its start on the first to pair", async () => {
-  const [a, b] = relays("a", "b");
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  webRtc.pathFails("connection-failed");
-  await settle();
-  expect([a.startSent, b.startSent]).toEqual([false, false]);
-  b.pair();
-  a.pair();
-  expect([a.startSent, b.startSent]).toEqual([false, true]);
-  b.partnerStarts();
-  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: b.url });
-});
-
-test("the partner's start abandons WebRTC, and the inviter starts on the relay it arrived on", async () => {
-  const [a, b] = relays("a", "b");
-  a.pair();
-  b.pair();
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  b.partnerStarts();
-  expect(webRtc.aborted).toBe(true);
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
-  expect(a.startSent).toBe(false);
-  expect(a.isClosed).toBe(true);
-});
-
-test("the acceptor sends its start on every paired relay and keeps the one the inviter's start arrives on", async () => {
-  const [a, b, c] = relays("a", "b", "c");
-  a.pair();
-  b.pair();
-  const { outcome, webRtc } = race("acceptor", [a, b, c]);
-  webRtc.pathFails();
-  await settle();
-  expect([a.startSent, b.startSent, c.startSent]).toEqual([true, true, false]);
-  c.pair();
-  expect(c.startSent).toBe(true);
-  b.partnerStarts();
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
-  expect(webRtc.aborted).toBe(true);
-  expect([a.isClosed, b.isClosed, c.isClosed]).toEqual([true, false, true]);
-});
-
-test("the inviter's start reaching the acceptor first abandons WebRTC and starts every paired relay", async () => {
-  const [a, b] = relays("a", "b");
-  a.pair();
-  b.pair();
-  const { outcome, webRtc } = race("acceptor", [a, b]);
-  a.partnerStarts();
-  expect(webRtc.aborted).toBe(true);
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "websocket-relay", url: a.url });
-  expect(b.isClosed).toBe(true);
-});
-
-test("a channel that opens after the start was sent still carries the exchange", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const { outcome, webRtc } = race("acceptor", [a]);
-  webRtc.pathFails();
-  await settle();
-  expect(a.startSent).toBe(true);
-  webRtc.opens();
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "webrtc" });
-  expect(a.isClosed).toBe(true);
-});
-
-test("a WebRTC wait that fails after a path failure leaves the exchange to the relay", async () => {
-  const [a] = relays("a");
-  const { outcome, webRtc } = race("inviter", [a]);
-  webRtc.pathFails();
-  webRtc.fails(new ConnectionError("no path", "transport"));
-  await settle();
-  a.pair();
-  a.partnerStarts();
-  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: a.url });
-});
-
-test("an unreachable coordination server sends the start", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const { outcome, webRtc } = race("inviter", [a]);
-  webRtc.pathFails("signaling-unreachable");
-  webRtc.fails(new ConnectionError("unreachable", "transport"));
-  await settle();
-  expect(a.startSent).toBe(true);
-  a.partnerStarts();
-  expect((await outcome).path.kind).toBe("websocket-relay");
-});
-
-test("a WebRTC failure with no path failure before it fails the run and closes every relay", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const { outcome, webRtc } = race("inviter", [a]);
-  const refusal = new ConnectionError("id taken", "usage");
-  webRtc.fails(refusal);
-  await expect(outcome).rejects.toBe(refusal);
-  expect(a.startSent).toBe(false);
-  expect(a.isClosed).toBe(true);
+  expect(result.path).toEqual({ kind: "websocket-relay", url: relay.url });
+  expect(result.connection).toBe(relay.connection);
 });
 
 test("a signaling certificate that did not verify stays fatal after a path failure", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const { outcome, webRtc } = race("acceptor", [a]);
+  const relay = new FakeRelay("wss://a.test/relay", true);
+  const { outcome, webRtc } = race("acceptor", [relay]);
   webRtc.pathFails();
   await settle();
   const refusal = new AuthenticationError("certificate did not verify");
   webRtc.fails(refusal);
   await expect(outcome).rejects.toBe(refusal);
-  expect(a.isClosed).toBe(true);
+  expect(relay.closeCalls).toBe(1);
 });
 
 test("both budgets expiring together fail with the WebRTC failure and log each relay's refusal", async () => {
-  const lines: string[] = [];
-  setDiagnosticSink((_method, _prefix, args) => {
-    lines.push(args.map(String).join(" "));
-  });
-  setLogLevel(logLibrary.levels.INFO);
-  const [a, b] = relays("a", "b");
-  b.pair();
+  const lines = captureLines(logLibrary.levels.INFO);
+  const a = new FakeRelay("wss://a.test/relay");
+  const b = new FakeRelay("wss://b.test/relay", true);
   const { outcome, webRtc } = race("inviter", [a, b]);
   webRtc.pathFails();
   const webRtcFailure = new ConnectionError(
@@ -408,151 +196,38 @@ test("both budgets expiring together fail with the WebRTC failure and log each r
   expect(lines.some((line) => line.includes("relay b refused"))).toBe(true);
 });
 
-test("every relay failing while WebRTC still tries leaves the run to WebRTC", async () => {
-  const [a] = relays("a");
-  const { outcome, webRtc } = race("inviter", [a]);
+test("a relay's address and the WebRTC failure are logged escaped", async () => {
+  const lines = captureLines(logLibrary.levels.DEBUG);
+  const url = "wss://a.test/relay\u001b[2J";
+  const relay = new FakeRelay(url);
+  const { outcome, webRtc } = race("inviter", [relay]);
   webRtc.pathFails();
-  a.fail();
+  webRtc.fails(new ConnectionError("no channel\u001b[2J", "transport"));
   await settle();
-  webRtc.opens();
-  expect((await outcome).path).toEqual({ kind: "webrtc" });
-});
-
-test("an abandoned WebRTC wait with every relay failed fails with the relay's refusal", async () => {
-  const [a] = relays("a");
-  a.pair();
-  a.failOnStart = true;
-  const { outcome, webRtc } = race("inviter", [a]);
-  a.partnerStarts();
-  expect(webRtc.aborted).toBe(true);
-  await expect(outcome).rejects.toMatchObject({
-    message: `refused at ${a.url}`,
-  });
-});
-
-test("the partner leaving a parked pairing, with no start on another relay, keeps the inviter's start on that relay", async () => {
-  const [a, b] = relays("a", "b");
-  a.pair();
-  b.pair();
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  webRtc.pathFails();
-  await settle();
-  a.partnerLeaves();
-  await settle();
-  expect([a.startSent, b.startSent]).toEqual([true, false]);
-  expect(a.isClosed).toBe(false);
-  a.pair();
-  a.partnerStarts();
-  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: a.url });
-  expect(a.startCalls).toBe(1);
-});
-
-test("the partner leaving the inviter's relay and starting on another moves the inviter's start there, closing the first", async () => {
-  const [a, b] = relays("a", "b");
-  a.pair();
-  b.pair();
-  const events: string[] = [];
-  const closeA = a.close.bind(a);
-  a.close = () => {
-    events.push("close a");
-    closeA();
-  };
-  const startB = b.start.bind(b);
-  b.start = () => {
-    events.push("start b");
-    return startB();
-  };
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  webRtc.pathFails();
-  await settle();
-  a.partnerLeaves();
-  b.partnerStarts();
-  expect(a.isClosed).toBe(true);
-  expect(a.closeCalls).toBe(1);
-  expect(events).toEqual(["close a", "start b"]);
-  expect(b.startSent).toBe(true);
-  const result = await outcome;
-  expect(result.path).toEqual({ kind: "websocket-relay", url: b.url });
-  expect(result.connection).toBe(b.connection);
-  expect(a.startCalls).toBe(1);
-});
-
-test("the inviter's start is never held by two relays at once", async () => {
-  const [a, b, c] = relays("a", "b", "c");
-  const held = recordStartsHeldElsewhere([a, b, c]);
-  a.pair();
-  b.pair();
-  c.pair();
-  const { outcome, webRtc } = race("inviter", [a, b, c]);
-  webRtc.pathFails();
-  await settle();
-  a.partnerLeaves();
-  await settle();
-  a.pair();
-  a.partnerLeaves();
-  await settle();
-  expect([a.startSent, b.startSent, c.startSent]).toEqual([true, false, false]);
-  c.partnerStarts();
-  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: c.url });
-  expect([a.isClosed, b.isClosed]).toEqual([true, true]);
-  expect([a.startSent, b.startSent]).toEqual([true, false]);
-  expect(held).toEqual([0, 0]);
-});
-
-test("a partner that left before the start gets the acceptor's start once it pairs again", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const { outcome, webRtc } = race("acceptor", [a]);
-  a.partnerLeaves();
-  webRtc.pathFails();
-  await settle();
-  expect(a.startSent).toBe(false);
-  a.pair();
-  expect(a.startSent).toBe(true);
-  a.partnerStarts();
-  expect((await outcome).path.kind).toBe("websocket-relay");
-});
-
-test("the inviter's start moves to the next paired relay when its chosen one fails", async () => {
-  const [a, b] = relays("a", "b");
-  a.pair();
-  b.pair();
-  const { outcome, webRtc } = race("inviter", [a, b]);
-  webRtc.pathFails();
-  await settle();
-  expect([a.startSent, b.startSent]).toEqual([true, false]);
-  a.fail();
-  await settle();
-  expect(b.startSent).toBe(true);
-  b.partnerStarts();
-  expect((await outcome).path).toEqual({ kind: "websocket-relay", url: b.url });
-});
-
-test("the run's interrupt fails the race, closes every relay and aborts WebRTC", async () => {
-  const [a] = relays("a");
-  a.pair();
-  const interrupt = new AbortController();
-  const { outcome, webRtc } = race(
-    "inviter",
-    [a],
-    fakeWebRtc(),
-    interrupt.signal,
-  );
-  interrupt.abort();
-  await expect(outcome).rejects.toMatchObject({ kind: "closed" });
-  expect(a.isClosed).toBe(true);
-  expect(webRtc.aborted).toBe(true);
+  relay.fail("refused");
+  await expect(outcome).rejects.toMatchObject({ kind: "transport" });
+  expect(
+    lines.some((line) =>
+      line.includes(
+        `the WebSocket relay at ${redactAndSanitizeForDisplay(url)} ended`,
+      ),
+    ),
+  ).toBe(true);
+  expect(
+    lines.some((line) =>
+      line.includes("; the exchange can still start on the WebSocket relay"),
+    ),
+  ).toBe(true);
+  expect(lines.some((line) => line.includes("\u001b"))).toBe(false);
 });
 
 test("a channel that opens after the relay carried the exchange is closed", async () => {
-  const [a] = relays("a");
-  a.pair();
+  const relay = new FakeRelay("wss://a.test/relay", true, true);
   const { outcome, webRtc } = race(
     "inviter",
-    [a],
+    [relay],
     fakeWebRtc({ ignoresAbort: true }),
   );
-  a.partnerStarts();
   await outcome;
   webRtc.opens();
   await settle();
