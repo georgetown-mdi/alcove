@@ -509,6 +509,19 @@ PSI backend and result CSV; the web app's handshake and application-layer AEAD
 wrap, its acceptor assembly, its invitation creation
 and inviter spec assembly, and its browser WASM PSI engine.
 
+`cliWebRelayFallback.test.ts` meets the CLI party over the WebSocket relay
+instead, with WebRTC blocked. The CLI waits at the standalone broker and parks
+at a `wss` relay the test runs on loopback; the web party lists that relay from
+its own relay setting and races it through the app's fallback. Its WebRTC open
+is the harness's: Node cannot stand up a browser peer connection, so it reports
+the path failed at once, and the CLI abandons WebRTC on the web party's start
+and follows it onto the relay. The CLI trusts the relay's loopback certificate
+through `NODE_EXTRA_CA_CERTS`, and the web party through Node's default CA list
+(`tls.setDefaultCACertificates`) for the file's duration. A run between a CLI
+party and a browser party with WebRTC open, whose relay sockets close unused,
+needs a browser peer and is not covered; the browser suite covers that case
+between two browser parties.
+
 It runs on both `cli_build_and_test.yaml` and `web_build_and_test.yaml`. That is
 by design rather than redundant: the drift it exists to catch can land on
 either runtime, and each workflow's path scope sees only its own.

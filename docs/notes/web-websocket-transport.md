@@ -479,6 +479,7 @@ Relay path, in order:
   Built: the race both applications run (`packages/core/src/connection/relayFallback.ts`) over each client's parked socket and each run's relay list, specified in [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay).
 - **Disclosure documents** -- PRIVACY and SHARED_RESPONSIBILITY rows, the SECURITY_DESIGN channel-security paragraph, the wrap table row and its "no such transport exists" sentence in CHANNEL_SECURITY, COMMUNICATION's supporting services, DEPLOYMENT, CLI.md, the planned `connect-src` allowlist ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)).
 - **Tests** -- relay unit tests with the shared refusal fixtures, a relayed exchange in the browser suite, a CLI-to-browser relayed run in the interop suite ([TESTING.md](../TESTING.md#cross-runtime-interop-suite)), and a stress-tier run at the largest size.
+  Built: the relay's unit tests, the browser suite's relayed exchange and unused relay sockets (`apps/web/test/browser/relayFallback.test.ts`), and the interop suite's relayed run with WebRTC blocked (`apps/web/test/interop/cliWebRelayFallback.test.ts`); the stress-tier run is not.
 
 Browser SFTP path, after the relay path, re-scoped from the earlier note's list:
 
