@@ -333,8 +333,8 @@ export async function enrollBeforeRelayCheck(
 
 const ENROLLMENT_FAILED_MEANING =
   "the registrar did not record this exchange's relay key. A run makes " +
-  "this same enrollment just before it connects, because the relay it " +
-  "allocates on is one your partner's invitation names.";
+  "this same enrollment just before it connects, because it uses a TURN " +
+  "relay or a WebSocket relay that your partner's invitation names.";
 
 /** What to do about a failed enrollment. */
 export const ENROLLMENT_FAILED_ACTION =
