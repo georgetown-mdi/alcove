@@ -53,14 +53,14 @@ export const RELAY_OPERATOR_DISCLOSURE =
  * then {@link RELAY_OPERATOR_DISCLOSURE}, as `DefaultRelayNotice` states them.
  */
 export const DEFAULT_RELAY_SWITCH_DESCRIPTION =
-  "The switch covers the exchanges this browser runs and the invitations " +
-  "you create. When it is on, those exchanges use the site's relay server, " +
-  "unless an exchange's allowed relays leave it out, and those invitations " +
-  "name it, so your partner's exchange can use it too. When it is off, an " +
-  "exchange in this browser uses it only where an invitation you accept, or " +
-  "the TURN server urls below, name it. Your partner can still bring it " +
-  "into an exchange whatever you choose here, so its operator can learn " +
-  `your network address too. ${RELAY_OPERATOR_DISCLOSURE}`;
+  "This setting applies to the exchanges this browser runs and the " +
+  "invitations you create. When it is on, those exchanges use the site's " +
+  "relay server, unless an exchange's allowed relays leave it out, and " +
+  "those invitations name it so your partner can use it too. When it is " +
+  "off, this browser uses it only where an invitation you accept names it, " +
+  "or where you enter its address under TURN server urls. Your partner can " +
+  "still bring it into an exchange whatever you choose here, so to keep it " +
+  `out, you both leave it out. ${RELAY_OPERATOR_DISCLOSURE}`;
 
 /** The switch's error where this browser did not store its new state. */
 export const DEFAULT_RELAY_SWITCH_NOT_SAVED =
@@ -280,7 +280,7 @@ export function RelaySettingsScreen({
         <Alert color="yellow" title="The saved relay could not be read">
           {siteRelayInUse
             ? NO_OWN_RELAY_SITE_RELAY_IN_USE
-            : "Exchanges in this browser use no relay of your own until it is saved again."}{" "}
+            : "Exchanges in this browser use no relay of your own until you save one again."}{" "}
           Enter the relay&apos;s addresses and save.
         </Alert>
       )}

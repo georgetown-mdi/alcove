@@ -319,6 +319,14 @@ describe("generateInvitation", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
+    test("switched off, names the default TURN url this browser's own relay names, without its registrar", async () => {
+      stubOwnRelay({ turn: [DEFAULT_RELAY.turnUrl], stun: [] });
+      expect(await mintedEndpoint(() => undefined)).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: { turn: [DEFAULT_RELAY.turnUrl] },
+      });
+    });
+
     test("names the own relay's TURN urls, then the default relay's, then the own STUN urls", async () => {
       const ownRelay = {
         turn: ["turns:relay.example.org:443?transport=tcp"],
