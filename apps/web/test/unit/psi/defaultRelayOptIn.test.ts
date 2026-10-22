@@ -3,14 +3,16 @@ import { describe, expect, test, vi } from "vitest";
 import { generateSharedSecret } from "@alcove/core";
 
 import {
+  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   defaultRelayForRun,
   defaultRelayInUse,
   invitationRelayWithDefault,
 } from "@psi/transport/defaultRelay";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
+import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
 import type { DefaultRelayBuild } from "@utils/clientConfig";
-import type { RelayUrls } from "@psi/transport/ownRelaySetting";
+import type { enrollRelayKeyWithinWait } from "@alcove/core";
 
 // A build offering its default relay switched off (`opt-in`) lists it only
 // once this browser turns it on, or, url by url, where the invitation a run
@@ -110,6 +112,47 @@ describe("defaultRelayForRun", () => {
       expect(
         defaultRelayForRun(invitation, () => OPT_IN, switched(false)),
       ).toEqual({ kind: "off", relay: SITE });
+  });
+
+  test.each([
+    [
+      "its TURN url",
+      { turn: [PARTNER_URL, SITE.turnUrl], stun: [] },
+      TURN_ONLY,
+    ],
+    [
+      "its TURN url and its WebSocket relay url",
+      { turn: [SITE.turnUrl], stun: [], websocket: SITE.websocketUrl },
+      SITE,
+    ],
+  ])(
+    "this browser's own relay naming %s puts what it names in the run",
+    (_case, own, relay) => {
+      expect(
+        defaultRelayForRun(undefined, () => OPT_IN, switched(false), own),
+      ).toEqual({ kind: "own", relay });
+    },
+  );
+
+  test("this browser's own relay naming its WebSocket relay url alone leaves it off", () => {
+    expect(
+      defaultRelayForRun(undefined, () => OPT_IN, switched(false), {
+        turn: [PARTNER_URL],
+        stun: [],
+        websocket: SITE.websocketUrl,
+      }),
+    ).toEqual({ kind: "off", relay: SITE });
+  });
+
+  test("an invitation naming its TURN url is read before this browser's own relay", () => {
+    expect(
+      defaultRelayForRun(
+        { turn: [SITE.turnUrl] },
+        () => OPT_IN,
+        switched(false),
+        { turn: [SITE.turnUrl], stun: [], websocket: SITE.websocketUrl },
+      ),
+    ).toEqual({ kind: "invited", relay: TURN_ONLY });
   });
 
   test("turned on, or on in the build, it is in use whatever the invitation names", () => {
@@ -236,5 +279,82 @@ describe("relayPlanForRun on a build offering the relay switched off", () => {
     expect(result.relay?.turn).toEqual([PARTNER_URL]);
     expect(result.relaysLeftOut).toEqual([SITE.turnUrl]);
     expect(result.websocketRelays).toEqual([]);
+  });
+});
+
+describe("relayPlanForRun with this browser's own relay naming the relay, switched off", () => {
+  const ownPlan = (
+    own: OwnRelay,
+    options: {
+      allowedRelays?: Array<string>;
+      enroll?: typeof enrollRelayKeyWithinWait;
+    } = {},
+  ) => {
+    const enroll = vi.fn<typeof enrollRelayKeyWithinWait>(
+      options.enroll ??
+        (() => Promise.resolve({ kind: "enrolled", lapsesAt: "x" })),
+    );
+    const onRunNotice = vi.fn();
+    return relayPlanForRun(
+      generateSharedSecret(),
+      undefined,
+      options.allowedRelays,
+      {
+        readOwn: () => ({ kind: "set", relay: own }),
+        build: () => OPT_IN,
+        switchedOn: switched(false),
+        enroll,
+        onRunNotice,
+      },
+    ).then((result) => ({ result, enroll, onRunNotice }));
+  };
+  const refusing: typeof enrollRelayKeyWithinWait = () =>
+    Promise.resolve({ kind: "failed", detail: "HTTP 409" });
+
+  test("the run enrolls at its registrar before it lists the TURN url, and does not say it is off", async () => {
+    const { result, enroll } = await ownPlan({
+      turn: [SITE.turnUrl, PARTNER_URL],
+      stun: [],
+    });
+    expect(enroll).toHaveBeenCalledOnce();
+    expect(enroll.mock.calls[0]).toEqual([
+      expect.objectContaining({ registrarUrl: SITE.registrarUrl }),
+      expect.anything(),
+    ]);
+    expect(result.relay?.turn).toEqual([PARTNER_URL, SITE.turnUrl]);
+    expect(result.websocketRelays).toEqual([]);
+    expect(result).not.toHaveProperty("defaultRelayOff");
+  });
+
+  test("an enrollment that fails leaves the TURN url out and says so", async () => {
+    const { result, enroll, onRunNotice } = await ownPlan(
+      { turn: [SITE.turnUrl], stun: [] },
+      { enroll: refusing },
+    );
+    expect(enroll).toHaveBeenCalledOnce();
+    expect(result.relay).toBeUndefined();
+    expect(onRunNotice).toHaveBeenCalledWith(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+  });
+
+  test("naming both of the relay's urls lists both once enrolled", async () => {
+    const { result } = await ownPlan({
+      turn: [SITE.turnUrl],
+      stun: [],
+      websocket: SITE.websocketUrl,
+    });
+    expect(result.relay?.turn).toEqual([SITE.turnUrl]);
+    expect(result.websocketRelays.map((relay) => relay.url)).toEqual([
+      SITE.websocketUrl,
+    ]);
+  });
+
+  test("allowed relays that leave out the TURN url leave it out without enrolling", async () => {
+    const { result, enroll } = await ownPlan(
+      { turn: [SITE.turnUrl, PARTNER_URL], stun: [] },
+      { allowedRelays: ["partner.example.net"] },
+    );
+    expect(enroll).not.toHaveBeenCalled();
+    expect(result.relay?.turn).toEqual([PARTNER_URL]);
+    expect(result.relaysLeftOut).toEqual([SITE.turnUrl]);
   });
 });

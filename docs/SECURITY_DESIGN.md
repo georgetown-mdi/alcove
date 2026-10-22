@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-21"
+last_reviewed: "2026-10-22"
 ---
 
 # Alcove security
@@ -188,7 +188,7 @@ The acceptor's page takes the invitation out of the address as soon as it reads 
 - **What is kept.** The encoded invitation, in the tab's session storage, so a reload of the screen opens the same invitation.
 - **When it is removed.** When the operator leaves the acceptor screen, when the invitation is refused, when the exchange completes, and when it fails in a way no later run on the same invitation can follow (no retry, no return to the columns step, an invitation past its expiry, or an invitation with no expiry). The exposure is the in-origin, tab-scoped one stated for the inviter above.
 
-Holding the secret also grants relay access: a party's relay credential is derived from it, so while that exchange's relay key is registered with a relay, anyone holding the secret can use that relay ([PROTOCOL.md](spec/PROTOCOL.md#relay-credential-derivation)). On the hosted web application, a run that uses the project's relay enrolls that key at the project's registrar before it connects: a run where the user turned the relay on, any run on the demo site, and a run that accepted an invitation naming the relay's TURN url. For the key's lifetime the project holds a key the party's own relay and registrar also accept ([PROTOCOL.md](spec/PROTOCOL.md#enrolling-at-a-default-relay)).
+Holding the secret also grants relay access: a party's relay credential is derived from it, so while that exchange's relay key is registered with a relay, anyone holding the secret can use that relay ([PROTOCOL.md](spec/PROTOCOL.md#relay-credential-derivation)). On the hosted web application, a run that uses the project's relay enrolls that key at the project's registrar before it connects: a run where the user turned the relay on, any run on the demo site, a run that accepted an invitation naming the relay's TURN url, and a run whose browser's own relay setting names it. For the key's lifetime the project holds a key the party's own relay and registrar also accept ([PROTOCOL.md](spec/PROTOCOL.md#enrolling-at-a-default-relay)).
 
 This is the standard out-of-band trust model: forward invitations only over a trusted channel such as secure email, and treat a leaked invitation as a compromise by generating a fresh one (see [Recovery](CLI.md#recovery)) rather than reusing it.
 

@@ -5,6 +5,7 @@ import {
   defaultRelayInUse,
 } from "@psi/transport/defaultRelay";
 import { defaultRelayBuild } from "@utils/clientConfig";
+import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { RELAY_OPERATOR_DISCLOSURE } from "./RelaySettingsScreen";
 
@@ -12,7 +13,7 @@ import type {
   DefaultRelayBuild,
   DefaultRelaySetting,
 } from "@utils/clientConfig";
-import type { RelayUrls } from "@psi/transport/ownRelaySetting";
+import type { OwnRelayRead, RelayUrls } from "@psi/transport/ownRelaySetting";
 
 /**
  * The words before {@link RELAY_OPERATOR_DISCLOSURE}. They name no operator:
@@ -37,15 +38,44 @@ export const INVITED_DEFAULT_RELAY_NOTICE_LEAD =
   "connect through it, unless its allowed relays leave it out.";
 
 /**
+ * The words before {@link RELAY_OPERATOR_DISCLOSURE} where this browser has
+ * the site's relay server switched off, its own relay setting names that
+ * relay, and no accepted invitation names it.
+ *
+ * @internal exported for testing
+ */
+export const OWN_DEFAULT_RELAY_NOTICE_LEAD =
+  "Your relay settings name the site's relay server, so this exchange may " +
+  "connect through it, unless its allowed relays leave it out.";
+
+function switchedOffLead(
+  invitationRelay: RelayUrls | undefined,
+  build: () => DefaultRelayBuild,
+  own: OwnRelayRead,
+): string | undefined {
+  const forRun = defaultRelayForRun(
+    invitationRelay,
+    build,
+    () => false,
+    own.kind === "set" ? own.relay : undefined,
+  );
+  if (forRun.kind === "invited") return INVITED_DEFAULT_RELAY_NOTICE_LEAD;
+  if (forRun.kind === "own") return OWN_DEFAULT_RELAY_NOTICE_LEAD;
+  return undefined;
+}
+
+/**
  * What the default relay a run uses lets its operator learn, shown where a
  * party creates or accepts a browser exchange. The relay is the one in use
- * or, on the review of an accepted invitation, `invitationRelay`, the one the
- * invitation names where the build offers it switched off
- * (`defaultRelayForRun`). Renders nothing where the run uses none.
+ * or, where the build offers it switched off, the one `invitationRelay`, an
+ * accepted invitation's, names, otherwise the one this browser's own relay
+ * setting names (`defaultRelayForRun`). Renders nothing where the run uses
+ * none.
  */
 export function DefaultRelayNotice({
   build = defaultRelayBuild,
   setting = () => defaultRelayInUse(build),
+  readOwn = readOwnRelaySetting,
   invitationRelay,
 }: {
   /** The build's default relay and its mode; the build's own when unset. */
@@ -53,17 +83,15 @@ export function DefaultRelayNotice({
   /** The default relay in use; {@link defaultRelayInUse} of `build` when
    * unset. */
   setting?: () => DefaultRelaySetting | undefined;
+  /** This browser's own relay; the stored setting when unset. */
+  readOwn?: () => OwnRelayRead;
   /** The relay an accepted invitation names; absent where one is created. */
   invitationRelay?: RelayUrls;
 }) {
   const lead =
     setting() !== undefined
       ? DEFAULT_RELAY_NOTICE_LEAD
-      : invitationRelay !== undefined &&
-          defaultRelayForRun(invitationRelay, build, () => false).kind ===
-            "invited"
-        ? INVITED_DEFAULT_RELAY_NOTICE_LEAD
-        : undefined;
+      : switchedOffLead(invitationRelay, build, readOwn());
   if (lead === undefined) return null;
   return (
     <Alert variant="light" color="blue" role="note" mt="md">

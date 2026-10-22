@@ -65,11 +65,12 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
 /**
  * The relay a browser run dials with. Its default relay is the one
  * `defaultRelayForRun` names: the one in use, or, where the build offers it
- * switched off, the build's only where `invitationRelay` names its TURN url,
- * with its WebSocket relay url only where `invitationRelay` names that too;
- * `setting` replaces that choice. Every TURN url it would list, this
- * browser's own, the invitation's and that default relay's, is kept or left
- * out by `allowedRelays` (`turnUrlIsAllowed` in core; unset keeps every url).
+ * switched off, the build's only where `invitationRelay` or this browser's
+ * own relay names its TURN url, with its WebSocket relay url only where that
+ * same relay names it too; `setting` replaces that choice. Every TURN url it
+ * would list, this browser's own, the invitation's and that default relay's,
+ * is kept or left out by `allowedRelays` (`turnUrlIsAllowed` in core; unset
+ * keeps every url).
  * Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept. Each WebSocket relay it
@@ -95,12 +96,19 @@ export async function relayPlanForRun(
   const own = readOwn();
   const forRun =
     defaultRelay.setting === undefined
-      ? defaultRelayForRun(invitationRelay, build, switchedOn)
+      ? defaultRelayForRun(
+          invitationRelay,
+          build,
+          switchedOn,
+          own.kind === "set" ? own.relay : undefined,
+        )
       : undefined;
   const site =
     forRun === undefined
       ? defaultRelay.setting?.()
-      : forRun.kind === "in-use" || forRun.kind === "invited"
+      : forRun.kind === "in-use" ||
+          forRun.kind === "invited" ||
+          forRun.kind === "own"
         ? forRun.relay
         : undefined;
   const listed = [
