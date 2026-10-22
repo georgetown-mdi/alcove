@@ -518,6 +518,7 @@ describe("wiring", () => {
     expect(Object.keys(demoBuild.env).sort()).toEqual([
       "VITE_DEFAULT_RELAY_REGISTRAR_URL",
       "VITE_DEFAULT_RELAY_TURN_URL",
+      "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
       "VITE_SIGNALING_SERVER_URL",
     ]);
     for (const name of Object.keys(demoBuild.env)) {

@@ -143,7 +143,7 @@ It reads two secrets and six variables. The upload job runs in the GitHub enviro
 | `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site and the demo site |
 | `VITE_DEFAULT_RELAY_TURN_URL` | Variable | Repository | The project relay's TURN url, `turns:turn.data-bridge.org:443?transport=tcp`, built into the site and the demo site as [the default relay](#the-default-relay); unset, neither names one |
 | `VITE_DEFAULT_RELAY_REGISTRAR_URL` | Variable | Repository | That relay's registrar, `https://registrar.data-bridge.org`; set with the variable above or not at all |
-| `VITE_DEFAULT_RELAY_WEBSOCKET_URL` | Variable | Repository | That relay host's WebSocket relay, the `wss://` address its front routes to the relay, built into the site as [the default relay's](#the-default-relay); set only beside the two above, and unset until the relay host runs it. The demo site's build does not read it |
+| `VITE_DEFAULT_RELAY_WEBSOCKET_URL` | Variable | Repository | That relay host's WebSocket relay, the `wss://` address its front routes to the relay, built into the site as [the default relay's](#the-default-relay); set only beside the two above, and unset until the relay host runs it. The demo site's build reads it too |
 
 ### Custom domains and zone settings
 
@@ -175,9 +175,9 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 
 ### The demo site
 
-The demo site, at `demo.data-bridge.org`, is a second deployment of the web application from `main`, in a Cloudflare Pages project of its own. The project, its custom domain and its DNS record are declared in the same [OpenTofu root](../infra/hosted/README.md).
+The demo site, at `demo.data-bridge.org`, is a second deployment of the web application, in a Cloudflare Pages project of its own. The project, its custom domain and its DNS record are declared in the same [OpenTofu root](../infra/hosted/README.md).
 
-- **What its build sets:** `VITE_SIGNALING_SERVER_URL` from the same repository variable as the site's build, so its invitations and its `/alcove.json` name the same coordination server as production; and `VITE_DEFAULT_RELAY_TURN_URL` and `VITE_DEFAULT_RELAY_REGISTRAR_URL` from the same repository variables, so it names the project's relay as [the default relay](#the-default-relay). It leaves `VITE_DEFAULT_RELAY_WEBSOCKET_URL` unset.
+- **What its build sets:** `VITE_SIGNALING_SERVER_URL` from the same repository variable as the site's build, so its invitations and its `/alcove.json` name the same coordination server as production; and `VITE_DEFAULT_RELAY_TURN_URL` and `VITE_DEFAULT_RELAY_REGISTRAR_URL` from the same repository variables, so it names the project's relay as [the default relay](#the-default-relay). It reads `VITE_DEFAULT_RELAY_WEBSOCKET_URL` from the same repository variable as the site's build.
 - **Where data can flow by default:** a browser exchange on the demo site uses the project's coordination server and Google's STUN server, lists the project's TURN relay and enrolls at its registrar, as one on the production or staging site does, and the pages come from Cloudflare. [PRIVACY.md](../PRIVACY.md#hosted-web-application) states what each of those services can observe.
 - **When it deploys:** the packaging job of the deploy gate builds it beside the site, and the upload job uploads it to the demo site's project after the site's own upload. A push to `main` is the demo project's production deployment, served at `demo.data-bridge.org`; a push to `staging` is a preview on the demo project's `staging` branch alias, `staging.<demo project>.pages.dev`, which no custom domain names.
 - **What a failed upload does:** the site's own upload has already finished, so the site stays deployed and the run fails.

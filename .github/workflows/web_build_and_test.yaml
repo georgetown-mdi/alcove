@@ -160,15 +160,14 @@ jobs:
           path: apps/web/dist/hosted
           retention-days: 1
           if-no-files-found: error
-      # The demo site's build: the same signaling server and the default relay
-      # (docs/DEPLOYMENT.md, "The demo site"). It leaves the WebSocket relay
-      # unset whatever the repository variable holds. It rebuilds
+      # The demo site's build (docs/DEPLOYMENT.md, "The demo site"). It rebuilds
       # dist/hosted, so it runs after the site's upload above.
       - name: Build the demo site
         env:
           VITE_SIGNALING_SERVER_URL: ${{ github.event_name == 'pull_request' && (vars.VITE_SIGNALING_SERVER_URL || 'wss://signaling.example.invalid/api/') || vars.VITE_SIGNALING_SERVER_URL }}
           VITE_DEFAULT_RELAY_TURN_URL: ${{ vars.VITE_DEFAULT_RELAY_TURN_URL }}
           VITE_DEFAULT_RELAY_REGISTRAR_URL: ${{ vars.VITE_DEFAULT_RELAY_REGISTRAR_URL }}
+          VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
         run: npm run build -w apps/web
       - name: Upload the demo site artifact
         uses: actions/upload-artifact@v7

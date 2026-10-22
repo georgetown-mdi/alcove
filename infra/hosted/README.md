@@ -64,7 +64,7 @@ A record id is the `id` of `GET https://api.cloudflare.com/client/v4/zones/<zone
 
 The project site's project, domain and record were not imported: the apply created them. Before an apply that creates the record, list what the zone already holds at the apex with the same request, `name` set to the site's name. A record there of type `A`, `AAAA` or `CNAME` collides with the one this root creates; delete it, or import it as `cloudflare_dns_record.site_name` when it is already the `CNAME` this root declares.
 
-The demo site's project, domain and record are created by an apply the same way, and the same request with `name` set to the demo site's name lists what would collide with its record. Set the deploy variable `CLOUDFLARE_DEMO_PAGES_PROJECT` to the demo project's name only after that apply: the deploy workflow skips the demo upload while it is unset ([docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-demo-site)).
+The demo site's project, domain and record are created by an apply the same way, and the same request with `name` set to the demo site's name lists what would collide with its record. After that apply, check in the Cloudflare dashboard that Web Analytics is off for the demo project, as [PRIVACY.md](../../PRIVACY.md#hosted-web-application) records for the web application's project. Set the deploy variable `CLOUDFLARE_DEMO_PAGES_PROJECT` to the demo project's name only after both: the deploy workflow skips the demo upload while it is unset ([docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-demo-site)).
 
 ## Reading a plan for drift
 
