@@ -137,14 +137,18 @@ async function uploadTo(label: string, chosen: File): Promise<void> {
   await expect.element(page.getByText(chosen.name)).toBeInTheDocument();
 }
 
-/** Every element showing `text`, each measured against its floor. */
-function measuredText(text: string) {
+/** Every element with a text node of its own matching `text`, each measured
+ * against its floor. A text node matches when it contains `text`, or with
+ * `exact` when it equals `text` once trimmed. */
+function measuredText(text: string, { exact = false } = {}) {
   const shown = [...app.container.querySelectorAll<HTMLElement>("*")].filter(
     (el) =>
       [...el.childNodes].some(
         (node) =>
           node.nodeType === Node.TEXT_NODE &&
-          (node.textContent ?? "").includes(text),
+          (exact
+            ? (node.textContent ?? "").trim() === text
+            : (node.textContent ?? "").includes(text)),
       ),
   );
   return shown.map((el) => textContrast(el));
@@ -199,7 +203,9 @@ describe(
           .element(page.getByText(UNANCHORED_GUIDANCE, { exact: false }))
           .toBeInTheDocument();
         for (const status of Object.values(TONE_STATUSES))
-          expect(measuredText(status).length).toBeGreaterThan(0);
+          expect(measuredText(status, { exact: true }).length).toBeGreaterThan(
+            0,
+          );
 
         expectSweepClean();
         const guidance = measuredText(UNANCHORED_GUIDANCE);
