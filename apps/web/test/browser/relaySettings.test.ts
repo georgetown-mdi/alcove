@@ -208,9 +208,8 @@ describe("RelaySettingsScreen", () => {
 
     await userEvent.click(removeButton());
 
-    await expect
-      .element(statusLine())
-      .toHaveTextContent("No relay is set. Exchanges connect without one.");
+    expect(NO_RELAY_SET).toBe("No relay of your own is set.");
+    await expect.element(statusLine()).toHaveTextContent(NO_RELAY_SET);
     await expect.element(turnField()).toHaveValue("");
     await expect.element(stunField()).toHaveValue("");
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
@@ -362,9 +361,7 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
         "Saved. Exchanges started from now on use this relay.",
       );
     await userEvent.click(removeButton());
-    await expect
-      .element(statusLine())
-      .toHaveTextContent("No relay is set. Exchanges connect without one.");
+    await expect.element(statusLine()).toHaveTextContent(NO_RELAY_SET);
 
     expect(window.localStorage.getItem(EARLIER_ALLOWED_RELAYS_KEY)).toBe(
       EARLIER_ALLOWED_RELAYS,
@@ -621,10 +618,17 @@ describe("the switch for a site relay offered switched off", () => {
     await expect.poll(() => siteRelayListed().query()).toBeNull();
   });
 
-  test("its description says invitations name it for the partner's exchange too", () => {
-    expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toContain(
-      "and invitations you create name it, so your partner's exchange can " +
-        "use it too.",
+  test("its description says what it covers and that a partner can still bring the relay in", () => {
+    expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toBe(
+      "The switch covers the exchanges this browser runs and the invitations " +
+        "you create. When it is on, those exchanges use the site's relay " +
+        "server, unless an exchange's allowed relays leave it out, and those " +
+        "invitations name it, so your partner's exchange can use it too. " +
+        "When it is off, an exchange in this browser uses it only where an " +
+        "invitation you accept, or the TURN server urls below, name it. Your " +
+        "partner can still bring it into an exchange whatever you choose " +
+        "here, so its operator can learn your network address too. " +
+        RELAY_OPERATOR_DISCLOSURE,
     );
   });
 
@@ -706,7 +710,7 @@ describe("the switch for a site relay offered switched off", () => {
     [
       "offered and off",
       { kind: "opt-in" as const, relay: SITE_RELAY },
-      "Exchanges in this browser use no relay until it is saved again.",
+      "Exchanges in this browser use no relay of your own until it is saved again.",
     ],
   ])(
     "an unreadable saved relay with the site's relay %s says what exchanges use",
