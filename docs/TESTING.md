@@ -442,7 +442,9 @@ what the others cannot:
   in both color schemes. It runs on the same route states as the rule scan
   (`routeStates.ts`), and the test fails when a declared route has none. A
   light-scheme failure not yet fixed is listed in `contrastSweep.ts`, and the
-  test fails when a listed one stops failing.
+  test fails when a listed one stops failing. A sweep sees each state as it
+  mounts, so the verify screen's states after a file loads are swept by
+  `verifyReceiptContrast.test.ts`, which loads them.
 - The rule scan (`accessibilityRules.ts`, run by
   `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
   unique ids, resolving label and description references, named controls and

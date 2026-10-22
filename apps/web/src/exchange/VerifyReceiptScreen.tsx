@@ -142,7 +142,7 @@ interface ParsedCertificateState {
  * would otherwise skip the reconstruction in silence is held back instead. */
 function OneCsvWarning() {
   return (
-    <Text role="alert" c="yellow.8" size="sm">
+    <Text role="alert" c="var(--app-caution)" size="sm">
       Supply both the input and the result to open the commitments, or neither.
     </Text>
   );
@@ -152,6 +152,14 @@ const TONE_COLOR: Record<VerdictTone, string> = {
   verified: "green",
   failed: "red",
   incomplete: "yellow",
+};
+
+// A verdict row's status text: per-scheme tokens, since no single color clears
+// 4.5:1 on both the light and the dark work column.
+const TONE_TEXT: Record<VerdictTone, string> = {
+  verified: "var(--app-ok)",
+  failed: "var(--app-danger)",
+  incomplete: "var(--app-caution)",
 };
 
 function toneIcon(tone: VerdictTone): ReactNode {
@@ -788,7 +796,7 @@ export function VerifyReceiptScreen() {
               {signedVerdict.guidance.length > 0 && (
                 <Stack gap={4} mt="sm">
                   {signedVerdict.guidance.map((line) => (
-                    <Text key={line} size="xs" c="yellow.8">
+                    <Text key={line} size="xs" c="var(--app-caution)">
                       {line}
                     </Text>
                   ))}
@@ -978,7 +986,7 @@ function VerdictCheckRow({ row }: { row: VerdictRow }) {
         <Text span fw={600}>
           {row.label}:
         </Text>{" "}
-        <Text span c={`${TONE_COLOR[row.tone]}.8`}>
+        <Text span c={TONE_TEXT[row.tone]}>
           {row.status}
         </Text>
       </Text>

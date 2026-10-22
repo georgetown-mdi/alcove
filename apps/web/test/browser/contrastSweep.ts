@@ -37,7 +37,8 @@ import type { RouteState } from "./routeStates";
 //   - Deeper interaction states (a loaded file, a run in flight, hover/focus
 //     colours): a sweep stays at each route state's initial mount for
 //     determinism; the per-surface harness drives the specific hover/variant
-//     states it pins.
+//     states it pins, and verifyReceiptContrast.test.ts sweeps the verify
+//     screen's loaded states.
 
 /** sRGB channels + alpha of a computed `rgb(r, g, b)` / `rgba(r, g, b, a)`
  * string. Alpha defaults to 1 when absent. */
@@ -198,8 +199,8 @@ export interface SweepResult {
   unresolved: Array<string>;
 }
 
-/** One text element under its contrast floor. */
-export interface Failure {
+/** One text element measured against its contrast floor. */
+export interface TextContrast {
   text: string;
   color: string;
   background: string;
@@ -207,54 +208,53 @@ export interface Failure {
   floor: number;
 }
 
+/** One text element under its contrast floor, its ratio rounded for the
+ * report. */
+export type Failure = TextContrast;
+
+/** Measure the text `el` paints in its own colour against the background
+ * resolved behind it, with the WCAG AA floor for its size. Returns undefined
+ * when that background cannot be resolved. */
+export function textContrast(el: HTMLElement): TextContrast | undefined {
+  const style = getComputedStyle(el);
+  const background = effectiveBackground(el);
+  if (background === undefined) return undefined;
+  // Text may itself have alpha (rare); composite it onto its own background so
+  // the ratio is between what is actually painted, not a nominal colour.
+  const textColor = composite(rgba(style.color), background);
+  return {
+    text: el.textContent.trim().slice(0, 60),
+    color: style.color,
+    background: `rgb(${background.map(Math.round).join(", ")})`,
+    ratio: contrast(textColor, background),
+    floor: largeTextFloor(style),
+  };
+}
+
 /** Sweep every painted, text-bearing element under `rootEl`, measuring each
  * against its WCAG AA floor. Returns the below-floor failures and any element
  * whose background could not be resolved -- both fail the surface. */
-function sweepContrast(rootEl: HTMLElement): SweepResult {
+export function sweepContrast(rootEl: HTMLElement): SweepResult {
   const failures: Array<Failure> = [];
   const unresolved: Array<string> = [];
   for (const el of rootEl.querySelectorAll<HTMLElement>("*")) {
     if (!ownsText(el) || isSkippable(el)) continue;
-    const style = getComputedStyle(el);
-    const background = effectiveBackground(el);
-    const label = el.textContent.trim().slice(0, 60);
-    if (background === undefined) {
-      unresolved.push(label);
+    const measured = textContrast(el);
+    if (measured === undefined) {
+      unresolved.push(el.textContent.trim().slice(0, 60));
       continue;
     }
-    // Text may itself have alpha (rare); composite it onto its own background so
-    // the ratio is between what is actually painted, not a nominal colour.
-    const textColor = composite(rgba(style.color), background);
-    const ratio = contrast(textColor, background);
-    const floor = largeTextFloor(style);
-    if (ratio + 1e-9 < floor)
-      failures.push({
-        text: label,
-        color: style.color,
-        background: `rgb(${background.map(Math.round).join(", ")})`,
-        ratio: Number(ratio.toFixed(2)),
-        floor,
-      });
+    if (measured.ratio + 1e-9 < measured.floor)
+      failures.push({ ...measured, ratio: Number(measured.ratio.toFixed(2)) });
   }
   return { failures, unresolved };
 }
 
 /** Light-scheme failures not yet fixed, keyed by `${route}: ${state}`, each the
- * text of the element that fails: --app-accent link text on the --app-accent-bg
- * callout and on the red Alert tint. A listed text that stops failing fails its
+ * text of the element that fails. A listed text that stops failing fails its
  * test, so the list only shrinks. */
-const KNOWN_LIGHT_FAILURES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  "/accept: an invitation that cannot be read": ["paste it on the start page"],
-  "/saved/$id: ready to run": ["new exchange", "verify page"],
-  "/saved/$id: an exchange with recorded runs and a relay set": [
-    "new exchange",
-    "verify page",
-  ],
-  "/saved/$id: an exchange on an agreed schedule": [
-    "new exchange",
-    "verify page",
-  ],
-};
+const KNOWN_LIGHT_FAILURES: Readonly<Record<string, ReadonlyArray<string>>> =
+  {};
 
 /** Assert a sweep of `state` in `scheme` found nothing below its floor beyond
  * the state's {@link KNOWN_LIGHT_FAILURES}, and no element it could not
