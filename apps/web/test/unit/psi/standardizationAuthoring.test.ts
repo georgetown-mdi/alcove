@@ -14,6 +14,7 @@ import {
 import { UnknownStandardizationFunctionError } from "@alcove/core/testing";
 
 import {
+  EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY,
   INERT_COALESCE_ADVICE,
   NULL_IF_BOTH_VALUES_REFUSAL,
   STANDARDIZATION_EXPERT_FUNCTION_GROUPS,
@@ -170,6 +171,14 @@ describe("the add menu offers the fan-out family", () => {
       expect(descriptorFor(name)).toBeDefined();
       expect(functionDisplay(name).label).not.toBe(name);
     }
+  });
+
+  test("the key-element menu offers the fan-out functions and no other raw pattern", () => {
+    expect(
+      EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY.flatMap(
+        (group) => group.functionNames,
+      ).sort(),
+    ).toEqual([...FAN_OUT_FUNCTION_NAMES].sort());
   });
 });
 

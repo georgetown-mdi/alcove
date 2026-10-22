@@ -19,9 +19,9 @@ afterEach(app.unmount);
 // The cross-party trust boundary: the token-embedded key-element transform editor
 // (ExpertKeyEditor) drives StepListEditor with NO `allowRawPatterns`, so a
 // partner-authored regex must render read-only and the regex family must not be
-// offered to add. This pins that OFF state -- the security-relevant default. The
-// per-party ON state (raw patterns authorable) is covered by
-// standardizationStepEditor.test.ts.
+// offered to add, its fan-out steps apart (`offerFanOut`, below). This pins that
+// OFF state -- the security-relevant default. The per-party ON state (raw
+// patterns authorable) is covered by standardizationStepEditor.test.ts.
 describe("StepListEditor: a token-embedded regex stays read-only without allowRawPatterns", () => {
   const regexStep: EditableStep = {
     function: "filter_regex",
@@ -64,6 +64,62 @@ describe("StepListEditor: a token-embedded regex stays read-only without allowRa
     expect(page.getByText("Raw patterns (advanced)").elements()).toHaveLength(
       0,
     );
+  });
+});
+
+// The key-element editor's setting: a key element accepts a fan-out step, so
+// that step alone of the regex family is offered and editable there.
+describe("StepListEditor: offerFanOut admits the fan-out steps alone", () => {
+  test("the add menu offers the fan-out steps and no other raw pattern", async () => {
+    const emitted: Array<Array<EditableStep>> = [];
+    app.render(
+      createElement(StepListEditor, {
+        steps: [],
+        onStepsChange: (steps) => emitted.push(steps),
+        addStepLabel: "Add a transform",
+        offerFanOut: true,
+      }),
+    );
+
+    await page.getByRole("button", { name: "Add a transform" }).click();
+    const splitOn = page.getByRole("menuitem", { name: "Split on" });
+    await expect.element(splitOn).toBeInTheDocument();
+    for (const name of ["Filter (regex)", "Extract (regex)", "Replace (regex)"])
+      expect(page.getByRole("menuitem", { name }).elements()).toHaveLength(0);
+
+    await splitOn.click();
+    expect(emitted).toEqual([
+      [{ function: "split_on", params: { includeOriginal: false } }],
+    ]);
+  });
+
+  test("a fan-out step is editable while another regex step stays read-only", async () => {
+    app.render(
+      createElement(StepListEditor, {
+        steps: [
+          { function: "split_on", params: { delimiter: "-" } },
+          { function: "filter_regex", params: { pattern: "ZZTOPMARK" } },
+        ],
+        onStepsChange: () => {},
+        addStepLabel: "Add a transform",
+        offerFanOut: true,
+      }),
+    );
+
+    await expect
+      .element(page.getByRole("textbox", { name: "Delimiter pattern" }))
+      .toHaveValue("-");
+    await expect
+      .element(
+        page.getByRole("switch", { name: "Keep the original value too" }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(/pattern: ZZTOPMARK/))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("textbox", { name: "Pattern", exact: true }).elements(),
+    ).toHaveLength(0);
   });
 });
 

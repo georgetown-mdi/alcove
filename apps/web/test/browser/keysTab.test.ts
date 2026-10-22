@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { Fragment, createElement, useState } from "react";
 
@@ -1240,36 +1240,38 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
   });
 });
 
-describe("KeysTab: removing every key in Expert authoring", () => {
-  /** The tab with Expert authoring on over a live session, its key message
-   * read from the session's validation as the inviter screen reads it. */
-  function Harness({ initial }: { initial: InviterEditor }) {
-    const [editor, setEditor] = useState(initial);
-    return createElement(KeysTab, {
-      editor,
-      csv,
-      expertMode: true,
-      onExpertMode: () => undefined,
-      onPrecisionFloorSelection: (selection) =>
-        setEditor(editorWithPrecisionFloorSelection(editor, selection)),
-      onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, csv)),
-      onKeyEnabled: () => undefined,
-      onKeyMoved: () => undefined,
-      onAuthoredDraft: (draft) =>
-        setEditor(editorWithAuthoredDraft(editor, draft)),
-      onStrategy: () => undefined,
-      onAlgorithm: () => undefined,
-      onDeduplicate: () => undefined,
-      onImport: () => [],
-      keysError: reviewValidation(editor).errors.keys,
-      announce: () => undefined,
-      onBack: () => undefined,
-    });
-  }
+/** The tab with Expert authoring on over a live session, its key message
+ * read from the session's validation as the inviter screen reads it. */
+function ExpertAuthoringHarness({ initial }: { initial: InviterEditor }) {
+  const [editor, setEditor] = useState(initial);
+  return createElement(KeysTab, {
+    editor,
+    csv,
+    expertMode: true,
+    onExpertMode: () => undefined,
+    onPrecisionFloorSelection: (selection) =>
+      setEditor(editorWithPrecisionFloorSelection(editor, selection)),
+    onUseBuiltInRules: () => setEditor(editorWithBuiltInKeys(editor, csv)),
+    onKeyEnabled: () => undefined,
+    onKeyMoved: () => undefined,
+    onAuthoredDraft: (draft) =>
+      setEditor(editorWithAuthoredDraft(editor, draft)),
+    onStrategy: () => undefined,
+    onAlgorithm: () => undefined,
+    onDeduplicate: () => undefined,
+    onImport: () => [],
+    keysError: reviewValidation(editor).errors.keys,
+    announce: () => undefined,
+    onBack: () => undefined,
+  });
+}
 
+describe("KeysTab: removing every key in Expert authoring", () => {
   test("asks for a key in place of the built-in choice, and offers the built-in rules back", async () => {
     app.render(
-      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+      createElement(ExpertAuthoringHarness, {
+        initial: editorFromCsv("Dana Okafor", csv),
+      }),
     );
     const floor95 = page.getByRole("radio", {
       name: precisionFloorLabel(95),
@@ -1299,5 +1301,50 @@ describe("KeysTab: removing every key in Expert authoring", () => {
 
     await expect.element(floor95).toBeChecked();
     expect(page.getByRole("alert").query()).toBeNull();
+  });
+});
+
+describe("KeysTab: a key element's split left unfinished", () => {
+  test("names the key under the key list rather than asking for a key", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const keyName = "Last name";
+    app.render(
+      createElement(ExpertAuthoringHarness, {
+        initial: editorWithAuthoredDraft(seeded, {
+          ...seeded.draft,
+          keys: [
+            {
+              key: { name: keyName, elements: [{ field: "last_name" }] },
+              enabled: true,
+            },
+          ],
+        }),
+      }),
+    );
+    const toggle = page.getByRole("button", { name: keyName, exact: true });
+    await userEvent.click(toggle);
+    await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(document.body.textContent).not.toContain("Finish, fix, or remove");
+
+    await userEvent.click(
+      page.getByRole("button", { name: "Add a transform" }),
+    );
+    await userEvent.click(page.getByRole("menuitem", { name: "Split on" }));
+    const unfinished = page.getByText(
+      "Finish, fix, or remove the highlighted transform steps in Key 1 " +
+        "before generating.",
+      { exact: true },
+    );
+    await expect.element(unfinished).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(
+      "Enable at least one linkage key.",
+    );
+
+    const delimiter = page.getByRole("textbox", { name: "Delimiter pattern" });
+    await userEvent.fill(delimiter, "-");
+    await expect.element(unfinished).not.toBeInTheDocument();
+
+    await userEvent.clear(delimiter);
+    await expect.element(unfinished).toBeInTheDocument();
   });
 });

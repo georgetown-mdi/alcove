@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { createElement, useState } from "react";
 
@@ -18,6 +18,7 @@ import { createAppMount } from "./renderApp";
 
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 import type { KeyVerdict } from "@psi/inviterEditor";
+import type { LinkageKeyElement } from "@alcove/core";
 
 // A file holding every default linkage column, so the seed keeps the full key set
 // -- several collapsed key cards, each its own disclosure.
@@ -157,6 +158,113 @@ describe("ExpertKeyEditor: Remove all keys", () => {
     await expect
       .element(page.getByRole("button", { name: "Add a key" }))
       .toBeEnabled();
+  });
+});
+
+describe("ExpertKeyEditor: a key element's split", () => {
+  const KEY_NAME = "Last name";
+
+  /** The editor over a live one-key draft, reporting each draft it emits. */
+  function Harness({
+    initial,
+    onDraft,
+  }: {
+    initial: AdvancedInviteDraft;
+    onDraft: (draft: AdvancedInviteDraft) => void;
+  }) {
+    const [draft, setDraft] = useState(initial);
+    return createElement(ExpertKeyEditor, {
+      draft,
+      declaredFields: authoredLinkageFields(
+        draft.metadata,
+        draft.standardization,
+      ),
+      keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
+      onChange: (next: AdvancedInviteDraft) => {
+        setDraft(next);
+        onDraft(next);
+      },
+      announce: () => undefined,
+    });
+  }
+
+  /** The editor over one key on `last_name` whose element transform is
+   * `transform`, its card expanded. */
+  async function renderedKey(
+    linkageStrategy: AdvancedInviteDraft["linkageStrategy"],
+    transform: LinkageKeyElement["transform"],
+    onDraft: (draft: AdvancedInviteDraft) => void = () => undefined,
+  ): Promise<void> {
+    const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+    app.render(
+      createElement(Harness, {
+        initial: {
+          ...draft,
+          linkageStrategy,
+          keys: [
+            {
+              key: {
+                name: KEY_NAME,
+                elements: [{ field: "last_name", transform }],
+              },
+              enabled: true,
+            },
+          ],
+        },
+        onDraft,
+      }),
+    );
+    const toggle = page.getByRole("button", { name: KEY_NAME, exact: true });
+    await userEvent.click(toggle);
+    await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+  }
+
+  test.each(["cascade", "single-pass"] as const)(
+    "an element's transform menu offers Split on and no other raw pattern under %s",
+    async (linkageStrategy) => {
+      await renderedKey(linkageStrategy, undefined);
+
+      await userEvent.click(
+        page.getByRole("button", { name: "Add a transform" }),
+      );
+      await expect
+        .element(page.getByRole("menuitem", { name: "Split on" }))
+        .toBeInTheDocument();
+      expect(
+        page.getByRole("menuitem", { name: "Filter (regex)" }).elements(),
+      ).toHaveLength(0);
+    },
+  );
+
+  test("an element's split edits in place, leaving the rest of its transform", async () => {
+    let emitted: AdvancedInviteDraft | undefined;
+    await renderedKey(
+      "cascade",
+      [
+        { function: "to_upper_case" },
+        {
+          function: "split_on",
+          params: { delimiter: "-", includeOriginal: true },
+        },
+      ],
+      (next) => {
+        emitted = next;
+      },
+    );
+
+    await userEvent.fill(
+      page.getByRole("textbox", { name: "Delimiter pattern" }),
+      "_",
+    );
+    await expect
+      .poll(() => emitted?.keys[0].key.elements[0].transform)
+      .toEqual([
+        { function: "to_upper_case" },
+        {
+          function: "split_on",
+          params: { delimiter: "_", includeOriginal: true },
+        },
+      ]);
   });
 });
 

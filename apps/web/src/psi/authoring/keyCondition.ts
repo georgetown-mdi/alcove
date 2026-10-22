@@ -119,9 +119,17 @@ const KEY_CONDITION_REFUSAL_MESSAGES: Readonly<
 };
 
 /**
- * The refused key's label as the Keys step's key list numbers it ("Key 2",
- * counting every key, on or off), from the refusal's index into the built
- * terms' keys, which hold only the keys that are on.
+ * A key's label as the Keys step's key list numbers it ("Key 2", counting
+ * every key, on or off), from its index into the draft's keys, for a Generate
+ * message to name it by.
+ */
+export function keyPositionLabel(draftIndex: number): string {
+  return `Key ${draftIndex + 1}`;
+}
+
+/**
+ * The refused key's {@link keyPositionLabel}, from the refusal's index into
+ * the built terms' keys, which hold only the keys that are on.
  */
 function refusedKeyLabel(
   refusal: NonNullable<ReturnType<typeof keyConditionRefusal>>,
@@ -132,7 +140,7 @@ function refusedKeyLabel(
   const draftIndex = draftKeys
     .flatMap((entry, index) => (entry.enabled ? [index] : []))
     .at(termsIndex);
-  return draftIndex === undefined ? undefined : `Key ${draftIndex + 1}`;
+  return draftIndex === undefined ? undefined : keyPositionLabel(draftIndex);
 }
 
 /**

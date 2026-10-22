@@ -32,6 +32,7 @@ import {
 import {
   descriptorFor,
   functionDisplay,
+  isFanOutFunction,
   isMaxPeoplePerValueValid,
   isStepValid,
   pipelineHasInertCoalesce,
@@ -42,6 +43,7 @@ import { SEMANTIC_TYPE_LABELS } from "../metadataEditing";
 import {
   REVEAL_IDENTIFIERS_INSTEAD,
   keyConditionRefusalMessage,
+  keyPositionLabel,
 } from "./keyCondition";
 import {
   buildAdvancedTerms,
@@ -141,6 +143,13 @@ const UNENCODABLE_KEY_TRANSFORM_MESSAGE =
 const UNRECOGNIZED_KEY_TRANSFORM_MESSAGE =
   "A linkage key's transform has a step Alcove does not recognize, so it " +
   "cannot run. Open that key and remove the highlighted step.";
+
+/** The Generate message for authored steps {@link isStepValid} refuses, `steps`
+ * naming which: the cleaning steps, or a key's transform steps by
+ * {@link keyPositionLabel}. */
+function unfinishedStepsMessage(steps: string): string {
+  return `Finish, fix, or remove the highlighted ${steps} before generating.`;
+}
 
 /** Shown when a key's two swapped elements have different cleaning steps: a swap
  * has only the receiver read the pair in the other order, while each element's
@@ -530,6 +539,23 @@ export function validateAdvancedInvite(
   )
     errors.keys = SWAP_TRANSFORM_MISMATCH_MESSAGE;
 
+  // The step-validity gate below, on a key element's fan-out steps, set ahead of
+  // the schema mapping, which reports a missing delimiter as "Enable at least one
+  // linkage key."
+  const unfinishedFanOutKey = draft.keys.findIndex(
+    (entry) =>
+      entry.enabled &&
+      entry.key.elements.some((element) =>
+        (element.transform ?? []).some(
+          (step) => isFanOutFunction(step.function) && !isStepValid(step),
+        ),
+      ),
+  );
+  if (errors.keys === undefined && unfinishedFanOutKey >= 0)
+    errors.keys = unfinishedStepsMessage(
+      `transform steps in ${keyPositionLabel(unfinishedFanOutKey)}`,
+    );
+
   // The "non-receiving-party-cannot-receive" rule, enforced live: sending payload
   // to a partner that receives no result is incoherent, since the partner has no
   // matched records to attach it to -- exactly what the schema rejects at accept
@@ -651,13 +677,16 @@ export function validateAdvancedInvite(
   // typing, stricter than what core runs, and an element transform can arrive by
   // a second door -- an imported partner document whose params the operator
   // cannot edit one by one. A descriptor-shaped refusal there would hard-block a
-  // document core runs benignly (e.g. a `coalesce` whose `default` is not text is
-  // a harmless pass-through), so on a key element the encoder is the gate, not
-  // the descriptors. A step core cannot compile at all is refused at the mint
-  // (`assertTransformsCompile`), which walks a whole document once per Generate
-  // and runs nowhere in this pass. The linkage grading above does compile:
-  // `pipelineAlwaysDrops` measures a `substring` run following a `parse_date` by
-  // probe on every pass, outside the mint walk's step-count and budget bounds.
+  // document core runs (e.g. an empty `replace_regex` pattern, which the schema
+  // admits and the descriptors refuse), so on a key element the encoder is the
+  // gate, not the descriptors. A fan-out step is the exception, gated above: the
+  // key editor authors a split, and core runs an emptied delimiter, splitting each
+  // value into its single characters. A step core cannot compile at all is
+  // refused at the mint (`assertTransformsCompile`), which walks a whole document
+  // once per Generate and runs nowhere in this pass. The linkage grading above
+  // does compile: `pipelineAlwaysDrops` measures a `substring` run following a
+  // `parse_date` by probe on every pass, outside the mint walk's step-count and
+  // budget bounds.
   //
   // The exception is a param the pipeline drops value-INDEPENDENTLY -- a key that
   // matches nothing for BOTH parties, refused in core instead: `pipelineAlwaysDrops`
@@ -674,8 +703,7 @@ export function validateAdvancedInvite(
       (transformation.steps ?? []).every(isStepValid),
     )
   ) {
-    errors.standardization =
-      "Finish, fix, or remove the highlighted cleaning steps before generating.";
+    errors.standardization = unfinishedStepsMessage("cleaning steps");
   } else {
     const overLimit = draft.standardization.find(
       (transformation) =>
@@ -918,7 +946,7 @@ function messageForField(field: AdvancedField): string {
     case "standardization":
       // Set directly in validateAdvancedInvite (not via a schema-path mapping); this
       // keeps the switch exhaustive over AdvancedField.
-      return "Finish, fix, or remove the highlighted cleaning steps before generating.";
+      return unfinishedStepsMessage("cleaning steps");
   }
 }
 
