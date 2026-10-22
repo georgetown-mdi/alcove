@@ -9,7 +9,9 @@
   --app-ink: #1a1c1a;
   --app-secondary: #565b57;
   --app-faint: #6d726a;
-  --app-accent: #0c7a8a;
+  /* Darker than the mockup's #0c7a8a: link text in this color needs 4.5:1 on
+     the --app-accent-bg callout and on the red Alert tint. */
+  --app-accent: #0b7281;
   --app-rule: #d4d1c6;
   --app-rule-soft: #e5e2d8;
   --app-ok: #2e6e45;
