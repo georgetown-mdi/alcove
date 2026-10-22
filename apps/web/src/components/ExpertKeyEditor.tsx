@@ -550,6 +550,7 @@ export function ExpertKeyEditor({
                                     steps={element.transform ?? []}
                                     addStepLabel="Add a transform"
                                     emptyHint="No transforms: the field value is matched as-is."
+                                    offerFanOut
                                     onStepsChange={(steps) =>
                                       editElement(
                                         keyIndex,

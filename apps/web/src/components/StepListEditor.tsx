@@ -28,6 +28,7 @@ import { useIsomorphicEffect } from "@mantine/hooks";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import {
+  EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY,
   EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT,
   INERT_COALESCE_ADVICE,
   NULL_IF_BOTH_VALUES_REFUSAL,
@@ -38,6 +39,7 @@ import {
   descriptorFor,
   functionDisplay,
   inertCoalesceCause,
+  isFanOutFunction,
   validateParamValue,
 } from "@psi/standardizationAuthoring";
 
@@ -178,6 +180,7 @@ function StepRow({
   index,
   count,
   allowRawPatterns,
+  offerFanOut,
   onParam,
   onMove,
   onRemove,
@@ -192,6 +195,8 @@ function StepRow({
   /** When set, the raw-pattern (`tier: "regex"`) family is editable here; otherwise
    * those steps render read-only. */
   allowRawPatterns: boolean;
+  /** When set, a fan-out step is editable even without `allowRawPatterns`. */
+  offerFanOut: boolean;
   onParam: (key: string, value: unknown) => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
@@ -208,11 +213,14 @@ function StepRow({
   // any unrecognized function -- the step renders read-only. Per-party cleaning
   // editors enable it (a raw pattern changes only this party's own match rate);
   // the cross-party element-transform editor does not (a token-embedded regex
-  // runs on the partner's data, a distinct trust surface). Existing regex steps
-  // stay reorderable/removable regardless; only editing the pattern needs opt-in.
+  // runs on the partner's data, a distinct trust surface), apart from the fan-out
+  // steps a key element accepts (`offerFanOut`). Existing regex steps stay
+  // reorderable/removable regardless; only editing the pattern needs opt-in.
   const editableDescriptor =
     descriptor !== undefined &&
-    (descriptor.tier === "standard" || (allowRawPatterns && isRegexTier))
+    (descriptor.tier === "standard" ||
+      (allowRawPatterns && isRegexTier) ||
+      (offerFanOut && isFanOutFunction(step.function)))
       ? descriptor
       : undefined;
 
@@ -367,6 +375,7 @@ export function StepListEditor({
   emptyHint = "No steps: the value is used as-is. Add a step to clean it.",
   allowRawPatterns = false,
   withholdFanOut = false,
+  offerFanOut = false,
 }: {
   /** The ordered pipeline steps. */
   steps: Array<EditableStep>;
@@ -380,12 +389,18 @@ export function StepListEditor({
    * functions appear in the add menu and existing regex steps' patterns become
    * editable. Defaults to OFF so the cross-party element-transform editor (a
    * token-embedded transform that runs on the partner's data) keeps regex steps
-   * read-only; the per-party cleaning editors pass `true`, since a raw pattern there
-   * changes only this party's own match rate. */
+   * other than its fan-out steps read-only; the per-party cleaning editors pass
+   * `true`, since a raw pattern there changes only this party's own match rate. */
   allowRawPatterns?: boolean;
   /** When set, the add menu offers no step that splits a value into several
    * match candidates, for a host whose terms refuse one. */
   withholdFanOut?: boolean;
+  /** When set without `allowRawPatterns`, the add menu offers the steps that
+   * split a value into several match candidates
+   * ({@link EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY}) and such a step is editable,
+   * while every other raw pattern stays read-only: the key-element editor's
+   * setting, since core accepts a fan-out step on a key element. */
+  offerFanOut?: boolean;
 }) {
   // A stable React key per step, tracked by object identity so a reorder follows
   // the logical step (rather than its array position) and a param edit keeps the
@@ -506,6 +521,14 @@ export function StepListEditor({
       }),
     );
 
+  const rawPatternGroups: Array<StandardizationFunctionGroup> = allowRawPatterns
+    ? withholdFanOut
+      ? EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT
+      : STANDARDIZATION_EXPERT_FUNCTION_GROUPS
+    : offerFanOut
+      ? EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY
+      : [];
+
   // Shared by the standard and the gated expert groups so both render identically.
   const renderMenuGroup = (group: StandardizationFunctionGroup) => (
     <div key={group.label}>
@@ -555,6 +578,7 @@ export function StepListEditor({
               index={index}
               count={steps.length}
               allowRawPatterns={allowRawPatterns}
+              offerFanOut={offerFanOut}
               onParam={(key, value) => setParam(index, key, value)}
               onMove={(direction) => moveStep(index, direction)}
               onRemove={() => removeStep(index)}
@@ -585,14 +609,10 @@ export function StepListEditor({
           {STANDARDIZATION_FUNCTION_GROUPS.map(renderMenuGroup)}
           {/* The raw-pattern (regex) family appears after a divider, only where the
               host enables it, so it is never mixed into the standard menu or offered
-              as a recommended step (and never offered at all in the cross-party
-              element-transform editor). */}
-          {allowRawPatterns && <Menu.Divider />}
-          {allowRawPatterns &&
-            (withholdFanOut
-              ? EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT
-              : STANDARDIZATION_EXPERT_FUNCTION_GROUPS
-            ).map(renderMenuGroup)}
+              as a recommended step (and, but for its fan-out steps, never offered in
+              the cross-party element-transform editor). */}
+          {rawPatternGroups.length > 0 && <Menu.Divider />}
+          {rawPatternGroups.map(renderMenuGroup)}
         </Menu.Dropdown>
       </Menu>
     </Stack>

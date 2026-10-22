@@ -202,7 +202,8 @@ export const authorableFunctionNames: ReadonlySet<string> = new Set(
  * {@link STANDARDIZATION_FUNCTION_GROUPS} and are never shown as a recommended
  * fix. The per-party cleaning editors offer them directly; the cross-party,
  * token-embedded element-transform editor holds them back (read-only) via the
- * same `allowRawPatterns` gate.
+ * same `allowRawPatterns` gate, except the fan-out functions
+ * ({@link EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY}), which a key element accepts.
  *
  * A parity test ({@link expertFunctionNames}) pins this set to the descriptor
  * table's `tier: "regex"` names in both directions, so a regex-tier function
@@ -234,16 +235,30 @@ export const expertFunctionNames: ReadonlySet<string> = new Set(
   ),
 );
 
-/** The advanced groups with every function core classes as fan-out
- * (`FAN_OUT_FUNCTION_NAMES`) removed, for a menu under terms that refuse one
- * ({@link cleaningFanOutRefusedUnder}). */
-export const EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT: Array<StandardizationFunctionGroup> =
-  STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map((group) => ({
+/** Whether core classes `functionName` as fan-out (`FAN_OUT_FUNCTION_NAMES`). */
+export function isFanOutFunction(functionName: string): boolean {
+  return FAN_OUT_FUNCTION_NAMES.includes(functionName);
+}
+
+function expertGroupsKeeping(
+  keep: (functionName: string) => boolean,
+): Array<StandardizationFunctionGroup> {
+  return STANDARDIZATION_EXPERT_FUNCTION_GROUPS.map((group) => ({
     ...group,
-    functionNames: group.functionNames.filter(
-      (name) => !FAN_OUT_FUNCTION_NAMES.includes(name),
-    ),
+    functionNames: group.functionNames.filter(keep),
   })).filter((group) => group.functionNames.length > 0);
+}
+
+/** The advanced groups with every function core classes as fan-out removed,
+ * for a menu under terms that refuse one ({@link cleaningFanOutRefusedUnder}). */
+export const EXPERT_FUNCTION_GROUPS_WITHOUT_FAN_OUT: Array<StandardizationFunctionGroup> =
+  expertGroupsKeeping((name) => !isFanOutFunction(name));
+
+/** The advanced groups narrowed to the functions core classes as fan-out, for
+ * the key-element editor: a key element accepts one, while every other raw
+ * pattern stays read-only there. */
+export const EXPERT_FUNCTION_GROUPS_FAN_OUT_ONLY: Array<StandardizationFunctionGroup> =
+  expertGroupsKeeping(isFanOutFunction);
 
 /** A cleaning step core refuses under the terms: the field it cleans, the
  * column that field is cleaned from, and the step's function. */

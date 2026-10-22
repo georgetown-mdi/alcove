@@ -70,6 +70,7 @@ import {
   addKey,
   buildAdvancedTerms,
   draftOffersBuiltInKeys,
+  updateElementAt,
 } from "@psi/authoring/advancedInvite";
 
 import {
@@ -2739,4 +2740,137 @@ describe("a configuration holding a missing-field condition", () => {
     });
     expect(saved.linkageTerms.linkageKeys).toEqual(document.linkageKeys);
   });
+});
+
+describe("a configuration whose key element splits a value", () => {
+  const SPLIT_KEY = "FN + split LN + DOB";
+  const splitStep = {
+    function: "split_on",
+    params: { delimiter: "-", includeOriginal: true },
+  };
+
+  function splitKeyTerms(
+    linkageStrategy: LinkageTerms["linkageStrategy"],
+  ): LinkageTerms {
+    const terms = getDefaultLinkageTerms("County Health", documentColumns());
+    return {
+      ...terms,
+      linkageStrategy,
+      linkageKeys: [
+        ...terms.linkageKeys,
+        {
+          name: SPLIT_KEY,
+          elements: [
+            { field: "first_name" },
+            {
+              field: "last_name",
+              transform: [{ function: "to_upper_case" }, splitStep],
+            },
+            { field: "date_of_birth" },
+          ],
+        },
+      ],
+    };
+  }
+
+  function opened(document: LinkageTerms): InviterScreenState {
+    return withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({ linkageTerms: document, metadata: documentColumns() }),
+      ),
+    );
+  }
+
+  /** The terms Save hands back for the screen's editor, once review passes. */
+  function savedTerms(state: InviterScreenState): LinkageTerms {
+    const editor = state.editor;
+    if (editor === undefined) throw new Error("expected an editor");
+    const validation = reviewValidation(editor);
+    expect(validation.errors).toEqual({});
+    const terms = validation.terms;
+    if (terms === undefined) throw new Error("expected reviewed terms");
+    return configurationHandBack({
+      editor,
+      terms,
+      csvDelimiter: undefined,
+      receipts: RECEIPTS_DEFAULT,
+    }).linkageTerms;
+  }
+
+  test.each(["cascade", "single-pass"] as const)(
+    "opens, reviews and saves back its keys unchanged under %s",
+    (linkageStrategy) => {
+      const document = splitKeyTerms(linkageStrategy);
+      const state = opened(document);
+      const editor = state.editor;
+      if (editor === undefined) throw new Error("expected an editor");
+      expect(editor.draft.keys.every((entry) => entry.enabled)).toBe(true);
+      expect(noticesOf(state)).toEqual([]);
+      expect(termsEditedSinceOpened(state.loadedTermsBaseline, editor)).toBe(
+        false,
+      );
+
+      const saved = savedTerms(state);
+      expect(saved.linkageKeys).toEqual(document.linkageKeys);
+      expect(saved.linkageStrategy).toBe(linkageStrategy);
+    },
+  );
+
+  test.each(["cascade", "single-pass"] as const)(
+    "an edit to the split's delimiter under %s saves that change alone",
+    (linkageStrategy) => {
+      const document = splitKeyTerms(linkageStrategy);
+      const state = opened(document);
+      const editor = state.editor;
+      if (editor === undefined) throw new Error("expected an editor");
+      const unedited = savedTerms(state);
+      const keyIndex = editor.draft.keys.findIndex(
+        (entry) => entry.key.name === SPLIT_KEY,
+      );
+      // The step list's delimiter edit, as KeysTab applies the element it emits.
+      const edited = inviterScreenReducer(state, {
+        type: "editor-applied",
+        editor: editorWithAuthoredDraft(
+          editor,
+          updateElementAt(editor.draft, keyIndex, 1, (element) => ({
+            ...element,
+            transform: (element.transform ?? []).map((step) =>
+              step.function === "split_on"
+                ? { ...step, params: { ...step.params, delimiter: "[-\\s]" } }
+                : step,
+            ),
+          })),
+        ),
+      });
+
+      expect(savedTerms(edited)).toEqual({
+        ...unedited,
+        linkageKeys: unedited.linkageKeys.map((key) =>
+          key.name === SPLIT_KEY
+            ? {
+                ...key,
+                elements: key.elements.map((element, position) =>
+                  position === 1
+                    ? {
+                        ...element,
+                        transform: [
+                          { function: "to_upper_case" },
+                          {
+                            ...splitStep,
+                            params: {
+                              ...splitStep.params,
+                              delimiter: "[-\\s]",
+                            },
+                          },
+                        ],
+                      }
+                    : element,
+                ),
+              }
+            : key,
+        ),
+      });
+    },
+  );
 });
