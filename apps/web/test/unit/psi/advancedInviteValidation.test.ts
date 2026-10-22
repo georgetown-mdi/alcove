@@ -976,6 +976,113 @@ describe("a key-element transform core cannot build", () => {
   }, 60_000);
 });
 
+describe("a key element's split left unfinished", () => {
+  // The key editor authors a split on a key element, so its delimiter takes the
+  // step-validity gate the authored cleaning steps take, while every other
+  // key-element step keeps the encoder as its only gate.
+  const now = new Date("2026-01-01T00:00:00Z");
+  const UNFINISHED_IN_KEY_1 =
+    "Finish, fix, or remove the highlighted transform steps in Key 1 before " +
+    "generating.";
+
+  test("an emptied delimiter, which core runs, blocks Generate naming the key", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const authored = withFirstElementTransform(draft, [
+      {
+        function: "split_on",
+        params: { delimiter: "", includeOriginal: false },
+      },
+    ]);
+    // The assumption: nothing else refuses it -- the schema and the mint's
+    // compile both admit the step.
+    const terms = buildAdvancedTerms(authored);
+    expect(safeParseLinkageTerms(terms).success).toBe(true);
+    expect(() => assertTransformsCompile(terms)).not.toThrow();
+
+    const result = validateAdvancedInvite(authored, seed, now);
+    expect(result.canGenerate).toBe(false);
+    expect(result.errors.keys).toBe(UNFINISHED_IN_KEY_1);
+  });
+
+  test("a split added with no delimiter is named rather than reported as no keys", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const authored = withFirstElementTransform(draft, [
+      { function: "split_on", params: { includeOriginal: false } },
+    ]);
+    // The assumption: the schema refuses it, which the generic mapping alone
+    // reports as "Enable at least one linkage key."
+    expect(safeParseLinkageTerms(buildAdvancedTerms(authored)).success).toBe(
+      false,
+    );
+    const result = validateAdvancedInvite(authored, seed, now);
+    expect(result.canGenerate).toBe(false);
+    expect(result.errors.keys).toBe(UNFINISHED_IN_KEY_1);
+  });
+
+  test("names the key by its place in the list, counting keys that are off", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const unfinished: Array<TransformStep> = [
+      { function: "split_on", params: { delimiter: "" } },
+    ];
+    const authored = {
+      ...draft,
+      keys: draft.keys.map((entry, index) =>
+        index === 0 || index === 1
+          ? {
+              ...entry,
+              enabled: index === 1,
+              key: {
+                ...entry.key,
+                elements: entry.key.elements.map((element, position) =>
+                  position === 0
+                    ? { ...element, transform: unfinished }
+                    : element,
+                ),
+              },
+            }
+          : entry,
+      ),
+    };
+    const result = validateAdvancedInvite(authored, seed, now);
+    expect(result.canGenerate).toBe(false);
+    expect(result.errors.keys).toBe(
+      "Finish, fix, or remove the highlighted transform steps in Key 2 before " +
+        "generating.",
+    );
+  });
+
+  test("a split with a delimiter generates", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const authored = withFirstElementTransform(draft, [
+      {
+        function: "split_on",
+        params: { delimiter: "-", includeOriginal: false },
+      },
+    ]);
+    const result = validateAdvancedInvite(authored, seed, now);
+    expect(result.errors.keys).toBeUndefined();
+    expect(result.canGenerate).toBe(true);
+  });
+
+  test("a step that does not fan out keeps the exemption from the descriptors", () => {
+    // The raw-pattern sibling of an emptied delimiter: an empty `replace_regex`
+    // pattern, which the descriptors refuse and the schema admits.
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const emptyPattern: TransformStep = {
+      function: "replace_regex",
+      params: { pattern: "", replacement: "x" },
+    };
+    expect(isStepValid(emptyPattern)).toBe(false);
+    const result = validateAdvancedInvite(
+      withFirstElementTransform(draft, [emptyPattern]),
+      seed,
+      now,
+    );
+    expect(result.errors.keys).toBeUndefined();
+    expect(result.canGenerate).toBe(true);
+  });
+});
+
 describe("the swap pair whose two elements clean differently", () => {
   // A swap has only the receiver read the pair in the other order and leaves each
   // element's steps on its own position, so a pair whose steps differ cleans a
