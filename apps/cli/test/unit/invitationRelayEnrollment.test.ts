@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { deriveRelayExchangeId, deriveRelayKey } from "@alcove/core";
+import {
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
+  deriveRelayExchangeId,
+  deriveRelayKey,
+} from "@alcove/core";
 import type { EventStreamEmitter } from "../../src/eventStream";
 
 import {
@@ -208,6 +213,32 @@ describe("reportInvitationRelayEnrollment", () => {
     );
     expect(lines.warn[0]).toContain("held\\x1b[31m");
     expect(lines.warn[0]).not.toContain("\u001b");
+  });
+
+  test("a registrar repeating the exchange id and relay key gets neither onto the log or the event stream", async () => {
+    const exchangeId = await deriveRelayExchangeId(SECRET);
+    const key = await deriveRelayKey(SECRET);
+    const registrar = fakeRegistrar([
+      jsonResponse(409, { error: `exchange ${exchangeId} holds no ${key}` }),
+    ]);
+    const { lines, warnings, sinks: s } = sinks();
+    reportInvitationRelayEnrollment(
+      REGISTRAR,
+      await enrollAtInvitationRelay(REGISTRAR, SECRET, {
+        fetch: registrar.fetch,
+      }),
+      s,
+    );
+    const reported = [...lines.warn, ...warnings.map((w) => w.message)];
+    expect(reported).toHaveLength(2);
+    for (const message of reported) {
+      expect(message).toContain(
+        `(HTTP 409: exchange ${REMOVED_EXCHANGE_ID_TEXT} holds no ` +
+          `${REMOVED_RELAY_KEY_TEXT})`,
+      );
+      expect(message).not.toContain(exchangeId);
+      expect(message).not.toContain(key);
+    }
   });
 
   test("a cancelled enrollment reports nothing", () => {

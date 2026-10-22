@@ -15,6 +15,7 @@ import {
 } from "./failureCause.js";
 import { deriveRelayExchangeId, deriveRelayKey } from "./relayCredential.js";
 import { relayRegistrarAuthorization } from "./relayRegistrarProof.js";
+import { parseBoundedJson } from "./utils/boundedJson.js";
 import { readBoundedJsonBody } from "./utils/boundedJsonBody.js";
 import { enc } from "./utils/crypto.js";
 
@@ -39,6 +40,12 @@ const MAX_REGISTRAR_REASON_LENGTH = 300;
 /** What stands in a message for the credential a request carried. */
 export const REMOVED_CREDENTIAL_TEXT = "[credential removed]";
 
+/** What stands in a message for the exchange id a request named. */
+export const REMOVED_EXCHANGE_ID_TEXT = "[exchange id removed]";
+
+/** What stands in a message for the relay key a request registered. */
+export const REMOVED_RELAY_KEY_TEXT = "[relay key removed]";
+
 const UNREAD_ANSWER_REASON =
   "its answer is not the registrar's answer to a registration (a JSON " +
   "object stating maxAgeDays and lapsesAt), so the registration is not " +
@@ -58,38 +65,100 @@ function utf8Base64(value: string): string {
   return btoa(binary);
 }
 
-/**
- * `text` with every occurrence of the `Authorization` value a request carried,
- * and of its credential after the scheme, replaced by
- * {@link REMOVED_CREDENTIAL_TEXT}: as sent, URL-encoded, and base64-encoded,
- * so a registrar or proxy that echoes the header repeats no credential.
- * `text` unchanged for a request that carried no `Authorization` header.
- */
-function withCredentialRemoved(
-  text: string,
-  authorization: string | undefined,
-): string {
-  if (authorization === undefined) return text;
-  const space = authorization.indexOf(" ");
-  const values =
-    space === -1
-      ? [authorization]
-      : [authorization, authorization.slice(space + 1)];
-  const forms = new Set<string>();
-  for (const value of values) {
-    const base64 = utf8Base64(value);
-    for (const form of [
-      value,
-      encodeURIComponent(value),
-      base64,
-      base64.replace(/=+$/, ""),
-    ])
-      if (form.length > 0) forms.add(form);
+/** A value a registrar request sent, and what stands for it in a message. */
+interface SentValue {
+  value: string;
+  marker: string;
+}
+
+// `value` as the request sent it or a registrar or proxy may repeat it: as is,
+// URL-encoded (the request path), JSON-escaped (the body), and base64-encoded
+// with and without padding (an echoed header).
+function sentForms(value: string): string[] {
+  const base64 = utf8Base64(value);
+  return [
+    value,
+    encodeURIComponent(value),
+    JSON.stringify(value).slice(1, -1),
+    base64,
+    base64.replace(/=+$/, ""),
+  ].filter((form) => form.length > 0);
+}
+
+// The `key` a registration body (`relayRegistrationBody`) registers.
+function registeredRelayKey(body: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = parseBoundedJson(body);
+  } catch {
+    return undefined;
   }
-  let removed = text;
-  for (const form of [...forms].sort((a, b) => b.length - a.length))
-    removed = removed.split(form).join(REMOVED_CREDENTIAL_TEXT);
-  return removed;
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const key = (parsed as Record<string, unknown>)["key"];
+  return typeof key === "string" ? key : undefined;
+}
+
+/**
+ * The values a registrar request sent that no message repeats: the
+ * `Authorization` value and its credential after the scheme, the exchange id
+ * in the request path, and the relay key the body registers.
+ */
+function sentValues(request: {
+  registrar: RelayRegistrar;
+  body: string;
+  authorization?: string;
+}): SentValue[] {
+  const values: SentValue[] = [];
+  const { authorization } = request;
+  if (authorization !== undefined) {
+    values.push({ value: authorization, marker: REMOVED_CREDENTIAL_TEXT });
+    const space = authorization.indexOf(" ");
+    if (space !== -1)
+      values.push({
+        value: authorization.slice(space + 1),
+        marker: REMOVED_CREDENTIAL_TEXT,
+      });
+  }
+  values.push({
+    value: request.registrar.exchangeId,
+    marker: REMOVED_EXCHANGE_ID_TEXT,
+  });
+  const relayKey = registeredRelayKey(request.body);
+  if (relayKey !== undefined)
+    values.push({ value: relayKey, marker: REMOVED_RELAY_KEY_TEXT });
+  return values;
+}
+
+/**
+ * `text` with every occurrence of each of `sent`, in each form the request
+ * sent it or a registrar may repeat it ({@link sentForms}), replaced by that
+ * value's marker. Overlapping occurrences are removed as one span, so no part
+ * of either is left. A value a registrar re-encodes some other way is not
+ * caught.
+ */
+function withSentValuesRemoved(
+  text: string,
+  sent: readonly SentValue[],
+): string {
+  const spans: Array<{ start: number; end: number; marker: string }> = [];
+  for (const { value, marker } of sent)
+    for (const form of sentForms(value))
+      for (
+        let at = text.indexOf(form);
+        at !== -1;
+        at = text.indexOf(form, at + 1)
+      )
+        spans.push({ start: at, end: at + form.length, marker });
+  spans.sort((a, b) => a.start - b.start || b.end - a.end);
+  let removed = "";
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.end <= cursor) continue;
+    if (span.start >= cursor)
+      removed += text.slice(cursor, span.start) + span.marker;
+    cursor = span.end;
+  }
+  return removed + text.slice(cursor);
 }
 
 /** The registrar and exchange a message names. */
@@ -250,7 +319,7 @@ interface RegistrarAnswerBody {
 async function readAnswerBody(
   response: Response,
   signal: AbortSignal,
-  authorization: string | undefined,
+  sent: readonly SentValue[],
 ): Promise<RegistrarAnswerBody> {
   let read: Awaited<ReturnType<typeof readBoundedJsonBody>>;
   try {
@@ -267,7 +336,7 @@ async function readAnswerBody(
   const fields = value as Record<string, unknown>;
   const body: RegistrarAnswerBody = {};
   if (typeof fields["error"] === "string")
-    body.error = withCredentialRemoved(fields["error"], authorization).slice(
+    body.error = withSentValuesRemoved(fields["error"], sent).slice(
       0,
       MAX_REGISTRAR_REASON_LENGTH,
     );
@@ -294,12 +363,13 @@ async function readAnswerBody(
  * Send one registration -- `POST` to enroll, `PUT` to rotate or renew -- and
  * classify the answer. Never throws for a network failure or a status: each
  * is an answer kind. Redirects are not followed, so the credential reaches no
- * second host, and no reason repeats the credential. A 2xx is `registered`
- * only when its body is the registrar's answer to a registration -- a JSON
- * object, within the answer bound, stating `maxAgeDays` and `lapsesAt`; any
- * other 2xx is `unavailable` with a fixed reason, and so is a request
- * `transport.signal` cancelled. With `authorization` unset the request has no
- * `Authorization` header: an enrollment without a token.
+ * second host, and no reason repeats the credential, the exchange id, or the
+ * relay key the request sent, each replaced by its marker. A 2xx is
+ * `registered` only when its body is the registrar's answer to a registration
+ * -- a JSON object, within the answer bound, stating `maxAgeDays` and
+ * `lapsesAt`; any other 2xx is `unavailable` with a fixed reason, and so is a
+ * request `transport.signal` cancelled. With `authorization` unset the request
+ * has no `Authorization` header: an enrollment without a token.
  */
 export async function sendRelayRegistration(
   request: {
@@ -315,6 +385,7 @@ export async function sendRelayRegistration(
   const timeout = timeoutSignal(timeoutMs);
   const { signal, release } = requestSignal(timeout.signal, transport.signal);
   const cancel = transport.signal;
+  const sent = sentValues(request);
   try {
     let response: Response;
     try {
@@ -344,9 +415,9 @@ export async function sendRelayRegistration(
         kind: "unavailable",
         reason: timedOut
           ? `no answer within ${timeoutMs} ms`
-          : `it could not be reached (${withCredentialRemoved(
+          : `it could not be reached (${withSentValuesRemoved(
               err instanceof Error ? err.message : String(err),
-              request.authorization,
+              sent,
             )})`,
         ...(failure !== undefined && {
           unreachable: {
@@ -366,7 +437,7 @@ export async function sendRelayRegistration(
         reason: "it answered with a redirect, which is not followed",
       };
     }
-    const body = await readAnswerBody(response, signal, request.authorization);
+    const body = await readAnswerBody(response, signal, sent);
     if (status >= 200 && status < 300) {
       if (body.malformedLapse === true)
         return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };

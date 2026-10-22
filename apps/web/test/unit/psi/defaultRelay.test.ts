@@ -2,8 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MAX_RELAY_LOCATOR_URLS,
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
+  deriveRelayExchangeId,
+  deriveRelayKey,
   enrollRelayKeyWithinWait,
   generateSharedSecret,
+  getLogger,
 } from "@alcove/core";
 
 import {
@@ -189,6 +194,37 @@ describe("relayWithDefaultForRun", () => {
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );
+  });
+
+  test("a registrar repeating the exchange id and relay key gets neither into the log", async () => {
+    const secret = generateSharedSecret();
+    const exchangeId = await deriveRelayExchangeId(secret);
+    const key = await deriveRelayKey(secret);
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: `exchange ${exchangeId} holds no ${key}` }),
+          { status: 409 },
+        ),
+      ),
+    );
+    const warn = vi.spyOn(getLogger("defaultRelay"), "warn");
+    try {
+      await relayWithDefaultForRun(secret, OWN, NO_RESTRICTION, {
+        setting: () => DEFAULT_RELAY,
+        enroll: enrollingThrough(fetch),
+      });
+      expect(warn).toHaveBeenCalledOnce();
+      const logged = String(warn.mock.calls[0]?.[0]);
+      expect(logged).toContain(
+        `(HTTP 409: exchange ${REMOVED_EXCHANGE_ID_TEXT} holds no ` +
+          `${REMOVED_RELAY_KEY_TEXT})`,
+      );
+      expect(logged).not.toContain(exchangeId);
+      expect(logged).not.toContain(key);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("leaves out the default relay an invitation names when this run could not enroll", async () => {

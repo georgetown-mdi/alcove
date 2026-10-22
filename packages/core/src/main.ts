@@ -950,6 +950,8 @@ export {
   relayRegistrationNotice,
   relayRegistrationOutcomeDetail,
   REMOVED_CREDENTIAL_TEXT,
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
   sendRelayRegistration,
 } from "./relayRegistrarClient";
 export type {

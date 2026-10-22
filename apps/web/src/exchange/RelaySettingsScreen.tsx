@@ -108,11 +108,14 @@ export const STUN_FIELD_DESCRIPTION =
   "contacted as well, and your partner follows their own setting. For " +
   "example: stun:stun.example.org:3478";
 
-/** The WebSocket relay field's description. */
+/** The WebSocket relay field's description: what the relay's operator
+ * learns, since each run that lists the url opens a socket to it. */
 export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
   "A relay for networks that block connections through a TURN relay. An " +
-  "invitation you send names it. Exchanges do not connect through a " +
-  "WebSocket relay yet. For example: wss://relay.example.org/relay";
+  "invitation you send names it. Each exchange connects to it as it starts, " +
+  "so its operator learns your network address, and the exchange passes " +
+  "through it, encrypted, only when no other connection opens. For example: " +
+  "wss://relay.example.org/relay";
 
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(lines: RelayUrlLines): string | undefined {

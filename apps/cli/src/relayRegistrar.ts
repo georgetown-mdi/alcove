@@ -22,6 +22,7 @@ export {
   relayRegistrationBody,
   relayRegistrationNotice,
   REMOVED_CREDENTIAL_TEXT,
+  REMOVED_EXCHANGE_ID_TEXT,
   sendRelayRegistration,
 } from "@alcove/core";
 export type {

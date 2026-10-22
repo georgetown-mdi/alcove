@@ -28,7 +28,10 @@ import {
 } from "vitest";
 
 import { registerRelayKey } from "../apps/cli/src/relayKeyRotation.ts";
-import { enrollRelayKey } from "../apps/cli/src/relayRegistrar.ts";
+import {
+  REMOVED_EXCHANGE_ID_TEXT,
+  enrollRelayKey,
+} from "../apps/cli/src/relayRegistrar.ts";
 
 // The relay's secrets-table module, the key scripts and the sweep that call
 // it, the registrar service and the CLI's client of it, verify.sh's registrar
@@ -2984,8 +2987,7 @@ describe.skipIf(runningAsRoot)(
       expect(stale).toEqual({
         kind: "refused",
         status: 409,
-        reason:
-          "the request's proof does not verify against the key exchange exchange-1 holds on this relay",
+        reason: `the request's proof does not verify against the key exchange ${REMOVED_EXCHANGE_ID_TEXT} holds on this relay`,
       });
       expect(host.mapping()).toMatchObject([
         { id: "exchange-1", key: rotatedKey, days: null },

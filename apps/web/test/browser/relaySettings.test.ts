@@ -18,6 +18,7 @@ import {
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
   STUN_FIELD_DESCRIPTION,
+  WEBSOCKET_RELAY_FIELD_DESCRIPTION,
 } from "@exchange/RelaySettingsScreen";
 import {
   DEFAULT_RELAY_SWITCH_LABEL,
@@ -224,6 +225,21 @@ describe("RelaySettingsScreen: the WebSocket relay", () => {
   const WEBSOCKET_URL = "wss://wsrelay.example.org/relay";
   const websocketField = () =>
     page.getByRole("textbox", { name: "WebSocket relay url" });
+
+  test("the field says each exchange connects to the relay, so its operator learns your address", async () => {
+    await mountScreen();
+
+    expect(WEBSOCKET_RELAY_FIELD_DESCRIPTION).toBe(
+      "A relay for networks that block connections through a TURN relay. An " +
+        "invitation you send names it. Each exchange connects to it as it " +
+        "starts, so its operator learns your network address, and the " +
+        "exchange passes through it, encrypted, only when no other " +
+        "connection opens. For example: wss://relay.example.org/relay",
+    );
+    await expect
+      .element(websocketField())
+      .toHaveAccessibleDescription(WEBSOCKET_RELAY_FIELD_DESCRIPTION);
+  });
 
   test("a save is kept across a reload, and removing clears it", async () => {
     await mountScreen();
