@@ -1,0 +1,15 @@
+# WEBRTC_TRANSPORT.md's fallback section adds the browser run's race, its
+# triggers and what it shows, and the channel-open Budgets row covers a
+# browser run's expiry too.
+- - -> A browser run that lists them races its listen or dial against them the same way, on [the web application's client](WEBSOCKET_RELAY.md#the-web-applications-client), so a CLI party and a browser party follow one set of rules on the wire.
+- - -> **A browser run.**
+- - -> Its WebRTC wait is one attempt, and the first path failure ends it.
+- - -> The failures that send its start are the channel-open bound expiring, on the inviter's open or on the acceptor's dial attempt; the channel failing before it opens, as on ICE failure; a registration with the coordination server failing or not confirmed within its bound with no refusal from it; and the coordination server's socket dropping during the inviter's wait for the partner's connection or the acceptor's dial.
+- - -> A browser does not say why a WebSocket failed, so a coordination server certificate it refused is one of these and leaves the exchange to the relays.
+- - -> A browser run states the path that carries the exchange in a notice on the run, and logs the rest of the lines above, each relay's refusal included, to the browser's console.
+- Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a CLI run that lists WebSocket relays, its first expiry on any attempt also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay)) -> Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a run that lists WebSocket relays, its first expiry, on any attempt of a CLI run, also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay))
+# The browser suite's fallback cases measure what a party with no candidate
+# meets in Chromium.
+- - -> Chromium reports no ICE failure for a party that gathered no candidate, so such a party's start waits for the channel-open bound.
+# The browser run's redaction of rendezvous ids is stated as a limit.
+- - -> A browser run removes the rendezvous peer ids from a coordination server's error only in its message and stack: a field the server adds to an ERROR frame, or a frame whose `__proto__` key replaces the error's prototype, brings an id the server put there into the run's error report, and an ERROR frame whose message or name cannot be turned into text and that has no stack fails the registration with a `TypeError` in place of the server's refusal; only a coordination server can do either, and it already holds the ids.

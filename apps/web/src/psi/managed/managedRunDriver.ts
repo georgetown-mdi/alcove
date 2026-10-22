@@ -51,6 +51,7 @@ import { authenticateExchange } from "../authenticateExchange";
 import { browserPsiEngineFactory } from "../workers/psiCryptoWorkerClient";
 import { noteUnfiledDisclosureRun } from "../unfiledDisclosureStore";
 import { openPeerRunConnection } from "../transport/runConnection";
+import { openRunConnectionWithRelayFallback } from "../transport/relayFallback";
 import { waitForIncomingConnection } from "../transport/waitForConnection";
 
 import {
@@ -65,6 +66,7 @@ import { runManagedRerun } from "./managedRun";
 import {
   assertManagedRendezvousPossible,
   beginManagedRendezvous,
+  managedRunRelayPlan,
 } from "./managedRendezvous";
 
 import {
@@ -318,39 +320,58 @@ export function runManagedExchangeInBrowser(
         // opens; a rejecting load on a torn-down run must not go unhandled.
         void psiPromise.catch(() => undefined);
 
-        const acquisition = await beginManagedRendezvous(current, {
+        const relayPlan = await managedRunRelayPlan(current, {
           signal,
           onRunNotice: emitRunNotice,
-          ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
         });
-        let peer: Peer;
-        let conn: DataConnection;
-        try {
-          if (acquisition.side === "inviter") {
-            peer = acquisition.peer;
-            conn = await waitForIncomingConnection(peer, {
-              signal,
-              ...(peerWaitTimeoutMs !== undefined
-                ? { timeoutMs: peerWaitTimeoutMs }
-                : {}),
-            });
-          } else {
-            peer = acquisition.peer;
-            conn = acquisition.conn;
-          }
-        } catch (error) {
-          acquisition.peer.destroy();
-          throw error;
-        }
-
-        // A failed open hard-closes the raw channel and frees the broker id
-        // before it rejects. The signal is what lets a cancel cut the clean
-        // close's wait for the peer, on this teardown and on the data
-        // exchange's: without it the wait stands until the peer takes the final
-        // frame or the ceiling expires, a duration the peer chooses.
-        const runConnection = await openPeerRunConnection(peer, conn, {
-          onCloseOutcome: emitCloseWarning,
+        const runConnection = await openRunConnectionWithRelayFallback({
+          role: current.side,
+          sharedSecret: current.sharedSecret,
+          // The WebSocket relay list is empty: docs/spec/PROTOCOL.md, No run
+          // dials one.
+          relays: [],
           signal,
+          onCloseOutcome: emitCloseWarning,
+          onRunNotice: emitRunNotice,
+          openWebRtc: async ({ signal: webRtcSignal, onPathFailed }) => {
+            const acquisition = await beginManagedRendezvous(current, {
+              relayPlan,
+              signal: webRtcSignal,
+              onPathFailed,
+              ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
+            });
+            let peer: Peer;
+            let conn: DataConnection;
+            try {
+              if (acquisition.side === "inviter") {
+                peer = acquisition.peer;
+                conn = await waitForIncomingConnection(peer, {
+                  signal: webRtcSignal,
+                  onPathFailed,
+                  ...(peerWaitTimeoutMs !== undefined
+                    ? { timeoutMs: peerWaitTimeoutMs }
+                    : {}),
+                });
+              } else {
+                peer = acquisition.peer;
+                conn = acquisition.conn;
+              }
+            } catch (error) {
+              acquisition.peer.destroy();
+              throw error;
+            }
+            // A failed open hard-closes the raw channel and frees the broker
+            // id before it rejects. The signal is what lets a cancel cut the
+            // clean close's wait for the peer, on this teardown and on the
+            // data exchange's: without it the wait stands until the peer
+            // takes the final frame or the ceiling expires, a duration the
+            // peer chooses.
+            return openPeerRunConnection(peer, conn, {
+              onCloseOutcome: emitCloseWarning,
+              signal: webRtcSignal,
+              onPathFailed,
+            });
+          },
         });
         // Closure-scoped so the catch's teardown closes whatever the try last
         // assigned: the opened connection, or the AEAD wrapper over it once the

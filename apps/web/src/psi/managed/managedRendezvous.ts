@@ -40,6 +40,8 @@ import { relayPlanForRun } from "../transport/runRelayPlan";
 import { managedAllowedRelays } from "./managedExchangeRecord";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
+import type { RunRelayPlan } from "../transport/runRelayPlan";
+import type { WebRtcPathFailure } from "../transport/relayFallback";
 
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
@@ -182,6 +184,44 @@ type ManagedRendezvousAcquisition =
   | { side: "acceptor"; peer: Peer; conn: DataConnection };
 
 /**
+ * The relays a managed run lists ({@link relayPlanForRun}): this browser's own
+ * setting and the stored connection's `invitationRelay`, read at the start of
+ * each run, and the build's default relay once this run's key is enrolled
+ * there, right before it connects, each only where the stored connection's
+ * `allowedRelays` keep it. A failed enrollment is reported through
+ * `onRunNotice` as it happens, and the run goes on without the default relay.
+ * Refuses, before any contact, a record whose rendezvous cannot begin
+ * ({@link assertManagedRendezvousPossible}).
+ */
+export async function managedRunRelayPlan(
+  record: ManagedRendezvousRecord,
+  options: {
+    signal?: AbortSignal;
+    defaultRelay?: DefaultRelayDependencies;
+    onRunNotice?: (message: string) => void;
+  } = {},
+): Promise<RunRelayPlan> {
+  assertManagedRendezvousPossible(record);
+  const { sharedSecret, exchangeFile } = record;
+  const connection = exchangeFile.connection;
+  return relayPlanForRun(
+    sharedSecret,
+    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    managedAllowedRelays(exchangeFile),
+    {
+      ...options.defaultRelay,
+      ...(record.relayRegistrar !== undefined
+        ? { ownRelayExchangeId: record.relayRegistrar.exchangeId }
+        : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      ...(options.onRunNotice !== undefined
+        ? { onRunNotice: options.onRunNotice }
+        : {}),
+    },
+  );
+}
+
+/**
  * Begin the side-dispatched rendezvous. Returns the inviter's registered peer
  * (the caller awaits the inbound channel) or the acceptor's opened `[peer, conn]`
  * pair. The record's `sharedSecret` is its CURRENT secret, so the derived
@@ -199,46 +239,25 @@ type ManagedRendezvousAcquisition =
  * scheduled attempt near its window's close cannot sit on a silent signaling
  * server past that close. Absent, both flows keep their shared defaults.
  *
- * Both flows gather against the relays `relayPlanForRun` lists from this
- * browser's own setting and the stored connection's `invitationRelay`, read at
- * the start of each run, and the build's default relay once this run's key is
- * enrolled there, right before it connects, each only where the stored
- * connection's `allowedRelays` keep it. A failed
- * enrollment is reported through `onRunNotice` as it happens, and the flow
- * starts without the default relay.
+ * Both flows gather against `relayPlan`, the run's {@link managedRunRelayPlan},
+ * and report a failure of the path to the partner to `onPathFailed`.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
   options: {
+    relayPlan: RunRelayPlan;
     signal?: AbortSignal;
     flows?: ManagedRendezvousFlows;
     peerWaitTimeoutMs?: number;
-    defaultRelay?: DefaultRelayDependencies;
-    onRunNotice?: (message: string) => void;
-  } = {},
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
+  },
 ): Promise<ManagedRendezvousAcquisition> {
   const flows = options.flows ?? defaultFlows;
-  const signal = options.signal;
+  const { signal, relayPlan, onPathFailed } = options;
   const { side, sharedSecret, exchangeFile } = record;
   assertManagedRerunDispatchable(exchangeFile);
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
-  const connection = exchangeFile.connection;
-  const relayPlan = await relayPlanForRun(
-    sharedSecret,
-    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
-    managedAllowedRelays(exchangeFile),
-    {
-      ...options.defaultRelay,
-      ...(record.relayRegistrar !== undefined
-        ? { ownRelayExchangeId: record.relayRegistrar.exchangeId }
-        : {}),
-      ...(signal !== undefined ? { signal } : {}),
-      ...(options.onRunNotice !== undefined
-        ? { onRunNotice: options.onRunNotice }
-        : {}),
-    },
-  );
   const peerWaitTimeoutMs = options.peerWaitTimeoutMs;
   const registrationBound =
     peerWaitTimeoutMs !== undefined
@@ -254,6 +273,7 @@ export async function beginManagedRendezvous(
       signal,
       ...relayPlan,
       ...registrationBound,
+      onPathFailed,
     });
     return { side: "inviter", peer };
   }
@@ -261,6 +281,7 @@ export async function beginManagedRendezvous(
     signal,
     ...relayPlan,
     ...registrationBound,
+    onPathFailed,
     ...(peerWaitTimeoutMs !== undefined
       ? { totalTimeoutMs: peerWaitTimeoutMs }
       : {}),

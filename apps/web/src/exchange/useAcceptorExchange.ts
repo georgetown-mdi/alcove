@@ -26,6 +26,7 @@ import {
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
+import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -541,13 +542,27 @@ export function useAcceptorExchange({
         current.allowedRelays,
         { signal, onRunNotice },
       );
-      const [peer, conn] = await dialAsAcceptor(token.sharedSecret, endpoint, {
-        signal,
-        ...relayPlan,
-      });
-      const connection = await openOneShotPeerConnection(peer, conn, {
+      const connection = await openRunConnectionWithRelayFallback({
+        role: "acceptor",
+        sharedSecret: token.sharedSecret,
+        // The WebSocket relay list is empty: docs/spec/PROTOCOL.md, No run
+        // dials one.
+        relays: [],
         signal,
         onCloseOutcome,
+        onRunNotice,
+        openWebRtc: async ({ signal: webRtcSignal, onPathFailed }) => {
+          const [peer, conn] = await dialAsAcceptor(
+            token.sharedSecret,
+            endpoint,
+            { signal: webRtcSignal, ...relayPlan, onPathFailed },
+          );
+          return openOneShotPeerConnection(peer, conn, {
+            signal: webRtcSignal,
+            onCloseOutcome,
+            onPathFailed,
+          });
+        },
       });
       return { ...connection, psi, prepared };
     };

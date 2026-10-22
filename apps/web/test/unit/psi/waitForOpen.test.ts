@@ -106,4 +106,25 @@ describe("waitForConnectionOpen", () => {
       vi.useRealTimers();
     }
   });
+
+  test("reports the timeout as a channel that did not open, and a pre-open error as a failed connection", async () => {
+    vi.useFakeTimers();
+    try {
+      const failures: Array<string> = [];
+      const timedOut = waitForConnectionOpen(makeConn().conn, 5000, (failure) =>
+        failures.push(failure),
+      );
+      timedOut.catch(() => {});
+      await vi.advanceTimersByTimeAsync(5000);
+      const { fake, conn } = makeConn();
+      const errored = waitForConnectionOpen(conn, 5000, (failure) =>
+        failures.push(failure),
+      );
+      fake.emit("error", new Error("negotiation-failed"));
+      await errored.catch(() => {});
+      expect(failures).toEqual(["channel-not-opened", "connection-failed"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

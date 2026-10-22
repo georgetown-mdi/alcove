@@ -49,6 +49,9 @@ import {
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
+import { dialAsAcceptor } from "@psi/transport/rendezvous";
+import { parkWebSocketRelayConnection } from "@psi/transport/websocketRelayConnection";
+import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { Lobby } from "@exchange/Lobby";
 import { stagesFor } from "@exchange/exchangeRun";
@@ -157,6 +160,13 @@ vi.mock("@psi/workers/csvParseController", async (importOriginal) => {
 vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
+
+vi.mock("@psi/transport/websocketRelayConnection", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  parkWebSocketRelayConnection: vi.fn(() => {
+    throw new Error("a run parked a WebSocket relay");
+  }),
+}));
 
 // Stub the run lifecycle so launching an exchange never dials: record each
 // invocation's options so a test can drive the captured onStages/onStage/
@@ -3000,6 +3010,32 @@ describe("acceptor screen: run and completion", () => {
       .element(page.getByRole("button", { name: "Start the exchange" }))
       .toBeDisabled();
     expect(lifecycleCalls).toHaveLength(0);
+  });
+
+  test("a run whose relays include a WebSocket relay dials none (PROTOCOL.md, No run dials one)", async () => {
+    writeOwnRelaySetting({
+      turn: [],
+      stun: [],
+      websocket: "wss://wsrelay.example.org/relay",
+    });
+    try {
+      await reachRun();
+      await lifecycleCall(0)
+        .acquire({
+          signal: new AbortController().signal,
+          onCloseOutcome: () => undefined,
+          onStage: () => undefined,
+          onStages: () => undefined,
+          onPsiProgress: () => undefined,
+          onRunNotice: () => undefined,
+        })
+        .catch(() => undefined);
+      expect(vi.mocked(dialAsAcceptor)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(parkWebSocketRelayConnection)).not.toHaveBeenCalled();
+    } finally {
+      writeOwnRelaySetting({ turn: [], stun: [] });
+      vi.mocked(dialAsAcceptor).mockReset();
+    }
   });
 });
 
