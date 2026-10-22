@@ -918,6 +918,23 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
     },
   );
 
+  test("the default terms state their five keys' shared condition in one line naming all five", async () => {
+    const defaults = getDefaultLinkageTerms("County Health Department");
+    const conditioned = defaults.linkageKeys
+      .filter((key) => key.condition !== undefined)
+      .map((key) => key.name);
+    expect(conditioned).toHaveLength(5);
+    const grouped = missingFieldConditionStatement("date of birth", 5);
+    await renderTerms(defaults, { perspective: "review" });
+    await expect
+      .element(toggle("Matching strategies"))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(page.getByText(`${conditioned.join(", ")}: ${grouped}`))
+      .toBeVisible();
+    expect(app.container.textContent.split(grouped)).toHaveLength(2);
+  });
+
   test("terms with no condition show no condition line", async () => {
     await renderTerms(terms, { perspective: "review" });
     expect(app.container.textContent).not.toContain("no valid date of birth");

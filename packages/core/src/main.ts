@@ -701,6 +701,7 @@ export {
   withholdsPartnerAssociationTable,
 } from "./consent/invitationSummary.js";
 export type {
+  InvitationConditionLine,
   InvitationKeySummary,
   MatchedFieldColumns,
   InvitationRuleSetSummary,

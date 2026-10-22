@@ -321,12 +321,20 @@ describe("whether a key can be supplied from the file", () => {
       withoutDob.metadata,
       withoutDob.standardization,
     );
-    expect(keyIsSupplyable(NAMES_AND_SSN4, declarable, undefined)).toBe(true);
+    expect(
+      keyIsSupplyable(
+        NAMES_AND_SSN4,
+        declarable,
+        undefined,
+        withoutDob.metadata,
+      ),
+    ).toBe(true);
     expect(
       keyIsSupplyable(
         withKeyCondition(NAMES_AND_SSN4, "date_of_birth"),
         declarable,
         undefined,
+        withoutDob.metadata,
       ),
     ).toBe(true);
     expect(
@@ -334,6 +342,7 @@ describe("whether a key can be supplied from the file", () => {
         withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
         declarable,
         undefined,
+        withoutDob.metadata,
       ),
     ).toBe(false);
 
@@ -343,6 +352,7 @@ describe("whether a key can be supplied from the file", () => {
         withKeyCondition(NAMES_AND_SSN4, "date_of_birth"),
         declarableFieldNames(withDob.metadata, withDob.standardization),
         undefined,
+        withDob.metadata,
       ),
     ).toBe(true);
   });
@@ -358,8 +368,23 @@ describe("whether a key can be supplied from the file", () => {
         withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
         declarableFieldNames(withoutDob.metadata, withoutDob.standardization),
         [{ name: "intake_dob", type: "date_of_birth" }],
+        withoutDob.metadata,
       ),
     ).toBe(true);
+  });
+
+  test("cannot supply a condition's field no cleaning names where the file has a date column", () => {
+    // Core would read that column into the field with no cleaning, so an
+    // empty date would count as a value.
+    const withDob = draftWithNamesAndSsn4().draft;
+    expect(
+      keyIsSupplyable(
+        withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
+        declarableFieldNames(withDob.metadata, withDob.standardization),
+        [{ name: "intake_dob", type: "date_of_birth" }],
+        withDob.metadata,
+      ),
+    ).toBe(false);
   });
 });
 

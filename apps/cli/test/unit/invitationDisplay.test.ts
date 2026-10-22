@@ -2308,6 +2308,10 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines[keyAt + 2]).toBe(
       `      ${missingFieldConditionStatement("date of birth")}`,
     );
+    expect(lines[keyAt + 2]).toContain(
+      "Your partner also learns how many of your records not yet matched " +
+        "have no valid date of birth.",
+    );
     expect(lines[keyAt + 3]).toBe("      elements:");
     expect(lines).toContain(
       "  matched on (enforced): first name, last name, " +

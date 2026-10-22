@@ -1071,15 +1071,24 @@ export const LESS_CERTAIN_KEY_COPY = {
 /**
  * The one line every terms review and consent surface shows for a key with a
  * missing-field condition, whichever of its two rounds a match comes from:
- * which pairs the key matches, and what a match tells a party receiving the
- * result, since each round sends only one side's records lacking the field.
+ * which pairs the key matches, what a match tells a party receiving the
+ * result, since each round sends only one side's records lacking the field,
+ * and what the partner learns from the element count of the round that sends
+ * only yours.
  * `field` names the field's type in lowercase words
- * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts).
+ * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
+ * above 1 words it for one line naming that many keys together.
  */
-export function missingFieldConditionStatement(field: string): string {
+export function missingFieldConditionStatement(
+  field: string,
+  keyCount = 1,
+): string {
+  const several = keyCount > 1;
   return (
-    `Matches only where one of the two records has no valid ${field}. ` +
-    "A match through this key tells a party receiving the result which of " +
-    "the two records had none."
+    `${several ? "Each matches" : "Matches"} only where one of the two ` +
+    `records has no valid ${field}. A match through ` +
+    `${several ? "one of these keys" : "this key"} tells a party receiving ` +
+    "the result which of the two records had none. Your partner also " +
+    `learns how many of your records not yet matched have no valid ${field}.`
   );
 }

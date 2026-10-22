@@ -134,15 +134,25 @@ function conditionFieldSource(
  * no column of the inviter's supplies, since with no column every record lacks
  * the field, which is all a condition reads: the imported document's own
  * (`importedFields`) where it declares the field, else the built-in field
- * set's. `undefined` where neither declares it.
+ * set's. `undefined` where neither declares it, or where `metadata` holds a
+ * `role: linkage` column of its type: core binds a field the standardization
+ * does not name to that column with no cleaning (`resolveFieldColumns`), so an
+ * empty cell would count as a value and the record never as lacking it.
  */
 export function columnlessConditionField(
   name: string,
   importedFields: ReadonlyArray<LinkageField> | undefined,
+  metadata: Metadata,
 ): LinkageField | undefined {
-  return conditionFieldSource(name, importedFields)?.find(
+  const declaration = conditionFieldSource(name, importedFields)?.find(
     (field) => field.name === name,
   );
+  if (declaration === undefined) return undefined;
+  return metadata.some(
+    (column) => column.type === declaration.type && column.role === "linkage",
+  )
+    ? undefined
+    : declaration;
 }
 
 /**
@@ -155,6 +165,7 @@ function withColumnlessConditionFields(
   fields: Array<LinkageField>,
   keys: ReadonlyArray<LinkageKey>,
   importedFields: ReadonlyArray<LinkageField> | undefined,
+  metadata: Metadata,
 ): Array<LinkageField> {
   const result = [...fields];
   for (const key of keys) {
@@ -162,7 +173,11 @@ function withColumnlessConditionFields(
     const name = key.condition.missingField;
     if (result.some((field) => field.name === name)) continue;
     const source = conditionFieldSource(name, importedFields);
-    const declaration = source?.find((field) => field.name === name);
+    const declaration = columnlessConditionField(
+      name,
+      importedFields,
+      metadata,
+    );
     if (source === undefined || declaration === undefined) continue;
     const order = source.map((field) => field.name);
     const next = result.findIndex(
@@ -387,6 +402,7 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
         ),
     enabledKeys,
     draft.importedLinkageFields,
+    draft.metadata,
   );
 
   const terms: LinkageTerms = {

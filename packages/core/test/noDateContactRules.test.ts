@@ -275,6 +275,10 @@ describe("the built-in contact rules without a date of birth", () => {
     });
     const statement = missingFieldConditionStatement("date of birth");
     expect(statement).toMatch(/which of the two records had none/);
+    expect(statement).toContain(
+      "Your partner also learns how many of your records not yet matched " +
+        "have no valid date of birth.",
+    );
     for (const rule of CONTACT_RULES) {
       const listed = summary.linkageKeys.filter((key) => key.name === rule);
       expect(listed).toHaveLength(1);
@@ -285,5 +289,24 @@ describe("the built-in contact rules without a date of birth", () => {
         .filter((key) => key.condition !== undefined)
         .map((key) => key.name),
     ).toStrictEqual(CONTACT_RULES);
+  });
+
+  test("share one condition line naming all five, worded for several keys", () => {
+    const summary = summarizeInvitation({
+      linkageTerms: termsFor(DATED_COLUMNS),
+    });
+    expect(summary.conditionLines).toStrictEqual([
+      {
+        keyNames: CONTACT_RULES,
+        statement: missingFieldConditionStatement("date of birth", 5),
+      },
+    ]);
+    expect(summary.conditionLines[0].statement).toBe(
+      "Each matches only where one of the two records has no valid date of " +
+        "birth. A match through one of these keys tells a party receiving " +
+        "the result which of the two records had none. Your partner also " +
+        "learns how many of your records not yet matched have no valid date " +
+        "of birth.",
+    );
   });
 });

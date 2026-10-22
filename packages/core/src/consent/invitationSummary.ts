@@ -9,7 +9,10 @@ import {
   gradeElementPipeline,
   parseDateInputDropsEveryRecord,
 } from "../linkageSatisfiability.js";
-import { displayText } from "../utils/sanitizeForDisplay.js";
+import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
+  displayText,
+} from "../utils/sanitizeForDisplay.js";
 import { linkageKeyIsLessCertain } from "./lessCertainKey.js";
 import { missingFieldConditionStatement } from "./consentFacts.js";
 import {
@@ -385,6 +388,20 @@ export interface InvitationKeySummary {
 }
 
 /**
+ * One line stating a missing-field condition for every key whose
+ * {@link InvitationKeySummary.condition} is the same statement.
+ */
+export interface InvitationConditionLine {
+  /** The keys' sanitized names, in the inviter's order. */
+  keyNames: Array<Displayable>;
+  /**
+   * `missingFieldConditionStatement` (consentFacts.ts) worded for the count
+   * of {@link keyNames}: for one key, that key's own condition line.
+   */
+  statement: Displayable;
+}
+
+/**
  * A linkage field's label and declared constraints (advisory: the application
  * warns and does not enforce), shown so the acceptor sees every rule on the
  * matched data.
@@ -505,6 +522,13 @@ export interface InvitationSummary {
   inviterTableWithheld: boolean;
   /** Linkage keys in the inviter's order, with their elements and rules. */
   linkageKeys: Array<InvitationKeySummary>;
+  /**
+   * The keys' missing-field conditions, one line per distinct statement in
+   * order of first appearance, so keys sharing a condition state it once
+   * outside the key list ({@link InvitationConditionLine}). Empty where no key
+   * states one.
+   */
+  conditionLines: Array<InvitationConditionLine>;
   /**
    * The unique fields the keys read, as compact labels in order of first
    * appearance, with no breadth markers or grouping. A field only a key's
@@ -977,6 +1001,62 @@ export function matchedFieldsWithColumns(
 }
 
 /**
+ * The words naming the field `key`'s missing-field condition reads, for
+ * `missingFieldConditionStatement`, or `undefined` for a key with no
+ * condition. Fixed copy by the field's type; only a field the terms do not
+ * declare is named by its sanitized name.
+ */
+function missingFieldConditionWords(
+  key: LinkageKey,
+  fieldByName: Map<string, LinkageField["type"]>,
+): string | undefined {
+  if (key.condition === undefined) return undefined;
+  const type = fieldByName.get(key.condition.missingField);
+  if (type === undefined)
+    return redactAndSanitizeForDisplay(key.condition.missingField);
+  return admitsMissingFieldConditionType(type)
+    ? MISSING_FIELD_CONDITION_TYPE_WORDS[type]
+    : COMPACT_FIELD_TYPE_LABELS[type];
+}
+
+/**
+ * `missingFieldConditionStatement` for display. Its fixed copy runs past the
+ * default display cap, and `words` are fixed copy or a name already held to
+ * that cap, so the line takes a cap above their sum rather than being cut.
+ */
+function missingFieldConditionLine(
+  words: string,
+  keyCount: number,
+): Displayable {
+  return redactAndSanitizeForDisplay(
+    missingFieldConditionStatement(words, keyCount),
+    { maxLength: 4 * DEFAULT_MAX_DISPLAY_LENGTH },
+  );
+}
+
+/**
+ * The summary's {@link InvitationConditionLine}s: the conditioned keys grouped
+ * by the words their statement names the field with, which alone set it.
+ */
+function summarizeConditionLines(
+  keys: ReadonlyArray<LinkageKey>,
+  fieldByName: Map<string, LinkageField["type"]>,
+): Array<InvitationConditionLine> {
+  const keyNamesByWords = new Map<string, Array<Displayable>>();
+  for (const key of keys) {
+    const words = missingFieldConditionWords(key, fieldByName);
+    if (words === undefined) continue;
+    const keyNames = keyNamesByWords.get(words) ?? [];
+    keyNames.push(redactAndSanitizeForDisplay(key.name));
+    keyNamesByWords.set(words, keyNames);
+  }
+  return [...keyNamesByWords].map(([words, keyNames]) => ({
+    keyNames,
+    statement: missingFieldConditionLine(words, keyNames.length),
+  }));
+}
+
+/**
  * Reduce one linkage key to its display summary. `fieldByName` maps a field
  * `name` to its semantic type; an unresolved element or swap reference falls
  * back to the sanitized raw string. `fanOutMatches` is whether the agreed
@@ -1109,19 +1189,11 @@ function summarizeKey(
       : displayText`(either order not supported)`
     : undefined;
   const lessCertain = linkageKeyIsLessCertain(key, fields);
-  let condition: Displayable | undefined;
-  if (key.condition !== undefined) {
-    const type = fieldByName.get(key.condition.missingField);
-    const words =
-      type === undefined
-        ? redactAndSanitizeForDisplay(key.condition.missingField)
-        : admitsMissingFieldConditionType(type)
-          ? MISSING_FIELD_CONDITION_TYPE_WORDS[type]
-          : COMPACT_FIELD_TYPE_LABELS[type];
-    condition = redactAndSanitizeForDisplay(
-      missingFieldConditionStatement(words),
-    );
-  }
+  const conditionWords = missingFieldConditionWords(key, fieldByName);
+  const condition =
+    conditionWords === undefined
+      ? undefined
+      : missingFieldConditionLine(conditionWords, 1);
 
   return {
     id: key.name,
@@ -1371,6 +1443,7 @@ export function summarizeInvitation(
     linkageKeys: terms.linkageKeys.map((key) =>
       summarizeKey(key, terms.linkageFields, fieldByName, fanOutMatches),
     ),
+    conditionLines: summarizeConditionLines(terms.linkageKeys, fieldByName),
     matchedFields,
     linkageFields,
     // Narrowed to the one value a surface may state, over both grounds for

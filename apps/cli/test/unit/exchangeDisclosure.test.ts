@@ -638,6 +638,10 @@ test("a key with a missing-date condition states, beneath it, the line every rev
   expect(lines[keyAt + 1]).toContain(
     "tells a party receiving the result which of the two records had none",
   );
+  expect(lines[keyAt + 1]).toContain(
+    "Your partner also learns how many of your records not yet matched " +
+      "have no valid date of birth.",
+  );
 });
 
 test("a key on names and a date of birth alone is marked less certain, and the mark explained once", () => {

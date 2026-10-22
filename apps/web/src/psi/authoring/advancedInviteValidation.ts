@@ -477,20 +477,30 @@ export function validateAdvancedInvite(
     // field the columns cannot supply), "turn one on" would mislead, so name the
     // real obstacle instead.
     const someKeyIsSupplyable = draft.keys.some((entry) =>
-      keyIsSupplyable(entry.key, declarable, draft.importedLinkageFields),
+      keyIsSupplyable(
+        entry.key,
+        declarable,
+        draft.importedLinkageFields,
+        draft.metadata,
+      ),
     );
     errors.keys = someKeyIsSupplyable
       ? "Enable at least one linkage key."
       : UNSUPPLYABLE_KEY_MESSAGE;
   } else if (conditionRefusal !== undefined) {
-    // Ahead of the unsupplyable check: a condition naming a field neither the
-    // columns, an imported document nor the built-in fields declare is also
-    // undeclared, and core's refusal names the condition.
+    // Ahead of the unsupplyable check: a condition field the columns cannot
+    // supply and that has no columnlessConditionField is also undeclared, and
+    // core's refusal names the condition.
     errors.keys = keyConditionRefusalMessage(conditionRefusal, draft.keys);
   } else if (
     enabledKeys.some(
       (entry) =>
-        !keyIsSupplyable(entry.key, declarable, draft.importedLinkageFields),
+        !keyIsSupplyable(
+          entry.key,
+          declarable,
+          draft.importedLinkageFields,
+          draft.metadata,
+        ),
     )
   ) {
     // An enabled key references a field the columns cannot supply: the built terms
@@ -1329,6 +1339,11 @@ function draftHasSupplyableKey(draft: AdvancedInviteDraft): boolean {
     draft.standardization,
   );
   return draft.keys.some((entry) =>
-    keyIsSupplyable(entry.key, declarable, draft.importedLinkageFields),
+    keyIsSupplyable(
+      entry.key,
+      declarable,
+      draft.importedLinkageFields,
+      draft.metadata,
+    ),
   );
 }
