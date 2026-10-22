@@ -501,7 +501,7 @@ Hillestad et al. (2008) put first + last name + birth year + ZIP at about one po
 
 Catches a date of birth missing on one side, with no SSN.
 Polubriaginof et al. (2018) measured first + last name + phone at 99.25% and 99.0%, with no date.
-Under the missing-date condition the rule accepts a subset of the candidate pairs that measurement covers, as a refinement does ([The contact rules without a date of birth](#the-contact-rules-without-a-date-of-birth)).
+Under the missing-date condition the rule accepts a subset of the candidate pairs that measurement covers, an extrapolation stated under [The contact rules without a date of birth](#the-contact-rules-without-a-date-of-birth).
 It stays at 95% for its floor, a same-name parent and child on a household phone, which no source measures.
 The condition keeps that pair out where both records hold a date, leaving it to the rules that compare the date; where one record has none, the pair remains (reasoning).
 A name suffix would separate the pair only where both sides record one, and no rule matches on a suffix ([linkage-rule-grounding.md](linkage-rule-grounding.md#name-suffixes)).
@@ -552,7 +552,9 @@ Rules 35, 36, 36a, 38 and 39 have no date of birth and run under the per-side mi
 Each runs as two rounds, one per side lacking the date.
 A party whose file has no date-of-birth column takes part with every record, since none of its records has a date.
 
-- **The band.** A pair whose two records both hold a valid date never matches through these rules, so each accepts a subset of the candidate pairs of the same rule without the condition, the rule Polubriaginof et al. (2018) measured for rules 35 and 36a; that is the refinement kind of evidence ([The evidence standard](#the-evidence-standard)).
+- **The band.** For rules 35 and 36a the band is an extrapolation from the same rule without the condition, which Polubriaginof et al. (2018) measured ([The evidence standard](#the-evidence-standard)).
+  A pair whose two records both hold a valid date never matches through these rules, so the condition selects a subset of the measured rule's candidate pairs.
+  The condition adds no element, so the subset is not a refinement: the step assumes a wrong pair is no more likely where one record has no date than across the pairs measured (reasoning).
   The same-name parent and child on a household phone or email is the floor where one record has no date, so the bands stay at 95% (reasoning).
 - **What they cost.** A pair whose two dates are both present but differ by an error the date rules do not tolerate is not recovered by these rules.
   A match through one of them tells a party receiving the result which of the two records had no valid date of birth, and every terms review and consent screen states it under the rule.

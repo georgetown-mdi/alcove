@@ -882,19 +882,23 @@ export function draftWithFieldAdded(
 
 /** Whether the inviter's columns can supply every field `key` reads: each
  * element's `field` is declarable ({@link declarableFieldNames}), and so is its
- * condition's field or it has a {@link columnlessConditionField}. A key that is
- * not supplyable dangles the built terms, so the import disables it
- * ({@link draftFromTerms}) and {@link validateAdvancedInvite} messages it
- * distinctly from a draft whose keys were merely turned off. */
+ * condition's field or it has a {@link columnlessConditionField}, from
+ * `importedFields` (the draft's {@link AdvancedInviteDraft.importedLinkageFields})
+ * or the built-in fields. A key that is not supplyable dangles the built terms,
+ * so the import disables it ({@link draftFromTerms}) and
+ * {@link validateAdvancedInvite} messages it distinctly from a draft whose keys
+ * were merely turned off. */
 export function keyIsSupplyable(
   key: LinkageKey,
   declarable: ReadonlySet<string>,
+  importedFields: ReadonlyArray<LinkageField> | undefined,
 ): boolean {
   return (
     key.elements.every((element) => declarable.has(element.field)) &&
     (key.condition === undefined ||
       declarable.has(key.condition.missingField) ||
-      columnlessConditionField(key.condition.missingField) !== undefined)
+      columnlessConditionField(key.condition.missingField, importedFields) !==
+        undefined)
   );
 }
 
@@ -1311,7 +1315,7 @@ export function draftFromTerms(
         : { kind: "uncited" },
     keys: terms.linkageKeys.map((key) => ({
       key,
-      enabled: keyIsSupplyable(key, declarable),
+      enabled: keyIsSupplyable(key, declarable, terms.linkageFields),
     })),
   };
   const citation = draft.importedRuleSetCitation;
@@ -1405,8 +1409,8 @@ export function draftWithConfigurationCleaning(
   const after = declarableFieldNames(draft.metadata, next);
   const keys = draft.keys.map((entry) =>
     !entry.enabled &&
-    !keyIsSupplyable(entry.key, before) &&
-    keyIsSupplyable(entry.key, after)
+    !keyIsSupplyable(entry.key, before, draft.importedLinkageFields) &&
+    keyIsSupplyable(entry.key, after, draft.importedLinkageFields)
       ? { ...entry, enabled: true }
       : entry,
   );

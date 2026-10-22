@@ -7,7 +7,10 @@ import {
   type ExchangeResult,
 } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
-import { RoundSetLimitError } from "../src/errors";
+import {
+  LinkageTermsUnsatisfiableError,
+  RoundSetLimitError,
+} from "../src/errors";
 import {
   assertFirstRoundWithinPartnerCeiling,
   assertFirstRoundWithinSetMaximum,
@@ -432,6 +435,88 @@ describe("the rounds a conditioned key runs as", () => {
     ]);
     expect(verdict.unsatisfiedFieldColumns).toEqual([]);
     expect(verdict.fullySatisfied).toBe(true);
+  });
+
+  test("an input whose explicit standardization binds the condition's field to no column can run the key", () => {
+    const verdict = decideLinkageTermsVerdict(
+      ["first_name", "last_name", "ssn4"],
+      { ...TERMS, linkageKeys: [NO_DATE_KEY] },
+      [
+        { output: "first_name", input: "first_name" },
+        { output: "last_name", input: "last_name" },
+        { output: "ssn4", input: "ssn4" },
+      ],
+    );
+    expect(verdict.unsatisfiedFieldColumns).toEqual([]);
+    expect(verdict.fullySatisfied).toBe(true);
+  });
+
+  describe("an input lacking the column the condition's field is bound to", () => {
+    const columns = ["first_name", "last_name", "ssn4"];
+    const terms: LinkageTerms = { ...TERMS, linkageKeys: [NO_DATE_KEY] };
+    const DATE_FIELD = { name: "date_of_birth", type: "date_of_birth" };
+    const bindings = {
+      "an explicit standardization": {
+        standardization: [
+          { output: "first_name", input: "first_name" },
+          { output: "last_name", input: "last_name" },
+          { output: "ssn4", input: "ssn4" },
+          { output: "date_of_birth", input: "dob" },
+        ],
+        metadata: undefined,
+      },
+      "a metadata block": {
+        standardization: undefined,
+        metadata: [
+          ...inferMetadata(columns, []),
+          {
+            name: "dob",
+            type: "date_of_birth" as const,
+            role: "linkage" as const,
+            isPayload: false,
+          },
+        ],
+      },
+    };
+
+    for (const [label, { standardization, metadata }] of Object.entries(
+      bindings,
+    )) {
+      test(`reports the column and cannot run the key, bound by ${label}`, () => {
+        const verdict = decideLinkageTermsVerdict(
+          columns,
+          terms,
+          standardization,
+          metadata,
+        );
+        expect(verdict.unsatisfiedFieldColumns).toEqual([
+          { field: DATE_FIELD, column: "dob" },
+        ]);
+        expect(verdict.keys).toEqual([
+          {
+            key: NO_DATE_KEY,
+            fitness: "unsatisfiable",
+            missingField: "date_of_birth",
+          },
+        ]);
+        expect(verdict.fullySatisfied).toBe(false);
+      });
+
+      test(`is refused before anything is sent, bound by ${label}`, () => {
+        expect(() =>
+          prepareForExchange(
+            {
+              linkageTerms: terms,
+              ...(standardization !== undefined ? { standardization } : {}),
+              ...(metadata !== undefined ? { metadata } : {}),
+            },
+            "Initiator Co",
+            [{ first_name: "Maria", last_name: "Lopez", ssn4: "4821" }],
+            columns,
+          ),
+        ).toThrow(LinkageTermsUnsatisfiableError);
+      });
+    }
   });
 
   test("an input with no column for a field a key element also reads cannot run that key, and can run the conditioned one", () => {

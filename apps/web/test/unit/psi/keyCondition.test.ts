@@ -321,17 +321,19 @@ describe("whether a key can be supplied from the file", () => {
       withoutDob.metadata,
       withoutDob.standardization,
     );
-    expect(keyIsSupplyable(NAMES_AND_SSN4, declarable)).toBe(true);
+    expect(keyIsSupplyable(NAMES_AND_SSN4, declarable, undefined)).toBe(true);
     expect(
       keyIsSupplyable(
         withKeyCondition(NAMES_AND_SSN4, "date_of_birth"),
         declarable,
+        undefined,
       ),
     ).toBe(true);
     expect(
       keyIsSupplyable(
         withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
         declarable,
+        undefined,
       ),
     ).toBe(false);
 
@@ -340,6 +342,22 @@ describe("whether a key can be supplied from the file", () => {
       keyIsSupplyable(
         withKeyCondition(NAMES_AND_SSN4, "date_of_birth"),
         declarableFieldNames(withDob.metadata, withDob.standardization),
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
+  test("needs no column for its condition's field where an imported document declares it", () => {
+    const withoutDob = draftWithNamesAndSsn4([
+      "first_name",
+      "last_name",
+      "ssn4",
+    ]).draft;
+    expect(
+      keyIsSupplyable(
+        withKeyCondition(NAMES_AND_SSN4, "intake_dob"),
+        declarableFieldNames(withoutDob.metadata, withoutDob.standardization),
+        [{ name: "intake_dob", type: "date_of_birth" }],
       ),
     ).toBe(true);
   });

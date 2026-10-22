@@ -3312,18 +3312,55 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
       expect(validation.canGenerate).toBe(true);
     });
 
-    test("arrives disabled with the unsupplyable-key guidance where they do not", () => {
+    test("arrives enabled under the document's own declaration where the built-in fields do not declare it", () => {
       const document = conditionedDocument("intake_dob");
       expect(safeParseLinkageTerms(document).success).toBe(true);
       const imported = draftFromTerms(document, seed, 3600, []);
 
-      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": false });
-      const validation = validateAdvancedInvite(imported, seed, NOW);
-      expect(validation.canGenerate).toBe(false);
-      expect(validation.errors.keys).toContain(
-        "Turn on Expert authoring to see which field each key has no column for",
+      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": true });
+      const fields = buildAdvancedTerms(imported).linkageFields;
+      expect(fields.map((field) => field.name)).toEqual(
+        document.linkageFields.map((field) => field.name),
       );
-      expect(validation.errors.keys).not.toContain("missing_field");
+      expect(fields.find((field) => field.name === "intake_dob")).toEqual({
+        name: "intake_dob",
+        type: "date_of_birth",
+      });
+      const validation = validateAdvancedInvite(imported, seed, NOW);
+      expect(validation.errors).toEqual({});
+      expect(validation.canGenerate).toBe(true);
+    });
+
+    test("keeps the document's declaration of the field, its constraints and position", () => {
+      const base = conditionedDocument("date_of_birth");
+      const declared = {
+        name: "date_of_birth",
+        type: "date_of_birth" as const,
+        constraints: { validOnly: true },
+      };
+      // The other fields as the editor emits them, so only the condition's
+      // field can diverge from the document.
+      const document: LinkageTerms = {
+        ...base,
+        linkageFields: [
+          declared,
+          ...buildAdvancedTerms(
+            draftFromTerms(base, seed, 3600, []),
+          ).linkageFields.filter((field) => field.name !== "date_of_birth"),
+        ],
+      };
+      expect(safeParseLinkageTerms(document).success).toBe(true);
+      const imported = draftFromTerms(document, seed, 3600, []);
+
+      expect(enabledByName(imported)).toEqual({ "FN + LN + SSN4": true });
+      const fields = buildAdvancedTerms(imported).linkageFields;
+      expect(fields.map((field) => field.name)).toEqual(
+        document.linkageFields.map((field) => field.name),
+      );
+      expect(fields[0]).toEqual(declared);
+      expect(importedConstraintDivergenceMessage(document, seed)).toBe(
+        undefined,
+      );
     });
   });
 
