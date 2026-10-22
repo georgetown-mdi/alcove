@@ -1425,7 +1425,11 @@ function AcceptorInvitationScreen({
             )}
             {!consoleBuild &&
               decode.invitation.endpoint.channel === "webrtc" && (
-                <DefaultRelayNotice />
+                <DefaultRelayNotice
+                  {...(decode.invitation.endpoint.relay !== undefined && {
+                    invitationRelay: decode.invitation.endpoint.relay,
+                  })}
+                />
               )}
             {acceptOffersAllowedRelays(
               decode.invitation.endpoint,

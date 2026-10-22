@@ -73,6 +73,20 @@ record stands.
   ([PRIVACY.md](../../PRIVACY.md#hosted-web-application)). The command line is
   unchanged: it lists only the relays its configuration or the invitation names.
 
+**Superseded 2026-10-22, by owner rulings of 2026-10-21 and 2026-10-22 on the
+hosted sites' defaults.** The 2026-10-14 default holds for the demo site alone;
+the rest of this record stands.
+
+- **Production and staging offer the project's relay switched off.** An
+  exchange there uses no relay the project runs, TURN or WebSocket, unless a
+  party turned it on in relay settings, so the project learns no party's
+  address through its relay by default. An acceptor follows its inviter: an
+  invitation created with the relay on puts it in the acceptor's run, and the
+  acceptor's review says the exchange may connect through it
+  ([DEPLOYMENT.md](../DEPLOYMENT.md#the-default-relay)).
+- **The demo site lists it in every browser exchange**, as the 2026-10-14
+  default had it for production ([DEPLOYMENT.md](../DEPLOYMENT.md#the-demo-site)).
+
 Taken from the relay measurement rather than measured again: TURN over TLS on
 443 relays a UDP-blocked CLI party, through TLS interception once the
 interception CA is trusted on the CLI host; the recommended shape is a shared,

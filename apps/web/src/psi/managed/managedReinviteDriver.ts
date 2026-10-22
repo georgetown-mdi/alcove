@@ -17,8 +17,7 @@
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
-import { defaultRelaySetting } from "@utils/clientConfig";
-
+import { defaultRelayInUse } from "../transport/defaultRelay";
 import { invitationLocation } from "../invitationLocation";
 import { ownRelayForInvitation } from "../transport/ownRelaySetting";
 
@@ -52,7 +51,7 @@ interface ManagedReinviteDriverDeps {
   ownRelay: (
     allowedRelays: ReadonlyArray<string> | undefined,
   ) => RelayUrls | undefined;
-  /** Read the build's default relay, which the invitation also names. */
+  /** Read the default relay in use, which the invitation also names. */
   defaultRelay: () => DefaultRelaySetting | undefined;
 }
 
@@ -65,7 +64,7 @@ const defaultDeps: ManagedReinviteDriverDeps = {
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: (allowedRelays) => ownRelayForInvitation(allowedRelays),
-  defaultRelay: () => defaultRelaySetting(),
+  defaultRelay: () => defaultRelayInUse(),
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,

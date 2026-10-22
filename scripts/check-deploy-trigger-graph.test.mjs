@@ -464,7 +464,7 @@ describe("wiring", () => {
   // The demo upload follows the site's own upload in the one deploy job, so a
   // failed demo upload leaves the site deployed, and the packaging job rebuilds
   // BUILD_OUTPUT for the demo only after uploading the site from it.
-  it("uploads the demo site's build after the site, built with the default relay", () => {
+  it("uploads the demo site's build after the site, built with the default relay on", () => {
     const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
     const jobs = Object.entries(workflow.jobs);
     const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
@@ -516,12 +516,18 @@ describe("wiring", () => {
     expect(demoArtifact.with.path).toBe(BUILD_OUTPUT);
     expect(demoArtifact.with.name).toBe("${{env.DEMO_ARTIFACT_NAME}}");
     expect(Object.keys(demoBuild.env).sort()).toEqual([
+      "VITE_DEFAULT_RELAY_MODE",
       "VITE_DEFAULT_RELAY_REGISTRAR_URL",
       "VITE_DEFAULT_RELAY_TURN_URL",
       "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
       "VITE_SIGNALING_SERVER_URL",
     ]);
+    // The demo site turns the default relay on; the site leaves the mode
+    // unset, so it offers the relay switched off.
+    expect(demoBuild.env.VITE_DEFAULT_RELAY_MODE).toBe("on");
+    expect(siteBuild.env).not.toHaveProperty("VITE_DEFAULT_RELAY_MODE");
     for (const name of Object.keys(demoBuild.env)) {
+      if (name === "VITE_DEFAULT_RELAY_MODE") continue;
       expect(demoBuild.env[name], name).toBe(siteBuild.env[name]);
     }
     const built = (step) => packager.steps.indexOf(step);

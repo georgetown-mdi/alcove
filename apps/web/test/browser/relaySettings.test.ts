@@ -9,12 +9,17 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  DEFAULT_RELAY_SWITCH_DESCRIPTION,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
   STUN_FIELD_DESCRIPTION,
 } from "@exchange/RelaySettingsScreen";
+import {
+  DEFAULT_RELAY_SWITCH_LABEL,
+  readDefaultRelaySwitch,
+} from "@psi/transport/defaultRelaySwitch";
 import {
   RELAY_TEST_FAILED,
   RELAY_TEST_INTRO,
@@ -576,3 +581,49 @@ const TWO_TARGETS: Array<RelayTestTarget> = [
   { url: TURN_URL, source: "own", transport: "tls" },
   { url: SITE_RELAY.turnUrl, source: "site", transport: "udp" },
 ];
+
+describe("the switch for a site relay offered switched off", () => {
+  const siteSwitch = () =>
+    page.getByRole("switch", { name: DEFAULT_RELAY_SWITCH_LABEL });
+  const siteRelayListed = () =>
+    page.getByRole("listitem").filter({ hasText: SITE_RELAY.turnUrl });
+
+  test("starts off, states what the relay's operator learns, and turning it on or off takes one action", async () => {
+    app.render(
+      createElement(RelaySettingsScreen, {
+        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
+      }),
+    );
+
+    await expect.element(siteSwitch()).not.toBeChecked();
+    await expect
+      .element(siteSwitch())
+      .toHaveAccessibleDescription(DEFAULT_RELAY_SWITCH_DESCRIPTION);
+    expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toContain(
+      RELAY_OPERATOR_DISCLOSURE,
+    );
+    expect(siteRelayListed().query()).toBeNull();
+    expect(readDefaultRelaySwitch()).toBe(false);
+
+    await userEvent.click(siteSwitch());
+
+    await expect.element(siteSwitch()).toBeChecked();
+    expect(readDefaultRelaySwitch()).toBe(true);
+    await expect.element(siteRelayListed()).toBeVisible();
+
+    await userEvent.click(siteSwitch());
+
+    await expect.element(siteSwitch()).not.toBeChecked();
+    expect(readDefaultRelaySwitch()).toBe(false);
+    await expect.poll(() => siteRelayListed().query()).toBeNull();
+  });
+
+  test.each([
+    ["names no relay", { kind: "none" as const }],
+    ["turns the relay on", { kind: "on" as const, relay: SITE_RELAY }],
+  ])("a build that %s offers no switch", async (_build, offer) => {
+    app.render(createElement(RelaySettingsScreen, { build: () => offer }));
+    await expect.element(turnField()).toBeInTheDocument();
+    expect(siteSwitch().query()).toBeNull();
+  });
+});

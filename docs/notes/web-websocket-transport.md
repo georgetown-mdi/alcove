@@ -523,6 +523,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
 
    - **The relay admits any exchange with a registered key, one-shot included.** It checks each party's proof against the key the exchange enrolled ([PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof)); one-shot admission is decided by this ruling, not weighed after S3.
    - **It is part of the production default**, as the TURN relay is.
+     Superseded 2026-10-22: both are off on production and staging until a party turns them on, and on by default on the demo site alone ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
    - **The relay-restriction setting covers it.** The operator setting naming the relays a party's data may cross, not yet built, governs this relay as it governs the TURN relays.
    - **It runs behind the 443 front by server name**, one more route on the host that runs coturn and the broker ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
 

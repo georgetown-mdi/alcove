@@ -8,8 +8,7 @@
 
 import { sanitizeForDisplay } from "@alcove/core";
 
-import { defaultRelaySetting } from "@utils/clientConfig";
-
+import { defaultRelayInUse } from "./defaultRelay";
 import { readOwnRelaySetting } from "./ownRelaySetting";
 
 import type { DefaultRelaySetting } from "@utils/clientConfig";
@@ -98,13 +97,13 @@ export function turnUrlTransport(url: string): RelayTransport {
 
 /**
  * The TURN urls the test contacts: every one a browser run lists from this
- * browser's saved relay and the build's default relay, in a run's order, each
+ * browser's saved relay and the default relay in use, in a run's order, each
  * once. An exchange's allowed relays are its own, so none is applied here;
  * the invitation's relay is not known here, so it is not listed.
  */
 export function relayTestTargets(
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-  defaultRelay: () => DefaultRelaySetting | undefined = defaultRelaySetting,
+  defaultRelay: () => DefaultRelaySetting | undefined = defaultRelayInUse,
 ): Array<RelayTestTarget> {
   const own = readOwn();
   const site = defaultRelay();

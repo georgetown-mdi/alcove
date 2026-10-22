@@ -127,6 +127,15 @@ describe("the build's default relay control", () => {
     expect(check).not.toThrow();
   });
 
+  test("refuses a mode that is neither opt-in nor on", () => {
+    vi.stubEnv("VITE_DEFAULT_RELAY_TURN_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_MODE", "off");
+    expect(check).toThrow(/VITE_DEFAULT_RELAY_MODE must be opt-in or on/);
+    vi.stubEnv("VITE_DEFAULT_RELAY_MODE", "on");
+    expect(check).not.toThrow();
+  });
+
   test("refuses a build with one set alone, naming the other", () => {
     vi.stubEnv(
       "VITE_DEFAULT_RELAY_TURN_URL",

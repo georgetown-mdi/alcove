@@ -16,6 +16,7 @@ import {
   watchIceGathering,
 } from "../../../src/psi/transport/iceGathering.js";
 import { ALLOWED_RELAYS_REMEDY } from "../../../src/psi/transport/relayRestriction.js";
+import { DEFAULT_RELAY_OFF_REMEDY } from "../../../src/psi/transport/defaultRelaySwitch.js";
 import { dialAsAcceptor } from "../../../src/psi/transport/rendezvous.js";
 import { waitForConnectionOpen } from "../../../src/psi/transport/waitForOpen.js";
 
@@ -206,6 +207,21 @@ describe("waitForConnectionOpen with a relay configured", () => {
     expect((error as Error).message).toBe(
       `connection closed before open. Your allowed relays left out ${leftOut}. ` +
         ALLOWED_RELAYS_REMEDY,
+    );
+  });
+
+  test("a close in a run that left the default relay off adds where to turn it on, after the relays left out", async () => {
+    const leftOut = "turn:partner.example.net:3478";
+    const provider = {};
+    recordRelaysLeftOut(provider, [leftOut], true);
+    const pc = new FakePeerConnection([{ urls: ["stun:stun.example.org"] }]);
+    const fake = new FakeConn(pc, provider);
+    const opening = waitForConnectionOpen(fake as unknown as DataConnection);
+    fake.emit("close");
+    const error: unknown = await opening.catch((err: unknown) => err);
+    expect((error as Error).message).toBe(
+      `connection closed before open. Your allowed relays left out ${leftOut}. ` +
+        `${ALLOWED_RELAYS_REMEDY} ${DEFAULT_RELAY_OFF_REMEDY}`,
     );
   });
 

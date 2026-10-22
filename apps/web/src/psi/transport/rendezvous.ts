@@ -386,9 +386,11 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      registration; `relay` is the relay this run gathers
  *                      against, none when absent; `relaysLeftOut` are the TURN
  *                      urls the allowed relays left out, named by a failed
- *                      open; `peerFactory` injects the {@link Peer}
- *                      constructor for testing; `registrationTimeoutMs`
- *                      overrides {@link BROKER_REGISTRATION_TIMEOUT_MS};
+ *                      open, as is the default relay's switch where
+ *                      `defaultRelayOff`; `peerFactory` injects the
+ *                      {@link Peer} constructor for testing;
+ *                      `registrationTimeoutMs` overrides
+ *                      {@link BROKER_REGISTRATION_TIMEOUT_MS};
  *                      `onPathFailed` takes a registration the coordination
  *                      server did not answer as a path failure.
  */
@@ -398,6 +400,7 @@ export async function listenAsInviter(
     signal?: AbortSignal;
     relay?: RunRelay;
     relaysLeftOut?: ReadonlyArray<string>;
+    defaultRelayOff?: boolean;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
     onPathFailed?: (failure: WebRtcPathFailure) => void;
@@ -423,7 +426,11 @@ export async function listenAsInviter(
     inviterId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
-  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
+  recordRelaysLeftOut(
+    peer,
+    options?.relaysLeftOut ?? [],
+    options?.defaultRelayOff === true,
+  );
   try {
     await waitForPeerOpen(peer, {
       signal,
@@ -644,7 +651,7 @@ async function dialInviterWithRetry(
  *                      from it.
  * @param endpoint      The invitation's WebRTC signaling endpoint.
  * @param options       `signal` cancels the dial (and its retry loop) on unmount;
- *                      `relay` and `relaysLeftOut` are as
+ *                      `relay`, `relaysLeftOut` and `defaultRelayOff` are as
  *                      {@link listenAsInviter} takes them; `peerFactory`
  *                      injects the {@link Peer} constructor for testing; the
  *                      `*Ms` overrides tune the registration bound and the
@@ -659,6 +666,7 @@ export async function dialAsAcceptor(
     signal?: AbortSignal;
     relay?: RunRelay;
     relaysLeftOut?: ReadonlyArray<string>;
+    defaultRelayOff?: boolean;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
     retryDelayMs?: number;
@@ -690,7 +698,11 @@ export async function dialAsAcceptor(
     acceptorId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
-  recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
+  recordRelaysLeftOut(
+    peer,
+    options?.relaysLeftOut ?? [],
+    options?.defaultRelayOff === true,
+  );
   try {
     try {
       await waitForPeerOpen(peer, {
