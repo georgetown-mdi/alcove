@@ -6,6 +6,11 @@ import { page, userEvent } from "vitest/browser";
 
 import { createElement, useState } from "react";
 
+// Without Mantine's stylesheet the menu dropdown sits in the page flow and the
+// icons are unsized, so a key card still expanding pushes "Add a transform"
+// below the viewport after the click, and the menu hides its detached dropdown.
+import "@mantine/core/styles.css";
+
 import { authoredLinkageFields } from "@alcove/core";
 
 import { seedAdvancedInvite } from "@psi/authoring/advancedInvite";
