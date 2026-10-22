@@ -24,10 +24,10 @@
  * - `linkageTerms` -- the document's terms (the inviter's own perspective), so the
  *   partner adopts the same set it did originally, with `payload.send` stated from
  *   the document's metadata where it holds one.
- * - `connectionEndpoint` -- built FRESH from this app's current signaling location,
- *   not the document's stored `server` locator: the inviter derives its rendezvous
- *   from this app's signaling address on the re-run path, so the stored locator is
- *   inert (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field").
+ * - `connectionEndpoint` -- the document's stored `server` locator, the server
+ *   this party's own re-runs register at (see docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ *   "Role: a local `side` field"), so the partner's accept saves the server both
+ *   runs reach, whatever this browser's coordination server setting names.
  *   It names the inviter's own relay and the build's default relay, both passed
  *   in by the host, as a new invitation does.
  * - `sharedSecret` -- a fresh setup secret, superseding the desynced one.
@@ -54,9 +54,10 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
-import { deepLinkFor, invitationWebrtcEndpoint } from "../invitation";
+import { deepLinkFor, webrtcEndpointWithRelay } from "../invitation";
 import { invitationRelayWithDefault } from "../transport/defaultRelay";
 import { managedAllowedRelays } from "./managedExchangeRecord";
+import { managedSignalingEndpoint } from "./managedRendezvous";
 import { rotationWriteBack } from "./managedRunRotate";
 
 import type {
@@ -119,8 +120,9 @@ function buildReinviteRotation(
 
 /**
  * Build the fresh invitation token a re-invite mints from the stored inviter
- * document: the document's linkage terms, a fresh webrtc endpoint from the
- * current location, the fresh setup secret, and the bounded setup expiry.
+ * document: the document's linkage terms, the webrtc endpoint of the server
+ * the document saved ({@link managedSignalingEndpoint}), the fresh setup
+ * secret, and the bounded setup expiry.
  * Where the document holds metadata, `payload.send` is stated from it, as a
  * first mint states it; without metadata the terms
  * are sent as stored. The token holds no credential -- the endpoint is
@@ -128,8 +130,7 @@ function buildReinviteRotation(
  * through the strict endpoint schema (see {@link ./invitation.ts}).
  */
 function buildReinviteToken(
-  record: ManagedExchangeRecord,
-  location: InvitationLocation,
+  record: RunnableManagedExchangeRecord,
   freshSecret: string,
   tokenExpires: string,
   relay: RelayUrls | undefined,
@@ -143,7 +144,10 @@ function buildReinviteToken(
         : termsStatingDeclaredPayloadSend(linkageTerms, metadata),
     sharedSecret: freshSecret,
     expires: tokenExpires,
-    connectionEndpoint: invitationWebrtcEndpoint(location, relay),
+    connectionEndpoint: webrtcEndpointWithRelay(
+      managedSignalingEndpoint(record),
+      relay,
+    ),
   };
 }
 
@@ -189,18 +193,21 @@ interface ManagedReinviteSeams {
  * the committed send set, and the record's `id`/handle are all retained. The
  * invitation names no TURN url the record's allowed relays leave out
  * (`turnUrlIsAllowed` in core), and names the record's registrar's exchange id
- * beside this browser's own WebSocket relay url.
+ * beside this browser's own WebSocket relay url. `location` gives the deep
+ * link's origin only.
  *
  * @throws {Error} if the record is not the inviter side (only the inviter re-mints; an
  *   acceptor's recovery is to accept the partner's fresh invitation), or if the setup
  *   lifetime is not a finite positive number of seconds within the one-year ceiling.
+ * @throws {ManagedSignalingEndpointRefusedError} if the record's saved signaling
+ *   server fails the validation a fresh invitation's endpoint gets.
  * @throws {RangeError} if the max-age policy stamps an expiry outside the range.
  * @throws {ZodError} if the assembled token fails the strict endpoint/schema
  *   validation at encode.
  */
 export async function composeManagedReinvite(
   record: RunnableManagedExchangeRecord,
-  location: InvitationLocation,
+  location: Pick<InvitationLocation, "origin">,
   seams: ManagedReinviteSeams,
 ): Promise<ManagedReinvite> {
   if (!canReinviteFromRecord(record))
@@ -222,7 +229,6 @@ export async function composeManagedReinvite(
   const tokenExpires = invitationExpires(lifetimeSeconds, now);
   const token = buildReinviteToken(
     record,
-    location,
     freshSecret,
     tokenExpires,
     invitationRelayWithDefault(

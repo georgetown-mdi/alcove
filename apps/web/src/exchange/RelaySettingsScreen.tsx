@@ -28,6 +28,7 @@ import { defaultRelayInUse } from "@psi/transport/defaultRelay";
 import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
+import { CoordinationServerSection } from "./CoordinationServerSection";
 import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
@@ -142,7 +143,10 @@ type SaveStatus =
  * a test of the relays a browser run lists that the user starts, and what the
  * relay's operator learns. The hosted app and a console each hold their own; a
  * console runs no exchange over a WebSocket relay, so it offers no WebSocket
- * relay field. The relays an exchange may use are that exchange's own, set
+ * relay field. On the hosted app the page also sets the coordination server
+ * the invitations this browser creates name ({@link CoordinationServerSection});
+ * a console mints no browser invitation, so it offers none. The relays an
+ * exchange may use are that exchange's own, set
  * where it is authored, so none is set here. Where the build offers its
  * default relay switched off, the page has the switch that turns it on in
  * this browser, which takes effect when it is changed.
@@ -355,6 +359,8 @@ export function RelaySettingsScreen({
 
       <h2>What the relay&apos;s operator learns</h2>
       <p>{RELAY_OPERATOR_DISCLOSURE}</p>
+
+      {!consoleBuild && <CoordinationServerSection />}
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">

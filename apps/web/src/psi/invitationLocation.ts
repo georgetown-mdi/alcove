@@ -1,11 +1,12 @@
 import { isConsoleBuild } from "@utils/clientConfig";
 
-import { ownSignalingAddress } from "./transport/signalingAddress";
+import { inviterSignalingAddress } from "./transport/signalingAddress";
 
 import type { InvitationLocation } from "@psi/invitation";
 
 /**
- * This page's origin and this app's signaling address, in the shape
+ * This page's origin and the signaling address a new invitation names
+ * ({@link inviterSignalingAddress}), in the shape
  * {@link generateInvitation} takes. It reads `window`, so it must be called
  * from the client and throws when `window` is absent rather than return a
  * server-side value. The inviter console's create and save-exchange-file paths
@@ -19,6 +20,6 @@ export function invitationLocation(): InvitationLocation {
     throw new Error("invitationLocation must be called in the browser");
   return {
     origin: window.location.origin,
-    signaling: isConsoleBuild() ? undefined : ownSignalingAddress(),
+    signaling: isConsoleBuild() ? undefined : inviterSignalingAddress(),
   };
 }

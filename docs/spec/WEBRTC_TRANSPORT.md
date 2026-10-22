@@ -213,10 +213,8 @@ A browser run removes the rendezvous peer ids from a coordination server's error
 ### The browser party's own signaling address
 
 A browser party resolves one address for the signaling server its own
-deployment uses, and every place that needs it reads that one value: where an
-inviter registers, on a fresh invitation and on a saved exchange's later
-runs, and the endpoint its invitation names. It comes from the deployment's
-build setting `VITE_SIGNALING_SERVER_URL`, never from an invitation:
+deployment uses. It comes from the deployment's build setting
+`VITE_SIGNALING_SERVER_URL`, never from an invitation:
 
 | Setting | Address |
 | ------- | ------- |
@@ -228,6 +226,24 @@ or names a user name, password, query or fragment, or a host or path the
 delimiter rules above refuse. It is also refused when the app loads if its
 scheme does not match the page's: `wss:` under an `https` page, `ws:` under an
 `http` page. `localhost` is resolved to `127.0.0.1` in either case.
+
+A new invitation names this browser's own coordination server where the user
+set one on the relay settings page, and the deployment's address otherwise.
+The browser setting is kept in the browser's storage for the page's origin,
+and is held to the rule the published file's reader applies
+(`publishedSignalingServerURL` in core) with the page's scheme and a port from
+1 to 65535; an address failing it is refused when entered, and a stored one
+failing it on a later read names no server. Its address states the port, the
+scheme's default included. A web app's `http:` or `https:` address is refused,
+since the hosted build's `_headers` gives its published file
+([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin`
+header for a page on another origin to read it under.
+
+An inviter registers at the endpoint its invitation names. A saved exchange's
+later runs register at the endpoint the inviter's record stored from that
+invitation, after the validation an acceptor's dial applies (below), and a
+re-invite from the record names that endpoint. A change to the browser
+setting therefore moves no invitation already created and no saved exchange.
 
 An accepting party never dials its own deployment's address. A fresh accept
 dials the endpoint its invitation names, from any deployment, and a saved
@@ -242,14 +258,16 @@ A stored endpoint that fails it refuses the run before any connection
 
 The endpoint an invitation names holds the address's `host` and `path`, and
 names no scheme: an acceptor resolves the scheme from its own page, and an
-omitted port from that scheme's default. With the setting unset, the endpoint
-names the `port` only when the page's is not the scheme's default. With the
-setting set, the endpoint always names the `port`, the scheme's default
-included, so the port an acceptor dials never depends on its own page.
+omitted port from that scheme's default. With neither setting set, the
+endpoint names the `port` only when the page's is not the scheme's default.
+With the build setting or the browser setting set, the endpoint always names
+the `port`, the scheme's default included, so the port an acceptor dials never
+depends on its own page.
 
 The console build (`VITE_DEPLOYMENT_PROFILE=console`) resolves no signaling
-address, whatever the setting holds: its server serves no signaling and its
-origin is loopback. It mints no webrtc invitation; a webrtc mint there is
+address, whatever either setting holds, and offers no browser setting: its
+server serves no signaling and its origin is loopback. It mints no webrtc
+invitation; a webrtc mint there is
 refused before any token is built, and its SFTP and shared-folder invitations
 name no signaling address.
 
@@ -267,8 +285,10 @@ by the static host like any other file, and holds one field:
 ```
 
 - **What the build writes.** The setting's `ws:` or `wss:` URL, its path ending
-  in `/`. The build fails when the setting is one the reader below would
-  refuse. The console build writes no such file. The web app's dev server
+  in `/`, never a browser's own coordination server, so a CLI given the app's
+  address dials the build's server whatever a browser on it set. The build
+  fails when the setting is one the reader below would refuse. The console
+  build writes no such file. The web app's dev server
   (`vite dev`) serves the same document, naming `VITE_SIGNALING_SERVER_URL`
   when it is set and otherwise the page origin's `/api/`, the server its own
   page dials.

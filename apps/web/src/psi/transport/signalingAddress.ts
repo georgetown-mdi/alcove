@@ -9,6 +9,8 @@ import {
 
 import { signalingServerSetting } from "@utils/clientConfig";
 
+import { readCoordinationServerSetting } from "./coordinationServerSetting";
+
 import type { SignalingLocationField, WebRTCEndpoint } from "@alcove/core";
 import type { SignalingServerSetting } from "@utils/clientConfig";
 
@@ -95,12 +97,93 @@ export function resolveSignalingAddress(
 }
 
 /**
- * This app's signaling address, resolved from the deployment setting and
- * `window.location`: the one source for both where a browser inviter
- * registers and the endpoint its invitation names. Browser only.
+ * This deployment's signaling address, resolved from the deployment setting
+ * and `window.location`: the server an invitation names where this browser's
+ * coordination server setting names none ({@link inviterSignalingAddress}).
+ * Browser only.
  */
 export function ownSignalingAddress(): SignalingAddress {
   if (typeof window === "undefined")
     throw new Error("ownSignalingAddress must be called in the browser");
   return resolveSignalingAddress(signalingServerSetting(), window.location);
+}
+
+/**
+ * The signaling address an invitation this browser creates names: `own`,
+ * this browser's coordination server setting, with its port always stated,
+ * else `deployment`, read only then. `own` is an address
+ * `parseCoordinationServerUrl` accepted.
+ */
+export function resolveInviterSignalingAddress(
+  own: string | undefined,
+  deployment: () => SignalingAddress,
+): SignalingAddress {
+  if (own === undefined) return deployment();
+  const url = new URL(own);
+  const secure = url.protocol === "wss:";
+  return {
+    host: dialableHost(url.hostname),
+    port: url.port !== "" ? Number(url.port) : secure ? 443 : 80,
+    path: url.pathname,
+    secure,
+  };
+}
+
+/**
+ * The signaling address an invitation this browser creates names, and where
+ * its inviter registers: this browser's coordination server setting, else
+ * {@link ownSignalingAddress}. A stored setting this page cannot read names
+ * none. Browser only.
+ */
+export function inviterSignalingAddress(): SignalingAddress {
+  if (typeof window === "undefined")
+    throw new Error("inviterSignalingAddress must be called in the browser");
+  const own = readCoordinationServerSetting(window.location.protocol);
+  return resolveInviterSignalingAddress(
+    own.kind === "set" ? own.url : undefined,
+    ownSignalingAddress,
+  );
+}
+
+/**
+ * The address of the server `endpoint` names, as a `ws://` or `wss://` url
+ * by this page's scheme, when it is not this deployment's own: the server
+ * this browser's coordination server setting named when the invitation was
+ * created. Undefined for the deployment's own server. Browser only.
+ */
+export function settingServerNamedBy(
+  endpoint: Pick<WebRTCEndpoint, "host" | "port" | "path">,
+): string | undefined {
+  const secure = window.location.protocol === "https:";
+  const defaultPort = secure ? 443 : 80;
+  const deployment = ownSignalingAddress();
+  const port = endpoint.port ?? defaultPort;
+  const path = endpoint.path ?? OWN_SIGNALING_PATH;
+  if (
+    endpoint.host === deployment.host &&
+    port === (deployment.port ?? defaultPort) &&
+    path === deployment.path
+  )
+    return undefined;
+  const statedPort = port === defaultPort ? "" : `:${port}`;
+  return `${secure ? "wss" : "ws"}://${endpoint.host}${statedPort}${path}`;
+}
+
+/**
+ * An inviter's registration at the coordination server this browser's
+ * setting named failed with no answer from it. The message names the server
+ * and how to clear the setting.
+ */
+export class CoordinationServerUnreachableError extends Error {
+  /** The server's address, as {@link settingServerNamedBy} states it. */
+  readonly server: string;
+  constructor(server: string, options?: ErrorOptions) {
+    super(
+      `This page could not connect to ${server}, the coordination server ` +
+        "set in Relay settings that this invitation names.",
+      options,
+    );
+    this.name = "CoordinationServerUnreachableError";
+    this.server = server;
+  }
 }

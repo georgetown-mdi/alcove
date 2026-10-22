@@ -724,26 +724,37 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
   recovery: "reinvite",
 };
 
-/** The state of an acceptor's run refused because the signaling server address
- * its record saved fails the validation a fresh invitation's address gets
+/** The state of a run refused because the signaling server address its record
+ * saved fails the validation a fresh invitation's address gets
  * ({@link ManagedSignalingEndpointRefusedError}). Read off the error class with
  * no stored kind of its own, since a new stored kind would change the saved
  * record's schema: the record stamps it as a transport failure, so a later
  * visit reads the generic transport state. The same record refuses identically
- * every time, so it is not the retry state; a fresh invitation from the
- * partner saves a new address, the acceptor's re-invite recovery. */
+ * every time, so it is not the retry state. A fresh invitation from the
+ * partner saves a new address, the acceptor's re-invite recovery; an
+ * inviter's re-invite names the same saved address, so it has none. */
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
 ): ManagedRunFailureAlert {
-  return {
-    kind: "saved-address-refused",
-    title: "The saved coordination server address cannot be used",
-    message:
-      `${error.refusal} The run stopped before connecting, so your partner ` +
-      "was not contacted and nothing left this device. Running it again " +
-      "stops the same way; this exchange needs a fresh invitation.",
-    recovery: "reinvite",
-  };
+  const stopped =
+    `${error.refusal} The run stopped before connecting, so your partner ` +
+    "was not contacted and nothing left this device. Running it again " +
+    "stops the same way; ";
+  return error.side === "acceptor"
+    ? {
+        kind: "saved-address-refused",
+        title: "The saved coordination server address cannot be used",
+        message: `${stopped}this exchange needs a fresh invitation.`,
+        recovery: "reinvite",
+      }
+    : {
+        kind: "saved-address-refused",
+        title: "The saved coordination server address cannot be used",
+        message:
+          `${stopped}create a new invitation for your partner and save ` +
+          "that exchange instead.",
+        recovery: "none",
+      };
 }
 
 /** The recorded transport state: a connection or data-exchange drop, not a

@@ -213,7 +213,7 @@ describe.each([
       secret: string,
       relay: RelayLocator | undefined,
       factory: (id: string, options: PeerOptions) => Peer,
-    ) => listenAsInviter(secret, { relay, peerFactory: factory }),
+    ) => listenAsInviter(secret, endpoint, { relay, peerFactory: factory }),
   },
   {
     seat: "acceptor",

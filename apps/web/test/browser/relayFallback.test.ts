@@ -361,7 +361,13 @@ test(
 
 /** The inviter registered on the test broker as a run registers it. */
 function listenOnTestBroker(secret: string): Promise<Peer> {
-  return listenAsInviter(secret, {
+  const endpoint = {
+    channel: "webrtc" as const,
+    host: brokerHost,
+    port: brokerPort,
+    path: "/api/",
+  };
+  return listenAsInviter(secret, endpoint, {
     peerFactory: (id, options) =>
       boundPeerSignaling(
         new Peer(id, {

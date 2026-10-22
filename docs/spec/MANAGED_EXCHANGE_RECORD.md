@@ -446,20 +446,23 @@ web composes has no `role` at all -- the locator expansion writes only
 `host`/`port`/`path` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- so the side a
 browser record runs is knowable only from `side`.
 
-On the webrtc re-run path the document's `server` locator is what an
-acceptor's later run dials. The acceptor's record saved the `host`, `port` and
-`path` of the invitation it accepted, and every re-run dials that address and
-no other -- not the page's location, not its own deployment's setting -- so
-two parties on different deployments keep reaching each other. Before any
+On the webrtc re-run path the document's `server` locator is what both
+sides' later runs reach. Each record saved the `host`, `port` and `path` of
+the invitation: the acceptor's from the invitation it accepted, the
+inviter's from the invitation it created. Every re-run reaches that address
+and no other -- not the page's location, not its own deployment's setting,
+not the browser's own coordination server setting -- so two parties on
+different deployments keep reaching each other, and a change to that setting
+moves no saved exchange. The acceptor dials the address and the inviter
+registers there; an inviter's re-invite names it. Before any
 connection, including a relay registration, the saved address goes through the
 validation a fresh invitation's endpoint gets: the invitation endpoint schema,
 the host and path refusals, and the dial's port and scheme defaults (see
 [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)).
 An address failing it refuses the run with a message naming the exchange, and
 the same record refuses identically at every later run, so a scheduled window
-does not retry it. The inviter registers at its own deployment's signaling
-address and does not read the locator. The other connection field a re-run
-reads is an acceptor's `invitation_relay`.
+does not retry it. The other connection field a re-run reads is an acceptor's
+`invitation_relay`.
 
 #### Versioning: an app upgrade can invalidate a stored record
 

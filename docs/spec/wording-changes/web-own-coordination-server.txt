@@ -1,0 +1,20 @@
+# A browser's own coordination server, set in relay settings, is named by the
+# invitations it creates; an inviter registers at the server its invitation
+# or saved record names, so a change to the setting moves nothing sent or saved.
+- On the webrtc re-run path the document's `server` locator is what an acceptor's later run dials. -> On the webrtc re-run path the document's `server` locator is what both sides' later runs reach.
+- - -> Each record saved the `host`, `port` and `path` of the invitation: the acceptor's from the invitation it accepted, the inviter's from the invitation it created.
+- The acceptor's record saved the `host`, `port` and `path` of the invitation it accepted, and every re-run dials that address and no other -- not the page's location, not its own deployment's setting -- so two parties on different deployments keep reaching each other. -> Every re-run reaches that address and no other -- not the page's location, not its own deployment's setting, not the browser's own coordination server setting -- so two parties on different deployments keep reaching each other, and a change to that setting moves no saved exchange.
+- - -> The acceptor dials the address and the inviter registers there; an inviter's re-invite names it.
+- The inviter registers at its own deployment's signaling address and does not read the locator. -> -
+- A browser party resolves one address for the signaling server its own deployment uses, and every place that needs it reads that one value: where an inviter registers, on a fresh invitation and on a saved exchange's later runs, and the endpoint its invitation names. -> A browser party resolves one address for the signaling server its own deployment uses.
+- - -> A new invitation names this browser's own coordination server where the user set one on the relay settings page, and the deployment's address otherwise.
+- - -> The browser setting is kept in the browser's storage for the page's origin, and is held to the rule the published file's reader applies (`publishedSignalingServerURL` in core) with the page's scheme and a port from 1 to 65535; an address failing it is refused when entered, and a stored one failing it on a later read names no server.
+- - -> Its address states the port, the scheme's default included.
+- - -> A web app's `http:` or `https:` address is refused, since the hosted build's `_headers` gives its published file ([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin` header for a page on another origin to read it under.
+- - -> An inviter registers at the endpoint its invitation names.
+- - -> A saved exchange's later runs register at the endpoint the inviter's record stored from that invitation, after the validation an acceptor's dial applies (below), and a re-invite from the record names that endpoint.
+- - -> A change to the browser setting therefore moves no invitation already created and no saved exchange.
+- With the setting unset, the endpoint names the `port` only when the page's is not the scheme's default. -> With neither setting set, the endpoint names the `port` only when the page's is not the scheme's default.
+- With the setting set, the endpoint always names the `port`, the scheme's default included, so the port an acceptor dials never depends on its own page. -> With the build setting or the browser setting set, the endpoint always names the `port`, the scheme's default included, so the port an acceptor dials never depends on its own page.
+- The console build (`VITE_DEPLOYMENT_PROFILE=console`) resolves no signaling address, whatever the setting holds: its server serves no signaling and its origin is loopback. -> The console build (`VITE_DEPLOYMENT_PROFILE=console`) resolves no signaling address, whatever either setting holds, and offers no browser setting: its server serves no signaling and its origin is loopback.
+- The setting's `ws:` or `wss:` URL, its path ending in `/`. -> The setting's `ws:` or `wss:` URL, its path ending in `/`, never a browser's own coordination server, so a CLI given the app's address dials the build's server whatever a browser on it set.

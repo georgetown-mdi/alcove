@@ -83,7 +83,9 @@ describe("listenAsInviter", () => {
 
     const fake = new FakePeer();
     const cap = captureFactory(fake);
-    const promise = listenAsInviter(secret, { peerFactory: cap.factory });
+    const promise = listenAsInviter(secret, endpoint, {
+      peerFactory: cap.factory,
+    });
 
     await vi.waitFor(() =>
       expect(fake.listenerCount("open")).toBeGreaterThan(0),
@@ -99,7 +101,7 @@ describe("listenAsInviter", () => {
     stubWindow();
     const fake = new FakePeer();
     const cap = captureFactory(fake);
-    const promise = listenAsInviter(generateSharedSecret(), {
+    const promise = listenAsInviter(generateSharedSecret(), endpoint, {
       peerFactory: cap.factory,
     });
 
@@ -118,7 +120,9 @@ describe("listenAsInviter", () => {
     const inviterId = await deriveRendezvousPeerId(secret, "inviter");
     const fake = new FakePeer();
     const cap = captureFactory(fake);
-    const promise = listenAsInviter(secret, { peerFactory: cap.factory });
+    const promise = listenAsInviter(secret, endpoint, {
+      peerFactory: cap.factory,
+    });
 
     await vi.waitFor(() =>
       expect(fake.listenerCount("error")).toBeGreaterThan(0),
@@ -142,7 +146,7 @@ describe("listenAsInviter", () => {
     const cap = captureFactory(fake);
 
     await expect(
-      listenAsInviter(generateSharedSecret(), {
+      listenAsInviter(generateSharedSecret(), endpoint, {
         signal: controller.signal,
         peerFactory: cap.factory,
       }),
@@ -458,7 +462,7 @@ describe("a signaling server that never confirms registration", () => {
     stubWindow();
     const fake = new FakePeer();
     const cap = captureFactory(fake);
-    const rejection = await listenAsInviter(generateSharedSecret(), {
+    const rejection = await listenAsInviter(generateSharedSecret(), endpoint, {
       peerFactory: cap.factory,
       registrationTimeoutMs: 5,
     }).catch((error: unknown) => error);
@@ -482,7 +486,7 @@ describe("the path failures a relay fallback starts on", () => {
       stubWindow();
       const fake = new FakePeer();
       const failures: Array<string> = [];
-      const rejection = listenAsInviter(generateSharedSecret(), {
+      const rejection = listenAsInviter(generateSharedSecret(), endpoint, {
         peerFactory: captureFactory(fake).factory,
         onPathFailed: (failure) => failures.push(failure),
       }).catch(() => undefined);
@@ -594,7 +598,7 @@ describe("peer logging wiring", () => {
 
     let capturedOptions: PeerOptions | undefined;
     const controller = new AbortController();
-    const promise = listenAsInviter(secret, {
+    const promise = listenAsInviter(secret, endpoint, {
       signal: controller.signal,
       peerFactory: (_id, options) => {
         capturedOptions = options;

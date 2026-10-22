@@ -18,8 +18,8 @@ import {
   assertManagedRendezvousPossible,
   assertManagedRerunDispatchable,
   beginManagedRendezvous,
-  managedAcceptorSignalingEndpoint,
   managedRunRelayPlan,
+  managedSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -38,7 +38,7 @@ import type { ManagedRendezvousFlows } from "@psi/managed/managedRendezvous";
 // The side-dispatched rendezvous, tested in Node with the rendezvous flows faked:
 // the record's local `side` selects listenAsInviter vs dialAsAcceptor, the
 // current sharedSecret goes to whichever runs (its peer id derives fresh, never
-// from storage), and the acceptor dials the signaling server its record saved,
+// from storage), and both sides reach the signaling server the record saved,
 // never the app's own location.
 
 const LABEL = "Riverbend quarterly";
@@ -88,22 +88,22 @@ function fakeConn(): DataConnection {
  * test asserts the side dispatch and the current-secret pass-through. */
 function recordingFlows(): {
   flows: ManagedRendezvousFlows;
-  inviterCalls: Array<{ secret: string }>;
+  inviterCalls: Array<{ secret: string; endpoint: WebRTCEndpoint }>;
   acceptorCalls: Array<{
     secret: string;
     endpoint: WebRTCEndpoint;
     options: Parameters<ManagedRendezvousFlows["dialAsAcceptor"]>[2];
   }>;
 } {
-  const inviterCalls: Array<{ secret: string }> = [];
+  const inviterCalls: Array<{ secret: string; endpoint: WebRTCEndpoint }> = [];
   const acceptorCalls: Array<{
     secret: string;
     endpoint: WebRTCEndpoint;
     options: Parameters<ManagedRendezvousFlows["dialAsAcceptor"]>[2];
   }> = [];
   const flows: ManagedRendezvousFlows = {
-    listenAsInviter: (secret) => {
-      inviterCalls.push({ secret });
+    listenAsInviter: (secret, endpoint) => {
+      inviterCalls.push({ secret, endpoint });
       return Promise.resolve(fakePeer("inviter"));
     },
     dialAsAcceptor: (secret, endpoint, options) => {
@@ -141,7 +141,7 @@ describe("beginManagedRendezvous: side dispatch", () => {
     });
 
     expect(acquisition.side).toBe("inviter");
-    expect(inviterCalls).toEqual([{ secret }]);
+    expect(inviterCalls.map((call) => call.secret)).toEqual([secret]);
     // The acceptor flow was never reached: the dispatch is on `side`.
     expect(acceptorCalls).toHaveLength(0);
   });
@@ -168,6 +168,20 @@ describe("beginManagedRendezvous: side dispatch", () => {
     await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
 
     expect(acceptorCalls[0].endpoint).toEqual({
+      channel: "webrtc",
+      host: webrtcLocator.host,
+      port: webrtcLocator.port,
+      path: webrtcLocator.path,
+    });
+  });
+
+  test("the inviter registers at the signaling server its record saved, not the app's own", async () => {
+    stubAppLocation();
+    const { flows, inviterCalls } = recordingFlows();
+
+    await begin("inviter", generateSharedSecret(), exchangeFile(), { flows });
+
+    expect(inviterCalls[0].endpoint).toEqual({
       channel: "webrtc",
       host: webrtcLocator.host,
       port: webrtcLocator.port,
@@ -245,7 +259,7 @@ describe("beginManagedRendezvous: registration bound", () => {
   } {
     const options: Array<{ registrationTimeoutMs?: number } | undefined> = [];
     const flows: ManagedRendezvousFlows = {
-      listenAsInviter: (_secret, flowOptions) => {
+      listenAsInviter: (_secret, _endpoint, flowOptions) => {
         options.push(flowOptions);
         return Promise.resolve(fakePeer("inviter"));
       },
@@ -304,7 +318,7 @@ describe("beginManagedRendezvous: registration bound", () => {
   );
 });
 
-describe("an acceptor's saved signaling address that fails validation", () => {
+describe("a saved signaling address that fails validation", () => {
   /** A record whose saved `connection.server` is `server`, as storage could
    * hold it past the type. */
   function withSavedServer(server: Record<string, unknown>): ExchangeSpec {
@@ -349,14 +363,22 @@ describe("an acceptor's saved signaling address that fails validation", () => {
     ["no host", { path: "/api/" }, /is not a complete host, port and path/],
   ];
 
-  test.each(refused)(
-    "%s refuses the re-run, naming the exchange, before any flow runs",
-    async (_name, server, reason) => {
+  const sides = ["acceptor", "inviter"] as const;
+
+  test.each(
+    sides.flatMap((side) =>
+      refused.map(
+        ([name, server, reason]) => [side, name, server, reason] as const,
+      ),
+    ),
+  )(
+    "an %s's %s refuses the re-run, naming the exchange, before any flow runs",
+    async (side, _name, server, reason) => {
       const { flows, inviterCalls, acceptorCalls } = recordingFlows();
       const file = withSavedServer(server);
 
       const rejection: unknown = await begin(
-        "acceptor",
+        side,
         generateSharedSecret(),
         file,
         { flows },
@@ -372,7 +394,7 @@ describe("an acceptor's saved signaling address that fails validation", () => {
       expect(inviterCalls).toHaveLength(0);
       expect(() =>
         assertManagedRendezvousPossible({
-          side: "acceptor",
+          side,
           exchangeFile: file,
           label: LABEL,
         }),
@@ -382,26 +404,28 @@ describe("an acceptor's saved signaling address that fails validation", () => {
 
   test("an unlabelled exchange is named as this saved exchange", () => {
     expect(() =>
-      managedAcceptorSignalingEndpoint({
+      managedSignalingEndpoint({
+        side: "acceptor",
         exchangeFile: withSavedServer({ host: "a@b" }),
         label: " ",
       }),
     ).toThrow(/^This saved exchange cannot run/);
   });
 
-  test("the inviter registers at its own server whatever its record saved", async () => {
-    const { flows, inviterCalls } = recordingFlows();
-    const file = withSavedServer({ host: "a@b" });
-
+  test.each([
+    ["acceptor", "Ask your partner for a new invitation and accept it."],
+    [
+      "inviter",
+      "Create a new invitation for your partner and save that exchange instead.",
+    ],
+  ] as const)("an %s's refusal ends on its own remedy", (side, remedy) => {
     expect(() =>
-      assertManagedRendezvousPossible({
-        side: "inviter",
-        exchangeFile: file,
+      managedSignalingEndpoint({
+        side,
+        exchangeFile: withSavedServer({ host: "a@b" }),
         label: LABEL,
       }),
-    ).not.toThrow();
-    await begin("inviter", generateSharedSecret(), file, { flows });
-    expect(inviterCalls).toHaveLength(1);
+    ).toThrow(remedy);
   });
 });
 
@@ -436,8 +460,8 @@ describe("per-run peer id derives fresh from the current secret", () => {
     let constructedId: string | undefined;
     const { listenAsInviter } = await import("@psi/transport/rendezvous");
     const flows: ManagedRendezvousFlows = {
-      listenAsInviter: (s, options) =>
-        listenAsInviter(s, {
+      listenAsInviter: (s, endpoint, options) =>
+        listenAsInviter(s, endpoint, {
           ...options,
           peerFactory: (id) => {
             constructedId = id;
@@ -483,7 +507,7 @@ describe("beginManagedRendezvous: relay", () => {
       stubOwnRelay();
       const relays: Array<unknown> = [];
       const flows: ManagedRendezvousFlows = {
-        listenAsInviter: (_secret, options) => {
+        listenAsInviter: (_secret, _endpoint, options) => {
           relays.push(options?.relay);
           return Promise.resolve(fakePeer("inviter"));
         },
@@ -660,7 +684,7 @@ describe("beginManagedRendezvous: relay", () => {
       stubAppLocation();
       const events: Array<unknown> = [];
       const flows: ManagedRendezvousFlows = {
-        listenAsInviter: (_secret, options) => {
+        listenAsInviter: (_secret, _endpoint, options) => {
           events.push({ relay: options?.relay });
           return Promise.resolve(fakePeer("inviter"));
         },

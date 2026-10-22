@@ -9,6 +9,12 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  COORDINATION_SERVER_CLEARED,
+  COORDINATION_SERVER_INTRO,
+  COORDINATION_SERVER_SET,
+  coordinationServerFieldDescription,
+} from "@exchange/CoordinationServerSection";
+import {
   DEFAULT_RELAY_SWITCH_DESCRIPTION,
   DEFAULT_RELAY_SWITCH_NOT_SAVED,
   NO_OWN_RELAY_SITE_RELAY_IN_USE,
@@ -32,6 +38,10 @@ import {
   RELAY_TEST_UNSUPPORTED,
   RelayTestSection,
 } from "@exchange/RelayTestSection";
+import {
+  coordinationServerFormMessage,
+  readCoordinationServerSetting,
+} from "@psi/transport/coordinationServerSetting";
 import {
   readOwnRelaySetting,
   writeOwnRelaySetting,
@@ -286,6 +296,113 @@ describe("RelaySettingsScreen: the WebSocket relay", () => {
     build.console = true;
     await mountScreen();
     expect(websocketField().query()).toBeNull();
+  });
+});
+
+describe("RelaySettingsScreen: the coordination server", () => {
+  const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+  const SERVER = `${scheme}://coordination.agency.example/signal/`;
+  const serverField = () =>
+    page.getByRole("textbox", { name: "Coordination server address" });
+  const setButton = () =>
+    page.getByRole("button", { name: "Set coordination server" });
+  const clearButton = () =>
+    page.getByRole("button", { name: "Clear coordination server" });
+  const serverStatus = () =>
+    page.getByText(/^(Set|Cleared)\. Invitations you create from now on/);
+
+  test("says what the server learns and which server invitations name by default", async () => {
+    await mountScreen();
+
+    expect(COORDINATION_SERVER_INTRO).toBe(
+      "Your browser and your partner's find each other through a " +
+        "coordination server. It learns the network address of each party " +
+        "that uses it, and none of your data. Invitations you create name " +
+        "this site's coordination server unless you set your own here.",
+    );
+    await expect
+      .element(page.getByText(COORDINATION_SERVER_INTRO))
+      .toBeVisible();
+    await expect
+      .element(serverField())
+      .toHaveAccessibleDescription(coordinationServerFieldDescription(scheme));
+  });
+
+  test("a set address is kept across a reload, and clearing removes it", async () => {
+    await mountScreen();
+
+    await userEvent.fill(serverField(), SERVER);
+    await userEvent.click(setButton());
+
+    await expect
+      .element(serverStatus())
+      .toHaveTextContent(COORDINATION_SERVER_SET);
+    expect(readCoordinationServerSetting(window.location.protocol)).toEqual({
+      kind: "set",
+      url: SERVER,
+    });
+
+    await mountScreen();
+    await expect.element(serverField()).toHaveValue(SERVER);
+
+    await userEvent.click(clearButton());
+    await expect
+      .element(serverStatus())
+      .toHaveTextContent(COORDINATION_SERVER_CLEARED);
+    await expect.element(serverField()).toHaveValue("");
+    expect(readCoordinationServerSetting(window.location.protocol)).toEqual({
+      kind: "none",
+    });
+  });
+
+  const formMessage = coordinationServerFormMessage(window.location.protocol);
+
+  test.each([
+    [
+      "https://psi.data-bridge.org",
+      `A web app's address does not work here. ${formMessage}`,
+    ],
+    [
+      `${scheme === "wss" ? "ws" : "wss"}://coordination.agency.example/`,
+      formMessage,
+    ],
+    ["coordination.agency.example", formMessage],
+  ])(
+    "%j is refused on entry with a message naming the form that works",
+    async (text, message) => {
+      await mountScreen();
+
+      await userEvent.fill(serverField(), text);
+      await userEvent.click(setButton());
+
+      await expect
+        .element(serverField())
+        .toHaveAttribute("aria-invalid", "true");
+      await expect.element(page.getByRole("alert")).toHaveTextContent(message);
+      expect(readCoordinationServerSetting(window.location.protocol)).toEqual({
+        kind: "none",
+      });
+    },
+  );
+
+  test("a stored value this page cannot read says invitations name the site's server", async () => {
+    window.localStorage.setItem("alcove-own-coordination-server", "{not json");
+    await mountScreen();
+
+    const alert = page.getByRole("status", {
+      name: "The saved coordination server could not be read",
+    });
+    await expect.element(alert).toBeVisible();
+    expect(alert.element().textContent).toContain(
+      "Invitations you create name this site's coordination server until " +
+        "you set one again.",
+    );
+  });
+
+  test("the console build offers no coordination server field", async () => {
+    build.console = true;
+    await mountScreen();
+    expect(serverField().query()).toBeNull();
   });
 });
 

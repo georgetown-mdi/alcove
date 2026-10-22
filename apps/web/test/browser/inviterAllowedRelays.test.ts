@@ -132,7 +132,7 @@ async function runListen() {
       onRunNotice: (notice) => notices.push(notice),
     })
     .catch(() => undefined);
-  const options = vi.mocked(listenAsInviter).mock.lastCall?.[1];
+  const options = vi.mocked(listenAsInviter).mock.lastCall?.[2];
   if (options === undefined) throw new Error("the run did not listen");
   return { options, notices };
 }

@@ -18,6 +18,7 @@ import {
   canReinviteFromRecord,
   composeManagedReinvite,
 } from "@psi/managed/managedReinvite";
+import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 
 import type {
@@ -28,10 +29,11 @@ import type { InvitationLocation } from "@psi/invitation";
 import type { InvitationToken } from "@alcove/core";
 
 // Fast re-invite from a stored record, tested in Node: the fresh invitation is
-// composed from the record's OWN document (terms + committed send set), mints only a
-// fresh secret, and its endpoint comes from the current location -- so the partner's
-// accept re-derives its perspective, receiving the same send set, and the operator
-// re-authors nothing. Only the inviter side re-mints.
+// composed from the record's OWN document (terms + committed send set + saved
+// signaling server), mints only a fresh secret -- so the partner's accept
+// re-derives its perspective, receiving the same send set, and saves the server
+// this party's re-runs register at, and the operator re-authors nothing. Only
+// the inviter side re-mints.
 
 // `encodeInvitation` re-checks the token's `expires` against the real wall clock, so
 // NOW must be ahead of it for the setup lifetime to encode; anchored to the actual run
@@ -68,8 +70,9 @@ function inviterRecord(
     exchangeFile: composeManagedExchangeFile({
       connection: {
         channel: "webrtc",
-        host: "stale-signaling.example.org",
+        host: "saved-signaling.example.org",
         port: 9999,
+        path: "/signal/",
       },
       linkageTerms: getDefaultLinkageTerms("County Health Dept"),
     }),
@@ -121,20 +124,30 @@ describe("composeManagedReinvite", () => {
     ).not.toThrow();
   });
 
-  test("the endpoint is built FRESH from the current location, not the stored locator", async () => {
+  test("the endpoint names the server the record saved, not the current location", async () => {
     const record = inviterRecord();
     const reinvite = await composeManagedReinvite(record, location, seams);
     const token = await decodeInvitation(reinvite.encoded);
 
-    expect(token.connectionEndpoint).toMatchObject({
+    expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "example.org",
-      port: 3000,
+      host: "saved-signaling.example.org",
+      port: 9999,
+      path: "/signal/",
     });
-    // The stale stored locator did not leak into the fresh invitation.
-    expect(JSON.stringify(token.connectionEndpoint)).not.toMatch(
-      /stale-signaling/,
-    );
+    expect(reinvite.deepLink.startsWith(`${location.origin}/`)).toBe(true);
+  });
+
+  test("a record whose saved server fails validation mints nothing", async () => {
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "a@b", path: "/api/" },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+      }),
+    });
+    await expect(
+      composeManagedReinvite(record, location, seams),
+    ).rejects.toThrow(ManagedSignalingEndpointRefusedError);
   });
 
   test("names the inviter's own relay urls and no credential", async () => {
@@ -149,9 +162,9 @@ describe("composeManagedReinvite", () => {
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "example.org",
-      port: 3000,
-      path: "/api/",
+      host: "saved-signaling.example.org",
+      port: 9999,
+      path: "/signal/",
       relay: ownRelay,
     });
   });

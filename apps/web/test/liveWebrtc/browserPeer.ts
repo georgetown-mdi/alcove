@@ -281,7 +281,13 @@ export async function listenAsBrowserInviter(
     minted.rawRows,
     minted.columns,
   );
-  const peer = await listenAsInviter(minted.sharedSecret, {
+  const endpoint = {
+    channel: "webrtc" as const,
+    host: signaling.host,
+    port: signaling.port ?? (signaling.secure ? 443 : 80),
+    path: signaling.path,
+  };
+  const peer = await listenAsInviter(minted.sharedSecret, endpoint, {
     peerFactory: (id, options) =>
       boundPeerSignaling(
         new Peer(id, {

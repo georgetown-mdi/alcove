@@ -22,8 +22,6 @@ import {
   NoSignalingAddressError,
   generateInvitation,
   invitationDeclaresRetainedFiles,
-  invitationSignalingAddress,
-  webrtcEndpointFromAddress,
 } from "@psi/invitation";
 import {
   emptyColumnPositions,
@@ -846,9 +844,9 @@ export function InviterScreen() {
 
   // Deposit a managed-exchange record for this exchange as the inviter: the
   // standing terms plus the secret the completed run rotated to, so the
-  // partnership can run again later. The connection block is composed from this
-  // app's own signaling address -- the same ownSignalingAddress source the
-  // invitation's endpoint was built from -- not read back off the encoded token.
+  // partnership can run again later. The connection block is the signaling
+  // server the invitation names, which later runs register at, so a change to
+  // this browser's setting since the invitation was created moves nothing.
   // Declining is simply not pressing Manage, so there is no discard path here.
   async function manageExchange(choices: ManageOfferChoices) {
     if (
@@ -859,11 +857,15 @@ export function InviterScreen() {
       return;
     dispatch({ type: "manage-offer-started" });
     try {
-      const connection = webrtcLocatorFromEndpoint(
-        webrtcEndpointFromAddress(
-          invitationSignalingAddress(invitationLocation()),
-        ),
-      );
+      const endpoint = invitation.connectionEndpoint;
+      if (endpoint?.channel !== "webrtc")
+        throw new Error("the invitation names no webrtc endpoint");
+      const connection = webrtcLocatorFromEndpoint({
+        channel: "webrtc",
+        host: endpoint.host,
+        ...(endpoint.port !== undefined ? { port: endpoint.port } : {}),
+        ...(endpoint.path !== undefined ? { path: endpoint.path } : {}),
+      });
       await createManagedExchange(
         buildManagedDeposit(
           {

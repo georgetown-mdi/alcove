@@ -235,6 +235,33 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unlabelled.message).toMatch(/^This saved exchange cannot run:/);
   });
 
+  test("an inviter's refused saved signaling address offers no re-invite, which would name the same address", () => {
+    const reason = "is not a complete host, port and path";
+    const failure = classifyAgainstOneRecord(
+      new ManagedSignalingEndpointRefusedError(
+        "Riverbend quarterly",
+        reason,
+        "inviter",
+      ),
+      record({ lastRun: failed("transport") }),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure).toEqual({
+      kind: "saved-address-refused",
+      title: "The saved coordination server address cannot be used",
+      message:
+        'The saved exchange "Riverbend quarterly" cannot run: the coordination ' +
+        `server address it saved ${reason}. The run stopped before ` +
+        "connecting, so your partner was not contacted and nothing left " +
+        "this device. Running it again stops the same way; create a new " +
+        "invitation for your partner and save that exchange instead.",
+      recovery: "none",
+    });
+    expect(managedRunRetryable(failure)).toBe(false);
+  });
+
   test("a plain transport failure stamped the same way keeps the generic retryable state", () => {
     const failure = classifyAgainstOneRecord(
       new Error("the data channel closed"),
