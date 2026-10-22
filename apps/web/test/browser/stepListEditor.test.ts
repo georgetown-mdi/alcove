@@ -48,6 +48,24 @@ describe("StepListEditor: a token-embedded regex stays read-only without allowRa
     expect(page.getByRole("textbox").elements()).toHaveLength(0);
   });
 
+  test("the built-in two-character filter is labelled in plain words, its pattern still read-only", async () => {
+    app.render(
+      createElement(StepListEditor, {
+        steps: [{ function: "filter_regex", params: { pattern: "^.{2,}$" } }],
+        onStepsChange: () => {},
+        addStepLabel: "Add a transform",
+      }),
+    );
+
+    await expect
+      .element(page.getByText("Keep values of at least two characters"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(/pattern: \^\.\{2,\}\$/))
+      .toBeInTheDocument();
+    expect(page.getByRole("textbox").elements()).toHaveLength(0);
+  });
+
   test("the raw-pattern family is not offered in the add menu", async () => {
     app.render(
       createElement(StepListEditor, {

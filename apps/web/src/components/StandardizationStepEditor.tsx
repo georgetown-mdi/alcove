@@ -4,7 +4,7 @@ import { Select, Stack, Text, VisuallyHidden } from "@mantine/core";
 
 import { sanitizeForDisplay } from "@alcove/core";
 
-import { functionDisplay } from "@psi/standardizationAuthoring";
+import { stepLabel } from "@psi/standardizationAuthoring";
 
 import { StepListEditor } from "@components/StepListEditor";
 
@@ -70,7 +70,7 @@ export function StandardizationStepEditor({
     steps.length === 0
       ? "No cleaning steps; values are used as-is."
       : `${steps.length} cleaning step${steps.length === 1 ? "" : "s"}: ${steps
-          .map((step) => functionDisplay(step.function).label)
+          .map((step) => stepLabel(step))
           .join(", ")}.`;
   const [stepAnnouncement, setStepAnnouncement] = useState("");
   const lastAnnouncedRef = useRef(stepSummary);

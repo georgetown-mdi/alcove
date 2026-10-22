@@ -10,6 +10,7 @@
  */
 
 import {
+  AT_LEAST_TWO_CHARACTERS_LABEL,
   FAN_OUT_FUNCTION_NAMES,
   OperatorConfigError,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
@@ -18,6 +19,7 @@ import {
   assertFanOutImplemented,
   coalesceSubstitutesConstant,
   derivedFieldSteps,
+  isAtLeastTwoCharactersFilter,
   lastNameColumn,
   runPipeline,
   sanitizeForDisplay,
@@ -354,6 +356,21 @@ export function functionDisplay(functionName: string): {
     label: functionName === "coalesce" ? COALESCE_LABEL : descriptor.label,
     blurb: descriptor.blurb,
   };
+}
+
+/**
+ * The label a step row shows: the built-in two-character filter in plain
+ * words, any other step its {@link functionDisplay} label. Recognition is
+ * core's {@link isAtLeastTwoCharactersFilter}, exact pattern equality, so a
+ * pattern the operator edits (or a partner wrote) shows as a raw filter.
+ */
+export function stepLabel(step: {
+  function: string;
+  params?: unknown;
+}): string {
+  if (isAtLeastTwoCharactersFilter(step))
+    return `Keep values of ${AT_LEAST_TWO_CHARACTERS_LABEL}`;
+  return functionDisplay(step.function).label;
 }
 
 // --- A coalesce that substitutes nothing where it sits -----------------------

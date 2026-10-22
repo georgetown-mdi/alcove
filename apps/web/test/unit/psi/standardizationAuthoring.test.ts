@@ -39,6 +39,7 @@ import {
   lastNameRuleLastNameNotice,
   nullIfLastNameFromLists,
   pipelineHasInertCoalesce,
+  stepLabel,
   transformationWithCleaningSettings,
   validateParamValue,
 } from "../../../src/psi/standardizationAuthoring.js";
@@ -108,6 +109,19 @@ describe("function grouping parity with the descriptor table", () => {
         blurb: descriptor.blurb,
       });
     }
+  });
+
+  test("a step's label states the built-in two-character filter in plain words, and any other step as its function", () => {
+    expect(
+      stepLabel({ function: "filter_regex", params: { pattern: "^.{2,}$" } }),
+    ).toBe("Keep values of at least two characters");
+    for (const step of [
+      { function: "filter_regex", params: { pattern: "^.{3,}$" } },
+      { function: "filter_regex", params: { pattern: "^.{2,}$", extra: "" } },
+      { function: "filter_regex" },
+      { function: "to_upper_case" },
+    ])
+      expect(stepLabel(step)).toBe(functionDisplay(step.function).label);
   });
 
   test("an unrecognized (imported) function name is sanitized for display", () => {

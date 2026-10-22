@@ -61,6 +61,32 @@ export function describedTransformParamEntry(
   }
 }
 
+// The pattern the built-in last-name cleaning and the built-in full-first-name
+// keys declare; atLeastTwoCharactersFilter.test.ts holds both to it.
+const AT_LEAST_TWO_CHARACTERS_PATTERN = "^.{2,}$";
+
+/** The plain words for the pattern {@link isAtLeastTwoCharactersFilter} reads. */
+export const AT_LEAST_TWO_CHARACTERS_LABEL = "at least two characters";
+
+/**
+ * Whether `step` is a `filter_regex` declaring exactly `^.{2,}$` and no other
+ * param, the one filter a display states in plain words. The match is string
+ * equality, so any other pattern, a partner's above all, stays raw. The
+ * `pattern` lookup is own-property only, since the params are partner-authored.
+ */
+export function isAtLeastTwoCharactersFilter(step: {
+  function: string;
+  params?: unknown;
+}): boolean {
+  if (step.function !== "filter_regex") return false;
+  const entries = declaredParamEntries(step.params);
+  return (
+    entries.length === 1 &&
+    entries[0][0] === "pattern" &&
+    entries[0][1] === AT_LEAST_TWO_CHARACTERS_PATTERN
+  );
+}
+
 /**
  * Refusal message for a `null_if` step declaring both `value` and `values`;
  * the run applies only `values` (`nullIfFactory`, `standardization.ts`).

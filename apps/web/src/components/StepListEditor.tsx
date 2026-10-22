@@ -40,6 +40,7 @@ import {
   functionDisplay,
   inertCoalesceCause,
   isFanOutFunction,
+  stepLabel,
   validateParamValue,
 } from "@psi/standardizationAuthoring";
 
@@ -202,7 +203,7 @@ function StepRow({
   onRemove: () => void;
 }) {
   const descriptor = descriptorFor(step.function);
-  const { label } = functionDisplay(step.function);
+  const label = stepLabel(step);
   // Advice, never a gate: a pipeline holding one of these is valid, mints, and
   // runs -- core runs the step as a pass-through. Re-derived on every render, so
   // adding an emptying rule ahead of the step or moving the step after one clears
