@@ -17,6 +17,7 @@ import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 import type { PeerCloseOutcome } from "./transport/waitForPeerClose";
 import type { RunConnection } from "./transport/runConnection";
+import type { WebRtcPathHooks } from "./transport/relayFallback";
 
 import type {
   BuiltExchangeRecord,
@@ -201,13 +202,17 @@ export type Acquire = (context: AcquireContext) => Promise<AcquiredExchange>;
 export function openOneShotPeerConnection(
   peer: Peer,
   conn: DataConnection,
-  context: Pick<AcquireContext, "signal" | "onCloseOutcome">,
+  context: Pick<AcquireContext, "signal" | "onCloseOutcome"> &
+    Pick<WebRtcPathHooks, "onPathFailed">,
 ): Promise<RunConnection> {
   return openPeerRunConnection(peer, conn, {
     signal: context.signal,
     onCloseOutcome: context.onCloseOutcome,
     dropBrokerOnFirstFrame: true,
     closeChannelOnAbort: true,
+    ...(context.onPathFailed !== undefined && {
+      onPathFailed: context.onPathFailed,
+    }),
   });
 }
 

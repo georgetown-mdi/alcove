@@ -6,6 +6,7 @@ import type { DataConnection } from "peerjs";
 import type { MessageConnection } from "@alcove/core";
 import type Peer from "peerjs";
 import type { PeerCloseOutcome } from "./waitForPeerClose";
+import type { WebRtcPathFailure } from "./relayFallback";
 
 const log = getLogger("runConnection");
 
@@ -41,6 +42,9 @@ export interface PeerRunConnectionOptions {
    * refuse to open on a signal already aborted. Without it an abort waits for
    * the open to settle. */
   closeChannelOnAbort?: boolean;
+  /** Takes a channel that did not open as a path failure
+   * ({@link openPeerMessageConnection}). */
+  onPathFailed?: (failure: WebRtcPathFailure) => void;
 }
 
 /**
@@ -106,6 +110,9 @@ export async function openPeerRunConnection(
     const connection = await openPeerMessageConnection(conn, {
       onCloseOutcome,
       signal,
+      ...(options.onPathFailed !== undefined && {
+        onPathFailed: options.onPathFailed,
+      }),
     });
     return { connection, release };
   } catch (error) {

@@ -3,6 +3,7 @@ import { TimeoutError, withTimeout } from "@alcove/core";
 import { watchIceGathering, withIceServerFailure } from "./iceGathering";
 
 import type { DataConnection } from "peerjs";
+import type { WebRtcPathFailure } from "./relayFallback";
 
 /**
  * Default ceiling for a data channel to finish opening. Matches the order of
@@ -25,18 +26,28 @@ const DEFAULT_OPEN_TIMEOUT_MS = 30_000;
  * Where no configured relay gave a relay candidate, the rejection names the
  * relay server and the error the browser reported for it instead
  * ({@link withIceServerFailure}).
+ *
+ * `onPathFailed` takes the failure a run's relay fallback starts on: the
+ * timeout's, or a pre-open `error` or `close`'s.
  */
 export function waitForConnectionOpen(
   conn: DataConnection,
   timeoutMs: number = DEFAULT_OPEN_TIMEOUT_MS,
+  onPathFailed?: (failure: WebRtcPathFailure) => void,
 ): Promise<void> {
   if (conn.open) return Promise.resolve();
   watchIceGathering(conn);
   let detach = () => {};
   const opened = new Promise<void>((resolve, reject) => {
     const onOpen = () => resolve();
-    const onError = (err: Error) => reject(err);
-    const onClose = () => reject(new Error("connection closed before open"));
+    const onError = (err: Error) => {
+      onPathFailed?.("connection-failed");
+      reject(err);
+    };
+    const onClose = () => {
+      onPathFailed?.("connection-failed");
+      reject(new Error("connection closed before open"));
+    };
     conn.once("open", onOpen);
     conn.once("error", onError);
     conn.once("close", onClose);
@@ -50,6 +61,7 @@ export function waitForConnectionOpen(
   // (open, pre-open error/close, or timeout) so no listener is left attached.
   return withTimeout(opened, timeoutMs, "connection open timed out")
     .catch((err: unknown) => {
+      if (err instanceof TimeoutError) onPathFailed?.("channel-not-opened");
       throw err instanceof Error
         ? withIceServerFailure(conn, err, err instanceof TimeoutError)
         : err;

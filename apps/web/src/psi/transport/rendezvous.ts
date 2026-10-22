@@ -37,6 +37,7 @@ import { boundPeerSignaling } from "./signalingBounds";
 
 import type { DataConnection, PeerOptions } from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
+import type { WebRtcPathFailure } from "./relayFallback";
 
 const log = getLogger("rendezvous");
 
@@ -350,6 +351,29 @@ function waitForPeerOpen(
   });
 }
 
+/** PeerJS's error types for a coordination server socket that failed or
+ * closed, as against an answer from the server. */
+const UNREACHABLE_SIGNALING_ERROR_TYPES: ReadonlySet<unknown> = new Set([
+  "network",
+  "socket-error",
+  "socket-closed",
+]);
+
+/**
+ * Whether a registration or a registered socket failed with no refusal from
+ * the coordination server: its socket failed or closed, or the registration
+ * bound passed ({@link waitForPeerOpen}'s `transport` error). A browser does
+ * not say why a WebSocket failed, so a certificate it refused is one of these.
+ */
+function signalingUnreachable(err: unknown): boolean {
+  if (err instanceof ConnectionError) return err.kind === "transport";
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    UNREACHABLE_SIGNALING_ERROR_TYPES.has((err as { type?: unknown }).type)
+  );
+}
+
 // Called after the (fast) async id derivation, so an abort during it is still
 // caught: no peer is constructed and no derived id registered when the caller
 // already aborted.
@@ -374,7 +398,9 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      urls the allowed relays left out, named by a failed
  *                      open; `peerFactory` injects the {@link Peer}
  *                      constructor for testing; `registrationTimeoutMs`
- *                      overrides {@link BROKER_REGISTRATION_TIMEOUT_MS}.
+ *                      overrides {@link BROKER_REGISTRATION_TIMEOUT_MS};
+ *                      `onPathFailed` takes a registration the coordination
+ *                      server did not answer as a path failure.
  */
 export async function listenAsInviter(
   sharedSecret: string,
@@ -384,6 +410,7 @@ export async function listenAsInviter(
     relaysLeftOut?: ReadonlyArray<string>;
     peerFactory?: PeerFactory;
     registrationTimeoutMs?: number;
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
   },
 ): Promise<Peer> {
   const makePeer = options?.peerFactory ?? defaultPeerFactory;
@@ -414,6 +441,8 @@ export async function listenAsInviter(
         options?.registrationTimeoutMs ?? BROKER_REGISTRATION_TIMEOUT_MS,
     });
   } catch (err) {
+    if (signalingUnreachable(err))
+      options?.onPathFailed?.("signaling-unreachable");
     peer.destroy();
     // PeerJS embeds a derived id in some emitted errors (e.g. `ID "<id>" is
     // taken`); strip the ids before the error escapes to the app's error sinks.
@@ -474,7 +503,8 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
  * A spent budget throws {@link PartnerNoShowError} (every attempt was
  * `peer-unavailable`: the inviter never registered); the per-attempt open
  * timeout is a plain error instead, since reaching it means the id IS
- * registered but the channel will not open.
+ * registered but the channel will not open. `onPathFailed` takes that
+ * timeout, a channel error, and a lost coordination server as path failures.
  */
 async function dialInviterWithRetry(
   peer: Peer,
@@ -484,9 +514,11 @@ async function dialInviterWithRetry(
     openTimeoutMs: number;
     totalTimeoutMs: number;
     signal?: AbortSignal;
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
   },
 ): Promise<DataConnection> {
-  const { retryDelayMs, openTimeoutMs, totalTimeoutMs, signal } = options;
+  const { retryDelayMs, openTimeoutMs, totalTimeoutMs, signal, onPathFailed } =
+    options;
   const deadline = Date.now() + totalTimeoutMs;
 
   // Routing hooks the in-flight attempt installs so the shared error listener
@@ -498,8 +530,12 @@ async function dialInviterWithRetry(
   let onFatal: ((err: unknown) => void) | undefined;
   let fatalError: unknown;
   const onPeerError = (err: unknown) => {
-    if (isPeerUnavailable(err)) onUnavailable?.();
-    else if (onFatal) onFatal(err);
+    if (isPeerUnavailable(err)) {
+      onUnavailable?.();
+      return;
+    }
+    if (signalingUnreachable(err)) onPathFailed?.("signaling-unreachable");
+    if (onFatal) onFatal(err);
     else fatalError ??= err;
   };
   peer.on("error", onPeerError);
@@ -532,6 +568,7 @@ async function dialInviterWithRetry(
       // error would otherwise hang the attempt until the open timeout.
       const onConnError = (err: unknown) =>
         settle(() => {
+          onPathFailed?.("connection-failed");
           const failure = withIceServerFailure(conn, asError(err), false);
           conn.close();
           reject(failure);
@@ -544,10 +581,12 @@ async function dialInviterWithRetry(
       const timer = setTimeout(
         () =>
           settle(() => {
+            const budgetSpent = attemptTimeoutMs >= openTimeoutMs;
+            if (budgetSpent) onPathFailed?.("channel-not-opened");
             const failure = withIceServerFailure(
               conn,
               new Error("timed out opening a connection to the inviter"),
-              attemptTimeoutMs >= openTimeoutMs,
+              budgetSpent,
             );
             conn.close();
             reject(failure);
@@ -619,7 +658,9 @@ async function dialInviterWithRetry(
  *                      {@link listenAsInviter} takes them; `peerFactory`
  *                      injects the {@link Peer} constructor for testing; the
  *                      `*Ms` overrides tune the registration bound and the
- *                      retry timing.
+ *                      retry timing; `onPathFailed` takes an unanswered
+ *                      registration, a lost coordination server, a channel
+ *                      error and a spent channel-open bound as path failures.
  */
 export async function dialAsAcceptor(
   sharedSecret: string,
@@ -633,6 +674,7 @@ export async function dialAsAcceptor(
     retryDelayMs?: number;
     openTimeoutMs?: number;
     totalTimeoutMs?: number;
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
   },
 ): Promise<[Peer, DataConnection]> {
   const makePeer = options?.peerFactory ?? defaultPeerFactory;
@@ -660,16 +702,23 @@ export async function dialAsAcceptor(
   );
   recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
   try {
-    await waitForPeerOpen(peer, {
-      signal,
-      timeoutMs:
-        options?.registrationTimeoutMs ?? BROKER_REGISTRATION_TIMEOUT_MS,
-    });
+    try {
+      await waitForPeerOpen(peer, {
+        signal,
+        timeoutMs:
+          options?.registrationTimeoutMs ?? BROKER_REGISTRATION_TIMEOUT_MS,
+      });
+    } catch (err) {
+      if (signalingUnreachable(err))
+        options?.onPathFailed?.("signaling-unreachable");
+      throw err;
+    }
     const conn = await dialInviterWithRetry(peer, inviterId, {
       retryDelayMs: options?.retryDelayMs ?? DEFAULT_DIAL_RETRY_DELAY_MS,
       openTimeoutMs: options?.openTimeoutMs ?? DEFAULT_DIAL_ATTEMPT_TIMEOUT_MS,
       totalTimeoutMs: options?.totalTimeoutMs ?? DEFAULT_PEER_WAIT_TIMEOUT_MS,
       signal,
+      onPathFailed: options?.onPathFailed,
     });
     return [peer, conn];
   } catch (err) {

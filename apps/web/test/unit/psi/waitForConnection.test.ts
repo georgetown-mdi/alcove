@@ -146,4 +146,21 @@ describe("waitForIncomingConnection", () => {
 
     await expect(promise).rejects.toThrow("aborted");
   });
+
+  test("reports the coordination server lost while it waits, and waits on", async () => {
+    const { fake, peer } = makePeer();
+    const failures: Array<string> = [];
+    const promise = waitForIncomingConnection(peer, {
+      timeoutMs: 10_000,
+      onPathFailed: (failure) => failures.push(failure),
+    });
+
+    fake.emit("disconnected");
+    expect(failures).toEqual(["signaling-unreachable"]);
+    const conn = { id: "c1" } as unknown as DataConnection;
+    fake.emit("connection", conn);
+
+    expect(await promise).toBe(conn);
+    expect(fake.listenerCount("disconnected")).toBe(0);
+  });
 });

@@ -97,6 +97,9 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
 vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
+  managedRunRelayPlan: vi.fn(() =>
+    Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
+  ),
 }));
 vi.mock(
   "../../../src/psi/managed/managedInputHandle.js",

@@ -41,6 +41,7 @@ import {
 import {
   assertManagedRendezvousPossible,
   beginManagedRendezvous,
+  managedRunRelayPlan,
 } from "../../../src/psi/managed/managedRendezvous.js";
 import {
   classifyManagedRunFailure,
@@ -58,6 +59,7 @@ import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
 import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
+import { parkWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
 import { persistManagedExchangePayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
 
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
@@ -147,6 +149,9 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
 vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
   assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
+  managedRunRelayPlan: vi.fn(() =>
+    Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
+  ),
 }));
 // Real, and watched, so a case can show what a run registers and when.
 vi.mock(
@@ -168,6 +173,15 @@ vi.mock(
 vi.mock("../../../src/psi/transport/peerMessageConnection.js", () => ({
   openPeerMessageConnection: vi.fn(),
 }));
+vi.mock(
+  "../../../src/psi/transport/websocketRelayConnection.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    parkWebSocketRelayConnection: vi.fn(() => {
+      throw new Error("a run parked a WebSocket relay");
+    }),
+  }),
+);
 // Only the inbound wait is faked; PartnerNoShowError stays the real class, because
 // the classification downstream of this wiring is an instanceof check on it.
 vi.mock(
@@ -450,6 +464,30 @@ describe("runManagedExchangeInBrowser", () => {
     },
   );
 
+  test.each(["inviter", "acceptor"] as const)(
+    "the %s's run whose relays include a WebSocket relay dials none (PROTOCOL.md, No run dials one)",
+    async (side) => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources(side);
+      vi.mocked(managedRunRelayPlan).mockResolvedValueOnce({
+        relaysLeftOut: [],
+        websocketRelays: [
+          { url: "wss://relay.example.org/relay", exchangeId: "exchange" },
+        ],
+      });
+
+      await runDriver(
+        new AbortController().signal,
+        undefined,
+        recordForSide(side),
+      );
+
+      expect(mockedAuthenticate).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(parkWebSocketRelayConnection)).not.toHaveBeenCalled();
+    },
+  );
+
   test("meets the partner and authenticates with the secret read inside the lock", async () => {
     // The driver is handed the record a surface or a scheduled window loaded
     // earlier; a rotation stored since then is what the run must use.
@@ -561,19 +599,13 @@ describe("runManagedExchangeInBrowser", () => {
   test.each(["inviter", "acceptor"] as const)(
     "the %s's notice that the default relay could not be set up is shown once, and a later connection failure adds nothing",
     async (side) => {
-      const { peer, conn } = acquireResources(side);
-      mockedRendezvous.mockImplementation((_record, options) => {
-        options?.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
-        return Promise.resolve(
-          side === "inviter"
-            ? { side, peer: peer as unknown as Peer }
-            : {
-                side,
-                peer: peer as unknown as Peer,
-                conn: conn as unknown as DataConnection,
-              },
-        );
-      });
+      acquireResources(side);
+      vi.mocked(managedRunRelayPlan).mockImplementationOnce(
+        (_record, options) => {
+          options?.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+          return Promise.resolve({ relaysLeftOut: [], websocketRelays: [] });
+        },
+      );
       const failure = new Error("the data channel did not open");
       mockedOpen.mockRejectedValue(failure);
       const onWarning = vi.fn();
@@ -1155,7 +1187,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
-      onRunNotice: expect.any(Function),
+      relayPlan: { relaysLeftOut: [], websocketRelays: [] },
     });
     expect(rendezvousOptions().inboundWait).toEqual({
       signal: controller.signal,
@@ -1180,7 +1212,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
-      onRunNotice: expect.any(Function),
+      relayPlan: { relaysLeftOut: [], websocketRelays: [] },
       peerWaitTimeoutMs: 90_000,
     });
     expect(rendezvousOptions().inboundWait).toEqual({

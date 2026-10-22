@@ -22,6 +22,7 @@ import { waitForPeerClose } from "./waitForPeerClose";
 import type { DataConnection } from "peerjs";
 import type { MessageConnection } from "@alcove/core";
 import type { PeerCloseOutcome } from "./waitForPeerClose";
+import type { WebRtcPathFailure } from "./relayFallback";
 
 /**
  * Parked-receive inactivity budget for the WebRTC transport. Hour-scale: the
@@ -71,6 +72,8 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  *                 to the operator here; a non-flushing close reports nothing.
  *                 `signal` cuts the close-drain wait short, since core's
  *                 `MessageConnection.close()` takes no arguments of its own.
+ *                 `onPathFailed` takes a failed open as a path failure
+ *                 ({@link waitForConnectionOpen}).
  */
 export async function openPeerMessageConnection(
   conn: DataConnection,
@@ -82,6 +85,7 @@ export async function openPeerMessageConnection(
     closeDrainTimeoutMs?: number;
     onCloseOutcome?: (outcome: PeerCloseOutcome) => void;
     signal?: AbortSignal;
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
   },
 ): Promise<MessageConnection> {
   const maxFrameBytes = options?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
@@ -92,7 +96,11 @@ export async function openPeerMessageConnection(
   // returned, so its catch-driven close cannot run).
   assertChunkReassemblySupported(conn);
   assertIterativePackingSupported(conn);
-  const opened = waitForConnectionOpen(conn, options?.openTimeoutMs);
+  const opened = waitForConnectionOpen(
+    conn,
+    options?.openTimeoutMs,
+    options?.onPathFailed,
+  );
   const mc = new QueuedMessageConnection(
     (controls) => {
       // Bound PeerJS chunk reassembly before any chunk arrives, so an oversized

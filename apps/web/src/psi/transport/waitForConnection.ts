@@ -2,6 +2,7 @@ import { watchIceGathering } from "./iceGathering";
 
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
+import type { WebRtcPathFailure } from "./relayFallback";
 
 /**
  * Human-timescale ceiling for one operator to wait for the other party to show
@@ -51,15 +52,21 @@ export class PartnerNoShowError extends Error {
  *                 `waitedUntil` the no-show error states; `signal` lets the
  *                 owner cancel the wait (on unmount or a sibling teardown)
  *                 and settle it promptly rather than leaving the promise
- *                 pending until the timer fires.
+ *                 pending until the timer fires; `onPathFailed` takes the
+ *                 peer losing the coordination server while it waits as a
+ *                 path failure, and the wait goes on.
  */
 export function waitForIncomingConnection(
   peer: Peer,
-  options?: { signal?: AbortSignal } & (
+  options?: {
+    signal?: AbortSignal;
+    onPathFailed?: (failure: WebRtcPathFailure) => void;
+  } & (
     { timeoutMs?: number; until?: never } | { until: Date; timeoutMs?: never }
   ),
 ): Promise<DataConnection> {
   const signal = options?.signal;
+  const onPathFailed = options?.onPathFailed;
   const waitedUntil =
     options?.until ??
     new Date(Date.now() + (options?.timeoutMs ?? DEFAULT_PEER_WAIT_TIMEOUT_MS));
@@ -70,6 +77,7 @@ export function waitForIncomingConnection(
       if (settled) return;
       settled = true;
       peer.off("connection", onConnection);
+      peer.off("disconnected", onDisconnected);
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       action();
@@ -80,6 +88,9 @@ export function waitForIncomingConnection(
       watchIceGathering(conn);
       settle(() => resolve(conn));
     };
+    // A PeerJS peer does not register again once its socket has gone, so no
+    // partner's connection can reach this wait after it.
+    const onDisconnected = () => onPathFailed?.("signaling-unreachable");
     const onAbort = () =>
       settle(() =>
         reject(new Error("waiting for the other party to connect was aborted")),
@@ -101,6 +112,7 @@ export function waitForIncomingConnection(
       return;
     }
     peer.once("connection", onConnection);
+    if (onPathFailed !== undefined) peer.on("disconnected", onDisconnected);
     signal?.addEventListener("abort", onAbort);
   });
 }

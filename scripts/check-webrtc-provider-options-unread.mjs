@@ -78,6 +78,7 @@ export const WEB_FILES = [
   "apps/web/src/psi/transport/runRelayPlan.ts",
   "apps/web/src/psi/transport/defaultRelay.ts",
   "apps/web/src/psi/transport/iceGathering.ts",
+  "apps/web/src/psi/transport/relayFallback.ts",
   "apps/web/src/psi/transport/signalingAddress.ts",
   "apps/web/src/psi/transport/signalingBounds.ts",
   "apps/web/src/utils/diagnostics.ts",

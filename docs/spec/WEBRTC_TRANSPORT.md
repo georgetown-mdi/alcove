@@ -327,9 +327,12 @@ measurements behind the budgets here are in
 
 A CLI run that lists WebSocket relays races the connection attempts above
 against them, on the relay client of
-[WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-command-line-client). No run lists
-one yet ([No run dials one](PROTOCOL.md#the-invitations-relay-locator)): a run
-with an empty list dials no relay socket and opens WebRTC alone.
+[WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-command-line-client). A browser run
+that lists them races its listen or dial against them the same way, on
+[the web application's client](WEBSOCKET_RELAY.md#the-web-applications-client),
+so a CLI party and a browser party follow one set of rules on the wire. No run
+lists one yet ([No run dials one](PROTOCOL.md#the-invitations-relay-locator)):
+a run with an empty list dials no relay socket and opens WebRTC alone.
 
 - **Parked as the rendezvous starts.** The run dials every relay it lists, in parallel, as its first registration starts, and holds its start on each.
 - **What sends the start.** This side sends its start on the first of these: the channel-open budget expiring on any attempt, the last or not; the peer connection reporting `failed`; a registration with the coordination server failing with no refusal from it, or the registered socket dropping once the partner has sent its description; and the partner's start arriving on any relay. A certificate that did not verify on this host is not one of them, and fails the run as above whatever the relays are doing. Any other failure of the wait before one of these fails the run and closes every relay socket.
@@ -338,6 +341,7 @@ with an empty list dials no relay socket and opens WebRTC alone.
 - **The first path to open.** A data channel that opens first closes every relay socket, with 1000 where this side's start was not sent on it and with 4000 where it was, as the relay client closes an unused socket. A relay that opens first, both starts having crossed it, closes every other relay socket and abandons WebRTC, and a data channel that opens after that is closed unused.
 - **When both fail.** The run fails once the WebRTC wait has ended and every relay has failed. It fails with the WebRTC failure, or, where the partner's start abandoned WebRTC, with the failure of the first relay this side started on. Every other relay's refusal is logged as a warning before it.
 - **What the operator sees.** The run logs at info level when it sends its start, and which path carries the exchange: the WebRTC connection, or the WebSocket relay at its url.
+- **A browser run.** Its WebRTC wait is one attempt, and the first path failure ends it. The failures that send its start are the channel-open bound expiring, on the inviter's open or on the acceptor's dial attempt; the channel failing before it opens, as on ICE failure; a registration with the coordination server failing or not confirmed within its bound with no refusal from it; and the coordination server's socket dropping during the inviter's wait for the partner's connection or the acceptor's dial. A browser does not say why a WebSocket failed, so a coordination server certificate it refused is one of these and leaves the exchange to the relays. A browser run states the path that carries the exchange in a notice on the run, and logs the rest of the lines above, each relay's refusal included, to the browser's console.
 - **A stated limit.** The two parties can take different paths when a data channel opens on one side as the partner's start abandons WebRTC on the other. Each then fails on its own path, the WebRTC side when the partner's peer connection closes and the relay side when the partner closes its relay socket, and running the exchange again recovers.
 
 ## Negotiation envelope
@@ -1007,7 +1011,7 @@ condition holds.
 | ID-taken retry window | 2 min | How long a CLI registration after the first that is answered `ID-TAKEN` is tried again; above the broker's 90 s liveness timeout for a socket that vanished without closing |
 | Minimum offer re-send interval | 10 s | The least time between two sends of the CLI acceptor's offer on an `EXPIRE`; above the broker's 5 to 6 s hold, so a copy sent on an `EXPIRE` is never held beside the one before it |
 | Unreported offer re-send | 30 s | How long the CLI acceptor waits after sending its offer for an answer or an `EXPIRE` before sending it again; far above the broker's 5 to 6 s report of an undelivered frame, so the copy it replaces is no longer held |
-| Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a CLI run that lists WebSocket relays, its first expiry on any attempt also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay)) |
+| Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a run that lists WebSocket relays, its first expiry, on any attempt of a CLI run, also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay)) |
 | Parked receive | 1 h | Peer silence on an open channel; it bounds the peer's single-threaded PSI compute, which sends no keepalive while it runs |
 | Close drain | 5 min | The clean close's wait above -- the CLI's acknowledgement drain, the web's wait for the peer's close -- sized from the largest admissible frame and the measured send rate |
 | Sentinel hand-off | 2 s | Getting the close sentinel itself onto the wire |

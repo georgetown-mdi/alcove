@@ -19,6 +19,7 @@ import {
   assertManagedRerunDispatchable,
   beginManagedRendezvous,
   managedAcceptorSignalingEndpoint,
+  managedRunRelayPlan,
 } from "@psi/managed/managedRendezvous";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -42,18 +43,18 @@ import type { ManagedRendezvousFlows } from "@psi/managed/managedRendezvous";
 
 const LABEL = "Riverbend quarterly";
 
-/** Begin the rendezvous for a record of `side` holding `sharedSecret` and
- * `exchangeFile`. */
-function begin(
+/** Plan the relays of a record of `side` holding `sharedSecret` and
+ * `exchangeFile`, then begin its rendezvous on them, as a run does. */
+async function begin(
   side: ManagedExchangeSide,
   sharedSecret: string,
   file: ExchangeSpec,
-  options?: Parameters<typeof beginManagedRendezvous>[1],
+  options: Parameters<typeof managedRunRelayPlan>[1] &
+    Omit<Parameters<typeof beginManagedRendezvous>[1], "relayPlan"> = {},
 ) {
-  return beginManagedRendezvous(
-    { side, sharedSecret, exchangeFile: file, label: LABEL },
-    options,
-  );
+  const record = { side, sharedSecret, exchangeFile: file, label: LABEL };
+  const relayPlan = await managedRunRelayPlan(record, options);
+  return beginManagedRendezvous(record, { ...options, relayPlan });
 }
 
 // Every locator field differs from the stubbed app location below, so an

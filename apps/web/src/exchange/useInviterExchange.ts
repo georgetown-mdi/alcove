@@ -60,6 +60,7 @@ import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
+import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
@@ -1289,32 +1290,48 @@ export function useInviterExchange({
         minted.allowedRelays,
         { signal, onRunNotice },
       );
-      const peer = await listenAsInviter(minted.sharedSecret, {
-        signal,
-        ...relayPlan,
-      });
-      // The wait ends at the partner-wait ceiling, or sooner where the
-      // invitation expires first, and the share screen states that deadline.
-      const waitUntil = new Date(
-        Math.min(
-          Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
-          Date.parse(minted.expires),
-        ),
-      );
-      if (!signal.aborted) setListeningUntil(waitUntil);
-      let conn: DataConnection;
-      try {
-        conn = await waitForIncomingConnection(peer, {
-          signal,
-          until: waitUntil,
-        });
-      } catch (error) {
-        peer.destroy();
-        throw error;
-      }
-      const connection = await openOneShotPeerConnection(peer, conn, {
+      const connection = await openRunConnectionWithRelayFallback({
+        role: "inviter",
+        sharedSecret: minted.sharedSecret,
+        // The WebSocket relay list is empty: docs/spec/PROTOCOL.md, No run
+        // dials one.
+        relays: [],
         signal,
         onCloseOutcome,
+        onRunNotice,
+        openWebRtc: async ({ signal: webRtcSignal, onPathFailed }) => {
+          const peer = await listenAsInviter(minted.sharedSecret, {
+            signal: webRtcSignal,
+            ...relayPlan,
+            onPathFailed,
+          });
+          // The wait ends at the partner-wait ceiling, or sooner where the
+          // invitation expires first, and the share screen states that
+          // deadline.
+          const waitUntil = new Date(
+            Math.min(
+              Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
+              Date.parse(minted.expires),
+            ),
+          );
+          if (!signal.aborted) setListeningUntil(waitUntil);
+          let conn: DataConnection;
+          try {
+            conn = await waitForIncomingConnection(peer, {
+              signal: webRtcSignal,
+              until: waitUntil,
+              onPathFailed,
+            });
+          } catch (error) {
+            peer.destroy();
+            throw error;
+          }
+          return openOneShotPeerConnection(peer, conn, {
+            signal: webRtcSignal,
+            onCloseOutcome,
+            onPathFailed,
+          });
+        },
       });
       return { ...connection, psi, prepared };
     };

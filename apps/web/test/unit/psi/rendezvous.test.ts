@@ -471,6 +471,93 @@ describe("a signaling server that never confirms registration", () => {
   });
 });
 
+describe("the path failures a relay fallback starts on", () => {
+  test.each([
+    ["a socket error", { type: "socket-error" }, ["signaling-unreachable"]],
+    ["a closed socket", { type: "socket-closed" }, ["signaling-unreachable"]],
+    ["an id the server refused", { type: "unavailable-id" }, []],
+  ])(
+    "an inviter's registration failing on %s",
+    async (_name, error, expected) => {
+      stubWindow();
+      const fake = new FakePeer();
+      const failures: Array<string> = [];
+      const rejection = listenAsInviter(generateSharedSecret(), {
+        peerFactory: captureFactory(fake).factory,
+        onPathFailed: (failure) => failures.push(failure),
+      }).catch(() => undefined);
+      await vi.waitFor(() =>
+        expect(fake.listenerCount("error")).toBeGreaterThan(0),
+      );
+      fake.emit("error", error);
+      await rejection;
+      expect(failures).toEqual(expected);
+    },
+  );
+
+  test("a registration the server never confirms", async () => {
+    stubWindow();
+    const failures: Array<string> = [];
+    await dialAsAcceptor(generateSharedSecret(), endpoint, {
+      peerFactory: captureFactory(new FakePeer()).factory,
+      registrationTimeoutMs: 5,
+      onPathFailed: (failure) => failures.push(failure),
+    }).catch(() => undefined);
+    expect(failures).toEqual(["signaling-unreachable"]);
+  });
+
+  test.each([
+    ["the channel-open bound passing", () => {}, ["channel-not-opened"]],
+    [
+      "a channel error",
+      (fake: FakePeer) => fake.conns[0].emit("error", new Error("ice")),
+      ["connection-failed"],
+    ],
+    [
+      "the coordination server lost",
+      (fake: FakePeer) => fake.emit("error", { type: "network" }),
+      ["signaling-unreachable"],
+    ],
+  ])("an acceptor's dial ending on %s", async (_name, fault, expected) => {
+    stubWindow();
+    const fake = new FakePeer();
+    const failures: Array<string> = [];
+    const rejection = dialAsAcceptor(generateSharedSecret(), endpoint, {
+      peerFactory: captureFactory(fake).factory,
+      openTimeoutMs: 50,
+      onPathFailed: (failure) => failures.push(failure),
+    }).catch(() => undefined);
+    await vi.waitFor(() =>
+      expect(fake.listenerCount("open")).toBeGreaterThan(0),
+    );
+    fake.emit("open", "acceptor");
+    await vi.waitFor(() => expect(fake.connect).toHaveBeenCalledTimes(1));
+    fault(fake);
+    await rejection;
+    expect(failures).toEqual(expected);
+  });
+
+  test("an inviter that never registers is no path failure", async () => {
+    stubWindow();
+    const fake = new FakePeer();
+    const failures: Array<string> = [];
+    const rejection = dialAsAcceptor(generateSharedSecret(), endpoint, {
+      peerFactory: captureFactory(fake).factory,
+      retryDelayMs: 120_000,
+      totalTimeoutMs: 60_000,
+      onPathFailed: (failure) => failures.push(failure),
+    }).catch(() => undefined);
+    await vi.waitFor(() =>
+      expect(fake.listenerCount("open")).toBeGreaterThan(0),
+    );
+    fake.emit("open", "acceptor");
+    await vi.waitFor(() => expect(fake.connect).toHaveBeenCalledTimes(1));
+    fake.emit("error", { type: "peer-unavailable" });
+    await rejection;
+    expect(failures).toEqual([]);
+  });
+});
+
 describe("peer logging wiring", () => {
   // Assert the wired-in logFunction redacts every id in `ids` -- in particular
   // the remote id, which is the one PeerJS interpolates into its warnings, so it
