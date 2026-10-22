@@ -1572,7 +1572,9 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   a command-line run lists that relay and enrolls at the registrar the
   invitation names, whichever build named it, only when the relay it
   allocates on is one the invitation names and takes the run's derived
-  credential ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)).
+  credential, or it dials the invitation's WebSocket relay under the id
+  derived from the secret
+  ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)).
   Where the invitation names a registrar, the export panel states, from the
   connection the export writes, whether a command-line run registers there
   before it connects, and where it does, that whoever runs that registrar

@@ -52,7 +52,8 @@
  *   whatever relay the invitation named, and writes that relay whole as
  *   `connection.invitation_relay`, its registrar included, since a
  *   command-line run lists it beside its own and enrolls at its registrar
- *   when the relay it allocates on is one the invitation names. A
+ *   when the relay it allocates on is one the invitation names, or when it
+ *   dials the invitation's WebSocket relay under the derived id. A
  *   registrar with no own TURN url to write, and a registration a re-invite
  *   left pending, which no run can confirm, are refused.
  * - It WRITES the record's own allowed relays, which a run here applies, as
