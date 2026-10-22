@@ -30,7 +30,6 @@ import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
 import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
 import { HOSTED_FILE_ASSURANCE } from "./fileAssurance";
 import { SampleCsvLinks } from "./SampleCsvLinks";
-import { downloadSamplePartnerCsv } from "./sampleData";
 
 /** The paste card's heading, which names the invitation field. */
 const PASTE_INVITATION_HEADING_ID = "paste-invitation-heading";
@@ -123,7 +122,6 @@ export function Lobby() {
   // folder for the picker to list instead.
   async function loadSample() {
     if (!isConsoleBuild()) {
-      downloadSamplePartnerCsv();
       window.location.assign("/exchange?demo=1");
       return;
     }
@@ -248,7 +246,7 @@ export function Lobby() {
               with the second file.
             </>
           ) : (
-            ". This opens the invite screen with sample data loaded and downloads the partner CSV. To run both sides, open the invitation in another tab of this browser and use the sample partner file it offers, or accept it in another browser with the downloaded file."
+            ". This opens the invite screen with sample data loaded. To run both sides, open the invitation in another tab of this browser, where accepting it offers the sample partner file. In a different browser, download the partner CSV from the invite screen."
           )}
         </p>
         {sampleFailure !== undefined && (
