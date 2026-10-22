@@ -201,10 +201,9 @@ const STATE_STEPS: StandardizationStep[] = [
   { function: "state_code" },
 ];
 
-// An uppercase county name with the word COUNTY, a leading "COUNTY OF", and
-// punctuation removed. A hyphen or typographic dash becomes a space first, so
-// MIAMI-DADE and MIAMI DADE agree.
-const COUNTY_STEPS: StandardizationStep[] = [
+// A place name in uppercase with punctuation removed. A hyphen or typographic
+// dash becomes a space first, so MIAMI-DADE and MIAMI DADE agree.
+const PLACE_NAME_FOLD_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "squash_spaces" },
   { function: "remove_accents" },
@@ -215,13 +214,40 @@ const COUNTY_STEPS: StandardizationStep[] = [
   { function: "remove_non_ascii" },
   { function: "to_upper_case" },
   { function: "remove_punctuation" },
+];
+
+// A value left with no letter or digit, blank or all punctuation, is dropped.
+const FOLD_SPACES_AND_DROP_BLANK_STEPS: StandardizationStep[] = [
+  { function: "squash_spaces" },
+  { function: "trim_whitespace" },
+  { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
+];
+
+const STREET_NAME_AND_CITY_STEPS: StandardizationStep[] = [
+  ...PLACE_NAME_FOLD_STEPS,
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+];
+
+// The whole unit, designator included, with every punctuation mark deleted,
+// a hyphen too, so 4-B and 4B, and #4B and 4B, agree.
+const UNIT_STEPS: StandardizationStep[] = [
+  { function: "trim_whitespace" },
+  { function: "squash_spaces" },
+  { function: "remove_accents" },
+  { function: "remove_non_ascii" },
+  { function: "to_upper_case" },
+  { function: "remove_punctuation" },
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
+];
+
+// A county name with the word COUNTY and a leading "COUNTY OF" removed.
+const COUNTY_STEPS: StandardizationStep[] = [
+  ...PLACE_NAME_FOLD_STEPS,
   {
     function: "replace_regex",
     params: { pattern: "^COUNTY OF |\\bCOUNTY\\b", replacement: "" },
   },
-  { function: "squash_spaces" },
-  { function: "trim_whitespace" },
-  { function: "filter_regex", params: { pattern: "[A-Z0-9]" } },
+  ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
 ];
 
 // The most distinct people one value may belong to in a party's own file. A
@@ -276,6 +302,11 @@ function stepsForType(
       return EMAIL_ADDRESS_STEPS;
     case "street_number":
       return STREET_NUMBER_STEPS;
+    case "street_name":
+    case "city":
+      return STREET_NAME_AND_CITY_STEPS;
+    case "unit":
+      return UNIT_STEPS;
     case "zip_code":
       return ZIP_CODE_STEPS;
     case "state":

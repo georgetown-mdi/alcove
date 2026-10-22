@@ -597,3 +597,37 @@ describe("the street number column type", () => {
     expect(isDisclosedToPartner(out[0])).toBe(false);
   });
 });
+
+describe("the street name, unit and city column types", () => {
+  test.each([
+    ["street_name", "Street name"],
+    ["unit", "Apartment or unit number"],
+    ["city", "City"],
+  ] as const)("%s is offered for matching as %j", (type, label) => {
+    expect(SEMANTIC_TYPES).toContain(type);
+    expect(disclosureChoicesForType(type)).toContain("match");
+    expect(SEMANTIC_TYPE_LABELS[type]).toBe(label);
+  });
+
+  test("each is inferred from its column name as a match column, not sent", () => {
+    const out = inferMetadataForEveryColumn(["street_name", "apt", "city"], []);
+    expect(out.map((column) => column.type)).toEqual([
+      "street_name",
+      "unit",
+      "city",
+    ]);
+    for (const column of out) {
+      expect(disclosureOf(column)).toBe("match");
+      expect(isDisclosedToPartner(column)).toBe(false);
+    }
+  });
+
+  test("an address-line column picked as a unit becomes a match column", () => {
+    const [address2] = inferMetadataForEveryColumn(["address2"], []);
+    expect(address2.type).toBe("other");
+    const out = setColumnTypeForMatching([address2], "address2", "unit");
+    expect(out[0].type).toBe("unit");
+    expect(disclosureOf(out[0])).toBe("match");
+    expect(isDisclosedToPartner(out[0])).toBe(false);
+  });
+});

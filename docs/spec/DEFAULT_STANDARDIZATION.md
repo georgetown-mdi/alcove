@@ -1064,6 +1064,157 @@ starts with.
 | `"Main St"` | `null` |
 | `""` | `null` |
 
+### `street_name`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: squash_spaces
+  - function: remove_accents
+  - function: replace_regex
+    params:
+      pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]"
+      replacement: " "
+  - function: remove_non_ascii
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: squash_spaces
+  - function: trim_whitespace
+  - function: filter_regex
+    params:
+      pattern: "[A-Z0-9]"
+```
+
+Result: the street name in uppercase, its words separated by single spaces,
+with punctuation removed. The steps are those of [`county`](#county) without
+its removal of the word `COUNTY`:
+
+- An accented letter becomes its base letter, so a name written with an
+  n-tilde agrees with one written with a plain n.
+- A hyphen or typographic dash becomes a space, so `Wilkes-Barre Blvd` and
+  `Wilkes Barre Blvd` agree.
+- Other punctuation is deleted, so `Mary's Rd` and `Marys Rd` agree.
+- A value left with no letter or digit, a blank or all-punctuation value, is
+  dropped.
+
+No word is abbreviated or spelled out: `Main Street` and `Main St` stay
+different, as do `North Main St` and `N Main St`, and `Fifth Ave` and
+`5th Ave`. The pipeline expects the street name alone. A whole address line
+typed `street_name` keeps its house number and unit, so it agrees only with a
+party whose column contains the same parts.
+
+The type is inferred from `street_name` and `streetname`
+([Type inference from column names](#type-inference-from-column-names)). A
+column named `street`, which often contains a whole address line, infers
+nothing.
+
+| Input | Result |
+| ----- | ------ |
+| `"Main St"` | `"MAIN ST"` |
+| `"  main   st. "` | `"MAIN ST"` |
+| `"N. Main St."` | `"N MAIN ST"` |
+| `"Martin Luther King Jr. Blvd"` | `"MARTIN LUTHER KING JR BLVD"` |
+| `"St. Mary's Rd"` | `"ST MARYS RD"` |
+| `"Wilkes-Barre Blvd"` | `"WILKES BARRE BLVD"` |
+| `"Calle Pe\u00f1a"` | `"CALLE PENA"` |
+| `"Main Street"` | `"MAIN STREET"` |
+| `"..."` | `null` |
+| `""` | `null` |
+
+### `unit`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: squash_spaces
+  - function: remove_accents
+  - function: remove_non_ascii
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: squash_spaces
+  - function: trim_whitespace
+  - function: filter_regex
+    params:
+      pattern: "[A-Z0-9]"
+```
+
+Result: the apartment, suite or other unit of an address, as written, in
+uppercase, its words separated by single spaces, with punctuation removed.
+
+- Every punctuation mark is deleted, a hyphen included, so `4-B` and `4B`, and
+  `#4B` and `4B`, agree.
+- A designator such as `Apt`, `Unit` or `Ste` is kept as written, so `Apt 4B`
+  and `4B` stay different, as do `Apt 4B` and `Unit 4B`.
+- A value left with no letter or digit, a blank or all-punctuation value, is
+  dropped. No placeholder is dropped: `N/A` cleans to `NA`.
+
+The type is inferred from `unit`, `unit_number`, `apartment`, `apt` and their
+short spellings
+([Type inference from column names](#type-inference-from-column-names)). A
+second address-line column such as `address2` infers nothing, since it can
+contain a care-of name or a PO box instead of a unit; typing it `unit` in its
+metadata matches on it.
+
+| Input | Result |
+| ----- | ------ |
+| `"Apt 4B"` | `"APT 4B"` |
+| `"apt. 4-b"` | `"APT 4B"` |
+| `"#4B"` | `"4B"` |
+| `"4-B"` | `"4B"` |
+| `"  Unit  12 "` | `"UNIT 12"` |
+| `"N/A"` | `"NA"` |
+| `"#"` | `null` |
+| `""` | `null` |
+
+### `city`
+
+```yaml
+steps:
+  - function: trim_whitespace
+  - function: squash_spaces
+  - function: remove_accents
+  - function: replace_regex
+    params:
+      pattern: "[\\-\\x{2010}-\\x{2015}\\x{2212}]"
+      replacement: " "
+  - function: remove_non_ascii
+  - function: to_upper_case
+  - function: remove_punctuation
+  - function: squash_spaces
+  - function: trim_whitespace
+  - function: filter_regex
+    params:
+      pattern: "[A-Z0-9]"
+```
+
+Result: the city name in uppercase, its words separated by single spaces, with
+punctuation removed. The steps are those of [`street_name`](#street_name):
+
+- An accented letter becomes its base letter.
+- A hyphen or typographic dash becomes a space, so `Winston-Salem` and
+  `Winston Salem` agree.
+- Other punctuation is deleted, so `Coeur d'Alene` and `Coeur dAlene` agree.
+- A value left with no letter or digit, a blank or all-punctuation value, is
+  dropped.
+
+No word is abbreviated or spelled out: `St Louis` and `Saint Louis` stay
+different. A city name is ambiguous across states, as a county name is, and the
+cleaned value contains no state.
+
+The type is inferred from `city`, `city_name` and `cityname`
+([Type inference from column names](#type-inference-from-column-names)).
+
+| Input | Result |
+| ----- | ------ |
+| `"Baltimore"` | `"BALTIMORE"` |
+| `"  baltimore "` | `"BALTIMORE"` |
+| `"St. Louis"` | `"ST LOUIS"` |
+| `"Winston-Salem"` | `"WINSTON SALEM"` |
+| `"Coeur d'Alene"` | `"COEUR DALENE"` |
+| `"Espa\u00f1ola"` | `"ESPANOLA"` |
+| `"..."` | `null` |
+| `""` | `null` |
+
 ### `zip_code`
 
 ```yaml
@@ -1471,6 +1622,9 @@ whitespace.
 | `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
 | `street_number` | `street_number`, `streetnumber`, `street_no`, `street_num`, `house_number`, `housenumber`, `house_no`, `house_num`, `address_number`, `addressnumber` | `linkage` | `false` |
+| `street_name` | `street_name`, `streetname` | `linkage` | `false` |
+| `unit` | `unit`, `unit_number`, `unitnumber`, `unit_no`, `unit_num`, `apartment`, `apartment_number`, `apartmentnumber`, `apt`, `apt_no`, `apt_num`, `apt_number` | `linkage` | `false` |
+| `city` | `city`, `city_name`, `cityname` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
 | `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false` |
 | `county` | `county`, `county_name`, `countyname` | `linkage` | `false` |

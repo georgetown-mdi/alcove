@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   identifierTypedColumnNames,
@@ -166,6 +166,19 @@ test.each([
   ["house_no", "street_number"],
   ["house_num", "street_number"],
   ["address_number", "street_number"],
+  ["street_name", "street_name"],
+  ["unit", "unit"],
+  ["unit_number", "unit"],
+  ["unit_no", "unit"],
+  ["unit_num", "unit"],
+  ["apartment", "unit"],
+  ["apartment_number", "unit"],
+  ["apt", "unit"],
+  ["apt_no", "unit"],
+  ["apt_num", "unit"],
+  ["apt_number", "unit"],
+  ["city", "city"],
+  ["city_name", "city"],
   ["zip_code", "zip_code"],
   ["zip", "zip_code"],
   ["zip5", "zip_code"],
@@ -190,6 +203,10 @@ test.each([
   ["streetnumber", "street_number"],
   ["housenumber", "street_number"],
   ["addressnumber", "street_number"],
+  ["streetname", "street_name"],
+  ["unitnumber", "unit"],
+  ["apartmentnumber", "unit"],
+  ["cityname", "city"],
 ] as const)('alias "%s" resolves to type "%s"', (alias, expectedType) => {
   const [col] = inferMetadata([alias], []);
   expect(col.type).toBe(expectedType);
@@ -201,9 +218,54 @@ test.each([
   "streetaddress",
   "address1",
   "address_line_1",
-])("an address-line column %s is not inferred as a street number", (name) => {
+  "address2",
+  "address_line_2",
+  "street",
+])("an address-line column %s is not inferred as an address part", (name) => {
   expect(inferMetadata([name], [])).toEqual([]);
   expect(inferMetadata([name], [], { mode: "direct" })[0].type).toBe("other");
+});
+
+describe("the street address names leave every other type's names as they were", () => {
+  test.each([
+    ["zip", "zip_code"],
+    ["zipcode", "zip_code"],
+    ["zip_code", "zip_code"],
+    ["house_number", "street_number"],
+    ["street_no", "street_number"],
+    ["address_number", "street_number"],
+    ["state", "state"],
+    ["county", "county"],
+    ["unit_id", "identifier"],
+  ] as const)("%s still infers %s", (name, type) => {
+    expect(inferMetadata([name], [])[0].type).toBe(type);
+  });
+
+  test("a file with every address part infers each column as its own type", () => {
+    const columns = [
+      "house_number",
+      "street_name",
+      "apt",
+      "city",
+      "state",
+      "zip",
+      "address",
+    ];
+    expect(
+      inferMetadata(columns, [], { mode: "direct" }).map((column) => [
+        column.name,
+        column.type,
+      ]),
+    ).toEqual([
+      ["house_number", "street_number"],
+      ["street_name", "street_name"],
+      ["apt", "unit"],
+      ["city", "city"],
+      ["state", "state"],
+      ["zip", "zip_code"],
+      ["address", "other"],
+    ]);
+  });
 });
 
 // --- inferMetadata: case-insensitive lookup -----------------------------------

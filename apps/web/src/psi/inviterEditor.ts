@@ -731,7 +731,7 @@ export function editorWithDeduplicate(
 /** Restore the recommended cleaning for the current metadata and the keys the
  * draft has turned on -- the cleaning error boundary's recovery, scoped to the
  * cleaning alone. Reading the enabled keys is what keeps the reset from minting
- * a phone, email, street number, ZIP, state or county pipeline whose keys are
+ * a phone, email, street address, ZIP, state or county pipeline whose keys are
  * off, which the terms this draft emits would declare no field for. */
 export function editorWithRecommendedCleaning(
   editor: InviterEditor,

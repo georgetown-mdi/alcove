@@ -408,6 +408,39 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     role: "linkage",
     isPayload: false,
   },
+  // Not `street`, which often contains the whole address line.
+  {
+    type: "street_name",
+    aliases: ["streetname"],
+    role: "linkage",
+    isPayload: false,
+  },
+  // Not an address-line column (`address2`), which can contain a care-of name
+  // or a PO box instead of a unit.
+  {
+    type: "unit",
+    aliases: [
+      "unit_number",
+      "unitnumber",
+      "unit_no",
+      "unit_num",
+      "apartment",
+      "apartment_number",
+      "apartmentnumber",
+      "apt",
+      "apt_no",
+      "apt_num",
+      "apt_number",
+    ],
+    role: "linkage",
+    isPayload: false,
+  },
+  {
+    type: "city",
+    aliases: ["city_name", "cityname"],
+    role: "linkage",
+    isPayload: false,
+  },
   {
     type: "zip_code",
     aliases: ["zipcode", "zip", "zip5", "zip_5"],

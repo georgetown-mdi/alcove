@@ -4397,6 +4397,58 @@ describe("readConfigLinkageSource", () => {
     });
   });
 
+  test("reads street name, unit and city fields over columns typed in its metadata", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const defaults = getDefaultLinkageTerms("Agency A");
+    const terms: LinkageTerms = {
+      ...defaults,
+      linkageRuleSet: undefined,
+      linkageFields: [
+        ...defaults.linkageFields,
+        { name: "street_name", type: "street_name" },
+        { name: "unit", type: "unit" },
+        { name: "city", type: "city" },
+      ],
+      linkageKeys: [
+        {
+          name: "LN+FN+DOB+street name+unit+city",
+          elements: [
+            { field: "last_name" },
+            { field: "first_name" },
+            { field: "date_of_birth" },
+            { field: "street_name" },
+            { field: "unit" },
+            { field: "city" },
+          ],
+        },
+      ],
+    };
+    const metadata: Metadata = [
+      { name: "road", type: "street_name", role: "linkage", isPayload: false },
+      { name: "address2", type: "unit", role: "linkage", isPayload: false },
+      { name: "town", type: "city", role: "linkage", isPayload: false },
+    ];
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share" },
+      linkageTerms: terms,
+      metadata,
+    });
+    const written = fs.readFileSync(configPath, "utf8");
+    expect(written).toContain("type: street_name");
+    expect(written).toContain("type: unit");
+    expect(written).toContain("type: city");
+    expect(readConfigLinkageSource(configPath)).toMatchObject({
+      status: "loaded",
+      source: {
+        linkageTerms: {
+          linkageFields: terms.linkageFields,
+          linkageKeys: terms.linkageKeys,
+        },
+        metadata,
+      },
+    });
+  });
+
   test("returns the source a config defines", () => {
     const configPath = path.join(dir, "alcove.yaml");
     const terms = getDefaultLinkageTerms("Agency A");

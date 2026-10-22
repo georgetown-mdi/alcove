@@ -2385,6 +2385,50 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines.join("\n")).not.toContain("address_line");
   });
 
+  test("displayInvitation: names street name, unit and city fields in plain words", () => {
+    const log = getLogger("accept-display-street-address-test");
+    log.setLevel("silent");
+    const token = sampleToken(FUTURE());
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          ...token.linkageTerms.linkageFields,
+          { name: "road_col", type: "street_name" },
+          { name: "apt_col", type: "unit" },
+          { name: "town_col", type: "city" },
+        ],
+        linkageKeys: [
+          {
+            name: "name, date of birth and street address",
+            elements: [
+              { field: "last_name" },
+              { field: "first_name" },
+              { field: "date_of_birth" },
+              { field: "road_col" },
+              { field: "apt_col" },
+              { field: "town_col" },
+            ],
+          },
+        ],
+      },
+    }).split("\n");
+
+    expect(lines).toContain("    - Street name");
+    expect(lines).toContain("    - Apartment or unit number");
+    expect(lines).toContain("    - City");
+    expect(
+      lines.some((line) =>
+        /^ {2}matched on \(.*\): .*, street name, unit number, city$/.test(
+          line,
+        ),
+      ),
+    ).toBe(true);
+    for (const name of ["road_col", "apt_col", "town_col"])
+      expect(lines.join("\n")).not.toContain(name);
+  });
+
   test("displayInvitation: the operator's own outbound heading sits level with the other payload headings", () => {
     // Indentation shows hierarchy in this outline, so the operator's own outbound
     // disclosure must not be the one heading a level below its two counterparts, at
