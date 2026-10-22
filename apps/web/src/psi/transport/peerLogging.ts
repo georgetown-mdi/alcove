@@ -34,6 +34,9 @@ type LogSink = Pick<Console, "log" | "warn" | "error">;
 
 const REDACTED = "[redacted-peer-id]";
 
+/** What stands in for a value that could not be read or converted to redact. */
+const UNREDACTABLE = "[unredactable]";
+
 function redactString(text: string, ids: ReadonlyArray<string>): string {
   let out = text;
   for (const id of ids) {
@@ -87,7 +90,7 @@ export function createRedactingLogFunction(
       } catch {
         // A throwing getter or a too-deep structure: never print the raw
         // argument or throw back into PeerJS's emit path.
-        return "[unredactable]";
+        return UNREDACTABLE;
       }
     });
     // Level 0 prints nothing; PeerJS does not dispatch at 0.
@@ -98,47 +101,47 @@ export function createRedactingLogFunction(
 }
 
 /**
+ * `value` as text to redact: a string as it is, anything else through
+ * `String()`. PeerJS copies the fields of a coordination server's ERROR frame
+ * onto its error, so `message` and `stack` can be any JSON value, and one
+ * whose conversion throws is replaced rather than printed.
+ */
+function textToRedact(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return String(value);
+  } catch {
+    return UNREDACTABLE;
+  }
+}
+
+/**
  * Redact `ids` out of an `Error`'s `message` and `stack` wherever a PeerJS
- * error reaches app code. Mutates in place to keep the error's identity and
- * `type` discriminant; a fresh redacted error replaces one that refuses the
- * write. Matching is exact-substring, best-effort only.
+ * error reaches app code, either of them converted to a string first.
+ * Mutates in place to keep the error's identity and `type` discriminant; a
+ * fresh redacted error replaces one that refuses the write. Matching is
+ * exact-substring, best-effort only.
  */
 export function redactErrorIds(
   err: unknown,
   ids: ReadonlyArray<string>,
 ): unknown {
   if (!(err instanceof Error)) return err;
+  const message = redactString(textToRedact(err.message), ids);
+  // The stack's first line repeats the message.
+  const stack =
+    err.stack === undefined
+      ? undefined
+      : redactString(textToRedact(err.stack), ids);
   try {
-    err.message = redactString(err.message, ids);
-    // The stack's first line repeats the message.
-    if (err.stack !== undefined) err.stack = redactString(err.stack, ids);
+    err.message = message;
+    if (stack !== undefined) err.stack = stack;
     return err;
   } catch {
     // A read-only `message`: the original's stack and cause are dropped rather
     // than let an id through.
-    const redacted = new Error(redactString(err.message, ids));
-    redacted.name = err.name;
+    const redacted = new Error(message);
+    redacted.name = textToRedact(err.name);
     return redacted;
   }
-}
-
-const rendezvousIdsByPeer = new WeakMap<object, ReadonlyArray<string>>();
-
-/**
- * Record the derived rendezvous ids of the run `peer` serves, so that code
- * handed the peer redacts them from its errors ({@link redactRendezvousIds}).
- */
-export function recordRendezvousIds(
-  peer: object,
-  ids: ReadonlyArray<string>,
-): void {
-  rendezvousIdsByPeer.set(peer, ids);
-}
-
-/**
- * {@link redactErrorIds} with the ids {@link recordRendezvousIds} recorded for
- * `peer`, none where it recorded none.
- */
-export function redactRendezvousIds(peer: object, err: unknown): unknown {
-  return redactErrorIds(err, rendezvousIdsByPeer.get(peer) ?? []);
 }

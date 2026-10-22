@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import Peer from "peerjs";
+
+import Peer, { PeerError } from "peerjs";
 
 import {
   PEERJS_ERRORS_ONLY,
@@ -301,5 +302,56 @@ describe("redactErrorIds", () => {
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).not.toContain(SAMPLE_ID);
     expect((result as Error).message).toContain("[redacted-peer-id]");
+  });
+
+  // PeerJS copies the fields of a coordination server's ERROR frame onto its
+  // error, so its message and stack can be any JSON value.
+  test("converts a non-string message and stack to text, redacting the ids in it", () => {
+    const err = new PeerError("server-error", {
+      message: { toString: () => `taken: ${SAMPLE_ID}` },
+      stack: 404,
+    } as unknown as Error);
+    let result: unknown;
+    expect(() => {
+      result = redactErrorIds(err, [SAMPLE_ID]);
+    }).not.toThrow();
+
+    expect(result).toBe(err);
+    expect(err.message).toBe("taken: [redacted-peer-id]");
+    expect(err.stack).toBe("404");
+    expect(err.type).toBe("server-error");
+  });
+
+  test("replaces a message or stack with no text form rather than throwing", () => {
+    const err = new PeerError("server-error", {
+      message: Object.create(null) as object,
+      stack: { toString: 1, valueOf: 1 },
+    } as unknown as Error);
+    let result: unknown;
+    expect(() => {
+      result = redactErrorIds(err, [SAMPLE_ID]);
+    }).not.toThrow();
+
+    expect(result).toBe(err);
+    expect(err.message).toBe("[unredactable]");
+    expect(err.stack).toBe("[unredactable]");
+  });
+
+  test("converts a non-string message on a frozen error, without throwing", () => {
+    const err = Object.freeze(
+      new PeerError("server-error", {
+        message: [SAMPLE_ID],
+        name: 7,
+      } as unknown as Error),
+    );
+    let result: unknown;
+    expect(() => {
+      result = redactErrorIds(err, [SAMPLE_ID]);
+    }).not.toThrow();
+
+    expect(result).toBeInstanceOf(Error);
+    expect(result).not.toBe(err);
+    expect((result as Error).message).toBe("[redacted-peer-id]");
+    expect((result as Error).name).toBe("7");
   });
 });

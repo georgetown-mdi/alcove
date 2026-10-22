@@ -365,6 +365,22 @@ function dropCoordinationServer(peer: EventEmitter): Error {
   return lost;
 }
 
+/** The inviter's wait's failure for a coordination server socket that failed. */
+const SIGNALING_FAILED = {
+  kind: "transport",
+  message:
+    "the connection to the coordination server failed while waiting for " +
+    "the other party to connect",
+};
+
+/** The inviter's wait's failure for a refusal from the coordination server. */
+const SIGNALING_ENDED = {
+  kind: "transport",
+  message:
+    "the connection to the coordination server ended while waiting for " +
+    "the other party to connect",
+};
+
 /** `promise`'s rejection, or "still waiting" if it has not settled within `ms`. */
 function rejectionWithin(
   promise: Promise<unknown>,
@@ -395,10 +411,11 @@ test("with every listed relay failed, losing the coordination server during the 
   );
   opening.catch(() => {});
   await vi.waitFor(() => expect(peer.listenerCount("disconnected")).toBe(1));
-  const lost = dropCoordinationServer(peer);
+  dropCoordinationServer(peer);
 
   const failure = await rejectionWithin(opening, 5_000);
-  expect(failure).toBe(lost);
+  expect(failure).toBeInstanceOf(ConnectionError);
+  expect(failure).toMatchObject(SIGNALING_FAILED);
   expect(failure).not.toBeInstanceOf(PartnerNoShowError);
 });
 
@@ -414,9 +431,9 @@ test("with no relay listed, losing the coordination server during the inviter's 
   });
   opening.catch(() => {});
   await vi.waitFor(() => expect(peer.listenerCount("disconnected")).toBe(1));
-  const lost = dropCoordinationServer(peer);
+  dropCoordinationServer(peer);
 
-  expect(await rejectionWithin(opening, 1_000)).toBe(lost);
+  expect(await rejectionWithin(opening, 1_000)).toMatchObject(SIGNALING_FAILED);
 });
 
 const RELAY_START = '{"type":"start"}';
@@ -474,7 +491,9 @@ test.each([
     peer.emit("error", refusal);
     peer.emit("disconnected", "inviter-id");
 
-    expect(await rejectionWithin(opening, 1_000)).toBe(refusal);
+    expect(await rejectionWithin(opening, 1_000)).toMatchObject(
+      SIGNALING_ENDED,
+    );
     expect(record.sent).not.toContain(RELAY_START);
     expect(record.closes).toEqual([1000]);
   },

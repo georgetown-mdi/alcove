@@ -365,8 +365,23 @@ function signalingSocketOf(peer: Peer): WebSocket {
   return socket as WebSocket;
 }
 
+/** Every own property value of `error`, as text. */
+function ownText(error: unknown): string {
+  const record = error as Record<string, unknown>;
+  return Object.getOwnPropertyNames(record)
+    .map((key) => String(record[key]))
+    .join("\n");
+}
+
+/** How many listeners the wait attaches to its peer, by event. */
+function waitListenerCounts(peer: Peer): Array<number> {
+  return (["connection", "error", "disconnected"] as const).map((event) =>
+    peer.listenerCount(event),
+  );
+}
+
 test(
-  "the coordination server's socket dropping ends the inviter's wait with PeerJS's error, as a path failure",
+  "the coordination server's socket dropping ends the inviter's wait with a fixed failure, as a path failure",
   { timeout: 30_000 },
   async () => {
     const peer = await listenOnTestBroker(generateSharedSecret());
@@ -378,10 +393,15 @@ test(
       });
       signalingSocketOf(peer).close();
 
-      await expect(waiting).rejects.toMatchObject({
-        type: "network",
-        message: "Lost connection to server.",
+      const rejection = await waiting.catch((error: unknown) => error);
+      expect(rejection).toMatchObject({
+        name: "ConnectionError",
+        kind: "transport",
+        message:
+          "the connection to the coordination server failed while waiting " +
+          "for the other party to connect",
       });
+      expect(ownText(rejection)).not.toContain("Lost connection");
       expect(pathFailures).toEqual(["signaling-unreachable"]);
     } finally {
       peer.destroy();
@@ -389,39 +409,49 @@ test(
   },
 );
 
+// The last two are malformed: PeerJS copies the frame's `msg` object onto its
+// error, so its message is not a string.
 test.each([
   {
     refusal: "an ERROR message",
     frame: '{"type":"ERROR","payload":{"msg":"the server refused"}}',
-    type: "server-error",
-    message: "the server refused",
+    serverText: "the server refused",
   },
   {
     refusal: "ID-TAKEN",
     frame: '{"type":"ID-TAKEN"}',
-    type: "unavailable-id",
-    message: 'ID "[redacted-peer-id]" is taken',
+    serverText: "is taken",
   },
   {
     refusal: "INVALID-KEY",
     frame: '{"type":"INVALID-KEY"}',
-    type: "invalid-key",
-    message: 'API KEY "peerjs" is invalid',
+    serverText: "is invalid",
   },
   {
     refusal: "a frame over the signaling bound",
     frame: "x".repeat(MAX_SIGNALING_FRAME_BYTES + 1),
-    type: "server-error",
-    message: `the coordination server sent a frame larger than the ${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
+    serverText: "larger than the",
+  },
+  {
+    refusal: "an ERROR message whose message is an object",
+    frame:
+      '{"type":"ERROR","payload":{"msg":{"message":{"said":"the server refused"}}}}',
+    serverText: "the server refused",
+  },
+  {
+    refusal: "an ERROR message whose message is a number",
+    frame: '{"type":"ERROR","payload":{"msg":{"message":4040404}}}',
+    serverText: "4040404",
   },
 ])(
-  "a refusal from the coordination server ($refusal) ends the inviter's wait with PeerJS's error, ids redacted, as no path failure",
+  "a refusal from the coordination server ($refusal) ends the inviter's wait with a fixed failure holding none of its text, as no path failure",
   { timeout: 30_000 },
-  async ({ frame, type, message }) => {
+  async ({ frame, serverText }) => {
     const secret = generateSharedSecret();
     const inviterId = await deriveRendezvousPeerId(secret, "inviter");
     const peer = await listenOnTestBroker(secret);
     try {
+      const listenersBefore = waitListenerCounts(peer);
       const pathFailures: Array<WebRtcPathFailure> = [];
       const waiting = waitForIncomingConnection(peer, {
         timeoutMs: 20_000,
@@ -432,9 +462,17 @@ test.each([
       );
 
       const rejection = await waiting.catch((error: unknown) => error);
-      expect(rejection).toMatchObject({ type, message });
-      expect((rejection as Error).stack ?? "").not.toContain(inviterId);
+      expect(rejection).toMatchObject({
+        name: "ConnectionError",
+        kind: "transport",
+        message:
+          "the connection to the coordination server ended while waiting " +
+          "for the other party to connect",
+      });
+      expect(ownText(rejection)).not.toContain(inviterId);
+      expect(ownText(rejection)).not.toContain(serverText);
       expect(pathFailures).toEqual([]);
+      expect(waitListenerCounts(peer)).toEqual(listenersBefore);
     } finally {
       peer.destroy();
     }

@@ -1,4 +1,5 @@
-import { redactRendezvousIds } from "./peerLogging";
+import { ConnectionError } from "@alcove/core";
+
 import { watchIceGathering } from "./iceGathering";
 
 import type { DataConnection } from "peerjs";
@@ -61,15 +62,27 @@ export function signalingSocketFailed(err: unknown): boolean {
   );
 }
 
+/** What the inviter's wait fails with when the coordination server's socket
+ * failed or closed ({@link signalingSocketFailed}). */
+const SIGNALING_FAILED_DURING_WAIT =
+  "the connection to the coordination server failed while waiting for the " +
+  "other party to connect";
+
+/** What the inviter's wait fails with when the coordination server refused
+ * the peer, or the peer left it with no error before. */
+const SIGNALING_ENDED_DURING_WAIT =
+  "the connection to the coordination server ended while waiting for the " +
+  "other party to connect";
+
 /**
  * Resolves with the first incoming {@link DataConnection} on `peer`, or
- * rejects with a {@link PartnerNoShowError} at the deadline, with the error
- * the peer reported on leaving the coordination server, or with a plain abort
- * error if `signal` aborts first. Every rejection has the rendezvous ids
- * recorded for `peer` redacted (`recordRendezvousIds`, `./peerLogging.ts`). A
- * settle-once guard, independent of any caller's teardown, runs cleanup
- * exactly once for whichever of {connection, coordination server left,
- * timeout, abort} wins, even when two fire in the same tick.
+ * rejects with a {@link PartnerNoShowError} at the deadline, with a
+ * `transport`-kind {@link ConnectionError} of fixed text when the peer leaves
+ * the coordination server, or with a plain abort error if `signal` aborts
+ * first. No rejection holds text or fields from a PeerJS error. A settle-once
+ * guard, independent of any caller's teardown, runs cleanup exactly once for
+ * whichever of {connection, coordination server left, timeout, abort} wins,
+ * even when two fire in the same tick.
  *
  * @param peer     The local PeerJS peer awaiting an inbound connection.
  * @param options  `timeoutMs` overrides the {@link DEFAULT_PEER_WAIT_TIMEOUT_MS}
@@ -99,8 +112,6 @@ export function waitForIncomingConnection(
     new Date(Date.now() + (options?.timeoutMs ?? DEFAULT_PEER_WAIT_TIMEOUT_MS));
   const timeoutMs = Math.max(0, waitedUntil.getTime() - Date.now());
   return new Promise<DataConnection>((resolve, reject) => {
-    // PeerJS puts a derived id in some of its errors (`ID "<id>" is taken`).
-    const fail = (err: unknown) => reject(redactRendezvousIds(peer, err));
     let settled = false;
     const settle = (action: () => void) => {
       if (settled) return;
@@ -118,9 +129,9 @@ export function waitForIncomingConnection(
       watchIceGathering(conn);
       settle(() => resolve(conn));
     };
-    // The wait ends with the last error the peer emitted before
-    // `disconnected`: PeerJS's account of why it left the coordination server
-    // (test/browser/relayFallback.test.ts drives the real one).
+    // Only the type of the last error the peer emitted before `disconnected`
+    // is read: PeerJS builds a server-error from the server's ERROR frame,
+    // fields included (test/browser/relayFallback.test.ts drives the real one).
     let lastPeerError: unknown;
     const onPeerError = (err: unknown) => {
       lastPeerError = err;
@@ -129,28 +140,27 @@ export function waitForIncomingConnection(
     // partner's connection can reach this wait after it. Only a socket that
     // failed or closed is a path failure; a refusal from the server, or a
     // disconnect no error explains, fails the run
-    // (docs/spec/WEBRTC_TRANSPORT.md, What sends the start).
+    // (docs/spec/WEBRTC_TRANSPORT.md, What sends the start). The failure is
+    // built before `settle`, which disarms the deadline and the abort.
     const onDisconnected = () => {
-      if (signalingSocketFailed(lastPeerError))
-        onPathFailed?.("signaling-unreachable");
-      settle(() =>
-        fail(
-          lastPeerError ??
-            new Error(
-              "the connection to the coordination server closed while " +
-                "waiting for the other party to connect",
-            ),
-        ),
+      const socketFailed = signalingSocketFailed(lastPeerError);
+      const failure = new ConnectionError(
+        socketFailed
+          ? SIGNALING_FAILED_DURING_WAIT
+          : SIGNALING_ENDED_DURING_WAIT,
+        "transport",
       );
+      if (socketFailed) onPathFailed?.("signaling-unreachable");
+      settle(() => reject(failure));
     };
     const onAbort = () =>
       settle(() =>
-        fail(new Error("waiting for the other party to connect was aborted")),
+        reject(new Error("waiting for the other party to connect was aborted")),
       );
     const timer = setTimeout(
       () =>
         settle(() =>
-          fail(
+          reject(
             new PartnerNoShowError(
               "timed out waiting for the other party to connect",
               waitedUntil,

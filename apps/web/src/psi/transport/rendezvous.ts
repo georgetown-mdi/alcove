@@ -25,7 +25,6 @@ import {
 } from "./signalingAddress";
 import {
   createRedactingLogFunction,
-  recordRendezvousIds,
   redactErrorIds,
   resolvePeerDebugLevel,
 } from "./peerLogging";
@@ -425,7 +424,6 @@ export async function listenAsInviter(
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
   recordRelaysLeftOut(peer, options?.relaysLeftOut ?? []);
-  recordRendezvousIds(peer, [inviterId, acceptorId]);
   try {
     await waitForPeerOpen(peer, {
       signal,
