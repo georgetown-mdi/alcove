@@ -52,13 +52,15 @@ tofu import cloudflare_zone_setting.always_use_https '<zone-id>/always_use_https
 tofu import cloudflare_zone_setting.hsts '<zone-id>/security_header'
 ```
 
-The Pages project and its domains are imported the same way, under the same names; these import ids are not measured:
+The Pages project and its domains are imported the same way, under the same names, with these import ids, measured on the web application's project on 2026-10-22:
 
 ```sh
 tofu import cloudflare_pages_project.hosted '<account-id>/<project-name>'
 tofu import cloudflare_pages_domain.production '<account-id>/<project-name>/<production public name>'
 tofu import cloudflare_pages_domain.staging '<account-id>/<project-name>/<staging public name>'
 ```
+
+Renaming a Pages project is a dashboard step, not a change to `pages_project_name` alone: the provider replaces a project whose `name` changes, which `prevent_destroy` refuses. Rename the project in the dashboard, set the deploy variable that names it on both environments before any deploy runs, then `tofu state rm` the project and its domains and import them again under the new name with the ids above, and update `terraform.tfvars`; the next plan has no changes. The rename keeps the project's `pages.dev` address, so the records pointing at it need no change: the web application's project, `alcove-app`, answers at `alcove-link.pages.dev`, the address it was created with.
 
 A record id is the `id` of `GET https://api.cloudflare.com/client/v4/zones/<zone-id>/dns_records?name=<public name>`.
 
