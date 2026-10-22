@@ -432,8 +432,11 @@ export default defineConfig((configEnv) => {
             ],
             name: "browser",
             // The same broker and dev-server setup as the integration project,
-            // so a cold `test:browser` is green.
-            globalSetup: ["./test/devServer/globalSetup.ts"],
+            // so a cold `test:browser` is green, and a WebSocket relay.
+            globalSetup: [
+              "./test/devServer/globalSetup.ts",
+              "./test/devServer/websocketRelay.ts",
+            ],
             // A suite's tests share one page, whose session storage would otherwise
             // carry an invitation one test minted into the next test's file step.
             setupFiles: ["./test/browser/clearSessionStorage.ts"],

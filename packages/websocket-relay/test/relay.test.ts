@@ -73,6 +73,26 @@ describe("pairing", () => {
     expect((await inviter.receivedCount(3))[2]).toEqual({ binary: toInviter });
   });
 
+  it("shows a test observer each forwarded message, its pairing's key and its sender", async () => {
+    const seen: Array<[string, string, Buffer]> = [];
+    const { url } = await relay({
+      testing: {
+        observer: {
+          forwarded: (key, from, data) => seen.push([key, from, data]),
+        },
+      },
+    });
+    const { inviter, acceptor } = await forwardingParties(url);
+    inviter.send(Buffer.from([1, 2]));
+    await acceptor.receivedCount(3);
+    acceptor.send(Buffer.from([3]));
+    await inviter.receivedCount(3);
+    expect(seen).toEqual([
+      [RELAY_KEY, "inviter", Buffer.from([1, 2])],
+      [RELAY_KEY, "acceptor", Buffer.from([3])],
+    ]);
+  });
+
   it("tells a late partner of a start sent before it arrived", async () => {
     const { url } = await relay();
     const inviter = await connect(url);

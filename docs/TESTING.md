@@ -390,6 +390,12 @@ forwards to whichever broker started with it.
 A dev server the setup starts that exits before answering, a taken port
 included, fails the run at once with its last lines of output.
 
+The browser project's second setup (`apps/web/test/devServer/websocketRelay.ts`)
+runs the WebSocket relay (`packages/websocket-relay`) in the test runner's
+process on a loopback port, for the relay fallback suite. That suite dials it over `ws`
+through the relay client's socket factory, enrolls each exchange's key through
+a test route beside it, and reads back what the relay forwarded through another.
+
 ```sh
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server
 ```

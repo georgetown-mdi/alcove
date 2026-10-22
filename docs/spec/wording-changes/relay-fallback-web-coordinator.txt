@@ -8,3 +8,6 @@
 - - -> A browser does not say why a WebSocket failed, so a coordination server certificate it refused is one of these and leaves the exchange to the relays.
 - - -> A browser run states the path that carries the exchange in a notice on the run, and logs the rest of the lines above, each relay's refusal included, to the browser's console.
 - Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a CLI run that lists WebSocket relays, its first expiry on any attempt also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay)) -> Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a run that lists WebSocket relays, its first expiry, on any attempt of a CLI run, also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay))
+# The browser suite's fallback cases measure what a party with no candidate
+# meets in Chromium.
+- - -> Chromium reports no ICE failure for a party that gathered no candidate, so such a party's start waits for the channel-open bound.

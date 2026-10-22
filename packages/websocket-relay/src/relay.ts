@@ -45,6 +45,7 @@ export type RelayHoldReason = "backpressure" | "rate";
 export interface RelayObserver {
   held?(role: RendezvousRole, reason: RelayHoldReason): void;
   released?(role: RendezvousRole, reason: RelayHoldReason): void;
+  forwarded?(key: string, from: RendezvousRole, data: Buffer): void;
 }
 
 /** What {@link attachWebSocketRelay} needs. */
@@ -436,6 +437,8 @@ export function attachWebSocketRelay(
     const partner = partnerOf(party);
     if (pairing.forwarding && partner !== undefined) {
       if (!isBinary) return refuse(party, RelayCloseCode.unexpectedMessage);
+      if (party.role !== undefined)
+        observer.forwarded?.(pairing.key, party.role, data);
       return forward(party, partner, data);
     }
     if (isBinary || party.started) {
