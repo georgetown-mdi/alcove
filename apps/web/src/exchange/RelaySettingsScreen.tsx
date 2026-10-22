@@ -55,13 +55,23 @@ export const RELAY_OPERATOR_DISCLOSURE =
 export const DEFAULT_RELAY_SWITCH_DESCRIPTION =
   "When it is on, exchanges that run in your browser on this site use the " +
   "site's relay server, unless an exchange's allowed relays leave it out, " +
-  "and invitations you create name it. When it is off, an exchange uses it " +
+  "and invitations you create name it, so your partner's exchange can use " +
+  "it too. When it is off, an exchange uses it " +
   `only where an invitation you accept names it. ${RELAY_OPERATOR_DISCLOSURE}`;
 
 /** The switch's error where this browser did not store its new state. */
 export const DEFAULT_RELAY_SWITCH_NOT_SAVED =
   "This browser did not save the setting. Check that site storage is " +
   "allowed for this site, then try again.";
+
+/** What the page reports where this browser has no relay of its own set and
+ * this site's relay server is not in use. */
+export const NO_RELAY_SET = "No relay is set. Exchanges connect without one.";
+
+/** What the page reports where this browser has no relay of its own set and
+ * this site's relay server is in use. */
+export const NO_OWN_RELAY_SITE_RELAY_IN_USE =
+  "No relay of your own is set. Exchanges use this site's relay server.";
 
 /** The relay settings page's opening paragraph: when a relay is needed, and
  * which party sets it up. */
@@ -175,6 +185,7 @@ export function RelaySettingsScreen({
     attempted && !websocketEntry.ok ? websocketEntry.message : undefined;
   const unsavedTurnChanges =
     !turnLines.ok || turnLines.urls.join("\n") !== savedTurn.join("\n");
+  const siteRelayInUse = defaultRelay() !== undefined;
 
   function refreshTestTargets(turn: ReadonlyArray<string>) {
     setSavedTurn(turn);
@@ -253,15 +264,21 @@ export function RelaySettingsScreen({
           label={DEFAULT_RELAY_SWITCH_LABEL}
           description={DEFAULT_RELAY_SWITCH_DESCRIPTION}
           checked={switchOn}
-          error={switchNotSaved ? DEFAULT_RELAY_SWITCH_NOT_SAVED : undefined}
+          error={
+            switchNotSaved ? (
+              <span role="alert">{DEFAULT_RELAY_SWITCH_NOT_SAVED}</span>
+            ) : undefined
+          }
           onChange={(event) => switchDefaultRelay(event.currentTarget.checked)}
         />
       )}
 
       {initial.kind === "unreadable" && status.kind === "idle" && (
         <Alert color="yellow" title="The saved relay could not be read">
-          Exchanges in this browser use no relay until it is saved again. Enter
-          the relay&apos;s addresses and save.
+          {siteRelayInUse
+            ? NO_OWN_RELAY_SITE_RELAY_IN_USE
+            : "Exchanges in this browser use no relay until it is saved again."}{" "}
+          Enter the relay&apos;s addresses and save.
         </Alert>
       )}
 
@@ -318,7 +335,7 @@ export function RelaySettingsScreen({
           {status.kind === "saved" &&
             "Saved. Exchanges started from now on use this relay."}
           {status.kind === "removed" &&
-            "No relay is set. Exchanges connect without one."}
+            (siteRelayInUse ? NO_OWN_RELAY_SITE_RELAY_IN_USE : NO_RELAY_SET)}
           {status.kind === "failed" &&
             "This browser did not save the setting. Check that site storage is allowed for this site, then save again."}
         </p>

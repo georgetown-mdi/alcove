@@ -1,9 +1,12 @@
 import { ConnectionError } from "@alcove/core";
 
 import { ALLOWED_RELAYS_REMEDY } from "./relayRestriction";
-import { DEFAULT_RELAY_OFF_REMEDY } from "./defaultRelaySwitch";
 
-import type { DataConnection } from "peerjs";
+import type {
+  BaseConnectionErrorType,
+  DataConnection,
+  PeerErrorType,
+} from "peerjs";
 
 /**
  * What the browser reported while gathering ICE candidates for a data
@@ -60,10 +63,25 @@ const records = new WeakMap<DataConnection, IceGatheringRecord>();
 
 const relaysLeftOutByPeer = new WeakMap<object, RunRelaysLeftOut>();
 
+const defaultRelayOffFailures = new WeakSet<Error>();
+
+/**
+ * The PeerJS types of a peer-level error that reports a peer connection
+ * failing to open, where a relay may help. Every other type is a failure of
+ * the coordination server, its socket or the network to it. Spelled as
+ * literals: peerjs ships CommonJS, so Node's ESM loader cannot link a named
+ * import of the enums during a server render.
+ */
+const PEER_CONNECTION_ERROR_TYPES: ReadonlySet<string> = new Set([
+  "webrtc" satisfies `${PeerErrorType.WebRTC}`,
+  "negotiation-failed" satisfies `${BaseConnectionErrorType.NegotiationFailed}`,
+]);
+
 /**
  * Record the TURN urls the allowed relays left out of the run `peer` serves,
  * and whether it left out the default relay because it is switched off, so a
- * connection of it that does not open names them.
+ * connection of it that does not open names the urls, and is
+ * {@link failedWithDefaultRelayOff} where the default relay was left out.
  */
 export function recordRelaysLeftOut(
   peer: object,
@@ -203,9 +221,7 @@ const RELAY_REMEDY =
  * 40 seconds to report an unanswered UDP relay, past the open timeout.
  *
  * Where the allowed relays left TURN urls out of the run, the message names
- * them and {@link ALLOWED_RELAYS_REMEDY} after the relay failure, and where
- * the run left out the default relay because it is switched off,
- * {@link DEFAULT_RELAY_OFF_REMEDY}.
+ * them and {@link ALLOWED_RELAYS_REMEDY} after the relay failure.
  *
  * The url and error text are raw here and escaped where the failure is shown.
  *
@@ -224,18 +240,30 @@ export function relayFailureMessage(
 
 function relaysLeftOutNote({
   relaysLeftOut,
-  defaultRelayOff,
 }: RunRelaysLeftOut): string | undefined {
-  const notes = [
-    ...(relaysLeftOut.length > 0
-      ? [
-          `Your allowed relays left out ${listNamed([...new Set(relaysLeftOut)])}. ` +
-            ALLOWED_RELAYS_REMEDY,
-        ]
-      : []),
-    ...(defaultRelayOff ? [DEFAULT_RELAY_OFF_REMEDY] : []),
-  ];
-  return notes.length === 0 ? undefined : notes.join(" ");
+  return relaysLeftOut.length === 0
+    ? undefined
+    : `Your allowed relays left out ${listNamed([...new Set(relaysLeftOut)])}. ` +
+        ALLOWED_RELAYS_REMEDY;
+}
+
+/**
+ * Whether `error` is a failure to open a peer connection in a run that left
+ * out the build's default relay because it is switched off in this browser,
+ * so that turning it on may let the exchange connect. Its text does not say
+ * so: the failure's alert states `DEFAULT_RELAY_OFF_REMEDY`
+ * (./defaultRelaySwitch.ts) in its own message.
+ */
+export function failedWithDefaultRelayOff(error: unknown): boolean {
+  return error instanceof Error && defaultRelayOffFailures.has(error);
+}
+
+function markedIfDefaultRelayOff(
+  failure: Error,
+  { defaultRelayOff }: RunRelaysLeftOut,
+): Error {
+  if (defaultRelayOff) defaultRelayOffFailures.add(failure);
+  return failure;
 }
 
 const NOTHING_LEFT_OUT: RunRelaysLeftOut = {
@@ -300,9 +328,9 @@ function gatheringFailureMessage(
  * {@link ConnectionError} naming the failed relay where
  * {@link relayFailureMessage} finds one; else `failure` with the relays the
  * allowed relays left out and {@link ALLOWED_RELAYS_REMEDY} added to its
- * message where the run left any out, and {@link DEFAULT_RELAY_OFF_REMEDY}
- * where it left out the default relay switched off, whether or not `conn`
- * was watched; else `failure` unchanged.
+ * message where the run left any out, whether or not `conn` was watched; else
+ * `failure` unchanged. Either is {@link failedWithDefaultRelayOff} where the
+ * run left out the default relay switched off.
  * `timedOut` says the open ran out its time rather than failing early.
  * `failure` is not kept as a cause: a PeerJS negotiation error names the
  * remote rendezvous id, and the callers redact only the error they throw.
@@ -313,19 +341,29 @@ export function withIceServerFailure(
   timedOut: boolean,
 ): Error {
   const record = records.get(conn);
+  const leftOut = record ?? relaysLeftOutOf(conn);
   if (record !== undefined) {
     const message = relayFailureMessage(record, timedOut);
-    if (message !== undefined) return new ConnectionError(message, "transport");
+    if (message !== undefined)
+      return markedIfDefaultRelayOff(
+        new ConnectionError(message, "transport"),
+        leftOut,
+      );
   }
-  return withRelaysLeftOut(record ?? relaysLeftOutOf(conn), failure);
+  return withRelaysLeftOut(leftOut, failure);
 }
 
 /**
- * `failure`, from the run `peer` serves when no connection of it is open,
- * with the notes {@link withIceServerFailure} adds for what the run left out
- * of its relays; else `failure` unchanged. Its class and kind are kept.
+ * `failure`, a PeerJS peer-level error from the run `peer` serves while no
+ * connection of it is open, treated as {@link withIceServerFailure} treats a
+ * connection's failure where its type reports a peer connection failing to
+ * open; else, a failure of the coordination server, unchanged. Its class and
+ * kind are kept.
  */
 export function withPeerRelaysLeftOut(peer: object, failure: Error): Error {
+  const { type } = failure as { type?: unknown };
+  if (typeof type !== "string" || !PEER_CONNECTION_ERROR_TYPES.has(type))
+    return failure;
   return withRelaysLeftOut(
     relaysLeftOutByPeer.get(peer) ?? NOTHING_LEFT_OUT,
     failure,
@@ -334,5 +372,8 @@ export function withPeerRelaysLeftOut(peer: object, failure: Error): Error {
 
 function withRelaysLeftOut(leftOut: RunRelaysLeftOut, failure: Error): Error {
   const note = relaysLeftOutNote(leftOut);
-  return note === undefined ? failure : withNoteAdded(failure, note);
+  return markedIfDefaultRelayOff(
+    note === undefined ? failure : withNoteAdded(failure, note),
+    leftOut,
+  );
 }

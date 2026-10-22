@@ -386,7 +386,7 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *                      registration; `relay` is the relay this run gathers
  *                      against, none when absent; `relaysLeftOut` are the TURN
  *                      urls the allowed relays left out, named by a failed
- *                      open, as is the default relay's switch where
+ *                      open, which is `failedWithDefaultRelayOff` where
  *                      `defaultRelayOff`; `peerFactory` injects the
  *                      {@link Peer} constructor for testing;
  *                      `registrationTimeoutMs` overrides

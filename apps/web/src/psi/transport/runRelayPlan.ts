@@ -38,8 +38,9 @@ export interface RunRelayPlan {
    * relays leave out.
    */
   websocketRelays: ReadonlyArray<WebSocketRelayForRun>;
-  /** Present where the build offers its default relay switched off and the
-   * run does not list it, so a failed open points at the switch. */
+  /** Present where the build offers its default relay switched off, the run
+   * does not list it, and `allowedRelays` keep its TURN url, so a failed open
+   * points at the switch. */
   defaultRelayOff?: true;
 }
 
@@ -98,7 +99,7 @@ export async function relayPlanForRun(
   const site =
     forRun === undefined
       ? defaultRelay.setting?.()
-      : "relay" in forRun
+      : forRun.kind === "in-use" || forRun.kind === "invited"
         ? forRun.relay
         : undefined;
   const listed = [
@@ -132,7 +133,10 @@ export async function relayPlanForRun(
     ...(relay !== undefined && { relay }),
     relaysLeftOut,
     websocketRelays,
-    ...(forRun?.kind === "off" && { defaultRelayOff: true as const }),
+    ...(forRun?.kind === "off" &&
+      turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) && {
+        defaultRelayOff: true as const,
+      }),
   };
 }
 

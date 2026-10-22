@@ -15,14 +15,17 @@ const ON = "1";
 export const DEFAULT_RELAY_SWITCH_LABEL = "Use this site's relay server";
 
 /**
- * What a run that did not connect adds to its failure where the build offers
- * its default relay switched off and the run did not list it.
+ * What the failure alert of a run whose connection did not open adds to its
+ * own message where the build offers its default relay switched off, the run
+ * did not list it, and the run's allowed relays keep it
+ * (`failedWithDefaultRelayOff` in ./iceGathering.ts).
  */
 export const DEFAULT_RELAY_OFF_REMEDY =
-  "This site's relay server is off in this browser. Where a network blocks " +
+  "This site's relay server is off in this browser. If a network blocks " +
   "direct connections, or blocks connections to TURN relays, turning on " +
-  `"${DEFAULT_RELAY_SWITCH_LABEL}" on the Relay server page (relay settings ` +
-  "on the start page) may let the exchange connect.";
+  `"${DEFAULT_RELAY_SWITCH_LABEL}" on the Relay server page (the relay ` +
+  "settings link on the start page) and trying again may let the exchange " +
+  "connect.";
 
 function storage(): Storage | undefined {
   try {

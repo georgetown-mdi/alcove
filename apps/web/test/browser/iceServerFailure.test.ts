@@ -15,6 +15,8 @@ import {
   DEFAULT_RELAY_SWITCH_LABEL,
 } from "@psi/transport/defaultRelaySwitch";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
+import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
+import { failureFor } from "@exchange/useInviterExchange";
 import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 
@@ -26,7 +28,8 @@ import type { PeerOptions } from "peerjs";
  * A browser exchange whose only relay cannot be reached, in real Chromium over
  * the standalone broker: both seats fail naming the relay url and the error the
  * browser reported for it, rather than a bare open timeout. A seat with no
- * relay, the site's relay switched off, fails naming the switch instead.
+ * relay, the site's relay switched off, fails with an alert whose own message
+ * names the switch instead.
  *
  * Both peers run on one machine, where a host candidate would connect them
  * whatever the relay does, so each is held to relay candidates alone -- the
@@ -159,10 +162,20 @@ test(
         },
       ).catch((err: unknown) => err);
       expect(failure).toBeInstanceOf(Error);
-      const message = (failure as Error).message;
-      expect(message).toContain(DEFAULT_RELAY_OFF_REMEDY);
-      expect(message).toContain(`"${DEFAULT_RELAY_SWITCH_LABEL}"`);
-      expect(message).toContain("Relay server page (relay settings");
+      expect(failedWithDefaultRelayOff(failure)).toBe(true);
+      expect((failure as Error).message).not.toContain(
+        DEFAULT_RELAY_OFF_REMEDY,
+      );
+      const alert = failureFor(
+        "exchange",
+        failure,
+        undefined,
+        "browser",
+        "acceptor",
+      );
+      expect(alert.message).toContain(DEFAULT_RELAY_OFF_REMEDY);
+      expect(alert.message).toContain(`"${DEFAULT_RELAY_SWITCH_LABEL}"`);
+      expect(alert.reportedCause).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
     } finally {
       inviterPeer.destroy();
     }

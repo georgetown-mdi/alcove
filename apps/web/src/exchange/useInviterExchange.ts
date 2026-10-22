@@ -52,10 +52,12 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
+import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
+import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
 import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
@@ -875,7 +877,10 @@ function failureContentFor(
           "finished. Check that the shared folder is in place and syncing, " +
           "then try again."
         : "The exchange could not be completed - usually a temporary " +
-          "connection problem rather than an issue with your data.",
+          "connection problem rather than an issue with your data." +
+          (failedWithDefaultRelayOff(error)
+            ? ` ${DEFAULT_RELAY_OFF_REMEDY}`
+            : ""),
     // A rejection that is not an `Error` has no chain to attribute, and its
     // `String()` form displays as `undefined` or `[object Object]` under a label
     // promising the exchange's own account of the failure. The fixed copy above

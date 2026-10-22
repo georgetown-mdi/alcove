@@ -84,7 +84,7 @@ describe("defaultRelayForRun", () => {
     for (const invitation of [{ turn: [PARTNER_URL] }, undefined])
       expect(
         defaultRelayForRun(invitation, () => OPT_IN, switched(false)),
-      ).toEqual({ kind: "off" });
+      ).toEqual({ kind: "off", relay: SITE });
   });
 
   test("turned on, or on in the build, it is in use whatever the invitation names", () => {
@@ -159,6 +159,19 @@ describe("relayPlanForRun on a build offering the relay switched off", () => {
     );
     expect(enroll).toHaveBeenCalledOnce();
     expect(result.relay?.turn).toEqual([PARTNER_URL, SITE.turnUrl]);
+    expect(result).not.toHaveProperty("defaultRelayOff");
+  });
+
+  test("off, allowed relays that keep the relay's TURN url still say it is off", async () => {
+    const { result } = await plan(undefined, false, ["site.example.com"]);
+    expect(result.defaultRelayOff).toBe(true);
+  });
+
+  test("off, allowed relays that leave out the relay's TURN url do not say it is off", async () => {
+    const { result, enroll } = await plan(undefined, false, [
+      "partner.example.net",
+    ]);
+    expect(enroll).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("defaultRelayOff");
   });
 

@@ -68,11 +68,11 @@ export function namesDefaultRelay(
  * it. `invited`: the build offers it switched off, this browser has not
  * turned it on, and the invitation the run accepted names it, so the run uses
  * it as one in use. `off`: the build offers it switched off and the run does
- * not use it. `none`: the build names none.
+ * not use it; `relay` is the one left out. `none`: the build names none.
  */
 export type DefaultRelayForRun =
-  | { kind: "in-use" | "invited"; relay: DefaultRelaySetting }
-  | { kind: "off" | "none" };
+  | { kind: "in-use" | "invited" | "off"; relay: DefaultRelaySetting }
+  | { kind: "none" };
 
 /** The {@link DefaultRelayForRun} of a run whose accepted invitation names
  * `invitationRelay`, which an inviter's own run passes as `undefined`. */
@@ -85,9 +85,10 @@ export function defaultRelayForRun(
   if (offer.kind === "none") return { kind: "none" };
   const inUse = defaultRelayInUse(() => offer, switchedOn);
   if (inUse !== undefined) return { kind: "in-use", relay: inUse };
-  return namesDefaultRelay(invitationRelay, offer.relay)
-    ? { kind: "invited", relay: offer.relay }
-    : { kind: "off" };
+  return {
+    kind: namesDefaultRelay(invitationRelay, offer.relay) ? "invited" : "off",
+    relay: offer.relay,
+  };
 }
 
 /**

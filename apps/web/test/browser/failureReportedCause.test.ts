@@ -8,6 +8,11 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import { FailureAlert, REPORTED_CAUSE_LABEL } from "@exchange/RunSurface";
+import {
+  recordRelaysLeftOut,
+  withPeerRelaysLeftOut,
+} from "@psi/transport/iceGathering";
+import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { RelayedTerminalError } from "@psi/jobClient/serverJobExchangeDriver";
 import { failureFor } from "@exchange/useInviterExchange";
 
@@ -149,4 +154,34 @@ test("a long report scrolls under a label that stays put", async () => {
   expect(getComputedStyle(report).overflowY).toBe("auto");
   expect(report.scrollHeight).toBeGreaterThan(report.clientHeight);
   expect(report.contains(label)).toBe(false);
+});
+
+test("a connection that did not open with this site's relay switched off names the switch in the alert's own message", async () => {
+  const peer = {};
+  recordRelaysLeftOut(peer, [], true);
+  const error = withPeerRelaysLeftOut(
+    peer,
+    Object.assign(new Error("Negotiation of connection failed."), {
+      type: "webrtc",
+    }),
+  );
+  const failure = failureFor("exchange", error, undefined, "browser");
+  app.render(createElement(FailureAlert, { failure }));
+  const { message, report } = await vi.waitFor(() => {
+    const paragraphs = [...app.container.querySelectorAll("p")];
+    const label = paragraphs.find(
+      (node) => node.textContent === REPORTED_CAUSE_LABEL,
+    );
+    const shown = [...app.container.querySelectorAll("span")].find(
+      (node) => node.textContent === failure.message,
+    );
+    const reported = label?.nextElementSibling;
+    if (shown === undefined || !(reported instanceof HTMLElement))
+      throw new Error("the failure alert is not mounted");
+    return { message: shown, report: reported };
+  });
+
+  expect(message.textContent).toContain(DEFAULT_RELAY_OFF_REMEDY);
+  expect(message.contains(report)).toBe(false);
+  expect(report.textContent).toBe("Negotiation of connection failed.");
 });
