@@ -416,7 +416,7 @@ describe("a saved signaling address that fails validation", () => {
     ["acceptor", "Ask your partner for a new invitation and accept it."],
     [
       "inviter",
-      "Re-invite your partner with the same terms to name this browser's current coordination server.",
+      "Re-invite your partner with the same terms to name this browser's current coordination server. If relay settings cannot read your coordination server, set it again or clear it there first.",
     ],
   ] as const)("an %s's refusal ends on its own remedy", (side, remedy) => {
     expect(() =>

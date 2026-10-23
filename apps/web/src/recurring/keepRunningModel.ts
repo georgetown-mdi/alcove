@@ -176,7 +176,7 @@ const SIGNALING_LINES: Record<SignalingReadiness, Omit<ReadinessLine, "id">> = {
   inviterAddressRefused: {
     ok: false,
     message:
-      "The coordination server address this exchange saved cannot be used, so the next run will stop before connecting. Re-invite your partner to name this browser's current coordination server.",
+      "The coordination server address this exchange saved cannot be used, so the next run will stop before connecting. Re-invite your partner to name this browser's current coordination server. If relay settings cannot read your coordination server, set it again or clear it there first.",
   },
   acceptorAddressRefused: {
     ok: false,

@@ -322,6 +322,14 @@ describe("RelaySettingsScreen: the coordination server", () => {
         "that uses it, and none of your data. Invitations you create name " +
         "this site's coordination server unless you set your own here.",
     );
+    expect(coordinationServerFieldDescription(scheme)).toBe(
+      "Invitations you create from now on name this server, and both your " +
+        "browser and your partner's connect to it. Invitations you already " +
+        "sent, saved exchanges, and invitations you accept keep the server " +
+        "they name, until you re-invite your partner from a saved exchange " +
+        "you created, which then names the server set here. For example: " +
+        `${scheme}://signaling.example.org/api/`,
+    );
     await expect
       .element(page.getByText(COORDINATION_SERVER_INTRO))
       .toBeVisible();

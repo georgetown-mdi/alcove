@@ -28,7 +28,9 @@ export function coordinationServerFieldDescription(
     "Invitations you create from now on name this server, and both your " +
     "browser and your partner's connect to it. Invitations you already " +
     "sent, saved exchanges, and invitations you accept keep the server they " +
-    `name. For example: ${scheme}://signaling.example.org/api/`
+    "name, until you re-invite your partner from a saved exchange you " +
+    "created, which then names the server set here. " +
+    `For example: ${scheme}://signaling.example.org/api/`
   );
 }
 

@@ -315,7 +315,8 @@ const MISSED_FAILURE: ManagedRunFailureAlert = {
     "device: agree a time with your partner over your usual channel, and run " +
     "this exchange again when they are ready. If they were running their side " +
     "at a time you agreed and this keeps happening, re-invite your partner to " +
-    "reconnect; the exchange keeps your terms and only replaces the secret.",
+    "reconnect; the exchange keeps your terms, gets a new secret, and uses " +
+    "the coordination server the new invitation names.",
   recovery: "none",
 };
 
@@ -682,8 +683,8 @@ const STORAGE_FAILURE: ManagedRunFailureAlert = {
   message:
     "The last run connected but could not save its updated secret on this " +
     "device, so you and your partner may now hold different secrets. Re-invite " +
-    "your partner to reconnect; the exchange keeps your terms and only replaces " +
-    "the secret.",
+    "your partner to reconnect; the exchange keeps your terms, gets a new " +
+    "secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
@@ -701,8 +702,8 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailureAlert = {
     "secret on this device, and a run since then did not connect to your " +
     "partner. " +
     "Your partner probably saved a secret this device does not have. " +
-    "Re-invite your partner to reconnect; the exchange keeps your terms and " +
-    "only replaces the secret.",
+    "Re-invite your partner to reconnect; the exchange keeps your terms, gets " +
+    "a new secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
@@ -719,8 +720,8 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
     "This exchange was restored from a backup or key file, or taken back " +
     "from the command line, and no run has succeeded since, so it may be " +
     "one you and your partner have already moved past. Re-invite your " +
-    "partner to reconnect; the exchange keeps your terms and only " +
-    "replaces the secret.",
+    "partner to reconnect; the exchange keeps your terms, gets a new secret, " +
+    "and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
@@ -747,7 +748,8 @@ function savedAddressRefusedFailure(
       (error.side === "acceptor"
         ? "this exchange needs a fresh invitation."
         : "re-invite your partner to name this browser's current " +
-          "coordination server."),
+          "coordination server. If relay settings cannot read your " +
+          "coordination server, set it again or clear it there first."),
     recovery: "reinvite",
   };
 }
@@ -1243,9 +1245,12 @@ interface ManagedReinviteRecoveryCopy {
 const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   lead: "Re-invite your partner.",
   body: [
-    "This keeps your agreed terms and only replaces the secret. The fresh " +
-      "invitation includes a new one-time secret, so send it over your usual " +
-      "trusted channel, exactly as you did the first time.",
+    "This keeps your agreed terms and replaces the secret. The fresh " +
+      "invitation names the coordination server set in relay settings, or " +
+      "this site's where none is set, and this exchange uses that server " +
+      "from then on. The fresh invitation includes a new one-time secret, " +
+      "so send it over your usual trusted channel, exactly as you did the " +
+      "first time.",
   ],
 };
 

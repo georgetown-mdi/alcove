@@ -4,7 +4,8 @@
  * localStorage and so held per origin. With none set, an invitation names the
  * deployment's own server (`ownSignalingAddress` in `./signalingAddress.ts`).
  * An invitation already created, a saved exchange and an accepted invitation
- * keep the server they name, so a change here moves none of them.
+ * keep the server they name, so a change here moves none of them, until a
+ * re-invite from a saved exchange this user created names the server set here.
  */
 
 import { z } from "zod";

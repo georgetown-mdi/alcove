@@ -121,7 +121,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
       `${refusal} ${
         side === "acceptor"
           ? "Ask your partner for a new invitation and accept it."
-          : "Re-invite your partner with the same terms to name this browser's current coordination server."
+          : "Re-invite your partner with the same terms to name this browser's current coordination server. If relay settings cannot read your coordination server, set it again or clear it there first."
       }`,
     );
     this.name = "ManagedSignalingEndpointRefusedError";
