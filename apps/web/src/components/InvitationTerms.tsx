@@ -1,4 +1,4 @@
-import { Fragment, useId, useState } from "react";
+import { useId, useState } from "react";
 
 import {
   Alert,
@@ -62,6 +62,7 @@ import type { ReactNode, Ref } from "react";
 import type {
   ConnectionEndpoint,
   Displayable,
+  InvitationConditionLine,
   InvitationKeySummary,
   LinkageTerms,
 } from "@alcove/core";
@@ -275,6 +276,41 @@ function DeclaredColumnList({ columns }: { columns: Array<string> }) {
         <Text size="sm">{unshownDeclaredNamesLine(unshownCount)}</Text>
       )}
     </>
+  );
+}
+
+/**
+ * One missing-field condition stated once for the keys sharing it: their names,
+ * one per list item, then the statement, which also describes the list.
+ *
+ * One name per item, not a joined string: a key name is partner text and may
+ * contain the separator, so joined text could name a key the condition does
+ * not cover. Keyed by index: a sanitized name is not unique.
+ */
+function MissingFieldConditionBlock({
+  line,
+}: {
+  line: InvitationConditionLine;
+}) {
+  const statementId = useId();
+  return (
+    <Stack gap={2}>
+      <List
+        size="sm"
+        withPadding
+        listStyleType="circle"
+        aria-describedby={statementId}
+      >
+        {line.keyNames.map((name, index) => (
+          <List.Item key={index} fw={500}>
+            {name}
+          </List.Item>
+        ))}
+      </List>
+      <Text id={statementId} size="sm">
+        {line.statement}
+      </Text>
+    </Stack>
   );
 }
 
@@ -1364,21 +1400,10 @@ export function InvitationTerms({
             </LessCertainInfo>
           )}
           {/* Outside the collapse as well: what a match through a key with a
-              missing-field condition discloses, one line per condition naming
-              its keys. Keyed by index: the lines and their names are fixed for
-              a given terms document. */}
+              missing-field condition discloses, once per condition. Keyed by
+              index: the conditions are fixed for a given terms document. */}
           {summary.conditionLines.map((line, index) => (
-            <Text key={index} size="sm">
-              {line.keyNames.map((name, at) => (
-                <Fragment key={at}>
-                  {at > 0 && ", "}
-                  <Text span size="sm" fw={500}>
-                    {name}
-                  </Text>
-                </Fragment>
-              ))}
-              : {line.statement}
-            </Text>
+            <MissingFieldConditionBlock key={index} line={line} />
           ))}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's

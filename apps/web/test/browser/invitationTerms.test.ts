@@ -893,8 +893,28 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
     ],
   };
 
+  // The list of key names the condition block states `statement` for: the one
+  // list the statement describes. Located through that association, since a
+  // single key's statement is also the line under the key in the closed key
+  // list.
+  function conditionList(statement: string): HTMLElement {
+    const lists = Array.from(
+      app.container.querySelectorAll<HTMLElement>("ul[aria-describedby]"),
+    ).filter(
+      (list) =>
+        document.getElementById(list.getAttribute("aria-describedby") ?? "")
+          ?.textContent === statement,
+    );
+    expect(lists).toHaveLength(1);
+    return lists[0];
+  }
+
+  function rowsOf(list: HTMLElement): Array<string> {
+    return Array.from(list.querySelectorAll("li"), (row) => row.textContent);
+  }
+
   test.each(["review", "proposing"] as const)(
-    "on the %s screen the matched fields and the condition's line show with the key list closed",
+    "on the %s screen the matched fields and the condition's block show with the key list closed",
     async (perspective) => {
       await renderTerms(conditionedTerms, { perspective });
       await expect
@@ -908,17 +928,15 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
           ),
         )
         .toBeVisible();
-      await expect
-        .element(
-          page.getByText(
-            `SSN + LN: ${missingFieldConditionStatement("date of birth")}`,
-          ),
-        )
-        .toBeVisible();
+      const list = conditionList(
+        missingFieldConditionStatement("date of birth"),
+      );
+      await expect.element(list).toBeVisible();
+      expect(rowsOf(list)).toEqual(["SSN + LN"]);
     },
   );
 
-  test("the default terms state their five keys' shared condition in one line naming all five", async () => {
+  test("the default terms state their five keys' shared condition once, one key name per row", async () => {
     const defaults = getDefaultLinkageTerms("County Health Department");
     const conditioned = defaults.linkageKeys
       .filter((key) => key.condition !== undefined)
@@ -929,10 +947,50 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
     await expect
       .element(toggle("Matching strategies"))
       .toHaveAttribute("aria-expanded", "false");
-    await expect
-      .element(page.getByText(`${conditioned.join(", ")}: ${grouped}`))
-      .toBeVisible();
+    const list = conditionList(grouped);
+    await expect.element(list).toBeVisible();
+    expect(rowsOf(list)).toEqual(conditioned);
     expect(app.container.textContent.split(grouped)).toHaveLength(2);
+  });
+
+  test("a key name holding a comma is one row, not two keys", async () => {
+    await renderTerms(
+      {
+        ...terms,
+        linkageFields: [
+          ...terms.linkageFields,
+          { name: "phone_number", type: "phone_number" },
+        ],
+        linkageKeys: [
+          {
+            name: "X",
+            elements: [{ field: "ssn" }, { field: "first_name" }],
+          },
+          {
+            name: "X, FN + PHONE",
+            elements: [{ field: "first_name" }, { field: "phone_number" }],
+            condition: { missingField: "dob" },
+          },
+          {
+            name: "LN + FN + PHONE",
+            elements: [
+              { field: "last_name" },
+              { field: "first_name" },
+              { field: "phone_number" },
+            ],
+            condition: { missingField: "dob" },
+          },
+        ],
+      },
+      { perspective: "review" },
+    );
+    const list = conditionList(
+      missingFieldConditionStatement("date of birth", 2),
+    );
+    await expect.element(list).toBeVisible();
+    expect(rowsOf(list)).toEqual(["X, FN + PHONE", "LN + FN + PHONE"]);
+    // Nothing but the rows: no separator text sits between two names.
+    expect(list.textContent).toBe(rowsOf(list).join(""));
   });
 
   test("terms with no condition show no condition line", async () => {
