@@ -374,9 +374,9 @@ export const BUILT_IN_RULES_INFO = {
   label: "About the built-in rules",
   explanation:
     "Highest precision pairs a name or date of birth with an SSN, ZIP code, " +
-    "or phone number. In published studies, fewer than 1 in 100 of its " +
-    "matches were wrong. Broader matching adds rules that find more people, " +
-    "with a few more wrong matches.",
+    "or phone number. Published studies of similar rules suggest no more " +
+    "than 1 in 100 of its matches are wrong. Broader matching adds rules " +
+    "that find more people, with a few more wrong matches.",
   linkText: "How the rules were chosen",
 } as const;
 
