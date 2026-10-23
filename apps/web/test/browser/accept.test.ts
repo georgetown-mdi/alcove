@@ -41,14 +41,18 @@ import { STEP_STATE_KEY } from "@exchange/stepHistory";
 
 import {
   ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_FIELD_DESCRIPTION,
+  ALLOWED_RELAYS_UNSET_SUMMARY,
   EXCHANGE_ALLOWED_RELAYS_SCOPE,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
+  allowedRelaysSummary,
 } from "@psi/transport/relayRestriction";
 import {
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
+import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
@@ -3362,16 +3366,29 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
 
   const allowedField = () =>
     page.getByRole("textbox", { name: "Allowed relays" });
+  const setButton = () =>
+    page.getByRole("button", { name: "Set Allowed relays" });
+  const changeButton = () =>
+    page.getByRole("button", { name: "Change Allowed relays" });
+  const removeButton = () =>
+    page.getByRole("button", { name: "Remove Allowed relays" });
+  const doneButton = () => page.getByRole("button", { name: "Done" });
   const continueButton = () =>
     page.getByRole("button", { name: "Continue: consent & your file" });
   const pageText = () => document.body.textContent;
 
   afterEach(() => {
     window.localStorage.removeItem(RESTRICTION_KEY);
+    writeOwnRelaySetting({ turn: [], stun: [] });
   });
 
-  /** Open a webrtc invitation whose relay names two TURN urls. */
-  async function openRelayInvitation() {
+  /** Open a webrtc invitation whose relay is `relay`, two TURN urls unless
+   * given, none where `null`. */
+  async function openInvitation(
+    relay: { turn: Array<string> } | null = {
+      turn: [KEPT_URL, LEFT_OUT_URL],
+    },
+  ) {
     const token: InvitationToken = {
       version: "1",
       linkageTerms: acceptorTerms,
@@ -3381,12 +3398,24 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
         host: "127.0.0.1",
         port: 3000,
         path: "/api/",
-        relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
+        ...(relay !== null ? { relay } : {}),
       },
     };
     window.location.hash = await encodeInvitation(token);
     app.render(createElement(AcceptorScreen));
-    await expect.element(allowedField()).toBeInTheDocument();
+    await expect.element(continueButton()).toBeInTheDocument();
+  }
+
+  /** Open a webrtc invitation whose relay names two TURN urls. */
+  async function openRelayInvitation() {
+    await openInvitation();
+    await expect.element(setButton()).toBeInTheDocument();
+  }
+
+  /** Open the field from its line and type `text` into it. */
+  async function setRelays(text: string) {
+    await setButton().click();
+    await userEvent.fill(allowedField(), text);
   }
 
   /** From the consent step, accept a file and start the exchange. */
@@ -3412,24 +3441,77 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
   }
 
-  test("starts empty whatever an earlier build stored for this browser", async () => {
+  test("starts as one line, whatever an earlier build stored for this browser", async () => {
     window.localStorage.setItem(
       RESTRICTION_KEY,
       JSON.stringify({ version: 1, allowedRelays: ["partner.example.net"] }),
     );
     await openRelayInvitation();
 
-    await expect.element(allowedField()).toHaveValue("");
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
     expect(pageText()).toContain(`TURN ${KEPT_URL}`);
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
+  test("is not offered where neither the invitation nor this browser names a relay", async () => {
+    await openInvitation(null);
+
+    expect(setButton().query()).toBeNull();
+    expect(pageText()).not.toContain("Allowed relays");
+  });
+
+  test("is offered for an invitation naming no relay where this browser's own relay lists one", async () => {
+    writeOwnRelaySetting({ turn: [KEPT_URL], stun: [] });
+    await openInvitation(null);
+
+    await expect.element(setButton()).toBeInTheDocument();
+  });
+
+  test("opens on its action, empty, with the short description and the guide", async () => {
+    await openRelayInvitation();
+
+    await setButton().click();
+    await expect.element(allowedField()).toHaveValue("");
+    await expect.element(allowedField()).toHaveFocus();
+    await expect
+      .element(allowedField())
+      .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
+    await expect
+      .element(page.getByRole("link", { name: "More about Allowed relays" }))
+      .toHaveAttribute("href", ALLOWED_RELAYS_GUIDE_URL);
+  });
+
+  test("once set, shows the list as one line, which Change opens and Remove clears", async () => {
+    await openRelayInvitation();
+    await setRelays("Partner.Example.net");
+    await doneButton().click();
+
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["partner.example.net"])))
+      .toBeInTheDocument();
+    await expect.element(changeButton()).toHaveFocus();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).toContain(
+      `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
+    );
+
+    await changeButton().click();
+    await expect.element(allowedField()).toHaveValue("Partner.Example.net");
+    await doneButton().click();
+    await removeButton().click();
+    await expect.element(setButton()).toHaveFocus();
+    expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
+  });
+
   test("the terms mark each TURN url kept or left out as the field is typed", async () => {
     await openRelayInvitation();
 
-    await userEvent.fill(allowedField(), "partner.example.net");
+    await setRelays("partner.example.net");
     await expect
       .poll(pageText)
       .toContain(`TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`);
@@ -3449,10 +3531,11 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     await openRelayInvitation();
     const refusal = () => page.getByText(/^Line 1: enter /);
 
-    await userEvent.fill(allowedField(), "turn:partner.example.net");
+    await setRelays("turn:partner.example.net");
     await expect.element(refusal()).toBeInTheDocument();
     await expect.element(refusal()).not.toHaveAttribute("role", "alert");
     await expect.element(allowedField()).toBeEnabled();
+    await expect.element(doneButton()).toBeDisabled();
     await expect
       .element(allowedField())
       .toHaveAttribute("aria-invalid", "true");
@@ -3480,7 +3563,7 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
 
   test("the run lists the relays the review committed", async () => {
     await openRelayInvitation();
-    await userEvent.fill(allowedField(), "Partner.Example.net");
+    await setRelays("Partner.Example.net");
     await userEvent.click(continueButton());
     await acceptAndStart();
 
@@ -3502,13 +3585,17 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
 
   test("an edit after Continue sends Forward back to the review, and the run takes the edited list", async () => {
     await openRelayInvitation();
-    await userEvent.fill(allowedField(), "partner.example.net");
+    await setRelays("partner.example.net");
     await userEvent.click(continueButton());
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Consent & your file");
 
     window.history.back();
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["partner.example.net"])))
+      .toBeInTheDocument();
+    await changeButton().click();
     await expect.element(allowedField()).toHaveValue("partner.example.net");
     await userEvent.fill(allowedField(), "other.example.net");
 
@@ -3537,21 +3624,25 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
       window.addEventListener("popstate", () => resolve(), { once: true });
     });
 
-  test("Back from the started exchange shows the field fixed on the launched list", async () => {
+  test("Back from the started exchange shows the launched list, fixed", async () => {
     expectConsole(
       "error",
       "Error: standardization output name contradicts the terms",
     );
     await openRelayInvitation();
-    await userEvent.fill(allowedField(), "Partner.Example.net");
+    await setRelays("Partner.Example.net");
     await userEvent.click(continueButton());
     await acceptAndStart();
 
     let landed = nextPopState();
     window.history.go(-3);
     await landed;
-    await expect.element(allowedField()).toBeDisabled();
-    await expect.element(allowedField()).toHaveValue("partner.example.net");
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["partner.example.net"])))
+      .toBeInTheDocument();
+    expect(changeButton().query()).toBeNull();
+    expect(removeButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
     expect(pageText()).toContain(
       `TURN ${KEPT_URL} (${KEPT_BY_ALLOWED_RELAYS})`,
     );
@@ -3578,11 +3669,12 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     landed = nextPopState();
     window.history.go(-4);
     await landed;
+    await changeButton().click();
     await expect.element(allowedField()).toBeEnabled();
     await expect.element(allowedField()).toHaveValue("Partner.Example.net");
   });
 
-  test("Back from an exchange started with no list shows the field empty and fixed", async () => {
+  test("Back from an exchange started with no list shows every relay, fixed", async () => {
     await openRelayInvitation();
     await userEvent.click(continueButton());
     await acceptAndStart();
@@ -3590,8 +3682,11 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     const landed = nextPopState();
     window.history.go(-3);
     await landed;
-    await expect.element(allowedField()).toBeDisabled();
-    await expect.element(allowedField()).toHaveValue("");
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    expect(setButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(LEFT_OUT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);

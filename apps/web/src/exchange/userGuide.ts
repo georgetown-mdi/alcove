@@ -12,6 +12,16 @@ export const CONSOLE_GUIDE_URL =
 export const BUILT_IN_RULES_GUIDE_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor";
 
+/** What an exchange's Allowed relays decide in the browser, and what they do
+ * not. */
+export const ALLOWED_RELAYS_GUIDE_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/WEB_APP.md#allowed-relays";
+
+/** The `connection.allowed_relays` key the console writes a run's Allowed
+ * relays into. */
+export const CONSOLE_ALLOWED_RELAYS_GUIDE_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#connectionallowed_relays";
+
 /** Where the README describes the ways to use Alcove besides this web app. */
 export const OTHER_WAYS_TO_USE_ALCOVE_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove";

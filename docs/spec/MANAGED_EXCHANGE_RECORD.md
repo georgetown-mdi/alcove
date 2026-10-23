@@ -535,11 +535,12 @@ configuration-only one alike, without a re-invite.
   core normalizes an entry.
 - **Allowed relays.** Core's entry rule is their only bound. An empty list
   keeps no TURN url, so the record's runs use no relay;
-  the editor shows it as an empty field with a line stating so, a save leaves
-  it while the field stays empty, and entered relays replace it. While the
+  the editor shows it as a line stating so, a save leaves it while the field
+  stays empty, and entered relays replace it. While the
   document holds a list, empty or not, the editor offers a control that
-  removes it: a save with that control set drops the field, so the record's
-  runs use every relay they list.
+  removes it: a save after it drops the field, so the record's runs use
+  every relay they list, and opening the field before the save restores the
+  stored list.
 - **Offered where it acts.** The own-columns control is offered only where the
   terms give this party a result file (not on a count-only exchange, and not
   where `output` gives it none); elsewhere a save leaves the stored value as it
@@ -548,7 +549,13 @@ configuration-only one alike, without a re-invite.
   (a count-only exchange, a `single-pass` one, or `output` giving it none); there
   too a save leaves the stored value as it is. The allowed-relays control is
   offered only on a webrtc connection; elsewhere a save leaves the connection
-  as it is.
+  as it is. On a webrtc connection it is shown where the document holds a
+  list, where the field holds text, or where the record's runs list a TURN
+  or WebSocket relay url for the list to keep or leave out: a browser-run
+  record's as `runListsRelay` reads them, in
+  `apps/web/src/psi/transport/runRelayPlan.ts`, and a configuration-only
+  record's as core's `selectRunRelay` lists them; hidden, a save leaves the
+  connection as it is.
 - **What reads them.** The next run takes the edited document: it reads its input
   and writes its result by `csvDelimiter`, composes its result under
   `includeOwnColumns` and `includeMatchingKey`, and writes

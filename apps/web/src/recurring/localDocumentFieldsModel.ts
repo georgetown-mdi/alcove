@@ -14,7 +14,7 @@
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Local settings of the document").
  */
 
-import { DEFAULT_CSV_DELIMITER } from "@alcove/core";
+import { DEFAULT_CSV_DELIMITER, selectRunRelay } from "@alcove/core";
 
 import {
   CSV_DELIMITER_OPTIONS,
@@ -62,22 +62,6 @@ export type LocalDocumentFieldEdits = Pick<
   | "allowedRelays"
 >;
 
-/** The label of the control that removes a stored document's allowed relays. */
-export const REMOVE_ALLOWED_RELAYS_LABEL = "Remove Allowed relays";
-
-/** What removing the stored allowed relays does to the runs. */
-export const REMOVE_ALLOWED_RELAYS_DESCRIPTION =
-  "When you save, this exchange's runs use every relay they list.";
-
-/**
- * What the Allowed relays field states for a stored document whose list is
- * empty: its runs keep no TURN url, which the empty field would not show.
- */
-export const NO_ALLOWED_RELAY_NOTE =
-  "This exchange's configuration allows no relay server, so its runs " +
-  "connect without one. Enter the relays its runs may use, or check " +
-  `${REMOVE_ALLOWED_RELAYS_LABEL} to let them use every relay they list.`;
-
 /**
  * The delimiter choice that shows a stored `csvDelimiter`: the named option
  * where the value is one, "Other" holding the value where it is not, and the
@@ -116,6 +100,43 @@ export function localDocumentFieldValuesFrom(
  */
 export function allowedRelaysOffered(exchangeFile: ExchangeSpec): boolean {
   return exchangeFile.connection.channel === "webrtc";
+}
+
+/**
+ * Whether the page shows the Allowed relays control for a document it is
+ * offered for: where the document holds a list, an empty one included, where
+ * `text`, the list as typed, is not empty, or where `runsListRelay`, its runs
+ * listing a relay for the list to keep or leave out. Hiding it leaves the
+ * document's list as it is.
+ */
+export function allowedRelaysShown(
+  exchangeFile: ExchangeSpec,
+  text: string,
+  runsListRelay: boolean,
+): boolean {
+  return (
+    allowedRelaysOffered(exchangeFile) &&
+    (allowedRelaysRemovable(exchangeFile) || text !== "" || runsListRelay)
+  );
+}
+
+/**
+ * Whether a command-line run of a document lists a TURN or WebSocket relay
+ * url for its allowed relays to keep or leave out: its connection's own
+ * `turn` and `websocket_relay`, and its `invitation_relay`'s
+ * (`selectRunRelay` in core).
+ */
+export function commandLineRunListsRelay(exchangeFile: ExchangeSpec): boolean {
+  const connection = exchangeFile.connection;
+  if (connection.channel !== "webrtc") return false;
+  const selection = selectRunRelay(connection);
+  const listed = [
+    ...(selection.turn ?? []),
+    ...(selection.turnLeftOut ?? []),
+    ...(selection.websocket ?? []),
+    ...(selection.websocketLeftOut ?? []),
+  ];
+  return listed.length > 0;
 }
 
 /**

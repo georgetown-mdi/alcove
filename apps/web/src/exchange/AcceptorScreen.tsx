@@ -83,6 +83,7 @@ import {
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
 import { byteSizeLabel } from "@psi/formatting";
+import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { seedRows } from "@psi/inviterEditor";
 
 import { ledgerOutcomeOf } from "@psi/ledger";
@@ -115,6 +116,10 @@ import styles from "@styles/app.module.css";
 
 import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
 
+import {
+  ALLOWED_RELAYS_GUIDE_URL,
+  CONSOLE_ALLOWED_RELAYS_GUIDE_URL,
+} from "./userGuide";
 import { invitationDecodeRefusal } from "./invitationDecodeRefusal";
 
 import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
@@ -1434,18 +1439,24 @@ function AcceptorInvitationScreen({
             {acceptOffersAllowedRelays(
               decode.invitation.endpoint,
               consoleBuild,
+              allowedRelaysFieldText !== "",
+              runListsRelay,
             ) && (
               <>
                 <AllowedRelaysField
                   value={allowedRelaysFieldText}
                   error={allowedRelaysError}
-                  disabled={allowedRelaysFixed}
+                  fixed={allowedRelaysFixed}
                   liveError
                   onChange={(value) =>
                     dispatch({ type: "allowed-relays-changed", value })
                   }
+                  guideUrl={
+                    consoleBuild
+                      ? CONSOLE_ALLOWED_RELAYS_GUIDE_URL
+                      : ALLOWED_RELAYS_GUIDE_URL
+                  }
                   mt="md"
-                  consoleRun={consoleBuild}
                 />
                 {allowedRelaysChangedAtStart && (
                   <Alert

@@ -68,17 +68,22 @@ relays in the invitation it creates. With no list set, its runs use every
 relay they list. The entry form, the matching, and what the list does not
 decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
+The page shows the list as one line, with **Change** and **Remove**, and
+an exchange with no list as one line with **Set Allowed relays**, offered
+only where its runs would list a relay for the list to keep or leave out
+([WEB_APP.md](WEB_APP.md#allowed-relays)).
 
 Saving an exchange as recurring starts its list from the Allowed relays set on
 the review of the invitation you accepted or created. The list goes
 wherever the exchange goes: a backup holds it, the command-line export writes it as
 `connection.allowed_relays`, and an imported configuration that sets that key
 keeps it as written. A configuration whose list is empty allows no relay
-server, so its runs connect without one; the exchange's page says so beside
-the empty field, and entering relays there replaces the empty list. While an
-exchange holds a list, empty or not, its page offers **Remove Allowed relays**:
-saving with it checked removes the list, so the exchange's runs use every relay
-they list.
+server, so its runs connect without one; the exchange's page says so on the
+Allowed relays line, and relays entered after **Change** replace the empty
+list. While an exchange holds a list, empty or not, its page offers
+**Remove**: saving after it removes the list, so the exchange's runs use
+every relay they list, and **Set Allowed relays** before the save brings the
+list back.
 
 ## How a scheduled run happens
 

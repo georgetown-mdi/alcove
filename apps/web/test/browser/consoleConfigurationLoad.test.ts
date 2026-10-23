@@ -807,6 +807,9 @@ describe("the open configuration over the files it is derived across", () => {
     expect(
       page.getByRole("textbox", { name: "Allowed relays" }).query(),
     ).toBeNull();
+    expect(
+      page.getByRole("button", { name: "Set Allowed relays" }).query(),
+    ).toBeNull();
     await page
       .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
       .click();

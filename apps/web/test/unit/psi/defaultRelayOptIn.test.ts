@@ -8,7 +8,7 @@ import {
   defaultRelayInUse,
   invitationRelayWithDefault,
 } from "@psi/transport/defaultRelay";
-import { relayPlanForRun } from "@psi/transport/runRelayPlan";
+import { relayPlanForRun, runListsRelay } from "@psi/transport/runRelayPlan";
 
 import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
 import type { DefaultRelayBuild } from "@utils/clientConfig";
@@ -385,5 +385,80 @@ describe("relayPlanForRun with this browser's own relay naming the relay, switch
     expect(enroll).not.toHaveBeenCalled();
     expect(result.relay?.turn).toEqual([PARTNER_URL]);
     expect(result.relaysLeftOut).toEqual([SITE.turnUrl]);
+  });
+});
+
+describe("runListsRelay", () => {
+  const lists = (
+    invitationRelay: RelayUrls | undefined,
+    own: OwnRelay | undefined,
+    build: DefaultRelayBuild = NONE,
+    on = false,
+  ) =>
+    runListsRelay(invitationRelay, {
+      readOwn: () =>
+        own === undefined ? { kind: "none" } : { kind: "set", relay: own },
+      build: () => build,
+      switchedOn: switched(on),
+    });
+
+  test("no relay of this browser's, the invitation's, or the site's lists none", () => {
+    expect(lists(undefined, undefined)).toBe(false);
+    expect(lists(undefined, undefined, OPT_IN)).toBe(false);
+  });
+
+  test("STUN servers are not relays", () => {
+    expect(
+      lists({ stun: ["stun:stun.example.org"] }, { turn: [], stun: ["x"] }),
+    ).toBe(false);
+  });
+
+  test.each([
+    ["this browser's TURN url", undefined, { turn: [PARTNER_URL], stun: [] }],
+    [
+      "this browser's WebSocket relay",
+      undefined,
+      { turn: [], stun: [], websocket: "wss://own.example.org/relay" },
+    ],
+    ["the invitation's TURN url", { turn: [PARTNER_URL] }, undefined],
+    [
+      "the invitation's WebSocket relay",
+      { websocket: "wss://partner.example.net/relay" },
+      undefined,
+    ],
+  ])("%s lists a relay", (_case, invitation, own) => {
+    expect(lists(invitation, own)).toBe(true);
+  });
+
+  test("the site's relay lists where the run uses it", () => {
+    expect(lists(undefined, undefined, ON)).toBe(true);
+    expect(lists(undefined, undefined, OPT_IN, true)).toBe(true);
+    expect(lists({ turn: [SITE.turnUrl] }, undefined, OPT_IN)).toBe(true);
+  });
+
+  test("a given default relay setting replaces the build's", () => {
+    expect(
+      runListsRelay(undefined, {
+        readOwn: () => ({ kind: "none" }),
+        build: () => ON,
+        setting: () => undefined,
+      }),
+    ).toBe(false);
+    expect(
+      runListsRelay(undefined, {
+        readOwn: () => ({ kind: "none" }),
+        build: () => NONE,
+        setting: () => SITE,
+      }),
+    ).toBe(true);
+  });
+
+  test("an unreadable own setting lists nothing", () => {
+    expect(
+      runListsRelay(undefined, {
+        readOwn: () => ({ kind: "unreadable" }),
+        build: () => NONE,
+      }),
+    ).toBe(false);
   });
 });
