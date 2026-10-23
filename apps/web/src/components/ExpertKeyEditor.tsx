@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   ActionIcon,
@@ -34,6 +34,7 @@ import {
 import {
   addElement,
   addKey,
+  draftHasKeyBuiltInRulesWouldNotRestore,
   moveElement,
   removeAllKeys,
   removeElement,
@@ -41,8 +42,10 @@ import {
   updateElementAt,
   updateKeyAt,
 } from "@psi/authoring/advancedInvite";
+import { REMOVE_ALL_KEYS_STATEMENT } from "@psi/inviterEditor";
 import { linkageFieldLabel } from "@psi/authoring/linkageFieldLabel";
 
+import { ConfirmedActionButton } from "@components/ConfirmedActionButton";
 import { StepListEditor } from "@components/StepListEditor";
 
 import type { LinkageField, LinkageKey, LinkageKeyElement } from "@alcove/core";
@@ -131,7 +134,9 @@ function elementIdentifier(element: LinkageKeyElement): string {
  * two-of-N swap over its own element identifiers, and an optional field it
  * matches only where one side is missing ({@link keyConditionOptions}). Keys
  * and elements add, remove, and reorder with keyboard-operable controls, and
- * one control removes every key.
+ * one control removes every key, asking first where the list holds a key the
+ * built-in rules would not put back
+ * ({@link draftHasKeyBuiltInRulesWouldNotRestore}).
  *
  * Presentational over the draft: it computes the next draft with the pure helpers
  * in {@link advancedInvite} and emits it through {@link onChange}; the host owns
@@ -208,6 +213,10 @@ export function ExpertKeyEditor({
       return next;
     });
   const reduceMotion = useReducedMotion();
+  const listsKeyBuiltInRulesWouldNotRestore = useMemo(
+    () => draftHasKeyBuiltInRulesWouldNotRestore(draft),
+    [draft],
+  );
 
   const fieldOptions = declaredFields.map((field) => ({
     value: field.name,
@@ -694,20 +703,20 @@ export function ExpertKeyEditor({
         >
           Add a key
         </Button>
-        <Button
-          variant="subtle"
-          color="red"
+        <ConfirmedActionButton
+          label="Remove all keys"
+          variant="danger"
           leftSection={<IconTrash size={16} aria-hidden />}
           disabled={draft.keys.length === 0}
-          onClick={() => {
+          asksFirst={listsKeyBuiltInRulesWouldNotRestore}
+          statement={REMOVE_ALL_KEYS_STATEMENT}
+          onConfirm={() => {
             onChange(removeAllKeys(draft));
             announce("Removed all keys.");
             // This button disables on the empty list, which would drop focus.
             addKeyRef.current?.focus();
           }}
-        >
-          Remove all keys
-        </Button>
+        />
       </Group>
     </Stack>
   );

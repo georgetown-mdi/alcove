@@ -312,6 +312,13 @@ export const USE_BUILT_IN_RULES_STATEMENT =
   "Replace your keys, fields, and cleaning with the built-in ones? This " +
   "cannot be undone.";
 
+/** What the confirm before expert authoring's Remove all keys states, asked
+ * only where the list holds a key {@link editorWithBuiltInKeys} would not put
+ * back (`draftHasKeyBuiltInRulesWouldNotRestore`). */
+export const REMOVE_ALL_KEYS_STATEMENT =
+  "The keys you added, changed, or loaded from a document are lost. This " +
+  "cannot be undone.";
+
 /** The most precise floor, which Matching keys labels Highest precision. */
 const HIGHEST_PRECISION: PrecisionFloorSelection = {
   floor: PRECISION_FLOORS[0],

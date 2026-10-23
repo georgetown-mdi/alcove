@@ -13,16 +13,19 @@ import {
   addKey,
   buildAdvancedTerms,
   draftFromTerms,
+  draftHasKeyBuiltInRulesWouldNotRestore,
   draftHasOfferedKeys,
   draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   removeKey,
   seededCitationDropNotice,
+  updateKeyAt,
   validateAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
 
 import {
   HIGHEST_PRECISION_UNAVAILABLE_PROBLEM,
+  REMOVE_ALL_KEYS_STATEMENT,
   USE_BUILT_IN_RULES_STATEMENT,
   columnEditKeysAnnouncement,
   editorCitationDrop,
@@ -490,6 +493,110 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(USE_BUILT_IN_RULES_STATEMENT).toBe(
       "Replace your keys, fields, and cleaning with the built-in ones? This " +
         "cannot be undone.",
+    );
+  });
+});
+
+describe("a key the built-in rules would not put back", () => {
+  const seeded = editorFromCsv("Dana", withSsn);
+  const wouldNotRestore = (editor: InviterEditor) =>
+    draftHasKeyBuiltInRulesWouldNotRestore(editor.draft);
+
+  test("is not on the guided list at either floor, reordered, with a key off, or emptied", () => {
+    expect(seeded.draft.keys.length).toBeGreaterThan(1);
+    for (const guided of [
+      seeded,
+      editorWithPrecisionFloorSelection(seeded, AT_99),
+      editorWithKeyMoved(seeded, 0, 1),
+      editorWithKeyEnabled(seeded, 0, false),
+      editorWithAuthoredDraft(seeded, { ...seeded.draft, keys: [] }),
+    ])
+      expect(wouldNotRestore(guided)).toBe(false);
+  });
+
+  test("is a key added in expert authoring, until Use the built-in rules replaces the keys", () => {
+    const authored = editorWithAuthoredDraft(
+      seeded,
+      addKey(seeded.draft, "first_name"),
+    );
+    expect(wouldNotRestore(authored)).toBe(true);
+    expect(wouldNotRestore(editorWithBuiltInKeys(authored, withSsn))).toBe(
+      false,
+    );
+  });
+
+  test("is a built-in key changed in expert authoring, until the change is undone", () => {
+    const name = seeded.draft.keys[0].key.name;
+    const renamed = updateKeyAt(seeded.draft, 0, (key) => ({
+      ...key,
+      name: `${name} (mine)`,
+    }));
+    expect(wouldNotRestore(editorWithAuthoredDraft(seeded, renamed))).toBe(
+      true,
+    );
+    const undone = updateKeyAt(renamed, 0, (key) => ({ ...key, name }));
+    expect(wouldNotRestore(editorWithAuthoredDraft(seeded, undone))).toBe(
+      false,
+    );
+  });
+
+  test("is a key loaded from a document that differs from the built-in ones, and not one equal to them", () => {
+    const terms = buildAdvancedTerms(seeded.draft);
+    expect(
+      wouldNotRestore(editorWithImportedTerms(seeded, withSsn, terms)),
+    ).toBe(false);
+    const rename = (field: string) =>
+      field === "last_name" ? "surname" : field;
+    const renamed = {
+      ...terms,
+      linkageFields: terms.linkageFields.map((field) => ({
+        ...field,
+        name: rename(field.name),
+      })),
+      linkageKeys: terms.linkageKeys.map((key) => ({
+        ...key,
+        elements: key.elements.map((element) => ({
+          ...element,
+          field: rename(element.field),
+        })),
+      })),
+    };
+    expect(
+      wouldNotRestore(editorWithImportedTerms(seeded, withSsn, renamed)),
+    ).toBe(true);
+  });
+
+  test("is any key where the columns supply no built-in key", () => {
+    const uncovered = editorFromCsv("Dana", contactsOnly);
+    expect(draftOffersBuiltInKeys(uncovered.draft)).toBe(false);
+    expect(wouldNotRestore(uncovered)).toBe(false);
+    expect(
+      wouldNotRestore(
+        editorWithAuthoredDraft(
+          uncovered,
+          addKey(uncovered.draft, "email_address"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("is a built-in key a column edit leaves the columns unable to supply", () => {
+    const authored = editorWithAuthoredDraft(seeded, seeded.draft);
+    expect(wouldNotRestore(authored)).toBe(false);
+    const retyped = editorWithColumnType(
+      authored,
+      withSsn,
+      "ssn",
+      "other",
+    ).editor;
+    expect(retyped.draft.keys).toStrictEqual(authored.draft.keys);
+    expect(wouldNotRestore(retyped)).toBe(true);
+  });
+
+  test("is named in the Remove all keys confirm as lost for good", () => {
+    expect(REMOVE_ALL_KEYS_STATEMENT).toBe(
+      "The keys you added, changed, or loaded from a document are lost. " +
+        "This cannot be undone.",
     );
   });
 });

@@ -36,6 +36,7 @@ import {
   buildAdvancedTerms,
 } from "@psi/authoring/advancedInvite";
 
+import { ConfirmedActionButton } from "@components/ConfirmedActionButton";
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 import { InfoButton } from "@components/InfoButton";
 import { LessCertainInfo } from "@components/LessCertainInfo";
@@ -62,7 +63,6 @@ import styles from "@styles/app.module.css";
 
 import { BUILT_IN_RULES_GUIDE_URL } from "./userGuide";
 import { CitationDropNotice } from "./CitationDropNotice";
-import { ConfirmedActionButton } from "./ConfirmedActionButton";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {

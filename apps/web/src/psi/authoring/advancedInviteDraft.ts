@@ -257,11 +257,7 @@ function seededKeysAndCleaning(
   AdvancedInviteDraft,
   "keys" | "standardization" | "precisionFloorSelection"
 > {
-  const keys = offerableDraftKeys(
-    identity,
-    metadata,
-    DEFAULT_PRECISION_FLOOR_SELECTION,
-  );
+  const keys = newInvitationKeys(identity, metadata);
   return {
     standardization: inviterDefaultStandardization(
       metadata,
@@ -293,6 +289,19 @@ function offerableDraftKeys(
     metadata,
     selection,
   ).linkageKeys.map((key) => ({ key, enabled: true }));
+}
+
+/** The keys a new invitation for `metadata` starts with
+ * ({@link seededKeysAndCleaning}). */
+function newInvitationKeys(
+  identity: string,
+  metadata: Metadata,
+): Array<DraftKey> {
+  return offerableDraftKeys(
+    identity,
+    metadata,
+    DEFAULT_PRECISION_FLOOR_SELECTION,
+  );
 }
 
 /**
@@ -416,6 +425,27 @@ export function draftWithBuiltInKeys(
       dateInputFormats,
     ),
   };
+}
+
+/**
+ * Whether `draft` lists a key {@link draftWithBuiltInKeys} would not put back:
+ * one added or changed in the expert editor, one loaded from a document that
+ * differs from the built-in keys, or a built-in key the columns do not supply.
+ * Matched by the canonical encoding, as {@link reconcileKeys} matches, so
+ * neither the order nor a key turned off counts.
+ */
+export function draftHasKeyBuiltInRulesWouldNotRestore(
+  draft: AdvancedInviteDraft,
+): boolean {
+  const restored = new Set(
+    newInvitationKeys(draft.identity, draft.metadata).map((entry) =>
+      encodeKeyForComparison(entry.key),
+    ),
+  );
+  return draft.keys.some((entry) => {
+    const encoded = encodeKeyForComparison(entry.key);
+    return encoded === null || !restored.has(encoded);
+  });
 }
 
 /** Whether every key `draft` lists is one the built-in catalog declares,
