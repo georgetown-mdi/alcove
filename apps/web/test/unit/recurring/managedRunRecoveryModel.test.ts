@@ -12,7 +12,7 @@ import {
   managedConfirmationGranted,
   managedFailureHoldsReinvite,
   managedRecoveryReducer,
-  managedReinviteFailedAt,
+  managedReinviteFailureAt,
   managedReinviteInFlight,
   managedRunHoldsReinvite,
   managedStandingConditionShown,
@@ -314,7 +314,7 @@ describe("the re-invite mint", () => {
       { type: "reinvite-held-by-run" },
       { type: "reinvite-refused-by-run" },
       { type: "reinvite-withheld" },
-      { type: "reinvite-failed" },
+      { type: "reinvite-failed", cause: "other" },
     ] satisfies ReadonlyArray<ManagedRecoveryAction>)
       expect(managedReinviteInFlight(fold([outcome], started))).toBe(false);
   });
@@ -334,29 +334,47 @@ describe("the re-invite mint", () => {
   test("a failed mint alerts only at the site that asked for it", () => {
     const failed = fold([
       { type: "reinvite-started", site: "detail" },
-      { type: "reinvite-failed" },
+      { type: "reinvite-failed", cause: "other" },
     ]);
-    expect(managedReinviteFailedAt(failed, "detail")).toBe(true);
-    expect(managedReinviteFailedAt(failed, "recovery")).toBe(false);
+    expect(managedReinviteFailureAt(failed, "detail")).toEqual({
+      title: "Could not create a fresh invitation",
+      message: "Nothing changed here; try again.",
+    });
+    expect(managedReinviteFailureAt(failed, "recovery")).toBeUndefined();
+  });
+
+  test("a mint refused over the saved server says to set or clear the coordination server in relay settings first", () => {
+    const failed = fold([
+      { type: "reinvite-started", site: "recovery" },
+      { type: "reinvite-failed", cause: "saved-server-refused" },
+    ]);
+    expect(managedReinviteFailureAt(failed, "recovery")).toEqual({
+      title: "Could not create a fresh invitation",
+      message:
+        "Relay settings cannot read your coordination server, and the " +
+        "coordination server address this exchange saved cannot be used. " +
+        "Set your coordination server again or clear it in relay settings " +
+        "first, then try again.",
+    });
   });
 
   test("a failed mint's alert goes at the next mint or run start", () => {
     const failed = fold([
       { type: "reinvite-started", site: "recovery" },
-      { type: "reinvite-failed" },
+      { type: "reinvite-failed", cause: "saved-server-refused" },
     ]);
     expect(
-      managedReinviteFailedAt(
+      managedReinviteFailureAt(
         fold([{ type: "reinvite-started", site: "recovery" }], failed),
         "recovery",
       ),
-    ).toBe(false);
+    ).toBeUndefined();
     expect(
-      managedReinviteFailedAt(
+      managedReinviteFailureAt(
         fold([{ type: "run-started" }], failed),
         "recovery",
       ),
-    ).toBe(false);
+    ).toBeUndefined();
   });
 
   test("a run holds the mint by the polled reading or by the mint's own refusal", () => {
@@ -386,7 +404,7 @@ describe("the re-invite mint", () => {
       { type: "reinvite-held-by-run" },
     ]);
     expect(managedRunHoldsReinvite(held, false)).toBe(false);
-    expect(managedReinviteFailedAt(held, "recovery")).toBe(false);
+    expect(managedReinviteFailureAt(held, "recovery")).toBeUndefined();
   });
 
   test("a run start leaves a mint in flight running", () => {

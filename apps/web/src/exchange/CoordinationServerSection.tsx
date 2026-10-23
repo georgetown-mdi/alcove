@@ -29,7 +29,9 @@ export function coordinationServerFieldDescription(
     "browser and your partner's connect to it. Invitations you already " +
     "sent, saved exchanges, and invitations you accept keep the server they " +
     "name, until you re-invite your partner from a saved exchange you " +
-    "created, which then names the server set here. " +
+    "created, which then names the server set here. If this browser cannot " +
+    "read the server set here, a re-invite names the server that exchange " +
+    "already uses. " +
     `For example: ${scheme}://signaling.example.org/api/`
   );
 }
@@ -52,8 +54,10 @@ export const COORDINATION_SERVER_NOT_SAVED =
 /** What the section says where the stored setting cannot be read, until a
  * Set or Clear replaces it. */
 export const COORDINATION_SERVER_UNREADABLE =
-  "Invitations you create name this site's coordination server until you " +
-  "set yours again. Enter its address and choose Set coordination server.";
+  "Until you set yours again, invitations you create name this site's " +
+  "coordination server, and a re-invite from a saved exchange names the " +
+  "server that exchange already uses. Enter its address and choose Set " +
+  "coordination server.";
 
 /** What Review & create says where the stored setting cannot be read, before
  * the invitation is created. */

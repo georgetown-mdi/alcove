@@ -46,6 +46,7 @@ import {
   allowedRelaysSummary,
 } from "@psi/transport/relayRestriction";
 import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
+import { MANAGED_REINVITE_FAILURE_ALERTS } from "@recurring/managedRunRecoveryModel";
 import { MANAGED_SCHEDULE_SECTION_ID } from "@recurring/managedSectionIds";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
@@ -91,6 +92,7 @@ import type {
   NewManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
+import type { ManagedReinviteFailureAlert } from "@recurring/managedRunRecoveryModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 import type { WebRTCExchangeLocator } from "@alcove/core";
@@ -165,7 +167,7 @@ describe("managed exchange detail configuration", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -234,7 +236,7 @@ describe("managed exchange detail configuration", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: false,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -308,7 +310,7 @@ describe("managed exchange detail configuration", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -332,13 +334,13 @@ describe("managed exchange detail configuration", () => {
     // The re-invite button lives on the healthy detail surface, where no failure
     // branch renders -- so its in-flight and failed state must be visible here, not
     // only under the run surface's failure recovery. The surface owns the reinviting/
-    // reinviteFailed state; this drives them through the props exactly as it does.
+    // reinviteFailure state; this drives them through the props exactly as it does.
     let reject: (reason: Error) => void = () => undefined;
     const promise = new Promise<void>((_resolve, rejectFn) => {
       reject = rejectFn;
     });
     let reinviting = false;
-    let reinviteFailed = false;
+    let reinviteFailure: ManagedReinviteFailureAlert | undefined;
 
     function render() {
       app.render(
@@ -357,11 +359,11 @@ describe("managed exchange detail configuration", () => {
           onRelayRegistrationChanged: () => undefined,
           onReinviteToChangeTerms: () => {
             reinviting = true;
-            reinviteFailed = false;
+            reinviteFailure = undefined;
             render();
             void promise.catch(() => {
               reinviting = false;
-              reinviteFailed = true;
+              reinviteFailure = MANAGED_REINVITE_FAILURE_ALERTS.other;
               render();
             });
           },
@@ -370,7 +372,7 @@ describe("managed exchange detail configuration", () => {
           runInFlight: false,
           runHoldsReinvite: false,
           reinviting,
-          reinviteFailed,
+          reinviteFailure,
           unfiledDisclosureRead: { kind: "none" },
           unrecordedRunFlagged: false,
           onUnrecordedRunFlagShown: () => undefined,
@@ -432,7 +434,7 @@ describe("managed exchange detail local fields", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -478,7 +480,7 @@ describe("managed exchange detail local fields", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -518,7 +520,7 @@ describe("managed exchange detail local fields", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -583,7 +585,7 @@ describe("managed exchange detail schedule entry", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1115,7 +1117,7 @@ describe("managed exchange detail local fields against the real store", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1180,7 +1182,7 @@ describe("managed exchange detail local fields against the real store", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1257,7 +1259,7 @@ describe("managed exchange detail run schedule", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1577,7 +1579,7 @@ describe("managed exchange detail document settings", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1925,7 +1927,7 @@ describe("managed exchange detail run history", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: true,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -1969,7 +1971,7 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2200,7 +2202,7 @@ describe("managed exchange detail relay registration", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2241,7 +2243,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2297,7 +2299,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2372,7 +2374,7 @@ describe("managed exchange detail accounting of disclosures", () => {
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
           reinviting: false,
-          reinviteFailed: false,
+          reinviteFailure: undefined,
           compromiseResponse: false,
           runInFlight: false,
           runHoldsReinvite: false,
@@ -2447,7 +2449,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2530,7 +2532,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2593,7 +2595,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2659,7 +2661,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2731,7 +2733,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2783,7 +2785,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2847,7 +2849,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2904,7 +2906,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -2949,7 +2951,7 @@ describe("managed exchange detail accounting of disclosures", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3044,7 +3046,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3110,7 +3112,7 @@ describe("recovering an accounting this version cannot read", () => {
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
           reinviting: false,
-          reinviteFailed: false,
+          reinviteFailure: undefined,
           compromiseResponse: false,
           runInFlight: false,
           runHoldsReinvite: false,
@@ -3169,7 +3171,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3232,7 +3234,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3298,7 +3300,7 @@ describe("recovering an accounting this version cannot read", () => {
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
           reinviting: false,
-          reinviteFailed: false,
+          reinviteFailure: undefined,
           compromiseResponse: false,
           runInFlight: false,
           runHoldsReinvite: false,
@@ -3360,7 +3362,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3404,7 +3406,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3454,7 +3456,7 @@ describe("recovering an accounting this version cannot read", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -3517,7 +3519,7 @@ describe("an accounting a newer version of the app filed", () => {
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
       reinviting: false,
-      reinviteFailed: false,
+      reinviteFailure: undefined,
       compromiseResponse: false,
       runInFlight: false,
       runHoldsReinvite: false,
@@ -3639,7 +3641,7 @@ describe("an accounting that could not be read at all", () => {
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
       reinviting: false,
-      reinviteFailed: false,
+      reinviteFailure: undefined,
       compromiseResponse: false,
       runInFlight: false,
       runHoldsReinvite: false,
@@ -3732,7 +3734,7 @@ describe("an accounting read still in flight", () => {
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
       reinviting: false,
-      reinviteFailed: false,
+      reinviteFailure: undefined,
       compromiseResponse: false,
       runInFlight: false,
       runHoldsReinvite: false,
@@ -3854,7 +3856,7 @@ describe("the results a scheduled run left for this visit", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,
@@ -4224,7 +4226,7 @@ describe("a run whose record never reached the accounting", () => {
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
         reinviting: false,
-        reinviteFailed: false,
+        reinviteFailure: undefined,
         compromiseResponse: false,
         runInFlight: false,
         runHoldsReinvite: false,

@@ -1,0 +1,1 @@
+- The relay settings page's field description and its notice for an unreadable setting state the rule for a new invitation; neither says that a re-invite made while the setting is unreadable names the endpoint the record stored. -> -

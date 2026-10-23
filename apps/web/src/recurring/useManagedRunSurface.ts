@@ -32,6 +32,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import { MANAGED_EXCHANGE_ARTIFACT_MIME } from "@psi/managed/managedExchangeArtifact";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 
 import {
@@ -697,7 +698,13 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
           dispatchSurface({ type: "reinvite-refused-by-run" });
         } else {
           whenDiagnostic(() => console.error(error));
-          dispatchSurface({ type: "reinvite-failed" });
+          dispatchSurface({
+            type: "reinvite-failed",
+            cause:
+              error instanceof ManagedSignalingEndpointRefusedError
+                ? "saved-server-refused"
+                : "other",
+          });
         }
       }
     })();
