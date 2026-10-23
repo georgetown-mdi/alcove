@@ -1223,7 +1223,35 @@ describe("inviter screen", () => {
       await page
         .getByRole("button", { name: "Continue to review & create" })
         .click();
-      await page.getByRole("button", { name: "Create the invitation" }).click();
+
+      // The coverage sweep is debounced, so a click on Create can come before
+      // it settles. Open Cleaning and wait for its readout, so the mint below
+      // follows a settled check that found a value for every field.
+      const cleaningCustomizeRow = Array.from(
+        document.querySelectorAll(
+          `aside[aria-label="This exchange"] .${styles.customizeRow}`,
+        ),
+      ).find((row) => row.querySelector("span")?.textContent === "Cleaning");
+      await page.elementLocator(cleaningCustomizeRow as HTMLElement).click();
+      await expect
+        .element(page.getByRole("heading", { level: 1 }))
+        .toMatchTextContent("Cleaning");
+      await vi.waitFor(() => {
+        expect(
+          document.querySelectorAll('[data-testid="coverage-rate"]').length,
+        ).toBeGreaterThan(0);
+      }, COVERAGE_SETTLE_TIMEOUT_MS);
+      expect(
+        document.querySelector('[data-testid="coverage-silent-empty"]'),
+      ).toBeNull();
+      await page
+        .getByRole("button", { name: "Back to Review & create" })
+        .click();
+      const create = page.getByRole("button", {
+        name: "Create the invitation",
+      });
+      await expect.element(create).toBeEnabled();
+      await create.click();
       await expect
         .element(page.getByRole("heading", { level: 1 }))
         .toMatchTextContent("Your invitation is ready");
@@ -1459,7 +1487,7 @@ describe("inviter screen", () => {
         .getByRole("button", { name: "Continue to matching & sharing" })
         .click();
       await page
-        .getByLabelText(usedLabel("member_id"))
+        .getByLabelText(usedLabel("record_id"))
         .selectOptions("ignored");
       await flushPendingUpdates();
       expect(unloadPrompted()).toBe(false);
