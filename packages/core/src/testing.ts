@@ -162,9 +162,10 @@ export {
 } from "./psi/psiSetParts.js";
 
 // The input bounds a suite drives at their edge: the invitation decode's host,
-// path, and whole-token limits, and the CSV line ceiling. They stay out of the
-// main entry point: core's own parse enforces each, and a caller meets the
-// refusal rather than the number.
+// path, and whole-token limits, and the CSV line ceiling. All but the host
+// limit stay out of the main entry point: core's own parse enforces each, and a
+// caller meets the refusal rather than the number. The web app refuses an
+// over-long coordination server host on entry, so main exports that one too.
 export {
   MAX_ENDPOINT_HOST_LENGTH,
   MAX_ENDPOINT_PATH_LENGTH,

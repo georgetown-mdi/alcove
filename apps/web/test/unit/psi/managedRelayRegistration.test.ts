@@ -362,7 +362,11 @@ describe("the rotation write", () => {
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
     });
-    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    const rotation = {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+      signalingServer: { host: "signaling.example.org" },
+    };
     expect(
       applyManagedExchangeRotation(stored, rotation)
         .relayRegistrationPendingSince,
@@ -375,7 +379,11 @@ describe("the rotation write", () => {
 
   test("a rotation that states none keeps the pending registration on a record naming no registrar", () => {
     const stored = record({ relayRegistrationPendingSince: PENDING_SINCE });
-    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    const rotation = {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+      signalingServer: { host: "signaling.example.org" },
+    };
     for (const rotated of [
       applyManagedExchangeRotation(stored, rotation),
       applyManagedExchangeReinviteRotation(stored, rotation),
@@ -391,7 +399,11 @@ describe("the rotation write", () => {
       relayRegistrationPendingSince: PENDING_SINCE,
       relayRegistrationPendingReason: "reinvite",
     });
-    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    const rotation = {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+      signalingServer: { host: "signaling.example.org" },
+    };
     for (const rotated of [
       applyManagedExchangeRotation(stored, rotation),
       applyManagedExchangeReinviteRotation(stored, rotation),
@@ -592,6 +604,7 @@ describe("the registration a re-invite makes", () => {
     const written = applyManagedExchangeReinviteRotation(replaced, {
       sharedSecret: generateSharedSecret(),
       expires: null,
+      signalingServer: { host: "signaling.example.org" },
       relayRegistrationPendingSince: NOW.toISOString(),
       relayRegistrationPendingReason: "reinvite",
     });

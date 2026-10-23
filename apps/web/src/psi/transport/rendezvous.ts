@@ -20,7 +20,6 @@ import {
 } from "./waitForConnection";
 import {
   OWN_SIGNALING_PATH,
-  ownSignalingAddress,
   refusedSignalingEndpointField,
 } from "./signalingAddress";
 import {
@@ -216,17 +215,27 @@ function buildPeerOptions(
 }
 
 /**
- * This app's own signaling location, for the inviter listening on its derived
- * id: the same address its invitation names ({@link ownSignalingAddress}),
- * with a default port resolved to 443/80 by the address's own scheme.
+ * The inviter's signaling location, for listening on its derived id: the
+ * server its invitation names, so a change to this browser's setting after
+ * the invitation was created moves no inviter. The scheme, and a missing
+ * port and path, are resolved as {@link acceptorLocationFromEndpoint}
+ * resolves them, so both parties reach the same address.
+ *
+ * @throws {Error} if `endpoint`'s host or path could move the address; the
+ *                 endpoint is this app's own, so this is an internal fault.
  */
-function inviterSignalingLocation(): SignalingLocation {
-  const address = ownSignalingAddress();
+function inviterSignalingLocation(endpoint: WebRTCEndpoint): SignalingLocation {
+  if (refusedSignalingEndpointField(endpoint) !== undefined)
+    throw new Error(
+      "the inviter's signaling endpoint names a host or path that could " +
+        "move the connection to another server",
+    );
+  const secure = window.location.protocol === "https:";
   return {
-    host: address.host,
-    port: address.port ?? (address.secure ? 443 : 80),
-    path: address.path,
-    secure: address.secure,
+    host: endpoint.host,
+    port: endpoint.port ?? (secure ? 443 : 80),
+    path: endpoint.path ?? OWN_SIGNALING_PATH,
+    secure,
   };
 }
 
@@ -382,6 +391,8 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  *
  * @param sharedSecret  The invitation's shared secret; the inviter id is derived
  *                      from it.
+ * @param endpoint      The signaling endpoint the invitation names, or a saved
+ *                      exchange's record saved; the inviter registers there.
  * @param options       `signal` cancels the listen before or during broker
  *                      registration; `relay` is the relay this run gathers
  *                      against, none when absent; `relaysLeftOut` are the relay
@@ -396,6 +407,7 @@ function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
  */
 export async function listenAsInviter(
   sharedSecret: string,
+  endpoint: WebRTCEndpoint,
   options?: {
     signal?: AbortSignal;
     relay?: RunRelay;
@@ -416,7 +428,7 @@ export async function listenAsInviter(
     deriveRendezvousPeerId(sharedSecret, "acceptor"),
     buildIceServers(options?.relay, sharedSecret, new Date()),
   ]);
-  const loc = inviterSignalingLocation();
+  const loc = inviterSignalingLocation(endpoint);
   throwIfAbortedBeforeBrokerContact(signal);
   // The derived id is a rendezvous address that correlates exchanges, so keep it
   // out of default (info) logs; show it only at debug for connection triage.

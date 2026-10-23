@@ -162,11 +162,11 @@ describe("the signaling locator the web app mints", () => {
   });
 
   test("the inviter listens at the locator it minted", async () => {
-    // Same browser location on both sides of the mint/listen pair, so an
+    // The inviter registers at the endpoint its invitation names, so an
     // invitation cannot name a broker its own inviter is not registered with.
     const endpoint = vectors.signaling.endpoint;
     const cap = capturingPeerFactory();
-    await listenAsInviter(sharedSecret, { peerFactory: cap.factory });
+    await listenAsInviter(sharedSecret, endpoint, { peerFactory: cap.factory });
     expect(cap.options()).toMatchObject({
       host: endpoint.host,
       port: endpoint.port,
@@ -203,7 +203,9 @@ describe("the signaling location a web acceptor resolves from a CLI-minted endpo
 describe("the peer ids the web app registers and dials", () => {
   test("the inviter registers on the vector's inviter id", async () => {
     const cap = capturingPeerFactory();
-    await listenAsInviter(sharedSecret, { peerFactory: cap.factory });
+    await listenAsInviter(sharedSecret, vectors.signaling.endpoint, {
+      peerFactory: cap.factory,
+    });
     expect(cap.registeredId()).toBe(sideVector("inviter").localPeerId);
   });
 

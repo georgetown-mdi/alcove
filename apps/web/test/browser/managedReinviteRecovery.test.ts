@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
+  decodeInvitation,
   deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -103,6 +104,7 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
     const rotated = await persistManagedExchangeReinvite(record.id, {
       sharedSecret: generateSharedSecret(),
       expires: null,
+      signalingServer: { host: "signaling.example.org" },
     });
 
     // The failure is consumed and the import marker cleared: the next read tiers as
@@ -130,6 +132,7 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
     await persistManagedExchangeReinvite(record.id, {
       sharedSecret: generateSharedSecret(),
       expires: null,
+      signalingServer: { host: "signaling.example.org" },
     });
 
     const stored = await getManagedExchange(record.id);
@@ -148,6 +151,7 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
       persistManagedExchangeReinvite(record.id, {
         sharedSecret: generateSharedSecret(),
         expires: null,
+        signalingServer: { host: "signaling.example.org" },
       }),
     ).rejects.toThrow(/configuration only/);
     expect((await getManagedExchange(record.id))?.sharedSecret).toBeUndefined();
@@ -172,6 +176,18 @@ describe("reinviteManagedExchange rotates the stored secret and returns it", () 
     const stored = await getManagedExchange(record.id);
     expect(stored?.sharedSecret).toBe(result.reinvite.sharedSecret);
     expect(stored?.sharedSecret).not.toBe(stale);
+    // The store also holds the coordination server the fresh invitation names,
+    // where this party's later runs register.
+    const named = (await decodeInvitation(result.reinvite.encoded))
+      .connectionEndpoint;
+    if (named?.channel !== "webrtc") throw new Error("no webrtc endpoint");
+    expect(stored?.exchangeFile.connection).toMatchObject({
+      server: {
+        host: named.host,
+        ...(named.port !== undefined ? { port: named.port } : {}),
+        ...(named.path !== undefined ? { path: named.path } : {}),
+      },
+    });
   });
 });
 
@@ -204,6 +220,7 @@ describe("a re-invite while a compromise response stands", () => {
       persistManagedExchangeReinvite(id, {
         sharedSecret: generateSharedSecret(),
         expires: null,
+        signalingServer: { host: "signaling.example.org" },
       }),
     ).rejects.toBeInstanceOf(ManagedReinviteWithheldError);
 
@@ -223,6 +240,7 @@ describe("a re-invite while a compromise response stands", () => {
     const rotated = await persistManagedExchangeReinvite(id, {
       sharedSecret: generateSharedSecret(),
       expires: null,
+      signalingServer: { host: "signaling.example.org" },
     });
 
     expect(rotated.sharedSecret).not.toBe(stale);
@@ -257,6 +275,7 @@ describe("a re-invite while a run holds the run+rotate lock", () => {
         persistManagedExchangeReinvite(record.id, {
           sharedSecret: generateSharedSecret(),
           expires: null,
+          signalingServer: { host: "signaling.example.org" },
         }),
       ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
       expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
@@ -273,6 +292,7 @@ describe("a re-invite while a run holds the run+rotate lock", () => {
     const rotated = await persistManagedExchangeReinvite(record.id, {
       sharedSecret: generateSharedSecret(),
       expires: null,
+      signalingServer: { host: "signaling.example.org" },
     });
     expect(rotated.sharedSecret).not.toBe(record.sharedSecret);
     expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
@@ -325,7 +345,11 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
 
     const rotated = await persistManagedExchangeReinvite(
       enrolled.id,
-      { sharedSecret: generateSharedSecret(), expires: null },
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
       (replaced, written) =>
         registerReinvitedManagedRelayKey(replaced, written, {
           fetch: registrar.fetch,
@@ -365,7 +389,11 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
 
     const rotated = await persistManagedExchangeReinvite(
       enrolled.id,
-      { sharedSecret: generateSharedSecret(), expires: null },
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
       (replaced, written) =>
         registerReinvitedManagedRelayKey(replaced, written, {
           fetch: registrar.fetch,
@@ -401,7 +429,11 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
     let asked = false;
     const rotated = await persistManagedExchangeReinvite(
       created.id,
-      { sharedSecret: generateSharedSecret(), expires: null },
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
       (_replaced, written) => {
         asked = true;
         return Promise.resolve(written);

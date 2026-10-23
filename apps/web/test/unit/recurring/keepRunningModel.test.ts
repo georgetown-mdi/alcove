@@ -92,6 +92,16 @@ describe("readiness result", () => {
     [{ folder: "unsupported" as const }, "cannot give a site a folder"],
     [{ signaling: "noAnswer" as const }, "could not connect"],
     [{ signaling: "offline" as const }, "offline"],
+    [
+      { signaling: "inviterAddressRefused" as const },
+      "Re-invite your partner to name this browser's current coordination " +
+        "server. If relay settings cannot read your coordination server, set " +
+        "it again or clear it there first.",
+    ],
+    [
+      { signaling: "acceptorAddressRefused" as const },
+      "Ask your partner for a new invitation",
+    ],
   ])("a failing check names its remedy (%o)", (change, phrase) => {
     const report = { ...ready, ...change };
     expect(readinessReady(report)).toBe(false);

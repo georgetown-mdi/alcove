@@ -51,14 +51,17 @@ afterEach(async () => {
     await root.removeEntry(name, { recursive: true }).catch(() => undefined);
 });
 
-function scheduledRecord(workingDirectoryHandle?: FileSystemDirectoryHandle) {
+function scheduledRecord(
+  workingDirectoryHandle?: FileSystemDirectoryHandle,
+  signalingHost = "signaling.example.org",
+) {
   const anchor = new Date(Date.now() + 3_600_000).toISOString();
   return buildManagedExchangeRecord({
     label: "Riverbend quarterly",
     exchangeFile: composeManagedExchangeFile({
       connection: {
         channel: "webrtc",
-        host: "signaling.example.org",
+        host: signalingHost,
         port: 3000,
         path: "/api/",
       },
@@ -79,12 +82,13 @@ function scheduledRecord(workingDirectoryHandle?: FileSystemDirectoryHandle) {
 
 function readings(
   folder: FolderReadiness,
-  signaling: SignalingReadiness,
+  signaling: Extract<SignalingReadiness, "answered" | "noAnswer" | "offline">,
   installed: boolean,
 ): ReadinessCheckDependencies {
   return {
     isInstalledRuntime: () => installed,
     isOnline: () => signaling !== "offline",
+    pageProtocol: () => window.location.protocol,
     probeSignalingServer: () => Promise.resolve(signaling === "answered"),
     checkWorkingFolder: () => Promise.resolve(folder),
   };
@@ -336,6 +340,35 @@ describe("the readiness check", () => {
     await expect
       .element(page.getByText("This computer is offline", { exact: false }))
       .toBeInTheDocument();
+  });
+
+  test("a saved address a run refuses is reported, and no server is contacted", async () => {
+    const probe = vi.fn(() => Promise.resolve(true));
+    app.render(
+      createElement(KeepRunningSection, {
+        record: scheduledRecord(undefined, "a@b"),
+        isInstalledRuntime: () => true,
+        readinessCheck: {
+          ...readings("ready", "answered", true),
+          probeSignalingServer: probe,
+        },
+      }),
+    );
+    await page
+      .getByRole("button", { name: "Check readiness for the next window" })
+      .click();
+    await expect
+      .element(
+        page.getByText(
+          "The coordination server address this exchange saved cannot be used",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Re-invite your partner", { exact: false }))
+      .toBeInTheDocument();
+    expect(probe).not.toHaveBeenCalled();
   });
 });
 

@@ -351,8 +351,8 @@ The screen's reading of a run in flight is polled and can be stale, so nothing r
 
 ### Recovery: fast re-invite
 
-"Fast" means the managed exchange keeps everything a re-invite needs that is **not** the secret: the exchange-file document, with its terms and rendezvous locator.
-A re-invite reuses the standing definition and only creates and exchanges a new setup secret, without re-authoring the exchange.
+"Fast" means the managed exchange keeps everything a re-invite needs that is **not** the secret: the exchange-file document, with its terms.
+A re-invite reuses the standing definition and creates and exchanges a new setup secret, without re-authoring the exchange, and the invitation names the inviting browser's current coordination server.
 That makes re-invite cheap enough to be the first-line recovery, which is what lets the first release ship without the grace window.
 
 Cheap recovery has a cost.

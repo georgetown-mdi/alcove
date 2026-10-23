@@ -185,6 +185,19 @@ describe("managed exchange detail configuration", () => {
         page.getByRole("button", { name: "Re-invite with the same terms" }),
       )
       .toBeInTheDocument();
+    // The inviter is told which coordination server the fresh invitation names.
+    await expect
+      .element(
+        page.getByText(
+          "The new invitation names the coordination server set in relay " +
+            "settings, or this site's where none is set, or the one this " +
+            "exchange already uses where relay settings cannot read yours, " +
+            "and this exchange " +
+            "uses that server from then on.",
+          { exact: true },
+        ),
+      )
+      .toBeInTheDocument();
     // The stale "change the terms" label -- which the flow could not honor -- is gone.
     expect(
       page
@@ -240,6 +253,11 @@ describe("managed exchange detail configuration", () => {
     expect(
       page
         .getByRole("button", { name: "Re-invite with the same terms" })
+        .query(),
+    ).toBeNull();
+    expect(
+      page
+        .getByText("The new invitation names the coordination server")
         .query(),
     ).toBeNull();
   });

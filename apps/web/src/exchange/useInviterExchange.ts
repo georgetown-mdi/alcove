@@ -20,6 +20,7 @@ import {
   prepareForExchange,
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
+  sanitizeForDisplay,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
@@ -67,6 +68,10 @@ import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal"
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import {
+  CoordinationServerUnreachableError,
+  settingServerNamedBy,
+} from "@psi/transport/signalingAddress";
+import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
   waitForIncomingConnection,
@@ -110,6 +115,7 @@ import {
 
 import type { DataConnection } from "peerjs";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
+import type Peer from "peerjs";
 
 import type {
   Acquire,
@@ -163,6 +169,10 @@ export interface RunFailure {
   /** Set when the partner never connected in the time this page waited. The
    * seat offers its retry as "Keep waiting", on the same invitation. */
   partnerNoShow?: true;
+  /** Set when the coordination server this browser's setting named did not
+   * answer the inviter's registration. The seat offers a fresh invitation
+   * beside its retry, and a link to relay settings. */
+  coordinationServerUnreachable?: true;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -836,6 +846,16 @@ function failureContentFor(
           partnerNoShow: true,
         };
   }
+  // The coordination server this browser's setting named did not answer the
+  // inviter's registration: the setting, not a passing network fault, is the
+  // likely cause, so the copy names the server and the control that clears it.
+  if (error instanceof CoordinationServerUnreachableError)
+    return {
+      category: "exchange",
+      title: "Your coordination server did not answer",
+      message: coordinationServerUnreachableMessage(error.server),
+      coordinationServerUnreachable: true,
+    };
   // A failure whose own message states the cause and the next step -- relayed
   // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised marked in this
   // browser, such as core's reply-cap fault: "report it; retrying will not
@@ -889,6 +909,58 @@ function failureContentFor(
       error instanceof Error ? sanitizedFailureMessage(error) : "",
     ),
   };
+}
+
+/**
+ * What the run's alert says when the coordination server this browser's
+ * setting named, `server`, did not answer: the server, then how to retry or
+ * clear the setting and start over.
+ *
+ * @internal exported for testing
+ */
+export function coordinationServerUnreachableMessage(server: string): string {
+  return (
+    `This page could not connect to ${sanitizeForDisplay(server)}, the ` +
+    "coordination server set in relay settings, which this invitation " +
+    "names. Your partner cannot use this invitation until that server " +
+    "answers. Ask whoever runs it to check it, then choose Try again. Or " +
+    "clear the address under Coordination server in relay settings, choose " +
+    "Start over with a fresh invitation, and send your partner the new one."
+  );
+}
+
+/**
+ * Register the inviter at the coordination server `minted` names. A
+ * registration that server did not answer, where it is the one this
+ * browser's setting named rather than the deployment's own
+ * ({@link settingServerNamedBy}), fails with
+ * {@link CoordinationServerUnreachableError}, naming it.
+ *
+ * @internal exported for testing
+ */
+export async function listenAtInvitationServer(
+  minted: Pick<GeneratedInvitation, "sharedSecret" | "connectionEndpoint">,
+  options: NonNullable<Parameters<typeof listenAsInviter>[2]>,
+): Promise<Peer> {
+  const endpoint = minted.connectionEndpoint;
+  if (endpoint?.channel !== "webrtc")
+    throw new Error("a browser exchange's invitation names no webrtc endpoint");
+  const registration = { unanswered: false };
+  try {
+    return await listenAsInviter(minted.sharedSecret, endpoint, {
+      ...options,
+      onPathFailed: (failure) => {
+        if (failure === "signaling-unreachable") registration.unanswered = true;
+        options.onPathFailed?.(failure);
+      },
+    });
+  } catch (error) {
+    const server = registration.unanswered
+      ? settingServerNamedBy(endpoint)
+      : undefined;
+    if (server === undefined) throw error;
+    throw new CoordinationServerUnreachableError(server, { cause: error });
+  }
 }
 
 /**
@@ -1303,10 +1375,10 @@ export function useInviterExchange({
         onCloseOutcome,
         onRunNotice,
         openWebRtc: async ({ signal: webRtcSignal, onPathFailed }) => {
-          const peer = await listenAsInviter(minted.sharedSecret, {
+          const peer = await listenAtInvitationServer(minted, {
             signal: webRtcSignal,
             ...relayPlan,
-            onPathFailed,
+            ...(onPathFailed !== undefined ? { onPathFailed } : {}),
           });
           // The wait ends at the partner-wait ceiling, or sooner where the
           // invitation expires first, and the share screen states that

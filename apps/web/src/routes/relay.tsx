@@ -9,7 +9,7 @@ export const Route = createFileRoute("/relay")({
     meta: seo({
       title: "Relay server - Alcove",
       description:
-        "Set the TURN relay your side of an exchange connects through.",
+        "Set the relays and the coordination server your side of an exchange uses.",
     }),
   }),
 });

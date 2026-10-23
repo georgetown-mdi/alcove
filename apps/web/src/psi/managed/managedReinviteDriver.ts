@@ -7,10 +7,11 @@
  *
  * The record write reuses {@link persistManagedExchangeReinvite}: it replaces the
  * desynced secret with the fresh setup secret (the field-scoped rotation write over
- * the secret and the record's own `expires`), drops the stale `lastRun`, and clears
- * the backup and import markers in the same cross-store transaction. The write is
- * awaited before the operator forwards the invitation, so this party's own re-run
- * listens on the rendezvous the fresh secret derives. On an exchange enrolled at a
+ * the secret, the record's own `expires` and the document's coordination server),
+ * drops the stale `lastRun`, and clears the backup and import markers in the same
+ * cross-store transaction. The write is awaited before the operator forwards the
+ * invitation, so this party's own re-run listens on the rendezvous the fresh secret
+ * derives, at the server the invitation names. On an exchange enrolled at a
  * relay registrar, the same step registers the fresh secret's relay key, signed with
  * the replaced secret's ({@link registerReinvitedManagedRelayKey}).
  */
@@ -18,24 +19,25 @@
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
 import { defaultRelayInUse } from "../transport/defaultRelay";
-import { invitationLocation } from "../invitationLocation";
 import { ownRelayForInvitation } from "../transport/ownRelaySetting";
+import { reinviteLocation } from "../invitationLocation";
 
 import { composeManagedReinvite } from "./managedReinvite";
 import { managedAllowedRelays } from "./managedExchangeRecord";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
 import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
+import type { ManagedReinvite, ReinviteLocation } from "./managedReinvite";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
-import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
 
 /** The dependencies the re-invite driver injects, defaulted to the real platform
  * wiring but overridable in a test. */
 interface ManagedReinviteDriverDeps {
-  /** Read this page's location for the fresh webrtc endpoint. */
-  location: () => ReturnType<typeof invitationLocation>;
+  /** Read this page's origin and the coordination server a re-invite names,
+   * for the fresh webrtc endpoint. */
+  location: () => ReinviteLocation;
   /** Mint a fresh setup secret. */
   generateSecret: () => string;
   /** Encode the composed token to the shareable string. */
@@ -56,7 +58,7 @@ interface ManagedReinviteDriverDeps {
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
-  location: invitationLocation,
+  location: reinviteLocation,
   generateSecret: generateSharedSecret,
   encode: encodeInvitation,
   persistRotation: persistManagedExchangeReinvite,

@@ -519,6 +519,7 @@ export {
   assertInvitationLifetimeSeconds,
   invitationExpires,
   MAX_ENCODED_INVITATION_LENGTH,
+  MAX_ENDPOINT_HOST_LENGTH,
   MAX_INVITATION_LIFETIME_SECONDS,
   decodeInvitation,
   encodeInvitation,

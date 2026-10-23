@@ -86,6 +86,12 @@ import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 
+// What every failure message that sends the operator to a re-invite says the
+// re-invite does, for either side to read.
+const REINVITE_EFFECT =
+  "the exchange keeps your terms, gets a new secret, and uses the " +
+  "coordination server the new invitation names.";
+
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
@@ -205,7 +211,11 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     const reason =
       "names a host that is not a host name or IP address alone (an IPv6 address in square brackets), so this app does not connect to it";
     const failure = classifyAgainstOneRecord(
-      new ManagedSignalingEndpointRefusedError("Riverbend quarterly", reason),
+      new ManagedSignalingEndpointRefusedError(
+        "Riverbend quarterly",
+        reason,
+        "acceptor",
+      ),
       record({ lastRun: failed("transport") }),
       undefined,
       NOW,
@@ -226,13 +236,42 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/try again/i);
 
     const unlabelled = classifyAgainstOneRecord(
-      new ManagedSignalingEndpointRefusedError(" ", reason),
+      new ManagedSignalingEndpointRefusedError(" ", reason, "acceptor"),
       record(),
       undefined,
       NOW,
       false,
     );
     expect(unlabelled.message).toMatch(/^This saved exchange cannot run:/);
+  });
+
+  test("an inviter's refused saved signaling address offers the re-invite, which names this browser's server", () => {
+    const reason = "is not a complete host, port and path";
+    const failure = classifyAgainstOneRecord(
+      new ManagedSignalingEndpointRefusedError(
+        "Riverbend quarterly",
+        reason,
+        "inviter",
+      ),
+      record({ lastRun: failed("transport") }),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure).toEqual({
+      kind: "saved-address-refused",
+      title: "The saved coordination server address cannot be used",
+      message:
+        'The saved exchange "Riverbend quarterly" cannot run: the coordination ' +
+        `server address it saved ${reason}. The run stopped before ` +
+        "connecting, so your partner was not contacted and nothing left " +
+        "this device. Running it again stops the same way; re-invite your " +
+        "partner to name this browser's current coordination server. If relay " +
+        "settings cannot read your coordination server, set it again or " +
+        "clear it there first.",
+      recovery: "reinvite",
+    });
+    expect(managedRunRetryable(failure)).toBe(false);
   });
 
   test("a plain transport failure stamped the same way keeps the generic retryable state", () => {
@@ -637,7 +676,8 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.kind).toBe("missed");
     expect(failure.message).toMatch(/keeps happening/i);
     expect(failure.message).toMatch(/re-invite your partner to reconnect/i);
-    expect(failure.message).toMatch(/only replaces the secret/i);
+    expect(failure.message).toContain(REINVITE_EFFECT);
+    expect(failure.message).not.toMatch(/only replaces/i);
   });
 
   test("a live no-show against a standing missed outcome keeps the no-show state", () => {
@@ -1118,6 +1158,7 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     );
     expect(failure.kind).toBe("storage");
     expect(failure.recovery).toBe("reinvite");
+    expect(failure.message).toContain(REINVITE_EFFECT);
     expect(failure.message).not.toMatch(/attack|tamper|impersonat/i);
   });
 
@@ -1158,6 +1199,7 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     );
     expect(failure.kind).toBe("imported");
     expect(failure.recovery).toBe("reinvite");
+    expect(failure.message).toContain(REINVITE_EFFECT);
     expect(failure.message).not.toMatch(/attack|tamper|impersonat/i);
   });
 
@@ -1527,6 +1569,19 @@ describe("managedReinviteRecoveryCopy", () => {
     expect(copy.body.join(" ")).toMatch(/recurring exchanges/i);
   });
 
+  test("the inviter is told the fresh invitation names the coordination server the exchange then uses", () => {
+    const body = prose("inviter");
+    expect(body).toContain(
+      "This keeps your agreed terms and replaces the secret. The fresh " +
+        "invitation names the coordination server set in relay settings, or " +
+        "this site's where none is set, or the one this exchange already " +
+        "uses where relay settings cannot read yours, and this exchange " +
+        "uses that server " +
+        "from then on.",
+    );
+    expect(body).not.toMatch(/only replaces/i);
+  });
+
   test("the inviter's recovery gains no remove instruction", () => {
     // Re-minting rotates the record in place, so the inviter has nothing to clean up
     // and must not be told to remove the exchange it just recovered.
@@ -1793,6 +1848,7 @@ describe("a rotation in flight across a crash", () => {
     expect(failure.recovery).toBe("reinvite");
     expect(managedRunReinvites(failure)).toBe(true);
     expect(failure.message).toMatch(/re-invite your partner/i);
+    expect(failure.message).toContain(REINVITE_EFFECT);
     // Plain re-invite copy, never the confirmation framing.
     expect(failure.message).not.toMatch(/interfer|trusted channel/i);
   });

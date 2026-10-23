@@ -315,7 +315,8 @@ const MISSED_FAILURE: ManagedRunFailureAlert = {
     "device: agree a time with your partner over your usual channel, and run " +
     "this exchange again when they are ready. If they were running their side " +
     "at a time you agreed and this keeps happening, re-invite your partner to " +
-    "reconnect; the exchange keeps your terms and only replaces the secret.",
+    "reconnect; the exchange keeps your terms, gets a new secret, and uses " +
+    "the coordination server the new invitation names.",
   recovery: "none",
 };
 
@@ -682,8 +683,8 @@ const STORAGE_FAILURE: ManagedRunFailureAlert = {
   message:
     "The last run connected but could not save its updated secret on this " +
     "device, so you and your partner may now hold different secrets. Re-invite " +
-    "your partner to reconnect; the exchange keeps your terms and only replaces " +
-    "the secret.",
+    "your partner to reconnect; the exchange keeps your terms, gets a new " +
+    "secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
@@ -701,8 +702,8 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailureAlert = {
     "secret on this device, and a run since then did not connect to your " +
     "partner. " +
     "Your partner probably saved a secret this device does not have. " +
-    "Re-invite your partner to reconnect; the exchange keeps your terms and " +
-    "only replaces the secret.",
+    "Re-invite your partner to reconnect; the exchange keeps your terms, gets " +
+    "a new secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
@@ -719,19 +720,21 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
     "This exchange was restored from a backup or key file, or taken back " +
     "from the command line, and no run has succeeded since, so it may be " +
     "one you and your partner have already moved past. Re-invite your " +
-    "partner to reconnect; the exchange keeps your terms and only " +
-    "replaces the secret.",
+    "partner to reconnect; the exchange keeps your terms, gets a new secret, " +
+    "and uses the coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
-/** The state of an acceptor's run refused because the signaling server address
- * its record saved fails the validation a fresh invitation's address gets
+/** The state of a run refused because the signaling server address its record
+ * saved fails the validation a fresh invitation's address gets
  * ({@link ManagedSignalingEndpointRefusedError}). Read off the error class with
  * no stored kind of its own, since a new stored kind would change the saved
  * record's schema: the record stamps it as a transport failure, so a later
  * visit reads the generic transport state. The same record refuses identically
- * every time, so it is not the retry state; a fresh invitation from the
- * partner saves a new address, the acceptor's re-invite recovery. */
+ * every time, so it is not the retry state. Both sides recover by re-invite:
+ * a fresh invitation from the partner saves a new address on the acceptor's
+ * side, and an inviter's re-invite names this browser's current
+ * coordination server and stores it on the record. */
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
 ): ManagedRunFailureAlert {
@@ -741,7 +744,12 @@ function savedAddressRefusedFailure(
     message:
       `${error.refusal} The run stopped before connecting, so your partner ` +
       "was not contacted and nothing left this device. Running it again " +
-      "stops the same way; this exchange needs a fresh invitation.",
+      "stops the same way; " +
+      (error.side === "acceptor"
+        ? "this exchange needs a fresh invitation."
+        : "re-invite your partner to name this browser's current " +
+          "coordination server. If relay settings cannot read your " +
+          "coordination server, set it again or clear it there first."),
     recovery: "reinvite",
   };
 }
@@ -1237,9 +1245,14 @@ interface ManagedReinviteRecoveryCopy {
 const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   lead: "Re-invite your partner.",
   body: [
-    "This keeps your agreed terms and only replaces the secret. The fresh " +
-      "invitation includes a new one-time secret, so send it over your usual " +
-      "trusted channel, exactly as you did the first time.",
+    "This keeps your agreed terms and replaces the secret. The fresh " +
+      "invitation names the coordination server set in relay settings, or " +
+      "this site's where none is set, or the one this exchange already " +
+      "uses where relay settings cannot read yours, and this exchange " +
+      "uses that server " +
+      "from then on. The fresh invitation includes a new one-time secret, " +
+      "so send it over your usual trusted channel, exactly as you did the " +
+      "first time.",
   ],
 };
 

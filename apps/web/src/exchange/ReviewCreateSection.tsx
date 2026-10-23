@@ -81,6 +81,7 @@ import styles from "@styles/app.module.css";
 
 import { CitationDropNotice } from "./CitationDropNotice";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
+import { UnreadableCoordinationServerNotice } from "./CoordinationServerSection";
 
 import {
   INVITER_RESET_STATEMENT,
@@ -534,6 +535,7 @@ export function ReviewCreateSection({
           />
           {transport === "browser" && makesInvitation && (
             <>
+              {!consoleBuild && <UnreadableCoordinationServerNotice />}
               <DefaultRelayNotice />
               {allowedRelays !== undefined && (
                 <>

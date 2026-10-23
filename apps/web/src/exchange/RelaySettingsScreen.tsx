@@ -28,6 +28,7 @@ import { defaultRelayInUse } from "@psi/transport/defaultRelay";
 import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
+import { CoordinationServerSection } from "./CoordinationServerSection";
 import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
@@ -82,6 +83,12 @@ export const RELAY_PAGE_INTRO =
   "When a firewall blocks a direct connection to your partner, you can both " +
   "connect through a TURN relay. If you run the relay, create the invitation " +
   "so your partner uses it too.";
+
+/** Where the hosted app's relay settings page points to the coordination
+ * server section below, under {@link RELAY_PAGE_INTRO}. */
+export const RELAY_PAGE_COORDINATION_SERVER_NOTE =
+  "This page also sets the coordination server your invitations use, under " +
+  "Coordination server below.";
 
 /**
  * What the relay must hold for each run's credential, shown under the page's
@@ -142,7 +149,10 @@ type SaveStatus =
  * a test of the relays a browser run lists that the user starts, and what the
  * relay's operator learns. The hosted app and a console each hold their own; a
  * console runs no exchange over a WebSocket relay, so it offers no WebSocket
- * relay field. The relays an exchange may use are that exchange's own, set
+ * relay field. On the hosted app the page also sets the coordination server
+ * the invitations this browser creates name ({@link CoordinationServerSection});
+ * a console mints no browser invitation, so it offers none. The relays an
+ * exchange may use are that exchange's own, set
  * where it is authored, so none is set here. Where the build offers its
  * default relay switched off, the page has the switch that turns it on in
  * this browser, which takes effect when it is changed.
@@ -257,6 +267,11 @@ export function RelaySettingsScreen({
     <WorkShell>
       <h1>Relay server</h1>
       <p className={`${styles.small} ${styles.sub}`}>{RELAY_PAGE_INTRO}</p>
+      {!consoleBuild && (
+        <p className={`${styles.small} ${styles.sub}`}>
+          {RELAY_PAGE_COORDINATION_SERVER_NOTE}
+        </p>
+      )}
       <p className={`${styles.small} ${styles.sub}`}>
         {consoleBuild
           ? "Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."
@@ -355,6 +370,8 @@ export function RelaySettingsScreen({
 
       <h2>What the relay&apos;s operator learns</h2>
       <p>{RELAY_OPERATOR_DISCLOSURE}</p>
+
+      {!consoleBuild && <CoordinationServerSection />}
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">

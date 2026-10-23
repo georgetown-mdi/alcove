@@ -76,9 +76,7 @@ export function KeepRunningSection({
   async function check() {
     setChecking(true);
     try {
-      setReport(
-        await runReadinessCheck(record.workingDirectoryHandle, readinessCheck),
-      );
+      setReport(await runReadinessCheck(record, readinessCheck));
     } finally {
       setChecking(false);
     }

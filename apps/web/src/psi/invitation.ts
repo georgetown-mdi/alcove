@@ -235,16 +235,28 @@ export function webrtcEndpointFromAddress(
 }
 
 /**
- * The webrtc endpoint in a web invitation: the signaling locator plus the
- * relay the inviter names, if any, with its registrar where the relay names a
- * TURN url or a WebSocket relay url. Both mint paths, a new invitation and a
- * managed re-invite, call it.
+ * The webrtc endpoint in a new web invitation: the signaling locator `loc`
+ * names plus the relay the inviter names ({@link webrtcEndpointWithRelay}).
  */
 export function invitationWebrtcEndpoint(
   loc: InvitationLocation,
   ownRelay: RelayUrls | undefined,
 ): WebRTCEndpoint {
-  const endpoint = webrtcEndpointFromAddress(invitationSignalingAddress(loc));
+  return webrtcEndpointWithRelay(
+    webrtcEndpointFromAddress(invitationSignalingAddress(loc)),
+    ownRelay,
+  );
+}
+
+/**
+ * `endpoint`, a signaling locator, plus the relay the inviter names, if any,
+ * with its registrar where the relay names a TURN url or a WebSocket relay
+ * url. Both mint paths, a new invitation and a managed re-invite, call it.
+ */
+export function webrtcEndpointWithRelay(
+  endpoint: WebRTCEndpoint,
+  ownRelay: RelayUrls | undefined,
+): WebRTCEndpoint {
   const relay = relayLocatorFromOwnRelay(ownRelay);
   if (relay === undefined) return endpoint;
   const registrar =

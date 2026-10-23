@@ -223,11 +223,13 @@ function scriptTransport(): { mc: MessageConnection } {
 }
 
 /** Only the fields the inviter flow reads on the browser path: the secret and
- * expiry it authenticates with, and the terms/rows its prepare stands in for. */
+ * expiry it authenticates with, the endpoint it registers at, and the
+ * terms/rows its prepare stands in for. */
 const MINTED = {
   linkageTerms: vectors.invitation.token.linkageTerms,
   sharedSecret: vectors.inputs.sharedSecret,
   expires: vectors.invitation.token.expires,
+  connectionEndpoint: vectors.signaling.endpoint,
   rawRows: [],
   columns: [],
 } as unknown as GeneratedInvitation;
