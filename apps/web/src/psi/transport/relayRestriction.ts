@@ -86,26 +86,36 @@ export const KEPT_BY_ALLOWED_RELAYS = "kept by your allowed relays";
 /** The mark of a TURN url the setting leaves out. */
 export const LEFT_OUT_BY_ALLOWED_RELAYS = "left out by your allowed relays";
 
-function allowedRelaysFieldDescription(relays: string): string {
-  return (
-    "One host per line, with a port where needed, for example " +
-    "relay.example.org or relay.example.org:443. Each run uses only the " +
-    `relay servers listed here, ${relays}. The setting covers relay servers ` +
-    "only: a run still contacts the STUN servers an invitation names. Leave " +
-    "it empty to use every relay a run lists."
-  );
+/** The Allowed relays field's description: what to enter. What the list
+ * decides and does not is in the user guide the field links to. */
+export const ALLOWED_RELAYS_FIELD_DESCRIPTION =
+  "One host per line, with a port where needed, for example " +
+  "relay.example.org or relay.example.org:443. Your side of the exchange " +
+  "uses only the relays listed.";
+
+/** The Allowed relays line where no list is set. */
+export const ALLOWED_RELAYS_UNSET_SUMMARY =
+  "Allowed relays: every relay a run lists.";
+
+/** The Allowed relays line where the list is set and empty, which a saved
+ * exchange's imported configuration can hold. */
+export const NO_ALLOWED_RELAY_SUMMARY =
+  "Allowed relays: none, so this exchange's runs connect without a relay " +
+  "server.";
+
+/**
+ * What the opened Allowed relays field states under an empty list a saved
+ * exchange holds: its runs keep no TURN url, which the empty field would not
+ * show.
+ */
+export const NO_ALLOWED_RELAY_NOTE =
+  "This exchange's configuration allows no relay server, so its runs " +
+  "connect without one. Enter the relays its runs may use.";
+
+/** The Allowed relays line where the list names `entries`, escaped. */
+export function allowedRelaysSummary(entries: ReadonlyArray<string>): string {
+  return `Allowed relays: ${urlList(entries)}.`;
 }
-
-/** The Allowed relays field's description where the run is this browser's
- * or a saved exchange's, which can relay through this site's relay. */
-export const ALLOWED_RELAYS_FIELD_DESCRIPTION = allowedRelaysFieldDescription(
-  "yours, the invitation's, or this site's",
-);
-
-/** The Allowed relays field's description on the console, whose runs have
- * no relay of the site's. */
-export const CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION =
-  allowedRelaysFieldDescription("the invitation's");
 
 /**
  * What a saved exchange's own allowed relays decide, and what they do not,

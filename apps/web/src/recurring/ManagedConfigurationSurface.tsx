@@ -40,6 +40,7 @@ import { ConfigRowItem } from "./ManagedExchangeDetail";
 import { DeleteExchangeButton } from "./SavedExchanges";
 import { LocalDocumentFields } from "./LocalDocumentFields";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
+import { commandLineRunListsRelay } from "./localDocumentFieldsModel";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
 
 import type {
@@ -291,7 +292,10 @@ function ConfigurationSettingsEditor({
   record: ManagedExchangeRecord;
   onRecordEdited: (record: ManagedExchangeRecord) => void;
 }) {
-  const draft = useLocalFieldsDraft(record);
+  const draft = useLocalFieldsDraft(
+    record,
+    commandLineRunListsRelay(record.exchangeFile),
+  );
   const {
     label,
     editLabel,

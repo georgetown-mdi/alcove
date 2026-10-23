@@ -32,7 +32,9 @@ import {
   allowedRelaysError,
   allowedRelaysOffered,
   allowedRelaysRemovable,
+  allowedRelaysShown,
   allowsNoRelay,
+  commandLineRunListsRelay,
   csvDelimiterChoiceFrom,
   delimiterRecheckFrom,
   delimiterRecheckNote,
@@ -49,6 +51,7 @@ import type {
   ExchangeSpec,
   LinkageTerms,
   MatchingKeyUnavailableReason,
+  WebRTCConnectionConfig,
 } from "@alcove/core";
 import type { LocalDocumentFieldValues } from "@recurring/localDocumentFieldsModel";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -593,6 +596,68 @@ describe("the allowed relays", () => {
     expect(connectionOf(edited)).toMatchObject({
       allowedRelays: [...many, long],
     });
+  });
+
+  test("are shown where the document holds a list, the field holds text, or the runs list a relay", () => {
+    const unset = relaysDocument();
+
+    expect(allowedRelaysShown(unset, "", false)).toBe(false);
+    expect(allowedRelaysShown(unset, "", true)).toBe(true);
+    expect(allowedRelaysShown(unset, "relay.example.org", false)).toBe(true);
+    expect(allowedRelaysShown(relaysDocument([]), "", false)).toBe(true);
+    expect(
+      allowedRelaysShown(relaysDocument(["relay.example.org"]), "", false),
+    ).toBe(true);
+    expect(
+      allowedRelaysShown(assembleSftpDocument(), "relay.example.org", true),
+    ).toBe(false);
+  });
+
+  test("a command-line run lists a relay where its connection or its invitation relay names a TURN or WebSocket relay url", () => {
+    const withConnection = (
+      fields: Partial<WebRTCConnectionConfig>,
+    ): ExchangeSpec => {
+      const document = relaysDocument();
+      const connection = document.connection as WebRTCConnectionConfig;
+      return { ...document, connection: { ...connection, ...fields } };
+    };
+
+    expect(commandLineRunListsRelay(relaysDocument())).toBe(false);
+    expect(
+      commandLineRunListsRelay(
+        withConnection({ turn: [{ url: "turn:relay.example.org" }] }),
+      ),
+    ).toBe(true);
+    expect(
+      commandLineRunListsRelay(
+        withConnection({ websocketRelay: "wss://relay.example.org/relay" }),
+      ),
+    ).toBe(true);
+    expect(
+      commandLineRunListsRelay(
+        withConnection({
+          invitationRelay: { turn: ["turn:partner.example.net"] },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      commandLineRunListsRelay(
+        withConnection({
+          stun: ["stun:stun.example.org"],
+          invitationRelay: { stun: ["stun:partner.example.net"] },
+        }),
+      ),
+    ).toBe(false);
+    // A list that leaves every url out still has urls to leave out.
+    expect(
+      commandLineRunListsRelay(
+        withConnection({
+          turn: [{ url: "turn:relay.example.org" }],
+          allowedRelays: [],
+        }),
+      ),
+    ).toBe(true);
+    expect(commandLineRunListsRelay(assembleSftpDocument())).toBe(false);
   });
 
   test("a connection on another channel is not offered them, and a save leaves it alone", () => {

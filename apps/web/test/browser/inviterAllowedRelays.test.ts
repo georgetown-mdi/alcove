@@ -14,9 +14,13 @@ import "@mantine/core/styles.css";
 import { decodeInvitation } from "@alcove/core";
 
 import {
+  ALLOWED_RELAYS_FIELD_DESCRIPTION,
+  ALLOWED_RELAYS_UNSET_SUMMARY,
   CREATED_INVITATION_ALLOWED_RELAYS_SCOPE,
   allowedRelaysRunNotice,
+  allowedRelaysSummary,
 } from "@psi/transport/relayRestriction";
+import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { PENDING_INVITATION_STORAGE_KEY } from "@exchange/pendingInvitationKey";
 import { listenAsInviter } from "@psi/transport/rendezvous";
@@ -71,9 +75,21 @@ afterEach(() => {
 
 const allowedField = () =>
   page.getByRole("textbox", { name: "Allowed relays" });
+const setButton = () =>
+  page.getByRole("button", { name: "Set Allowed relays" });
+const changeButton = () =>
+  page.getByRole("button", { name: "Change Allowed relays" });
+const removeButton = () =>
+  page.getByRole("button", { name: "Remove Allowed relays" });
+const doneButton = () => page.getByRole("button", { name: "Done" });
 const createButton = () =>
   page.getByRole("button", { name: "Create the invitation" });
 const pageText = () => document.body.textContent;
+
+/** Save a relay of this browser's own, which the run lists. */
+function ownRelay() {
+  writeOwnRelaySetting({ turn: [KEPT_URL, LEFT_OUT_URL], stun: [] });
+}
 
 /** Walk the inviting seat from an empty file step to its review step. */
 async function openReview() {
@@ -92,7 +108,13 @@ async function openReview() {
   await page
     .getByRole("button", { name: "Continue to review & create" })
     .click();
-  await expect.element(allowedField()).toBeInTheDocument();
+  await expect.element(createButton()).toBeInTheDocument();
+}
+
+/** Open the field from its line and type `text` into it. */
+async function setRelays(text: string) {
+  await setButton().click();
+  await userEvent.fill(allowedField(), text);
 }
 
 /** Create the invitation from the review step and wait for its run. */
@@ -138,29 +160,67 @@ async function runListen() {
 }
 
 describe("InviterScreen: the review's Allowed relays", () => {
-  test("start empty whatever an earlier build stored for this browser", async () => {
+  test("are not offered where the run lists no relay, and the create names none", async () => {
+    await openReview();
+
+    expect(setButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).not.toContain("Allowed relays");
+    await create();
+    const { record, turn } = await keptInvitation();
+    expect(turn).toBeUndefined();
+    expect(record).not.toHaveProperty("allowedRelays");
+  });
+
+  test("start as one line, whatever an earlier build stored for this browser", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
       JSON.stringify({ version: 1, allowedRelays: ["relay.example.org"] }),
     );
+    ownRelay();
     await openReview();
 
-    await expect.element(allowedField()).toHaveValue("");
-    await expect.element(allowedField()).toBeEnabled();
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    await expect.element(setButton()).toBeEnabled();
+    expect(allowedField().query()).toBeNull();
     expect(pageText()).not.toContain(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
-  test("a line the field refuses shows its error and holds the create until it is fixed", async () => {
+  test("open on their action, empty, with the short description and the guide, and Done closes them", async () => {
+    ownRelay();
+    await openReview();
+
+    await setButton().click();
+    await expect.element(allowedField()).toHaveValue("");
+    await expect.element(allowedField()).toHaveFocus();
+    await expect
+      .element(allowedField())
+      .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
+    await expect
+      .element(page.getByRole("link", { name: "More about Allowed relays" }))
+      .toHaveAttribute("href", ALLOWED_RELAYS_GUIDE_URL);
+
+    await doneButton().click();
+    await expect.element(setButton()).toHaveFocus();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).toContain(ALLOWED_RELAYS_UNSET_SUMMARY);
+  });
+
+  test("a line the field refuses shows its error and holds the create and Done until it is fixed", async () => {
+    ownRelay();
     await openReview();
     const refusal = () => page.getByText(/^Line 1: enter /);
 
-    await userEvent.fill(allowedField(), "turns:relay.example.org:443");
+    await setRelays("turns:relay.example.org:443");
     await expect.element(refusal()).toBeInTheDocument();
     await expect.element(refusal()).not.toHaveAttribute("role", "alert");
     await expect
       .element(allowedField())
       .toHaveAttribute("aria-invalid", "true");
     await expect.element(createButton()).toBeDisabled();
+    await expect.element(doneButton()).toBeDisabled();
     expect(pageText()).toContain(
       "Resolve the allowed relays above to continue.",
     );
@@ -169,13 +229,66 @@ describe("InviterScreen: the review's Allowed relays", () => {
     await userEvent.fill(allowedField(), "relay.example.org");
     await expect.poll(pageText).not.toContain("Line 1:");
     await expect.element(createButton()).toBeEnabled();
+    await expect.element(doneButton()).toBeEnabled();
     expect(pageText()).toContain(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
-  test("creating the invitation commits the list: the invitation, its waiting record and its run keep only the relays it names", async () => {
-    writeOwnRelaySetting({ turn: [KEPT_URL, LEFT_OUT_URL], stun: [] });
+  test("once set, show the list as one line, which Change opens and Remove clears", async () => {
+    ownRelay();
     await openReview();
-    await userEvent.fill(allowedField(), "Relay.Example.org");
+    await setRelays("Relay.Example.org\nbackup.example.org:443");
+    await doneButton().click();
+
+    await expect
+      .element(
+        page.getByText(
+          allowedRelaysSummary(["relay.example.org", "backup.example.org:443"]),
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(changeButton()).toHaveFocus();
+    await expect.element(removeButton()).toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).toContain(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE);
+
+    await changeButton().click();
+    await expect
+      .element(allowedField())
+      .toHaveValue("Relay.Example.org\nbackup.example.org:443");
+    await expect.element(allowedField()).toHaveFocus();
+    await doneButton().click();
+
+    await removeButton().click();
+    await expect.element(setButton()).toHaveFocus();
+    expect(pageText()).toContain(ALLOWED_RELAYS_UNSET_SUMMARY);
+    expect(pageText()).not.toContain(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE);
+    await create();
+    const { record } = await keptInvitation();
+    expect(record).not.toHaveProperty("allowedRelays");
+  });
+
+  test("a list once typed stays shown, and is created, after the run stops listing a relay", async () => {
+    ownRelay();
+    await openReview();
+    await setRelays("relay.example.org");
+    await doneButton().click();
+
+    writeOwnRelaySetting({ turn: [], stun: [] });
+    await page
+      .getByRole("combobox", { name: "Invitation duration" })
+      .selectOptions("1 day");
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["relay.example.org"])))
+      .toBeInTheDocument();
+    await create();
+    const { record } = await keptInvitation();
+    expect(record.allowedRelays).toEqual(["relay.example.org"]);
+  });
+
+  test("creating the invitation commits the list: the invitation, its waiting record and its run keep only the relays it names", async () => {
+    ownRelay();
+    await openReview();
+    await setRelays("Relay.Example.org");
     await create();
 
     const { record, turn } = await keptInvitation();
@@ -191,7 +304,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("an empty field restricts nothing", async () => {
-    writeOwnRelaySetting({ turn: [KEPT_URL, LEFT_OUT_URL], stun: [] });
+    ownRelay();
     await openReview();
     await create();
 
@@ -227,18 +340,44 @@ describe("InviterScreen: the review's Allowed relays", () => {
     ]);
   });
 
-  test("Back from the created invitation shows the field fixed on the list it took", async () => {
-    await openReview();
-    await userEvent.fill(allowedField(), "Relay.Example.org");
-    await create();
-
+  /** Go back from the created invitation to its review. */
+  async function backToReview() {
     const landed = new Promise<void>((resolve) => {
       window.addEventListener("popstate", () => resolve(), { once: true });
     });
     window.history.back();
     await landed;
-    await expect.element(allowedField()).toBeDisabled();
-    await expect.element(allowedField()).toHaveValue("relay.example.org");
+    await expect
+      .element(page.getByRole("heading", { name: "Review & create" }))
+      .toBeInTheDocument();
+  }
+
+  test("Back from the created invitation shows the list it took, fixed", async () => {
+    ownRelay();
+    await openReview();
+    await setRelays("Relay.Example.org");
+    await create();
+
+    await backToReview();
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["relay.example.org"])))
+      .toBeInTheDocument();
+    expect(changeButton().query()).toBeNull();
+    expect(removeButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
     expect(pageText()).toContain(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE);
+  });
+
+  test("Back from an invitation created with no list shows every relay, fixed", async () => {
+    ownRelay();
+    await openReview();
+    await create();
+
+    await backToReview();
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    expect(setButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
   });
 });

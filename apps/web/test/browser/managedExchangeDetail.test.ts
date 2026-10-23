@@ -37,13 +37,15 @@ import {
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
 
 import {
+  ALLOWED_RELAYS_FIELD_DESCRIPTION,
+  ALLOWED_RELAYS_UNSET_SUMMARY,
   CREATED_INVITATION_ALLOWED_RELAYS_SCOPE,
   EXCHANGE_ALLOWED_RELAYS_SCOPE,
-} from "@psi/transport/relayRestriction";
-import {
   NO_ALLOWED_RELAY_NOTE,
-  REMOVE_ALLOWED_RELAYS_LABEL,
-} from "@recurring/localDocumentFieldsModel";
+  NO_ALLOWED_RELAY_SUMMARY,
+  allowedRelaysSummary,
+} from "@psi/transport/relayRestriction";
+import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { MANAGED_SCHEDULE_SECTION_ID } from "@recurring/managedSectionIds";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
@@ -1655,12 +1657,129 @@ describe("managed exchange detail document settings", () => {
     return { saved, onSave };
   }
 
-  test("the allowed relays start on the record's own list, with what they decide, and a save writes the entered list", async () => {
+  const allowedField = () =>
+    page.getByRole("textbox", { name: "Allowed relays" });
+  const setButton = () =>
+    page.getByRole("button", { name: "Set Allowed relays" });
+  const changeButton = () =>
+    page.getByRole("button", { name: "Change Allowed relays" });
+  const removeButton = () =>
+    page.getByRole("button", { name: "Remove Allowed relays" });
+  const doneButton = () => page.getByRole("button", { name: "Done" });
+  const saveButton = () => page.getByRole("button", { name: "Save settings" });
+
+  describe("where this browser's own relay lists one", () => {
+    beforeEach(() => {
+      writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
+    });
+    afterEach(() => {
+      writeOwnRelaySetting({ turn: [], stun: [] });
+    });
+
+    test("a record with no allowed relays shows them as one line, with no remove action", async () => {
+      renderDetail(relaysRecord(), () => Promise.resolve());
+
+      await expect
+        .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+        .toBeInTheDocument();
+      await expect.element(setButton()).toBeInTheDocument();
+      expect(removeButton().query()).toBeNull();
+      expect(allowedField().query()).toBeNull();
+      expect(page.getByText(EXCHANGE_ALLOWED_RELAYS_SCOPE).query()).toBeNull();
+    });
+
+    test("their action opens the field, with the short description and the guide, and an entered list saves", async () => {
+      const { saved, onSave } = recordingSaves();
+      renderDetail(relaysRecord(), onSave);
+
+      await setButton().click();
+      await expect.element(allowedField()).toHaveFocus();
+      await expect
+        .element(allowedField())
+        .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
+      await expect
+        .element(page.getByRole("link", { name: "More about Allowed relays" }))
+        .toHaveAttribute("href", ALLOWED_RELAYS_GUIDE_URL);
+      await allowedField().fill("relay.example.org");
+      await expect
+        .element(page.getByText(EXCHANGE_ALLOWED_RELAYS_SCOPE))
+        .toBeInTheDocument();
+      await doneButton().click();
+      await expect
+        .element(page.getByText(allowedRelaysSummary(["relay.example.org"])))
+        .toBeInTheDocument();
+      await saveButton().click();
+
+      await vi.waitFor(() => {
+        expect(saved).toHaveLength(1);
+      });
+      expect(saved[0].allowedRelays).toEqual(["relay.example.org"]);
+    });
+
+    test("a refused entry is named by its line and blocks the save", async () => {
+      const { saved, onSave } = recordingSaves();
+      renderDetail(relaysRecord(), onSave);
+
+      await setButton().click();
+      await allowedField().fill(
+        "relay.example.org\nturns:relay.example.org:443",
+      );
+
+      await expect
+        .element(page.getByRole("alert").filter({ hasText: "Line 2:" }))
+        .toBeInTheDocument();
+      await expect.element(saveButton()).toBeDisabled();
+      await expect.element(doneButton()).toBeDisabled();
+      expect(saved).toHaveLength(0);
+    });
+
+    test("the field passes the accessibility rules, opened", async () => {
+      renderDetail(relaysRecord(), () => Promise.resolve());
+
+      await setButton().click();
+      await expect.element(allowedField()).toBeInTheDocument();
+      const settings = page
+        .getByRole("heading", { name: "Local settings" })
+        .element()
+        .closest("div");
+      expect(settings).not.toBeNull();
+      if (settings !== null) expectNoAccessibilityViolations(settings);
+    });
+  });
+
+  test("a record with no allowed relays and no relay its runs list does not offer them", async () => {
+    renderDetail(relaysRecord(), () => Promise.resolve());
+
+    await expect.element(saveButton()).toBeInTheDocument();
+    expect(setButton().query()).toBeNull();
+    expect(allowedField().query()).toBeNull();
+  });
+
+  test("a record naming an invitation relay offers them though this browser lists none", async () => {
+    renderDetail(
+      record("acceptor", {
+        exchangeFile: composeManagedExchangeFile({
+          connection: {
+            ...webrtcLocator,
+            relay: { turn: ["turn:partner.example.net"] },
+          },
+          linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        }),
+      }),
+      () => Promise.resolve(),
+    );
+
+    await expect.element(setButton()).toBeInTheDocument();
+  });
+
+  test("the allowed relays start as the record's own list, with what they decide, and a change saves the entered list", async () => {
     const { saved, onSave } = recordingSaves();
     renderDetail(relaysRecord(["relay.example.org"]), onSave);
 
-    const field = page.getByRole("textbox", { name: "Allowed relays" });
-    await expect.element(field).toHaveValue("relay.example.org");
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["relay.example.org"])))
+      .toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
     await expect
       .element(page.getByText(EXCHANGE_ALLOWED_RELAYS_SCOPE))
       .toBeInTheDocument();
@@ -1668,8 +1787,10 @@ describe("managed exchange detail document settings", () => {
       page.getByText(CREATED_INVITATION_ALLOWED_RELAYS_SCOPE).query(),
     ).toBeNull();
 
-    await field.fill("Relay.Example.org\nbackup.example.org:443");
-    await page.getByRole("button", { name: "Save settings" }).click();
+    await changeButton().click();
+    await expect.element(allowedField()).toHaveValue("relay.example.org");
+    await allowedField().fill("Relay.Example.org\nbackup.example.org:443");
+    await saveButton().click();
 
     await vi.waitFor(() => {
       expect(saved).toHaveLength(1);
@@ -1684,35 +1805,19 @@ describe("managed exchange detail document settings", () => {
     const { saved, onSave } = recordingSaves();
     renderDetail(relaysRecord(["relay.example.org"]), onSave);
 
-    await page.getByRole("button", { name: "Save settings" }).click();
+    await saveButton().click();
     await vi.waitFor(() => {
       expect(saved).toHaveLength(1);
     });
     expect(saved[0]).not.toHaveProperty("allowedRelays");
 
-    await page.getByRole("textbox", { name: "Allowed relays" }).fill("");
-    await page.getByRole("button", { name: "Save settings" }).click();
+    await changeButton().click();
+    await allowedField().fill("");
+    await saveButton().click();
     await vi.waitFor(() => {
       expect(saved).toHaveLength(2);
     });
     expect(saved[1].allowedRelays).toBeNull();
-  });
-
-  test("a refused entry is named by its line and blocks the save", async () => {
-    const { saved, onSave } = recordingSaves();
-    renderDetail(relaysRecord(), onSave);
-
-    await page
-      .getByRole("textbox", { name: "Allowed relays" })
-      .fill("relay.example.org\nturns:relay.example.org:443");
-
-    await expect
-      .element(page.getByRole("alert").filter({ hasText: "Line 2:" }))
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("button", { name: "Save settings" }))
-      .toBeDisabled();
-    expect(saved).toHaveLength(0);
   });
 
   test("a record allowing no relay says so, and an untouched save keeps it", async () => {
@@ -1720,12 +1825,15 @@ describe("managed exchange detail document settings", () => {
     renderDetail(relaysRecord([]), onSave);
 
     await expect
+      .element(page.getByText(NO_ALLOWED_RELAY_SUMMARY))
+      .toBeInTheDocument();
+    await expect.element(removeButton()).toBeInTheDocument();
+    await changeButton().click();
+    await expect.element(allowedField()).toHaveValue("");
+    await expect
       .element(page.getByText(NO_ALLOWED_RELAY_NOTE))
       .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("textbox", { name: "Allowed relays" }))
-      .toHaveValue("");
-    await page.getByRole("button", { name: "Save settings" }).click();
+    await saveButton().click();
     await vi.waitFor(() => {
       expect(saved).toHaveLength(1);
     });
@@ -1742,13 +1850,12 @@ describe("managed exchange detail document settings", () => {
       const stored = relaysRecord(allowedRelays);
       renderDetail(stored, onSave);
 
-      const field = page.getByRole("textbox", { name: "Allowed relays" });
-      await page
-        .getByRole("checkbox", { name: REMOVE_ALLOWED_RELAYS_LABEL })
-        .click();
-      await expect.element(field).toBeDisabled();
-      await expect.element(field).toHaveValue("");
-      await page.getByRole("button", { name: "Save settings" }).click();
+      await removeButton().click();
+      await expect.element(setButton()).toHaveFocus();
+      await expect
+        .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+        .toBeInTheDocument();
+      await saveButton().click();
 
       await vi.waitFor(() => {
         expect(saved).toHaveLength(1);
@@ -1762,44 +1869,32 @@ describe("managed exchange detail document settings", () => {
     },
   );
 
-  test("clearing the remove control gives the field back with the stored list", async () => {
-    const { saved, onSave } = recordingSaves();
-    renderDetail(relaysRecord(["relay.example.org"]), onSave);
+  test.each([
+    ["an empty list", [], ""],
+    ["a list", ["relay.example.org"], "relay.example.org"],
+  ] as const)(
+    "opening the field after removing %s gives it back with the stored list",
+    async (_case, allowedRelays, text) => {
+      const { saved, onSave } = recordingSaves();
+      renderDetail(relaysRecord(allowedRelays), onSave);
 
-    const field = page.getByRole("textbox", { name: "Allowed relays" });
-    const remove = page.getByRole("checkbox", {
-      name: REMOVE_ALLOWED_RELAYS_LABEL,
-    });
-    await remove.click();
-    await expect.element(field).toBeDisabled();
-    await remove.click();
-    await expect.element(field).toBeEnabled();
-    await expect.element(field).toHaveValue("relay.example.org");
+      await removeButton().click();
+      await setButton().click();
+      await expect.element(allowedField()).toBeEnabled();
+      await expect.element(allowedField()).toHaveValue(text);
 
-    await page.getByRole("button", { name: "Save settings" }).click();
-    await vi.waitFor(() => {
-      expect(saved).toHaveLength(1);
-    });
-    expect(saved[0]).not.toHaveProperty("allowedRelays");
-  });
+      await saveButton().click();
+      await vi.waitFor(() => {
+        expect(saved).toHaveLength(1);
+      });
+      expect(saved[0]).not.toHaveProperty("allowedRelays");
+    },
+  );
 
-  test("a record with no allowed relays is not offered the remove control", async () => {
-    renderDetail(relaysRecord(), () => Promise.resolve());
-
-    await expect
-      .element(page.getByRole("textbox", { name: "Allowed relays" }))
-      .toBeInTheDocument();
-    expect(
-      page.getByRole("checkbox", { name: REMOVE_ALLOWED_RELAYS_LABEL }).query(),
-    ).toBeNull();
-  });
-
-  test("the field passes the accessibility rules", async () => {
+  test("the line passes the accessibility rules, set", async () => {
     renderDetail(relaysRecord(["relay.example.org"]), () => Promise.resolve());
 
-    await expect
-      .element(page.getByRole("textbox", { name: "Allowed relays" }))
-      .toBeInTheDocument();
+    await expect.element(changeButton()).toBeInTheDocument();
     const settings = page
       .getByRole("heading", { name: "Local settings" })
       .element()

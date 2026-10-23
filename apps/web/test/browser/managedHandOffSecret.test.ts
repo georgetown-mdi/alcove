@@ -24,6 +24,7 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { managedAllowedRelays } from "@psi/managed/managedExchangeRecord";
 import { stagesFor } from "@exchange/exchangeRun";
+import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { createAppMount } from "./renderApp";
 
@@ -60,6 +61,7 @@ afterEach(async () => {
   app.unmount();
   window.location.hash = "";
   lifecycleCalls.length = 0;
+  writeOwnRelaySetting({ turn: [], stun: [] });
   await clearManagedExchanges();
 });
 
@@ -156,6 +158,7 @@ describe("the managed record a one-shot hand-off deposits", () => {
   });
 
   test("the inviter's record keeps the Allowed relays set on its review", async () => {
+    writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
     app.render(createElement(InviterScreen));
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     const fileInput = document.querySelector('input[type="file"]');
@@ -177,6 +180,7 @@ describe("the managed record a one-shot hand-off deposits", () => {
     await page
       .getByRole("button", { name: "Continue to review & create" })
       .click();
+    await page.getByRole("button", { name: "Set Allowed relays" }).click();
     await userEvent.fill(
       page.getByRole("textbox", { name: "Allowed relays" }),
       "Review.Example.org\nbackup.example.org:443",
@@ -220,9 +224,11 @@ describe("the managed record a one-shot hand-off deposits", () => {
       "alcove-relay-restriction",
       JSON.stringify({ version: 1, allowedRelays: ["browser.example.org"] }),
     );
+    writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
     try {
       window.location.hash = await encodeInvitation(acceptorToken());
       app.render(createElement(AcceptorScreen));
+      await page.getByRole("button", { name: "Set Allowed relays" }).click();
       await userEvent.fill(
         page.getByRole("textbox", { name: "Allowed relays" }),
         "Review.Example.org\nbackup.example.org:443",

@@ -109,6 +109,7 @@ import {
   allowedRelaysText,
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
+import { runListsRelay } from "@psi/transport/runRelayPlan";
 
 import {
   availableTransports,
@@ -619,11 +620,17 @@ export function InviterScreen() {
   // create branch and the live run both read it.
   const chosenRunMode = transportRunMode(available, transport);
   // The browser exchange's Allowed relays, set in its transport card on the
-  // hosted build. Creating the invitation commits their parse: the invitation
-  // names only the relays they keep and holds the list, which the run and a
-  // save as a recurring exchange read. Once it exists the field is fixed on
-  // that list.
-  const allowedRelaysOffered = !isConsoleBuild() && transport === "browser";
+  // hosted build where the run lists a relay for them to keep or leave out,
+  // or where they hold a list. Creating the invitation commits their parse:
+  // the invitation names only the relays they keep and holds the list, which
+  // the run and a save as a recurring exchange read. Once it exists the field
+  // is fixed on that list.
+  const allowedRelaysOffered =
+    !isConsoleBuild() &&
+    transport === "browser" &&
+    (inviterAllowedRelays !== "" ||
+      invitation?.allowedRelays !== undefined ||
+      runListsRelay(undefined));
   const allowedRelayLines =
     parseExchangeAllowedRelayLines(inviterAllowedRelays);
   const allowedRelaysFixed = invitation !== undefined;
@@ -2024,16 +2031,12 @@ export function InviterScreen() {
                             value: allowedRelaysText(invitation.allowedRelays),
                             error: undefined,
                             fixed: true,
-                            restricts: invitation.allowedRelays !== undefined,
                             onChange: () => undefined,
                           }
                         : {
                             value: inviterAllowedRelays,
                             error: allowedRelayLinesError(allowedRelayLines),
                             fixed: false,
-                            restricts:
-                              allowedRelayLines.ok &&
-                              allowedRelayLines.entries !== undefined,
                             onChange: (value: string) =>
                               dispatch({
                                 type: "allowed-relays-changed",

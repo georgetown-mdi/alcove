@@ -16,6 +16,10 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  ALLOWED_RELAYS_UNSET_SUMMARY,
+  allowedRelaysSummary,
+} from "@psi/transport/relayRestriction";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
@@ -315,6 +319,10 @@ describe("the settings of the imported document", () => {
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
 
+      await expect
+        .element(page.getByText(allowedRelaysSummary(["relay.example.org"])))
+        .toBeInTheDocument();
+      await page.getByRole("button", { name: "Change Allowed relays" }).click();
       const field = page.getByRole("textbox", { name: "Allowed relays" });
       await expect.element(field).toHaveValue("relay.example.org");
       await field.fill("relay.example.org\nbackup.example.org:443");
@@ -345,6 +353,39 @@ describe("the settings of the imported document", () => {
     ).toMatchObject({
       allowedRelays: ["relay.example.org", "backup.example.org:443"],
     });
+  });
+
+  test("the allowed relays are not offered where the configuration's run lists no relay", async () => {
+    const created = await createManagedExchange(configurationOnly());
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(page.getByRole("button", { name: "Save settings" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: "Set Allowed relays" }).query(),
+    ).toBeNull();
+  });
+
+  test("the allowed relays are offered as one line where the configuration's run lists a relay", async () => {
+    const relayed = await createManagedExchange({
+      ...configurationOnly(),
+      exchangeFile: composeManagedExchangeFile({
+        connection: {
+          channel: "webrtc",
+          host: "signaling.example.org",
+          relay: { turn: ["turn:partner.example.net"] },
+        },
+        linkageTerms,
+      }),
+    });
+    app.render(createElement(ManagedRunSurface, { id: relayed.id }));
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Set Allowed relays" }))
+      .toBeInTheDocument();
   });
 });
 

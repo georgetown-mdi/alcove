@@ -29,6 +29,7 @@ import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { useHashTarget } from "@components/useHashTarget";
 
 import { dateLabel } from "@psi/formatting";
@@ -531,7 +532,13 @@ function LocalFieldsEditor({
   onGrantWorkingFolder: () => Promise<void>;
   onStopUsingWorkingFolder: () => Promise<void>;
 }) {
-  const draft = useLocalFieldsDraft(record);
+  const connection = record.exchangeFile.connection;
+  const draft = useLocalFieldsDraft(
+    record,
+    runListsRelay(
+      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    ),
+  );
   const {
     label,
     editLabel,

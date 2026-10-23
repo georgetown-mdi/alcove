@@ -17,10 +17,12 @@ import {
 
 import {
   ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
+  ALLOWED_RELAYS_FIELD_DESCRIPTION,
+  ALLOWED_RELAYS_UNSET_SUMMARY,
   CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
-  CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION,
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
+  allowedRelaysSummary,
 } from "@psi/transport/relayRestriction";
 import {
   ACCEPT_UNSUPPORTED_TITLE,
@@ -38,6 +40,7 @@ import {
   UNDESCRIBABLE_RECORD_LEAD,
 } from "@exchange/RecordDownload";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
+import { CONSOLE_ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { COORDINATION_SERVER_CHANGED_REFUSAL } from "@jobContract/jobCreateRefusal";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
@@ -146,6 +149,8 @@ const app = createAppMount();
 
 const allowedField = () =>
   page.getByRole("textbox", { name: "Allowed relays" });
+const setAllowedRelays = () =>
+  page.getByRole("button", { name: "Set Allowed relays" });
 const pageText = () => document.body.textContent;
 
 // A relayed internal fault and a tagged transport stall are both `exchange`
@@ -286,6 +291,7 @@ describe("console acceptor of a webrtc invitation", () => {
       )
       .toBeInTheDocument();
     // With no relay named the console's run uses none, so no list is offered.
+    expect(setAllowedRelays().query()).toBeNull();
     expect(allowedField().query()).toBeNull();
   });
 
@@ -306,6 +312,7 @@ describe("console acceptor of a webrtc invitation", () => {
     expect(
       page.getByText("unless the Allowed relays", { exact: false }).query(),
     ).toBeNull();
+    expect(setAllowedRelays().query()).toBeNull();
     expect(allowedField().query()).toBeNull();
   });
 
@@ -410,20 +417,28 @@ describe("console acceptor of a webrtc invitation", () => {
       relay: { turn: [KEPT_URL, LEFT_OUT_URL] },
     });
     app.render(createElement(AcceptorScreen));
-    // Empty to start, after the notice, and described without a site relay.
-    await expect.element(allowedField()).toHaveValue("");
+    // One line to start, after the notice; its field, once opened, links to
+    // the configuration key the console writes.
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
     const legend = page.getByText("How this console connects").element();
     expect(
-      legend.compareDocumentPosition(allowedField().element()) &
+      legend.compareDocumentPosition(setAllowedRelays().element()) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    await expect
-      .element(allowedField())
-      .toHaveAccessibleDescription(CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION);
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
     expect(pageText()).not.toContain(
       CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE,
     );
+    await setAllowedRelays().click();
+    await expect.element(allowedField()).toHaveValue("");
+    await expect
+      .element(allowedField())
+      .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
+    await expect
+      .element(page.getByRole("link", { name: "More about Allowed relays" }))
+      .toHaveAttribute("href", CONSOLE_ALLOWED_RELAYS_GUIDE_URL);
 
     await userEvent.fill(allowedField(), "turn:partner.example.net");
     const refusal = page.getByText(/^Line 1: enter /);
@@ -466,14 +481,19 @@ describe("console acceptor of a webrtc invitation", () => {
       allowedRelays: ["partner.example.net"],
     });
 
-    // Back on the review step, the field is fixed on the list the run took.
+    // Back on the review step, the line shows the list the run took, fixed.
     const landed = new Promise<void>((resolve) => {
       window.addEventListener("popstate", () => resolve(), { once: true });
     });
     window.history.go(-3);
     await landed;
-    await expect.element(allowedField()).toBeDisabled();
-    await expect.element(allowedField()).toHaveValue("partner.example.net");
+    await expect
+      .element(page.getByText(allowedRelaysSummary(["partner.example.net"])))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: "Change Allowed relays" }).query(),
+    ).toBeNull();
+    expect(allowedField().query()).toBeNull();
   });
 
   test("stops before any run is created when the console refuses the server, asking for another invitation", async () => {

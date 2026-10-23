@@ -15,16 +15,12 @@ import {
   RETENTION_NOTE_NOTICE_WEB,
   RETENTION_NOTE_PLACEHOLDER,
 } from "@psi/receiptsModel";
+import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { AllowedRelaysField } from "@components/AllowedRelaysField";
 
 import styles from "@styles/app.module.css";
 
-import {
-  NO_ALLOWED_RELAY_NOTE,
-  REMOVE_ALLOWED_RELAYS_DESCRIPTION,
-  REMOVE_ALLOWED_RELAYS_LABEL,
-  delimiterRecheckNote,
-} from "./localDocumentFieldsModel";
+import { delimiterRecheckNote } from "./localDocumentFieldsModel";
 
 import type { LocalFieldsDraft } from "./useLocalFieldsDraft";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
@@ -42,15 +38,17 @@ const RESULT_FILE_STORED_NOTICE =
  * match was made on (shown disabled, with the reason, where the terms leave no
  * key to name), how its input file separates fields, the retention note
  * filed with its exchange record, and the relays its runs may use (only on a
- * webrtc connection). Each starts on the value the stored document holds.
- * Presentational over the draft ({@link useLocalFieldsDraft}); the surface
- * saves the draft's edits with its own.
+ * webrtc connection, where they can apply). Each starts on the value the
+ * stored document holds. Presentational over the draft
+ * ({@link useLocalFieldsDraft}); the surface saves the draft's edits with its
+ * own.
  *
  * A changed separator re-reads the stored input file, where there is one, and
  * what the read found is stated under the control. A document holding allowed
- * relays, an empty list included, is offered a control that removes them on
- * save. `allowedRelaysScope`, where given, states under the relays what they
- * decide for the runs that read them.
+ * relays, an empty list included, is offered an action that removes them on
+ * save, which opening the field again undoes. `allowedRelaysScope`, where
+ * given, states under the relays what they decide for the runs that read
+ * them.
  */
 export function LocalDocumentFields({
   draft,
@@ -71,7 +69,7 @@ export function LocalDocumentFields({
     | "editRetentionNote"
     | "retentionError"
     | "allowedRelays"
-    | "allowedRelaysOffered"
+    | "allowedRelaysShown"
     | "allowsNoRelay"
     | "editAllowedRelays"
     | "allowedRelaysRemovable"
@@ -152,37 +150,24 @@ export function LocalDocumentFields({
         onChange={(event) => draft.editRetentionNote(event.currentTarget.value)}
         mt="sm"
       />
-      {draft.allowedRelaysOffered && (
-        <>
-          <AllowedRelaysField
-            value={draft.allowedRelays}
-            error={draft.allowedRelaysError}
-            onChange={draft.editAllowedRelays}
-            disabled={draft.allowedRelaysRemovable && draft.removeAllowedRelays}
-            mt="sm"
-          />
-          {draft.allowsNoRelay && (
-            <p className={`${styles.small} ${styles.sub}`}>
-              {NO_ALLOWED_RELAY_NOTE}
-            </p>
-          )}
-          {draft.allowedRelaysRemovable && (
-            <Checkbox
-              label={REMOVE_ALLOWED_RELAYS_LABEL}
-              description={REMOVE_ALLOWED_RELAYS_DESCRIPTION}
-              checked={draft.removeAllowedRelays}
-              onChange={(event) =>
-                draft.editRemoveAllowedRelays(event.currentTarget.checked)
-              }
-              mt="sm"
-            />
-          )}
-          {allowedRelaysScope !== undefined && (
-            <p className={`${styles.small} ${styles.sub}`}>
-              {allowedRelaysScope}
-            </p>
-          )}
-        </>
+      {draft.allowedRelaysShown && (
+        <AllowedRelaysField
+          value={draft.allowedRelays}
+          error={draft.allowedRelaysError}
+          onChange={draft.editAllowedRelays}
+          allowsNoRelay={draft.allowsNoRelay && !draft.removeAllowedRelays}
+          {...(draft.allowedRelaysRemovable
+            ? { onRemove: () => draft.editRemoveAllowedRelays(true) }
+            : {})}
+          {...(draft.removeAllowedRelays
+            ? { onOpen: () => draft.editRemoveAllowedRelays(false) }
+            : {})}
+          {...(allowedRelaysScope !== undefined
+            ? { scope: allowedRelaysScope }
+            : {})}
+          guideUrl={ALLOWED_RELAYS_GUIDE_URL}
+          mt="sm"
+        />
       )}
     </>
   );

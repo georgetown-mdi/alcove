@@ -72,6 +72,8 @@ export function runCodegen(root) {
     // fails the run with ENOBUFS.
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
+    // `vitest list` prints every unit test's name, past the 1 MiB default.
+    maxBuffer: 64 * 1024 * 1024,
   });
 }
 

@@ -1,0 +1,7 @@
+# A saved exchange's Allowed relays show as one line until the operator
+# opens the field, remove through an action rather than a checkbox, and are
+# shown only where the record holds a list, the field holds text, or its
+# runs list a relay.
+- An empty list keeps no TURN url, so the record's runs use no relay; the editor shows it as an empty field with a line stating so, a save leaves it while the field stays empty, and entered relays replace it. -> An empty list keeps no TURN url, so the record's runs use no relay; the editor shows it as a line stating so, a save leaves it while the field stays empty, and entered relays replace it.
+- While the document holds a list, empty or not, the editor offers a control that removes it: a save with that control set drops the field, so the record's runs use every relay they list. -> While the document holds a list, empty or not, the editor offers a control that removes it: a save after it drops the field, so the record's runs use every relay they list, and opening the field before the save restores the stored list.
+- - -> On a webrtc connection it is shown where the document holds a list, where the field holds text, or where the record's runs list a TURN or WebSocket relay url for the list to keep or leave out: a browser-run record's as `runListsRelay` reads them, in `apps/web/src/psi/transport/runRelayPlan.ts`, and a configuration-only record's as core's `selectRunRelay` lists them; hidden, a save leaves the connection as it is.

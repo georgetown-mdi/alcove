@@ -664,14 +664,25 @@ describe("the review step's allowed relays", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
   });
 
-  test("are offered on a WebRTC accept, and on the console only where the invitation names a TURN server", () => {
+  test("are offered on a WebRTC accept where the run lists a relay: in the browser as the browser's run reads, on the console only where the invitation names a TURN server", () => {
     const relayed = {
       ...invitation.endpoint,
       relay: { turn: ["turn:relay.example.org"] },
     };
-    expect(acceptOffersAllowedRelays(invitation.endpoint, false)).toBe(true);
-    expect(acceptOffersAllowedRelays(invitation.endpoint, true)).toBe(false);
-    expect(acceptOffersAllowedRelays(relayed, true)).toBe(true);
+    const listsRelay = () => true;
+    const listsNone = () => false;
+    expect(
+      acceptOffersAllowedRelays(invitation.endpoint, false, false, listsRelay),
+    ).toBe(true);
+    expect(
+      acceptOffersAllowedRelays(invitation.endpoint, false, false, listsNone),
+    ).toBe(false);
+    expect(
+      acceptOffersAllowedRelays(invitation.endpoint, true, false, listsRelay),
+    ).toBe(false);
+    expect(acceptOffersAllowedRelays(relayed, true, false, listsNone)).toBe(
+      true,
+    );
     expect(
       acceptOffersAllowedRelays(
         {
@@ -680,11 +691,38 @@ describe("the review step's allowed relays", () => {
           relay: { stun: ["stun:stun.example.org"] },
         },
         true,
+        false,
+        listsRelay,
       ),
     ).toBe(false);
     expect(
-      acceptOffersAllowedRelays({ channel: "filedrop", path: "/drop" }, false),
+      acceptOffersAllowedRelays(
+        { channel: "filedrop", path: "/drop" },
+        false,
+        true,
+        listsRelay,
+      ),
     ).toBe(false);
+  });
+
+  test("the browser's run is asked about the invitation's relay", () => {
+    const relay = { turn: ["turn:relay.example.org"] };
+    const relayed = { ...invitation.endpoint, relay };
+    const asked: Array<unknown> = [];
+    acceptOffersAllowedRelays(relayed, false, false, (invitationRelay) => {
+      asked.push(invitationRelay);
+      return false;
+    });
+    expect(asked).toEqual([relay]);
+  });
+
+  test("are never hidden while they hold a list", () => {
+    expect(
+      acceptOffersAllowedRelays(invitation.endpoint, false, true, () => false),
+    ).toBe(true);
+    expect(
+      acceptOffersAllowedRelays(invitation.endpoint, true, true, () => false),
+    ).toBe(true);
   });
 
   test("typing commits nothing; Continue commits the entries, normalized", () => {

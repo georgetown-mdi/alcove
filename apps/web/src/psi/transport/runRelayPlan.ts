@@ -16,8 +16,11 @@ import type {
   DefaultRelayBuild,
   DefaultRelaySetting,
 } from "@utils/clientConfig";
+import type {
+  DefaultRelayDependencies,
+  DefaultRelayForRun,
+} from "./defaultRelay";
 import type { OwnRelayRead, RelayUrls } from "./ownRelaySetting";
-import type { DefaultRelayDependencies } from "./defaultRelay";
 import type { RunRelay } from "./rendezvous";
 
 /** One WebSocket relay a browser run lists, and the exchange id its proof to
@@ -99,41 +102,16 @@ export async function relayPlanForRun(
     ...defaultRelay
   } = dependencies;
   const own = readOwn();
-  const forRun =
-    defaultRelay.setting === undefined
-      ? defaultRelayForRun(
-          invitationRelay,
-          build,
-          switchedOn,
-          own.kind === "set" ? own.relay : undefined,
-        )
-      : undefined;
-  const site =
-    forRun === undefined
-      ? defaultRelay.setting?.()
-      : forRun.kind === "in-use" ||
-          forRun.kind === "invited" ||
-          forRun.kind === "own"
-        ? forRun.relay
-        : undefined;
-  const listed = [
-    ...new Set([
-      ...(own.kind === "set" ? own.relay.turn : []),
-      ...(invitationRelay?.turn ?? []),
-      ...(site !== undefined ? [site.turnUrl] : []),
-    ]),
-  ];
-  const listedWebSocket = [
-    ...new Set([
-      ...(own.kind === "set" && own.relay.websocket !== undefined
-        ? [own.relay.websocket]
-        : []),
-      ...(invitationRelay?.websocket !== undefined
-        ? [invitationRelay.websocket]
-        : []),
-      ...(site?.websocketUrl !== undefined ? [site.websocketUrl] : []),
-    ]),
-  ];
+  const { forRun, site } = defaultRelayListed(
+    invitationRelay,
+    own,
+    dependencies,
+  );
+  const { turn: listed, websocket: listedWebSocket } = relayUrlsListed(
+    own,
+    invitationRelay,
+    site,
+  );
   const kept = [
     ...listed.filter((url) => turnUrlIsAllowed(url, allowedRelays)),
     ...listedWebSocket.filter((url) =>
@@ -175,6 +153,83 @@ export async function relayPlanForRun(
           ))) && {
         defaultRelayOff: true as const,
       }),
+  };
+}
+
+/**
+ * Whether a browser run whose accepted invitation names `invitationRelay`,
+ * which an inviter's own run passes as `undefined`, lists any TURN or
+ * WebSocket relay url for its allowed relays to keep or leave out: this
+ * browser's own, the invitation's, or the default relay's where the run uses
+ * it, the urls {@link relayPlanForRun} lists before the allowed relays apply.
+ */
+export function runListsRelay(
+  invitationRelay: RelayUrls | undefined,
+  dependencies: Pick<
+    RunRelayPlanDependencies,
+    "build" | "switchedOn" | "readOwn" | "setting"
+  > = {},
+): boolean {
+  const own = (dependencies.readOwn ?? readOwnRelaySetting)();
+  const { site } = defaultRelayListed(invitationRelay, own, dependencies);
+  const { turn, websocket } = relayUrlsListed(own, invitationRelay, site);
+  return turn.length + websocket.length > 0;
+}
+
+// The default relay a run lists, `site`: the one `defaultRelayForRun` finds
+// in use, invited, or named by this browser's own relay, or `setting`'s where
+// it is given, which replaces that choice and leaves `forRun` absent.
+function defaultRelayListed(
+  invitationRelay: RelayUrls | undefined,
+  own: OwnRelayRead,
+  dependencies: Pick<
+    RunRelayPlanDependencies,
+    "build" | "switchedOn" | "setting"
+  >,
+): { forRun?: DefaultRelayForRun; site?: DefaultRelaySetting } {
+  if (dependencies.setting !== undefined) {
+    const site = dependencies.setting();
+    return site !== undefined ? { site } : {};
+  }
+  const forRun = defaultRelayForRun(
+    invitationRelay,
+    dependencies.build,
+    dependencies.switchedOn,
+    own.kind === "set" ? own.relay : undefined,
+  );
+  return forRun.kind === "in-use" ||
+    forRun.kind === "invited" ||
+    forRun.kind === "own"
+    ? { forRun, site: forRun.relay }
+    : { forRun };
+}
+
+// The TURN and the WebSocket relay urls a run lists before its allowed relays
+// apply: this browser's own, then the invitation's, then `site`'s, each once.
+function relayUrlsListed(
+  own: OwnRelayRead,
+  invitationRelay: RelayUrls | undefined,
+  site: DefaultRelaySetting | undefined,
+): { turn: Array<string>; websocket: Array<string> } {
+  return {
+    turn: [
+      ...new Set([
+        ...(own.kind === "set" ? own.relay.turn : []),
+        ...(invitationRelay?.turn ?? []),
+        ...(site !== undefined ? [site.turnUrl] : []),
+      ]),
+    ],
+    websocket: [
+      ...new Set([
+        ...(own.kind === "set" && own.relay.websocket !== undefined
+          ? [own.relay.websocket]
+          : []),
+        ...(invitationRelay?.websocket !== undefined
+          ? [invitationRelay.websocket]
+          : []),
+        ...(site?.websocketUrl !== undefined ? [site.websocketUrl] : []),
+      ]),
+    ],
   };
 }
 

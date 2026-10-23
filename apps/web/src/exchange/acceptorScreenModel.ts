@@ -24,6 +24,7 @@ import type {
 import type { AcceptorStep } from "./acceptorModel";
 import type { InvitationDecodeRefusal } from "./invitationDecodeRefusal";
 import type { ManageOfferState } from "./manageOfferModel";
+import type { RelayUrls } from "@psi/transport/ownRelaySetting";
 
 import type { Metadata, SemanticType, StandardizationStep } from "@alcove/core";
 
@@ -426,18 +427,25 @@ export function relayNamesTurnServer(
 }
 
 /**
- * Whether the review step offers the Allowed relays field: on a WebRTC
- * accept, and on the console only where the invitation names a TURN server,
- * since the console's run has no other relay for the list to leave out.
+ * Whether the review step offers the Allowed relays field on a WebRTC
+ * accept: where `listHeld`, the field holding a list, which is never hidden,
+ * or where the run lists a relay for the list to keep or leave out. On the
+ * console that is a TURN server the invitation names, since the console's
+ * run has no other relay; in the browser it is `browserRunListsRelay` of the
+ * invitation's relay, which reads this browser's own relay and the site's
+ * beside it (`runListsRelay`).
  */
 export function acceptOffersAllowedRelays(
   endpoint: AcceptableInvitation["endpoint"],
   consoleBuild: boolean,
+  listHeld: boolean,
+  browserRunListsRelay: (invitationRelay: RelayUrls | undefined) => boolean,
 ): boolean {
-  return (
-    endpoint.channel === "webrtc" &&
-    (!consoleBuild || relayNamesTurnServer(endpoint.relay))
-  );
+  if (endpoint.channel !== "webrtc") return false;
+  if (listHeld) return true;
+  return consoleBuild
+    ? relayNamesTurnServer(endpoint.relay)
+    : browserRunListsRelay(endpoint.relay);
 }
 
 /**

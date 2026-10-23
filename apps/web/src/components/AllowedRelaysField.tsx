@@ -1,55 +1,178 @@
-import { Textarea } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+
+import { Anchor, Box, Button, Group, Text, Textarea } from "@mantine/core";
 
 import {
   ALLOWED_RELAYS_FIELD_DESCRIPTION,
-  CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION,
+  ALLOWED_RELAYS_UNSET_SUMMARY,
+  NO_ALLOWED_RELAY_NOTE,
+  NO_ALLOWED_RELAY_SUMMARY,
+  allowedRelaysSummary,
+  parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
 
 import type { MantineSpacing } from "@mantine/core";
 
 /**
- * The field that sets the relays an exchange may use, one entry per line. The
- * caller parses the text (`parseExchangeAllowedRelayLines`) and states the
- * field's scope beside it.
+ * An exchange's Allowed relays, one entry per line, shown as one line until
+ * the user opens the field: every relay a run lists where no list is set,
+ * with an action that opens the field, or the relays the list names, with
+ * actions to change or remove them. A value the field refuses keeps it open.
+ * Where the list is `fixed` the line shows it with no action. The caller
+ * parses the text (`parseExchangeAllowedRelayLines`) and decides where the
+ * field is offered.
  */
 export function AllowedRelaysField({
   value,
   error,
   onChange,
-  disabled,
+  fixed = false,
+  allowsNoRelay = false,
+  onRemove,
+  onOpen,
+  scope,
+  guideUrl,
   mt,
   liveError,
-  consoleRun,
 }: {
   value: string;
   error: string | undefined;
   onChange: (text: string) => void;
-  disabled?: boolean;
+  /** The list cannot be changed: a created invitation or a started exchange
+   * took it. */
+  fixed?: boolean;
+  /** An empty value is a list allowing no relay rather than no list, as a
+   * saved exchange's imported configuration can hold. */
+  allowsNoRelay?: boolean;
+  /** Remove the list; empties the text when absent. */
+  onRemove?: () => void;
+  /** Called as the user opens the field. */
+  onOpen?: () => void;
+  /** What the list decides, shown under it while it names a list. */
+  scope?: string;
+  /** The user guide's account of the list, linked from the opened field. */
+  guideUrl: string;
   /** The space above the field, as the fields beside it set theirs. */
   mt?: MantineSpacing;
   /** The error follows typing, so it is not announced as an alert; the field
    * still names it to assistive technology through its description. */
   liveError?: boolean;
-  /** The list is for a run the console conducts, which has no relay of the
-   * site's for the description to name. */
-  consoleRun?: boolean;
 }) {
+  const [open, setOpen] = useState(error !== undefined);
+  // A refused value keeps the field open, so fixing it does not close it.
+  if (error !== undefined && !open && !fixed) setOpen(true);
+  const focusNext = useRef<"field" | "action" | undefined>(undefined);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const actionRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const target = focusNext.current;
+    if (target === undefined) return;
+    focusNext.current = undefined;
+    (target === "field" ? fieldRef.current : actionRef.current)?.focus();
+  });
+
+  const lines = parseExchangeAllowedRelayLines(value);
+  const entries = lines.ok ? lines.entries : undefined;
+  const noRelay = allowsNoRelay && lines.ok && entries === undefined;
+  const scopeNote =
+    scope !== undefined && (entries !== undefined || noRelay) ? (
+      <Text size="sm" mt="xs">
+        {scope}
+      </Text>
+    ) : null;
+
+  function openField() {
+    onOpen?.();
+    focusNext.current = "field";
+    setOpen(true);
+  }
+
+  if (open && !fixed)
+    return (
+      <Box {...(mt !== undefined ? { mt } : {})}>
+        <Textarea
+          ref={fieldRef}
+          label="Allowed relays"
+          description={ALLOWED_RELAYS_FIELD_DESCRIPTION}
+          autosize
+          minRows={2}
+          value={value}
+          error={error}
+          {...(liveError === true ? {} : { errorProps: { role: "alert" } })}
+          onChange={(event) => onChange(event.currentTarget.value)}
+        />
+        {noRelay && (
+          <Text size="sm" mt="xs">
+            {NO_ALLOWED_RELAY_NOTE}
+          </Text>
+        )}
+        <Group gap="sm" mt="xs">
+          <Button
+            size="xs"
+            variant="default"
+            disabled={error !== undefined}
+            onClick={() => {
+              focusNext.current = "action";
+              setOpen(false);
+            }}
+          >
+            Done
+          </Button>
+          <Anchor size="sm" href={guideUrl} target="_blank" rel="noreferrer">
+            More about Allowed relays
+          </Anchor>
+        </Group>
+        {scopeNote}
+      </Box>
+    );
+
+  const summary =
+    entries !== undefined
+      ? allowedRelaysSummary(entries)
+      : noRelay
+        ? NO_ALLOWED_RELAY_SUMMARY
+        : ALLOWED_RELAYS_UNSET_SUMMARY;
   return (
-    <Textarea
-      label="Allowed relays"
-      description={
-        consoleRun === true
-          ? CONSOLE_ALLOWED_RELAYS_FIELD_DESCRIPTION
-          : ALLOWED_RELAYS_FIELD_DESCRIPTION
-      }
-      autosize
-      minRows={2}
-      value={value}
-      error={error}
-      {...(liveError === true ? {} : { errorProps: { role: "alert" } })}
-      onChange={(event) => onChange(event.currentTarget.value)}
-      {...(disabled !== undefined ? { disabled } : {})}
-      {...(mt !== undefined ? { mt } : {})}
-    />
+    <Box {...(mt !== undefined ? { mt } : {})}>
+      <Group gap="xs" align="center">
+        <Text size="sm">{summary}</Text>
+        {!fixed &&
+          (entries !== undefined || noRelay ? (
+            <>
+              <Button
+                ref={actionRef}
+                size="xs"
+                variant="default"
+                aria-label="Change Allowed relays"
+                onClick={openField}
+              >
+                Change
+              </Button>
+              <Button
+                size="xs"
+                variant="subtle"
+                aria-label="Remove Allowed relays"
+                onClick={() => {
+                  focusNext.current = "action";
+                  if (onRemove !== undefined) onRemove();
+                  else onChange("");
+                }}
+              >
+                Remove
+              </Button>
+            </>
+          ) : (
+            <Button
+              ref={actionRef}
+              size="xs"
+              variant="default"
+              onClick={openField}
+            >
+              Set Allowed relays
+            </Button>
+          ))}
+      </Group>
+      {scopeNote}
+    </Box>
   );
 }

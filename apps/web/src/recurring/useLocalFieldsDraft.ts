@@ -12,6 +12,7 @@ import {
   allowedRelaysError,
   allowedRelaysOffered,
   allowedRelaysRemovable,
+  allowedRelaysShown,
   allowsNoRelay,
   changedCsvDelimiter,
   localDocumentFieldEdits,
@@ -79,15 +80,19 @@ export interface LocalFieldsDraft {
   /** Whether the document's connection has relays to allow, webrtc; the
    * control is shown only where it does. */
   allowedRelaysOffered: boolean;
+  /** Whether the page shows the control: where it is offered and the
+   * document holds a list, the list as typed is not empty, or the runs list a
+   * relay ({@link allowedRelaysShown}). */
+  allowedRelaysShown: boolean;
   /** Whether the stored document allows no relay at all, an empty list,
    * which the empty field would not show. */
   allowsNoRelay: boolean;
   editAllowedRelays: (text: string) => void;
   /** Whether the stored document holds allowed relays, an empty list
-   * included; the control that removes them is shown only where it does. */
+   * included, which the save can remove. */
   allowedRelaysRemovable: boolean;
   /** Whether the save removes the stored allowed relays; the field is
-   * emptied and disabled while it does. */
+   * emptied and shows no list while it does. */
   removeAllowedRelays: boolean;
   editRemoveAllowedRelays: (remove: boolean) => void;
   /** The field error the allowed relays show, absent where there is none. */
@@ -143,9 +148,14 @@ export interface LocalFieldsDraft {
  * when cleared or mid-edit -- and blocks the save through {@link
  * LocalFieldsDraft.canSave}, rather than being coerced to a sentinel that
  * silently drops the opted-in bound.
+ *
+ * `runsListRelay` is whether the exchange's runs list a relay for its allowed
+ * relays to keep or leave out, which the surface decides: a browser run reads
+ * this browser's relay settings, a command-line run its configuration.
  */
 export function useLocalFieldsDraft(
   record: LocalFieldsSource,
+  runsListRelay: boolean,
 ): LocalFieldsDraft {
   const [label, setLabel] = useState(record.label);
   const [maxAgeEnabled, setMaxAgeEnabled] = useState(
@@ -219,6 +229,11 @@ export function useLocalFieldsDraft(
     retentionError,
     allowedRelays: documentFields.allowedRelays,
     allowedRelaysOffered: relaysOffered,
+    allowedRelaysShown: allowedRelaysShown(
+      record.exchangeFile,
+      documentFields.allowedRelays,
+      runsListRelay,
+    ),
     allowsNoRelay: allowsNoRelay(record.exchangeFile),
     editAllowedRelays: (allowedRelays) => editDocumentFields({ allowedRelays }),
     allowedRelaysRemovable: allowedRelaysRemovable(record.exchangeFile),

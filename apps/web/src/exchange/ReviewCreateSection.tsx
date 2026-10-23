@@ -79,6 +79,7 @@ import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
 
+import { ALLOWED_RELAYS_GUIDE_URL } from "./userGuide";
 import { CitationDropNotice } from "./CitationDropNotice";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
 import { UnreadableCoordinationServerNotice } from "./CoordinationServerSection";
@@ -284,16 +285,13 @@ export function ReviewCreateSection({
    * what it replaces (`conversionStatement`), and the action. */
   conversion?: { statement: string; onConvert: () => void };
   /** The hosted browser exchange's Allowed relays, shown in the browser
-   * transport card: the text the field shows, its error, whether it is fixed
-   * on the list a created invitation took, and whether that text restricts
-   * the relays, which brings the statement of what the list decides. A line
-   * the field refuses holds the create. Absent where the field is not
-   * offered. */
+   * transport card: the text the field shows, its error, and whether it is
+   * fixed on the list a created invitation took. A line the field refuses
+   * holds the create. Absent where the field is not offered. */
   allowedRelays?: {
     value: string;
     error: string | undefined;
     fixed: boolean;
-    restricts: boolean;
     onChange: (text: string) => void;
   };
 }) {
@@ -538,21 +536,16 @@ export function ReviewCreateSection({
               {!consoleBuild && <UnreadableCoordinationServerNotice />}
               <DefaultRelayNotice />
               {allowedRelays !== undefined && (
-                <>
-                  <AllowedRelaysField
-                    value={allowedRelays.value}
-                    error={allowedRelays.error}
-                    disabled={allowedRelays.fixed}
-                    liveError
-                    onChange={allowedRelays.onChange}
-                    mt="md"
-                  />
-                  {allowedRelays.restricts && (
-                    <Text size="sm" mt="xs">
-                      {CREATED_INVITATION_ALLOWED_RELAYS_SCOPE}
-                    </Text>
-                  )}
-                </>
+                <AllowedRelaysField
+                  value={allowedRelays.value}
+                  error={allowedRelays.error}
+                  fixed={allowedRelays.fixed}
+                  liveError
+                  onChange={allowedRelays.onChange}
+                  scope={CREATED_INVITATION_ALLOWED_RELAYS_SCOPE}
+                  guideUrl={ALLOWED_RELAYS_GUIDE_URL}
+                  mt="md"
+                />
               )}
             </>
           )}
