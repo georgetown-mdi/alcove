@@ -1,7 +1,10 @@
 import { expect, test, describe } from "vitest";
 import YAML from "yaml";
 
-import { MAX_NAME_LENGTH } from "../../src/config/linkageTermsSchema";
+import {
+  MAX_NAME_LENGTH,
+  MAX_TRANSFORM_PATTERN_LENGTH,
+} from "../../src/config/linkageTermsSchema";
 import {
   safeParseStandardization,
   StandardizationSchema,
@@ -208,6 +211,30 @@ describe("StandardizationSchema split_on delimiter", () => {
       result = safeParseStandardization(splitSpec("a(?=b)"));
     }).not.toThrow();
     expect(result?.success).toBe(true);
+  });
+
+  // The same empty-matching alternation, written once within the length cap
+  // and once past it: only the first is compiled by the step schema.
+  const emptyMatchingAlternation = (length: number) =>
+    "-*" + "|-*".repeat(Math.floor((length - 2) / 3));
+
+  test("compiles an empty-matching delimiter at the length cap", () => {
+    const delimiter = emptyMatchingAlternation(MAX_TRANSFORM_PATTERN_LENGTH);
+    expect(delimiter.length).toBeLessThanOrEqual(MAX_TRANSFORM_PATTERN_LENGTH);
+    const result = safeParseStandardization(splitSpec(delimiter));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path.join("."))).toEqual([
+      "0.steps.0.params.delimiter",
+    ]);
+  });
+
+  test("does not compile a delimiter over the length cap", () => {
+    const delimiter = emptyMatchingAlternation(
+      MAX_TRANSFORM_PATTERN_LENGTH + 3,
+    );
+    expect(delimiter.length).toBeGreaterThan(MAX_TRANSFORM_PATTERN_LENGTH);
+    expect(safeParseStandardization(splitSpec(delimiter)).success).toBe(true);
   });
 });
 
