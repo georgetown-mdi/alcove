@@ -190,7 +190,9 @@ describe("managed exchange detail configuration", () => {
       .element(
         page.getByText(
           "The new invitation names the coordination server set in relay " +
-            "settings, or this site's where none is set, and this exchange " +
+            "settings, or this site's where none is set, or the one this " +
+            "exchange already uses where relay settings cannot read yours, " +
+            "and this exchange " +
             "uses that server from then on.",
           { exact: true },
         ),

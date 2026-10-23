@@ -455,8 +455,9 @@ function ConfigurationView({
           )}
           <p className={styles.small}>
             The new invitation names the coordination server set in relay
-            settings, or this site&apos;s where none is set, and this exchange
-            uses that server from then on.
+            settings, or this site&apos;s where none is set, or the one this
+            exchange already uses where relay settings cannot read yours, and
+            this exchange uses that server from then on.
           </p>
           <Button
             variant="default"

@@ -1247,7 +1247,9 @@ const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   body: [
     "This keeps your agreed terms and replaces the secret. The fresh " +
       "invitation names the coordination server set in relay settings, or " +
-      "this site's where none is set, and this exchange uses that server " +
+      "this site's where none is set, or the one this exchange already " +
+      "uses where relay settings cannot read yours, and this exchange " +
+      "uses that server " +
       "from then on. The fresh invitation includes a new one-time secret, " +
       "so send it over your usual trusted channel, exactly as you did the " +
       "first time.",

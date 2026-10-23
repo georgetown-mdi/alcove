@@ -1574,7 +1574,9 @@ describe("managedReinviteRecoveryCopy", () => {
     expect(body).toContain(
       "This keeps your agreed terms and replaces the secret. The fresh " +
         "invitation names the coordination server set in relay settings, or " +
-        "this site's where none is set, and this exchange uses that server " +
+        "this site's where none is set, or the one this exchange already " +
+        "uses where relay settings cannot read yours, and this exchange " +
+        "uses that server " +
         "from then on.",
     );
     expect(body).not.toMatch(/only replaces/i);
