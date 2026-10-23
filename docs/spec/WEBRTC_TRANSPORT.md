@@ -254,6 +254,9 @@ record, where the inviter's later runs then register
 ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)).
 A change to the browser setting therefore moves no invitation already
 created, and moves a saved exchange only when its inviter re-invites from it.
+The relay settings page's field description and its notice for an unreadable
+setting state the rule for a new invitation; neither says that a re-invite made
+while the setting is unreadable names the endpoint the record stored.
 
 An accepting party never dials its own deployment's address. A fresh accept
 dials the endpoint its invitation names, from any deployment, and a saved
