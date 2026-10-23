@@ -68,6 +68,9 @@ export function runCodegen(root) {
   execFileSync(command, args, {
     cwd: root,
     encoding: "utf8",
+    // The listing names every web unit test, past the 1 MiB default, which
+    // fails the run with ENOBUFS.
+    maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
