@@ -1,4 +1,4 @@
-import { ConfirmedActionButton } from "./ConfirmedActionButton";
+import { ConfirmedActionButton } from "@components/ConfirmedActionButton";
 
 /**
  * "Reset to defaults" beside a step's primary action, behind a confirm naming

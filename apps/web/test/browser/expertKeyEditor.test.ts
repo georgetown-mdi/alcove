@@ -13,7 +13,12 @@ import "@mantine/core/styles.css";
 
 import { authoredLinkageFields } from "@alcove/core";
 
-import { seedAdvancedInvite } from "@psi/authoring/advancedInvite";
+import {
+  addKey,
+  seedAdvancedInvite,
+  updateKeyAt,
+} from "@psi/authoring/advancedInvite";
+import { REMOVE_ALL_KEYS_STATEMENT } from "@psi/inviterEditor";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 
@@ -128,19 +133,75 @@ describe("ExpertKeyEditor: Remove all keys", () => {
       page.getByRole("list", { name: "Linkage keys" }).element().children,
     );
 
-  test("empties the list in one action, announces it, and keeps focus in the editor", async () => {
+  const confirm = () => page.getByRole("dialog", { name: "Remove all keys?" });
+
+  test("empties a list of built-in keys in one action, announces it, and keeps focus in the editor", async () => {
     const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
     const announced: Array<string> = [];
     app.render(createElement(Harness, { initial: draft, announced }));
 
     const removeAll = page.getByRole("button", { name: "Remove all keys" });
     await expect.element(removeAll).toBeEnabled();
+    await expect.element(removeAll).not.toHaveAttribute("aria-haspopup");
     expect(keyCards().length).toBe(draft.keys.length);
     expect(draft.keys.length).toBeGreaterThan(1);
 
     await activate(control("button", "Remove all keys"));
 
     await expect.poll(keyCards).toHaveLength(0);
+    expect(confirm().query()).toBeNull();
+    await expect.element(removeAll).toBeDisabled();
+    expect(announced).toEqual(["Removed all keys."]);
+    await expect
+      .element(page.getByRole("button", { name: "Add a key" }))
+      .toHaveFocus();
+  });
+
+  test("asks first once a key is added, and Cancel keeps every key", async () => {
+    const { draft: seeded } = seedAdvancedInvite(
+      "County Health Dept",
+      ALL_COLUMNS,
+    );
+    const draft = addKey(seeded, "first_name");
+    const announced: Array<string> = [];
+    app.render(createElement(Harness, { initial: draft, announced }));
+
+    const removeAll = page.getByRole("button", { name: "Remove all keys" });
+    await expect.element(removeAll).toHaveAttribute("aria-haspopup", "dialog");
+    await userEvent.click(removeAll);
+
+    await expect
+      .element(confirm())
+      .toMatchTextContent(REMOVE_ALL_KEYS_STATEMENT);
+    await confirm().getByRole("button", { name: "Cancel" }).click();
+
+    await expect.element(confirm()).not.toBeInTheDocument();
+    expect(keyCards()).toHaveLength(draft.keys.length);
+    expect(announced).toEqual([]);
+  });
+
+  test("asks first once a built-in key is changed, then empties the list, announces it, and keeps focus in the editor", async () => {
+    const { draft: seeded } = seedAdvancedInvite(
+      "County Health Dept",
+      ALL_COLUMNS,
+    );
+    const draft = updateKeyAt(seeded, 0, (key) => ({
+      ...key,
+      name: `${key.name} (mine)`,
+    }));
+    const announced: Array<string> = [];
+    app.render(createElement(Harness, { initial: draft, announced }));
+
+    const removeAll = page.getByRole("button", { name: "Remove all keys" });
+    await userEvent.click(removeAll);
+    await expect.element(confirm()).toBeInTheDocument();
+    expect(keyCards()).toHaveLength(draft.keys.length);
+    expect(announced).toEqual([]);
+
+    await confirm().getByRole("button", { name: "Remove all keys" }).click();
+
+    await expect.poll(keyCards).toHaveLength(0);
+    await expect.element(confirm()).not.toBeInTheDocument();
     await expect.element(removeAll).toBeDisabled();
     expect(announced).toEqual(["Removed all keys."]);
     await expect
