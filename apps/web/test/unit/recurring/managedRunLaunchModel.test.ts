@@ -246,7 +246,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
   });
 
   test("an inviter's refused saved signaling address offers the re-invite, which names this browser's server", () => {
-    const reason = "is not a complete host, port and path";
+    const reason = "is not a complete host, port, and path";
     const failure = classifyAgainstOneRecord(
       new ManagedSignalingEndpointRefusedError(
         "Riverbend quarterly",

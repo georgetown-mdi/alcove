@@ -42,7 +42,7 @@ const CONFIGURATION_UNWRITTEN_NEXT_STEP =
 const QUICK_EXCHANGE_NEXT_STEP =
   "Agree with your partner on the columns your input files share and " +
   "the --linkage-strategy you both pass, then run again. A phone, email, " +
-  "street number, ZIP, state or county column in only one of the two files " +
+  "street number, ZIP, state, or county column in only one of the two files " +
   "makes the terms differ: the party whose file has it removes that " +
   "column, or you agree the terms through an invitation (alcove invite, " +
   "then alcove accept).";

@@ -164,7 +164,7 @@ describe("generateInvitation", () => {
 
     test("tells the operator which transports to use instead", () => {
       expect(() => invitationSignalingAddress(consoleLocation)).toThrow(
-        "Choose WebRTC, SFTP or a shared folder, which the console runs itself.",
+        "Choose WebRTC, SFTP, or a shared folder, which the console runs itself.",
       );
     });
 

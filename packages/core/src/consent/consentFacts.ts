@@ -1057,8 +1057,8 @@ export const UNRECOGNIZED_TRANSFORM_NOTE =
 export const LESS_CERTAIN_KEY_COPY = {
   mark: "less certain",
   explanation:
-    "A key marked less certain uses only first name, last name and date of " +
-    "birth fields, with no SSN, phone number, email or address. Different " +
+    "A key marked less certain uses only first name, last name, and date of " +
+    "birth fields, with no SSN, phone number, email, or address. Different " +
     "people share these more often the more people the two files cover, so " +
     "some of its matches may be two different people. Leave such keys out " +
     "when the files cover many people. A file of one age " +

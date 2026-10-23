@@ -377,7 +377,7 @@ describe("keys written in Expert authoring or loaded from a document", () => {
       buildAdvancedTerms(seeded.draft),
     );
     expect(rulesSelected(imported, withSsn)).toBe(
-      "Keys written in Expert authoring or loaded from a document",
+      "Keys written in expert authoring or loaded from a document",
     );
   });
 });
@@ -841,7 +841,7 @@ describe("highest precision on columns that supply none of its rules", () => {
     expect(reviewValidation(empty).errors.keys).toBe(
       validateAdvancedInvite(empty.draft, empty.seed).errors.keys,
     );
-    expect(reviewValidation(empty).errors.keys).toContain("Expert authoring");
+    expect(reviewValidation(empty).errors.keys).toContain("expert authoring");
   });
 
   test("leaves keys written in Expert authoring to their own message", () => {
@@ -895,11 +895,11 @@ describe("a seeded draft's dropped citation", () => {
         editorOffersUseBuiltInRules(authored, false),
       ),
     ).toBe(
-      "A key was added or changed in Expert authoring, so these keys are no " +
+      "A key was added or changed in expert authoring, so these keys are no " +
         "longer drawn from the built-in rule set, and the terms you create " +
         "will not cite it, so they will not tell your partner that these " +
         "keys are the built-in rules. To keep the citation, choose Use the " +
-        "built-in rules on Matching keys, which replaces the keys, fields " +
+        "built-in rules on Matching keys, which replaces the keys, fields, " +
         "and cleaning with the ones a new invitation starts with, or create " +
         "the invitation without it.",
     );
@@ -917,7 +917,7 @@ describe("a seeded draft's dropped citation", () => {
       false,
     );
     expect(notice).toBe(
-      "A key was added or changed in Expert authoring, so these keys are no " +
+      "A key was added or changed in expert authoring, so these keys are no " +
         "longer drawn from the built-in rule set, and the terms you create " +
         "will not cite it, so they will not tell your partner that these " +
         "keys are the built-in rules.",
@@ -946,7 +946,7 @@ describe("a seeded draft's dropped citation", () => {
       editorOffersUseBuiltInRules(authored, false),
     );
     expect(notice).toBe(
-      "A key was added or changed in Expert authoring, so these keys are no " +
+      "A key was added or changed in expert authoring, so these keys are no " +
         "longer drawn from the built-in rule set, and the terms you create " +
         "will not cite it, so they will not tell your partner that these " +
         "keys are the built-in rules. The built-in rules supply no key for " +

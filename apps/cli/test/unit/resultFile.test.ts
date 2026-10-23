@@ -234,7 +234,7 @@ describe("runFilesInSharedFolderWarnings", () => {
     expect(warnings).toEqual([
       `the output folder ${output} is inside the shared folder ${shared}, ` +
         "so anyone who can read that folder, your partner included, can " +
-        "read the result, the exchange record and its keys. Name an output " +
+        "read the result, the exchange record, and its keys. Name an output " +
         "folder outside it.",
     ]);
   });

@@ -775,7 +775,7 @@ describe("validateAdvancedInvite", () => {
       "cannot be produced from this input's columns",
     );
     expect(result.errors.keys).toContain(
-      'Turn on Expert authoring and map a column to the field each key marked "no column for" names',
+      'Turn on expert authoring and map a column to the field each key marked "no column for" names',
     );
   });
 
@@ -3092,7 +3092,7 @@ describe("draftFromTerms degrades gracefully on an unsupplyable key", () => {
     expect(validation.canGenerate).toBe(false);
     expect(validation.errors.keys).toMatch(/cannot supply/);
     expect(validation.errors.keys).toContain(
-      "Turn on Expert authoring to see which field each key has no column for",
+      "Turn on expert authoring to see which field each key has no column for",
     );
     expect(validation.errors.keys).not.toContain("Enable at least one");
   });

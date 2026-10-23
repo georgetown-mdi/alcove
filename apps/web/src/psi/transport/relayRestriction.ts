@@ -99,7 +99,7 @@ function allowedRelaysFieldDescription(relays: string): string {
 /** The Allowed relays field's description where the run is this browser's
  * or a saved exchange's, which can relay through this site's relay. */
 export const ALLOWED_RELAYS_FIELD_DESCRIPTION = allowedRelaysFieldDescription(
-  "yours, the invitation's or this site's",
+  "yours, the invitation's, or this site's",
 );
 
 /** The Allowed relays field's description on the console, whose runs have

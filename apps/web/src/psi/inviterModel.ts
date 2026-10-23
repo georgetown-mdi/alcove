@@ -132,7 +132,7 @@ function keysFact(draft: AdvancedInviteDraft): string {
 function rulesSelectedFact(editor: InviterEditor): string {
   const selection = editor.draft.precisionFloorSelection;
   if (editor.keysAuthored === true || selection === undefined)
-    return "Keys written in Expert authoring or loaded from a document";
+    return "Keys written in expert authoring or loaded from a document";
   return precisionFloorSelectionStatement(selection);
 }
 

@@ -152,7 +152,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
     "Matches names by a sound-alike code rather than the literal spelling, so different names that sound alike can match.",
   zip3: "Matches on only the first three digits of a five-digit ZIP code, so ZIP codes in the same area can match; any other value is dropped.",
   state_code:
-    "Replaces a US state, DC or territory name with its two-letter postal abbreviation before matching, so a name and its abbreviation can match; any other value is dropped.",
+    "Replaces a US state, DC, or territory name with its two-letter postal abbreviation before matching, so a name and its abbreviation can match; any other value is dropped.",
   usps_street_name:
     "Writes a street name's suffix and directionals in their USPS forms before matching, abbreviating or spelling each out by its position, so Main Street North and Main St N can match.",
   null_if: "Treats listed values as empty, dropping them from matching.",

@@ -130,7 +130,7 @@ function markerCheck(
         "somewhere, and a DFS path is the usual reason, because the " +
         "namespace and the real location can differ in all three.",
       "read the real path from the folder's Properties, DFS tab, and set " +
-        "SMB_SERVER, SMB_SHARE and SMB_PATH from it. See the troubleshooting " +
+        "SMB_SERVER, SMB_SHARE, and SMB_PATH from it. See the troubleshooting " +
         "page, 'Reading the real path from Windows'.",
     );
   }

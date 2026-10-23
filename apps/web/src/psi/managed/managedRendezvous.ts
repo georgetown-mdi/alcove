@@ -163,7 +163,7 @@ export function managedSignalingEndpoint(
   if (!parsed.success)
     throw new ManagedSignalingEndpointRefusedError(
       record.label,
-      "is not a complete host, port and path",
+      "is not a complete host, port, and path",
       record.side,
     );
   const endpoint: WebRTCEndpoint = parsed.data;

@@ -90,7 +90,7 @@ const SHARED_VALUE_CAVEAT_TYPES: ReadonlySet<string> = new Set([
 const SHARED_VALUE_CAVEAT =
   "A phone number or email address many people share, such as a shelter's " +
   "phone or a site's email, matches people who are not the same person. A " +
-  "street number, ZIP code, state or county column must hold each person's " +
+  "street number, ZIP code, state, or county column must hold each person's " +
   "own, never that of a site that serves them.";
 
 /**
@@ -422,7 +422,7 @@ export function KeysTab({
         />
       ) : (
         <Alert variant="light" color="gray" role="note">
-          Turn on Expert authoring to edit keys element by element and to import
+          Turn on expert authoring to edit keys element by element and to import
           or export the terms.
         </Alert>
       )}

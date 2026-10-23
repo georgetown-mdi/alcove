@@ -223,7 +223,7 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
     await expect
       .element(rulesSelectedCell())
       .toHaveTextContent(
-        "Keys written in Expert authoring or loaded from a document",
+        "Keys written in expert authoring or loaded from a document",
       );
   });
 

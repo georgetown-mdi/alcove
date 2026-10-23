@@ -99,7 +99,7 @@ export const QUOTED_FAN_OUT_FUNCTION_NAMES = FAN_OUT_FUNCTION_NAMES.map(
 const CANDIDATE_SET_STRATEGY_RECOVERY =
   "Agree linkage terms whose linkage_strategy matches " +
   "several candidates per record, or " +
-  `remove the ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, the fuzzy comparison and ` +
+  `remove the ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, the fuzzy comparison, and ` +
   "the swapped key order from the standardization and from every linkage " +
   "key.";
 

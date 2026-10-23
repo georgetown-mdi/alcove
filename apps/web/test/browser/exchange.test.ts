@@ -626,7 +626,7 @@ describe("inviter screen", () => {
     await expect
       .element(
         page.getByText(
-          `${isolatedColumnName("client_id")} changed to Ignored - only one ` +
+          `${isolatedColumnName("client_id")} changed to ignored - only one ` +
             "column can be the record identifier.",
         ),
       )

@@ -259,7 +259,7 @@ export function Lobby() {
           <h2 className={styles.lobbyHelpHeading}>How it works</h2>
           <p>
             {isConsoleBuild()
-              ? "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
+              ? "Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. This console runs the exchange itself, over an SFTP server, a shared folder, or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
               : `Alcove encrypts the fields you match on and compares them using a method called private set intersection, so neither of you sees the other's records that don't match. ${HOSTED_FILE_ASSURANCE} A coordination server helps the two sides find each other. It never sees your data.`}
           </p>
         </div>

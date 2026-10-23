@@ -997,7 +997,7 @@ export function InvitationTerms({
                 The shared identifiers of records you have in common are
                 revealed to whoever receives the result.{" "}
                 <strong>
-                  Names, dates of birth and the other fields you match on are
+                  Names, dates of birth, and the other fields you match on are
                   not revealed.
                 </strong>
               </>

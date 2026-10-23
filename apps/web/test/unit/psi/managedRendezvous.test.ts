@@ -353,14 +353,14 @@ describe("a saved signaling address that fails validation", () => {
     [
       "port 0",
       { host: "signaling.example.org", port: 0 },
-      /is not a complete host, port and path/,
+      /is not a complete host, port, and path/,
     ],
     [
       "an empty path",
       { host: "signaling.example.org", path: "" },
-      /is not a complete host, port and path/,
+      /is not a complete host, port, and path/,
     ],
-    ["no host", { path: "/api/" }, /is not a complete host, port and path/],
+    ["no host", { path: "/api/" }, /is not a complete host, port, and path/],
   ];
 
   const sides = ["acceptor", "inviter"] as const;

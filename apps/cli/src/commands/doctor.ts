@@ -152,8 +152,8 @@ export function builder(cmd: Argv): Argv {
           .usage("Usage: $0 doctor probe [options]")
           .epilog(
             "Reads the connection from the environment, not from flags: " +
-              "SMB_SERVER, SMB_SHARE and SMB_USER are required; SMB_PASS, " +
-              "SMB_PATH, SMB_DOMAIN, SMB_DIALECT, SMB_MARKER and SMB_TOKEN " +
+              "SMB_SERVER, SMB_SHARE, and SMB_USER are required; SMB_PASS, " +
+              "SMB_PATH, SMB_DOMAIN, SMB_DIALECT, SMB_MARKER, and SMB_TOKEN " +
               "are optional. See docs/CLI.md, Checking a network shared folder.",
           ),
       probeHandler,
@@ -211,7 +211,7 @@ export function builder(cmd: Argv): Argv {
     )
     .demandCommand(
       1,
-      "specify which checks to run: `doctor probe`, `doctor mount DIRECTORY` " +
+      "specify which checks to run: `doctor probe`, `doctor mount DIRECTORY`, " +
         "or `doctor relay`",
     );
 }

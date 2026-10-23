@@ -512,7 +512,7 @@ function subdirectoryCheck(
               "this subfolder is a DFS link pointing at another server, and " +
                 "this container has no DFS client to follow it.",
               "read the real path from the folder's Properties, DFS tab and " +
-                "pass it as SMB_SERVER, SMB_SHARE and SMB_PATH. See the " +
+                "pass it as SMB_SERVER, SMB_SHARE, and SMB_PATH. See the " +
                 "troubleshooting page, 'Reading the real path from Windows'.",
             ]
           : [

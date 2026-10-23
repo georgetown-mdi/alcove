@@ -373,7 +373,7 @@ export function partnerDropAtIdleBoundaryWarning(
     `and the next poll cycle dials a fresh session; the exchange continues ` +
     `(${count} idle ${count === 1 ? "boundary" : "boundaries"} met a ` +
     `session the partner had already ended so far this exchange). This is ` +
-    `typically a server-enforced session-duration, idle or operation limit ` +
+    `typically a server-enforced session-duration, idle, or operation limit ` +
     `you cannot change, which connection-per-poll is the mode for: these ` +
     `sessions are not charged against max_reconnect_attempts.`
   );

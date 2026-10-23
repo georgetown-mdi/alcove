@@ -1251,7 +1251,7 @@ export function warnServerOverridesIgnoredOffline(
     `${ignored.join(", ")} ${ignored.length === 1 ? "has" : "have"} no effect ` +
       "on an offline invite/accept: the connection block is written for you to " +
       "edit (a placeholder, or seeded from the invitation endpoint), not built " +
-      "from a URL. Set the connection details (the server host, port and " +
+      "from a URL. Set the connection details (the server host, port, and " +
       "credentials, or the inbound_path/outbound_path split) in that block " +
       "before running 'alcove exchange', or pass these flags on an online " +
       "invite/accept, a quick exchange, or 'alcove exchange'.",

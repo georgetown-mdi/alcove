@@ -323,7 +323,7 @@ describe("KeysTab: a file with a ZIP column", () => {
       .element(
         page.getByRole("note").filter({
           hasText:
-            "A street number, ZIP code, state or county column must hold " +
+            "A street number, ZIP code, state, or county column must hold " +
             "each person's own, never that of a site that serves them.",
         }),
       )
@@ -730,7 +730,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     expect(keyItems.elements()).toHaveLength(0);
     expect(page.getByRole("alert").query()).toBeNull();
     expect(document.body.textContent).not.toContain(
-      "Turn on Expert authoring to see which field",
+      "Turn on expert authoring to see which field",
     );
 
     await page.getByRole("button", { name: "Match on ssn4" }).click();
@@ -765,7 +765,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .toBeDisabled();
     await expect
       .element(page.getByRole("alert"))
-      .toMatchTextContent(/Turn on Expert authoring/);
+      .toMatchTextContent(/Turn on expert authoring/);
   });
 
   test("reseeds the key list on a floor choice", async () => {
@@ -1284,7 +1284,7 @@ describe("KeysTab: removing every key in Expert authoring", () => {
     await expect
       .element(page.getByRole("alert"))
       .toMatchTextContent(
-        /^There are no linkage keys\. Add a key in Expert authoring\.$/,
+        /^There are no linkage keys\. Add a key in expert authoring\.$/,
       );
     expect(document.body.textContent).not.toContain("cannot supply");
     await expect

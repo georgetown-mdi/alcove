@@ -38,7 +38,7 @@ function unsupportedValueError(description: string): ConnectionError {
   return new ConnectionError(
     `cannot BinaryPack an outbound frame holding ${description}; the WebRTC ` +
       "wire carries only null, booleans, numbers, strings, byte arrays, " +
-      "arrays and plain objects",
+      "arrays, and plain objects",
     "usage",
   );
 }

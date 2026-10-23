@@ -322,7 +322,7 @@ describe("column-name isolation: what the wrapper does not contain", () => {
     );
     mountMetadata(editor.draft.metadata, notice);
     await expect
-      .element(page.getByText("changed to Ignored", { exact: false }))
+      .element(page.getByText("changed to ignored", { exact: false }))
       .toMatchTextContent(notice);
   });
 
@@ -361,10 +361,10 @@ describe("column-name isolation: what the wrapper does not contain", () => {
 
     mountMetadata(editor.draft.metadata, demotionNotice(demotedIdentifiers));
     await expect
-      .element(page.getByText("changed to Ignored", { exact: false }))
+      .element(page.getByText("changed to ignored", { exact: false }))
       .toBeInTheDocument();
     const notice = page
-      .getByText("changed to Ignored", { exact: false })
+      .getByText("changed to ignored", { exact: false })
       .element();
     expect(visualOrderWithin(notice, ["pre", "evil", "changed to"])).toEqual([
       "pre",

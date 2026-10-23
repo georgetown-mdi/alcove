@@ -121,7 +121,7 @@ export function splitRendezvousRetainProblem(
  */
 export const SHARED_FOLDER_EXPOSURE_NOTICE =
   "This console's shared folder is the folder holding your files. Whoever " +
-  "syncs it gets your input, configuration and results. Give the shared " +
+  "syncs it gets your input, configuration, and results. Give the shared " +
   "folder its own mount: add these lines to your docker run command, before " +
   "the image name, and restart the console.";
 

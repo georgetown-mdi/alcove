@@ -1352,7 +1352,7 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     name: "state_code",
     label: "State code",
     blurb:
-      "Replace a US state, DC or territory name with its two-letter postal abbreviation, keeping an abbreviation as it is; drop any other value.",
+      "Replace a US state, DC, or territory name with its two-letter postal abbreviation, keeping an abbreviation as it is; drop any other value.",
     tier: "standard",
     params: noParams,
   },

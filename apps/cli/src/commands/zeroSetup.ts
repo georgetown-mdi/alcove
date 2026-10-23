@@ -150,7 +150,7 @@ export function builder(cmd: Argv): Argv {
             "Quick exchange arguments:\n" +
               "  URL            server URL (sftp://, ssh://, or file://)\n" +
               "  INPUT_FILE     CSV to link; use `-` to read from stdin\n" +
-              "  OUTPUT_FOLDER  folder for the result, record and receipt, created\n" +
+              "  OUTPUT_FOLDER  folder for the result, record, and receipt, created\n" +
               "                 if missing; without it the result goes to stdout\n\n" +
               "Both parties run the quick exchange against the same server URL.\n" +
               "Linkage terms are inferred from each party's input file. No\n" +

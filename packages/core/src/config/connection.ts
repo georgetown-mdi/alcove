@@ -1125,7 +1125,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
 export const MAX_WEBSOCKET_RELAY_URL_LENGTH = 1024;
 
 const WEBSOCKET_RELAY_URL_FORM =
-  "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+  "a wss:// url naming a host, an optional port from 1 to 65535, and the " +
   "relay's path, for example wss://relay.example.org/relay";
 
 // Why `url` cannot name a WebSocket relay, or undefined when it can. The url
@@ -1194,7 +1194,7 @@ function relayExchangeIdSchema(name: string): z.ZodType<string> {
     .string()
     .refine(isRelayRegistrarExchangeId, {
       message:
-        `${name} must be 1 to 128 of A-Z, a-z, 0-9, '.', '_' and '-', not ` +
+        `${name} must be 1 to 128 of A-Z, a-z, 0-9, '.', '_', and '-', not ` +
         "starting with '-' and not holding a run of 64 hex characters",
     })
     .refine((id) => id !== "." && id !== "..", {
@@ -1341,7 +1341,7 @@ export function relayLocatorSchema(
         relay.websocket !== undefined,
       {
         message:
-          "a relay locator must name at least one turn, stun or websocket " +
+          "a relay locator must name at least one turn, stun, or websocket " +
           "url; omit it when there is no relay to name",
       },
     )
@@ -1562,7 +1562,7 @@ function relayRegistrarUrlProblem(url: string): string | undefined {
     return `names port 0; write it as ${RELAY_REGISTRAR_URL_FORM}`;
   // `href` keeps an empty `?` or `#`, which leave `search` and `hash` empty.
   if (parsed.href !== `${parsed.origin}/`)
-    return `has a path, query or fragment; write it as ${RELAY_REGISTRAR_URL_FORM}`;
+    return `has a path, query, or fragment; write it as ${RELAY_REGISTRAR_URL_FORM}`;
   const written = (url.endsWith("/") ? url.slice(0, -1) : url).toLowerCase();
   if (written !== parsed.origin && written !== `${parsed.origin}:443`)
     return `must be written as ${RELAY_REGISTRAR_URL_FORM}`;

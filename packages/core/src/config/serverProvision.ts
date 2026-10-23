@@ -185,8 +185,8 @@ function provisionUrl(provision: ServerProvision): URL {
   if (!isHostNameOrIpAddress(provision.host))
     throw new UsageError(
       "connection.server.provision.host holds a character a host name cannot " +
-        "contain; set it to a bare host name (letters, digits, hyphens and " +
-        "dots, an internationalized name in its xn-- form) or an IP address.",
+        "contain; set it to a bare host name (letters, digits, hyphens, and " +
+        "dots; an internationalized name in its xn-- form) or an IP address.",
     );
   const invalid = () =>
     new UsageError(
@@ -399,7 +399,7 @@ function refusedAddressReason(issues: ReadonlyArray<z.core.$ZodIssue>): string {
     )
       return `its ${String(field)} is missing, of the wrong type, or out of range`;
   }
-  return "it holds a field other than host, port and path";
+  return "it holds a field other than host, port, and path";
 }
 
 /**

@@ -1175,7 +1175,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(
-      "holds your input files, configuration and results",
+      "holds your input files, configuration, and results",
     );
   });
 

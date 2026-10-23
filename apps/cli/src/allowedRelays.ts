@@ -20,7 +20,7 @@ export const LEFT_OUT_BY_ALLOWED_RELAYS =
 /** What the setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =
   "connection.allowed_relays decides which relays your side connects " +
-  "through, enrolls at and names in the invitations it creates; your own " +
+  "through, enrolls at, and names in the invitations it creates; your own " +
   "connection.relay_registrar, where set, still receives each rotated " +
   "relay key. Your partner's side can still connect through a relay it " +
   "leaves out. The setting covers relay servers only: the STUN servers " +

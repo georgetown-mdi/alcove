@@ -304,7 +304,7 @@ export function editorWithBuiltInKeys(
  * ({@link editorWithPrecisionFloorSelection} refuses there), beside the
  * action that replaces them ({@link editorWithBuiltInKeys}). */
 export const AUTHORED_KEYS_FLOOR_NOTE =
-  "These keys were written in Expert authoring or loaded from a document, so " +
+  "These keys were written in expert authoring or loaded from a document, so " +
   "no choice of built-in rules applies to them.";
 
 /** What the confirm before {@link editorWithBuiltInKeys} states. */
@@ -905,7 +905,7 @@ export function editorWithColumnDisclosure(
  */
 export function demotionNotice(demoted: ReadonlyArray<string>): string {
   if (demoted.length === 0) return "";
-  return `${demoted.map(isolatedColumnName).join(", ")} changed to Ignored - only one column can be the record identifier.`;
+  return `${demoted.map(isolatedColumnName).join(", ")} changed to ignored - only one column can be the record identifier.`;
 }
 
 /** The linkage keys the draft currently authors, in order. */
