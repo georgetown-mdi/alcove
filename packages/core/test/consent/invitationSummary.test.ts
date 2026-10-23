@@ -1571,7 +1571,7 @@ describe("the consent summary's geography elements", () => {
     ]);
     expect(key.headerFields).toEqual(["last name", "state"]);
     expect(key.elements[1].transforms[0].description).toMatch(
-      /^Replaces a US state, DC or territory name with its two-letter postal abbreviation/,
+      /^Replaces a US state, DC, or territory name with its two-letter postal abbreviation/,
     );
   });
 

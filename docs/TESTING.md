@@ -69,7 +69,7 @@ paths. The in-process backend adds two surfaces a real `sshd` cannot offer:
 
 - Fault injection -- a malformed NAME or DATA packet, a request accepted and
   never answered, transient RENAME failures or every RENAME refused, a write
-  torn at its close (the file kept, removed or truncated), capped READDIR batches, a run of
+  torn at its close (the file kept, removed, or truncated), capped READDIR batches, a run of
   READDIR batches holding neither an entry nor end-of-directory (the
   progress-free flood the listing's round-trip cap exists for, and the only
   shape that reaches it), and a NAME reply of a chosen width (the hook the
@@ -87,7 +87,7 @@ paths. The in-process backend adds two surfaces a real `sshd` cannot offer:
   which is the only way to end a parked dial with a peer close rather than with a
   teardown the client drove. A live session can also be made to
   VANISH: from that moment the server neither answers nor closes it, so the
-  client sees no `end`, no `close` and no further byte, and can learn of it only
+  client sees no `end`, no `close`, and no further byte, and can learn of it only
   from its own liveness deadline. Unlike the withheld close it fires against a
   session that has asked for nothing, and it composes with the caps, so a server
   can both cap sessions and never close one cleanly. Every vanished session is
@@ -131,7 +131,7 @@ made to do, not a gap waiting for a case, so a plan that decomposes the adapter
 has to keep the model for them rather than promise to retire it:
 
 - **The API-drift feature detects.** The adapter reaches through
-  `ssh2-sftp-client` to the `ssh2` client, its socket and the raw SFTP session
+  `ssh2-sftp-client` to the `ssh2` client, its socket, and the raw SFTP session
   (`client._sock.destroy()`, `client.on()`/`once()`/`removeListener()`,
   `client.end()`, `setNoDelay`/`setKeepAlive`, and `sftp.open`/`close`/`opendir`/
   `readdir`), and guards each reach so a version that relocated one degrades with
@@ -345,7 +345,7 @@ relies on; the list, and what of it was measured on Pages, is in
 [docs/notes/hosted-static-build.md](notes/hosted-static-build.md#static-host-harness).
 It refuses to start on an output holding `_redirects` or `404.html`, and on
 `_headers` syntax outside that subset. `appShellWarm`,
-`offlineUnvisitedRoute`, `csvWorkerProd`, `securityHeaders` and the hosted half
+`offlineUnvisitedRoute`, `csvWorkerProd`, `securityHeaders`, and the hosted half
 of `apiNamespace` run against it.
 
 For a dev-server-only run, set `ALCOVE_ALLOW_MISSING_WEB_BUILD=1`:
@@ -465,7 +465,7 @@ what the others cannot:
   claim; the file header lists the rules.
 - The keyboard-only journeys (`keyboardInviteJourney.test.ts`,
   `keyboardAcceptJourney.test.ts`, `keyboardVerifyJourney.test.ts`) drive the
-  invite, accept, verify and recurring setup flows by Tab, Enter and Space
+  invite, accept, verify, and recurring setup flows by Tab, Enter, and Space
   alone through `keyboardOnly.ts`, assert where focus lands on each step
   change, and run the rule scan on each step and on the result and failure
   states. A native file chooser cannot be driven, so a journey tabs to the file
@@ -554,7 +554,7 @@ association tables rather than leaving one to a teardown hook.
 
 The CLI holds the inviter role, which is what puts the broker on an origin of
 its own rather than the page's: the invitation a CLI party creates from a `ws://`
-coordination-server URL names that broker's host, port and mount, and the
+coordination-server URL names that broker's host, port, and mount, and the
 browser peer dials what the invitation names. A browser inviter would name its
 own page's origin instead.
 
@@ -583,7 +583,7 @@ app's own. Everything else is each runtime's own.
 
 **It runs nightly**, from `.github/workflows/nightly_live_webrtc.yaml`, and is
 off the pull-request gate. It pays for a CLI build, a browser build and minutes
-of real ICE, DTLS, SCTP and WASM work to exchange six records, while what it
+of real ICE, DTLS, SCTP, and WASM work to exchange six records, while what it
 guards -- a divergence between the two implementations on the wire -- moves with
 the two transports rather than with the pull requests that land. The standing
 per-PR guarantees stay the interop suite above and the cross-implementation
@@ -614,7 +614,7 @@ across runs before anything tighter gates on them.
 
 ## Core stress tier
 
-`npm run test:stress -w packages/core` runs `packages/core/test/stress/`, the large-input cases kept out of `npm run test` and run on a schedule by `.github/workflows/nightly_core_stress.yaml`, which gives each file a job and a hosted runner of its own, except six short files that share one. The four engine files that take from 14 minutes to about three hours on a hosted runner (`psiRoundWalls`, `streamedMatchLarge`, `streamedMatchLargeNative`, `wasmMaskingGrowth`) run weekly, on Sunday, and every other file runs nightly; a manual dispatch runs either set or both, on the branch it is dispatched on. Stress files run one at a time, and a case that needs more memory than the machine has skips with a message naming the case, its need, and the memory it found: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the available memory `memory_pressure` reports: free, inactive and speculative pages.
+`npm run test:stress -w packages/core` runs `packages/core/test/stress/`, the large-input cases kept out of `npm run test` and run on a schedule by `.github/workflows/nightly_core_stress.yaml`, which gives each file a job and a hosted runner of its own, except six short files that share one. The four engine files that take from 14 minutes to about three hours on a hosted runner (`psiRoundWalls`, `streamedMatchLarge`, `streamedMatchLargeNative`, `wasmMaskingGrowth`) run weekly, on Sunday, and every other file runs nightly; a manual dispatch runs either set or both, on the branch it is dispatched on. Stress files run one at a time, and a case that needs more memory than the machine has skips with a message naming the case, its need, and the memory it found: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the available memory `memory_pressure` reports: free, inactive, and speculative pages.
 
 Dispatch the `weekly` or `all` tier only to confirm a change to the PSI engine path or to one of those three files ahead of the Sunday run: each of their jobs holds a hosted runner for up to five hours, and a measurement that repeats one file multiplies that. Any other change is confirmed with the `nightly` tier.
 
@@ -628,7 +628,7 @@ check out `staging` by name, so their scheduled runs test the `staging` tip.
 `nightly_relay_deployment.yaml` tests no code: it checks out `main`, the branch
 the relay host pulls, and checks that the host has deployed it
 ([infra/broker/README.md, The deployment check](../infra/broker/README.md#the-deployment-check)).
-The weekly dependency audit, CodeQL and image smoke workflows run on their
+The weekly dependency audit, CodeQL, and image smoke workflows run on their
 default ref. GitHub fires a schedule from the workflow file on `main`, so a
 change to a scheduled workflow's own definition reaches its scheduled runs only
 once it is promoted there; a manual dispatch runs the definition on the branch
@@ -646,7 +646,7 @@ streak per tier. The script header states which run endings count as red.
 
 ### Per-file test durations
 
-The CLI, web and static-check jobs set `ALCOVE_VITEST_JSON_DIR` on their test
+The CLI, web, and static-check jobs set `ALCOVE_VITEST_JSON_DIR` on their test
 steps, so each vitest run writes vitest's JSON report into that directory
 (`scripts/lib/jsonReportReporter.mjs`, registered beside the skipped-leg
 reporter). `.github/actions/test-durations` then lists the job's slowest test
@@ -681,7 +681,7 @@ The apps import the built packages, never a package's `src`, so a run whose
 library and reports failures that belong to the build. Before any app suite
 runs, the `dist/` entries each package's `package.json` publishes are compared
 against what its build reads -- `packages/core/src` and `rollup.config.ts`;
-`packages/cli-contract/src`, `tsconfig.build.json` and the `tsconfig.json` it
+`packages/cli-contract/src`, `tsconfig.build.json`, and the `tsconfig.json` it
 extends, leaving out the shared `tsconfig.base.json` since it sits outside the
 package directory -- and a dist that is missing or older fails the run, naming
 the file that outran it and the rebuild, core first since the cli-contract build

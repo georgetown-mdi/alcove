@@ -428,7 +428,7 @@ describe("review and create", () => {
       removeAllKeys(seeded.draft),
     );
     expect(emptied.keysAuthored).toBe(true);
-    const message = "There are no linkage keys. Add a key in Expert authoring.";
+    const message = "There are no linkage keys. Add a key in expert authoring.";
     const validation = reviewValidation(emptied);
     expect(validation.canGenerate).toBe(false);
     expect(validation.errors.keys).toBe(message);

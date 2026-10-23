@@ -106,14 +106,14 @@ function todayIso(now: Date): string {
  * than value. The message points at Expert authoring, whose "no column for"
  * badge names the field beside the key. */
 const UNSUPPLYABLE_KEY_MESSAGE =
-  "A linkage key needs a field your columns cannot supply. Turn on Expert " +
+  "A linkage key needs a field your columns cannot supply. Turn on expert " +
   "authoring to see which field each key has no column for, then add a " +
   "column of that type or turn that key off.";
 
 /** Shown in place of {@link UNSUPPLYABLE_KEY_MESSAGE} when keys written in
  * Expert authoring number none: no column is missing, and the remedy is a key. */
 const EMPTY_AUTHORED_KEYS_MESSAGE =
-  "There are no linkage keys. Add a key in Expert authoring.";
+  "There are no linkage keys. Add a key in expert authoring.";
 
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
@@ -405,11 +405,11 @@ function firstParamNameRefusal(
 function shortfallRemedy(verdict: LinkageTermsVerdict): string {
   if (verdict.unsatisfiableKeys.length > 0)
     return (
-      'Turn on Expert authoring and map a column to the field each key marked "no ' +
+      'Turn on expert authoring and map a column to the field each key marked "no ' +
       'column for" names, or turn those keys off.'
     );
   return (
-    "Turn on Expert authoring and review the cleaning on the keys marked " +
+    "Turn on expert authoring and review the cleaning on the keys marked " +
     '"cleaning drops every value", or turn them off.'
   );
 }
@@ -1137,19 +1137,19 @@ const SEEDED_CITATION_DROP_NOTICES = {
     "Move the keys back into their built-in order to keep the citation, or " +
     "create the invitation without it.",
   edited:
-    "A key was added or changed in Expert authoring, so these keys are no " +
+    "A key was added or changed in expert authoring, so these keys are no " +
     "longer drawn from the built-in rule set, and " +
     `${SEEDED_CITATION_DROP_CONSEQUENCE}. To keep the citation, choose ` +
     `${USE_BUILT_IN_RULES_LABEL} on Matching keys, which replaces the keys, ` +
-    "fields and cleaning with the ones a new invitation starts with, or " +
+    "fields, and cleaning with the ones a new invitation starts with, or " +
     "create the invitation without it.",
   editedNoBuiltInKeys:
-    "A key was added or changed in Expert authoring, so these keys are no " +
+    "A key was added or changed in expert authoring, so these keys are no " +
     "longer drawn from the built-in rule set, and " +
     `${SEEDED_CITATION_DROP_CONSEQUENCE}. The built-in rules supply no key ` +
     "for this file's columns as they are now.",
   editedNotOffered:
-    "A key was added or changed in Expert authoring, so these keys are no " +
+    "A key was added or changed in expert authoring, so these keys are no " +
     "longer drawn from the built-in rule set, and " +
     `${SEEDED_CITATION_DROP_CONSEQUENCE}.`,
 } as const;

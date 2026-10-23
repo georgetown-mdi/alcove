@@ -37,7 +37,7 @@ const REGISTRAR = "https://registrar.example.org:8443";
 const REGISTRAR_FORM =
   "an https:// url naming only a host and an optional port from 1 to 65535, " +
   "for example https://registrar.example.org";
-const PATH_QUERY_OR_FRAGMENT = `has a path, query or fragment; write it as ${REGISTRAR_FORM}`;
+const PATH_QUERY_OR_FRAGMENT = `has a path, query, or fragment; write it as ${REGISTRAR_FORM}`;
 
 const RELAY = {
   turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -616,7 +616,7 @@ describe("the accepting side's connection", () => {
 describe("the relay locator's WebSocket relay", () => {
   const WEBSOCKET = "wss://wsrelay.example.org/relay";
   const WEBSOCKET_FORM =
-    "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+    "a wss:// url naming a host, an optional port from 1 to 65535, and the " +
     "relay's path, for example wss://relay.example.org/relay";
 
   test.each([
@@ -847,7 +847,7 @@ describe("the WebSocket relay's exchange id and registrar on the locator", () =>
   const EXCHANGE_ID = "q3-linkage-7f2c";
   const ID_GRAMMAR =
     "a relay locator's websocket exchange id must be 1 to 128 of A-Z, a-z, " +
-    "0-9, '.', '_' and '-', not starting with '-' and not holding a run of " +
+    "0-9, '.', '_', and '-', not starting with '-' and not holding a run of " +
     "64 hex characters";
 
   test.each([

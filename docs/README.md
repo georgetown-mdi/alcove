@@ -25,7 +25,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 
 ## Glossary
 
-Each concept has one official word, listed below, and the screens, messages and guides use it. A sentence may use another wording where the context makes clear what it means, and comes back to the official word where a reader may have lost track; not every mention has to match. Configuration keys, command-line flags, environment variable names and code keep their own names.
+Each concept has one official word, listed below, and the screens, messages, and guides use it. A sentence may use another wording where the context makes clear what it means, and comes back to the official word where a reader may have lost track; not every mention has to match. Configuration keys, command-line flags, environment variable names, and code keep their own names.
 
 | Word | What it names | Where it is set |
 |------|---------------|-----------------|
@@ -35,7 +35,7 @@ Each concept has one official word, listed below, and the screens, messages and 
 | quick exchange | An exchange with no invitation and no shared secret, run against a server or shared folder both parties already agreed on | `alcove URL INPUT_FILE`, or the console's quick exchange; `--save` keeps its settings ([CLI.md](CLI.md#quick-exchange)) |
 | shared folder | The folder both parties read and write when an exchange runs through files: a network share or a synced folder | `connection.channel: filedrop` with [`connection.path`](EXCHANGE_REFERENCE.md#connectionpath), or `inbound_path` and `outbound_path`; on the console, `JOB_RENDEZVOUS_DIR` |
 | coordination server | The server two parties connect through to start a WebRTC exchange; it passes setup messages and never sees exchange data | `connection.channel: webrtc` with `connection.server`; for the web app, `VITE_SIGNALING_SERVER_URL` ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)). Code and the package name call it the broker |
-| working folder | The one folder the console mounts, holding an exchange's configuration, key file, input and results. Console screens call it "your folder" | `JOB_DATA_ROOT` ([CONSOLE.md](CONSOLE.md)) |
+| working folder | The one folder the console mounts, holding an exchange's configuration, key file, input, and results. Console screens call it "your folder" | `JOB_DATA_ROOT` ([CONSOLE.md](CONSOLE.md)) |
 | exchange record | The file each party keeps of what its exchange disclosed, `alcove-record-<time>.json`, with its verification keys | Written by default; `--no-record` turns it off |
 | signed receipt | The file both parties sign at the end of an exchange, `alcove-receipt-<time>.json`: the evidence of the terms both agreed and the data that flowed | [`signing.mode: certificate`](EXCHANGE_REFERENCE.md#signingmode) |
 
@@ -71,11 +71,11 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 - [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - for an auditor of the transport: the deadlines and budgets that fail a stalled transport operation, and the heartbeat that keeps a quiet SFTP session open
 - [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md) - for an auditor of the SFTP channel: the server-provisioning endpoint call, SFTP crash safety on a fatal packet, and host-key verification
 - [SFTP_SESSION_RECOVERY.md](spec/SFTP_SESSION_RECOVERY.md) - for an auditor of the SFTP channel: how a session the server drops mid-exchange is re-dialed, what is re-issued, and the bounds on both
-- [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - for an auditor of what a party parses: the count, length and depth bounds on a partner's input, the CSV-read line ceiling and header sanitation, and the name rule a linkage-terms document is held to
+- [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - for an auditor of what a party parses: the count, length, and depth bounds on a partner's input, the CSV-read line ceiling and header sanitation, and the name rule a linkage-terms document is held to
 - [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) - for an auditor of the transforms a partner authors: the linear-time dialect their regular expressions run under, and its size and search bounds
 - [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md) - for an auditor of the transforms a partner authors: the declared type of each parameter, and the bounds on the values that drive per-row work
-- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) - for an auditor of what an operator is shown, or anyone writing an error, log line or prompt: how partner- and server-chosen text is escaped once where it is shown, and how a diagnostic delimits the values it names
-- [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - for an auditor of what an operator is shown, or anyone writing an error, log line or prompt: how private-key material is removed from what is shown, and the length budgets that keep an instruction from being cut
+- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) - for an auditor of what an operator is shown, or anyone writing an error, log line, or prompt: how partner- and server-chosen text is escaped once where it is shown, and how a diagnostic delimits the values it names
+- [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - for an auditor of what an operator is shown, or anyone writing an error, log line, or prompt: how private-key material is removed from what is shown, and the length budgets that keep an instruction from being cut
 - [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - for whoever deploys or assesses the coordination server: the bounds it holds against an unauthenticated client, from the upgrade handshake to the relay's queues
 - [FILE_SYNC.md](spec/FILE_SYNC.md) - for an implementor of the `sftp` and `filedrop` channels: the shared folder as a state machine, the file names, where each rule is enforced, and the preconditions for an exchange
 - [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md) - for an implementor of the `webrtc` channel, where the browser and command line ends must match: the rendezvous roles, the signaling messages, the data-channel framing and close, the ICE list rule, and the transport's limits
@@ -96,7 +96,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 
 Tracked, citeable design records: the model behind a mechanism, the options weighed, and the decisions taken. Nothing here binds an implementation; a note points at the spec for the normative rows. Its [index](notes/README.md) lists each note with its status and holds the maturity ladder from `scratch/` up to the formal tiers.
 
-The web application's interface has its own record outside this tree: [`design/web-redesign/`](../design/web-redesign/README.md) holds the chosen redesign as a non-functional HTML mockup, with the framing, the alternatives weighed, and the civic-design sourcing behind it -- the direction `apps/web/src/exchange/`, `apps/web/src/recurring/` and `apps/web/src/console/` implement.
+The web application's interface has its own record outside this tree: [`design/web-redesign/`](../design/web-redesign/README.md) holds the chosen redesign as a non-functional HTML mockup, with the framing, the alternatives weighed, and the civic-design sourcing behind it -- the direction `apps/web/src/exchange/`, `apps/web/src/recurring/`, and `apps/web/src/console/` implement.
 
 ## System architecture
 

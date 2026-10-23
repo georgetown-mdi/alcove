@@ -59,7 +59,7 @@ A reviewer's recurring questions -- the data classes Alcove is designed for, enc
 What lives elsewhere:
 
 - The PSI and PSI-C algorithms and the wire-level key exchange: [PROTOCOL.md](spec/PROTOCOL.md).
-- The channel-security constructions and constant values: [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#contents); the display escape, redaction and budgets: [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md); the bounds on parsed input and on transforms: [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md).
+- The channel-security constructions and constant values: [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#contents); the display escape, redaction, and budgets: [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md); the bounds on parsed input and on transforms: [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md), and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md).
 - The network channels exchanges run over: [COMMUNICATION.md](COMMUNICATION.md).
 - CLI configuration for authentication: [CLI.md](CLI.md).
 
@@ -314,7 +314,7 @@ The AEAD construction is in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#appli
 
 The wrap begins once the key exchange has produced the session key, so the handshake frames that establish it -- the ephemeral public keys and the confirmation MACs -- precede it and are not covered by it: in a shared folder they are ordinary files in the shared folder, and on SFTP the SSH session is what protects them. They contain no linkage identifiers and no exchange data, and the handshake is authenticated, so tampering with them fails the exchange rather than passing unnoticed. Two other artifacts sit outside the wrap: the rendezvous hello and joining files, written before the key exchange, which hold the two bilateral mode flags; and the abort marker a failing party leaves for its partner, which holds a version marker and one token derived from the session key. Neither holds exchange data. [COMPLIANCE.md's SC-8 row](COMPLIANCE.md#nist-sp-800-53) states the exceptions in the form an assessor asks for.
 
-Beyond confidentiality, the file-sync channels are hardened against a hostile server admin along two axes, memory exhaustion and liveness, plus crash-safety and a parked-peer concern. Each is specified with its constant values in [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md), [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md), [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md#sftp-fatal-packet-crash-safety) and [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md).
+Beyond confidentiality, the file-sync channels are hardened against a hostile server admin along two axes, memory exhaustion and liveness, plus crash-safety and a parked-peer concern. Each is specified with its constant values in [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md), [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md), [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md#sftp-fatal-packet-crash-safety), and [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md).
 
 - **Application-layer integrity, replay, and gap detection.** The AEAD decorator validates and decrypts each inbound frame, rejecting any integrity, replay, reordering, or mid-stream-gap failure as a `security` error at the protocol layer. Truncated-tail detection is a deliberate deferral, resting on the matching loop's self-driven lockstep.
 - **Inbound frame-size bound.** A hostile server could otherwise write an arbitrarily large file that is read and parsed before any integrity check, exhausting memory; the transport refuses an oversized inbound frame before reading it.
@@ -504,7 +504,7 @@ The spec-tier counterparts that specify how these controls are built:
 
 - [PROTOCOL.md](spec/PROTOCOL.md) - the PSI/PSI-C algorithms and the P-256 key-exchange wire format
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction
-- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - the display-sanitization format, the private-key redaction and the display budgets
+- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - the display-sanitization format, the private-key redaction, and the display budgets
 - [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - the parsed-input bounds
 - [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md) - the bounds on partner-authored transform patterns and parameters
 - [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - the transport memory bounds, file-sync and WebRTC

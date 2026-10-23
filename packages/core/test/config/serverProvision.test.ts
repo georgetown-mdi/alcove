@@ -565,7 +565,7 @@ test.each([
   [
     "an extra key",
     JSON.stringify({ host: "a.example.org", [BODY_SECRET]: "x" }),
-    "it holds a field other than host, port and path",
+    "it holds a field other than host, port, and path",
   ],
   [
     "a host one code unit too long",
@@ -632,7 +632,7 @@ test.each([
   [
     "an array",
     JSON.stringify([{ host: BODY_SECRET }]),
-    "it holds a field other than host, port and path",
+    "it holds a field other than host, port, and path",
   ],
 ])(
   "a create-mode answer holding %s is refused as a usage error that shows none of it",

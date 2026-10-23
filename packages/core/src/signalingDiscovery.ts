@@ -101,7 +101,7 @@ export function signalingDiscoveryDocumentSource(
     throw new Error(
       `the coordination server address ${JSON.stringify(signalingServer)} ` +
         "cannot be published: it must be a ws: or wss: URL naming a host and " +
-        "an optional port and path, with no user name, password, query or " +
+        "an optional port and path, with no user name, password, query, or " +
         "fragment.",
     );
   return `${JSON.stringify({ signaling_server: url.href }, null, 2)}\n`;

@@ -96,7 +96,7 @@ export const SIGNALING_ADDRESS_CREDENTIALS_REFUSED =
 
 const SERVER_SHAPE_REFUSED =
   "A coordination server address must name a host and an optional port and " +
-  "path, with no query, fragment or percent-escape. Correct the address.";
+  "path, with no query, fragment, or percent-escape. Correct the address.";
 
 const PORT_REFUSED =
   "The address names port 0, which cannot be dialed. Type a port from 1 to " +

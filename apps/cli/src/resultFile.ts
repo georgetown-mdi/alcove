@@ -107,7 +107,7 @@ export function runFilesInSharedFolderWarnings(params: {
         ? `the output folder ${shown(output)} is inside the shared folder ` +
             `${shown(runFolderShared)}, so anyone who can read that folder, ` +
             "your partner included, can read the result, the exchange " +
-            "record and its keys. Name an output folder outside it."
+            "record, and its keys. Name an output folder outside it."
         : `the working directory is inside the shared folder ` +
             `${shown(runFolderShared)}, so anyone who can read that folder, ` +
             "your partner included, can read the exchange record and its " +
@@ -184,7 +184,7 @@ export function preflightOutputFolder(
       output,
       "is a file, not a folder",
       "The output argument names the folder the run writes its result, " +
-        "record and receipt in: name a folder (for example ./).",
+        "record, and receipt in: name a folder (for example ./).",
     );
   const probe = path.join(
     output,

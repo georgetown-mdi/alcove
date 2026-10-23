@@ -140,7 +140,7 @@ const numberFromEnv = z
 
 const SIGNALING_SERVER_URL_SHAPE =
   "must be a ws: or wss: URL naming a host and an optional port and path, " +
-  "with no user name, password, query or fragment";
+  "with no user name, password, query, or fragment";
 
 function parseSignalingServerUrl(
   value: string,

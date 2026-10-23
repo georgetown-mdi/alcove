@@ -120,8 +120,8 @@ export function defaultRelayConfigProblems(
       problems.push({
         variable: "DEFAULT_RELAY_WEBSOCKET_URL",
         message:
-          "must be one wss:// url naming a host, an optional port and the " +
-          "relay's path, with no user, query or fragment, for example " +
+          "must be one wss:// url naming a host, an optional port, and the " +
+          "relay's path, with no user, query, or fragment, for example " +
           "wss://relay.example.org/relay",
       });
     if (turnUrl === "" || registrarUrl === "")

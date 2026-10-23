@@ -867,7 +867,7 @@ function sharedFolderExposureNotice(
   const label = legNoun(leg);
   const contents =
     held.has("inputDir") && held.has("dataRoot")
-      ? "input files, configuration and results"
+      ? "input files, configuration, and results"
       : held.has("inputDir")
         ? "input files"
         : "configuration and results";

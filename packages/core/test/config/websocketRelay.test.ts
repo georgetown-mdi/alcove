@@ -22,7 +22,7 @@ function messages(result: ReturnType<typeof webrtc>): string {
 }
 
 const FORM =
-  "a wss:// url naming a host, an optional port from 1 to 65535 and the " +
+  "a wss:// url naming a host, an optional port from 1 to 65535, and the " +
   "relay's path, for example wss://relay.example.org/relay";
 
 test.each([

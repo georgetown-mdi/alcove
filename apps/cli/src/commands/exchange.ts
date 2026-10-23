@@ -145,7 +145,7 @@ export function builder(cmd: Argv): Argv {
           type: "string",
           describe:
             "folder for the run's files, created if missing: a new " +
-            "alcove-results-<time>.csv each run, beside the record, keys and " +
+            "alcove-results-<time>.csv each run, beside the record, keys, and " +
             "receipt stamped with the same time. Without it the result goes " +
             "to stdout and the other files to the working directory",
         })

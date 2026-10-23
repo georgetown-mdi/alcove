@@ -27,10 +27,10 @@ How many records each one handles, and roughly how long an exchange takes: [How 
 
 ## User guides
 
-- [Documentation index](README.md), with a reading guide for each role: analysts, invited partners, program officers, security reviewers, compliance officers and IT staff.
+- [Documentation index](README.md), with a reading guide for each role: analysts, invited partners, program officers, security reviewers, compliance officers, and IT staff.
 - [Deployment](DEPLOYMENT.md), for IT staff hosting Alcove or its supporting services.
 - [Shared responsibility](SHARED_RESPONSIBILITY.md), where an agency security review starts.
-- [Security design](SECURITY_DESIGN.md), [compliance](COMPLIANCE.md) and [privacy](../PRIVACY.md).
+- [Security design](SECURITY_DESIGN.md), [compliance](COMPLIANCE.md), and [privacy](../PRIVACY.md).
 
 ## Releases
 
@@ -49,7 +49,7 @@ How many records each one handles, and roughly how long an exchange takes: [How 
 
 - [Contributing](../CONTRIBUTING.md): how to build and test Alcove, the conventions a change follows, and how pull requests are reviewed.
 - [Support](../SUPPORT.md): where to ask a question or report a bug.
-- The governance documents: the [security policy](../SECURITY.md), [privacy](../PRIVACY.md), [incident response](INCIDENT_RESPONSE.md), [security design](SECURITY_DESIGN.md), [compliance](COMPLIANCE.md) and [shared responsibility](SHARED_RESPONSIBILITY.md).
+- The governance documents: the [security policy](../SECURITY.md), [privacy](../PRIVACY.md), [incident response](INCIDENT_RESPONSE.md), [security design](SECURITY_DESIGN.md), [compliance](COMPLIANCE.md), and [shared responsibility](SHARED_RESPONSIBILITY.md).
 - The source code is on [GitHub](https://github.com/georgetown-mdi/alcove).
 
 ## License

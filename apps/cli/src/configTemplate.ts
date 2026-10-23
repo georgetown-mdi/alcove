@@ -376,7 +376,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # credential_type is hmac-sha1 for a time-limited credential your relay's
 # deployment minted, password otherwise). allowed_relays names the relay
 # hosts, each with a port when given, that your side may connect through,
-# enroll at and name in its invitations, among your own and an invitation's;
+# enroll at, and name in its invitations, among your own and an invitation's;
 # unset, it may use them all. Your relay_registrar, where set, still receives
 # each rotated relay key.
 # connection:

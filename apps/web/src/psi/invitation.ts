@@ -82,7 +82,7 @@ export interface InvitationLocation {
 export class NoSignalingAddressError extends Error {
   constructor() {
     super(
-      "This console does not run the exchange in this browser, so it cannot make an invitation for that. Choose WebRTC, SFTP or a shared folder, which the console runs itself.",
+      "This console does not run the exchange in this browser, so it cannot make an invitation for that. Choose WebRTC, SFTP, or a shared folder, which the console runs itself.",
     );
     this.name = "NoSignalingAddressError";
   }
