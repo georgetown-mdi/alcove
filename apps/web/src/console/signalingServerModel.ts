@@ -6,6 +6,7 @@
 import {
   RelayRegistrarSchema,
   publishedSignalingServerURL,
+  sanitizeForDisplay,
 } from "@alcove/core";
 
 import {
@@ -249,12 +250,24 @@ export function ownRelayDraft(relay: JobOwnRelay | undefined): OwnRelayDraft {
   };
 }
 
-/** What the WebRTC option says when no relay is set: the run connects
- * directly, and what that costs. */
-export const NO_RELAY_NOTE =
-  "No relay is set, so the exchange connects directly, and a network that " +
-  "blocks direct connections on either side stops it from connecting. Set a " +
-  "relay (TURN) server to connect through it when a direct connection fails.";
+/** The coordination server form's relay line where no relay is set. */
+export const NO_RELAY_SUMMARY =
+  "Relay: none, so the exchange connects directly.";
+
+/** The coordination server form's relay line where `relay` is set: its urls,
+ * then its registrar and exchange id where it names one, each escaped. */
+export function ownRelaySummary(relay: JobOwnRelay): string {
+  const urls = [
+    ...(relay.turn ?? []),
+    ...(relay.websocket !== undefined ? [relay.websocket] : []),
+  ];
+  const line = `Relay: ${urls.map((url) => sanitizeForDisplay(url)).join(", ")}.`;
+  if (relay.relayRegistrar === undefined) return line;
+  return (
+    `${line} Registrar: ${sanitizeForDisplay(relay.relayRegistrar.url)}, ` +
+    `exchange id ${sanitizeForDisplay(relay.relayRegistrar.exchangeId)}.`
+  );
+}
 
 /**
  * What the operator is told before the run about a relay whose key must be

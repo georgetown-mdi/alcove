@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { endpointFromConnection } from "@alcove/core";
+import { endpointFromConnection, sanitizeForDisplay } from "@alcove/core";
 
 import {
   CONNECTION_TUNING_DEFAULT,
@@ -14,12 +14,14 @@ import {
   RELAY_OWNER_ENROLLMENT_NOTICE,
 } from "@console/mountedConfiguration";
 import {
+  NO_RELAY_SUMMARY,
   OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION,
   REGISTRAR_WITHOUT_RELAY,
   acceptedSignalingServer,
   ownRelayDraft,
   ownRelayEnrollmentNotice,
   ownRelayFromDraft,
+  ownRelaySummary,
   sameSignalingServer,
   signalingServerAddress,
   signalingServerReachProblem,
@@ -409,6 +411,26 @@ describe("the relay set for the console's own invitations", () => {
       registrarUrl: "",
       exchangeId: "",
     });
+  });
+
+  test("is shown on the form as one line naming its urls and registrar, escaped", () => {
+    expect(NO_RELAY_SUMMARY).toBe(
+      "Relay: none, so the exchange connects directly.",
+    );
+    expect(ownRelaySummary({ turn: OWN_RELAY.turn })).toBe(
+      "Relay: turns:relay.example.org:443?transport=tcp.",
+    );
+    expect(ownRelaySummary({ websocket: WEBSOCKET_RELAY })).toBe(
+      `Relay: ${WEBSOCKET_RELAY}.`,
+    );
+    expect(ownRelaySummary(OWN_RELAY)).toBe(
+      "Relay: turns:relay.example.org:443?transport=tcp. Registrar: " +
+        "https://registrar.example.org, exchange id q3-linkage-7f2c.",
+    );
+    const controlled = "wss://wsrelay.example.org/\u001b[31mrelay";
+    const line = ownRelaySummary({ websocket: controlled });
+    expect(line).toBe(`Relay: ${sanitizeForDisplay(controlled)}.`);
+    expect(line).not.toContain("\u001b");
   });
 
   test("states the step that enrolls the exchange's key before the run", () => {
