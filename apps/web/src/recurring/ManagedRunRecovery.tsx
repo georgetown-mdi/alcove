@@ -30,6 +30,7 @@ import type { Ref } from "react";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
+import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { routeConfirmationReply } from "@psi/managed/managedFailureConfirmation";
@@ -41,7 +42,7 @@ interface FailureRecoveryProps {
   reinviting: boolean;
   runInFlight: boolean;
   runHoldsReinvite: boolean;
-  reinviteFailed: boolean;
+  reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
   onResolveConfirmation: (
     outcome: Parameters<typeof routeConfirmationReply>[0],
@@ -63,7 +64,7 @@ export function FailureRecovery({
   reinviting,
   runInFlight,
   runHoldsReinvite,
-  reinviteFailed,
+  reinviteFailure,
   onReinvite,
   onResolveConfirmation,
 }: FailureRecoveryProps) {
@@ -78,7 +79,7 @@ export function FailureRecovery({
           reinviting={reinviting}
           runInFlight={runInFlight}
           runHoldsReinvite={runHoldsReinvite}
-          reinviteFailed={reinviteFailed}
+          reinviteFailure={reinviteFailure}
           onReinvite={onReinvite}
         />
       );
@@ -98,7 +99,7 @@ export function FailureRecovery({
         reinviting={reinviting}
         runInFlight={runInFlight}
         runHoldsReinvite={runHoldsReinvite}
-        reinviteFailed={reinviteFailed}
+        reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
       />
     );
@@ -190,7 +191,7 @@ interface StandingConditionSectionProps {
   reinviting: boolean;
   runInFlight: boolean;
   runHoldsReinvite: boolean;
-  reinviteFailed: boolean;
+  reinviteFailure: ManagedReinviteFailureAlert | undefined;
   /** Whether the live failure above holds the re-invite: it offers the mint itself,
    * or it holds the gate deciding whether one happens. Either way this section shows
    * its status and its clearance and no control of its own. */
@@ -230,7 +231,7 @@ export function StandingConditionSection({
   reinviting,
   runInFlight,
   runHoldsReinvite,
-  reinviteFailed,
+  reinviteFailure,
   reinviteHeldByFailure,
   onReinvite,
   onClear,
@@ -245,7 +246,7 @@ export function StandingConditionSection({
         reinviting={reinviting}
         runInFlight={runInFlight}
         runHoldsReinvite={runHoldsReinvite}
-        reinviteFailed={reinviteFailed}
+        reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
       />
     ) : null;
@@ -278,7 +279,7 @@ export function StandingConditionSection({
               reinviting={reinviting}
               runInFlight={runInFlight}
               runHoldsReinvite={runHoldsReinvite}
-              reinviteFailed={reinviteFailed}
+              reinviteFailure={reinviteFailure}
               onReinvite={onReinvite}
             />
           )}
@@ -308,7 +309,7 @@ interface ReinviteRecoveryProps {
    * at it. It states the reason; it does not disable the control, which the
    * reading gives back when the run ends. */
   runHoldsReinvite: boolean;
-  reinviteFailed: boolean;
+  reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
 }
 
@@ -324,7 +325,7 @@ function ReinviteRecovery({
   reinviting,
   runInFlight,
   runHoldsReinvite,
-  reinviteFailed,
+  reinviteFailure,
   onReinvite,
 }: ReinviteRecoveryProps) {
   const copy = managedReinviteRecoveryCopy(record);
@@ -338,14 +339,14 @@ function ReinviteRecovery({
       ))}
       {canReinviteFromRecord(record) && (
         <>
-          {reinviteFailed && (
+          {reinviteFailure !== undefined && (
             <Alert
               role="alert"
               color="red"
-              title="Could not create a fresh invitation"
+              title={reinviteFailure.title}
               mb="sm"
             >
-              Nothing changed here; try again.
+              {reinviteFailure.message}
             </Alert>
           )}
           <Button

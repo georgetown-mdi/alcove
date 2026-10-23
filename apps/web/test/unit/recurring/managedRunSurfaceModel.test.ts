@@ -628,7 +628,7 @@ describe("the surface's reducer", () => {
       { type: "compromise-answer-started", gate: { kind: "standing" } },
       { type: "standing-clear-started", pastResponse: false },
       { type: "standing-cleared", record: ROTATED },
-      { type: "reinvite-failed" },
+      { type: "reinvite-failed", cause: "other" },
     ] satisfies ReadonlyArray<ManagedRunSurfaceAction>)
       expect(managedRunSurfaceReducer(failedVisit, action).run).toBe(
         failedVisit.run,
@@ -1015,7 +1015,7 @@ const ROUTING: {
     owns: ["recovery"],
   },
   "reinvite-failed": {
-    action: { type: "reinvite-failed" },
+    action: { type: "reinvite-failed", cause: "other" },
     owns: ["recovery"],
   },
   "record-read": {

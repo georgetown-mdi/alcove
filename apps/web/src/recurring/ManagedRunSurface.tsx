@@ -60,7 +60,7 @@ import { useManagedRunSurface } from "./useManagedRunSurface";
 import {
   managedConfirmationGranted,
   managedFailureHoldsReinvite,
-  managedReinviteFailedAt,
+  managedReinviteFailureAt,
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
@@ -480,7 +480,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                       runHoldsReinvite={runHoldsReinvite}
                       // The failed alert renders only at the site that triggered the
                       // mint, so the recovery and the detail section do not both show it.
-                      reinviteFailed={managedReinviteFailedAt(
+                      reinviteFailure={managedReinviteFailureAt(
                         recovery,
                         "recovery",
                       )}
@@ -511,7 +511,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 reinviting={reinviting}
                 runInFlight={runInFlight}
                 runHoldsReinvite={runHoldsReinvite}
-                reinviteFailed={managedReinviteFailedAt(recovery, "recovery")}
+                reinviteFailure={managedReinviteFailureAt(recovery, "recovery")}
                 reinviteHeldByFailure={failureHoldsReinvite}
                 onReinvite={() => reinviteNow("recovery")}
                 onClear={() => clearStanding(false)}
@@ -630,7 +630,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               reinviting={reinviting}
               // The failed alert renders here only when the detail section triggered
               // the mint, so it and the failure-path recovery do not both show it.
-              reinviteFailed={managedReinviteFailedAt(recovery, "detail")}
+              reinviteFailure={managedReinviteFailureAt(recovery, "detail")}
             />
             <div className={styles.workFoot}>
               <DeleteExchangeButton

@@ -23,13 +23,42 @@ import type { ManagedStandingConditionView } from "./managedStandingConditionMod
  * of the page, or the detail section far below it. */
 export type ManagedReinviteSite = "recovery" | "detail";
 
+/** Why a mint failed. `saved-server-refused`: this browser's coordination
+ * server setting cannot be read, so the re-invite names the server the
+ * exchange saved, and that address fails the validation a run applies. */
+export type ManagedReinviteFailureCause = "saved-server-refused" | "other";
+
 /** The mint's last request. `refused-by-run` is the mint's own write meeting a
  * run's lock, which the poll's last reading was too old to see. */
 export type ManagedReinviteRequest =
   | { kind: "idle" }
   | { kind: "minting" }
-  | { kind: "failed" }
+  | { kind: "failed"; cause: ManagedReinviteFailureCause }
   | { kind: "refused-by-run" };
+
+/** The alert a failed mint shows beside the control that asked for it. */
+export interface ManagedReinviteFailureAlert {
+  title: string;
+  message: string;
+}
+
+/** A failed mint's alert, by its cause. */
+export const MANAGED_REINVITE_FAILURE_ALERTS: Readonly<
+  Record<ManagedReinviteFailureCause, ManagedReinviteFailureAlert>
+> = {
+  "saved-server-refused": {
+    title: "Could not create a fresh invitation",
+    message:
+      "Relay settings cannot read your coordination server, and the " +
+      "coordination server address this exchange saved cannot be used. Set " +
+      "your coordination server again or clear it in relay settings first, " +
+      "then try again.",
+  },
+  other: {
+    title: "Could not create a fresh invitation",
+    message: "Nothing changed here; try again.",
+  },
+};
 
 /** The write of the operator's compromise answer onto the record. */
 export type ManagedCompromiseWrite =
@@ -112,7 +141,7 @@ export type ManagedRecoveryAction =
   | { type: "reinvite-refused-by-run" }
   /** The store refused the mint over a compromise answer this page had not read. */
   | { type: "reinvite-withheld" }
-  | { type: "reinvite-failed" };
+  | { type: "reinvite-failed"; cause: ManagedReinviteFailureCause };
 
 /** The recovery's reducer. A run start drops the last run's grant, its composed
  * re-invite, a failed mint and an unsaved compromise answer; it keeps the store's
@@ -240,7 +269,10 @@ export function managedRecoveryReducer(
     case "reinvite-failed":
       return {
         ...state,
-        reinvite: { ...state.reinvite, request: { kind: "failed" } },
+        reinvite: {
+          ...state.reinvite,
+          request: { kind: "failed", cause: action.cause },
+        },
       };
   }
 }
@@ -291,16 +323,17 @@ export function managedRunHoldsReinvite(
   return runInFlight || recovery.reinvite.request.kind === "refused-by-run";
 }
 
-/** Whether the mint's failed alert shows at `site`: only at the site that asked
- * for it, so the two sites on screen do not both show it. */
-export function managedReinviteFailedAt(
+/** The mint's failed alert at `site`, or `undefined` where none shows: it shows
+ * only at the site that asked for it, so the two sites on screen do not both
+ * show it. */
+export function managedReinviteFailureAt(
   recovery: ManagedRecoveryState,
   site: ManagedReinviteSite,
-): boolean {
-  return (
-    recovery.reinvite.request.kind === "failed" &&
-    recovery.reinvite.site === site
-  );
+): ManagedReinviteFailureAlert | undefined {
+  const { request } = recovery.reinvite;
+  return request.kind === "failed" && recovery.reinvite.site === site
+    ? MANAGED_REINVITE_FAILURE_ALERTS[request.cause]
+    : undefined;
 }
 
 /**

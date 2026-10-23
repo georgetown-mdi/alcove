@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { RelaySettingsScreen } from "@exchange/RelaySettingsScreen";
+import { isConsoleBuild } from "@utils/clientConfig";
 import { seo } from "@utils/seo";
 
 export const Route = createFileRoute("/relay")({
@@ -8,8 +9,9 @@ export const Route = createFileRoute("/relay")({
   head: () => ({
     meta: seo({
       title: "Relay server - Alcove",
-      description:
-        "Set the relays and the coordination server your side of an exchange uses.",
+      description: isConsoleBuild()
+        ? "Set the relays your side of an exchange uses."
+        : "Set the relays and the coordination server your side of an exchange uses.",
     }),
   }),
 });

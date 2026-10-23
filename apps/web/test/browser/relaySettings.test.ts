@@ -327,7 +327,9 @@ describe("RelaySettingsScreen: the coordination server", () => {
         "browser and your partner's connect to it. Invitations you already " +
         "sent, saved exchanges, and invitations you accept keep the server " +
         "they name, until you re-invite your partner from a saved exchange " +
-        "you created, which then names the server set here. For example: " +
+        "you created, which then names the server set here. If this browser " +
+        "cannot read the server set here, a re-invite names the server that " +
+        "exchange already uses. For example: " +
         `${scheme}://signaling.example.org/api/`,
     );
     await expect
@@ -405,14 +407,15 @@ describe("RelaySettingsScreen: the coordination server", () => {
       name: "The saved coordination server could not be read",
     });
 
-  test("a stored value this page cannot read says invitations name the site's server", async () => {
+  test("a stored value this page cannot read says invitations name the site's server and a re-invite the exchange's own", async () => {
     window.localStorage.setItem("alcove-own-coordination-server", "{not json");
     await mountScreen();
 
     expect(COORDINATION_SERVER_UNREADABLE).toBe(
-      "Invitations you create name this site's coordination server until " +
-        "you set yours again. Enter its address and choose Set coordination " +
-        "server.",
+      "Until you set yours again, invitations you create name this site's " +
+        "coordination server, and a re-invite from a saved exchange names " +
+        "the server that exchange already uses. Enter its address and " +
+        "choose Set coordination server.",
     );
     await expect.element(unreadableAlert()).toBeVisible();
     expect(unreadableAlert().element().textContent).toContain(

@@ -133,6 +133,7 @@ import type {
 import type { ConfigRow } from "./managedDetailModel";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { DisclosureFact } from "./disclosureAccountingModel";
+import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { StoredDisclosureAccounting } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
@@ -178,7 +179,7 @@ export function ManagedExchangeDetail({
   runInFlight,
   runHoldsReinvite,
   reinviting,
-  reinviteFailed,
+  reinviteFailure,
 }: {
   record: ManagedExchangeRecord;
   /** How reading this exchange's accounting of disclosures turned out;
@@ -268,9 +269,10 @@ export function ManagedExchangeDetail({
    * with the run surface's own re-invite state (see {@link ./ManagedRunSurface.tsx}),
    * so an in-flight re-invite displays the same on a healthy exchange as on a failed one. */
   reinviting: boolean;
-  /** Whether the last re-invite attempt failed, so the terms button shows the
-   * failure beside it. Shared with the run surface's re-invite state. */
-  reinviteFailed: boolean;
+  /** The last re-invite attempt's failure, shown beside the terms button;
+   * `undefined` where it did not fail. Shared with the run surface's re-invite
+   * state. */
+  reinviteFailure: ManagedReinviteFailureAlert | undefined;
 }) {
   // The last run's own declared counts are what a projection of the next run's
   // result size is drawn from, and they are kept beside what that run left. The
@@ -312,7 +314,7 @@ export function ManagedExchangeDetail({
         runInFlight={runInFlight}
         runHoldsReinvite={runHoldsReinvite}
         reinviting={reinviting}
-        reinviteFailed={reinviteFailed}
+        reinviteFailure={reinviteFailure}
       />
       {runnableManagedExchange(record) && (
         <ManagedTermsUpdate
@@ -409,7 +411,7 @@ function ConfigurationView({
   runInFlight,
   runHoldsReinvite,
   reinviting,
-  reinviteFailed,
+  reinviteFailure,
 }: {
   record: ManagedExchangeRecord;
   onReinviteToChangeTerms: () => void;
@@ -418,7 +420,7 @@ function ConfigurationView({
   runInFlight: boolean;
   runHoldsReinvite: boolean;
   reinviting: boolean;
-  reinviteFailed: boolean;
+  reinviteFailure: ManagedReinviteFailureAlert | undefined;
 }) {
   return (
     <div className={styles.callout}>
@@ -444,14 +446,14 @@ function ConfigurationView({
       </p>
       {canReinvite ? (
         <>
-          {reinviteFailed && (
+          {reinviteFailure !== undefined && (
             <Alert
               role="alert"
               color="red"
-              title="Could not create a fresh invitation"
+              title={reinviteFailure.title}
               mb="sm"
             >
-              Nothing changed here; try again.
+              {reinviteFailure.message}
             </Alert>
           )}
           <p className={styles.small}>
