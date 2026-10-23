@@ -217,6 +217,10 @@ export {
   buildKeyStrings,
   buildStandardizedDataset,
 } from "./standardization.js";
+// The person columns runExchange hands buildStandardizedDataset, so a suite
+// building a dataset whose cleaning has a shared-value screen counts people
+// as the run does.
+export { personColumns } from "./personColumns.js";
 export {
   pipelineAlwaysDrops,
   validateStandardizationAgainstTerms,

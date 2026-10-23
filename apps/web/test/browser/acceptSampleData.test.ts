@@ -21,8 +21,8 @@ import {
   SAMPLE_INVITATIONS_STORAGE_KEY,
   recordSampleInvitation,
 } from "@exchange/sampleInvitationRecord";
+import { SAMPLE_PARTNER_CSV, SAMPLE_PARTNER_FILE_NAME } from "@psi/sampleData";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
-import { SAMPLE_PARTNER_FILE_NAME } from "@psi/sampleData";
 import { stagesFor } from "@exchange/exchangeRun";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -87,7 +87,7 @@ const terms: LinkageTerms = {
   ],
 };
 
-const SAMPLE_COLUMNS = ["first_name", "last_name", "dob", "zip", "member_id"];
+const SAMPLE_COLUMNS = SAMPLE_PARTNER_CSV.split("\n")[0].split(",");
 
 async function encodeToken(): Promise<{ encoded: string; expires: string }> {
   const expires = new Date(Date.now() + 3600 * 1000).toISOString();
