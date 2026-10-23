@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
-import { MAX_NAME_LENGTH } from "./linkageTermsSchema.js";
+import {
+  MAX_NAME_LENGTH,
+  MAX_TRANSFORM_PATTERN_LENGTH,
+} from "./linkageTermsSchema.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import { droppedSettingIssues } from "./unreadKeys.js";
 import { transformParamDisplayRefusals } from "./transformParamDisplay.js";
@@ -9,6 +12,11 @@ import {
   transformParamAbsenceRefusals,
   transformParamTypeRefusals,
 } from "./transformParamTypes.js";
+import {
+  emptyMatchingDelimiterMessage,
+  splitDelimiterMatchesEmptyString,
+} from "./transformRegexDialect.js";
+import { patternConformsToDialect } from "../utils/linearRegex.js";
 
 // --- Standardizing step ------------------------------------------------------
 
@@ -71,6 +79,25 @@ const StandardizationStepSchema: z.ZodType<StandardizationStep> = z
         code: "custom",
         message: refusal.message,
         path: refusal.path,
+      });
+    // The terms schema refuses this in its budgeted pattern walk; this block is
+    // the operator's own, so its delimiter compiles here. One outside the
+    // dialect, or over the length cap, is not compiled here either and is left
+    // to the compile at the run, which names the engine's error.
+    const delimiter =
+      step.function === "split_on" ? step.params?.delimiter : undefined;
+    if (
+      typeof delimiter === "string" &&
+      delimiter.length <= MAX_TRANSFORM_PATTERN_LENGTH &&
+      patternConformsToDialect(delimiter) &&
+      splitDelimiterMatchesEmptyString(delimiter)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: emptyMatchingDelimiterMessage({
+          readerCanEditTheDocument: true,
+        }),
+        path: ["params", "delimiter"],
       });
   });
 

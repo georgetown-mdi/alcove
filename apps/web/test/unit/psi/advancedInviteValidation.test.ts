@@ -985,24 +985,28 @@ describe("a key element's split left unfinished", () => {
     "Finish, fix, or remove the highlighted transform steps in Key 1 before " +
     "generating.";
 
-  test("an emptied delimiter, which core runs, blocks Generate naming the key", () => {
-    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
-    const authored = withFirstElementTransform(draft, [
-      {
-        function: "split_on",
-        params: { delimiter: "", includeOriginal: false },
-      },
-    ]);
-    // The assumption: nothing else refuses it -- the schema and the mint's
-    // compile both admit the step.
-    const terms = buildAdvancedTerms(authored);
-    expect(safeParseLinkageTerms(terms).success).toBe(true);
-    expect(() => assertTransformsCompile(terms)).not.toThrow();
+  test.each(["", "-*"])(
+    "a delimiter of %j, which matches the empty string, blocks Generate naming the key",
+    (delimiter) => {
+      const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+      const authored = withFirstElementTransform(draft, [
+        {
+          function: "split_on",
+          params: { delimiter, includeOriginal: false },
+        },
+      ]);
+      // The assumption: the schema and the mint's compile both refuse it, and
+      // the generic mapping alone reports the schema's refusal as "Enable at
+      // least one linkage key."
+      const terms = buildAdvancedTerms(authored);
+      expect(safeParseLinkageTerms(terms).success).toBe(false);
+      expect(() => assertTransformsCompile(terms)).toThrow();
 
-    const result = validateAdvancedInvite(authored, seed, now);
-    expect(result.canGenerate).toBe(false);
-    expect(result.errors.keys).toBe(UNFINISHED_IN_KEY_1);
-  });
+      const result = validateAdvancedInvite(authored, seed, now);
+      expect(result.canGenerate).toBe(false);
+      expect(result.errors.keys).toBe(UNFINISHED_IN_KEY_1);
+    },
+  );
 
   test("a split added with no delimiter is named rather than reported as no keys", () => {
     const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);

@@ -1759,6 +1759,8 @@ A step the function cannot be built from at all is refused where the terms are w
 
 When `split_on` finds no delimiter it returns the value as a single-element set; when `include_original` is `true` the unsplit value is prepended to the parts. In both cases the value is the NFC-normalized form, consistent with the other derive-type steps (see [Unicode normalization](#unicode-normalization) above); this differs from the original bytes only when an upstream step such as `to_upper_case` left a non-NFC intermediate.
 
+A `delimiter` that can match the empty string is refused where the document is read, in a configuration file and in an invitation alike, with a message naming the step. Besides the empty delimiter itself, that includes a pattern such as `-*`, `-?`, or `|`, which can match without consuming a character and so would split a value between its characters. Write a delimiter whose every match is at least one character, such as `-+` rather than `-*`. The web app's step editor marks such a delimiter as you type it.
+
 Steps following `split_on` are applied element-wise across all parts. Null-producing steps filter individual elements; if all elements are filtered the field becomes `null` and `coalesce` may recover it.
 
 ---

@@ -16,6 +16,9 @@ import {
   patternConformsToDialect,
 } from "./utils/linearRegex.js";
 import {
+  EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
+  emptyMatchingDelimiterMessage,
+  splitDelimiterMatchesEmptyString,
   transformPatternOverSizeCap,
   transformPatternSizeMessage,
 } from "./config/transformRegexDialect.js";
@@ -912,6 +915,12 @@ function splitOnFactory(params: Params): SearchChargedStandardizingFn {
   const includeOriginal =
     booleanParam("split_on", params, "includeOriginal") ?? false;
   const re = compileLinearRegex(delimiter);
+  // Both decode paths refuse this first; this is the boundary for a caller
+  // that builds steps without a parse.
+  if (splitDelimiterMatchesEmptyString(delimiter))
+    throw new UsageError(
+      emptyMatchingDelimiterMessage({ readerCanEditTheDocument: false }),
+    );
   return chargingItsSearch((s, scan) => {
     // Normalize before splitting (see the STANDARDIZING_FUNCTIONS contract) so
     // an authored-NFC delimiter matches a value left non-NFC by an upstream
@@ -1149,6 +1158,29 @@ const regexPatternSchema = z
         message: transformPatternSizeMessage(weightedSize),
       });
   });
+
+/**
+ * `split_on`'s delimiter: a {@link regexPatternSchema} that also refuses a
+ * delimiter matching the empty string, as both decode paths and the factory do
+ * ({@link splitDelimiterMatchesEmptyString}). The empty delimiter is left to
+ * that schema's minimum length, and a delimiter it refuses for length or
+ * dialect is not compiled here.
+ */
+const splitDelimiterSchema = regexPatternSchema.superRefine(
+  (delimiter, ctx) => {
+    if (
+      delimiter.length === 0 ||
+      delimiter.length > MAX_TRANSFORM_PATTERN_LENGTH ||
+      !patternConformsToDialect(delimiter)
+    )
+      return;
+    if (splitDelimiterMatchesEmptyString(delimiter))
+      ctx.addIssue({
+        code: "custom",
+        message: EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
+      });
+  },
+);
 
 /**
  * Editor-facing descriptor for every standardization function the library
@@ -1413,7 +1445,7 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
       "Split the value on a regular-expression delimiter into several match candidates.",
     tier: "regex",
     params: z.object({
-      delimiter: regexPatternSchema,
+      delimiter: splitDelimiterSchema,
       includeOriginal: z.boolean().default(false),
     }),
   },

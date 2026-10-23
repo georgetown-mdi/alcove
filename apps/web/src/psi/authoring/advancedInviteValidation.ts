@@ -694,8 +694,8 @@ export function validateAdvancedInvite(
   // document core runs (e.g. an empty `replace_regex` pattern, which the schema
   // admits and the descriptors refuse), so on a key element the encoder is the
   // gate, not the descriptors. A fan-out step is the exception, gated above: the
-  // key editor authors a split, and core runs an emptied delimiter, splitting each
-  // value into its single characters. A step core cannot compile at all is
+  // key editor authors a split, and the schema's refusal of an emptied delimiter
+  // would otherwise be reported as no keys. A step core cannot compile at all is
   // refused at the mint (`assertTransformsCompile`), which walks a whole document
   // once per Generate and runs nowhere in this pass. The linkage grading above
   // does compile: `pipelineAlwaysDrops` measures a `substring` run following a

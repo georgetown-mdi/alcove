@@ -1,0 +1,8 @@
+- - -> A `delimiter` that matches the empty string MUST be rejected at terms validation, before any row is processed (fail closed), because a zero-width match splits a value between its characters; the rejection is on every path partner-authored terms are parsed, and states a fixed message interpolating nothing the partner wrote.
+- - -> A delimiter matches the empty string when its match anchored at both ends succeeds on the empty value, as the empty delimiter, `-*`, and `|` do.
+- - -> The rejection narrows which patterns are valid, as the size cap does, and likewise takes no version bump.
+- - -> **Empty-matching `split_on` delimiter.**
+- - -> The same walk refuses a `split_on` delimiter that matches the empty string ([PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect), Operation semantics), read off the program the conformance check already compiled, so it adds no compile and runs inside the walk's budget.
+- - -> The refusal's issue path locates the step by key, element, and step index, and its message names the function and the param, echoing nothing the partner wrote.
+- - -> An operator's own `standardization` is not walked: its step schema compiles a `split_on` delimiter itself, only within `MAX_TRANSFORM_PATTERN_LENGTH`, leaving one outside the dialect or over that length to the compile at the run, and the `split_on` factory refuses the same delimiter for a step compiled without a parse.
+- - -> Terms holding such a delimiter written before this refusal - in a saved web exchange, a pending terms proposal, a signed receipt, or an agreed-terms file - are refused when read, with no migration.
