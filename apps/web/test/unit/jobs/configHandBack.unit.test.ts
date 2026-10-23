@@ -431,6 +431,52 @@ describe("a webrtc configuration naming a relay registrar", () => {
   });
 });
 
+describe("a webrtc configuration naming a WebSocket relay", () => {
+  const WEBSOCKET_RELAY = "wss://wsrelay.example.org/relay";
+
+  function websocketRelayDocument(): Record<string, unknown> {
+    const document = webrtcDocument();
+    return {
+      ...document,
+      connection: {
+        ...(document.connection as Record<string, unknown>),
+        websocket_relay: WEBSOCKET_RELAY,
+        allowed_relays: ["turn.example.org", "wsrelay.example.org"],
+      },
+    };
+  }
+
+  test("opens, and a save that changes nothing leaves its bytes", () => {
+    const dir = mountHolding(websocketRelayDocument());
+    const before = mountedText(dir);
+    const opened = readBack(dir);
+    expect(
+      opened.connection.channel === "webrtc" &&
+        opened.connection.websocketRelay,
+    ).toBe(WEBSOCKET_RELAY);
+    expect(
+      handBackMountedConfiguration(dir, unchangedHandBack(opened)),
+    ).toBeUndefined();
+    expect(mountedText(dir)).toBe(before);
+  });
+
+  test("keeps websocket_relay through load, edit, and save", () => {
+    const dir = mountHolding(websocketRelayDocument());
+    const opened = readBack(dir);
+    handBackMountedConfiguration(dir, {
+      ...unchangedHandBack(opened),
+      linkageTerms: { ...opened.linkageTerms, identity: "County Health West" },
+    });
+    const saved = readBack(dir);
+    expect(saved.linkageTerms.identity).toBe("County Health West");
+    expect(saved.connection).toEqual(opened.connection);
+    const written = parseYaml(mountedText(dir)) as {
+      connection: { websocket_relay?: unknown };
+    };
+    expect(written.connection.websocket_relay).toBe(WEBSOCKET_RELAY);
+  });
+});
+
 describe("the signing block a hand-back writes", () => {
   test("turning signing off writes no block", () => {
     const dir = mountHolding(webrtcDocument());

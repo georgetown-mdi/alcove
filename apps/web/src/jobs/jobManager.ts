@@ -23,6 +23,7 @@ import {
   runArtifactNames,
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
+import { ownRelayInvitationLocator } from "@jobContract/signalingServer";
 import { zeroSetupSftpCheck } from "@jobContract/jobCreateRefusal";
 
 import {
@@ -2568,7 +2569,8 @@ function openedConfigurationWarning(
  * an omitted one is read as the authored scheme's default, and the same path
  * once it ends in `/`, as the authored one does. A run also names the relay
  * it uses, or none where none is authored: an acceptor's the accepted
- * invitation's, and an inviter's the TURN urls of the console's own.
+ * invitation's, and an inviter's the locator an invitation names for the
+ * console's own ({@link ownRelayInvitationLocator}).
  */
 function namesSignalingServer(
   named: NonNullable<JobWebrtcExchangeIntent["signalingServer"]>,
@@ -2581,14 +2583,12 @@ function namesSignalingServer(
     named.host === authored.host &&
     (named.port ?? defaultPort) === (authored.port ?? defaultPort) &&
     path === authored.path &&
-    (side === "acceptor"
-      ? isDeepStrictEqual(named.relay, authored.invitationRelay)
-      : isDeepStrictEqual(
-          named.relay,
-          authored.ownRelay !== undefined
-            ? { turn: authored.ownRelay.turn }
-            : undefined,
-        ))
+    isDeepStrictEqual(
+      named.relay,
+      side === "acceptor"
+        ? authored.invitationRelay
+        : ownRelayInvitationLocator(authored.ownRelay),
+    )
   );
 }
 

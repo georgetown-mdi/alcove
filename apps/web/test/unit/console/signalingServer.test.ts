@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { endpointFromConnection } from "@alcove/core";
+
 import {
   CONNECTION_TUNING_DEFAULT,
   WEBRTC_CONNECTION_TUNING,
@@ -8,6 +10,11 @@ import {
   connectionTuningSummary,
 } from "@console/connectionTuningModel";
 import {
+  ENROLL_RELAY_TOKEN_STEP,
+  RELAY_OWNER_ENROLLMENT_NOTICE,
+} from "@console/mountedConfiguration";
+import {
+  OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION,
   REGISTRAR_WITHOUT_RELAY,
   acceptedSignalingServer,
   ownRelayDraft,
@@ -23,7 +30,6 @@ import {
   putSignalingServer,
   signalingServerProjectionOf,
 } from "@psi/jobClient/signalingServerClient";
-import { ENROLL_RELAY_TOKEN_STEP } from "@console/mountedConfiguration";
 import { acceptorWebrtcTransport } from "@exchange/useAcceptorExchange";
 
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
@@ -45,6 +51,8 @@ const OWN_RELAY = {
     exchangeId: "q3-linkage-7f2c",
   },
 };
+
+const WEBSOCKET_RELAY = "wss://wsrelay.example.org/relay";
 
 function answering(status: number, body: unknown): typeof fetch {
   return () =>
@@ -149,6 +157,32 @@ describe("the console's coordination server", () => {
     expect(JSON.stringify(endpoint)).not.toContain("registrar");
   });
 
+  test("mints an endpoint naming its WebSocket relay with the registrar's exchange id, as alcove invite does", () => {
+    const ownRelay = { ...OWN_RELAY, websocket: WEBSOCKET_RELAY };
+    const endpoint = webrtcEndpointForSignalingServer({ ...HOSTED, ownRelay });
+    expect(endpoint.relay).toStrictEqual({
+      turn: OWN_RELAY.turn,
+      websocket: WEBSOCKET_RELAY,
+      websocketExchangeId: OWN_RELAY.relayRegistrar.exchangeId,
+    });
+    const invited = endpointFromConnection({
+      channel: "webrtc",
+      server: { host: HOSTED.host, path: HOSTED.path },
+      turn: OWN_RELAY.turn.map((url) => ({ url })),
+      relayRegistrar: OWN_RELAY.relayRegistrar,
+      websocketRelay: WEBSOCKET_RELAY,
+    });
+    if (invited.channel !== "webrtc") throw new Error("expected webrtc");
+    expect(endpoint.relay).toStrictEqual(invited.relay);
+    expect(JSON.stringify(endpoint)).not.toContain("registrar.example.org");
+    expect(
+      webrtcEndpointForSignalingServer({
+        ...HOSTED,
+        ownRelay: { websocket: WEBSOCKET_RELAY },
+      }).relay,
+    ).toStrictEqual({ websocket: WEBSOCKET_RELAY });
+  });
+
   test("names a server a partner elsewhere cannot reach", () => {
     expect(signalingServerReachProblem(HOSTED)).toBeUndefined();
     expect(
@@ -208,17 +242,90 @@ describe("sameSignalingServer", () => {
         ...OWN_RELAY,
         relayRegistrar: { ...OWN_RELAY.relayRegistrar, exchangeId: "other" },
       },
+      { ...OWN_RELAY, websocket: WEBSOCKET_RELAY },
     ])
       expect(sameSignalingServer(relayed, { ...HOSTED, ownRelay })).toBe(false);
+    const websocketOnly = {
+      ...HOSTED,
+      ownRelay: { websocket: WEBSOCKET_RELAY },
+    };
+    expect(
+      sameSignalingServer(websocketOnly, structuredClone(websocketOnly)),
+    ).toBe(true);
+    expect(
+      sameSignalingServer(websocketOnly, {
+        ...HOSTED,
+        ownRelay: { websocket: "wss://other.example.org/relay" },
+      }),
+    ).toBe(false);
   });
 });
 
 describe("the relay set for the console's own invitations", () => {
-  const draft = (turn: string, registrarUrl = "", exchangeId = "") =>
-    ownRelayFromDraft({ turn, registrarUrl, exchangeId });
+  const draft = (
+    turn: string,
+    registrarUrl = "",
+    exchangeId = "",
+    websocket = "",
+  ) => ownRelayFromDraft({ turn, websocket, registrarUrl, exchangeId });
 
   test("is none where every field is empty", () => {
-    expect(draft("  \n")).toEqual({ ok: true, ownRelay: undefined });
+    expect(draft("  \n", "", "", "  ")).toEqual({
+      ok: true,
+      ownRelay: undefined,
+    });
+  });
+
+  test("takes a WebSocket relay url under core's rule, with or without turn urls", () => {
+    expect(draft("", "", "", ` ${WEBSOCKET_RELAY} `)).toEqual({
+      ok: true,
+      ownRelay: { websocket: WEBSOCKET_RELAY },
+    });
+    expect(
+      draft(
+        OWN_RELAY.turn[0],
+        OWN_RELAY.relayRegistrar.url,
+        OWN_RELAY.relayRegistrar.exchangeId,
+        WEBSOCKET_RELAY,
+      ),
+    ).toEqual({
+      ok: true,
+      ownRelay: { ...OWN_RELAY, websocket: WEBSOCKET_RELAY },
+    });
+  });
+
+  test.each([
+    ["a ws:// url", "ws://wsrelay.example.org/relay", /must be a wss:\/\//],
+    [
+      "a user before the host",
+      "wss://county:secret@wsrelay.example.org/relay",
+      /names a user/,
+    ],
+    ["a query", "wss://wsrelay.example.org/relay?k=1", /query or fragment/],
+  ])(
+    "refuses a WebSocket relay url with %s on its own field, in a sentence",
+    (_, url, rule) => {
+      const read = draft(OWN_RELAY.turn[0], "", "", url);
+      if (read.ok) throw new Error("expected a refusal");
+      expect(read.turnProblems).toEqual([]);
+      expect(read.websocketProblems).toHaveLength(1);
+      expect(read.websocketProblems[0]).toMatch(/^The WebSocket relay url /);
+      expect(read.websocketProblems[0]).toMatch(/\.$/);
+      expect(read.websocketProblems[0]).toMatch(rule);
+      expect(read.websocketProblems[0]).not.toContain("secret");
+    },
+  );
+
+  test("asks for a turn url before a registrar beside a WebSocket relay alone, as core's relay_registrar rule does", () => {
+    const read = draft(
+      "",
+      OWN_RELAY.relayRegistrar.url,
+      OWN_RELAY.relayRegistrar.exchangeId,
+      WEBSOCKET_RELAY,
+    );
+    if (read.ok) throw new Error("expected a refusal");
+    expect(read.turnProblems).toEqual([REGISTRAR_WITHOUT_RELAY]);
+    expect(read.websocketProblems).toEqual([]);
   });
 
   test("takes one url per line under each scheme core's turn rule admits", () => {
@@ -287,12 +394,18 @@ describe("the relay set for the console's own invitations", () => {
   });
 
   test("fills the fields from the relay it holds", () => {
-    expect(ownRelayFromDraft(ownRelayDraft(OWN_RELAY))).toEqual({
-      ok: true,
-      ownRelay: OWN_RELAY,
-    });
+    for (const relay of [
+      OWN_RELAY,
+      { ...OWN_RELAY, websocket: WEBSOCKET_RELAY },
+      { websocket: WEBSOCKET_RELAY },
+    ])
+      expect(ownRelayFromDraft(ownRelayDraft(relay))).toEqual({
+        ok: true,
+        ownRelay: relay,
+      });
     expect(ownRelayDraft(undefined)).toEqual({
       turn: "",
+      websocket: "",
       registrarUrl: "",
       exchangeId: "",
     });
@@ -309,6 +422,23 @@ describe("the relay set for the console's own invitations", () => {
     expect(noRegistrar).toContain("registrar");
   });
 
+  test("offers no registrar to a WebSocket relay alone, which core admits only beside a turn url", () => {
+    expect(ownRelayEnrollmentNotice({ websocket: WEBSOCKET_RELAY })).toBe(
+      RELAY_OWNER_ENROLLMENT_NOTICE,
+    );
+  });
+
+  test("describes the WebSocket relay field", () => {
+    expect(OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION).toBe(
+      "A relay for networks that block connections through a TURN relay. " +
+        "The run connects to it as it starts, so its operator learns your " +
+        "network address, and the exchange passes through it, encrypted, " +
+        "only when no other connection opens. The invitation names it for " +
+        "your partner. One wss:// url, for example " +
+        "wss://relay.example.org/relay",
+    );
+  });
+
   test("is read off the console's answer, and a malformed one is no server", () => {
     expect(
       signalingServerProjectionOf({
@@ -317,9 +447,22 @@ describe("the relay set for the console's own invitations", () => {
         ownRelay: OWN_RELAY,
       }),
     ).toEqual({ ...HOSTED, ownRelay: OWN_RELAY });
+    expect(
+      signalingServerProjectionOf({
+        configured: true,
+        ...HOSTED,
+        ownRelay: { websocket: WEBSOCKET_RELAY },
+      }),
+    ).toEqual({ ...HOSTED, ownRelay: { websocket: WEBSOCKET_RELAY } });
     for (const ownRelay of [
       { turn: ["https://relay.example.org/"] },
       { turn: [] },
+      {},
+      { websocket: "ws://wsrelay.example.org/relay" },
+      {
+        websocket: WEBSOCKET_RELAY,
+        relayRegistrar: OWN_RELAY.relayRegistrar,
+      },
       { ...OWN_RELAY, credential: "x" },
     ])
       expect(

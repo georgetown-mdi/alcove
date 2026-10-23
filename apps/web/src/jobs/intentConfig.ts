@@ -200,11 +200,11 @@ export function composeSftpConfigSpec(
  * as `invitation_relay`, as `alcove accept` writes it, and no relay of its
  * own. An inviter's run states the console's own relay, where one is set, as
  * `turn` entries holding only a url, whose credential the run mints from the
- * shared secret, and its registrar as `relay_registrar`; the invitation names
- * those urls as `alcove invite` names them. The intent's `allowedRelays` are
- * stated as `allowed_relays`, so a later run of the file in the working
- * folder lists the same relays. Every other block is composed as on the sftp
- * path.
+ * shared secret, its WebSocket relay as `websocket_relay`, and its registrar
+ * as `relay_registrar`; the invitation names those urls as `alcove invite`
+ * names them. The intent's `allowedRelays` are stated as `allowed_relays`, so
+ * a later run of the file in the working folder lists the same relays. Every
+ * other block is composed as on the sftp path.
  */
 export function composeWebrtcConfigSpec(
   intent: JobWebrtcExchangeIntent,
@@ -229,11 +229,14 @@ export function composeWebrtcConfigSpec(
       ...(intent.side === "acceptor" && invitationRelay !== undefined
         ? { invitationRelay }
         : {}),
-      ...(inviterRelay !== undefined
+      ...(inviterRelay?.turn !== undefined
         ? { turn: inviterRelay.turn.map((url) => ({ url })) }
         : {}),
       ...(inviterRelay?.relayRegistrar !== undefined
         ? { relayRegistrar: inviterRelay.relayRegistrar }
+        : {}),
+      ...(inviterRelay?.websocket !== undefined
+        ? { websocketRelay: inviterRelay.websocket }
         : {}),
       ...(intent.allowedRelays !== undefined
         ? { allowedRelays: intent.allowedRelays }

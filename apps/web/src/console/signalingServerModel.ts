@@ -13,8 +13,12 @@ import {
   relayRegistrarExchangeIdProblems,
   relayRegistrarUrlProblems,
 } from "@psi/managed/managedRelayRegistration";
+import {
+  parseRelayUrlLines,
+  parseWebSocketRelayUrl,
+} from "@psi/transport/ownRelaySetting";
 import { invitationReach } from "@exchange/invitationReach";
-import { parseRelayUrlLines } from "@psi/transport/ownRelaySetting";
+import { ownRelayInvitationLocator } from "@jobContract/signalingServer";
 import { refusedSignalingEndpointField } from "@psi/transport/signalingAddress";
 
 import {
@@ -78,9 +82,12 @@ function sameOwnRelay(
   b: JobOwnRelay | undefined,
 ): boolean {
   if (a === undefined || b === undefined) return a === b;
+  const aTurn = a.turn ?? [];
+  const bTurn = b.turn ?? [];
   return (
-    a.turn.length === b.turn.length &&
-    a.turn.every((url, index) => url === b.turn[index]) &&
+    aTurn.length === bTurn.length &&
+    aTurn.every((url, index) => url === bTurn[index]) &&
+    a.websocket === b.websocket &&
     a.relayRegistrar?.url === b.relayRegistrar?.url &&
     a.relayRegistrar?.exchangeId === b.relayRegistrar?.exchangeId
   );
@@ -95,29 +102,30 @@ export function signalingServerAddress(
 }
 
 /**
- * The invitation endpoint for `server`: its host, port and path, and the TURN
- * urls of the relay set for this console's invitations, as `alcove invite`
- * names its own `turn` entries. An endpoint names no scheme: the partner
- * dials it over `wss://`. The registrar is this party's own and is not named.
+ * The invitation endpoint for `server`: its host, port and path, and the
+ * relay set for this console's invitations as `alcove invite` names a
+ * configuration's own relay ({@link ownRelayInvitationLocator}). An endpoint
+ * names no scheme: the partner dials it over `wss://`.
  */
 export function webrtcEndpointForSignalingServer(
   server: SignalingServerProjection,
 ): WebRTCEndpoint {
+  const relay = ownRelayInvitationLocator(server.ownRelay);
   return {
     channel: "webrtc",
     host: server.host,
     ...(server.port !== undefined ? { port: server.port } : {}),
     path: server.path,
-    ...(server.ownRelay !== undefined
-      ? { relay: { turn: [...server.ownRelay.turn] } }
-      : {}),
+    ...(relay !== undefined ? { relay } : {}),
   };
 }
 
 /** The relay fields of the coordination server form, as typed: TURN urls one
- * per line, and the registrar's address and exchange id. */
+ * per line, the WebSocket relay url, and the registrar's address and exchange
+ * id. */
 export interface OwnRelayDraft {
   turn: string;
+  websocket: string;
   registrarUrl: string;
   exchangeId: string;
 }
@@ -125,6 +133,7 @@ export interface OwnRelayDraft {
 /** The relay fields of a form that sets none. */
 export const EMPTY_OWN_RELAY_DRAFT: OwnRelayDraft = {
   turn: "",
+  websocket: "",
   registrarUrl: "",
   exchangeId: "",
 };
@@ -136,19 +145,38 @@ export type OwnRelayDraftResult =
   | {
       ok: false;
       turnProblems: Array<string>;
+      websocketProblems: Array<string>;
       registrarUrlProblems: Array<string>;
       exchangeIdProblems: Array<string>;
     };
 
-/** The problem of a registrar set with no relay url to register for. */
+/** The WebSocket relay field's description: what the relay is for, and what
+ * its operator learns, since the run connects to it as it starts. */
+export const OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION =
+  "A relay for networks that block connections through a TURN relay. The " +
+  "run connects to it as it starts, so its operator learns your network " +
+  "address, and the exchange passes through it, encrypted, only when no " +
+  "other connection opens. The invitation names it for your partner. One " +
+  "wss:// url, for example wss://relay.example.org/relay";
+
+/** The problem of a registrar set with no TURN url to register for. Core's
+ * `relay_registrar` rule holds a registrar to a `turn` entry, a WebSocket
+ * relay alone included. */
 export const REGISTRAR_WITHOUT_RELAY =
   "Enter your relay's turn: or turns: url to use its registrar.";
 
+/** `message` as a sentence: its first letter capitalized, ending in a period. */
+function asSentence(message: string): string {
+  const capitalized = message.charAt(0).toUpperCase() + message.slice(1);
+  return capitalized.endsWith(".") ? capitalized : `${capitalized}.`;
+}
+
 /**
  * Read the relay fields under the rules `PUT /api/jobs/webrtc` applies:
- * each TURN line under core's `turn` url rule and the list bound, and a
- * registrar, given either of its fields, under core's registrar rule and only
- * beside a TURN url.
+ * each TURN line under core's `turn` url rule and the list bound, the
+ * WebSocket relay url under core's `websocket_relay` rule, and a registrar,
+ * given either of its fields, under core's registrar rule and only beside a
+ * TURN url.
  */
 export function ownRelayFromDraft(draft: OwnRelayDraft): OwnRelayDraftResult {
   const lines = parseRelayUrlLines(draft.turn, "turn");
@@ -159,6 +187,11 @@ export function ownRelayFromDraft(draft: OwnRelayDraft): OwnRelayDraftResult {
           ? `Relay servers: ${problem.message}.`
           : `Line ${problem.line}: ${problem.message}.`,
       );
+  const websocketEntry = parseWebSocketRelayUrl(draft.websocket);
+  const websocketProblems = websocketEntry.ok
+    ? []
+    : [asSentence(websocketEntry.message)];
+  const websocket = websocketEntry.ok ? websocketEntry.url : undefined;
   const urls = lines.ok ? lines.urls : [];
   const registrarStated =
     draft.registrarUrl.trim() !== "" || draft.exchangeId.trim() !== "";
@@ -182,20 +215,24 @@ export function ownRelayFromDraft(draft: OwnRelayDraft): OwnRelayDraftResult {
   }
   if (
     turnProblems.length > 0 ||
+    websocketProblems.length > 0 ||
     registrarUrlProblems.length > 0 ||
     exchangeIdProblems.length > 0
   )
     return {
       ok: false,
       turnProblems,
+      websocketProblems,
       registrarUrlProblems,
       exchangeIdProblems,
     };
-  if (urls.length === 0) return { ok: true, ownRelay: undefined };
+  if (urls.length === 0 && websocket === undefined)
+    return { ok: true, ownRelay: undefined };
   return {
     ok: true,
     ownRelay: {
-      turn: urls,
+      ...(urls.length > 0 ? { turn: urls } : {}),
+      ...(websocket !== undefined ? { websocket } : {}),
       ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
     },
   };
@@ -205,7 +242,8 @@ export function ownRelayFromDraft(draft: OwnRelayDraft): OwnRelayDraftResult {
 export function ownRelayDraft(relay: JobOwnRelay | undefined): OwnRelayDraft {
   if (relay === undefined) return EMPTY_OWN_RELAY_DRAFT;
   return {
-    turn: relay.turn.join("\n"),
+    turn: (relay.turn ?? []).join("\n"),
+    websocket: relay.websocket ?? "",
     registrarUrl: relay.relayRegistrar?.url ?? "",
     exchangeId: relay.relayRegistrar?.exchangeId ?? "",
   };
@@ -223,7 +261,8 @@ export const NO_RELAY_NOTE =
  * enrolled: the relay accepts the run's credential only once it holds the key
  * derived from this exchange's shared secret. With a registrar, the step is
  * `alcove enroll-relay` in the working folder once the console wrote the
- * exchange's files; with none, the relay's owner registers the key.
+ * exchange's files; with none, the relay's owner registers the key, and a
+ * relay with a TURN url is offered the registrar, which needs one.
  * Undefined where no relay is set.
  */
 export function ownRelayEnrollmentNotice(
@@ -234,10 +273,10 @@ export function ownRelayEnrollmentNotice(
     "Your relay accepts this exchange's connection only once it holds the " +
     "key derived from the exchange's shared secret.";
   if (relay.relayRegistrar === undefined)
-    return (
-      `${RELAY_OWNER_ENROLLMENT_NOTICE} Or set your relay's registrar here ` +
-      "so that you can enroll the exchange and each run registers its new key."
-    );
+    return relay.turn === undefined
+      ? RELAY_OWNER_ENROLLMENT_NOTICE
+      : `${RELAY_OWNER_ENROLLMENT_NOTICE} Or set your relay's registrar here ` +
+          "so that you can enroll the exchange and each run registers its new key.";
   return (
     `${accepts} When you create the invitation, the console writes ` +
     "alcove.yaml and .alcove.key into your working folder. Before your " +

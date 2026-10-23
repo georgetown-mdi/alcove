@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   Alert,
@@ -26,6 +26,7 @@ import {
   HOSTED_WEB_APP_ADDRESS,
   HOSTED_WEB_APP_FILL_NOTE,
   NO_RELAY_NOTE,
+  OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION,
   UNENCRYPTED_SERVER_INVITATION_NOTE,
   ownRelayDraft,
   ownRelayEnrollmentNotice,
@@ -34,18 +35,25 @@ import {
   signalingServerReachProblem,
 } from "./signalingServerModel";
 
+import type { ReactNode } from "react";
+
+import type {
+  JobOwnRelay,
+  SignalingServerProjection,
+} from "@jobContract/signalingServer";
 import type { OwnRelayDraft } from "./signalingServerModel";
-import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 /** The problems of each relay field, empty where it has none. */
 interface OwnRelayProblems {
   turn: Array<string>;
+  websocket: Array<string>;
   registrarUrl: Array<string>;
   exchangeId: Array<string>;
 }
 
 const NO_RELAY_PROBLEMS: OwnRelayProblems = {
   turn: [],
+  websocket: [],
   registrarUrl: [],
   exchangeId: [],
 };
@@ -62,15 +70,67 @@ const UNREACHABLE_CONSOLE_MESSAGE =
   "The console did not answer. Check that it is still running, then set the " +
   "address again.";
 
+/** The relay the console holds for its own invitations, each url escaped for
+ * display: its TURN urls, its WebSocket relay, and its registrar. */
+function OwnRelaySummary({ relay }: { relay: JobOwnRelay }) {
+  const sentences: Array<ReactNode> = [];
+  if (relay.turn !== undefined)
+    sentences.push(
+      <Fragment key="turn">
+        Relays through{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.turn.join(", "))}
+        </span>{" "}
+        when a direct connection fails, and the invitation names it for your
+        partner.
+      </Fragment>,
+    );
+  if (relay.websocket !== undefined)
+    sentences.push(
+      <Fragment key="websocket">
+        Falls back to the WebSocket relay{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.websocket)}
+        </span>{" "}
+        when no other connection opens, and the invitation names it for your
+        partner.
+      </Fragment>,
+    );
+  if (relay.relayRegistrar !== undefined)
+    sentences.push(
+      <Fragment key="registrar">
+        The relay key is registered at{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.relayRegistrar.url)}
+        </span>{" "}
+        under the exchange id{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.relayRegistrar.exchangeId)}
+        </span>
+        .
+      </Fragment>,
+    );
+  return (
+    <Text size="sm">
+      {sentences.map((sentence, index) => (
+        <Fragment key={index}>
+          {index > 0 && " "}
+          {sentence}
+        </Fragment>
+      ))}
+    </Text>
+  );
+}
+
 /**
  * The coordination server a console WebRTC exchange connects through, under
- * the WebRTC transport choice, and the relay (TURN) server its invitations
- * name: shows what the console holds, or fields to set them. The address is
- * a `wss://` server address or an `https://` web app address, which the
- * console resolves. The address starts empty; the hosted web app's address is
- * filled in only when the operator chooses the action that names it and what
- * it means. A relay set here states, before the run, the step that enrolls
- * the exchange's key at it.
+ * the WebRTC transport choice, and the relay (TURN) server and WebSocket relay
+ * its invitations name: shows what the console holds, or fields to set them.
+ * The address is a `wss://` server address or an `https://` web app address,
+ * which the console resolves. The address starts empty; the hosted web app's
+ * address is filled in only when the operator chooses the action that names
+ * it and what it means. A relay set here states, before the run, the step
+ * that enrolls the exchange's key at it.
  */
 export function SignalingServerCard({
   server,
@@ -107,6 +167,7 @@ export function SignalingServerCard({
     if (!read.ok) {
       setRelayProblems({
         turn: read.turnProblems,
+        websocket: read.websocketProblems,
         registrarUrl: read.registrarUrlProblems,
         exchangeId: read.exchangeIdProblems,
       });
@@ -212,30 +273,7 @@ export function SignalingServerCard({
             {NO_RELAY_NOTE}
           </Text>
         ) : (
-          <Text size="sm">
-            Relays through{" "}
-            <span className={styles.mono}>
-              {sanitizeForDisplay(server.ownRelay.turn.join(", "))}
-            </span>{" "}
-            when a direct connection fails, and the invitation names it for your
-            partner.
-            {server.ownRelay.relayRegistrar !== undefined && (
-              <>
-                {" "}
-                The relay key is registered at{" "}
-                <span className={styles.mono}>
-                  {sanitizeForDisplay(server.ownRelay.relayRegistrar.url)}
-                </span>{" "}
-                under the exchange id{" "}
-                <span className={styles.mono}>
-                  {sanitizeForDisplay(
-                    server.ownRelay.relayRegistrar.exchangeId,
-                  )}
-                </span>
-                .
-              </>
-            )}
-          </Text>
+          <OwnRelaySummary relay={server.ownRelay} />
         )}
         {enrollment !== undefined && (
           <Alert
@@ -285,6 +323,16 @@ export function SignalingServerCard({
         value={relay.turn}
         onChange={(event) => changeRelay({ turn: event.currentTarget.value })}
         error={problemText(relayProblems.turn)}
+        errorProps={{ role: "alert" }}
+      />
+      <TextInput
+        label="WebSocket relay url, optional"
+        description={OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION}
+        value={relay.websocket}
+        onChange={(event) =>
+          changeRelay({ websocket: event.currentTarget.value })
+        }
+        error={problemText(relayProblems.websocket)}
         errorProps={{ role: "alert" }}
       />
       <TextInput
