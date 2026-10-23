@@ -40,8 +40,8 @@ export interface AuthoredSignalingServer {
    * uses, as `connection.invitation_relay`. */
   invitationRelay?: RelayLocator;
   /** The relay the operator set for this console's invitations, which only
-   * an inviter's run uses, as `connection.turn` and
-   * `connection.relay_registrar`. */
+   * an inviter's run uses, as `connection.turn`,
+   * `connection.websocket_relay`, and `connection.relay_registrar`. */
   ownRelay?: JobOwnRelay;
 }
 
@@ -70,8 +70,7 @@ const BODY_REFUSED =
   `${MAX_SIGNALING_SERVER_URL_LENGTH} characters, and optionally ` +
   "invitationRelay, the turn and stun lists, websocket url with its exchange " +
   "id, and registrar of an accepted invitation's relay, and ownRelay, the " +
-  "turn urls and registrar of this " +
-  "console's relay.";
+  "turn urls, websocket url, and registrar of this console's relay.";
 
 /** The refusal of a relay setting core's rules refuse, naming the first
  * rule it breaks. */

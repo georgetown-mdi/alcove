@@ -53,6 +53,9 @@ const OWN_RELAY = {
   },
 };
 
+/** The WebSocket relay the operator sets beside {@link OWN_RELAY}. */
+const OWN_WEBSOCKET_RELAY = "wss://own-relay.test/relay";
+
 type Handler = (ctx: {
   request: Request;
   params: Record<string, string>;
@@ -312,6 +315,20 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
     expect(await getWebrtc()).not.toHaveProperty("ownRelay");
   });
 
+  test.each([
+    ["beside turn urls and a registrar", { ...OWN_RELAY }],
+    ["alone", {}],
+  ])("holds the console's own WebSocket relay %s", async (_, beside) => {
+    seedManager();
+    const ownRelay = { ...beside, websocket: OWN_WEBSOCKET_RELAY };
+    const put = await putWebrtc({
+      address: "wss://peers.test/psi",
+      ownRelay: { ...ownRelay, websocket: `  ${OWN_WEBSOCKET_RELAY} ` },
+    });
+    expect(put.status).toBe(200);
+    expect(await getWebrtc()).toMatchObject({ ownRelay });
+  });
+
   test("admits each turn url scheme and transport core's rule admits", async () => {
     seedManager();
     const turn = [
@@ -367,6 +384,25 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
       /has no key credential/,
     ],
     ["an empty list", { turn: [] }, /names no turn url/],
+    ["no url at all", {}, /names no turn or websocket url/],
+    [
+      "a websocket url that is not wss://",
+      { websocket: "ws://own-relay.test/relay" },
+      /websocket url must be a wss:\/\//,
+    ],
+    [
+      "a websocket url naming a user",
+      { websocket: "wss://county:secret@own-relay.test/relay" },
+      /websocket url names a user/,
+    ],
+    [
+      "a registrar beside a websocket url alone",
+      {
+        websocket: "wss://own-relay.test/relay",
+        relayRegistrar: OWN_RELAY.relayRegistrar,
+      },
+      /registrar .* requires a turn url/,
+    ],
     [
       "more urls than an invitation names",
       { turn: Array.from({ length: 9 }, (_, i) => `turn:r${i}.test`) },
@@ -670,6 +706,102 @@ describe("POST /api/jobs on the webrtc channel", () => {
       },
     });
   });
+
+  test("composes an inviter's run with the console's own WebSocket relay as websocket_relay, beside its turn entries and registrar", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      ownRelay: { ...OWN_RELAY, websocket: OWN_WEBSOCKET_RELAY },
+    });
+    const response = await postJob(
+      validWebrtcIntent({
+        signalingServer: {
+          ...TEST_SIGNALING_SERVER,
+          relay: {
+            turn: OWN_RELAY.turn,
+            websocket: OWN_WEBSOCKET_RELAY,
+            websocketExchangeId: OWN_RELAY.relayRegistrar.exchangeId,
+          },
+        },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).toEqual({
+      channel: "webrtc",
+      server: { host: "peers.test", path: "/psi/" },
+      role: "inviter",
+      turn: [{ url: "turns:own-relay.test:443?transport=tcp" }],
+      relay_registrar: {
+        url: "https://registrar.own-relay.test",
+        exchange_id: "q3-linkage-7f2c",
+      },
+      websocket_relay: OWN_WEBSOCKET_RELAY,
+    });
+  });
+
+  test("composes an inviter's run with a WebSocket relay alone as websocket_relay and no turn entry", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      ownRelay: { websocket: OWN_WEBSOCKET_RELAY },
+    });
+    const response = await postJob(
+      validWebrtcIntent({
+        signalingServer: {
+          ...TEST_SIGNALING_SERVER,
+          relay: { websocket: OWN_WEBSOCKET_RELAY },
+        },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).toEqual({
+      channel: "webrtc",
+      server: { host: "peers.test", path: "/psi/" },
+      role: "inviter",
+      websocket_relay: OWN_WEBSOCKET_RELAY,
+    });
+  });
+
+  test.each([
+    ["names only its turn urls", { turn: OWN_RELAY.turn }],
+    [
+      "names its WebSocket relay with no exchange id",
+      { turn: OWN_RELAY.turn, websocket: OWN_WEBSOCKET_RELAY },
+    ],
+    [
+      "names another WebSocket relay",
+      {
+        turn: OWN_RELAY.turn,
+        websocket: "wss://other.test/relay",
+        websocketExchangeId: OWN_RELAY.relayRegistrar.exchangeId,
+      },
+    ],
+  ] as const)(
+    "refuses an inviter beside a WebSocket relay whose invitation %s, leaving nothing on disk",
+    async (_, relay) => {
+      const { manager, root } = seedManager();
+      await manager.authorSignalingServer({
+        address: TEST_SIGNALING_ADDRESS,
+        ownRelay: { ...OWN_RELAY, websocket: OWN_WEBSOCKET_RELAY },
+      });
+      const response = await postJob(
+        validWebrtcIntent({
+          signalingServer: { ...TEST_SIGNALING_SERVER, relay },
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        reason: "coordination-server-changed",
+      });
+      expect(fs.readdirSync(root)).toEqual([]);
+    },
+  );
 
   test("composes no own relay for an acceptor's run", async () => {
     const { manager, root } = seedManager();

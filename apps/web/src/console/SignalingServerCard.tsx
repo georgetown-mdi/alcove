@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   Alert,
@@ -20,38 +20,67 @@ import {
   putSignalingServer,
 } from "@psi/jobClient/signalingServerClient";
 import { OWN_RELAY_REFUSED_PREFIX } from "@jobContract/signalingServer";
+import { SettingSummaryLine } from "@components/SettingSummaryLine";
+import { useOpenCloseFocus } from "@components/useOpenCloseFocus";
 
 import {
   EMPTY_OWN_RELAY_DRAFT,
   HOSTED_WEB_APP_ADDRESS,
   HOSTED_WEB_APP_FILL_NOTE,
-  NO_RELAY_NOTE,
+  NO_RELAY_SUMMARY,
+  OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION,
   UNENCRYPTED_SERVER_INVITATION_NOTE,
   ownRelayDraft,
   ownRelayEnrollmentNotice,
   ownRelayFromDraft,
+  ownRelaySummary,
   signalingServerAddress,
   signalingServerReachProblem,
 } from "./signalingServerModel";
 
-import type { OwnRelayDraft } from "./signalingServerModel";
-import type { SignalingServerProjection } from "@jobContract/signalingServer";
+import type { ReactNode } from "react";
+
+import type {
+  JobOwnRelay,
+  SignalingServerProjection,
+} from "@jobContract/signalingServer";
+import type {
+  OwnRelayDraft,
+  OwnRelayDraftResult,
+} from "./signalingServerModel";
 
 /** The problems of each relay field, empty where it has none. */
 interface OwnRelayProblems {
   turn: Array<string>;
+  websocket: Array<string>;
   registrarUrl: Array<string>;
   exchangeId: Array<string>;
 }
 
 const NO_RELAY_PROBLEMS: OwnRelayProblems = {
   turn: [],
+  websocket: [],
   registrarUrl: [],
   exchangeId: [],
 };
 
 function problemText(problems: ReadonlyArray<string>): string | undefined {
   return problems.length > 0 ? problems.join(" ") : undefined;
+}
+
+function anyRelayProblem(problems: OwnRelayProblems): boolean {
+  return Object.values(problems).some((list) => list.length > 0);
+}
+
+function relayProblemsOf(
+  read: Extract<OwnRelayDraftResult, { ok: false }>,
+): OwnRelayProblems {
+  return {
+    turn: read.turnProblems,
+    websocket: read.websocketProblems,
+    registrarUrl: read.registrarUrlProblems,
+    exchangeId: read.exchangeIdProblems,
+  };
 }
 
 const SUPERSEDED_MESSAGE =
@@ -62,15 +91,177 @@ const UNREACHABLE_CONSOLE_MESSAGE =
   "The console did not answer. Check that it is still running, then set the " +
   "address again.";
 
+/** The relay the console holds for its own invitations, each url escaped for
+ * display: its TURN urls, its WebSocket relay, and its registrar. */
+function HeldOwnRelay({ relay }: { relay: JobOwnRelay }) {
+  const sentences: Array<ReactNode> = [];
+  if (relay.turn !== undefined)
+    sentences.push(
+      <Fragment key="turn">
+        Relays through{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.turn.join(", "))}
+        </span>{" "}
+        when a direct connection fails, and the invitation names it for your
+        partner.
+      </Fragment>,
+    );
+  if (relay.websocket !== undefined)
+    sentences.push(
+      <Fragment key="websocket">
+        Falls back to the WebSocket relay{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.websocket)}
+        </span>{" "}
+        when no other connection opens, and the invitation names it for your
+        partner.
+      </Fragment>,
+    );
+  if (relay.relayRegistrar !== undefined)
+    sentences.push(
+      <Fragment key="registrar">
+        The relay key is registered at{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.relayRegistrar.url)}
+        </span>{" "}
+        under the exchange id{" "}
+        <span className={styles.mono}>
+          {sanitizeForDisplay(relay.relayRegistrar.exchangeId)}
+        </span>
+        .
+      </Fragment>,
+    );
+  return (
+    <Text size="sm">
+      {sentences.map((sentence, index) => (
+        <Fragment key={index}>
+          {index > 0 && " "}
+          {sentence}
+        </Fragment>
+      ))}
+    </Text>
+  );
+}
+
+/**
+ * The relay fields of the coordination server form, shown as one line until
+ * the operator opens them: no relay, with Set a relay, or the relay the
+ * fields set, with Change and Remove. They show while `open`, or while a
+ * value is refused or does not read as a relay. Done reads them and, where
+ * every value reads, closes them.
+ */
+function OwnRelayFields({
+  relay,
+  problems,
+  open,
+  onChange,
+  onOpen,
+  onDone,
+  onRemove,
+}: {
+  relay: OwnRelayDraft;
+  problems: OwnRelayProblems;
+  open: boolean;
+  onChange: (change: Partial<OwnRelayDraft>) => void;
+  onOpen: () => void;
+  onDone: () => void;
+  onRemove: () => void;
+}) {
+  const { fieldRef, actionRef, focusFieldNext, focusActionNext } =
+    useOpenCloseFocus<HTMLTextAreaElement>();
+  const read = ownRelayFromDraft(relay);
+
+  if (open || anyRelayProblem(problems) || !read.ok)
+    return (
+      <Stack gap="xs">
+        <Textarea
+          ref={fieldRef}
+          label="Relay (TURN) servers, optional"
+          description="The run connects through it when a direct connection fails, and the invitation names it for your partner. No username or password goes here: each run presents a credential derived from the exchange's shared secret. One turns: or turn: url per line, for example turns:relay.example.org:443?transport=tcp"
+          autosize
+          minRows={2}
+          value={relay.turn}
+          onChange={(event) => onChange({ turn: event.currentTarget.value })}
+          error={problemText(problems.turn)}
+          errorProps={{ role: "alert" }}
+        />
+        <TextInput
+          label="WebSocket relay url, optional"
+          description={OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION}
+          value={relay.websocket}
+          onChange={(event) =>
+            onChange({ websocket: event.currentTarget.value })
+          }
+          error={problemText(problems.websocket)}
+          errorProps={{ role: "alert" }}
+        />
+        <TextInput
+          label="Relay registrar address, optional"
+          description="Where your relay keeps each exchange's key, if it runs the reference registrar: an https:// address."
+          value={relay.registrarUrl}
+          onChange={(event) =>
+            onChange({ registrarUrl: event.currentTarget.value })
+          }
+          error={problemText(problems.registrarUrl)}
+          errorProps={{ role: "alert" }}
+        />
+        <TextInput
+          label="Exchange id at the registrar"
+          description="The id the registrar keeps this exchange's key under. Choose one for this exchange that names neither party."
+          value={relay.exchangeId}
+          onChange={(event) =>
+            onChange({ exchangeId: event.currentTarget.value })
+          }
+          error={problemText(problems.exchangeId)}
+          errorProps={{ role: "alert" }}
+        />
+        <Button
+          size="xs"
+          variant="default"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => {
+            focusActionNext();
+            onDone();
+          }}
+        >
+          Done
+        </Button>
+      </Stack>
+    );
+
+  return (
+    <SettingSummaryLine
+      summary={
+        read.ownRelay !== undefined
+          ? ownRelaySummary(read.ownRelay)
+          : NO_RELAY_SUMMARY
+      }
+      isSet={read.ownRelay !== undefined}
+      settingName="relay"
+      setLabel="Set a relay"
+      actionRef={actionRef}
+      onOpen={() => {
+        focusFieldNext();
+        onOpen();
+      }}
+      onRemove={() => {
+        focusActionNext();
+        onRemove();
+      }}
+    />
+  );
+}
+
 /**
  * The coordination server a console WebRTC exchange connects through, under
- * the WebRTC transport choice, and the relay (TURN) server its invitations
- * name: shows what the console holds, or fields to set them. The address is
- * a `wss://` server address or an `https://` web app address, which the
- * console resolves. The address starts empty; the hosted web app's address is
- * filled in only when the operator chooses the action that names it and what
- * it means. A relay set here states, before the run, the step that enrolls
- * the exchange's key at it.
+ * the WebRTC transport choice, and the relay (TURN) server and WebSocket relay
+ * its invitations name: shows what the console holds, naming a relay only
+ * where one is set, or a form to set them, its relay fields behind one line
+ * ({@link OwnRelayFields}). The address is a `wss://` server address or an
+ * `https://` web app address, which the console resolves. The address starts
+ * empty; the hosted web app's address is filled in only when the operator
+ * chooses the action that names it and what it means. A relay set here
+ * states, before the run, the step that enrolls the exchange's key at it.
  */
 export function SignalingServerCard({
   server,
@@ -87,6 +278,7 @@ export function SignalingServerCard({
   const [relay, setRelay] = useState<OwnRelayDraft>(EMPTY_OWN_RELAY_DRAFT);
   const [relayProblems, setRelayProblems] =
     useState<OwnRelayProblems>(NO_RELAY_PROBLEMS);
+  const [relayOpen, setRelayOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
 
@@ -94,22 +286,32 @@ export function SignalingServerCard({
     setRelay((draft) => ({ ...draft, ...change }));
   }
 
+  function resetRelay(draft: OwnRelayDraft) {
+    setRelay(draft);
+    setRelayProblems(NO_RELAY_PROBLEMS);
+    setRelayOpen(false);
+  }
+
   function startEditing(held: SignalingServerProjection) {
     setAddress(held.webAppOrigin ?? signalingServerAddress(held));
-    setRelay(ownRelayDraft(held.ownRelay));
-    setRelayProblems(NO_RELAY_PROBLEMS);
+    resetRelay(ownRelayDraft(held.ownRelay));
     setEditing(true);
+  }
+
+  function closeRelay() {
+    const read = ownRelayFromDraft(relay);
+    if (!read.ok) {
+      setRelayProblems(relayProblemsOf(read));
+      return;
+    }
+    resetRelay(read.ownRelay === undefined ? EMPTY_OWN_RELAY_DRAFT : relay);
   }
 
   async function save() {
     setRefusal(undefined);
     const read = ownRelayFromDraft(relay);
     if (!read.ok) {
-      setRelayProblems({
-        turn: read.turnProblems,
-        registrarUrl: read.registrarUrlProblems,
-        exchangeId: read.exchangeIdProblems,
-      });
+      setRelayProblems(relayProblemsOf(read));
       return;
     }
     setRelayProblems(NO_RELAY_PROBLEMS);
@@ -123,7 +325,7 @@ export function SignalingServerCard({
     if (result.kind === "ok") {
       setEditing(false);
       setAddress("");
-      setRelay(EMPTY_OWN_RELAY_DRAFT);
+      resetRelay(EMPTY_OWN_RELAY_DRAFT);
       onSet(result.server);
       return;
     }
@@ -149,8 +351,7 @@ export function SignalingServerCard({
   async function clear() {
     await deleteSignalingServer();
     setAddress("");
-    setRelay(EMPTY_OWN_RELAY_DRAFT);
-    setRelayProblems(NO_RELAY_PROBLEMS);
+    resetRelay(EMPTY_OWN_RELAY_DRAFT);
     onCleared();
   }
 
@@ -207,35 +408,8 @@ export function SignalingServerCard({
             {UNENCRYPTED_SERVER_INVITATION_NOTE}
           </Text>
         )}
-        {server.ownRelay === undefined ? (
-          <Text size="sm" c="dimmed">
-            {NO_RELAY_NOTE}
-          </Text>
-        ) : (
-          <Text size="sm">
-            Relays through{" "}
-            <span className={styles.mono}>
-              {sanitizeForDisplay(server.ownRelay.turn.join(", "))}
-            </span>{" "}
-            when a direct connection fails, and the invitation names it for your
-            partner.
-            {server.ownRelay.relayRegistrar !== undefined && (
-              <>
-                {" "}
-                The relay key is registered at{" "}
-                <span className={styles.mono}>
-                  {sanitizeForDisplay(server.ownRelay.relayRegistrar.url)}
-                </span>{" "}
-                under the exchange id{" "}
-                <span className={styles.mono}>
-                  {sanitizeForDisplay(
-                    server.ownRelay.relayRegistrar.exchangeId,
-                  )}
-                </span>
-                .
-              </>
-            )}
-          </Text>
+        {server.ownRelay !== undefined && (
+          <HeldOwnRelay relay={server.ownRelay} />
         )}
         {enrollment !== undefined && (
           <Alert
@@ -277,35 +451,14 @@ export function SignalingServerCard({
         onChange={(event) => setAddress(event.currentTarget.value)}
         error={refusal}
       />
-      <Textarea
-        label="Relay (TURN) servers, optional"
-        description="The run connects through it when a direct connection fails, and the invitation names it for your partner. No username or password goes here: each run presents a credential derived from the exchange's shared secret. One turns: or turn: url per line, for example turns:relay.example.org:443?transport=tcp"
-        autosize
-        minRows={2}
-        value={relay.turn}
-        onChange={(event) => changeRelay({ turn: event.currentTarget.value })}
-        error={problemText(relayProblems.turn)}
-        errorProps={{ role: "alert" }}
-      />
-      <TextInput
-        label="Relay registrar address, optional"
-        description="Where your relay keeps each exchange's key, if it runs the reference registrar: an https:// address."
-        value={relay.registrarUrl}
-        onChange={(event) =>
-          changeRelay({ registrarUrl: event.currentTarget.value })
-        }
-        error={problemText(relayProblems.registrarUrl)}
-        errorProps={{ role: "alert" }}
-      />
-      <TextInput
-        label="Exchange id at the registrar"
-        description="The id the registrar keeps this exchange's key under. Choose one for this exchange that names neither party."
-        value={relay.exchangeId}
-        onChange={(event) =>
-          changeRelay({ exchangeId: event.currentTarget.value })
-        }
-        error={problemText(relayProblems.exchangeId)}
-        errorProps={{ role: "alert" }}
+      <OwnRelayFields
+        relay={relay}
+        problems={relayProblems}
+        open={relayOpen}
+        onChange={changeRelay}
+        onOpen={() => setRelayOpen(true)}
+        onDone={closeRelay}
+        onRemove={() => resetRelay(EMPTY_OWN_RELAY_DRAFT)}
       />
       <Group gap="sm">
         <Button

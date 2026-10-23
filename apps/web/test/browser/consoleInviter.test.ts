@@ -19,6 +19,11 @@ import {
   UNTAKEN_RECORD_CONFIRM_BODY,
 } from "@exchange/RunSurface";
 import {
+  NO_RELAY_SUMMARY,
+  OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION,
+  ownRelaySummary,
+} from "@console/signalingServerModel";
+import {
   RECORD_UNANSWERED_LEAD,
   TERMINATED_RECORD_KEYS_NOTICE,
   TERMINATED_RECORD_LEAD,
@@ -1011,6 +1016,26 @@ describe("console inviter split-rendezvous retain gate", () => {
 });
 
 describe("console inviter over WebRTC", () => {
+  const TURN_FIELD = "Relay (TURN) servers, optional";
+  const RELAY_INPUT_LABELS = [
+    TURN_FIELD,
+    "WebSocket relay url, optional",
+    "Relay registrar address, optional",
+    "Exchange id at the registrar",
+  ];
+  const relayInputsShown = () =>
+    RELAY_INPUT_LABELS.filter(
+      (label) => page.getByLabelText(label).query() !== null,
+    );
+  const setRelayButton = () =>
+    page.getByRole("button", { name: "Set a relay", exact: true });
+  const changeRelayButton = () =>
+    page.getByRole("button", { name: "Change relay", exact: true });
+  const removeRelayButton = () =>
+    page.getByRole("button", { name: "Remove relay", exact: true });
+  const relayDoneButton = () =>
+    page.getByRole("button", { name: "Done", exact: true });
+
   test("starts with no address, fills the web app's only when asked, and mints for its server", async () => {
     const api = stubJobApi({
       webrtcSet: {
@@ -1100,6 +1125,140 @@ describe("console inviter over WebRTC", () => {
     });
   });
 
+  test("keeps every relay input behind one line until the operator sets a relay, and the card names none unset", async () => {
+    const websocket = "wss://wsrelay.example.org/relay";
+    const api = stubJobApi({
+      webrtcSet: {
+        configured: true,
+        host: "signal.example.org",
+        path: "/api/",
+        secure: true,
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await expect
+      .element(page.getByLabelText("Coordination server or web app address"))
+      .toBeInTheDocument();
+    await expect.element(page.getByText(NO_RELAY_SUMMARY)).toBeInTheDocument();
+    await expect.element(setRelayButton()).toBeEnabled();
+    expect(relayInputsShown()).toEqual([]);
+    expect(changeRelayButton().query()).toBeNull();
+    expect(removeRelayButton().query()).toBeNull();
+
+    await setRelayButton().click();
+    await expect.element(page.getByLabelText(TURN_FIELD)).toHaveFocus();
+    expect(relayInputsShown()).toEqual(RELAY_INPUT_LABELS);
+    expect(page.getByText(NO_RELAY_SUMMARY).query()).toBeNull();
+    await relayDoneButton().click();
+    await expect.element(setRelayButton()).toHaveFocus();
+    expect(relayInputsShown()).toEqual([]);
+
+    await setRelayButton().click();
+    const websocketField = page.getByLabelText("WebSocket relay url, optional");
+    await userEvent.fill(websocketField, "ws://wsrelay.example.org/relay");
+    await relayDoneButton().click();
+    await expect
+      .element(websocketField)
+      .toHaveAttribute("aria-invalid", "true");
+    await expect
+      .element(page.getByText(/^The WebSocket relay url must be a wss:\/\//))
+      .toBeInTheDocument();
+
+    await userEvent.fill(websocketField, websocket);
+    await relayDoneButton().click();
+    await expect
+      .element(page.getByText(ownRelaySummary({ websocket })))
+      .toBeInTheDocument();
+    await expect.element(changeRelayButton()).toHaveFocus();
+    expect(relayInputsShown()).toEqual([]);
+    await changeRelayButton().click();
+    await expect.element(websocketField).toHaveValue(websocket);
+    await relayDoneButton().click();
+    await removeRelayButton().click();
+    await expect.element(setRelayButton()).toHaveFocus();
+    await expect.element(page.getByText(NO_RELAY_SUMMARY)).toBeInTheDocument();
+
+    await userEvent.fill(
+      page.getByLabelText("Coordination server or web app address"),
+      "wss://signal.example.org/api/",
+    );
+    await page.getByRole("button", { name: "Set address and relay" }).click();
+    await expect
+      .element(page.getByText("wss://signal.example.org/api/"))
+      .toBeInTheDocument();
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(put?.body ?? "{}")).toEqual({
+      address: "wss://signal.example.org/api/",
+    });
+    const cardText = app.container.textContent;
+    expect(cardText).not.toContain(NO_RELAY_SUMMARY);
+    expect(cardText).not.toContain("No relay is set");
+    expect(cardText).not.toContain("Relays through");
+    expect(cardText).not.toContain("Falls back to the WebSocket relay");
+    expect(setRelayButton().query()).toBeNull();
+  });
+
+  test("names a held relay on the card, and on the form as one line until Change opens it", async () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      websocket: "wss://wsrelay.example.org/relay",
+      relayRegistrar: {
+        url: "https://registrar.example.org",
+        exchangeId: "q3-linkage-7f2c",
+      },
+    };
+    stubJobApi({
+      webrtc: {
+        configured: true,
+        host: "signal.example.org",
+        path: "/api/",
+        secure: true,
+        ownRelay,
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await expect
+      .element(page.getByText(/^Relays through turns:relay\.example\.org/))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Enroll this exchange at your relay"))
+      .toBeInTheDocument();
+
+    await page.getByRole("button", { name: "Change address or relay" }).click();
+    await expect
+      .element(page.getByText(ownRelaySummary(ownRelay)))
+      .toBeInTheDocument();
+    await expect.element(removeRelayButton()).toBeInTheDocument();
+    expect(relayInputsShown()).toEqual([]);
+    expect(setRelayButton().query()).toBeNull();
+
+    await changeRelayButton().click();
+    await expect.element(page.getByLabelText(TURN_FIELD)).toHaveFocus();
+    await expect
+      .element(page.getByLabelText(TURN_FIELD))
+      .toHaveValue(ownRelay.turn[0]);
+    await expect
+      .element(page.getByLabelText("WebSocket relay url, optional"))
+      .toHaveValue(ownRelay.websocket);
+    await expect
+      .element(page.getByLabelText("Relay registrar address, optional"))
+      .toHaveValue(ownRelay.relayRegistrar.url);
+    await expect
+      .element(page.getByLabelText("Exchange id at the registrar"))
+      .toHaveValue(ownRelay.relayRegistrar.exchangeId);
+  });
+
   test("sets a relay beside the server, states its enrollment before the run, and names it in the invitation", async () => {
     const ownRelay = {
       turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -1126,12 +1285,14 @@ describe("console inviter over WebRTC", () => {
       page.getByLabelText("Coordination server or web app address"),
       "wss://signal.example.org/api/",
     );
-    const turnField = page.getByLabelText("Relay (TURN) servers, optional");
+    await setRelayButton().click();
+    const turnField = page.getByLabelText(TURN_FIELD);
     await userEvent.fill(turnField, "turn:county:secret@relay.example.org");
     await page.getByRole("button", { name: "Set address and relay" }).click();
     await expect
       .element(page.getByText(/^Line 1: .*names a user before its host/))
       .toBeInTheDocument();
+    expect(relayInputsShown()).toEqual(RELAY_INPUT_LABELS);
     expect(
       api.captured.some(
         (request) =>
@@ -1198,6 +1359,130 @@ describe("console inviter over WebRTC", () => {
     });
   });
 
+  test("sets a WebSocket relay beside the server, refuses one core refuses on its own field, and names it in the invitation", async () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      websocket: "wss://wsrelay.example.org/relay",
+      relayRegistrar: {
+        url: "https://registrar.example.org",
+        exchangeId: "q3-linkage-7f2c",
+      },
+    };
+    const invitedRelay = {
+      turn: ownRelay.turn,
+      websocket: ownRelay.websocket,
+      websocketExchangeId: ownRelay.relayRegistrar.exchangeId,
+    };
+    const api = stubJobApi({
+      webrtcSet: {
+        configured: true,
+        host: "signal.example.org",
+        path: "/api/",
+        secure: true,
+        ownRelay,
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await userEvent.fill(
+      page.getByLabelText("Coordination server or web app address"),
+      "wss://signal.example.org/api/",
+    );
+    await setRelayButton().click();
+    const websocketField = page.getByLabelText("WebSocket relay url, optional");
+    await expect
+      .element(websocketField)
+      .toHaveAccessibleDescription(OWN_WEBSOCKET_RELAY_FIELD_DESCRIPTION);
+    await userEvent.fill(page.getByLabelText(TURN_FIELD), ownRelay.turn[0]);
+    await userEvent.fill(websocketField, "ws://wsrelay.example.org/relay");
+    await page.getByRole("button", { name: "Set address and relay" }).click();
+    await expect
+      .element(websocketField)
+      .toHaveAttribute("aria-invalid", "true");
+    await expect
+      .element(page.getByText(/^The WebSocket relay url must be a wss:\/\//))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByLabelText(TURN_FIELD))
+      .not.toHaveAttribute("aria-invalid", "true");
+    expect(
+      api.captured.some(
+        (request) =>
+          request.url === "/api/jobs/webrtc" && request.method === "PUT",
+      ),
+    ).toBe(false);
+
+    await userEvent.fill(websocketField, ownRelay.websocket);
+    await userEvent.fill(
+      page.getByLabelText("Relay registrar address, optional"),
+      ownRelay.relayRegistrar.url,
+    );
+    await userEvent.fill(
+      page.getByLabelText("Exchange id at the registrar"),
+      ownRelay.relayRegistrar.exchangeId,
+    );
+    await page.getByRole("button", { name: "Set address and relay" }).click();
+    await expect
+      .element(
+        page.getByText(
+          /^Relays through .* Falls back to the WebSocket relay wss:\/\/wsrelay\.example\.org\/relay when no other connection opens, and the invitation names it for your partner\. The relay key is registered at/,
+        ),
+      )
+      .toBeInTheDocument();
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(put?.body ?? "{}")).toEqual({
+      address: "wss://signal.example.org/api/",
+      ownRelay,
+    });
+
+    await page.getByRole("button", { name: "Change address or relay" }).click();
+    await expect
+      .element(page.getByText(ownRelaySummary(ownRelay)))
+      .toBeInTheDocument();
+    await changeRelayButton().click();
+    await expect.element(websocketField).toHaveValue(ownRelay.websocket);
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    await page.getByRole("button", { name: "Show full invitation" }).click();
+    const encoded = (
+      document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
+    ).value;
+    const token = await decodeInvitation(encoded);
+    expect(token.connectionEndpoint).toStrictEqual({
+      channel: "webrtc",
+      host: "signal.example.org",
+      path: "/api/",
+      relay: invitedRelay,
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        api.captured.some(
+          (request) => request.url === "/api/jobs" && request.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    const post = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    const intent = JSON.parse(post?.body ?? "{}") as Record<string, unknown>;
+    expect(intent.signalingServer).toStrictEqual({
+      host: "signal.example.org",
+      path: "/api/",
+      relay: invitedRelay,
+    });
+  });
+
   test("change, cancel, then clear leaves an empty form", async () => {
     stubJobApi({
       webrtc: {
@@ -1214,20 +1499,22 @@ describe("console inviter over WebRTC", () => {
 
     await page.getByLabelText("Over WebRTC, run here").click();
     await page.getByRole("button", { name: "Change address or relay" }).click();
+    await changeRelayButton().click();
     await expect
-      .element(page.getByLabelText("Relay (TURN) servers, optional"))
+      .element(page.getByLabelText(TURN_FIELD))
       .toHaveValue("turns:relay.example.org:443?transport=tcp");
     await page.getByRole("button", { name: "Cancel" }).click();
     await page.getByRole("button", { name: "Clear address and relay" }).click();
     await expect
       .element(page.getByLabelText("Coordination server or web app address"))
       .toHaveValue("");
-    await expect
-      .element(page.getByLabelText("Relay (TURN) servers, optional"))
-      .toHaveValue("");
+    await expect.element(page.getByText(NO_RELAY_SUMMARY)).toBeInTheDocument();
+    expect(relayInputsShown()).toEqual([]);
+    await setRelayButton().click();
+    await expect.element(page.getByLabelText(TURN_FIELD)).toHaveValue("");
   });
 
-  test("shows the console's refusal of the relay on the relay field", async () => {
+  test("opens the relay fields to show the console's refusal of the relay", async () => {
     const refusal =
       "The relay is refused: the relay names more than 8 turn urls. " +
       "Correct it and set it again.";
@@ -1240,14 +1527,18 @@ describe("console inviter over WebRTC", () => {
       page.getByLabelText("Coordination server or web app address"),
       "wss://signal.example.org/api/",
     );
+    await setRelayButton().click();
     await userEvent.fill(
-      page.getByLabelText("Relay (TURN) servers, optional"),
+      page.getByLabelText(TURN_FIELD),
       "turns:relay.example.org:443?transport=tcp",
     );
+    await relayDoneButton().click();
+    await expect.element(changeRelayButton()).toBeInTheDocument();
+    expect(relayInputsShown()).toEqual([]);
     await page.getByRole("button", { name: "Set address and relay" }).click();
     await expect.element(page.getByText(refusal)).toBeInTheDocument();
     await expect
-      .element(page.getByLabelText("Relay (TURN) servers, optional"))
+      .element(page.getByLabelText(TURN_FIELD))
       .toHaveAttribute("aria-invalid", "true");
     await expect
       .element(page.getByLabelText("Coordination server or web app address"))

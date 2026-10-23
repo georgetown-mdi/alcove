@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Anchor, Box, Button, Group, Text, Textarea } from "@mantine/core";
 
@@ -10,6 +10,9 @@ import {
   allowedRelaysSummary,
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
+
+import { SettingSummaryLine } from "./SettingSummaryLine";
+import { useOpenCloseFocus } from "./useOpenCloseFocus";
 
 import type { MantineSpacing } from "@mantine/core";
 
@@ -61,15 +64,8 @@ export function AllowedRelaysField({
   const [open, setOpen] = useState(error !== undefined);
   // A refused value keeps the field open, so fixing it does not close it.
   if (error !== undefined && !open && !fixed) setOpen(true);
-  const focusNext = useRef<"field" | "action" | undefined>(undefined);
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const actionRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const target = focusNext.current;
-    if (target === undefined) return;
-    focusNext.current = undefined;
-    (target === "field" ? fieldRef.current : actionRef.current)?.focus();
-  });
+  const { fieldRef, actionRef, focusFieldNext, focusActionNext } =
+    useOpenCloseFocus<HTMLTextAreaElement>();
 
   const lines = parseExchangeAllowedRelayLines(value);
   const entries = lines.ok ? lines.entries : undefined;
@@ -83,7 +79,7 @@ export function AllowedRelaysField({
 
   function openField() {
     onOpen?.();
-    focusNext.current = "field";
+    focusFieldNext();
     setOpen(true);
   }
 
@@ -112,7 +108,7 @@ export function AllowedRelaysField({
             variant="default"
             disabled={error !== undefined}
             onClick={() => {
-              focusNext.current = "action";
+              focusActionNext();
               setOpen(false);
             }}
           >
@@ -134,44 +130,20 @@ export function AllowedRelaysField({
         : ALLOWED_RELAYS_UNSET_SUMMARY;
   return (
     <Box {...(mt !== undefined ? { mt } : {})}>
-      <Group gap="xs" align="center">
-        <Text size="sm">{summary}</Text>
-        {!fixed &&
-          (entries !== undefined || noRelay ? (
-            <>
-              <Button
-                ref={actionRef}
-                size="xs"
-                variant="default"
-                aria-label="Change Allowed relays"
-                onClick={openField}
-              >
-                Change
-              </Button>
-              <Button
-                size="xs"
-                variant="subtle"
-                aria-label="Remove Allowed relays"
-                onClick={() => {
-                  focusNext.current = "action";
-                  if (onRemove !== undefined) onRemove();
-                  else onChange("");
-                }}
-              >
-                Remove
-              </Button>
-            </>
-          ) : (
-            <Button
-              ref={actionRef}
-              size="xs"
-              variant="default"
-              onClick={openField}
-            >
-              Set Allowed relays
-            </Button>
-          ))}
-      </Group>
+      <SettingSummaryLine
+        summary={summary}
+        isSet={entries !== undefined || noRelay}
+        settingName="Allowed relays"
+        setLabel="Set Allowed relays"
+        actions={!fixed}
+        actionRef={actionRef}
+        onOpen={openField}
+        onRemove={() => {
+          focusActionNext();
+          if (onRemove !== undefined) onRemove();
+          else onChange("");
+        }}
+      />
       {scopeNote}
     </Box>
   );
