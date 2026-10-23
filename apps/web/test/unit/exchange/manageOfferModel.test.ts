@@ -464,7 +464,7 @@ describe("the label guidance", () => {
   test("says the label is never sent and names where it appears", () => {
     expect(LABEL_GUIDANCE).toBe(
       "A name for this exchange. It is never sent to your partner, but it " +
-        "appears in results file names and notifications.",
+        "appears in results and backup file names, and in notifications.",
     );
   });
 });

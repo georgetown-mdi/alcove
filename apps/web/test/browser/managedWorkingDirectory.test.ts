@@ -24,7 +24,7 @@ import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 import { importManagedExchangeArtifact } from "@psi/managed/managedExchangeArtifact";
-import { managedScheduledBackupFileName } from "@psi/managed/managedExchangeExport";
+import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
@@ -323,7 +323,7 @@ describe("the backup a scheduled run takes after its rotation", () => {
     expect(first.kind).toBe("backed-up");
     if (first.kind !== "backed-up") return;
     const handSaved = await folder.getFileHandle(
-      "alcove-managed-backup-2026-03-01T090000Z.json",
+      "alcove-backup-Riverbend-quarterly-2026-02-22T090000Z.json",
       { create: true },
     );
     const writing = await handSaved.createWritable();
@@ -353,7 +353,10 @@ describe("the backup a scheduled run takes after its rotation", () => {
     });
     if (second.kind !== "backed-up") return;
     expect(await entryNames(folder)).toEqual(
-      ["alcove-managed-backup-2026-03-01T090000Z.json", second.fileName].sort(),
+      [
+        "alcove-backup-Riverbend-quarterly-2026-02-22T090000Z.json",
+        second.fileName,
+      ].sort(),
     );
     const file = await folder.getFileHandle(second.fileName);
     const { record: restored } = importManagedExchangeArtifact(
@@ -366,7 +369,7 @@ describe("the backup a scheduled run takes after its rotation", () => {
     const folder = await trackedOpfsDirectory("backup-name-held");
     const { rotated } = await rotatedExchangeIn(folder);
     const backedUpAt = new Date();
-    const fileName = managedScheduledBackupFileName(LABEL, backedUpAt);
+    const fileName = managedBackupFileName(LABEL, backedUpAt);
     const standing = await folder.getFileHandle(fileName, { create: true });
     const opening = await standing.createWritable();
     await opening.write(new Blob(["another exchange's backup"]));

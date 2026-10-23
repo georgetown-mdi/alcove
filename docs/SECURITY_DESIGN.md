@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-22"
+last_reviewed: "2026-10-23"
 ---
 
 # Alcove security
@@ -386,7 +386,7 @@ The input's read path has content only while a file stands under that name, so m
 
 Two constraints keep the record shape bounded: the operator label is length-capped, and the run and schedule bookkeeping is structured enums, timestamps, and durations rather than free text. The app caps the length of the operator's free text where the schema sets a cap, and does not check what the text discloses. The label and retention note fields state where their text goes, and what the operator writes in any of these fields follows the operator's own rules.
 
-- **The label reaches beyond the store.** It is written into result file names, in the granted working folder and in a downloaded parked copy, where a folder backup or sync client can copy it. Where the operator has opted in to between-visit notifications, the label, the next window's local time, and the count of consecutive missed windows appear in a notification too, which the device may show on a locked screen or mirror to other devices. The label field states both: the label is never sent to the partner, but it appears in results file names and notifications.
+- **The label reaches beyond the store.** It is written into result and backup file names, in the granted working folder and in a downloaded parked copy or backup, where a backup tool or sync client can copy it. Where the operator has opted in to between-visit notifications, the label, the next window's local time, and the count of consecutive missed windows appear in a notification too, which the device may show on a locked screen or mirror to other devices. The label field states both: the label is never sent to the partner, but it appears in results and backup file names and in notifications.
 - **The persisted exchange-file document holds other free text too.** A metadata column's description, a standardization step's parameters, and a retention note are always this party's own. The agreed terms' description, legal-agreement purpose, and payload column descriptions are this party's own only on the inviting side of an exchange whose terms never changed: an accepting party's record takes them from the inviter's terms, and a record that applied a terms update or a partner's terms change takes them from the partner's terms. A terms change a run refused is kept beside the record, with the partner's whole terms, until the operator applies or declines it. The retention note field states where the note is saved: with the exchange records, backup files, and configurations.
 
 The field names and bounds are in [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md).

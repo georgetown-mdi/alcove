@@ -179,7 +179,7 @@ describe("the backup marker persists beside the record", () => {
     const unreadable = {
       kind: "folder",
       folderName: "",
-      fileName: "alcove-managed-backup-2026-07-14T130000Z.json",
+      fileName: "alcove-backup-Riverbend-quarterly-2026-07-14T130000Z.json",
     } as const;
 
     await expect(

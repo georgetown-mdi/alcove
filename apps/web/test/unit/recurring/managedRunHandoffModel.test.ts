@@ -24,6 +24,7 @@ import type { RunLines } from "@recurring/scheduledRunCommand";
 
 const DISPATCH: ManagedMigrationDispatch = {
   backedUpAt: new Date("2026-10-07T12:00:00Z"),
+  fileName: "alcove-backup-Riverbend-quarterly-2026-10-07T120000Z.json",
   record: {
     schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
     id: "abc",

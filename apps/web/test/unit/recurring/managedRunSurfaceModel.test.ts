@@ -427,6 +427,7 @@ describe("the run's input", () => {
 
 const MIGRATION_DISPATCH: ManagedMigrationDispatch = {
   backedUpAt: FINISHED_AT,
+  fileName: "alcove-backup-Riverbend-quarterly-2026-10-07T120000Z.json",
   record: RUNNABLE_LOAD.record,
   confirm: () => Promise.resolve(),
 };

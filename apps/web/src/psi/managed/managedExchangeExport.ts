@@ -77,38 +77,26 @@ function backupFileStamp(at: Date): string {
   return `${iso.slice(0, 10)}T${iso.slice(11, 19).replaceAll(":", "")}Z`;
 }
 
-/** The name a downloaded backup is saved under:
- * `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`, the UTC instant of `at`
- * to the second, so two backups a second apart never share it. */
-export function managedBackupFileName(at: Date): string {
-  return `alcove-managed-backup-${backupFileStamp(at)}.json`;
-}
-
-/** The name the backup a scheduled run writes into the working folder takes:
- * `alcove-scheduled-backup-<label>-<YYYY-MM-DD>T<HHMMSS>Z.json`, the label
- * reduced as the results file reduces it ({@link exchangeLabelFileFragment}),
- * and left out where it reduces to nothing. The prefix differs from a
- * download's, so no download shares the name. */
-export function managedScheduledBackupFileName(
-  label: string,
-  at: Date,
-): string {
+/** The name every backup takes, downloaded or written into the working folder:
+ * `alcove-backup-<label>-<YYYY-MM-DD>T<HHMMSS>Z.json`, the label reduced as the
+ * results file reduces it ({@link exchangeLabelFileFragment}) and left out where
+ * it reduces to nothing, and the UTC instant of `at` to the second. */
+export function managedBackupFileName(label: string, at: Date): string {
   const fragment = exchangeLabelFileFragment(label);
-  return `alcove-scheduled-backup-${fragment === "" ? "" : `${fragment}-`}${backupFileStamp(at)}.json`;
+  return `alcove-backup-${fragment === "" ? "" : `${fragment}-`}${backupFileStamp(at)}.json`;
 }
 
 /** The platform boundaries a backup export drives, injected so the intent stays
  * pure and testable. */
 export interface ManagedExportDeps {
   /** Read the current stored record for `id`, run `composeExport` on it, and stamp
-   * its backup marker as of `backedUpAt`, saved as `savedAs`, in one atomic step,
-   * returning the record read. `composeExport` throwing aborts the whole step,
-   * writing no marker. */
+   * its backup marker as of `backedUpAt`, saved as the location `composeExport`
+   * returns, in one atomic step, returning the record read. `composeExport`
+   * throwing aborts the whole step, writing no marker. */
   readAndMark: (
     id: string,
     backedUpAt: string,
-    composeExport: (record: ManagedExchangeRecord) => void,
-    savedAs: ManagedBackupLocation,
+    composeExport: (record: ManagedExchangeRecord) => ManagedBackupLocation,
   ) => Promise<ManagedExchangeRecord>;
   /** Trigger a client-side download of the serialized artifact under `fileName`. */
   download: (fileName: string, content: string) => void;
@@ -225,11 +213,14 @@ function backupArtifactBytes(record: ManagedExchangeRecord): string {
 }
 
 /** The atomic export step's result: the fresh read-and-mark instant (threaded so the
- * host renders and any follow-on write use the one clock read) and the record read,
- * so the caller need not re-read to know what was exported. */
+ * host renders and any follow-on write use the one clock read), the name the file
+ * was downloaded and marked under, and the record read, so the caller need not
+ * re-read to know what was exported. */
 interface ManagedBackupResult {
   /** The instant the backup marker was stamped, from the caller's `now`. */
   backedUpAt: Date;
+  /** The name the download was given, the one the marker records. */
+  fileName: string;
   /** The record the export serialized (the fresh store read). */
   record: RunnableManagedExchangeRecord;
 }
@@ -238,35 +229,40 @@ interface ManagedBackupResult {
  * The atomic step under the two marking intents: one clock read, then the
  * store's read-serialize-and-mark by id, then the download of exactly those
  * bytes. Reading by id (not a caller-held record) keeps a stale tab or
- * pre-rotation snapshot from being what an export serializes. A step that
- * resolves without serializing fails the export rather than downloading, so
- * the marker never attests bytes it did not read.
+ * pre-rotation snapshot from being what an export serializes, or what its
+ * file name states. A step that resolves without serializing fails the
+ * export rather than downloading, so the marker never attests bytes it did
+ * not read.
  *
- * Returns the mark instant and the record read, so the caller sees what it
- * exported without a second clock read.
+ * Returns the mark instant, the file name, and the record read, so the caller
+ * sees what it exported without a second clock read.
  */
 async function readMarkAndDownload(
   id: string,
   deps: ManagedExportDeps,
 ): Promise<ManagedBackupResult> {
   const backedUpAt = deps.now();
-  const fileName = managedBackupFileName(backedUpAt);
-  let serialized: string | undefined;
+  let composed: { fileName: string; serialized: string } | undefined;
   const record = await deps.readAndMark(
     id,
     backedUpAt.toISOString(),
     (read) => {
-      serialized = backupArtifactBytes(read);
+      const fileName = managedBackupFileName(read.label, backedUpAt);
+      composed = { fileName, serialized: backupArtifactBytes(read) };
+      return { kind: "downloaded", fileName };
     },
-    { kind: "downloaded", fileName },
   );
-  if (serialized === undefined)
+  if (composed === undefined)
     throw new Error(
       "the read-and-mark step resolved without serializing the export, so its " +
         "backup marker would attest bytes nothing produced",
     );
-  deps.download(fileName, serialized);
-  return { backedUpAt, record: runnableManagedExchangeOrRefuse(record) };
+  deps.download(composed.fileName, composed.serialized);
+  return {
+    backedUpAt,
+    fileName: composed.fileName,
+    record: runnableManagedExchangeOrRefuse(record),
+  };
 }
 
 /**
@@ -372,7 +368,7 @@ async function removePreviousFolderBackup(
 /**
  * Back up a record into its working folder with nobody present: the bytes a
  * manual backup downloads, written into the granted folder under
- * {@link managedScheduledBackupFileName}, the backup marker stamped once the
+ * {@link managedBackupFileName}, the backup marker stamped once the
  * file has landed and only while the stored secret is still the one the file
  * holds, and then `previous` removed: the automatic backup the marker recorded
  * before this run's rotation cleared it.
@@ -406,7 +402,7 @@ export async function backUpManagedExchangeToFolder(
     const backedUpAt = deps.now();
     const written = await deps.writeToFolder(
       runnable,
-      managedScheduledBackupFileName(runnable.label, backedUpAt),
+      managedBackupFileName(runnable.label, backedUpAt),
       content,
     );
     if (written.kind !== "written") return written;
@@ -454,6 +450,8 @@ export async function backUpManagedExchangeToFolder(
 export interface ManagedMigrationDispatch {
   /** The instant the backup marker was stamped, from the caller's `now`. */
   backedUpAt: Date;
+  /** The name the download was given, the one the marker records. */
+  fileName: string;
   /** The record the export serialized (the fresh store read). */
   record: RunnableManagedExchangeRecord;
   /** Spend the source as of `spentAt` (the operator's confirmation instant),
@@ -480,9 +478,10 @@ export async function dispatchManagedMigration(
   id: string,
   deps: ManagedMigrationDeps,
 ): Promise<ManagedMigrationDispatch> {
-  const { backedUpAt, record } = await readMarkAndDownload(id, deps);
+  const { backedUpAt, fileName, record } = await readMarkAndDownload(id, deps);
   return {
     backedUpAt,
+    fileName,
     record,
     confirm: (spentAt) =>
       spendIfArtifactIsCurrent(id, record, spentAt, (secret, at) =>

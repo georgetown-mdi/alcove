@@ -369,8 +369,7 @@ describe("writing a completed run's results into its exchange's folder", () => {
 });
 
 describe("removing the previous automatic backup from the folder", () => {
-  const PREVIOUS =
-    "alcove-scheduled-backup-Riverbend-quarterly-2026-03-01T140000Z.json";
+  const PREVIOUS = "alcove-backup-Riverbend-quarterly-2026-03-01T140000Z.json";
 
   /** A folder holding `files` as files and `directories` as directories,
    * refusing a lookup of anything else as the platform does. */

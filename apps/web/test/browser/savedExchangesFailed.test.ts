@@ -166,7 +166,7 @@ describe("importing a backup of an exchange handed off from here", () => {
       page.elementLocator(
         document.querySelector('input[type="file"]') as HTMLElement,
       ),
-      new File([bytes], "alcove-managed-backup-2026-07-14.json", {
+      new File([bytes], "alcove-backup-2026-07-14.json", {
         type: "application/json",
       }),
     );
@@ -259,7 +259,7 @@ describe("importing a backup whose stored copy cannot be read here", () => {
       page.elementLocator(
         document.querySelector('input[type="file"]') as HTMLElement,
       ),
-      new File([bytes], "alcove-managed-backup-2026-07-14.json", {
+      new File([bytes], "alcove-backup-2026-07-14.json", {
         type: "application/json",
       }),
     );

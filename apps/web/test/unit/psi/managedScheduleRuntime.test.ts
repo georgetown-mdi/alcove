@@ -759,7 +759,7 @@ describe("the backup a completed unattended run takes", () => {
 
     const [fileName] = [...folder.files.keys()];
     expect(fileName).toMatch(
-      /^alcove-scheduled-backup-Riverbend-quarterly-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
+      /^alcove-backup-Riverbend-quarterly-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
     );
     expect(
       importManagedExchangeArtifact(folder.files.get(fileName) ?? "").record
@@ -776,10 +776,11 @@ describe("the backup a completed unattended run takes", () => {
 
   test("replaces the backup the marker named before the run, and keeps every other file", async () => {
     const previous =
-      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-07T120000Z.json";
+      "alcove-backup-Riverbend-quarterly-2026-07-07T120000Z.json";
     const folder = emptyGrantedFolder(undefined, {
       [previous]: "the previous run's backup",
-      "alcove-managed-backup-2026-07-01T090000Z.json": "a download kept here",
+      "alcove-backup-Riverbend-quarterly-2026-07-01T090000Z.json":
+        "a download kept here",
     });
     mockedLocalState.mockResolvedValue({
       backup: {
@@ -802,7 +803,9 @@ describe("the backup a completed unattended run takes", () => {
     const names = [...folder.files.keys()];
     expect(names).toHaveLength(2);
     expect(names).not.toContain(previous);
-    expect(names).toContain("alcove-managed-backup-2026-07-01T090000Z.json");
+    expect(names).toContain(
+      "alcove-backup-Riverbend-quarterly-2026-07-01T090000Z.json",
+    );
     expect(mockedLocalState.mock.invocationCallOrder[0]).toBeLessThan(
       mockedRun.mock.invocationCallOrder[0],
     );

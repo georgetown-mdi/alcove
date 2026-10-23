@@ -899,7 +899,7 @@ describe("saved list route: a populated list imports a command-line configuratio
       .element(page.getByRole("button", { name: "Import a file" }))
       .toBeInTheDocument();
 
-    await chooseFile(backup, "alcove-managed-backup-2026-07-11.json");
+    await chooseFile(backup, "alcove-backup-2026-07-11.json");
 
     await expect
       .element(page.getByText("That exchange was handed off"))
@@ -923,7 +923,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
     if (input === undefined) throw new Error(`no file input for ${accept}`);
     await userEvent.upload(
       page.elementLocator(input),
-      new File([bytes], "alcove-managed-backup.json"),
+      new File([bytes], "alcove-backup.json"),
     );
   }
 

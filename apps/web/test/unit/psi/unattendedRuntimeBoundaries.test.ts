@@ -26,7 +26,7 @@ import {
   writeBackupToWorkingFolder,
   writeResultsToWorkingDirectory,
 } from "@psi/managed/managedWorkingDirectory";
-import { managedScheduledBackupFileName } from "@psi/managed/managedExchangeExport";
+import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { startManagedScheduleRuntime } from "@psi/managed/managedScheduleRuntime";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
@@ -614,7 +614,7 @@ describe("the working folder", () => {
   test("gives the backup write the one name it writes, and stops at a name already held", async () => {
     // The feature detection a stored grant is followed on, which Node lacks.
     vi.stubGlobal("FileSystemDirectoryHandle", class {});
-    const fileName = managedScheduledBackupFileName(
+    const fileName = managedBackupFileName(
       "Riverbend quarterly",
       new Date("2026-01-06T14:00:00Z"),
     );

@@ -134,7 +134,7 @@ describe("a backup a scheduled run wrote into the working folder", () => {
       newExchange({ workingDirectoryHandle: folder }),
     );
     const fileName =
-      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
+      "alcove-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
     expect(
       await markManagedBackupIfCurrent(
         created.id,
@@ -162,7 +162,7 @@ describe("a backup a scheduled run wrote into the working folder", () => {
       newExchange({ workingDirectoryHandle: folder }),
     );
     const fileName =
-      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
+      "alcove-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
     expect(
       await markManagedBackupIfCurrent(
         created.id,
@@ -200,6 +200,9 @@ describe("a backup the operator downloads", () => {
         .toBeInTheDocument();
       await downloads.settled();
       expect(downloads.captured).toHaveLength(1);
+      expect(downloads.captured[0].fileName).toMatch(
+        /^alcove-backup-Riverbend-quarterly-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
+      );
       await expect
         .element(
           page.getByText(`downloaded as ${downloads.captured[0].fileName}`, {
