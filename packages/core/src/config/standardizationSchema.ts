@@ -9,6 +9,11 @@ import {
   transformParamAbsenceRefusals,
   transformParamTypeRefusals,
 } from "./transformParamTypes.js";
+import {
+  emptyMatchingDelimiterMessage,
+  splitDelimiterMatchesEmptyString,
+} from "./transformRegexDialect.js";
+import { patternConformsToDialect } from "../utils/linearRegex.js";
 
 // --- Standardizing step ------------------------------------------------------
 
@@ -71,6 +76,23 @@ const StandardizationStepSchema: z.ZodType<StandardizationStep> = z
         code: "custom",
         message: refusal.message,
         path: refusal.path,
+      });
+    // The terms schema refuses this in its budgeted pattern walk; this block is
+    // the operator's own, so its delimiter compiles here. One outside the
+    // dialect is left to the compile at the run, which names the engine's error.
+    const delimiter =
+      step.function === "split_on" ? step.params?.delimiter : undefined;
+    if (
+      typeof delimiter === "string" &&
+      patternConformsToDialect(delimiter) &&
+      splitDelimiterMatchesEmptyString(delimiter)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: emptyMatchingDelimiterMessage({
+          readerCanEditTheDocument: true,
+        }),
+        path: ["params", "delimiter"],
       });
   });
 

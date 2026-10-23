@@ -1,8 +1,12 @@
 import { expect, test } from "vitest";
 import { ZodError } from "zod";
 
-import { decodeInvitation } from "../../src/config/invitation";
+import {
+  decodeInvitation,
+  encodeInvitation,
+} from "../../src/config/invitation";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
+import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import {
   CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY,
   COUNT_ONLY_SHAPE_REFUSALS,
@@ -292,6 +296,108 @@ test("a mistyped param is named the way the document writes it", () => {
   );
   expect(messages.join("\n")).not.toContain("includeOriginal");
 });
+
+// A split_on delimiter matching the empty string splits a value between its
+// characters, so a key over it matches on shared letters. The empty delimiter,
+// and three patterns that match without consuming a character.
+const EMPTY_MATCHING_DELIMITERS = ["", "-*", "|", "\\B"];
+
+const EMPTY_MATCHING_DELIMITER_REFUSAL =
+  "split_on delimiter must not match the empty string, which can split a " +
+  "value into single characters";
+
+// The split sits second in the second element's transform, so the issue path
+// is read off the step's own position rather than the first one.
+function keysSplittingOn(delimiter: string): Array<Record<string, unknown>> {
+  return [
+    {
+      name: "Partner Key Name",
+      elements: [
+        { field: "partner_given" },
+        {
+          field: "partner_family",
+          transform: [
+            { function: "to_upper_case" },
+            { function: "split_on", params: { delimiter } },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+test.each(EMPTY_MATCHING_DELIMITERS)(
+  "a split_on delimiter of %j is refused at the parse, locating the step",
+  (delimiter) => {
+    const result = safeParseLinkageTerms(
+      partnerTerms({ linkageKeys: keysSplittingOn(delimiter) }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(
+      result.error.issues.map((issue) => [issue.path, issue.message]),
+    ).toEqual([
+      [
+        [
+          "linkageKeys",
+          0,
+          "elements",
+          1,
+          "transform",
+          1,
+          "params",
+          "delimiter",
+        ],
+        EMPTY_MATCHING_DELIMITER_REFUSAL,
+      ],
+    ]);
+  },
+);
+
+test.each(EMPTY_MATCHING_DELIMITERS)(
+  "a split_on delimiter of %j is refused at the decode",
+  async (delimiter) => {
+    const messages = await decodeRefusalsOf(
+      partnerTerms({ linkageKeys: keysSplittingOn(delimiter) }),
+    );
+    expect(messages).toEqual([EMPTY_MATCHING_DELIMITER_REFUSAL]);
+    expectNoPartnerText(messages);
+  },
+);
+
+test.each(EMPTY_MATCHING_DELIMITERS)(
+  "a split_on delimiter of %j is refused at the mint",
+  async (delimiter) => {
+    const raised: unknown = await encodeInvitation({
+      version: "1",
+      linkageTerms: partnerTerms({
+        linkageKeys: keysSplittingOn(delimiter),
+      }) as unknown as LinkageTerms,
+      sharedSecret: VALID_SECRET,
+    }).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(raised).toBeInstanceOf(ZodError);
+    expect((raised as ZodError).issues.map((issue) => issue.message)).toEqual([
+      EMPTY_MATCHING_DELIMITER_REFUSAL,
+    ]);
+  },
+);
+
+// `\b` is zero-width too, but matches only beside a word character, so it
+// cannot match the empty string and splits at word boundaries alone.
+test.each(["-", "[-\\s]+", "\\b"])(
+  "a split_on delimiter of %j still parses and decodes",
+  async (delimiter) => {
+    const runnable = partnerTerms({ linkageKeys: keysSplittingOn(delimiter) });
+    expect(safeParseLinkageTerms(runnable).success).toBe(true);
+    const token = await decodeInvitation(await invitationOver(runnable));
+    expect(
+      token.linkageTerms.linkageKeys[0].elements[1].transform?.[1].params,
+    ).toEqual({ delimiter });
+  },
+);
 
 test("terms an exchange can run still parse and decode", async () => {
   // The same document with one fan-out element on a `psi` cascade: a candidate

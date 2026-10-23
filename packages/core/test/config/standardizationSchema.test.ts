@@ -161,6 +161,56 @@ describe("StandardizationSchema declared param types", () => {
   );
 });
 
+// --- split_on delimiter ------------------------------------------------------
+// A delimiter matching the empty string splits a value between its characters.
+// The operator's own block, so the refusal names the remedy.
+
+describe("StandardizationSchema split_on delimiter", () => {
+  const splitSpec = (delimiter: string) => [
+    {
+      output: "last_name",
+      input: "LN",
+      steps: [{ function: "split_on", params: { delimiter } }],
+    },
+  ];
+
+  test.each(["", "-*", "|", "\\B"])(
+    "refuses %j, which matches the empty string, at the step",
+    (delimiter) => {
+      const result = safeParseStandardization(splitSpec(delimiter));
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(
+        result.error.issues.map((issue) => [
+          issue.path.join("."),
+          issue.message,
+        ]),
+      ).toEqual([
+        [
+          "0.steps.0.params.delimiter",
+          "split_on delimiter must not match the empty string, which can " +
+            "split a value into single characters; write a delimiter that " +
+            "always matches at least one character, such as -+ rather than -*",
+        ],
+      ]);
+    },
+  );
+
+  test.each(["-", "[-\\s]+", "\\b"])("admits %j", (delimiter) => {
+    expect(safeParseStandardization(splitSpec(delimiter)).success).toBe(true);
+  });
+
+  // The check compiles the delimiter, and the engine throws on a pattern
+  // outside its dialect; that pattern is refused at the compile instead.
+  test("reads a delimiter outside the dialect without throwing", () => {
+    let result: ReturnType<typeof safeParseStandardization> | undefined;
+    expect(() => {
+      result = safeParseStandardization(splitSpec("a(?=b)"));
+    }).not.toThrow();
+    expect(result?.success).toBe(true);
+  });
+});
+
 // --- safeParseStandardization ------------------------------------------------
 // The on-disk read. A document writes its keys in snake_case, so the block is
 // camelized before the schema and the function library see it: the one spelling

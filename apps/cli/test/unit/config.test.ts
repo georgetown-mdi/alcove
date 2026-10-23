@@ -4663,6 +4663,55 @@ describe("readConfigLinkageSource", () => {
     );
   });
 
+  // A delimiter matching the empty string splits a value between its
+  // characters, so it is refused where the config is read, in a linkage key and
+  // in the cleaning alike, with the remedy the operator's own file takes.
+  const EMPTY_MATCHING_DELIMITER_REFUSAL =
+    "split_on delimiter must not match the empty string, which can split a " +
+    "value into single characters; write a delimiter that always matches at " +
+    "least one character, such as -+ rather than -*";
+
+  test("refuses a linkage key's split_on delimiter that matches the empty string", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    for (const delimiter of ["", "-*"]) {
+      const terms = structuredClone(getDefaultLinkageTerms("Agency A"));
+      terms.linkageKeys[0].elements[0].transform = [
+        { function: "split_on", params: { delimiter } },
+      ];
+      fs.writeFileSync(configPath, YAML.stringify({ linkage_terms: terms }));
+      expect(() => readConfigLinkageSource(configPath)).toThrow(UsageError);
+      expect(() => readConfigLinkageSource(configPath)).toThrow(
+        `config file ${configPath} has invalid linkage_terms: ` +
+          "linkage_keys.0.elements.0.transform.0.params: " +
+          EMPTY_MATCHING_DELIMITER_REFUSAL,
+      );
+    }
+  });
+
+  test("refuses a cleaning step's split_on delimiter that matches the empty string", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    for (const delimiter of ["''", "'-*'"]) {
+      fs.writeFileSync(
+        configPath,
+        [
+          "standardization:",
+          "  - output: last_name",
+          "    input: LN",
+          "    steps:",
+          "      - function: split_on",
+          "        params:",
+          `          delimiter: ${delimiter}`,
+          YAML.stringify({ linkage_terms: getDefaultLinkageTerms("Agency A") }),
+        ].join("\n"),
+      );
+      expect(() => readConfigLinkageSource(configPath)).toThrow(UsageError);
+      expect(() => readConfigLinkageSource(configPath)).toThrow(
+        `config file ${configPath} has invalid standardization: ` +
+          `0.steps.0.params: ${EMPTY_MATCHING_DELIMITER_REFUSAL}`,
+      );
+    }
+  });
+
   // The one connection fact the reader lifts out, for the invitation's retain
   // declaration. A `true` at the fixed path is read; nothing else about the block
   // is parsed, which is what keeps a still-placeholder connection from blocking an

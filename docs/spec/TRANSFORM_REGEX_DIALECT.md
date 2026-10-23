@@ -73,6 +73,11 @@ The cap bounds one pattern: a row's total is that times the regex steps the docu
 The verdict depends on the engine build, so an re2js upgrade that changes a program's size is a dialect change ([PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect), Versioning).
 `parse_date` is outside the cap: its [format-length cap](TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection) bounds its regex, whose worst measured shape (128 `MM` tokens) costs about 5 ms per row.
 
+**Empty-matching `split_on` delimiter.**
+The same walk refuses a `split_on` delimiter that matches the empty string ([PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect), Operation semantics), read off the program the conformance check already compiled, so it adds no compile and runs inside the walk's budget.
+The refusal's issue path locates the step by key, element, and step index, and its message names the function and the param, echoing nothing the partner wrote.
+An operator's own `standardization` is not walked: its step schema compiles a `split_on` delimiter itself, leaving one outside the dialect to the compile at the run, and the `split_on` factory refuses the same delimiter for a step compiled without a parse.
+
 The mint and accept boundaries bound a second compile cost over the same content.
 `assertTransformsCompile` (`packages/core/src/linkageSatisfiability.ts`) builds every step a document declares - each `standardization` step and each linkage-key element transform - where the terms are authored or minted, so a step whose factory refuses its parameters is refused while the author still holds the document rather than at the first row of an exchange the partner has already accepted.
 The accept boundary runs the same walk over an invitation's element transforms alone, which is a PARTNER-supplied document: the two bounds below are what hold that walk's cost for an acceptor, over a document `MAX_ENCODED_INVITATION_LENGTH` already caps.

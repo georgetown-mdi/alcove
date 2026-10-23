@@ -71,6 +71,60 @@ describe("findTransformRegexRefusal", () => {
     ).toBe(true);
   });
 
+  test.each(["", "-*", "|", "\\B"])(
+    "refuses a split_on delimiter of %j, which matches the empty string, by position",
+    (delimiter) => {
+      expect(
+        findTransformRegexRefusal({
+          linkageKeys: [
+            { name: "a", elements: [{ field: "ssn" }] },
+            {
+              name: "b",
+              elements: [
+                { field: "ssn" },
+                {
+                  field: "last_name",
+                  transform: [
+                    { function: "to_upper_case" },
+                    { function: "split_on", params: { delimiter } },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      ).toEqual({
+        reason: "empty-matching-delimiter",
+        keyIndex: 1,
+        elementIndex: 1,
+        stepIndex: 1,
+      });
+    },
+  );
+
+  test.each(["-", "[-\\s]+", "\\b"])(
+    "admits a split_on delimiter of %j, which cannot match the empty string",
+    (delimiter) => {
+      expect(
+        rejects(termsWith([{ function: "split_on", params: { delimiter } }])),
+      ).toBe(false);
+    },
+  );
+
+  test("leaves an empty-matching pattern of the other raw-pattern steps alone", () => {
+    // Only a split turns a zero-width match into parts; each of these still
+    // leaves one value.
+    expect(
+      rejects(
+        termsWith([
+          { function: "replace_regex", params: { pattern: "-*" } },
+          { function: "extract_regex", params: { pattern: "x?" } },
+          { function: "filter_regex", params: { pattern: "" } },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
   test("does not screen parse_date (its generated regex is always in-dialect)", () => {
     // A format that expands to 24 adjacent `(\d{1,2})` groups -- a backtracking
     // bomb on new RegExp -- is NOT a raw-pattern step, so the walk ignores it; the

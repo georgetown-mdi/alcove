@@ -269,6 +269,37 @@ test("mintExchangeFile: a control character in a name fails loudly at mint", () 
   ).toThrow(ZodError);
 });
 
+test("mintExchangeFile: an empty split_on delimiter fails loudly at mint, in a key and in the cleaning", () => {
+  const splitOnNothing = [{ function: "split_on", params: { delimiter: "" } }];
+  const refusal = /split_on delimiter must not match the empty string/;
+  const connection = {
+    channel: "sftp" as const,
+    host: "h.example.org",
+    path: "/drop",
+  };
+  expect(() =>
+    mintExchangeFile({
+      connection,
+      linkageTerms: {
+        ...baseTerms,
+        linkageKeys: [
+          {
+            name: "SSN",
+            elements: [{ field: "ssn", transform: splitOnNothing }],
+          },
+        ],
+      },
+    }),
+  ).toThrow(refusal);
+  expect(() =>
+    mintExchangeFile({
+      connection,
+      linkageTerms: baseTerms,
+      standardization: [{ output: "ssn", input: "SSN", steps: splitOnNothing }],
+    }),
+  ).toThrow(refusal);
+});
+
 test("mintExchangeFile: an empty sftp host fails loudly at mint", () => {
   expect(() =>
     mintExchangeFile({

@@ -10,6 +10,7 @@ import { droppedSettingIssues } from "./unreadKeys.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { patternConformsToDialect } from "../utils/linearRegex.js";
 import {
+  emptyMatchingDelimiterMessage,
   findTransformRegexRefusal,
   regexStepPatternParam,
   transformPatternSizeMessage,
@@ -1295,7 +1296,8 @@ const linkageTermsSchema = (
       const refusal = findTransformRegexRefusal(terms, {
         maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
       });
-      if (refusal !== undefined) ctx.addIssue(transformRegexIssue(refusal));
+      if (refusal !== undefined)
+        ctx.addIssue(transformRegexIssue(refusal, options));
     })
     // The count-only shape, one refine per rule so a document breaking one
     // is located by its own issue path and answered by its own message. The
@@ -1366,7 +1368,10 @@ const linkageTermsSchema = (
     });
 
 // Interpolates only positions, counts, and fixed param names, never partner text.
-function transformRegexIssue(refusal: TransformRegexRefusal): {
+function transformRegexIssue(
+  refusal: TransformRegexRefusal,
+  options: TransformParamRefusalOptions,
+): {
   code: "custom";
   message: string;
   path: (string | number)[];
@@ -1379,6 +1384,21 @@ function transformRegexIssue(refusal: TransformRegexRefusal): {
         "linear-time dialect (RE2 syntax); rewrite it without backreferences " +
         "or lookaround",
       path: ["linkageKeys"],
+    };
+  if (refusal.reason === "empty-matching-delimiter")
+    return {
+      code: "custom",
+      message: emptyMatchingDelimiterMessage(options),
+      path: [
+        "linkageKeys",
+        refusal.keyIndex,
+        "elements",
+        refusal.elementIndex,
+        "transform",
+        refusal.stepIndex,
+        "params",
+        "delimiter",
+      ],
     };
   const { keyIndex, elementIndex, stepIndex, paramKey, weightedSize } = refusal;
   return {

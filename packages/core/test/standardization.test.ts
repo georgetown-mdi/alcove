@@ -1041,6 +1041,23 @@ describe("runPipeline — split_on fan-out", () => {
       ]),
     ).toBeNull();
   });
+
+  // Both decode paths refuse it first; this holds a caller that compiles a
+  // step it never parsed, which would otherwise split into single characters.
+  test.each(["", "-*", "|", "\\B"])(
+    "split_on refuses a delimiter of %j, which matches the empty string, at compile",
+    (delimiter) => {
+      const compile = () =>
+        runPipeline("smith-jones", [
+          { function: "split_on", params: { delimiter } },
+        ]);
+      expect(compile).toThrow(UsageError);
+      expect(compile).toThrow(
+        "split_on delimiter must not match the empty string, which can split " +
+          "a value into single characters",
+      );
+    },
+  );
 });
 
 // --- runPipeline: NFC normalization ------------------------------------------

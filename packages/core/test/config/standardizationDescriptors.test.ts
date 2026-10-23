@@ -10,6 +10,7 @@ import {
   MAX_DATE_FORMAT_LENGTH,
   MAX_TRANSFORM_PATTERN_LENGTH,
 } from "../../src/config/linkageTermsSchema";
+import { EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE } from "../../src/config/transformRegexDialect";
 
 // --- Descriptor / registry parity --------------------------------------------
 
@@ -329,6 +330,28 @@ describe("param schemas", () => {
       const parsed = schemaFor("split_on").safeParse({ delimiter: "-" });
       expect(parsed.success).toBe(true);
       expect(parsed.data).toEqual({ delimiter: "-", includeOriginal: false });
+    });
+
+    // The step editor shows this beside the delimiter, so a split the decode
+    // and the factory refuse is marked while it is being written.
+    test.each(["-*", "|", "\\B"])(
+      "split_on refuses a delimiter of %j, which matches the empty string",
+      (delimiter) => {
+        const parsed = schemaFor("split_on").safeParse({ delimiter });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([
+          EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
+        ]);
+      },
+    );
+
+    test("split_on refuses an empty delimiter by its length alone", () => {
+      const parsed = schemaFor("split_on").safeParse({ delimiter: "" });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues).toHaveLength(1);
+      expect(parsed.error?.issues[0].message).not.toBe(
+        EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
+      );
     });
 
     // The pattern schema rejects out-of-dialect syntax (backreferences, lookaround)

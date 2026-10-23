@@ -1,9 +1,11 @@
 import type { LinkageTerms } from "./linkageTermsSchema.js";
+import type { TransformParamRefusalOptions } from "./transformParamTypes.js";
 import {
   frozenLookupTable,
   frozenLookupTableEntry,
 } from "../utils/frozenLookupTable.js";
 import {
+  compileLinearRegex,
   patternConformsToDialect,
   patternWeightedSize,
 } from "../utils/linearRegex.js";
@@ -78,6 +80,46 @@ export function transformPatternSizeMessage(weightedSize: number): string {
   );
 }
 
+/**
+ * Whether the in-dialect `split_on` delimiter matches the empty string. One
+ * that does can match between two characters without consuming either, so a
+ * split on it can leave single characters: the empty delimiter, `-*`, `|`, and
+ * `\B` each split `smith` into its five letters. Throws on a pattern outside
+ * the dialect, as {@link compileLinearRegex} does.
+ */
+export function splitDelimiterMatchesEmptyString(delimiter: string): boolean {
+  return compileLinearRegex(delimiter).matches("");
+}
+
+const EMPTY_MATCHING_DELIMITER_STATEMENT =
+  "must not match the empty string, which can split a value into single " +
+  "characters";
+
+const EMPTY_MATCHING_DELIMITER_REMEDY =
+  "write a delimiter that always matches at least one character, such as -+ " +
+  "rather than -*";
+
+/**
+ * The refusal of a `split_on` delimiter {@link splitDelimiterMatchesEmptyString}
+ * holds for. It names the step's function and param and interpolates nothing
+ * the document wrote; the issue path locates the step. The remedy is for the
+ * party who wrote the document, as the declared-type refusal's is.
+ */
+export function emptyMatchingDelimiterMessage(
+  options: TransformParamRefusalOptions,
+): string {
+  const head = `split_on delimiter ${EMPTY_MATCHING_DELIMITER_STATEMENT}`;
+  return options.readerCanEditTheDocument
+    ? `${head}; ${EMPTY_MATCHING_DELIMITER_REMEDY}`
+    : head;
+}
+
+/**
+ * {@link emptyMatchingDelimiterMessage} for a step editor's inline error, which
+ * sits under the delimiter's own input and so names neither step nor param.
+ */
+export const EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE = `${EMPTY_MATCHING_DELIMITER_STATEMENT}; ${EMPTY_MATCHING_DELIMITER_REMEDY}`;
+
 /** Optional overrides for the conformance walk. */
 interface RegexDialectBudget {
   /** Overrides {@link REGEX_DIALECT_TOTAL_BUDGET_MS}. */
@@ -105,6 +147,13 @@ export type TransformRegexRefusal =
       /** The step param holding the pattern: a {@link REGEX_STEP_PATTERN_PARAM} value. */
       paramKey: string;
       weightedSize: number;
+    }
+  /** A `split_on` delimiter {@link splitDelimiterMatchesEmptyString} holds for. */
+  | {
+      reason: "empty-matching-delimiter";
+      keyIndex: number;
+      elementIndex: number;
+      stepIndex: number;
     };
 
 const NONCONFORMANT: TransformRegexRefusal = Object.freeze({
@@ -114,10 +163,11 @@ const NONCONFORMANT: TransformRegexRefusal = Object.freeze({
 /**
  * The first reason to refuse a transform pattern in `terms`, or `undefined`:
  * outside the dialect, longer than `budget.maxPatternLength`, over
- * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, or left when the time budget
- * runs out. A pattern that is omitted or not a string is left to the step
- * schema's own checks; `parse_date` is not screened. A refusal contains
- * positions and counts, never a partner-controlled value.
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, a `split_on` delimiter matching
+ * the empty string, or left when the time budget runs out. A pattern that is
+ * omitted or not a string is left to the step schema's own checks;
+ * `parse_date` is not screened. A refusal contains positions and counts, never
+ * a partner-controlled value.
  */
 export function findTransformRegexRefusal(
   terms: Pick<LinkageTerms, "linkageKeys">,
@@ -151,6 +201,18 @@ export function findTransformRegexRefusal(
             stepIndex,
             paramKey,
             weightedSize,
+          };
+        // Read here rather than in the step schema: this walk bounds what
+        // compiling a partner's pattern costs, and this compile is cached.
+        if (
+          step.function === "split_on" &&
+          splitDelimiterMatchesEmptyString(source)
+        )
+          return {
+            reason: "empty-matching-delimiter",
+            keyIndex,
+            elementIndex,
+            stepIndex,
           };
       }
     }
