@@ -604,9 +604,9 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
 
     expect(BUILT_IN_RULES_INFO.explanation).toBe(
       "Highest precision pairs a name or date of birth with an SSN, ZIP " +
-        "code, or phone number. In published studies, fewer than 1 in 100 " +
-        "of its matches were wrong. Broader matching adds rules that find " +
-        "more people, with a few more wrong matches.",
+        "code, or phone number. Published studies of similar rules suggest " +
+        "no more than 1 in 100 of its matches are wrong. Broader matching " +
+        "adds rules that find more people, with a few more wrong matches.",
     );
     const info = page.getByRole("button", {
       name: "About the built-in rules",
