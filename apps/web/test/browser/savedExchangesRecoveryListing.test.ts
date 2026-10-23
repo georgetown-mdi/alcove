@@ -399,7 +399,7 @@ describe("the import this surface offers works from the read-failed state", () =
       page.elementLocator(
         document.querySelector('input[type="file"]') as HTMLElement,
       ),
-      new File([bytes], "alcove-managed-backup-2026-07-14.json", {
+      new File([bytes], "alcove-backup-2026-07-14.json", {
         type: "application/json",
       }),
     );

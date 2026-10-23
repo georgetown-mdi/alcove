@@ -8,7 +8,6 @@ import {
   ManagedHandoffRefusedError,
   dispatchManagedMigration,
   exportManagedBackup,
-  managedBackupFileName,
 } from "@psi/managed/managedExchangeExport";
 import {
   ManagedReinviteWithheldError,
@@ -575,7 +574,7 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
       (result) =>
         dispatchSurface({
           type: "backup-exported",
-          marker: downloadedMarker(result.backedUpAt),
+          marker: downloadedMarker(result),
         }),
       () => dispatchSurface({ type: "export-failed" }),
     );
@@ -594,7 +593,7 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
         dispatchSurface({
           type: "migration-dispatched",
           dispatch,
-          marker: downloadedMarker(dispatch.backedUpAt),
+          marker: downloadedMarker(dispatch),
         }),
       () => dispatchSurface({ type: "export-failed" }),
     );
@@ -946,14 +945,14 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   };
 }
 
-/** The marker a download export stamped as of `backedUpAt`, for the panel to show
- * without a second store read. */
-function downloadedMarker(backedUpAt: Date): ManagedBackupMarker {
+/** The marker a download export stamped as of `backedUpAt` under `fileName`, for
+ * the panel to show without a second store read. */
+function downloadedMarker(exported: {
+  backedUpAt: Date;
+  fileName: string;
+}): ManagedBackupMarker {
   return {
-    backedUpAt: backedUpAt.toISOString(),
-    savedAs: {
-      kind: "downloaded",
-      fileName: managedBackupFileName(backedUpAt),
-    },
+    backedUpAt: exported.backedUpAt.toISOString(),
+    savedAs: { kind: "downloaded", fileName: exported.fileName },
   };
 }

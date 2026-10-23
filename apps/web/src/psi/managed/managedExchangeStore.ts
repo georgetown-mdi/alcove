@@ -636,14 +636,15 @@ function clearRotationSiblingsOnLocalStore(
 
 /**
  * Read the current stored record for `id`, compose the export's bytes from it, AND
- * stamp its backup marker as of `backedUpAt`, all inside one transaction spanning
- * the record and sibling stores, returning the record read. The marker attests
- * exactly the bytes the export serialized, so a stale-tab export cannot stamp a
- * marker over a secret it did not serialize. Because the mark is cross-store-atomic
- * with the read, a concurrent rotation (which clears the marker in its own
- * cross-store transaction) is never masked: this transaction either marks the
- * pre-rotation record before the rotation clears it, or marks the already-rotated
- * secret. The marker only advances forward, so a slow export's late mark cannot
+ * stamp its backup marker as of `backedUpAt`, saved as the location `composeExport`
+ * returns, all inside one transaction spanning the record and sibling stores,
+ * returning the record read. The marker attests exactly the bytes the export
+ * serialized, so a stale-tab export cannot stamp a marker over a secret it did
+ * not serialize. Because the mark is cross-store-atomic with the read, a
+ * concurrent rotation (which clears the marker in its own cross-store
+ * transaction) is never masked: this transaction either marks the pre-rotation
+ * record before the rotation clears it, or marks the already-rotated secret.
+ * The marker only advances forward, so a slow export's late mark cannot
  * revert a newer one; the spent state is left untouched.
  *
  * `composeExport` runs synchronously here, BEFORE the mark is issued: if it throws
@@ -657,8 +658,7 @@ function clearRotationSiblingsOnLocalStore(
 export async function readRecordAndMarkBackedUp(
   id: string,
   backedUpAt: string,
-  composeExport: (record: ManagedExchangeRecord) => void,
-  savedAs?: ManagedBackupLocation,
+  composeExport: (record: ManagedExchangeRecord) => ManagedBackupLocation,
 ): Promise<ManagedExchangeRecord> {
   const db = await openManagedExchangeDatabase();
   try {
@@ -681,10 +681,10 @@ export async function readRecordAndMarkBackedUp(
           if (read.result === undefined)
             throw new Error(`no managed exchange with id ${id}`);
           record = parseManagedExchangeRecord(read.result);
-          composeExport(record);
+          const savedAs = composeExport(record);
           markBackupOnLocalStore(local, id, readLocal.result, {
             backedUpAt,
-            ...(savedAs !== undefined ? { savedAs } : {}),
+            savedAs,
           });
         } catch (error) {
           failure = error;

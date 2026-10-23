@@ -249,7 +249,7 @@ export function maxAgeCadenceNote(
 /** The operator guidance for the label field (docs/SECURITY_DESIGN.md,
  * "Metadata at rest: presence and shape"). */
 export const LABEL_GUIDANCE =
-  "A name for this exchange. It is never sent to your partner, but it appears in results file names and notifications.";
+  "A name for this exchange. It is never sent to your partner, but it appears in results and backup file names, and in notifications.";
 
 /** The problem a retention note holding a control character reports. */
 export const RETENTION_NOTE_CONTROL_CHARACTER_PROBLEM =

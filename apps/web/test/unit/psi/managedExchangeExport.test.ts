@@ -29,6 +29,7 @@ import {
 import { automaticBackupOnMarker } from "@psi/managed/managedBackupState";
 
 import type {
+  ManagedBackupLocation,
   ManagedBackupMarker,
   ManagedFolderBackupLocation,
 } from "@psi/managed/managedBackupState";
@@ -68,22 +69,30 @@ function record(): ManagedExchangeRecord {
   });
 }
 
+/** The name every backup of {@link record} taken at 2026-07-14T12:00:00Z takes,
+ * downloaded or written into the working folder. */
+const BACKUP_NAME = "alcove-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
+
 function backupDeps(rec: ManagedExchangeRecord): ManagedExportDeps & {
   downloaded: Array<{ fileName: string; content: string }>;
   readAndMark: ReturnType<typeof vi.fn>;
+  savedAs: Array<ManagedBackupLocation>;
 } {
   const downloaded: Array<{ fileName: string; content: string }> = [];
+  const savedAs: Array<ManagedBackupLocation> = [];
   return {
     downloaded,
+    savedAs,
     // The atomic read-compose-and-mark: hands the fresh record to the export's own
-    // composition, then marks, as the store's step does.
+    // composition, then marks it saved where the composition says, as the store's
+    // step does.
     readAndMark: vi.fn(
       (
         _id: string,
         _backedUpAt: string,
-        composeExport: (read: ManagedExchangeRecord) => void,
+        composeExport: (read: ManagedExchangeRecord) => ManagedBackupLocation,
       ) => {
-        composeExport(rec);
+        savedAs.push(composeExport(rec));
         return Promise.resolve(rec);
       },
     ),
@@ -93,10 +102,28 @@ function backupDeps(rec: ManagedExchangeRecord): ManagedExportDeps & {
 }
 
 describe("managedBackupFileName", () => {
-  test("names the file by the export's UTC instant to the second", () => {
-    expect(managedBackupFileName(new Date("2026-07-14T09:05:03.250Z"))).toBe(
-      "alcove-managed-backup-2026-07-14T090503Z.json",
-    );
+  test("names the file by the exchange's label and the UTC instant to the second", () => {
+    expect(
+      managedBackupFileName(
+        "Riverbend quarterly",
+        new Date("2026-07-14T09:05:03.250Z"),
+      ),
+    ).toBe("alcove-backup-Riverbend-quarterly-2026-07-14T090503Z.json");
+  });
+
+  test("reduces the label as the results file name does", () => {
+    expect(
+      managedBackupFileName(
+        "  County/Health: Q3 (draft)  ",
+        new Date("2026-07-14T09:05:03.000Z"),
+      ),
+    ).toBe("alcove-backup-County-Health-Q3-draft-2026-07-14T090503Z.json");
+  });
+
+  test("leaves out a label that reduces to nothing, with its hyphen", () => {
+    expect(
+      managedBackupFileName("***", new Date("2026-07-14T09:05:03.000Z")),
+    ).toBe("alcove-backup-2026-07-14T090503Z.json");
   });
 });
 
@@ -111,13 +138,16 @@ describe("exportManagedBackup", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
-      {
-        kind: "downloaded",
-        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
-      },
     );
-    // The result threads the one clock read and the record exported.
+    // The marker records the name the file was downloaded under, which states
+    // the label of the record read.
+    expect(deps.savedAs).toEqual([
+      { kind: "downloaded", fileName: BACKUP_NAME },
+    ]);
+    expect(deps.downloaded[0].fileName).toBe(BACKUP_NAME);
+    // The result threads the one clock read, the name, and the record exported.
     expect(result.backedUpAt.toISOString()).toBe("2026-07-14T12:00:00.000Z");
+    expect(result.fileName).toBe(BACKUP_NAME);
     expect(result.record).toBe(rec);
   });
 
@@ -153,6 +183,7 @@ describe("exportManagedBackup", () => {
 describe("dispatchManagedMigration", () => {
   function migrationDeps(rec: ManagedExchangeRecord): ManagedMigrationDeps & {
     downloaded: Array<{ fileName: string; content: string }>;
+    savedAs: Array<ManagedBackupLocation>;
     order: Array<string>;
     spendIfCurrent: ReturnType<typeof vi.fn>;
     /** The spends the atomic step actually wrote; a refused one writes nothing. */
@@ -165,12 +196,14 @@ describe("dispatchManagedMigration", () => {
     const order: Array<string> = [];
     const spent: Array<string> = [];
     const downloaded: Array<{ fileName: string; content: string }> = [];
+    const savedAs: Array<ManagedBackupLocation> = [];
     const stored: {
       record: ManagedExchangeRecord | undefined;
       runInFlight: boolean;
     } = { record: rec, runInFlight: false };
     return {
       downloaded,
+      savedAs,
       order,
       spent,
       stored,
@@ -178,10 +211,10 @@ describe("dispatchManagedMigration", () => {
         (
           _id: string,
           _backedUpAt: string,
-          composeExport: (read: ManagedExchangeRecord) => void,
+          composeExport: (read: ManagedExchangeRecord) => ManagedBackupLocation,
         ) => {
           order.push("readAndMark");
-          composeExport(rec);
+          savedAs.push(composeExport(rec));
           return Promise.resolve(rec);
         },
       ),
@@ -221,13 +254,14 @@ describe("dispatchManagedMigration", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
-      {
-        kind: "downloaded",
-        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
-      },
     );
+    expect(deps.savedAs).toEqual([
+      { kind: "downloaded", fileName: BACKUP_NAME },
+    ]);
+    expect(deps.downloaded[0].fileName).toBe(BACKUP_NAME);
     // The spend is operator-attested: not written until confirm() is called.
     expect(deps.spendIfCurrent).not.toHaveBeenCalled();
+    expect(dispatch.fileName).toBe(BACKUP_NAME);
     expect(dispatch.record).toBe(rec);
   });
 
@@ -612,8 +646,6 @@ describe("dispatchManagedCronExport", () => {
 
 describe("backUpManagedExchangeToFolder", () => {
   const BACKED_UP_AT = "2026-07-14T12:00:00.000Z";
-  const FILE_NAME =
-    "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
 
   /** A permission layer reporting a fixed state, recording whether it was asked
    * to prompt, which a run with nobody present may never do. */
@@ -721,15 +753,15 @@ describe("backUpManagedExchangeToFolder", () => {
 
     expect(backup).toEqual({
       kind: "backed-up",
-      fileName: FILE_NAME,
+      fileName: BACKUP_NAME,
       directoryName: "Riverbend exchange",
       backedUpAt: new Date(BACKED_UP_AT),
     });
-    // The same bytes the manual backup downloads, under a name no download
-    // takes.
+    // The same bytes the manual backup downloads, under the same name a
+    // download at that instant takes.
     const manual = await manualBackup(rec);
-    expect(manual.fileName).toBe(managedBackupFileName(new Date(BACKED_UP_AT)));
-    expect(folder.files.get(FILE_NAME)).toBe(manual.content);
+    expect(manual.fileName).toBe(BACKUP_NAME);
+    expect(folder.files.get(BACKUP_NAME)).toBe(manual.content);
     expect(markIfCurrent).toHaveBeenCalledWith(
       rec.id,
       rec.sharedSecret,
@@ -737,7 +769,7 @@ describe("backUpManagedExchangeToFolder", () => {
       {
         kind: "folder",
         folderName: "Riverbend exchange",
-        fileName: FILE_NAME,
+        fileName: BACKUP_NAME,
       },
     );
     expect(permission.requested).toBe(false);
@@ -756,7 +788,7 @@ describe("backUpManagedExchangeToFolder", () => {
 
       expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
         kind: "backed-up",
-        fileName: FILE_NAME,
+        fileName: BACKUP_NAME,
         directoryName: name,
         backedUpAt: new Date(BACKED_UP_AT),
       });
@@ -764,7 +796,7 @@ describe("backUpManagedExchangeToFolder", () => {
         rec.id,
         rec.sharedSecret,
         BACKED_UP_AT,
-        { kind: "folder", fileName: FILE_NAME },
+        { kind: "folder", fileName: BACKUP_NAME },
       );
     }
   });
@@ -812,14 +844,14 @@ describe("backUpManagedExchangeToFolder", () => {
       kind: "write-failed",
       error: refusal,
     });
-    expect(folder.files.has(FILE_NAME)).toBe(false);
+    expect(folder.files.has(BACKUP_NAME)).toBe(false);
     expect(markIfCurrent).not.toHaveBeenCalled();
   });
 
   test("a file already held under the backup's name is left as it is", async () => {
-    // Another exchange sharing the folder may have written its backup under the
-    // same name in the same second.
-    const folder = fakeFolder({ holding: { [FILE_NAME]: "another backup" } });
+    // A download saved into the folder by hand, or another exchange sharing the
+    // folder, may have taken the same name in the same second.
+    const folder = fakeFolder({ holding: { [BACKUP_NAME]: "another backup" } });
     const rec = { ...record(), workingDirectoryHandle: folder.handle };
     const { deps, markIfCurrent } = folderBackupDeps(
       rec,
@@ -828,15 +860,15 @@ describe("backUpManagedExchangeToFolder", () => {
 
     expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
       kind: "name-held",
-      fileName: FILE_NAME,
+      fileName: BACKUP_NAME,
     });
-    expect(folder.files.get(FILE_NAME)).toBe("another backup");
+    expect(folder.files.get(BACKUP_NAME)).toBe("another backup");
     expect(markIfCurrent).not.toHaveBeenCalled();
   });
 
   describe("replacing the previous automatic backup", () => {
     const EARLIER_NAME =
-      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-07T120000Z.json";
+      "alcove-backup-Riverbend-quarterly-2026-07-07T120000Z.json";
     const EARLIER: ManagedFolderBackupLocation = {
       kind: "folder",
       folderName: "Riverbend exchange",
@@ -875,9 +907,9 @@ describe("backUpManagedExchangeToFolder", () => {
         previous,
       );
 
-      const firstName = FILE_NAME;
+      const firstName = BACKUP_NAME;
       const secondName =
-        "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120001Z.json";
+        "alcove-backup-Riverbend-quarterly-2026-07-14T120001Z.json";
       expect(first).toMatchObject({ kind: "backed-up", fileName: firstName });
       expect(second).toMatchObject({
         kind: "backed-up",
@@ -900,9 +932,12 @@ describe("backUpManagedExchangeToFolder", () => {
     });
 
     test("a backup saved by hand is never removed, whatever its name", async () => {
+      // A download and a folder backup share one name pattern, so only the
+      // marker tells the previous folder backup apart from the rest.
       const handSaved = {
-        "alcove-managed-backup-2026-07-01T090000Z.json": "a downloaded backup",
-        "alcove-scheduled-backup-Riverbend-quarterly-2026-06-30T120000Z.json":
+        "alcove-backup-Riverbend-quarterly-2026-07-01T090000Z.json":
+          "a downloaded backup",
+        "alcove-backup-Riverbend-quarterly-2026-06-30T120000Z.json":
           "an automatic backup the marker no longer names",
         "riverbend-keep.json": "a copy kept by hand",
       };
@@ -919,7 +954,7 @@ describe("backUpManagedExchangeToFolder", () => {
         previous: { kind: "removed", fileName: EARLIER_NAME },
       });
       expect([...folder.files.keys()].sort()).toEqual(
-        [...Object.keys(handSaved), FILE_NAME].sort(),
+        [...Object.keys(handSaved), BACKUP_NAME].sort(),
       );
       for (const [name, content] of Object.entries(handSaved))
         expect(folder.files.get(name)).toBe(content);
@@ -944,7 +979,7 @@ describe("backUpManagedExchangeToFolder", () => {
         expect(automaticBackupOnMarker(marker)).toBeUndefined();
       expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
         kind: "backed-up",
-        fileName: FILE_NAME,
+        fileName: BACKUP_NAME,
         directoryName: "Riverbend exchange",
         backedUpAt: new Date(BACKED_UP_AT),
       });
@@ -955,7 +990,7 @@ describe("backUpManagedExchangeToFolder", () => {
     test("a write that fails leaves the previous backup in place", async () => {
       for (const failure of [
         { failWrite: new Error("the disk is full") },
-        { holding: { [FILE_NAME]: "another exchange's backup" } },
+        { holding: { [BACKUP_NAME]: "another exchange's backup" } },
       ]) {
         const folder = fakeFolder({
           ...failure,
@@ -1021,7 +1056,7 @@ describe("backUpManagedExchangeToFolder", () => {
         await backUpManagedExchangeToFolder(rec.id, deps, EARLIER),
       ).toEqual({
         kind: "backed-up",
-        fileName: FILE_NAME,
+        fileName: BACKUP_NAME,
         directoryName: "Riverbend exchange",
         backedUpAt: new Date(BACKED_UP_AT),
         previous: {
@@ -1031,7 +1066,7 @@ describe("backUpManagedExchangeToFolder", () => {
         },
       });
       expect(markIfCurrent).toHaveBeenCalledTimes(1);
-      expect(folder.files.has(FILE_NAME)).toBe(true);
+      expect(folder.files.has(BACKUP_NAME)).toBe(true);
     });
 
     test("a previous backup already gone from the folder is reported as absent", async () => {
@@ -1045,7 +1080,7 @@ describe("backUpManagedExchangeToFolder", () => {
         kind: "backed-up",
         previous: { kind: "absent", fileName: EARLIER_NAME },
       });
-      expect([...folder.files.keys()]).toEqual([FILE_NAME]);
+      expect([...folder.files.keys()]).toEqual([BACKUP_NAME]);
     });
   });
 
@@ -1060,7 +1095,7 @@ describe("backUpManagedExchangeToFolder", () => {
 
     expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
       kind: "superseded",
-      fileName: FILE_NAME,
+      fileName: BACKUP_NAME,
       directoryName: "Riverbend exchange",
     });
   });
