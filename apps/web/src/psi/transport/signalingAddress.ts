@@ -146,6 +146,24 @@ export function inviterSignalingAddress(): SignalingAddress {
 }
 
 /**
+ * The signaling address a re-invite from a saved exchange names: this
+ * browser's coordination server setting where it is set and readable,
+ * {@link ownSignalingAddress} where it is unset, and `"saved"`, the server the
+ * exchange's record holds, where the stored setting cannot be read, so an
+ * unreadable setting moves no saved exchange. Browser only.
+ */
+export function reinviteSignalingAddress(): SignalingAddress | "saved" {
+  if (typeof window === "undefined")
+    throw new Error("reinviteSignalingAddress must be called in the browser");
+  const own = readCoordinationServerSetting(window.location.protocol);
+  if (own.kind === "unreadable") return "saved";
+  return resolveInviterSignalingAddress(
+    own.kind === "set" ? own.url : undefined,
+    ownSignalingAddress,
+  );
+}
+
+/**
  * The address of the server `endpoint` names, as a `ws://` or `wss://` url
  * by this page's scheme, when it is not this deployment's own: the server
  * this browser's coordination server setting named when the invitation was

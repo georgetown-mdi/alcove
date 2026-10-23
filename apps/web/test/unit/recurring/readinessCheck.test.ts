@@ -1,11 +1,32 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
   SIGNALING_PROBE_TIMEOUT_MS,
+  browserReadinessCheck,
   probeSignalingServer,
+  recordSignalingAddress,
   runReadinessCheck,
   signalingSocketUrl,
 } from "@recurring/readinessCheck";
+import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+
+import type { ReadinessRecord } from "@recurring/readinessCheck";
+
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../../utils/clientConfigMock")).clientConfigMock(
+    importOriginal,
+    {
+      isConsoleBuild: () => false,
+      signalingServerSetting: () => ({
+        secure: true,
+        host: "build-signaling.example.org",
+        path: "/api/",
+      }),
+    },
+  ),
+);
 
 // The readiness check's signaling probe and its composition, with the socket
 // and the platform readings injected. The folder half needs real directory
@@ -135,14 +156,41 @@ describe("probeSignalingServer", () => {
   });
 });
 
+/** A saved exchange on `side` whose record names `server`. */
+function savedRecord(
+  side: "inviter" | "acceptor",
+  server: { host: string; port?: number; path?: string },
+): ReadinessRecord {
+  return {
+    side,
+    label: "Riverbend quarterly",
+    exchangeFile: composeManagedExchangeFile({
+      connection: { channel: "webrtc", ...server },
+      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+    }),
+  };
+}
+
+const SERVER_A = {
+  host: "saved-signaling.example.org",
+  port: 9999,
+  path: "/signal/",
+};
+
 describe("runReadinessCheck", () => {
+  const readings = {
+    isInstalledRuntime: () => true,
+    isOnline: () => true,
+    pageProtocol: () => "https:",
+    probeSignalingServer: () => Promise.resolve(true),
+    checkWorkingFolder: () => Promise.resolve("ready" as const),
+  };
+
   test("combines the readings", async () => {
-    const report = await runReadinessCheck(undefined, {
-      isInstalledRuntime: () => true,
-      isOnline: () => true,
-      probeSignalingServer: () => Promise.resolve(true),
-      checkWorkingFolder: () => Promise.resolve("ready"),
-    });
+    const report = await runReadinessCheck(
+      savedRecord("inviter", SERVER_A),
+      readings,
+    );
     expect(report).toEqual({
       installedRuntime: true,
       folder: "ready",
@@ -152,7 +200,8 @@ describe("runReadinessCheck", () => {
 
   test("an offline browser seeks no answer", async () => {
     const probe = vi.fn(() => Promise.resolve(true));
-    const report = await runReadinessCheck(undefined, {
+    const report = await runReadinessCheck(savedRecord("inviter", SERVER_A), {
+      ...readings,
       isInstalledRuntime: () => false,
       isOnline: () => false,
       probeSignalingServer: probe,
@@ -163,12 +212,114 @@ describe("runReadinessCheck", () => {
   });
 
   test("an unanswered probe reads as no answer", async () => {
-    const report = await runReadinessCheck(undefined, {
-      isInstalledRuntime: () => true,
-      isOnline: () => true,
+    const report = await runReadinessCheck(savedRecord("inviter", SERVER_A), {
+      ...readings,
       probeSignalingServer: () => Promise.resolve(false),
-      checkWorkingFolder: () => Promise.resolve("ready"),
     });
     expect(report.signaling).toBe("noAnswer");
+  });
+
+  test.each([
+    ["inviter", "inviterAddressRefused"],
+    ["acceptor", "acceptorAddressRefused"],
+  ] as const)(
+    "an %s record whose saved address a run refuses reports that and probes nothing, online or not",
+    async (side, refusal) => {
+      const probe = vi.fn(() => Promise.resolve(true));
+      for (const online of [true, false]) {
+        const report = await runReadinessCheck(
+          savedRecord(side, { host: "a@b", path: "/api/" }),
+          { ...readings, isOnline: () => online, probeSignalingServer: probe },
+        );
+        expect(report.signaling).toBe(refusal);
+      }
+      expect(probe).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("the server the readiness check probes", () => {
+  /** The urls the WebSocket stand-in was opened at; each one answers. */
+  let opened: Array<string>;
+
+  beforeEach(() => {
+    opened = [];
+    vi.stubGlobal("window", {
+      location: {
+        origin: "https://app.example.org",
+        protocol: "https:",
+        hostname: "app.example.org",
+        port: "",
+      },
+    });
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        private readonly listeners = new Map<string, () => void>();
+        constructor(url: string) {
+          opened.push(url);
+          queueMicrotask(() => this.listeners.get("open")?.());
+        }
+        addEventListener(type: string, listener: () => void) {
+          this.listeners.set(type, listener);
+        }
+        close() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const platform = {
+    ...browserReadinessCheck,
+    isInstalledRuntime: () => true,
+    isOnline: () => true,
+    checkWorkingFolder: () => Promise.resolve("ready" as const),
+  };
+
+  test.each(["inviter", "acceptor"] as const)(
+    "an %s record naming server A, on a build naming server B: the check probes A only",
+    async (side) => {
+      const report = await runReadinessCheck(
+        savedRecord(side, SERVER_A),
+        platform,
+      );
+      expect(opened).toEqual([
+        "wss://saved-signaling.example.org:9999/signal/peerjs",
+      ]);
+      expect(report.signaling).toBe("answered");
+    },
+  );
+
+  test("a saved address with no port or path is probed at the defaults a run dials", async () => {
+    await runReadinessCheck(
+      savedRecord("acceptor", { host: "saved-signaling.example.org" }),
+      platform,
+    );
+    expect(opened).toEqual([
+      "wss://saved-signaling.example.org:443/api/peerjs",
+    ]);
+    expect(
+      recordSignalingAddress(
+        savedRecord("acceptor", { host: "saved-signaling.example.org" }),
+        "http:",
+      ),
+    ).toStrictEqual({
+      host: "saved-signaling.example.org",
+      port: 80,
+      path: "/api/",
+      secure: false,
+    });
+  });
+
+  test("a refused saved address opens no connection, to it or to the build's server", async () => {
+    const report = await runReadinessCheck(
+      savedRecord("acceptor", { host: "a@b", path: "/api/" }),
+      platform,
+    );
+    expect(opened).toEqual([]);
+    expect(report.signaling).toBe("acceptorAddressRefused");
   });
 });

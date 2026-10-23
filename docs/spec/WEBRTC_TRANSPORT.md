@@ -232,9 +232,13 @@ set one on the relay settings page, and the deployment's address otherwise.
 The browser setting is kept in the browser's storage for the page's origin,
 and is held to the rule the published file's reader applies
 (`publishedSignalingServerURL` in core) with the page's scheme, a port from
-1 to 65535, and no character the URL parser stores percent-escaped, such as a
-space in the path; an address failing it is refused when entered, and a
-stored one failing it on a later read names no server. Its address states the port, the
+1 to 65535, a host of at most 256 characters (`MAX_ENDPOINT_HOST_LENGTH`, the
+invitation endpoint's bound) with no label, the text between two dots, over
+63, and no character the URL parser stores percent-escaped, such as a
+space in the path; an address failing it is refused when entered. A stored
+one failing it on a later read, and a read the browser's storage refuses,
+leave the setting unreadable, and a new invitation then names the
+deployment's address. Its address states the port, the
 scheme's default included. A web app's `http:` or `https:` address is refused,
 since the hosted build's `_headers` gives its published file
 ([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin`
@@ -243,9 +247,10 @@ header for a page on another origin to read it under.
 An inviter registers at the endpoint its invitation names. A saved exchange's
 later runs register at the endpoint the inviter's record stored from that
 invitation, after the validation an acceptor's dial applies (below). A
-re-invite from the record names the endpoint a new invitation names, from the
-browser setting or the deployment's address, and stores it on the record,
-where the inviter's later runs then register
+re-invite from the record names the browser setting's address where it is set
+and readable, the deployment's address where it is unset, and the endpoint
+the record stored where the setting is unreadable, and stores it on the
+record, where the inviter's later runs then register
 ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)).
 A change to the browser setting therefore moves no invitation already
 created, and moves a saved exchange only when its inviter re-invites from it.

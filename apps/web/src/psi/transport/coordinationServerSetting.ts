@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import {
+  MAX_ENDPOINT_HOST_LENGTH,
   MAX_SIGNALING_SERVER_URL_LENGTH,
   maxCodeUnits,
   parseBoundedJson,
@@ -18,6 +19,9 @@ import {
 
 /** The localStorage key the setting is written under. */
 const STORAGE_KEY = "alcove-own-coordination-server";
+
+/** The longest label, the text between two dots, a DNS host name may have. */
+const MAX_HOST_LABEL_LENGTH = 63;
 
 /** The stored value's schema version; a value under any other is refused. */
 const SETTING_VERSION = 1;
@@ -49,6 +53,13 @@ export function coordinationServerFormMessage(pageProtocol: string): string {
   );
 }
 
+/** Why an address whose host an invitation cannot name is refused: longer
+ * than an invitation's host may be, or with a label longer than DNS allows. */
+export const COORDINATION_SERVER_TOO_LONG_MESSAGE =
+  "This address is too long. Enter an address whose host name has at most " +
+  `${String(MAX_ENDPOINT_HOST_LENGTH)} characters, and at most ` +
+  `${String(MAX_HOST_LABEL_LENGTH)} between two dots.`;
+
 /** The refusal of a web app's address, which names a coordination server
  * only through the file the app publishes. */
 export function webAppAddressMessage(pageProtocol: string): string {
@@ -66,7 +77,9 @@ export function webAppAddressMessage(pageProtocol: string): string {
  * (`wss:` under `https`, `ws:` otherwise) and a port that can be dialed.
  * An address the URL parser would store percent-escaped, such as one with a
  * space in its path, is refused too, since that rule refuses the stored form
- * when it is read back. Blank text names none.
+ * when it is read back, and so is a host longer than an invitation's endpoint
+ * schema allows ({@link MAX_ENDPOINT_HOST_LENGTH}) or with a label longer
+ * than {@link MAX_HOST_LABEL_LENGTH}. Blank text names none.
  */
 export function parseCoordinationServerUrl(
   text: string,
@@ -84,26 +97,34 @@ export function parseCoordinationServerUrl(
     url.href.includes("%")
   )
     return { ok: false, message: coordinationServerFormMessage(pageProtocol) };
+  if (
+    url.hostname.length > MAX_ENDPOINT_HOST_LENGTH ||
+    url.hostname
+      .split(".")
+      .some((label) => label.length > MAX_HOST_LABEL_LENGTH)
+  )
+    return { ok: false, message: COORDINATION_SERVER_TOO_LONG_MESSAGE };
   return { ok: true, url: url.href };
 }
 
 /** How reading the stored setting turned out. */
 export type CoordinationServerRead =
-  /** Nothing is stored, or storage is unreachable. */
+  /** Nothing is stored, or this context has no storage. */
   | { kind: "none" }
   | { kind: "set"; url: string }
-  /** A value is stored that this build or page refuses. */
+  /** A value is stored that this build or page refuses, or the browser
+   * refuses access to its storage, so whether one is set is unknown. */
   | { kind: "unreadable" };
 
-/** This context's localStorage, or `undefined` where it has none or refuses
- * access (server rendering, storage disabled). */
+/**
+ * This context's localStorage, or `undefined` where it has none (server
+ * rendering).
+ *
+ * @throws where the browser refuses access to it (storage disabled).
+ */
 function storage(): Storage | undefined {
-  try {
-    const store: Storage | undefined = globalThis.localStorage;
-    return store;
-  } catch {
-    return undefined;
-  }
+  const store: Storage | undefined = globalThis.localStorage;
+  return store;
 }
 
 /** Read the stored coordination server, held again to
@@ -115,7 +136,7 @@ export function readCoordinationServerSetting(
   try {
     raw = storage()?.getItem(STORAGE_KEY);
   } catch {
-    return { kind: "none" };
+    return { kind: "unreadable" };
   }
   if (raw === null || raw === undefined) return { kind: "none" };
   try {

@@ -101,9 +101,17 @@ export type FolderReadiness =
   | "unreadable"
   | "ready";
 
-/** What the readiness check found about the signaling server: `offline` where
- * the browser reports no network at all, so no answer was sought. */
-export type SignalingReadiness = "answered" | "noAnswer" | "offline";
+/** What the readiness check found about the signaling server the exchange's
+ * runs reach: `offline` where the browser reports no network at all, so no
+ * answer was sought, and `inviterAddressRefused` or `acceptorAddressRefused`,
+ * by the record's side, where the address the exchange saved is one a run
+ * refuses, so it was not contacted. */
+export type SignalingReadiness =
+  | "answered"
+  | "noAnswer"
+  | "offline"
+  | "inviterAddressRefused"
+  | "acceptorAddressRefused";
 
 /** Everything the readiness check found. */
 export interface ReadinessReport {
@@ -164,6 +172,16 @@ const SIGNALING_LINES: Record<SignalingReadiness, Omit<ReadinessLine, "id">> = {
     ok: false,
     message:
       "This computer is offline. Connect it to a network before the window opens.",
+  },
+  inviterAddressRefused: {
+    ok: false,
+    message:
+      "The coordination server address this exchange saved cannot be used, so the next run will stop before connecting. Re-invite your partner to name this browser's current coordination server.",
+  },
+  acceptorAddressRefused: {
+    ok: false,
+    message:
+      "The coordination server address this exchange saved cannot be used, so the next run will stop before connecting. Ask your partner for a new invitation and accept it.",
   },
 };
 

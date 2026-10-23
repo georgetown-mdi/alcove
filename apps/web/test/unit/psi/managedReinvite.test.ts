@@ -16,6 +16,7 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  ManagedSignalingEndpointRefusedError,
   assertManagedRendezvousPossible,
   beginManagedRendezvous,
 } from "@psi/managed/managedRendezvous";
@@ -24,7 +25,7 @@ import {
   composeManagedReinvite,
 } from "@psi/managed/managedReinvite";
 import { NoSignalingAddressError } from "@psi/invitation";
-import { invitationLocation } from "@psi/invitationLocation";
+import { reinviteLocation } from "@psi/invitationLocation";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { writeCoordinationServerSetting } from "@psi/transport/coordinationServerSetting";
 
@@ -52,8 +53,9 @@ vi.mock("@utils/clientConfig", async (importOriginal) =>
 
 // Fast re-invite from a stored record, tested in Node: the fresh invitation is
 // composed from the record's OWN document (terms + committed send set), mints a
-// fresh secret, and names the coordination server a new invitation from this
-// browser names, which its rotation stores on the record -- so the partner's
+// fresh secret, and names this browser's coordination server setting, the
+// build's server where none is set, or the record's own where the setting
+// cannot be read, which its rotation stores on the record -- so the partner's
 // accept re-derives its perspective, receiving the same send set, and saves the
 // server this party's re-runs register at, and the operator re-authors nothing.
 // Only the inviter side re-mints.
@@ -412,7 +414,7 @@ describe("composeManagedReinvite", () => {
   });
 });
 
-describe("a re-invite under this browser's coordination server setting", () => {
+describe("the coordination server a re-invite names", () => {
   const SETTING_SERVER = "wss://coordination.agency.example/signal/";
   const SETTING_ENDPOINT = {
     host: "coordination.agency.example",
@@ -445,12 +447,40 @@ describe("a re-invite under this browser's coordination server setting", () => {
     return endpoints[0];
   }
 
+  /** The build's own server, as the `@utils/clientConfig` mock names it. */
+  const BUILD_ENDPOINT = {
+    host: "signaling.example.org",
+    port: 443,
+    path: "/api/",
+  };
+
+  /** This browser's storage, as the stand-in holds it. */
+  let stored: Map<string, string>;
+
+  /** Re-invite from `record` at this page's re-invite location, and return
+   * the server the invitation names and the record the rotation leaves. */
+  async function reinviteFrom(record: RunnableManagedExchangeRecord) {
+    const reinvite = await composeManagedReinvite(
+      record,
+      reinviteLocation(),
+      seams,
+    );
+    const token = await decodeInvitation(reinvite.encoded);
+    return {
+      named: token.connectionEndpoint,
+      reinvited: applyManagedExchangeReinviteRotation(
+        record,
+        reinvite.rotation,
+      ),
+    };
+  }
+
   beforeEach(() => {
-    const values = new Map<string, string>();
+    stored = new Map<string, string>();
     vi.stubGlobal("localStorage", {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => void values.set(key, value),
-      removeItem: (key: string) => void values.delete(key),
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+      removeItem: (key: string) => void stored.delete(key),
     });
     vi.stubGlobal("window", {
       location: {
@@ -460,7 +490,6 @@ describe("a re-invite under this browser's coordination server setting", () => {
         port: "",
       },
     });
-    writeCoordinationServerSetting(SETTING_SERVER);
   });
 
   afterEach(() => {
@@ -468,27 +497,15 @@ describe("a re-invite under this browser's coordination server setting", () => {
   });
 
   test("a record at server A with the setting naming B: the re-invite names B, the record then holds B, and its runs register where the record says", async () => {
+    writeCoordinationServerSetting(SETTING_SERVER);
     const record = inviterRecord();
     expect(await registeredAt(record)).toStrictEqual({
       channel: "webrtc",
       ...SAVED_ENDPOINT,
     });
 
-    const reinvite = await composeManagedReinvite(
-      record,
-      invitationLocation(),
-      seams,
-    );
-    const token = await decodeInvitation(reinvite.encoded);
-    expect(token.connectionEndpoint).toStrictEqual({
-      channel: "webrtc",
-      ...SETTING_ENDPOINT,
-    });
-
-    const reinvited = applyManagedExchangeReinviteRotation(
-      record,
-      reinvite.rotation,
-    );
+    const { named, reinvited } = await reinviteFrom(record);
+    expect(named).toStrictEqual({ channel: "webrtc", ...SETTING_ENDPOINT });
     expect(reinvited.exchangeFile.connection).toMatchObject({
       channel: "webrtc",
       server: SETTING_ENDPOINT,
@@ -500,7 +517,59 @@ describe("a re-invite under this browser's coordination server setting", () => {
     });
   });
 
+  test("with no setting, the re-invite names the build's server and the record then holds it", async () => {
+    const { named, reinvited } = await reinviteFrom(inviterRecord());
+    expect(named).toStrictEqual({ channel: "webrtc", ...BUILD_ENDPOINT });
+    expect(await registeredAt(reinvited)).toStrictEqual({
+      channel: "webrtc",
+      ...BUILD_ENDPOINT,
+    });
+  });
+
+  test("with a stored setting this page cannot read, the re-invite names the server the record holds, and the record keeps it", async () => {
+    stored.set(
+      "alcove-own-coordination-server",
+      JSON.stringify({ version: 1, url: "ws://coordination.agency.example/" }),
+    );
+    const { named, reinvited } = await reinviteFrom(inviterRecord());
+    expect(named).toStrictEqual({ channel: "webrtc", ...SAVED_ENDPOINT });
+    expect(reinvited.exchangeFile.connection).toMatchObject({
+      channel: "webrtc",
+      server: SAVED_ENDPOINT,
+    });
+    expect(await registeredAt(reinvited)).toStrictEqual({
+      channel: "webrtc",
+      ...SAVED_ENDPOINT,
+    });
+  });
+
+  test("with storage that refuses the read, the re-invite names the server the record holds", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("The operation is insecure.");
+      },
+    });
+    const { named } = await reinviteFrom(inviterRecord());
+    expect(named).toStrictEqual({ channel: "webrtc", ...SAVED_ENDPOINT });
+  });
+
+  test("with an unreadable setting and a saved server a run refuses, the re-invite refuses and mints nothing", async () => {
+    stored.set("alcove-own-coordination-server", "{");
+    const encode = vi.fn(encodeInvitation);
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "a@b", path: "/api/" },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+      }),
+    });
+    await expect(
+      composeManagedReinvite(record, reinviteLocation(), { ...seams, encode }),
+    ).rejects.toThrow(ManagedSignalingEndpointRefusedError);
+    expect(encode).not.toHaveBeenCalled();
+  });
+
   test("a run with no re-invite registers at the record's server whatever the setting names", async () => {
+    writeCoordinationServerSetting(SETTING_SERVER);
     expect(await registeredAt(inviterRecord())).toStrictEqual({
       channel: "webrtc",
       ...SAVED_ENDPOINT,

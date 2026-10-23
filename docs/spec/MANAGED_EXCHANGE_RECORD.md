@@ -464,16 +464,20 @@ the same record refuses identically at every later run, so a scheduled window
 does not retry it. The other connection field a re-run reads is an acceptor's
 `invitation_relay`.
 
-An inviter's re-invite does not read the saved address. It names the
-coordination server a new invitation from that browser names: the browser's
-own setting where it is set and readable, the deployment's address otherwise
-(see
+An inviter's re-invite names the browser's own coordination server setting
+where it is set and readable, and the deployment's address where it is unset,
+as a new invitation does (see
 [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)).
+Where the stored setting is unreadable, it names the address the record
+saved, after the validation a re-run applies, so an unreadable setting moves
+no saved exchange; a saved address failing that validation refuses the
+re-invite before anything is minted.
 The write that stores the fresh secret replaces the document's `server` with
 that endpoint's `host`, `port` and `path`, so the inviter's later runs
 register where the partner's accept of the re-invite dials. A re-invite is
-therefore how an inviter moves a saved exchange to another server, and it
-recovers an inviter's record whose saved address is refused.
+therefore how an inviter moves a saved exchange to another server, and, where
+the setting is readable or unset, it recovers an inviter's record whose saved
+address is refused.
 
 #### Versioning: an app upgrade can invalidate a stored record
 

@@ -179,7 +179,9 @@ A scheduled exchange's page has a **Keep it running** section:
   The section marks the items the page can see (installed, folder chosen).
 - **Check readiness for the next window** reports whether this page is the
   installed app, whether the folder can be read without a prompt and holds
-  `input.csv`, and whether this browser can connect to the coordination server.
+  `input.csv`, and whether this browser can connect to the coordination server
+  the exchange saved, the one its runs use. Where a run would refuse that
+  address, it says so and contacts no server.
   It starts no run, does not contact the partner or test the relay, and changes
   nothing the next window depends on.
 
@@ -1510,9 +1512,10 @@ parties discard the desynced secret and re-establish one from a fresh invitation
 It is fast because the saved exchange keeps everything a re-invite needs except
 the secret: its terms. A re-invite reuses them and creates and sends a new setup
 secret, without setting the exchange up again. Its invitation names the
-coordination server a new invitation from that browser names, the one set in
-relay settings or else the site's, so a re-invite also moves a saved exchange
-whose server changed.
+coordination server set in that browser's relay settings, or the site's where
+none is set, so a re-invite also moves a saved exchange whose server changed.
+Where the browser cannot read the server saved in relay settings, the
+re-invite names the server the exchange already uses.
 
 The two sides recover differently, and only one has cleanup to do. The inviter
 creates the new invitation from its saved exchange, which replaces that
@@ -1586,9 +1589,10 @@ A re-invite reopens **the secret, not the agreement**. On the inviter's side
 nothing is re-authored: the fresh invitation is composed from the stored
 document alone, reusing its linkage terms, with the columns it sends stated
 from its stored metadata as a first invitation states them, and the setup
-secret is the only new part, alongside the coordination server a new
-invitation from that browser names (the one set in relay settings, or else the
-site's), which the saved exchange's later runs then use, and the invitation's
+secret is the only new part, alongside the coordination server it names (the
+one set in that browser's relay settings, the site's where none is set, or
+the exchange's own where the setting cannot be read), which the saved
+exchange's later runs then use, and the invitation's
 own fresh setup lifetime (see [Recovery: fast
 re-invite](#recovery-fast-re-invite)). The accepting side is not a no-op,
 though. Only the inviter can create one from a saved exchange, so the partner's

@@ -8,9 +8,10 @@ import {
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
 } from "@psi/managed/managedWorkingDirectory";
+import { OWN_SIGNALING_PATH } from "@psi/transport/signalingAddress";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { isOnline } from "@utils/networkStatus";
-import { ownSignalingAddress } from "@psi/transport/signalingAddress";
+import { managedSignalingEndpoint } from "@psi/managed/managedRendezvous";
 
 import type {
   FolderReadiness,
@@ -18,14 +19,50 @@ import type {
   SignalingReadiness,
 } from "./keepRunningModel";
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
+import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { SignalingAddress } from "@psi/transport/signalingAddress";
+import type { WebRTCEndpoint } from "@alcove/core";
 
 /**
  * The readiness check a scheduled exchange's page offers: the checks the
  * unattended runner's next window depends on, made now without starting a
  * run: it takes no secret and writes no record, and its signaling probe names
- * no peer id.
+ * no peer id and reaches the server the exchange's runs reach.
  */
+
+/** The fields of a saved exchange the readiness check reads. */
+export type ReadinessRecord = Pick<
+  ManagedExchangeRecord,
+  "side" | "exchangeFile" | "label" | "workingDirectoryHandle"
+>;
+
+/**
+ * The signaling address `record`'s runs reach from a page served with
+ * `pageProtocol`: the server {@link managedSignalingEndpoint} reads off the
+ * record, with a missing port and path and the scheme taken as both
+ * rendezvous flows take them. Undefined where the run would refuse the
+ * record before any connection.
+ */
+export function recordSignalingAddress(
+  record: ReadinessRecord,
+  pageProtocol: string,
+): SignalingAddress | undefined {
+  const { side, exchangeFile, label } = record;
+  if (side === undefined) return undefined;
+  let endpoint: WebRTCEndpoint;
+  try {
+    endpoint = managedSignalingEndpoint({ side, exchangeFile, label });
+  } catch {
+    return undefined;
+  }
+  const secure = pageProtocol === "https:";
+  return {
+    host: endpoint.host,
+    port: endpoint.port ?? (secure ? 443 : 80),
+    path: endpoint.path ?? OWN_SIGNALING_PATH,
+    secure,
+  };
+}
 
 /** How long the signaling server has to accept the probe's connection. */
 export const SIGNALING_PROBE_TIMEOUT_MS = 10_000;
@@ -121,7 +158,9 @@ export async function checkWorkingFolder(
 export interface ReadinessCheckDependencies {
   isInstalledRuntime: () => boolean;
   isOnline: () => boolean;
-  probeSignalingServer: () => Promise<boolean>;
+  /** This page's protocol, which decides the scheme and default port. */
+  pageProtocol: () => string;
+  probeSignalingServer: (address: SignalingAddress) => Promise<boolean>;
   checkWorkingFolder: (
     handle: FileSystemDirectoryHandle | undefined,
   ) => Promise<FolderReadiness>;
@@ -131,31 +170,39 @@ export interface ReadinessCheckDependencies {
 export const browserReadinessCheck: ReadinessCheckDependencies = {
   isInstalledRuntime,
   isOnline,
-  probeSignalingServer: () => {
-    let address: SignalingAddress;
-    try {
-      address = ownSignalingAddress();
-    } catch {
-      return Promise.resolve(false);
-    }
-    return probeSignalingServer(address);
-  },
+  pageProtocol: () => window.location.protocol,
+  probeSignalingServer: (address) => probeSignalingServer(address),
   checkWorkingFolder: (handle) => checkWorkingFolder(handle),
 };
 
-/** Run every readiness check for an exchange whose folder is `handle`. */
+/** The signaling result for `record`: the record's refusal where its runs
+ * would refuse it, whether or not this browser is online, else the answer of
+ * the server its runs reach ({@link recordSignalingAddress}). */
+function checkRecordSignaling(
+  record: ReadinessRecord,
+  dependencies: ReadinessCheckDependencies,
+): Promise<SignalingReadiness> {
+  const address = recordSignalingAddress(record, dependencies.pageProtocol());
+  if (address === undefined)
+    return Promise.resolve(
+      record.side === "inviter"
+        ? "inviterAddressRefused"
+        : "acceptorAddressRefused",
+    );
+  if (!dependencies.isOnline()) return Promise.resolve("offline");
+  return dependencies
+    .probeSignalingServer(address)
+    .then((answered) => (answered ? "answered" : "noAnswer"));
+}
+
+/** Run every readiness check for the saved exchange `record`. */
 export async function runReadinessCheck(
-  handle: FileSystemDirectoryHandle | undefined,
+  record: ReadinessRecord,
   dependencies: ReadinessCheckDependencies = browserReadinessCheck,
 ): Promise<ReadinessReport> {
-  const signaling: Promise<SignalingReadiness> = dependencies.isOnline()
-    ? dependencies
-        .probeSignalingServer()
-        .then((answered) => (answered ? "answered" : "noAnswer"))
-    : Promise.resolve("offline");
   const [folder, signalingResult] = await Promise.all([
-    dependencies.checkWorkingFolder(handle),
-    signaling,
+    dependencies.checkWorkingFolder(record.workingDirectoryHandle),
+    checkRecordSignaling(record, dependencies),
   ]);
   return {
     installedRuntime: dependencies.isInstalledRuntime(),

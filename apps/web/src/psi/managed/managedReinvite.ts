@@ -4,7 +4,7 @@
  * re-invite"). "Fast" means the record retains everything a re-invite needs that is
  * NOT the secret -- this party's exchange-file document, with its terms -- so a
  * re-invite reuses the standing definition and re-mints and re-exchanges the setup
- * secret, naming the coordination server a new invitation would, rather than
+ * secret, naming the coordination server {@link ReinviteLocation} gives, rather than
  * re-authoring the exchange. The operator re-authors nothing.
  *
  * Re-invite is an INVITER-role act. The invitation holds the linkage terms in the
@@ -24,13 +24,14 @@
  * - `linkageTerms` -- the document's terms (the inviter's own perspective), so the
  *   partner adopts the same set it did originally, with `payload.send` stated from
  *   the document's metadata where it holds one.
- * - `connectionEndpoint` -- the coordination server a new invitation from this
- *   browser names (this browser's setting where set and readable, else the
- *   deployment's), not the document's stored `server` locator, so a re-invite
- *   repoints an exchange whose saved server moved or was retired. The rotation
- *   stores it as the document's `server`, where this party's later runs register
- *   (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field"), so
- *   both runs reach the server the partner's accept saves.
+ * - `connectionEndpoint` -- this browser's coordination server setting where it is
+ *   set and readable and the deployment's server where it is unset, so a re-invite
+ *   repoints an exchange whose saved server moved or was retired; where the setting
+ *   cannot be read, the document's stored `server` locator, so an unreadable
+ *   setting moves no saved exchange. The rotation stores it as the document's
+ *   `server`, where this party's later runs register (see
+ *   docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field"), so both
+ *   runs reach the server the partner's accept saves.
  *   It names the inviter's own relay and the build's default relay, both passed
  *   in by the host, as a new invitation does.
  * - `sharedSecret` -- a fresh setup secret, superseding the desynced one.
@@ -58,13 +59,14 @@ import {
 } from "@alcove/core";
 
 import {
+  NoSignalingAddressError,
   deepLinkFor,
-  invitationSignalingAddress,
   webrtcEndpointFromAddress,
   webrtcEndpointWithRelay,
 } from "../invitation";
 import { invitationRelayWithDefault } from "../transport/defaultRelay";
 import { managedAllowedRelays } from "./managedExchangeRecord";
+import { managedSignalingEndpoint } from "./managedRendezvous";
 import { rotationWriteBack } from "./managedRunRotate";
 
 import type { InvitationToken, WebRTCEndpoint } from "@alcove/core";
@@ -74,8 +76,22 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
-import type { InvitationLocation } from "../invitation";
 import type { RelayUrls } from "../transport/ownRelaySetting";
+import type { SignalingAddress } from "../transport/signalingAddress";
+
+/**
+ * The deep-link origin and the coordination server a re-invite names, passed in
+ * so {@link composeManagedReinvite} reads no `window` (`reinviteLocation` in
+ * `../invitationLocation.ts`).
+ */
+export interface ReinviteLocation {
+  /** Deep-link origin, e.g. `https://example.org:3000` (no trailing slash). */
+  origin: string;
+  /** The server the re-invite names: an address; `"saved"`, the server the
+   * record holds, where this browser's setting cannot be read; or undefined
+   * on a build with no browser signaling (the console). */
+  signaling: SignalingAddress | "saved" | undefined;
+}
 
 /**
  * Whether a record can re-invite from its own stored document. Only the inviter side
@@ -139,8 +155,8 @@ function buildReinviteRotation(
 
 /**
  * Build the fresh invitation token a re-invite mints from the stored inviter
- * document: the document's linkage terms, `signalingEndpoint` (the server a
- * new invitation from this browser names), the fresh setup secret, and the
+ * document: the document's linkage terms, `signalingEndpoint`
+ * ({@link reinviteSignalingEndpoint}), the fresh setup secret, and the
  * bounded setup expiry.
  * Where the document holds metadata, `payload.send` is stated from it, as a
  * first mint states it; without metadata the terms
@@ -181,6 +197,24 @@ function withOwnWebSocketExchangeId(
   return { ...ownRelay, websocketExchangeId };
 }
 
+/**
+ * The coordination server a re-invite of `record` names: `location`'s address,
+ * or, where `location` keeps the saved server, the one the record holds, put
+ * through the validation its runs apply ({@link managedSignalingEndpoint}).
+ *
+ * @throws {NoSignalingAddressError} if `location` names no coordination server.
+ * @throws {ManagedSignalingEndpointRefusedError} if the saved server is kept
+ *   and fails that validation.
+ */
+function reinviteSignalingEndpoint(
+  record: RunnableManagedExchangeRecord,
+  location: ReinviteLocation,
+): WebRTCEndpoint {
+  if (location.signaling === undefined) throw new NoSignalingAddressError();
+  if (location.signaling === "saved") return managedSignalingEndpoint(record);
+  return webrtcEndpointFromAddress(location.signaling);
+}
+
 /** What a re-invite injects: fresh-secret generation and token encoding are
  * core's, and the setup lifetime is bounded here exactly as {@link generateInvitation}
  * bounds it, so none of these can mint an unbounded or effectively-permanent token. */
@@ -211,20 +245,22 @@ interface ManagedReinviteSeams {
  * invitation names no TURN url the record's allowed relays leave out
  * (`turnUrlIsAllowed` in core), and names the record's registrar's exchange id
  * beside this browser's own WebSocket relay url. `location` gives the deep
- * link's origin and the coordination server the invitation names, which the
- * rotation stores on the record; the record's saved server is not read.
+ * link's origin and the coordination server the invitation names
+ * ({@link reinviteSignalingEndpoint}), which the rotation stores on the record.
  *
  * @throws {Error} if the record is not the inviter side (only the inviter re-mints; an
  *   acceptor's recovery is to accept the partner's fresh invitation), or if the setup
  *   lifetime is not a finite positive number of seconds within the one-year ceiling.
  * @throws {NoSignalingAddressError} if `location` names no coordination server.
+ * @throws {ManagedSignalingEndpointRefusedError} if `location` keeps the record's
+ *   saved server and that server fails the validation its runs apply.
  * @throws {RangeError} if the max-age policy stamps an expiry outside the range.
  * @throws {ZodError} if the assembled token fails the strict endpoint/schema
  *   validation at encode.
  */
 export async function composeManagedReinvite(
   record: RunnableManagedExchangeRecord,
-  location: InvitationLocation,
+  location: ReinviteLocation,
   seams: ManagedReinviteSeams,
 ): Promise<ManagedReinvite> {
   if (!canReinviteFromRecord(record))
@@ -232,9 +268,7 @@ export async function composeManagedReinvite(
       "only the inviter side can re-invite from its stored document; the acceptor " +
         "accepts a fresh invitation from the partner",
     );
-  const signalingEndpoint = webrtcEndpointFromAddress(
-    invitationSignalingAddress(location),
-  );
+  const signalingEndpoint = reinviteSignalingEndpoint(record, location);
   const lifetimeSeconds = seams.lifetimeSeconds ?? INVITATION_LIFETIME_SECONDS;
   try {
     assertInvitationLifetimeSeconds(lifetimeSeconds);

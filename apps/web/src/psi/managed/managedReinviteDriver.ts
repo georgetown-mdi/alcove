@@ -19,25 +19,25 @@
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
 import { defaultRelayInUse } from "../transport/defaultRelay";
-import { invitationLocation } from "../invitationLocation";
 import { ownRelayForInvitation } from "../transport/ownRelaySetting";
+import { reinviteLocation } from "../invitationLocation";
 
 import { composeManagedReinvite } from "./managedReinvite";
 import { managedAllowedRelays } from "./managedExchangeRecord";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
 import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
+import type { ManagedReinvite, ReinviteLocation } from "./managedReinvite";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
-import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
 
 /** The dependencies the re-invite driver injects, defaulted to the real platform
  * wiring but overridable in a test. */
 interface ManagedReinviteDriverDeps {
-  /** Read this page's origin and the coordination server a new invitation
-   * names, for the fresh webrtc endpoint. */
-  location: () => ReturnType<typeof invitationLocation>;
+  /** Read this page's origin and the coordination server a re-invite names,
+   * for the fresh webrtc endpoint. */
+  location: () => ReinviteLocation;
   /** Mint a fresh setup secret. */
   generateSecret: () => string;
   /** Encode the composed token to the shareable string. */
@@ -58,7 +58,7 @@ interface ManagedReinviteDriverDeps {
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
-  location: invitationLocation,
+  location: reinviteLocation,
   generateSecret: generateSharedSecret,
   encode: encodeInvitation,
   persistRotation: persistManagedExchangeReinvite,

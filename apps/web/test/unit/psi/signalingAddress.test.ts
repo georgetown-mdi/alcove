@@ -2,23 +2,28 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { decodeInvitation, generateSharedSecret } from "@alcove/core";
+import {
+  MAX_ENDPOINT_HOST_LENGTH,
+  decodeInvitation,
+  generateSharedSecret,
+} from "@alcove/core";
 
 import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
 
 import {
-  NoSignalingAddressError,
-  generateInvitation,
-  invitationSignalingAddress,
-  webrtcEndpointFromAddress,
-} from "../../../src/psi/invitation.js";
-import {
+  COORDINATION_SERVER_TOO_LONG_MESSAGE,
   coordinationServerFormMessage,
   parseCoordinationServerUrl,
   readCoordinationServerSetting,
   webAppAddressMessage,
   writeCoordinationServerSetting,
 } from "../../../src/psi/transport/coordinationServerSetting.js";
+import {
+  NoSignalingAddressError,
+  generateInvitation,
+  invitationSignalingAddress,
+  webrtcEndpointFromAddress,
+} from "../../../src/psi/invitation.js";
 import {
   inviterSignalingAddress,
   resolveInviterSignalingAddress,
@@ -279,6 +284,11 @@ function stubStorage(): Map<string, string> {
 
 const OWN_SERVER = "wss://coordination.agency.example/signal/";
 
+/** A host name of labels of `a`s, one of each length in `lengths`. */
+function hostOfLabels(lengths: Array<number>): string {
+  return lengths.map((length) => "a".repeat(length)).join(".");
+}
+
 describe("this browser's coordination server setting", () => {
   beforeEach(() => {
     vi.stubGlobal("window", {
@@ -353,6 +363,53 @@ describe("this browser's coordination server setting", () => {
       kind: "unreadable",
     });
     expect(inviterSignalingAddress().host).toBe("signaling.example.org");
+  });
+
+  test("storage that refuses the read is unreadable, not unset", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("The operation is insecure.");
+      },
+    });
+    expect(readCoordinationServerSetting("https:")).toEqual({
+      kind: "unreadable",
+    });
+    expect(inviterSignalingAddress().host).toBe("signaling.example.org");
+
+    vi.stubGlobal("localStorage", undefined);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new Error("The operation is insecure.");
+      },
+    });
+    expect(readCoordinationServerSetting("https:")).toEqual({
+      kind: "unreadable",
+    });
+  });
+
+  test("no storage at all is unset", () => {
+    vi.stubGlobal("localStorage", undefined);
+    expect(readCoordinationServerSetting("https:")).toEqual({ kind: "none" });
+  });
+
+  test("an accepted 255-character host mints an invitation naming it", async () => {
+    stubStorage();
+    const host = hostOfLabels([63, 63, 63, 63]);
+    expect(host).toHaveLength(255);
+    const entry = parseCoordinationServerUrl(`wss://${host}/api/`, "https:");
+    expect(entry.ok).toBe(true);
+    writeCoordinationServerSetting(entry.ok ? entry.url : undefined);
+    const minted = await generateInvitation({
+      allowedRelays: undefined,
+      inviterName: "County Health Dept",
+      profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+      location: invitationLocation(),
+      defaultRelay: () => undefined,
+    });
+    expect(
+      (await decodeInvitation(minted.encoded)).connectionEndpoint,
+    ).toMatchObject({ channel: "webrtc", host });
   });
 
   test("clearing the setting names the build's server again", () => {
@@ -475,6 +532,34 @@ describe("parseCoordinationServerUrl", () => {
       expect(webAppAddressMessage("http:")).toContain("its ws:// address");
     },
   );
+
+  test.each([
+    ["a 300-character host", hostOfLabels([63, 63, 63, 63, 44])],
+    ["a 64-character label", `${"a".repeat(64)}.example.org`],
+  ])("refuses %s as too long", (_case, host) => {
+    expect(parseCoordinationServerUrl(`wss://${host}/api/`, "https:")).toEqual({
+      ok: false,
+      message: COORDINATION_SERVER_TOO_LONG_MESSAGE,
+    });
+  });
+
+  test("takes a 255-character host of labels of at most 63", () => {
+    const host = hostOfLabels([63, 63, 63, 63]);
+    expect(host).toHaveLength(255);
+    expect(parseCoordinationServerUrl(`wss://${host}/api/`, "https:")).toEqual({
+      ok: true,
+      url: `wss://${host}/api/`,
+    });
+  });
+
+  test("the too-long message says the address is too long and gives the bounds", () => {
+    expect(hostOfLabels([63, 63, 63, 63, 44])).toHaveLength(300);
+    expect(COORDINATION_SERVER_TOO_LONG_MESSAGE).toBe(
+      `This address is too long. Enter an address whose host name has at ` +
+        `most ${String(MAX_ENDPOINT_HOST_LENGTH)} characters, and at most 63 ` +
+        "between two dots.",
+    );
+  });
 
   test("the message names the wss form under https and the ws form under http", () => {
     expect(coordinationServerFormMessage("https:")).toBe(
