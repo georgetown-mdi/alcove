@@ -45,8 +45,13 @@ Run only when the owner invokes this command; never start the docket unasked.
    closing list it returns `presented`, the lines either lens flags, ranked by
    score with each lens's verdict and reason, and `standing`, the lines both
    lenses scored uncontroversial; `problems` names any line a lens left
-   unscored, which is presented. A standing line is not presented: record it as
-   standing, the same way as a ruling. A presented line is checked against
+   unscored, which is presented; a problem saying a session's gatherer returned
+   nothing means none of that session's calls were judged or shown, so re-run
+   that session or read its sources by hand before the docket goes on. A
+   standing line is not presented: record it as standing, the same way as a
+   ruling. Record the result's `excludedAsRuled` and `skippedPrs` lines, which
+   no lens judged, beside the standing lines, each excluded line with the
+   ruling it cites. A presented line is checked against
    standing rulings as step 2 says before it becomes a docket item, and one a
    ruling already decides goes to `/follow-ups` as a defect against that
    ruling. The gathered lines left become docket items, broken out by session;

@@ -1,4 +1,4 @@
-// Workflow script for /docket's closing step, invoked as
+// Workflow script for /docket's judgment-call scoring, invoked as
 // Workflow({scriptPath: '<repo>/.claude/scripts/judgment-call-controversy-workflow.mjs', args: {...}}).
 //
 // It is a Workflow script BODY, not a module: the harness injects `args`,
@@ -268,7 +268,7 @@ const requiredKeysClause = (schema) =>
 
 const gatherPrompt = (
   session,
-) => `Read-only task in the alcove repository (cwd: the repo root, at staging). Do not edit any file or board item.
+) => `Read-only task in the alcove repository (cwd: the primary checkout; read a tracked file as staging has it with \`git show origin/staging:<path>\`). Do not edit any file or board item.
 
 Goal: list every JUDGMENT CALL the session "${session.name}" took since the last docket (${since}): ${session.prs.length ? `on these pull requests, ${session.prs.join(", ")}, and in the session's own work outside them` : "in the session's own work, as the files below record it"}. A call recorded before ${since} belongs to an earlier docket; leave it out.
 
@@ -286,11 +286,11 @@ const judgePrompt = (
   lens,
   calls,
   batch,
-) => `Read-only task in the alcove repository (cwd: the repo root, at staging). Do not edit any file or board item.
+) => `Read-only task in the alcove repository (cwd: the primary checkout; read a tracked file as staging has it with \`git show origin/staging:<path>\`). Do not edit any file or board item.
 
 You are one of several independent reviewers. Judge whether each judgment call below is CONTROVERSIAL: would a careful maintainer who holds the owner's standing principles likely have chosen differently, or want to have been asked? Your lens: ${lens}
 
-Ground every verdict: read \`.claude/product-principles.md\` and the CLAUDE.md "Applications" section first; for each call read the code or doc it concerns at the current checkout, or for a pull request not merged yet its diff (\`gh pr diff <N>\`), and run \`node .claude/scripts/find-rulings.mjs <2-3 subject words>\` when a ruling may bear on it. A call that a standing ruling or a documented default already settles is uncontroversial. Prefer "uncontroversial" unless you can name the concrete user or product consequence and the better choice; use "controversial" only when you would argue for the other choice; "worth-a-look" when reasonable people could split.
+Ground every verdict: read \`.claude/product-principles.md\` and the CLAUDE.md "Applications" section first; for each call read the code or doc it concerns at the current checkout, or for a pull request not merged yet its diff (\`gh pr diff <N>\`), and run \`node .claude/scripts/find-rulings.mjs <2-3 subject words>\` when a ruling may bear on it. A call that conforms to a standing ruling or a documented default is uncontroversial; a call that departs from one is at least worth-a-look, and you name the ruling in your reason. Prefer "uncontroversial" unless you can name the concrete user or product consequence and the better choice; use "controversial" only when you would argue for the other choice; "worth-a-look" when reasonable people could split.
 
 Calls (${batch}):
 ${JSON.stringify(calls, null, 1)}

@@ -55,7 +55,7 @@ push:
   script that does; work that needs a file or a command runs in a script beside
   it (`verify-fix-shape.mjs` states why).
 - `judgment-call-controversy-workflow.mjs`, the controversy scoring `/docket`
-  runs at its closing step: one Sonnet gatherer per session lists the judgment
+  runs while building its list: one Sonnet gatherer per session lists the judgment
   calls taken since the last docket, two independent Opus lenses judge each one
   and each line of the session's own closing list, and the result splits every
   session's lines and the closing list into those either lens flags, which are
