@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filterItems, parseArgs } from "./list-issues.mjs";
+import {
+  applyParkedView,
+  filterItems,
+  parkedTrigger,
+  parseArgs,
+} from "./list-issues.mjs";
 
 // A mapped item as list-issues.mjs's main() builds it before filtering:
 // { id, nodeId, status, epic, order, title }. filterItems only reads status, so
@@ -24,8 +29,29 @@ describe("parseArgs", () => {
       asJson: false,
       all: false,
       statuses: [],
+      parked: null,
       projectNumber: 9,
     });
+  });
+
+  it("reads --skip-parked and --parked on either side of the project number", () => {
+    expect(parseArgs(["--skip-parked", "9"])).toMatchObject({
+      ok: true,
+      parked: "skip",
+    });
+    expect(parseArgs(["9", "--parked", "--all"])).toMatchObject({
+      ok: true,
+      all: true,
+      parked: "only",
+    });
+  });
+
+  it("rejects --skip-parked combined with --parked", () => {
+    const parsed = parseArgs(["--parked", "9", "--skip-parked"]);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.message).toMatch(
+      /--skip-parked cannot be combined with --parked/,
+    );
   });
 
   it("accepts every flag on either side of the project number", () => {
@@ -145,5 +171,75 @@ describe("filterItems", () => {
       all: false,
     });
     expect(result.map((i) => i.id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("parkedTrigger", () => {
+  it("reads the trigger from a Parked until line at the top of the body", () => {
+    const body =
+      "Parked until: board 9 item 123 is Done (2026-10-24)\n\n## Summary\n\nText.";
+    expect(parkedTrigger(body)).toBe("board 9 item 123 is Done (2026-10-24)");
+  });
+
+  it("reads a top Parked until line with a CRLF ending", () => {
+    const body = "\r\nParked until: a release exists  \r\n\r\n## Summary\r\n";
+    expect(parkedTrigger(body)).toBe("a release exists");
+  });
+
+  it("ignores a Parked until line below the top or in a fenced block", () => {
+    expect(
+      parkedTrigger("## Summary\n\nText.\nParked until: a release exists\n"),
+    ).toBe(null);
+    expect(parkedTrigger("```\nParked until: a release exists\n```\n")).toBe(
+      null,
+    );
+  });
+
+  it("returns null for a body with no Parked until line", () => {
+    expect(parkedTrigger("## Summary\n\nParked until the owner rules.")).toBe(
+      null,
+    );
+    expect(parkedTrigger("  Parked until: indented, so not the line")).toBe(
+      null,
+    );
+  });
+
+  it("returns null for a Parked until line that names no trigger", () => {
+    expect(parkedTrigger("Parked until:   \n## Summary")).toBe(null);
+  });
+
+  it("returns null for a missing body", () => {
+    expect(parkedTrigger(null)).toBe(null);
+    expect(parkedTrigger(undefined)).toBe(null);
+  });
+});
+
+describe("applyParkedView", () => {
+  const items = [item(1, "Todo"), item(2, "Backlog"), item(3, "Waiting")];
+  const triggers = new Map([
+    [1, null],
+    [2, "a release exists (2026-10-24)"],
+    [3, "board 9 item 4 is Done (2026-10-24)"],
+  ]);
+
+  it("drops every parked item under skip", () => {
+    expect(applyParkedView(items, triggers, "skip")).toEqual([item(1, "Todo")]);
+  });
+
+  it("keeps only parked items under only, each with its trigger", () => {
+    expect(applyParkedView(items, triggers, "only")).toEqual([
+      { ...item(2, "Backlog"), parkedUntil: "a release exists (2026-10-24)" },
+      {
+        ...item(3, "Waiting"),
+        parkedUntil: "board 9 item 4 is Done (2026-10-24)",
+      },
+    ]);
+  });
+
+  it("treats an item missing from the trigger map as not parked", () => {
+    expect(applyParkedView([item(5, "Todo")], new Map(), "skip")).toEqual([
+      item(5, "Todo"),
+    ]);
+    expect(applyParkedView([item(5, "Todo")], new Map(), "only")).toEqual([]);
   });
 });

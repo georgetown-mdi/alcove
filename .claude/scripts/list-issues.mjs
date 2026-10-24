@@ -18,7 +18,8 @@
 // lib/projectItems.mjs.
 //
 // Usage:
-//   node list-issues.mjs [--json] [--all | --status NAME...] <project-number>
+//   node list-issues.mjs [--json] [--all | --status NAME...]
+//                        [--skip-parked | --parked] <project-number>
 //
 // Flags and the project number may appear in any order.
 //
@@ -35,18 +36,27 @@
 // `--status Done` reads the history the default omits. --all and --status are
 // rejected together: --all means "no filter", so pass the statuses alone.
 // --open (the historical name for the default) is still accepted.
+//
+// A parked item's body has a `Parked until: <trigger>` line
+// (.claude/pm/ruleset.md, Task template). --skip-parked leaves those items out
+// and counts them on stderr; --parked keeps only them, each with its trigger
+// (`parkedUntil` under --json). Either one reads the bodies of the items the
+// status view kept, one request per hundred items.
 
 import { fileURLToPath } from "node:url";
-import { fetchAllItems } from "./lib/projectItems.mjs";
+import { fetchAllItems, fetchItems, PAGE_SIZE } from "./lib/projectItems.mjs";
 
 const USAGE =
-  "Usage: node list-issues.mjs [--json] [--all | --status NAME...] <project-number>\n" +
+  "Usage: node list-issues.mjs [--json] [--all | --status NAME...] [--skip-parked | --parked] <project-number>\n" +
   "       (lists non-Done items by default; flags may appear in any order)\n";
 
+const PARKED_LINE = /^Parked until:[ \t]*(\S.*?)\s*$/m;
+
 /**
- * Parse the option flags (--json, --all, --status NAME repeatable, --open) and
- * the project-number positional, in any order. Returns { ok: true, asJson, all,
- * statuses, projectNumber } on success or { ok: false, message } (a
+ * Parse the option flags (--json, --all, --status NAME repeatable, --open,
+ * --skip-parked, --parked) and the project-number positional, in any order.
+ * Returns { ok: true, asJson, all, statuses, parked, projectNumber } on success,
+ * parked being "skip", "only" or null, or { ok: false, message } (a
  * newline-terminated string ready to write straight to stderr) on any malformed
  * input, including contradictory filter flags. Pure, so a test can drive it
  * without touching argv or the network.
@@ -55,6 +65,8 @@ export function parseArgs(argv) {
   let asJson = false;
   let open = false;
   let all = false;
+  let skipParked = false;
+  let onlyParked = false;
   const statuses = [];
   const positionals = [];
   let i = 0;
@@ -62,6 +74,12 @@ export function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--json") {
       asJson = true;
+      i += 1;
+    } else if (arg === "--skip-parked") {
+      skipParked = true;
+      i += 1;
+    } else if (arg === "--parked") {
+      onlyParked = true;
       i += 1;
     } else if (arg === "--open") {
       open = true;
@@ -99,12 +117,63 @@ export function parseArgs(argv) {
     };
   }
 
+  if (skipParked && onlyParked) {
+    return {
+      ok: false,
+      message:
+        "error: --skip-parked cannot be combined with --parked -- pick one: --skip-parked (leave parked items out) or --parked (list only them)\n",
+    };
+  }
+
   const projectNumber = Number(positionals[0]);
   if (!Number.isInteger(projectNumber) || positionals.length !== 1) {
     return { ok: false, message: USAGE };
   }
 
-  return { ok: true, asJson, all, statuses, projectNumber };
+  const parked = skipParked ? "skip" : onlyParked ? "only" : null;
+  return { ok: true, asJson, all, statuses, parked, projectNumber };
+}
+
+/**
+ * The trigger a body's `Parked until:` line names, or null when the body has
+ * no such line or the line names nothing. Only the body's first non-empty
+ * line is read, so an example line lower down or in a fenced block parks
+ * nothing.
+ */
+export function parkedTrigger(body) {
+  if (typeof body !== "string") return null;
+  const top = body.split(/\r?\n/).find((line) => /\S/.test(line));
+  if (top === undefined) return null;
+  const match = PARKED_LINE.exec(top);
+  return match ? match[1] : null;
+}
+
+/**
+ * Apply a --skip-parked ("skip") or --parked ("only") view to items already
+ * filtered by status, given a Map of item id -> trigger (null when not
+ * parked). "skip" drops every parked item; "only" keeps just those, adding
+ * each one's trigger as `parkedUntil`. Pure, so a test can drive it with
+ * synthetic items.
+ */
+export function applyParkedView(items, triggers, view) {
+  if (view === "skip") return items.filter((item) => !triggers.get(item.id));
+  return items
+    .filter((item) => triggers.get(item.id))
+    .map((item) => ({ ...item, parkedUntil: triggers.get(item.id) }));
+}
+
+async function readParkedTriggers(projectNumber, ids) {
+  const triggers = new Map();
+  for (let start = 0; start < ids.length; start += PAGE_SIZE) {
+    const fetched = await fetchItems(
+      projectNumber,
+      ids.slice(start, start + PAGE_SIZE),
+    );
+    for (const entry of fetched) {
+      triggers.set(entry.id, parkedTrigger(entry.body));
+    }
+  }
+  return triggers;
 }
 
 /**
@@ -140,9 +209,9 @@ async function main() {
     process.stderr.write(parsed.message);
     process.exit(2);
   }
-  const { asJson, all, statuses, projectNumber } = parsed;
+  const { asJson, all, statuses, parked, projectNumber } = parsed;
 
-  const items = filterItems(
+  let items = filterItems(
     (await fetchAllItems(projectNumber)).map((item) => ({
       id: item.id,
       nodeId: item.nodeId,
@@ -153,6 +222,21 @@ async function main() {
     })),
     { statuses, all },
   );
+
+  if (parked !== null) {
+    const triggers = await readParkedTriggers(
+      projectNumber,
+      items.map((item) => item.id),
+    );
+    const kept = applyParkedView(items, triggers, parked);
+    if (parked === "skip" && kept.length < items.length) {
+      const skipped = items.length - kept.length;
+      process.stderr.write(
+        `${skipped} parked item${skipped === 1 ? "" : "s"} left out; --parked lists them\n`,
+      );
+    }
+    items = kept;
+  }
 
   if (asJson) {
     // Compact, not pretty-printed: --json feeds programmatic/agent consumers,
@@ -168,14 +252,17 @@ async function main() {
         : all
           ? ""
           : " with Status != Done (--all includes Done)";
-    process.stdout.write(`no items on project ${projectNumber}${filter}\n`);
+    const kind = parked === "only" ? "parked items" : "items";
+    process.stdout.write(`no ${kind} on project ${projectNumber}${filter}\n`);
     return;
   }
 
   for (const m of items) {
     const order = typeof m.order === "number" ? String(m.order) : "-";
+    const trigger =
+      m.parkedUntil === undefined ? "" : `\tParked until: ${m.parkedUntil}`;
     process.stdout.write(
-      `${m.id}\t${m.nodeId}\t${m.status ?? "-"}\t[${order}]\t${m.epic ?? "-"}\t${m.title}\n`,
+      `${m.id}\t${m.nodeId}\t${m.status ?? "-"}\t[${order}]\t${m.epic ?? "-"}\t${m.title}${trigger}\n`,
     );
   }
 }

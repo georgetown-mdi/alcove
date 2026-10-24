@@ -27,8 +27,11 @@ file or board item.
 
 Scan the two GitHub project boards with the repo scripts (run any with no
 args for usage; listings default to non-Done items):
-- node .claude/scripts/list-issues.mjs 9    (product board)
-- node .claude/scripts/list-issues.mjs 10   (release & operations board)
+- node .claude/scripts/list-issues.mjs --skip-parked 9    (product board)
+- node .claude/scripts/list-issues.mjs --skip-parked 10   (release & operations board)
+--skip-parked leaves out each item whose body has a "Parked until:" line --
+it waits on a stated trigger the retrospective re-tests -- and counts them;
+do not list or fetch them.
 
 Read the bodies of every In Progress item and of the plausible next
 candidates with node .claude/scripts/fetch-issues.mjs <board> <itemId>... --
@@ -45,7 +48,8 @@ a scope or product call only the owner makes is a candidate, never a skip.
 Before listing an In Progress item or a candidate (the up-to-10 pool you
 would otherwise list; not every item on the boards), check whether merged work
 already delivered it:
-- Its body: a "Delivered by:" line; a merged PR cited as landing the work
+- Its body: a "Delivered by:" line, naming merged PRs or a host result
+  path; a merged PR cited as landing the work
   ("done, #N", "merged as #N", "Implemented by #N", "Settled in #N",
   "Resolved by #N"); a note that the item is ready for the owner to close; or
   a sibling item named as carrying the rest that is now Done (fetch it to
@@ -81,13 +85,16 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>
    and when a ruling answers the question, emit "ruled -- <board>/<itemId> or
    <doc path>" instead. An item whose body already cites its brief or Decision
-   item is listed with that citation and no action tag.
+   item is listed with that citation and no action tag. One whose body has a
+   "Brief owed since <date>: ..." or "Decision item owed since <date>: ..."
+   line is listed with that line in place of a new action tag.
 2. Delivered, owner closes: every item the check above found delivered, one
    line each, never among the candidates:
-   <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:
-   body line, PR verb, or title match>), confirm and close
-   Every line here has a #N; an item with no merged PR to cite stays a
-   candidate.
+   <board> <itemId> [<status>] <title> -- satisfied by <#N or host result
+   path> (<the evidence: body line, PR verb, or title match>), confirm and
+   close
+   Every line here cites a merged PR or the host result path a "Delivered
+   by:" line names; an item with neither stays a candidate.
 3. A closing 1-2 line recommendation naming the 2-4 picks for the next
    session by user value and unblocking power.
 Do not include issue bodies or full board listings in your return.
@@ -104,8 +111,10 @@ the Decision item, as `.claude/orchestration/ruleset.md`, Decisions, briefs
 and reporting, sets out, then record it on the candidate item with
 `.claude/scripts/edit-issue.mjs` -- a dated line, added to the body read in
 full, naming the brief's path or the Decision item's id; a "ruled --" line is no action, but record its board item id or doc path the same way. The next shortlist
-keys off a body citing it, so it does not emit the action again. Fetch only
-the chosen items' bodies yourself (`node .claude/scripts/fetch-issues.mjs
-<board> <itemId>`) or hand an item id straight to /start-issue. Do not
-re-list the boards in the calling session; if the shortlist looks stale or
-wrong, re-spawn the agent instead.
+keys off a body citing it, so it does not emit the action again. An action
+line the session does not take becomes a docket entry at close-out (step 2
+of `.claude/commands/close-out.md`), as a listed "owed since" line already
+is. Fetch only the chosen items' bodies yourself
+(`node .claude/scripts/fetch-issues.mjs <board> <itemId>`) or hand an item
+id straight to /start-issue. Do not re-list the boards in the calling
+session; if the shortlist looks stale or wrong, re-spawn the agent instead.
