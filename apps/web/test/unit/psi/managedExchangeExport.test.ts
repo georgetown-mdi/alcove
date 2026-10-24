@@ -22,6 +22,7 @@ import {
   importManagedExchangeArtifact,
   parseManagedExchangeArtifact,
 } from "@psi/managed/managedExchangeArtifact";
+import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 
 import {
   removeBackupFromWorkingFolder,
@@ -440,6 +441,14 @@ describe("exportManagedCronFiles", () => {
     return {
       downloaded,
       order,
+      withLock: async (_id, step) => {
+        order.push("lock");
+        try {
+          return await step();
+        } finally {
+          order.push("unlock");
+        }
+      },
       // The plain read this export takes: the deps hold no store write, so
       // nothing in this export can mark, spend, or otherwise change the record.
       readRecord: vi.fn((_id: string) => {
@@ -505,11 +514,32 @@ describe("exportManagedCronFiles", () => {
     expect(deps.downloaded[0].content).toBe(composed.config.text);
   });
 
-  test("reads first, then downloads", async () => {
+  test("reads, then downloads, all inside the run lock", async () => {
     const rec = record();
     const deps = cronDeps(rec);
     await exportManagedCronFiles(rec.id, deps);
-    expect(deps.order).toEqual(["read", "download", "download"]);
+    expect(deps.order).toEqual([
+      "lock",
+      "read",
+      "download",
+      "download",
+      "unlock",
+    ]);
+  });
+
+  test("a run holding the lock refuses the export before any read or download", async () => {
+    const rec = record();
+    const deps = {
+      ...cronDeps(rec),
+      withLock: (id: string) =>
+        Promise.reject(new ManagedExchangeLockUnavailableError(id)),
+    };
+
+    await expect(exportManagedCronFiles(rec.id, deps)).rejects.toBeInstanceOf(
+      ManagedExchangeLockUnavailableError,
+    );
+    expect(deps.readRecord).not.toHaveBeenCalled();
+    expect(deps.downloaded).toEqual([]);
   });
 
   test("a record gone from the store downloads nothing", async () => {

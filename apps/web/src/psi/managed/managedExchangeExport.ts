@@ -20,7 +20,8 @@
  * - A COMMAND-LINE export downloads the CLI's own two files
  *   ({@link composeManagedCronExport}) instead of the artifact and writes
  *   nothing: no backup marker, since what it downloads is not the artifact,
- *   and no spend, so the stored exchange stays runnable here.
+ *   and no spend, so the stored exchange stays runnable here. It reads and
+ *   downloads under the run's own lock, so a run in flight refuses it.
  *
  * The two marking intents compose what they download INSIDE the
  * read-and-mark step: the marker can never attest bytes nothing produced.
@@ -32,9 +33,9 @@
  * directly (see {@link ./managedExchangeStore.ts},
  * `spendManagedExchangeIfCurrent`).
  *
- * The boundaries (read-and-mark, the non-marking read by id, the download, the
- * currency-checked spend) are injected so the intents are testable without
- * a real download or database.
+ * The boundaries (read-and-mark, the non-marking read by id, the run lock, the
+ * download, the currency-checked spend) are injected so the intents are
+ * testable without a real download or database.
  */
 
 import { exchangeLabelFileFragment } from "../parkedResults";
@@ -486,12 +487,16 @@ export async function dispatchManagedMigration(
   };
 }
 
-/** The platform boundaries the command-line export drives: a NON-STAMPING read of
- * the record by id (this export marks no backup marker -- see the module header)
- * and a download that takes each composed file's own media type -- the two files
- * land as the YAML and JSON documents the CLI opens, not as one artifact blob.
- * No store write is among them, so the export cannot change the stored record. */
+/** The platform boundaries the command-line export drives: the record's run+rotate
+ * lock, a NON-STAMPING read of the record by id (this export marks no backup
+ * marker -- see the module header) and a download that takes each composed file's
+ * own media type -- the two files land as the YAML and JSON documents the CLI
+ * opens, not as one artifact blob. No store write is among them, so the export
+ * cannot change the stored record. */
 export interface ManagedCronExportDeps {
+  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it,
+   * so the key file never holds a secret a run in flight is about to rotate. */
+  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
   /** Read the current stored record for `id`, or `undefined` when none is stored.
    * Read at export time and never from a caller-held record, so a stale tab
    * composes the files the store's record has or none at all. */
@@ -504,9 +509,9 @@ export interface ManagedCronExportDeps {
 }
 
 /**
- * Export the CLI's two files: read the current record by id, compose them
- * from exactly that read, and download each under its own name. Returns what
- * the two downloads held.
+ * Export the CLI's two files: under the record's run+rotate lock, read the
+ * current record by id, compose them from exactly that read, and download each
+ * under its own name. Returns what the two downloads held.
  *
  * Nothing is written: no backup marker, since the two files are not the
  * artifact this app's backup import accepts, and no spend, so the stored
@@ -516,6 +521,8 @@ export interface ManagedCronExportDeps {
  * record this app could not have composed); a refusal throws before any
  * download.
  *
+ * @throws {ManagedExchangeLockUnavailableError} if a run of the record holds
+ *   the lock; nothing is read or downloaded.
  * @throws {Error} if no record with `id` exists, or if the record is one
  *   the command-line export refuses ({@link composeManagedCronExport}).
  * @throws {ZodError} if the stored record is invalid.
@@ -524,14 +531,16 @@ export async function exportManagedCronFiles(
   id: string,
   deps: ManagedCronExportDeps,
 ): Promise<ManagedCronExport> {
-  const stored = await deps.readRecord(id);
-  if (stored === undefined)
-    throw new Error(`no managed exchange with id ${id}`);
-  const composed = composeManagedCronExport(
-    runnableManagedExchangeOrRefuse(stored),
-    deps.readOwn,
-  );
-  for (const file of [composed.config, composed.key])
-    deps.download(file.fileName, file.text, file.mimeType);
-  return composed;
+  return deps.withLock(id, async () => {
+    const stored = await deps.readRecord(id);
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const composed = composeManagedCronExport(
+      runnableManagedExchangeOrRefuse(stored),
+      deps.readOwn,
+    );
+    for (const file of [composed.config, composed.key])
+      deps.download(file.fileName, file.text, file.mimeType);
+    return composed;
+  });
 }

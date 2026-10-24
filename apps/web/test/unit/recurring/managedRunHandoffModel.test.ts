@@ -56,7 +56,6 @@ describe("an export", () => {
     expect(MANAGED_HANDOFF_INITIAL).toEqual({
       export: { kind: "idle" },
       migration: { kind: "none" },
-      commandLine: undefined,
     });
   });
 

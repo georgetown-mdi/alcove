@@ -929,8 +929,8 @@ lock](#when-a-run-is-already-in-progress), which is how a second tab's
 run or a scheduled one reaches them. The surface names the run as the reason;
 both return when this tab's run ends or, for another context, when that
 run ends and releases its lock. If a run starts after the page last checked,
-confirming the move is refused in the same words: confirm again once the run
-is over.
+confirming the move, or the command-line download, is refused in the same
+words: try again once the run is over.
 
 **The file is a credential.** It holds the exchange's shared secret in plain
 text, like the command line's `.alcove.key` (see [Key file

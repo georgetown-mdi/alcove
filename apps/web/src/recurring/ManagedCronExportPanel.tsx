@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Anchor, Button } from "@mantine/core";
 
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
+import {
+  ManagedExchangeLockUnavailableError,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 import { getManagedExchange } from "@psi/managed/managedExchangeStore";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -51,6 +55,13 @@ export function ManagedCronExportPanel({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The export's own lock refused a run the poll had not yet read. Shown as the
+  // run-in-progress state until the poll's reading moves or the next click.
+  const [lockRefused, setLockRefused] = useState(false);
+  useEffect(() => {
+    setLockRefused(false);
+  }, [runInFlight]);
+  const runWithholds = runInFlight || lockRefused;
   // One read of the relay settings serves the panel and the download, so the
   // files name the TURN urls the panel composed with.
   const { ownRelay, state } = useMemo(() => {
@@ -70,12 +81,19 @@ export function ManagedCronExportPanel({
     if (busy || runInFlight) return;
     setBusy(true);
     setFailed(false);
+    setLockRefused(false);
     void exportManagedCronFiles(record.id, {
+      withLock: (id, step) =>
+        withManagedExchangeLock(id, step, { ifAvailable: true }),
       readRecord: getManagedExchange,
       download: triggerBlobDownload,
       readOwn: () => ownRelay,
     })
-      .catch(() => setFailed(true))
+      .catch((error: unknown) => {
+        if (error instanceof ManagedExchangeLockUnavailableError)
+          setLockRefused(true);
+        else setFailed(true);
+      })
       .finally(() => setBusy(false));
   }
 
@@ -169,7 +187,7 @@ export function ManagedCronExportPanel({
                   Download {state.composed.config.fileName} and{" "}
                   {state.composed.key.fileName}
                 </Button>
-                {runInFlight && (
+                {runWithholds && (
                   <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
                 )}
               </li>

@@ -15,6 +15,7 @@ import "@mantine/core/styles.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
+  RUN_IN_FLIGHT_EXPORT_REASON,
   commandLineExportNotice,
 } from "@recurring/managedCronExportModel";
 import {
@@ -26,6 +27,10 @@ import {
   getManagedLocalState,
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
+import {
+  managedExchangeLockName,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
@@ -33,6 +38,7 @@ import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { disclosureToggle, openDisclosure } from "./collapsePanels";
 import { captureDownloads } from "./captureDownloads";
+import { filterLockFromReadings } from "./runLockReadings";
 
 import type { DownloadCapture } from "./captureDownloads";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -330,6 +336,51 @@ describe("the export leaves this browser's copy as it was", () => {
   });
 });
 
+describe("a run the panel's poll has not yet read", () => {
+  test("refuses the download on the run's own lock, and the record is unchanged", async () => {
+    // The poll is kept from ever seeing the held lock, so the refusal shown can
+    // only come from the export taking the lock itself.
+    const created = await createManagedExchange(newExchange());
+    const before = await getManagedExchange(created.id);
+    const readings = filterLockFromReadings(created.id);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await new Promise<void>((granted) => {
+      void navigator.locks.request(managedExchangeLockName(created.id), () => {
+        granted();
+        return held;
+      });
+    });
+    const downloads = captureDownloads();
+    try {
+      app.render(createElement(ManagedRunSurface, { id: created.id }));
+      await openExportPanel();
+      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+
+      await page
+        .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
+        .click();
+
+      await expect
+        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
+        .toBeInTheDocument();
+      expect(
+        page.getByText("Could not export the command-line files").query(),
+      ).toBe(null);
+      await downloads.settled();
+      expect(downloads.captured).toEqual([]);
+      expect(await getManagedExchange(created.id)).toEqual(before);
+      expect(await getManagedLocalState(created.id)).toBeUndefined();
+    } finally {
+      downloads.restore();
+      release();
+      readings.restore();
+    }
+  });
+});
+
 describe("the notice beside the export", () => {
   const SCHEDULE_CLAUSE = "turn off its schedule here";
 
@@ -555,6 +606,8 @@ describe("a record this app could not have composed", () => {
 
     await expect(
       exportManagedCronFiles(created.id, {
+        withLock: (id, step) =>
+          withManagedExchangeLock(id, step, { ifAvailable: true }),
         readRecord: getManagedExchange,
         download: (fileName) => downloaded.push(fileName),
         readOwn: () => ({ kind: "none" }),
