@@ -32,10 +32,11 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-// fetchItems lives in lib/projectItems.mjs so lint-issues.mjs can reuse the same
-// aliased multi-fetch for resolving cross-references. toNumericId (which decodes
-// a PVTI_ node ID via numericIdFromNodeId) lets a PVTI_ argument be accepted
-// alongside the numeric form, and is shared so the sibling scripts agree on it.
+// fetchItems lives in lib/projectItems.mjs so edit-issue.mjs reads an item
+// through the same aliased multi-fetch before and after an edit. toNumericId
+// (which decodes a PVTI_ node ID via numericIdFromNodeId) lets a PVTI_
+// argument be accepted alongside the numeric form, and is shared so the
+// sibling scripts agree on it.
 import { fetchItems, toNumericId } from "./lib/projectItems.mjs";
 
 // Fields shown first, in this order, in human-readable output; any other

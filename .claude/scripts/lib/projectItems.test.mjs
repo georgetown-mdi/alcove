@@ -480,8 +480,9 @@ describe("mapFetchedNode cross-project guard", () => {
 
 describe("toNumericId", () => {
   it("resolves a PVTI_ node id to the same numeric item id as its numeric form", () => {
-    // lint-issues.mjs routes its arguments through toNumericId, so a node id and
-    // the numeric id it was derived from must address the same item.
+    // fetch-issues.mjs and edit-issue.mjs route their arguments through
+    // toNumericId, so a node id and the numeric id it was derived from must
+    // address the same item.
     const numeric = 199240250;
     const nodeId = pvtiNodeId(10, numeric);
 

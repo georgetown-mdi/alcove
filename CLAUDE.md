@@ -28,7 +28,7 @@ An item's board is not encoded in its id, and versions or paths quoted in its bo
 
 ## Project manager
 
-The PM ruleset, `.claude/pm/ruleset.md`, is loaded by the interactive `/pm` skill and the one-shot `project-manager` consult agent, which **cannot be continued**. Only the top-level session spawns the consult, since AskUserQuestion and the human live there alone: a coding subagent raises a PM request to its caller, which raises it onward. A mechanical board write goes straight through `.claude/scripts/edit-issue.mjs`; the consult is for judgment -- whether to file at all, which board, what scope -- never for typing.
+The PM ruleset, `.claude/pm/ruleset.md`, is loaded by the one-shot `project-manager` consult agent, which **cannot be continued**. Only the top-level session spawns the consult, since AskUserQuestion and the human live there alone: a coding subagent raises a PM request to its caller, which raises it onward. A mechanical board write goes straight through `.claude/scripts/edit-issue.mjs`; the consult is for judgment -- whether to file at all, which board, what scope -- never for typing.
 
 ## Agent conventions
 

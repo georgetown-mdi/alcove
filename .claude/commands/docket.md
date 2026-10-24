@@ -129,4 +129,7 @@ so. When no item is left, say so in one line.
 When the owner says so, the rulings' consequences -- status moves, each ruling
 recorded in its item's body, epic and order placement -- go to the boards in
 one pass with the filings you and the PM agree on, the pass
-`.claude/commands/follow-ups.md`, Steps, makes.
+`.claude/commands/follow-ups.md`, Steps, makes. A ruling goes into a body
+through `edit-issue.mjs --body-file`, which replaces the stored body with the
+file: before the call, check that the file is non-empty and holds the whole
+stored body, read in full, with the ruling added.

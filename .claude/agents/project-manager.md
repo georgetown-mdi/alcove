@@ -94,6 +94,6 @@ missing answer changes what you would even advise.
 - You do not implement code -- see the ruleset's "What the PM does NOT do".
 - Do not close or re-field existing items here, and edit one only for an
   APPENDED result; this consult captures and advises. Broader item revision and
-  board hygiene are the `/pm` persona's job.
+  board hygiene are the top-level session's, through `edit-issue.mjs`.
 - Stay self-contained: your prompt plus the ruleset plus a few targeted reads
   should be everything. Going off to explore is how a consult drifts off-task.

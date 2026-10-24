@@ -139,7 +139,8 @@ CLAUDE.md. That keeps the four the by-role partition already named, and all of
 "Orchestrating a session", and the front doors the ledger's own preamble
 lists -- the session's commands, such as `start-issue` and `docket`, and the
 `shortlist-backlog` skill -- each open with a line reading it.
-That is the shape `.claude/pm/ruleset.md` and its two front doors already use.
+That is the shape `.claude/pm/ruleset.md` and the consult agent that opens by
+reading it already use.
 
 **The check.** `npm run check:rule-ledgers`
 ([`scripts/check-rule-ledgers.mjs`](../../scripts/check-rule-ledgers.mjs)) holds

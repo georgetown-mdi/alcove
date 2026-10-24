@@ -74,7 +74,7 @@ Start with the whole, not the parts:
   With that ask, state also the size-keyed default recommendations
   `.claude/commands/light-review.md`, Step 1, gives for the branch's changed
   lines. All are
-  advisory, with thresholds measured on the 2026-08-31 to 2026-09-25 rounds and
+  advisory, with thresholds measured on the 2026-10-09 to 2026-10-23 rounds and
   re-fit at each retro; nothing enforces them.
 - **A second cap raise.** A raise that would be the branch's second is
   step-back trigger 8 below, whatever the reason for it -- a raise a rebase
@@ -236,8 +236,7 @@ there is the one the brief describes.
   `require-clean-tree-for-review.mjs` on the branch's next round.
 - **A small fix travels as its exact edit.** For a fix under roughly 20 lines,
   the brief contains the edit itself -- the file, the old text, the new text, and
-  the test to run -- and the spawn is a `haiku` implementer applying it during the
-  trial the ruleset names, otherwise `sonnet`. Writing
+  the test to run -- and the spawn is a `haiku` implementer applying it. Writing
   the edit out is the cheap path: the reading and the judgment already happened
   here, and re-deriving them is what a full spawn would charge for. Dispatching
   it rather than making it inline buys something else on a security surface: the

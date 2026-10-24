@@ -10,7 +10,10 @@
 //     scripts/run-checks.mjs, by its `expiresOn` field;
 //   - every hook file .claude/settings.json registers, by an
 //     `export const EXPIRES_ON = "YYYY-MM-DD";` line in the file itself, the
-//     shape scripts/check-no-legacy-names.mjs set.
+//     shape scripts/check-no-legacy-names.mjs set;
+//   - every check CHECKS_DATED_IN_FILE below names, run by neither list, by
+//     the date line it names in that check's file: capRaiseCheck in
+//     .claude/scripts/check-review-ledger-dispositions.mjs.
 //
 // A date is the last day, UTC, the entry passes. A new check or hook picks its
 // own date when it is proposed. A renewal follows the entry's record since its
@@ -27,7 +30,8 @@
 // renew it with a new date, or delete it: the check's script, its test, its
 // root package.json script and its entry in scripts/run-checks.mjs; or the
 // hook file, its test, its registration in .claude/settings.json and any
-// `Enforced by` line naming it.
+// `Enforced by` line naming it; or, for a check dated in its file, its code,
+// its tests, its date line and its CHECKS_DATED_IN_FILE entry.
 //
 // `--today YYYY-MM-DD` stands in for the current date and `--root <tree>` for
 // this repository, so the test can drive both arms against a fixture tree.
@@ -41,6 +45,18 @@ import { obligationRoot } from "./lib/deferredObligation.mjs";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HOOK_EXPIRY = /^export const EXPIRES_ON = "([^"]*)";$/m;
+
+/**
+ * Checks that neither scripts/run-checks.mjs nor .claude/settings.json lists,
+ * each dated by an `export const <constant> = "YYYY-MM-DD";` line in `file`.
+ */
+export const CHECKS_DATED_IN_FILE = [
+  {
+    check: "capRaiseCheck",
+    file: ".claude/scripts/check-review-ledger-dispositions.mjs",
+    constant: "CAP_RAISE_CHECK_EXPIRES_ON",
+  },
+];
 
 /** Whether `value` is a real calendar date written YYYY-MM-DD. */
 export function isCalendarDate(value) {
@@ -85,6 +101,15 @@ export async function datedEntries(root) {
     entries.push({
       name: `.claude/hooks/${file}`,
       expiresOn: HOOK_EXPIRY.exec(source)?.[1],
+    });
+  }
+  for (const { check, file, constant } of CHECKS_DATED_IN_FILE) {
+    const path = resolve(root, file);
+    const source = existsSync(path) ? readFileSync(path, "utf8") : "";
+    const dateLine = new RegExp(`^export const ${constant} = "([^"]*)";$`, "m");
+    entries.push({
+      name: `${file} ${check}`,
+      expiresOn: dateLine.exec(source)?.[1],
     });
   }
   return entries;

@@ -29,13 +29,26 @@ function checkEntry(script, expiresOn) {
     : { script, expiresOn, description: "d" };
 }
 
-// A tree holding a run-checks.mjs with `checks` as CHECKS and a settings.json
-// registering one hook whose file has `hookExpiry` as its date line, or none.
-function fixtureTree({ checks, hookExpiry }) {
+// A tree holding a run-checks.mjs with `checks` as CHECKS, a settings.json
+// registering one hook whose file has `hookExpiry` as its date line, or none,
+// and a ledger-dispositions script whose cap-raise date line is
+// `capRaiseExpiry`, or none for null.
+function fixtureTree({ checks, hookExpiry, capRaiseExpiry = "2026-12-31" }) {
   const root = mkdtempSync(resolve(tmpdir(), "check-expiry-dates-"));
   trees.push(root);
   mkdirSync(resolve(root, "scripts"));
   mkdirSync(resolve(root, ".claude/hooks"), { recursive: true });
+  mkdirSync(resolve(root, ".claude/scripts"), { recursive: true });
+  writeFileSync(
+    resolve(root, ".claude/scripts/check-review-ledger-dispositions.mjs"),
+    [
+      "export function capRaiseCheck() {}",
+      ...(capRaiseExpiry === null
+        ? []
+        : [`export const CAP_RAISE_CHECK_EXPIRES_ON = "${capRaiseExpiry}";`]),
+      "",
+    ].join("\n"),
+  );
   writeFileSync(
     resolve(root, "scripts/run-checks.mjs"),
     [
@@ -157,6 +170,32 @@ describe("the check, driven against a fixture tree", () => {
     );
   });
 
+  it("refuses the cap-raise check with no date, naming it", () => {
+    const root = fixtureTree({
+      checks: [checkEntry("check:a", "2026-12-31")],
+      hookExpiry: "2026-12-31",
+      capRaiseExpiry: null,
+    });
+    const result = runCheck(root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      ".claude/scripts/check-review-ledger-dispositions.mjs capRaiseCheck: states no expiry date.",
+    );
+  });
+
+  it("refuses the cap-raise check whose date has passed, naming it", () => {
+    const root = fixtureTree({
+      checks: [checkEntry("check:a", "2026-12-31")],
+      hookExpiry: "2026-12-31",
+      capRaiseExpiry: "2026-09-01",
+    });
+    const result = runCheck(root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      ".claude/scripts/check-review-ledger-dispositions.mjs capRaiseCheck: expired on 2026-09-01.",
+    );
+  });
+
   it("lists the entries expiring before a date without failing", () => {
     const root = fixtureTree({
       checks: [
@@ -170,6 +209,7 @@ describe("the check, driven against a fixture tree", () => {
     expect(result.stdout).toContain("check:soon");
     expect(result.stdout).toContain("block-thing.mjs");
     expect(result.stdout).toContain("check:off");
+    expect(result.stdout).toContain("capRaiseCheck");
     expect(result.stdout).not.toContain("check:late");
   });
 
@@ -212,11 +252,14 @@ describe("the date rules", () => {
 });
 
 describe("this repository", () => {
-  it("dates every run-checks entry and every registered hook", async () => {
+  it("dates every run-checks entry, every registered hook and the cap-raise check", async () => {
     const entries = await datedEntries(repoRoot);
     expect(
       entries.some((entry) => entry.name.startsWith(".claude/hooks/")),
     ).toBe(true);
+    expect(entries.some((entry) => entry.name.endsWith(" capRaiseCheck"))).toBe(
+      true,
+    );
     expect(expiryViolations(entries, "2026-01-01")).toEqual([]);
   });
 });
