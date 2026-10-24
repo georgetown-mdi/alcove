@@ -394,7 +394,6 @@ export function managedRunSurfaceReducer(
     case "migration-confirmed":
     case "migration-refused":
     case "migration-kept":
-    case "command-line-handed-off":
       return withHandoff(state, managedHandoffReducer(state.handoff, action));
     case "accounting-read":
     case "unfiled-disclosures-read":
@@ -477,7 +476,6 @@ export function managedRunInputSource(
 export type ManagedSurfaceView =
   | Exclude<ManagedLoadState["kind"], "runnable">
   | "complete"
-  | "command-line"
   | "migrated"
   | "confirm-move"
   | "run";
@@ -496,7 +494,6 @@ export function managedSurfaceView(
 ): ManagedSurfaceView {
   if (inputs.load.kind !== "runnable") return inputs.load.kind;
   if (managedRunCompletion(inputs.run) !== undefined) return "complete";
-  if (inputs.handoff.commandLine !== undefined) return "command-line";
   if (inputs.handoff.migration.kind === "migrated") return "migrated";
   if (inputs.handoff.migration.kind === "awaiting-confirm")
     return "confirm-move";

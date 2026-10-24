@@ -20,7 +20,7 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  exportRun,
+  commandLineExportNotice,
   invitationRegistrarExportLine,
   managedConfigurationExportState,
   managedCronExportPanelState,
@@ -219,13 +219,25 @@ describe("what the panel gets to render", () => {
     );
   });
 
-  test("the handed-off command is the image's one-off run", () => {
-    const record = managedRecord();
-    const state = exportableState(record);
-    const handedOff = exportRun(state.composed, IMAGE);
-    if (handedOff.kind !== "shown") throw new Error(handedOff.notice);
-    expect(handedOff.runCommand).toBe(shownLines(state.lines).runCommand);
-    expect(handedOff.dockerLinesNotice).toBeUndefined();
+  test("the notice's schedule clause follows whether this copy has a schedule", () => {
+    expect(exportableState(managedRecord()).fromAgreedSchedule).toBe(false);
+    expect(
+      exportableState(managedRecord({ schedule: SCHEDULE })).fromAgreedSchedule,
+    ).toBe(true);
+    expect(commandLineExportNotice(false)).toBe(
+      "If you run this exchange elsewhere, import it again to use it here later.",
+    );
+    expect(commandLineExportNotice(true)).toBe(
+      "If you run this exchange elsewhere, turn off its schedule here; to use " +
+        "it here later, import it again.",
+    );
+  });
+
+  test("the notice states only the re-import, with no hand-off wording", () => {
+    for (const scheduleOn of [false, true])
+      expect(commandLineExportNotice(scheduleOn)).not.toMatch(
+        /hand|move|custody|owner|instead/i,
+      );
   });
 
   test("the exported connection names no ICE server, as the panel's copy says", () => {
@@ -448,7 +460,6 @@ describe("a configuration naming paths outside the export folder", () => {
         "such a character, and set the new path in the configuration.",
     };
     expect(state.lines).toEqual(withheld);
-    expect(exportRun(state.composed, IMAGE)).toEqual(withheld);
   });
 });
 

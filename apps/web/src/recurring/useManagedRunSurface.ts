@@ -94,7 +94,6 @@ import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedCompromiseGate } from "./managedRunRecoveryModel";
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { ManagedRunSurfaceState } from "./managedRunSurfaceModel";
-import type { RunLines } from "./scheduledRunCommand";
 
 const log = getLogger("ManagedRunSurface");
 
@@ -110,8 +109,6 @@ export interface ManagedRunSurfaceHost {
   /** Whether a run of this exchange is in flight anywhere this browser profile
    * can see (see {@link useManagedRunInFlight}). */
   runInFlight: boolean;
-  /** Re-read the run lock right now, resolving whether a run holds it. */
-  recheckLock: () => Promise<boolean>;
   /** The input file the operator chose, on a browser that cannot grant a folder. */
   reselected: File | undefined;
   /** Choose the input file for the next run. */
@@ -150,8 +147,6 @@ export interface ManagedRunSurfaceHost {
   keepMigrationOnDevice: () => void;
   /** Download the backup a finished run made current. */
   downloadUpdatedBackup: () => void;
-  /** Show the command-line hand-off the cron export panel completed. */
-  handOffToCommandLine: (lines: RunLines) => void;
   /** Mint a fresh invitation, from the recovery or the detail section. */
   reinviteNow: (source: "recovery" | "detail") => void;
   /** Route the reply to the live failure's confirmation gate. */
@@ -909,7 +904,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   return {
     state: surfaceState,
     runInFlight,
-    recheckLock,
     running,
     liveFailure,
     runCompletion,
@@ -929,8 +923,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     confirmMigration,
     keepMigrationOnDevice: () => dispatchSurface({ type: "migration-kept" }),
     downloadUpdatedBackup,
-    handOffToCommandLine: (lines) =>
-      dispatchSurface({ type: "command-line-handed-off", handoff: lines }),
     reinviteNow,
     resolveConfirmation,
     clearStanding,

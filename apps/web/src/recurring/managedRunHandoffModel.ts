@@ -2,12 +2,11 @@ import type {
   ManagedHandoffRefusal,
   ManagedMigrationDispatch,
 } from "@psi/managed/managedExchangeExport";
-import type { RunLines } from "./scheduledRunCommand";
 
 /**
- * The managed run surface's exports and hand-offs: a backup download, a migration
- * to another device, and an export to the command line. No rendering and no I/O
- * -- the surface makes each export and reports its outcome here as an action.
+ * The managed run surface's exports and hand-offs: a backup download and a
+ * migration to another device. No rendering and no I/O -- the surface makes each
+ * export and reports its outcome here as an action.
  *
  * A migration downloads its file first and spends this device's copy only once
  * the operator attests the file is saved, so a dismissed save leaves the copy
@@ -36,16 +35,12 @@ export type ManagedMigration =
 export interface ManagedHandoffState {
   export: ManagedExportRequest;
   migration: ManagedMigration;
-  /** The invocation a confirmed command-line export handed over: this browser's
-   * copy is spent, and the surface names what runs in its place. */
-  commandLine: RunLines | undefined;
 }
 
 /** No export and no hand-off this visit. */
 export const MANAGED_HANDOFF_INITIAL: ManagedHandoffState = {
   export: { kind: "idle" },
   migration: { kind: "none" },
-  commandLine: undefined,
 };
 
 /** The exports' and hand-offs' events. `backup-exported` and
@@ -62,8 +57,7 @@ export type ManagedHandoffAction =
   | { type: "migration-confirmed" }
   | { type: "migration-refused"; refusal: ManagedHandoffRefusal }
   /** The operator kept the copy on this device instead of confirming. */
-  | { type: "migration-kept" }
-  | { type: "command-line-handed-off"; handoff: RunLines };
+  | { type: "migration-kept" };
 
 /** The exports' and hand-offs' reducer. A migration once confirmed stays
  * migrated; a refusal or a keep outside the confirmation changes nothing. */
@@ -120,8 +114,6 @@ export function managedHandoffReducer(
       return state.migration.kind === "awaiting-confirm"
         ? { ...state, migration: { kind: "none" } }
         : state;
-    case "command-line-handed-off":
-      return { ...state, commandLine: action.handoff };
   }
 }
 

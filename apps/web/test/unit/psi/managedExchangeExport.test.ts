@@ -8,14 +8,15 @@ import {
 import {
   ManagedHandoffRefusedError,
   backUpManagedExchangeToFolder,
-  dispatchManagedCronExport,
   dispatchManagedMigration,
   exportManagedBackup,
+  exportManagedCronFiles,
   managedBackupFileName,
 } from "@psi/managed/managedExchangeExport";
 import {
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
   importManagedExchangeArtifact,
@@ -39,21 +40,17 @@ import type {
   ManagedFolderBackupDeps,
   ManagedMigrationDeps,
 } from "@psi/managed/managedExchangeExport";
-import type {
-  ManagedSpendOutcome,
-  ManagedSpentHandoff,
-} from "@psi/managed/managedLocalState";
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 import type { ManagedBackupMarkOutcome } from "@psi/managed/managedExchangeStore";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type { ManagedSpendOutcome } from "@psi/managed/managedLocalState";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The three export intents, tested in Node with injected dependencies. Every
 // export reads the record fresh rather than trusting a caller's copy. The
 // backup and migration exports serialize and mark atomically (readAndMark), so
 // what they serialize is what the marker attests; the command-line export
-// takes a plain read with no marking call site, since its two files are not a
-// backup this app restores from.
+// takes a plain read and has no store write to call at all.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -379,12 +376,12 @@ describe("dispatchManagedMigration", () => {
   });
 });
 
-describe("dispatchManagedCronExport", () => {
+describe("exportManagedCronFiles", () => {
   /** The record shapes the command-line composition refuses, each with the part of
    * its refusal this dispatch must propagate. None is composable through the app --
    * they reach a record by importing a hand-crafted artifact, which the composer's
-   * own suite pins -- so what is measured here is the dispatch's effect on the
-   * store when the composition throws inside its read-and-mark step. */
+   * own suite pins -- so what is measured here is the export's effect on the
+   * record when the composition throws. */
   const refusedRecords: Array<[string, () => ManagedExchangeRecord, RegExp]> = [
     [
       "a connection field outside the locator subset",
@@ -433,32 +430,18 @@ describe("dispatchManagedCronExport", () => {
     downloaded: Array<{ fileName: string; content: string; mimeType: string }>;
     order: Array<string>;
     readRecord: ReturnType<typeof vi.fn>;
-    spendIfCurrent: ReturnType<typeof vi.fn>;
-    /** The spends the atomic step actually wrote; a refused one writes nothing. */
-    spent: Array<{ spentAt: string; handoff: ManagedSpentHandoff }>;
-    /** What the confirm-time step finds in the store: the record itself until a test
-     * moves it, as a rotation or a delete in another context would, and whether a
-     * run holds the run+rotate lock the step takes before it reads anything. */
-    stored: { record: ManagedExchangeRecord | undefined; runInFlight: boolean };
   } {
     const order: Array<string> = [];
-    const spent: Array<{ spentAt: string; handoff: ManagedSpentHandoff }> = [];
     const downloaded: Array<{
       fileName: string;
       content: string;
       mimeType: string;
     }> = [];
-    const stored: {
-      record: ManagedExchangeRecord | undefined;
-      runInFlight: boolean;
-    } = { record: rec, runInFlight: false };
     return {
       downloaded,
       order,
-      spent,
-      stored,
-      // The plain read this export takes: no marker is written here or anywhere else
-      // in it, so the deps have no marking call site to write one through.
+      // The plain read this export takes: the deps hold no store write, so
+      // nothing in this export can mark, spend, or otherwise change the record.
       readRecord: vi.fn((_id: string) => {
         order.push("read");
         return Promise.resolve<ManagedExchangeRecord | undefined>(rec);
@@ -468,46 +451,37 @@ describe("dispatchManagedCronExport", () => {
         downloaded.push({ fileName, content, mimeType });
       },
       readOwn: () => ({ kind: "none" }),
-      // The store's spend, modelled as the migration's is: one step excludes a run
-      // in flight, compares the stored secret, and writes the spent state under its
-      // hand-off.
-      spendIfCurrent: vi.fn(
-        (
-          _id: string,
-          expectedSharedSecret: string,
-          spentAt: string,
-          handoff: ManagedSpentHandoff,
-        ) => {
-          if (stored.runInFlight)
-            return Promise.resolve<ManagedSpendOutcome>("run-in-flight");
-          const current = stored.record;
-          if (current === undefined)
-            return Promise.resolve<ManagedSpendOutcome>("gone");
-          if (current.sharedSecret !== expectedSharedSecret)
-            return Promise.resolve<ManagedSpendOutcome>("superseded");
-          spent.push({ spentAt, handoff });
-          return Promise.resolve<ManagedSpendOutcome>("spent");
-        },
-      ),
     };
   }
 
-  test("downloads both CLI files from a fresh read, without spending", async () => {
+  test("downloads both CLI files from a fresh read", async () => {
     const rec = record();
     const deps = cronDeps(rec);
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
+    const composed = await exportManagedCronFiles(rec.id, deps);
 
     expect(deps.downloaded.map((file) => file.fileName)).toEqual([
       "alcove.yaml",
       ".alcove.key",
     ]);
     expect(deps.readRecord).toHaveBeenCalledWith(rec.id);
-    // The spend is operator-attested: not written until confirm() is called.
-    expect(deps.spendIfCurrent).not.toHaveBeenCalled();
-    expect(dispatch.record).toBe(rec);
-    expect(dispatch.composed.command).toBe(
+    expect(composed.command).toBe(
       "alcove exchange --log-file=exchange.log input.csv ./",
     );
+  });
+
+  test("leaves the stored record unchanged and runnable", async () => {
+    const rec = record();
+    const before = structuredClone(rec);
+    const deps = cronDeps(rec);
+
+    const composed = await exportManagedCronFiles(rec.id, deps);
+
+    expect(rec).toEqual(before);
+    expect(runnableManagedExchangeOrRefuse(rec).sharedSecret).toBe(
+      before.sharedSecret,
+    );
+    // The key file holds the secret the stored record still holds.
+    expect(composed.key.text).toContain(before.sharedSecret);
   });
 
   test("composes against the relay settings read it is given, the one the panel composed with", async () => {
@@ -525,16 +499,16 @@ describe("dispatchManagedCronExport", () => {
     };
     const deps = { ...cronDeps(rec), readOwn: () => panelRead };
 
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
+    const composed = await exportManagedCronFiles(rec.id, deps);
 
-    expect(dispatch.composed.config.text).toContain(`url: ${ownTurn}`);
-    expect(deps.downloaded[0].content).toBe(dispatch.composed.config.text);
+    expect(composed.config.text).toContain(`url: ${ownTurn}`);
+    expect(deps.downloaded[0].content).toBe(composed.config.text);
   });
 
   test("reads first, then downloads", async () => {
     const rec = record();
     const deps = cronDeps(rec);
-    await dispatchManagedCronExport(rec.id, deps);
+    await exportManagedCronFiles(rec.id, deps);
     expect(deps.order).toEqual(["read", "download", "download"]);
   });
 
@@ -546,83 +520,10 @@ describe("dispatchManagedCronExport", () => {
         Promise.resolve<ManagedExchangeRecord | undefined>(undefined),
     };
 
-    await expect(dispatchManagedCronExport(rec.id, deps)).rejects.toThrow(
+    await expect(exportManagedCronFiles(rec.id, deps)).rejects.toThrow(
       /no managed exchange with id/,
     );
     expect(deps.downloaded).toEqual([]);
-    expect(deps.spendIfCurrent).not.toHaveBeenCalled();
-  });
-
-  test("confirm spends the source as a command-line hand-off", async () => {
-    // The instant is the operator's confirmation, and the hand-off is recorded
-    // beside it: a migration's spent state is revived by importing the artifact
-    // back, and this one has no artifact to import, so the durable spent surfaces
-    // must be able to tell the two apart.
-    const rec = record();
-    const deps = cronDeps(rec);
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
-    await dispatch.confirm(new Date("2026-07-14T13:30:00.000Z"));
-    expect(deps.spendIfCurrent).toHaveBeenCalledWith(
-      rec.id,
-      rec.sharedSecret,
-      "2026-07-14T13:30:00.000Z",
-      "command-line",
-    );
-    expect(deps.spent).toEqual([
-      { spentAt: "2026-07-14T13:30:00.000Z", handoff: "command-line" },
-    ]);
-  });
-
-  test("confirm refuses files a rotation has superseded", async () => {
-    // The same ordering the migration's confirm refuses: a run rotated between the
-    // two downloads and the operator's attestation, so the key file on their disk
-    // is no longer this exchange's.
-    const rec = record();
-    const deps = cronDeps(rec);
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
-    deps.stored.record = { ...rec, sharedSecret: generateSharedSecret() };
-
-    await expect(dispatch.confirm(new Date())).rejects.toBeInstanceOf(
-      ManagedHandoffRefusedError,
-    );
-    expect(deps.spent).toEqual([]);
-  });
-
-  test("confirm refuses a run in flight as its own refusal", async () => {
-    // The same exclusion the migration's confirm meets: a run of this record holds
-    // the run+rotate lock, so the two files on the operator's disk are handed over
-    // only once it is over.
-    const rec = record();
-    const deps = cronDeps(rec);
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
-    deps.stored.runInFlight = true;
-
-    const inFlight = await dispatch.confirm(new Date()).then(
-      () => {
-        throw new Error("the confirmation should have been refused");
-      },
-      (reason: unknown) => reason,
-    );
-    expect((inFlight as ManagedHandoffRefusedError).refusal).toBe(
-      "run-in-flight",
-    );
-    expect(deps.spent).toEqual([]);
-  });
-
-  test("confirm refuses a record that is gone as its own refusal", async () => {
-    const rec = record();
-    const deps = cronDeps(rec);
-    const dispatch = await dispatchManagedCronExport(rec.id, deps);
-    deps.stored.record = undefined;
-
-    const refusal = await dispatch.confirm(new Date()).then(
-      () => {
-        throw new Error("the confirmation should have been refused");
-      },
-      (reason: unknown) => reason,
-    );
-    expect((refusal as ManagedHandoffRefusedError).refusal).toBe("record-gone");
-    expect(deps.spent).toEqual([]);
   });
 
   test.each(refusedRecords)(
@@ -632,13 +533,12 @@ describe("dispatchManagedCronExport", () => {
       const before = structuredClone(rec);
       const deps = cronDeps(rec);
 
-      await expect(dispatchManagedCronExport(rec.id, deps)).rejects.toThrow(
+      await expect(exportManagedCronFiles(rec.id, deps)).rejects.toThrow(
         refusal,
       );
-      // The composition refuses before anything leaves the app: no bytes, no spend,
-      // and the record the read returned still equals its snapshot.
+      // The composition refuses before anything leaves the app: no bytes, and
+      // the record the read returned still equals its snapshot.
       expect(deps.downloaded).toEqual([]);
-      expect(deps.spendIfCurrent).not.toHaveBeenCalled();
       expect(rec).toEqual(before);
     },
   );

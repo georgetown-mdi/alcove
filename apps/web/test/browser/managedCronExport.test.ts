@@ -14,19 +14,21 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  CLI_BUILT_IN_STUN_URI,
+  commandLineExportNotice,
+} from "@recurring/managedCronExportModel";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   getManagedLocalState,
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
-import { CLI_BUILT_IN_STUN_URI } from "@recurring/managedCronExportModel";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
-import { dispatchManagedCronExport } from "@psi/managed/managedExchangeExport";
+import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { disclosureToggle, openDisclosure } from "./collapsePanels";
@@ -37,11 +39,10 @@ import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 import type { managedCronExportPanelState } from "@recurring/managedCronExportModel";
 
 // The command-line export panel on the run surface, against real Chromium: real
-// IndexedDB stores, a real export, nothing stubbed. Pinned here: the hand-off
-// invariant (the two files the CLI opens land, and this browser's copy is spent
-// only on the operator's attestation, so a dismissed save leaves one live owner)
-// and the custody line (these files are not a backup this browser restores from,
-// so this export never touches the backup marker).
+// IndexedDB stores, a real export, nothing stubbed. Pinned here: the two files
+// the CLI opens land, the export writes nothing (the stored exchange stays
+// runnable here and its backup marker is untouched), and the notice beside it
+// says what running the exchange elsewhere means for this copy.
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -102,7 +103,7 @@ function newExchange(
 
 const app = createAppMount();
 
-const EXPORT_PANEL = "Run this from the command line instead";
+const EXPORT_PANEL = "Run this from the command line";
 
 // A pattern for the label, since a refused export's toggle also names its
 // collapsed summary.
@@ -119,19 +120,15 @@ async function openExportPanel(): Promise<void> {
 }
 
 /** Click the panel's download action and wait for both files' bytes to be read
- * back off their object URLs. The confirmation renders only from a dispatch that
- * resolved, so it is the panel's own signal that both anchors fired. Neither
- * phase takes a budget of its own: an un-timed `expect.element` polls for what is
- * left of the test's own timeout, and `settled()` awaits the capture's reads. */
+ * back off their object URLs. Neither phase takes a budget of its own: an
+ * un-timed `expect.poll` polls for what is left of the test's own timeout, and
+ * `settled()` awaits the capture's reads. */
 async function downloadBothFiles(downloads: DownloadCapture): Promise<void> {
   await page
     .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
     .click();
-  await expect
-    .element(page.getByText("Confirm the hand-off."))
-    .toBeInTheDocument();
+  await expect.poll(() => downloads.captured.length).toBe(2);
   await downloads.settled();
-  expect(downloads.captured).toHaveLength(2);
 }
 
 beforeEach(async () => {
@@ -187,13 +184,6 @@ describe("the command-line export hands over two files", () => {
     // back to the CLI's built-in default and discloses the host's public address.
     await expect
       .element(page.getByText(CLI_BUILT_IN_STUN_URI, { exact: false }))
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText("the only copy of this exchange that can run", {
-          exact: false,
-        }),
-      )
       .toBeInTheDocument();
     // The ready-to-run invocation, run from the image over the folder, and the
     // schedule lines are on the panel.
@@ -318,59 +308,61 @@ describe("a panel whose lines are withheld", () => {
   });
 });
 
-describe("the source is spent only on the operator's attestation", () => {
-  test("dismissing the confirmation leaves this browser's copy live", async () => {
+describe("the export leaves this browser's copy as it was", () => {
+  test("the stored record is unchanged, unspent, and still runs here", async () => {
     const created = await createManagedExchange(newExchange());
+    const before = await getManagedExchange(created.id);
     const downloads = captureDownloads();
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
       await openExportPanel();
       await downloadBothFiles(downloads);
-      await page
-        .getByRole("button", { name: "Keep it in this browser" })
-        .click();
 
-      // No spend: the record still runs here, and the run affordance is still up.
-      expect((await getManagedLocalState(created.id))?.spent).toBeUndefined();
+      expect(await getManagedExchange(created.id)).toEqual(before);
+      expect(await getManagedLocalState(created.id)).toBeUndefined();
       await expect
         .element(page.getByRole("button", { name: "Run exchange" }))
         .toBeInTheDocument();
+      expect(app.container.textContent).not.toMatch(/handed off/i);
     } finally {
       downloads.restore();
     }
   });
+});
 
-  test("confirming spends the source and takes down the run affordance", async () => {
+describe("the notice beside the export", () => {
+  const SCHEDULE_CLAUSE = "turn off its schedule here";
+
+  test("says to import it again, with no schedule clause where no schedule is on", async () => {
     const created = await createManagedExchange(newExchange());
-    const downloads = captureDownloads();
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await openExportPanel();
-      await downloadBothFiles(downloads);
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
 
-      expect((await getManagedLocalState(created.id))?.spent).toBeUndefined();
-      await page
-        .getByRole("button", {
-          name: "I saved both files; hand off this exchange",
-        })
-        .click();
+    await expect
+      .element(page.getByText(commandLineExportNotice(false), { exact: true }))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(SCHEDULE_CLAUSE);
+  });
 
-      await expect
-        .element(page.getByText("Handed off to the command line"))
-        .toBeInTheDocument();
-      // The spend records WHICH hand-off spent it, not just when: a migration's
-      // spent state is revived by importing the artifact back, and this one has no
-      // artifact to import.
-      expect((await getManagedLocalState(created.id))?.spent).toMatchObject({
-        handoff: "command-line",
-      });
-      // The run controls are gone with the copy they would have run.
-      await expect
-        .element(page.getByRole("button", { name: "Run exchange" }))
-        .not.toBeInTheDocument();
-    } finally {
-      downloads.restore();
-    }
+  test("adds the schedule clause where this copy has a schedule on", async () => {
+    const created = await createManagedExchange(
+      newExchange({
+        schedule: {
+          anchor: "2026-10-06T14:30:00.000Z",
+          intervalDays: 1,
+          windowSeconds: 3600,
+          nextWindow: "2026-10-06T14:30:00.000Z",
+          consecutiveMisses: 0,
+        },
+      }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect
+      .element(page.getByText(commandLineExportNotice(true), { exact: true }))
+      .toBeInTheDocument();
+    expect(commandLineExportNotice(true)).toContain(SCHEDULE_CLAUSE);
   });
 });
 
@@ -379,16 +371,13 @@ describe("the export leaves the backup indicator exactly where it was", () => {
   // from -- and these two files are not one: this app's import does not accept them.
   // So no step of this export may mark the record, whichever way the operator goes.
 
-  test("a dismissed export marks nothing, and the exchange is still backup-needed", async () => {
+  test("an export marks nothing, and the exchange is still backup-needed", async () => {
     const created = await createManagedExchange(newExchange());
     const downloads = captureDownloads();
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
       await openExportPanel();
       await downloadBothFiles(downloads);
-      await page
-        .getByRole("button", { name: "Keep it in this browser" })
-        .click();
 
       expect(await getManagedLocalState(created.id)).toBeUndefined();
       // Not just the stored marker: the panel above still asks for the backup this
@@ -396,30 +385,6 @@ describe("the export leaves the backup indicator exactly where it was", () => {
       await expect
         .element(page.getByText("Back up this exchange."))
         .toBeInTheDocument();
-    } finally {
-      downloads.restore();
-    }
-  });
-
-  test("a confirmed hand-off marks nothing either", async () => {
-    const created = await createManagedExchange(newExchange());
-    const downloads = captureDownloads();
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await openExportPanel();
-      await downloadBothFiles(downloads);
-      await page
-        .getByRole("button", {
-          name: "I saved both files; hand off this exchange",
-        })
-        .click();
-      await expect
-        .element(page.getByText("Handed off to the command line"))
-        .toBeInTheDocument();
-
-      // The spend is the only thing this export writes.
-      expect((await getManagedLocalState(created.id))?.backup).toBeUndefined();
-      expect((await getManagedLocalState(created.id))?.spent).toBeDefined();
     } finally {
       downloads.restore();
     }
@@ -454,19 +419,9 @@ describe("the export leaves the backup indicator exactly where it was", () => {
 
     await expect
       .element(
-        page.getByText("this browser cannot restore the exchange from them", {
+        page.getByText("Downloading them does not change the backup state", {
           exact: false,
         }),
-      )
-      .toBeInTheDocument();
-    // The backup it points at is only a way back while the exchange stays here:
-    // an artifact taken before a confirmed hand-off is refused on import.
-    await expect
-      .element(
-        page.getByText(
-          "a backup taken before the hand-off cannot bring it back",
-          { exact: false },
-        ),
       )
       .toBeInTheDocument();
     // And the backup panel above says which file that is.
@@ -483,11 +438,10 @@ describe("the export leaves the backup indicator exactly where it was", () => {
   });
 });
 
-describe("the durable spent surface names the hand-off that spent it", () => {
-  // The "Handed off to the command line" surface a confirmation leaves on screen is
-  // session state. What a LATER VISIT shows is read back from the sibling store, so
-  // the stored spend is what has to hold the hand-off: a remount is the only way to
-  // see the copy the operator actually lives with.
+describe("a device migration's spent surface", () => {
+  // The "Handed off to another device" surface a confirmation leaves on screen is
+  // session state. What a LATER VISIT shows is read back from the sibling store,
+  // so a remount is the only way to see the copy the operator actually lives with.
 
   /** Mount the run surface again from nothing, as a later visit does: the surface
    * re-reads the record and its sibling state rather than keeping what the
@@ -499,51 +453,9 @@ describe("the durable spent surface names the hand-off that spent it", () => {
     app.render(createElement(ManagedRunSurface, { id }));
   }
 
-  test("a command-line hand-off remounts into the command-line copy", async () => {
-    const created = await createManagedExchange(newExchange());
-    const downloads = captureDownloads();
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await openExportPanel();
-      await downloadBothFiles(downloads);
-      await page
-        .getByRole("button", {
-          name: "I saved both files; hand off this exchange",
-        })
-        .click();
-      await expect
-        .element(page.getByText("Handed off to the command line"))
-        .toBeInTheDocument();
-
-      await remount(created.id);
-
-      await expect
-        .element(
-          page.getByText("handed this exchange to the command line", {
-            exact: false,
-          }),
-        )
-        .toBeInTheDocument();
-      await expect
-        .element(
-          page.getByText("the only copy of this exchange that can run", {
-            exact: false,
-          }),
-        )
-        .toBeInTheDocument();
-      // Neither half of the migration copy is true here: no other device holds
-      // this exchange, and the two files it runs from are not the artifact the
-      // import flow accepts.
-      expect(app.container.textContent).not.toContain("another device");
-      expect(app.container.textContent).not.toContain("Import the backup");
-    } finally {
-      downloads.restore();
-    }
-  });
-
   test("a device migration remounts into the migration copy", async () => {
-    // The path the discriminator must leave alone: a migration writes no hand-off,
-    // and its spent copy still points at the import that revives it.
+    // A migration writes no hand-off discriminator, and its spent copy points at
+    // the import that revives it.
     const created = await createManagedExchange(newExchange());
     const downloads = captureDownloads();
     try {
@@ -615,7 +527,7 @@ describe("a record this app could not have composed", () => {
 
     await expect
       .element(
-        page.getByText("cannot be handed to the command line", {
+        page.getByText("cannot run from the command line", {
           exact: false,
         }),
       )
@@ -632,20 +544,19 @@ describe("a record this app could not have composed", () => {
       .not.toBeInTheDocument();
   });
 
-  test("a dispatch past the panel's gate writes nothing in the real store", async () => {
+  test("an export past the panel's gate writes nothing in the real store", async () => {
     // The panel gates on the same refusal, but the gate and the click can diverge
     // (a concurrent import or rotation in another tab). The composition refuses the
     // record the store handed back, before anything is downloaded: against real
-    // IndexedDB that leaves no sibling entry, no spend, and no record change.
+    // IndexedDB that leaves no sibling entry and no record change.
     const created = await createManagedExchange(refusedExchange());
     const downloaded: Array<string> = [];
     const before = await getManagedExchange(created.id);
 
     await expect(
-      dispatchManagedCronExport(created.id, {
+      exportManagedCronFiles(created.id, {
         readRecord: getManagedExchange,
         download: (fileName) => downloaded.push(fileName),
-        spendIfCurrent: spendManagedExchangeIfCurrent,
         readOwn: () => ({ kind: "none" }),
       }),
     ).rejects.toThrow(/to the command line: turn\./);

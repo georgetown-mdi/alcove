@@ -41,7 +41,6 @@ import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedHandoffState } from "@recurring/managedRunHandoffModel";
 import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
-import type { RunLines } from "@recurring/scheduledRunCommand";
 import type { RunOutputs } from "@psi/runOutputs";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -432,16 +431,6 @@ const MIGRATION_DISPATCH: ManagedMigrationDispatch = {
   confirm: () => Promise.resolve(),
 };
 
-const COMMAND_LINE: RunLines = {
-  kind: "withheld",
-  notice: "Run it on the other machine.",
-};
-
-const COMMAND_LINE_HANDOFF: ManagedHandoffState = {
-  ...MANAGED_HANDOFF_INITIAL,
-  commandLine: COMMAND_LINE,
-};
-
 const AWAITING_CONFIRM: ManagedHandoffState = {
   ...MANAGED_HANDOFF_INITIAL,
   migration: {
@@ -491,7 +480,7 @@ describe("the surface's view", () => {
           ...base,
           load,
           run: finished,
-          handoff: COMMAND_LINE_HANDOFF,
+          handoff: AWAITING_CONFIRM,
         }),
       ).toBe(load.kind);
   });
@@ -515,7 +504,7 @@ describe("the surface's view", () => {
       managedSurfaceView({
         ...base,
         run: finished,
-        handoff: { ...AWAITING_CONFIRM, commandLine: COMMAND_LINE },
+        handoff: AWAITING_CONFIRM,
       }),
     ).toBe("complete");
     expect(
@@ -535,17 +524,7 @@ describe("the surface's view", () => {
     ).toBe("run");
   });
 
-  test("a command-line hand-off outranks a migration, migrated or awaiting confirmation", () => {
-    for (const migration of [MIGRATED, AWAITING_CONFIRM])
-      expect(
-        managedSurfaceView({
-          ...base,
-          handoff: {
-            ...migration,
-            commandLine: COMMAND_LINE,
-          },
-        }),
-      ).toBe("command-line");
+  test("a migration shows its own view, migrated or awaiting confirmation", () => {
     expect(managedSurfaceView({ ...base, handoff: MIGRATED })).toBe("migrated");
     expect(managedSurfaceView({ ...base, handoff: AWAITING_CONFIRM })).toBe(
       "confirm-move",
@@ -793,7 +772,6 @@ describe("the surface's reducer and the exports", () => {
       { type: "export-started" },
       { type: "export-failed" },
       { type: "migration-confirmed" },
-      { type: "command-line-handed-off", handoff: COMMAND_LINE },
     ] satisfies ReadonlyArray<ManagedRunSurfaceAction>) {
       const next = managedRunSurfaceReducer(failedVisit, action);
       expect(next.load).toBe(failedVisit.load);
@@ -1109,10 +1087,6 @@ const ROUTING: {
     owns: ["handoff"],
   },
   "migration-kept": { action: { type: "migration-kept" }, owns: ["handoff"] },
-  "command-line-handed-off": {
-    action: { type: "command-line-handed-off", handoff: COMMAND_LINE },
-    owns: ["handoff"],
-  },
   "terms-proposal-started": {
     action: { type: "terms-proposal-started" },
     owns: ["termsProposal"],
@@ -1136,7 +1110,7 @@ describe("the surface's reducer slices", () => {
     reads: foldSurface([
       { type: "accounting-read", read: { kind: "unavailable" } },
     ]).reads,
-    handoff: COMMAND_LINE_HANDOFF,
+    handoff: AWAITING_CONFIRM,
     termsProposal: { kind: "busy" },
   };
   const slices = Object.keys(everySliceHeld) as ReadonlyArray<SurfaceSlice>;

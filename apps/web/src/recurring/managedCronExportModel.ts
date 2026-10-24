@@ -134,17 +134,27 @@ type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
       reason: string;
     };
 
-/** The lines running `composed` once from `image`, or why none is shown. */
-export function exportRun(
-  composed: ManagedCommandLineConfig,
-  image: string = buildImageReference(),
-): RunLines {
-  return runLines({
-    argv: composed.argv,
-    bindPaths: composed.bindPaths,
-    image,
-  });
+/**
+ * The notice beside the export: running the exchange elsewhere rotates its
+ * secret, so this browser's copy runs again only once the newer files are
+ * imported. Where this copy has a schedule on, its runs would rotate the
+ * secret too, so the notice also says to turn the schedule off here.
+ */
+export function commandLineExportNotice(scheduleOn: boolean): string {
+  return scheduleOn
+    ? "If you run this exchange elsewhere, turn off its schedule here; to " +
+        "use it here later, import it again."
+    : "If you run this exchange elsewhere, import it again to use it here " +
+        "later.";
 }
+
+/** Why the download is withheld while a run of this exchange is in flight: the
+ * run changes the secret the files would hold. Names every context a run can
+ * be in, since the operator reading it may not have started it. */
+export const RUN_IN_FLIGHT_EXPORT_REASON =
+  "This exchange is running right now - in this browser, in another tab, or " +
+  "on its schedule. A run changes its shared secret, so files downloaded now " +
+  "could already be out of date. Download them when it finishes.";
 
 /** The lines running `composed` on `schedule`, from `image`. */
 function scheduledRunLines(

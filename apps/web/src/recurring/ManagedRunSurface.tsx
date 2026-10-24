@@ -47,8 +47,8 @@ import {
   RECORD_GONE_HANDOFF_TITLE,
   RUN_IN_FLIGHT_HANDOFF_REASON,
   RUN_IN_FLIGHT_HANDOFF_TITLE,
+  SUPERSEDED_HANDOFF_REASON,
   SUPERSEDED_HANDOFF_TITLE,
-  supersededHandoffReason,
 } from "./managedHandoffGate";
 import { DeleteExchangeButton } from "./SavedExchanges";
 import { ManagedConfigurationSurface } from "./ManagedConfigurationSurface";
@@ -83,7 +83,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const {
     state: surfaceState,
     runInFlight,
-    recheckLock,
     running,
     liveFailure,
     runCompletion,
@@ -103,7 +102,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
     confirmMigration,
     keepMigrationOnDevice,
     downloadUpdatedBackup,
-    handOffToCommandLine,
     reinviteNow,
     resolveConfirmation,
     clearStanding,
@@ -135,7 +133,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const exportBusy = handoff.export.kind === "busy";
   const exportFailed = handoff.export.kind === "failed";
   const migrationRefusal = managedMigrationRefusal(handoff);
-  const commandLineHandoff = handoff.commandLine;
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -328,33 +325,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
             )}
             <SavedExchangesFoot />
           </>
-        ) : commandLineHandoff !== undefined ? (
-          <>
-            <h1 tabIndex={-1}>Handed off to the command line</h1>
-            {commandLineHandoff.kind === "shown" ? (
-              <>
-                <p className={styles.sub}>
-                  You exported this exchange&apos;s alcove.yaml and .alcove.key,
-                  so it no longer runs here. Run it on the machine you saved
-                  them to:
-                </p>
-                <p className={styles.mono}>{commandLineHandoff.runCommand}</p>
-              </>
-            ) : (
-              <>
-                <p className={styles.sub}>
-                  You exported this exchange&apos;s alcove.yaml and .alcove.key,
-                  so it no longer runs here.
-                </p>
-                <p className={styles.small}>{commandLineHandoff.notice}</p>
-              </>
-            )}
-            <p className={styles.small}>
-              Those two files are the only copy of this exchange that can run.
-              Keep them somewhere only you can read.
-            </p>
-            <SavedExchangesFoot />
-          </>
         ) : handoff.migration.kind === "migrated" ? (
           <>
             <h1 tabIndex={-1}>Handed off to another device</h1>
@@ -412,7 +382,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               >
                 {migrationRefusal === "record-gone"
                   ? RECORD_GONE_HANDOFF_REASON
-                  : supersededHandoffReason("migration")}
+                  : SUPERSEDED_HANDOFF_REASON}
               </Alert>
             )}
             <p>
@@ -602,8 +572,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
             <ManagedCronExportPanel
               record={load.record}
               runInFlight={runInFlight}
-              recheckRunInFlight={recheckLock}
-              onHandedOff={handOffToCommandLine}
             />
             <ManagedExchangeDetail
               record={load.record}
