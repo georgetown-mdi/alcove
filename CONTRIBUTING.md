@@ -246,6 +246,8 @@ The governance documents -- [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md)
 
 Documentation-tier placement is in scope for code review: a reviewer flags spec-level detail written into a `docs/` overview doc.
 
+A figure in the docs (an SVG under `docs/img/`) is made or revised by the `doc-figure` skill's method, [`.claude/skills/doc-figure/SKILL.md`](.claude/skills/doc-figure/SKILL.md).
+
 ## Changelog
 
 `CHANGELOG.md` is reader-facing release notes for whoever runs or vets Alcove from outside this repo, browsing to learn what it does and whether it is worth adopting -- not a second copy of the git history. It is a short list of the product's headline capabilities, not a record of the work done.
