@@ -18,7 +18,8 @@ import {
 } from "@psi/ownColumnsModel";
 import { MatchingSharingSection } from "@exchange/MatchingSharingSection";
 
-import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { createAppMount } from "./renderApp";
+import { readyDisclosures } from "./collapsePanels";
 
 import type { Metadata } from "@alcove/core";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
@@ -66,7 +67,9 @@ async function mount(
       onContinue: () => undefined,
     }),
   );
-  await flushPendingUpdates();
+  // Its tests read the container synchronously, so wait for the render to
+  // commit rather than for one macrotask, which a loaded page can outrun.
+  await readyDisclosures(app.container);
   return chosen;
 }
 
