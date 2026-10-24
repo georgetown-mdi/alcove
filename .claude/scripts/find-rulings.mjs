@@ -36,7 +36,11 @@
 // origin/staging is fetched first; when the fetch fails the local ref is
 // searched and a note says so. Exits 0 whether or not anything matched, and 1
 // when a source could not be searched, so a partial search is not mistaken for
-// an empty one.
+// an empty one. A board counts as not searched when its listing does not add up
+// to the item count the API reports (fetchAllItems). Limit: an item the count
+// also omits is missing with exit 0, and whether the count includes a
+// just-filed draft is not known (one filed 25 minutes earlier was absent from
+// full listings on 2026-10-22).
 //
 // Worked example, a made-up question of whether the default poll interval is
 // 5 seconds, which the owner had already ruled twice:

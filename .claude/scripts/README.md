@@ -5,7 +5,10 @@ push:
 
 - the project-board tooling every board read and write goes through
   (`fetch-issues.mjs`, `edit-issue.mjs`, `list-issues.mjs`, `list-epic.mjs`,
-  `lint-issues.mjs`), and `lib/projectItems.mjs` under them
+  `lint-issues.mjs`), and `lib/projectItems.mjs` under them.
+  `lib/stubbedBoardRun.mjs` runs one of them as a child process against the
+  GraphQL stand-in in `lib/graphqlFetchStub.mjs`, so a suite asserts its exit
+  code and output offline
 - `find-rulings.mjs`, run before a Decision item is filed or docketed: it
   searches both boards in every status, the docs and rules at
   `origin/staging`, the staging log, and `scratch/` for a standing owner

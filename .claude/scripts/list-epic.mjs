@@ -21,6 +21,13 @@
 // numeric ID, Order, Status, and title, sorted by Order ascending with unset
 // orders last. --json emits a compact array of { id, order, status, title }
 // for programmatic consumers, consistent with fetch-issues.mjs.
+//
+// The listing is checked against the item count the API reports for the board
+// (fetchAllItems): a run that falls short is retried, then exits 1 naming what
+// did not add up. Limit: an item the count also omits is missing with exit 0,
+// and whether the count includes a just-filed draft is not known (one filed 25
+// minutes earlier was absent from full listings on 2026-10-22), so read a
+// just-filed item by id (fetch-issues.mjs).
 
 // fetchAllItems (the paginated, field-rich whole-project fetch) lives in
 // lib/projectItems.mjs so list-issues.mjs shares the exact same pagination and
@@ -39,6 +46,13 @@ function byOrder(a, b) {
 }
 
 async function main() {
+  // Output piped to `head` closes the read end early; exit quietly on the
+  // resulting EPIPE instead of crashing.
+  process.stdout.on("error", (err) => {
+    if (err.code === "EPIPE") process.exit(0);
+    throw err;
+  });
+
   const argv = process.argv.slice(2);
   let asJson = false;
   let i = 0;

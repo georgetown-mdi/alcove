@@ -7,12 +7,19 @@ import {
   GRAPHQL_MAX_ATTEMPTS,
   GRAPHQL_REQUEST_TIMEOUT_MS,
   GRAPHQL_RETRY_BACKOFF_MS,
+  LISTING_MAX_ATTEMPTS,
+  LISTING_RETRY_BACKOFF_MS,
   mapFetchedNode,
   numericIdFromNodeId,
   PAGE_SIZE,
   pvtiNodeId,
   toNumericId,
 } from "./projectItems.mjs";
+import {
+  runBoardScript,
+  STUB_EPIC,
+  STUB_ITEM_COUNT,
+} from "./stubbedBoardRun.mjs";
 
 // Build a synthetic project item as the GraphQL listing query selects it: a
 // PVTI_ node id (so numericIdFromNodeId can decode it), a fieldValues node list
@@ -43,44 +50,62 @@ function fakeNode(projectNumber, numericId, { status, epic, order, title }) {
   };
 }
 
-// A runQuery that serves `nodes` in pages of `pageSize`, honoring the cursor the
-// way GitHub's items connection does: each call returns the next page and an
-// endCursor, with hasNextPage false on the last. fetchAllItems only feeds the
-// returned endCursor back as an opaque token, so a served-count closure is a
-// faithful stand-in for real cursor pagination.
-function pagedRunQuery(nodes, pageSize) {
-  let served = 0;
-  return () => {
-    const page = nodes.slice(served, served + pageSize);
-    served += page.length;
-    const hasNextPage = served < nodes.length;
-    return {
+// One items-connection response body as runQuery returns it.
+function pageBody({ nodes, totalCount, hasNextPage, endCursor, errors }) {
+  return {
+    data: {
       organization: {
         projectV2: {
           items: {
-            pageInfo: {
-              hasNextPage,
-              endCursor: hasNextPage ? `cursor-${served}` : null,
-            },
-            nodes: page,
+            totalCount,
+            pageInfo: { hasNextPage, endCursor },
+            nodes,
           },
         },
       },
-    };
+    },
+    ...(errors ? { errors } : {}),
   };
+}
+
+// A runQuery that serves `nodes` in pages of `pageSize`, honoring the cursor the
+// way GitHub's items connection does: each call returns the next page and an
+// endCursor, with hasNextPage false on the last, and every page reports the
+// board's item count. fetchAllItems only feeds the returned endCursor back as an
+// opaque token, so a served-count closure is a faithful stand-in for real
+// cursor pagination; the first page's query restarts the count.
+function pagedRunQuery(nodes, pageSize) {
+  let served = 0;
+  return (query) => {
+    if (!query.includes("after:")) served = 0;
+    const page = nodes.slice(served, served + pageSize);
+    served += page.length;
+    const hasNextPage = served < nodes.length;
+    return pageBody({
+      nodes: page,
+      totalCount: nodes.length,
+      hasNextPage,
+      endCursor: hasNextPage ? `cursor-${served}` : null,
+    });
+  };
+}
+
+// `count` synthetic board-9 items with distinct ids.
+function boardNodes(count) {
+  return Array.from({ length: count }, (_, idx) =>
+    fakeNode(9, 100000000 + idx, {
+      status: "Todo",
+      epic: "Epic A",
+      order: idx,
+      title: `Item ${idx}`,
+    }),
+  );
 }
 
 describe("fetchAllItems pagination", () => {
   it("returns every item across more than one page (past the default page size)", async () => {
     const total = PAGE_SIZE + 50; // 150: forces a second page beyond the 100 cap
-    const nodes = Array.from({ length: total }, (_, idx) =>
-      fakeNode(9, 100000000 + idx, {
-        status: "Todo",
-        epic: "Epic A",
-        order: idx,
-        title: `Item ${idx}`,
-      }),
-    );
+    const nodes = boardNodes(total);
 
     const result = await fetchAllItems(9, {
       runQuery: pagedRunQuery(nodes, PAGE_SIZE),
@@ -131,7 +156,7 @@ describe("fetchAllItems pagination", () => {
     const serve = pagedRunQuery([node], PAGE_SIZE);
     const runQuery = (query) => {
       queries.push(query);
-      return serve();
+      return serve(query);
     };
 
     const [withBody] = await fetchAllItems(9, { runQuery, withBody: true });
@@ -143,6 +168,249 @@ describe("fetchAllItems pagination", () => {
     });
     expect(titleOnly).not.toHaveProperty("body");
   });
+});
+
+describe("fetchAllItems completeness", () => {
+  const FAST = { maxAttempts: LISTING_MAX_ATTEMPTS, backoffMs: 0 };
+  let stderr;
+
+  beforeEach(() => {
+    stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A runQuery serving `pages` in turn, restarting at the first on each new
+  // listing attempt (a query with no cursor), and counting every call.
+  function scriptedRunQuery(pages) {
+    let next = 0;
+    const runQuery = vi.fn((query) => {
+      if (!query.includes("after:")) next = 0;
+      const page = pages[Math.min(next, pages.length - 1)];
+      next += 1;
+      return page;
+    });
+    return runQuery;
+  }
+
+  const nodes = boardNodes(150);
+  const firstPage = pageBody({
+    nodes: nodes.slice(0, 100),
+    totalCount: 150,
+    hasNextPage: true,
+    endCursor: "cursor-100",
+  });
+
+  async function expectIncomplete(runQuery, reason) {
+    const err = await fetchAllItems(9, { runQuery, ...FAST }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toContain(
+      `could not confirm a complete listing of project 9 after ${LISTING_MAX_ATTEMPTS} attempts`,
+    );
+    expect(err.message).toMatch(reason);
+    expect(err.message).toContain("fetch-issues.mjs");
+  }
+
+  it("fails a listing whose last page comes back short, after every attempt", async () => {
+    const runQuery = scriptedRunQuery([
+      firstPage,
+      pageBody({
+        nodes: nodes.slice(100, 130),
+        totalCount: 150,
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /the pages hold 130 of the 150 items the API reports/,
+    );
+    expect(runQuery).toHaveBeenCalledTimes(2 * LISTING_MAX_ATTEMPTS);
+    expect(stderr).toHaveBeenCalledTimes(LISTING_MAX_ATTEMPTS - 1);
+    expect(stderr.mock.calls[0][0]).toMatch(
+      /listing attempt 1 of 3 for project 9 was incomplete/,
+    );
+  });
+
+  it("fails a listing whose first page comes back empty", async () => {
+    const runQuery = scriptedRunQuery([
+      pageBody({
+        nodes: [],
+        totalCount: 150,
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+    await expectIncomplete(runQuery, /the pages hold 0 of the 150 items/);
+  });
+
+  it("fails a page that reports a next page but holds no items", async () => {
+    // Without this check the pager would request the same empty page forever.
+    const runQuery = scriptedRunQuery([
+      pageBody({
+        nodes: [],
+        totalCount: 150,
+        hasNextPage: true,
+        endCursor: "cursor-0",
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /page 1 reports a next page but holds no items or no cursor/,
+    );
+    expect(runQuery).toHaveBeenCalledTimes(LISTING_MAX_ATTEMPTS);
+  });
+
+  it("fails a page whose item count disagrees with the first page's", async () => {
+    const runQuery = scriptedRunQuery([
+      firstPage,
+      pageBody({
+        nodes: nodes.slice(100),
+        totalCount: 149,
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /page 2 reports 149 items where page 1 reported 150/,
+    );
+  });
+
+  it("fails a page that repeats an item from an earlier page", async () => {
+    const runQuery = scriptedRunQuery([
+      firstPage,
+      pageBody({
+        nodes: [nodes[99], ...nodes.slice(101)],
+        totalCount: 150,
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /page 2 repeats item PVTI_\S+ from an earlier page/,
+    );
+  });
+
+  it("fails pages that add up to more items than the count", async () => {
+    const runQuery = scriptedRunQuery([
+      pageBody({
+        nodes: nodes.slice(0, 100),
+        totalCount: 90,
+        hasNextPage: true,
+        endCursor: "cursor-100",
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /page 1 brings the listing to 100 items, past the 90 the API reports/,
+    );
+  });
+
+  it("fails a page that came back with errors beside its data", async () => {
+    const runQuery = scriptedRunQuery([
+      pageBody({
+        nodes: nodes.slice(0, 100),
+        totalCount: 100,
+        hasNextPage: false,
+        endCursor: null,
+        errors: [{ message: "Something went wrong" }],
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /page 1 came back with errors: .*Something went wrong/,
+    );
+  });
+
+  it("fails a page with no item count", async () => {
+    const page = pageBody({
+      nodes: nodes.slice(0, 100),
+      totalCount: undefined,
+      hasNextPage: false,
+      endCursor: null,
+    });
+    await expectIncomplete(
+      scriptedRunQuery([page]),
+      /page 1 has no item count, item list or page info/,
+    );
+  });
+
+  it("returns the whole board when a retry recovers from a short run", async () => {
+    let attempt = 0;
+    const full = pagedRunQuery(nodes, PAGE_SIZE);
+    const runQuery = vi.fn((query) => {
+      if (!query.includes("after:")) attempt += 1;
+      if (attempt === 1) {
+        return pageBody({
+          nodes: nodes.slice(0, 100),
+          totalCount: 150,
+          hasNextPage: false,
+          endCursor: null,
+        });
+      }
+      return full(query);
+    });
+
+    const result = await fetchAllItems(9, { runQuery, ...FAST });
+
+    expect(result).toHaveLength(150);
+    expect(runQuery).toHaveBeenCalledTimes(3);
+    expect(stderr.mock.calls[0][0]).toMatch(
+      /listing attempt 1 of 3 for project 9 was incomplete \(the pages hold 100 of the 150 items the API reports\)/,
+    );
+  });
+
+  it("does not retry a project that is not found", async () => {
+    const runQuery = vi.fn(() => ({
+      data: { organization: { projectV2: null } },
+      errors: [{ type: "NOT_FOUND" }],
+    }));
+    const err = await fetchAllItems(99, { runQuery, ...FAST }).catch((e) => e);
+    expect(err.message).toMatch(/project 99 not found under owner/);
+    expect(runQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failing listing inside the budget a harness gives one command", () => {
+    // A board-9 listing measured 10-15 s; a listing that fails on every
+    // attempt has to report before an agent harness gives up at 120 s.
+    const BOARD_9_LISTING_MS = 15_000;
+    const HARNESS_COMMAND_BUDGET_MS = 120_000;
+    let backoffTotal = 0;
+    for (let attempt = 1; attempt < LISTING_MAX_ATTEMPTS; attempt += 1) {
+      backoffTotal += LISTING_RETRY_BACKOFF_MS * attempt;
+    }
+    const worstCaseMs =
+      LISTING_MAX_ATTEMPTS * BOARD_9_LISTING_MS + backoffTotal;
+
+    expect(worstCaseMs).toBeLessThan(HARNESS_COMMAND_BUDGET_MS * 0.75);
+  });
+});
+
+describe("listing scripts over a stubbed API", () => {
+  for (const [script, args] of [
+    ["list-issues.mjs", ["--all", "9"]],
+    ["list-epic.mjs", ["9", STUB_EPIC]],
+  ]) {
+    it(`${script} prints every item of a complete listing`, async () => {
+      const run = await runBoardScript(script, args);
+      expect(run.code).toBe(0);
+      expect(run.stdout.trim().split("\n")).toHaveLength(STUB_ITEM_COUNT);
+    });
+
+    it(`${script} exits non-zero and prints no items when the listing is short`, async () => {
+      const run = await runBoardScript(script, args, { listing: "short" });
+      expect(run.code).toBe(1);
+      expect(run.stdout).toBe("");
+      expect(run.stderr).toContain(
+        `could not confirm a complete listing of project 9 after ${LISTING_MAX_ATTEMPTS} attempts: ` +
+          `the pages hold ${STUB_ITEM_COUNT - 1} of the ${STUB_ITEM_COUNT} items the API reports`,
+      );
+    });
+  }
 });
 
 describe("mapFetchedNode cross-project guard", () => {

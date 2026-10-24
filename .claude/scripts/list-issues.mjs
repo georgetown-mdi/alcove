@@ -11,8 +11,13 @@
 // omits the numeric id and the custom fields, and it silently caps at `--limit`
 // (board 9 already holds more than one 100-item page), so a too-low limit drops
 // items with no warning. This script goes through the same paginated GraphQL
-// path as list-epic.mjs (shared fetchAllItems), which pages until the board is
-// exhausted, so no item is ever dropped.
+// path as list-epic.mjs (shared fetchAllItems), which checks the pages against
+// the item count the API reports for the board and retries a run that falls
+// short: it prints every item that count covers, or exits 1 naming what did not
+// add up. Limit: an item the count also omits is missing with exit 0. On
+// 2026-10-22 a draft filed 25 minutes earlier was absent from four agreeing
+// full listings, and whether the count includes such a draft is not known, so
+// read a just-filed item by id (fetch-issues.mjs), not from this listing.
 //
 // Usage:
 //   node list-issues.mjs [--json] [--all | --status NAME...] <project-number>
