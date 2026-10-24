@@ -24,7 +24,7 @@ import { page, userEvent } from "vitest/browser";
 // the core on a machine under four times as many busy processes as cores, and
 // was measured past a second on one saturated by other work as well, so
 // `expect.poll`'s own 1s default is not a budget these waits can take. The
-// browser project bounds a case at 15s, so a wait that overruns this reports
+// browser project bounds a case at 36 s, so a wait that overruns this reports
 // which panel never committed instead of the case reporting a bare timeout.
 const DEFERRED_COMMIT_TIMEOUT_MS = 10_000;
 

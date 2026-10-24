@@ -3321,7 +3321,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
   // About 30 browser-driver calls one after another, with eight history moves
   // and three disclosures opened, so the test's time grows with CPU load: five
   // full browser runs at a mean load average of 35 to 40 on 10 cores took 3.7
-  // to 26.3 s, past the browser project's 15 s default. 39.4 s is a 1.5x margin
+  // to 26.3 s, past vitest's 15 s browser default. 39.4 s is a 1.5x margin
   // over 26.3.
   test("a value moved after consent holds the launch until the two agree", async () => {
     // The run presents the value the consent gate committed, so a control moved
