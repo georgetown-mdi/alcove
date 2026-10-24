@@ -444,6 +444,13 @@ describe("redact", () => {
   });
 });
 
+describe("redact compressed IPv6", () => {
+  it("removes every group after the double colon", () => {
+    expect(redact("fe80::a:b:c:d")).toBe("<ip6>");
+    expect(redact("[2001:db8:1234::5678:9abc]:443")).toBe("[<ip6>]:443");
+  });
+});
+
 describe("aboutWebrtcLines", () => {
   it("keeps the ICE and error lines of a saved page, tags stripped, redacted, once each", () => {
     const saved = [

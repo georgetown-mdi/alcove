@@ -289,15 +289,31 @@ describe("host-handoff.sh refusals", () => {
 });
 
 describe("host-handoff.sh and the brief template", () => {
-  it("accepts the template in host-handoff-brief.md as written, whose launch line runs this script", () => {
+  const template = () => {
     const document = readFileSync(TEMPLATE_DOCUMENT, "utf8");
-    const template = /````markdown\n([\s\S]*?)\n````/.exec(document)?.[1];
-    expect(template).toBeDefined();
-    expect(template).toContain(
+    const text = /````markdown\n([\s\S]*?)\n````/.exec(document)?.[1];
+    expect(text).toBeDefined();
+    expect(text).toContain(
       "`bash .claude/scripts/host-handoff.sh scratch/handoffs/<YYYY-MM-DD>-<slug>.md`",
     );
-    expect(template).toContain("`Hand-off done: <result file path>`");
-    const fixture = checkout({ brief: template });
+    expect(text).toContain("`Hand-off done: <result file path>`");
+    return text;
+  };
+
+  it("refuses the template as written, whose result file path is still a placeholder", () => {
+    const fixture = checkout({ brief: template() });
+    const { status, stderr } = run(fixture, [
+      "--check",
+      `scratch/handoffs/${SLUG}.md`,
+    ]);
+    expect(status).toBe(1);
+    expect(stderr).toContain("still has a <...> placeholder");
+    expect(fixture.claudeCall()).toBeNull();
+  });
+
+  it("accepts the template once its placeholders are filled in", () => {
+    const filled = template().replaceAll("<YYYY-MM-DD>-<slug>", SLUG);
+    const fixture = checkout({ brief: filled });
     const { status, stdout, stderr } = run(fixture, [
       "--check",
       `scratch/handoffs/${SLUG}.md`,
@@ -305,6 +321,23 @@ describe("host-handoff.sh and the brief template", () => {
     expect(stderr).toBe("");
     expect(status).toBe(0);
     expect(stdout).toContain("host-handoff: model: claude-opus-5-5");
+  });
+
+  it("refuses a result file whose name is not the brief's own", () => {
+    const fixture = checkout({
+      brief: briefText({ result: "`scratch/handoffs/other-name.result.md`" }),
+    });
+    for (const args of [["--check"], []]) {
+      const { status, stderr } = run(fixture, [
+        ...args,
+        `scratch/handoffs/${SLUG}.md`,
+      ]);
+      expect(status).toBe(1);
+      expect(stderr).toContain(
+        `write it as 'scratch/handoffs/${SLUG}.result.md'`,
+      );
+    }
+    expect(fixture.claudeCall()).toBeNull();
   });
 });
 

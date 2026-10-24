@@ -39,7 +39,10 @@ Captures a browser's WebRTC connections for a host hand-off.
                              and starts the exchange in that tab. When the tab's
                              connections end it downloads
                              alcove-webrtc-capture-<time>-<n>.json; the highest
-                             <n> has every connection. --relay-only also makes
+                             <n> has every connection. A connection that never
+                             closes or fails downloads nothing until the owner
+                             runs alcoveWebrtcCapture.save() in the same
+                             console. --relay-only also makes
                              the tab's connections gather relay candidates only
   read-capture <file>        summarize a capture file: the ICE servers, a
                              timeline of states, first candidates, candidate
@@ -260,7 +263,8 @@ function installCapture(settings) {
   scope.alcoveWebrtcCapture = { connections, save };
   say(
     `installed${settings.relayOnly ? " (relay candidates only)" : ""}. ` +
-      "Start the exchange in this tab; a capture file downloads when its connections end.",
+      "Start the exchange in this tab; a capture file downloads when its connections end, " +
+      "or at any time when you run alcoveWebrtcCapture.save().",
   );
 }
 
@@ -291,7 +295,7 @@ export function redact(text) {
     )
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, "<ip4>")
     .replace(
-      /\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b|(?:[0-9a-f]{0,4}:){1,6}:[0-9a-f]{0,4}/gi,
+      /\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b|(?:[0-9a-f]{0,4}:){1,7}:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{0,4}/gi,
       "<ip6>",
     )
     .replace(/[0-9a-f-]{36}\.local\b/gi, "<mdns>")
@@ -324,14 +328,15 @@ function timelineLine({ ms, event, ...detail }) {
   return `${seconds(ms)}  ${event} ${value}${protocol}`.trimEnd();
 }
 
-// Every event but repeated candidates of one type, which only the counts keep.
+// Every event but repeated candidates of one type and protocol, which only the counts keep.
 function timeline(events) {
-  const seenTypes = new Set();
+  const seenKinds = new Set();
   return events
     .filter((entry) => {
       if (entry.event !== "icecandidate") return true;
-      if (seenTypes.has(entry.type)) return false;
-      seenTypes.add(entry.type);
+      const kind = `${entry.type}/${entry.protocol ?? ""}`;
+      if (seenKinds.has(kind)) return false;
+      seenKinds.add(kind);
       return true;
     })
     .map(timelineLine);

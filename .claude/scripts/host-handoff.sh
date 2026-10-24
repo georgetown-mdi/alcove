@@ -106,6 +106,11 @@ esac
 case "${result#scratch/handoffs/}" in
   */*) fail "$brief_rel names the result file '$result', which is not directly in scratch/handoffs/." ;;
 esac
+case "$result" in
+  *"<"* | *">"*) fail "$brief_rel's result file '$result' still has a <...> placeholder; replace it with the brief's own name, '${brief_rel%.md}.result.md'." ;;
+esac
+[ "$result" = "${brief_rel%.md}.result.md" ] ||
+  fail "$brief_rel's result file '$result' does not match the brief's name; write it as '${brief_rel%.md}.result.md'."
 
 model="$DEFAULT_MODEL"
 if grep -q '^- Model:' "$brief"; then
