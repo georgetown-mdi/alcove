@@ -134,8 +134,7 @@ export function mapToPrs(sessions, agents, allPrs, prRange) {
     for (const a of agentsBySession.get(s.store + "/" + s.id) || []) {
       const own = branchPrs(Object.fromEntries(a.branches.map((b) => [b, 1])));
       if (a.targetRef) {
-        const n = b2p.get(a.targetRef);
-        if (n) own.add(n);
+        for (const n of branchPrs({ [a.targetRef]: 1 })) own.add(n);
       }
       let nums = [...own];
       if (!nums.length) {

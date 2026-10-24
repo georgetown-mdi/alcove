@@ -85,6 +85,21 @@ function fixture() {
 }
 
 describe("mapToPrs", () => {
+  it("resolves a workflow agent's targetRef through the branch skip list and origin/ prefix", () => {
+    const sessions = [
+      session("s1", { main: 1, subagents: 0, workflow: 1, total: 2 }),
+    ];
+    const agents = [
+      agent("s1", "agent-origin", 1, { targetRef: "origin/fix-parser" }),
+      agent("s1", "agent-staging", 1, { targetRef: "staging" }),
+    ];
+    mapToPrs(sessions, agents, PRS, RANGE);
+    expect(agents.map((a) => [a.id, a.pr])).toEqual([
+      ["agent-origin", 2101],
+      ["agent-staging", null],
+    ]);
+  });
+
   it("attributes cost by methods A, B and D", () => {
     const { sessions, agents } = fixture();
     const { rows } = mapToPrs(sessions, agents, PRS, RANGE);

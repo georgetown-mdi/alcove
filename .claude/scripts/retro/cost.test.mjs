@@ -137,6 +137,27 @@ describe("pricing", () => {
     expect(rollups.unknownModels["model-unpriced"]).toBeGreaterThan(0);
   });
 
+  it("counts an unpriced model's calls once", async () => {
+    const agg = await aggregateStore("a", {
+      [S1]: {
+        main: [
+          assistant("2026-01-11T10:00:00Z", {
+            id: "msg_fixture_unknown_a",
+            model: "model-unpriced",
+            u: usage({ output: M }),
+          }),
+          assistant("2026-01-11T10:00:01Z", {
+            id: "msg_fixture_unknown_b",
+            model: "model-unpriced",
+            u: usage({ output: M }),
+          }),
+        ],
+      },
+    });
+    const { rollups } = cost([agg], PRICING);
+    expect(rollups.unknownModels["model-unpriced"]).toBe(2);
+  });
+
   it("has five rates per model in the committed table, cache writes at 1.25x and 2x input", () => {
     const table = readJson(new URL("./pricing.json", import.meta.url));
     expect(typeof table._source).toBe("string");

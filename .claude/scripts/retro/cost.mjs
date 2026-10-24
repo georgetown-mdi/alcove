@@ -131,10 +131,7 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
       : pricing[model];
   const parts = (model, u, alt) => {
     const p = price(model, alt);
-    if (!p) {
-      unknownModels[model] = (unknownModels[model] || 0) + u.calls;
-      return null;
-    }
+    if (!p) return null;
     return {
       in: (u.in * p.in) / 1e6,
       out: (u.out * p.out) / 1e6,
@@ -165,7 +162,10 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
   const roll = (store, comp, usage, dayUsage) => {
     for (const [m, u] of Object.entries(usage || {})) {
       const p = parts(m, u);
-      if (!p) continue;
+      if (!p) {
+        unknownModels[m] = (unknownModels[m] || 0) + u.calls;
+        continue;
+      }
       const c = p.in + p.out + p.cacheRead + p.cacheWrite;
       const bm =
         byModel[m] ||

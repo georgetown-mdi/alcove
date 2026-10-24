@@ -86,10 +86,8 @@ push:
   node .claude/scripts/retro/analyze.mjs --dir <dir>
   ```
 
-  The rest of a retro's scripts stay with that retro's files under
-  `scratch/`: `R1-orch.mjs`, `R1-extend.mjs`, `R1-callindex.mjs` (the table
-  `analyze.mjs --call-index` reads), `E10-baseline.mjs`, `S1-orch.mjs`,
-  `R1b-usagecheck.mjs`, and the single-question probes beside them
+  `analyze.mjs --call-index` reads a per-store table whose shape its header
+  gives.
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:

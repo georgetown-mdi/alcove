@@ -141,6 +141,40 @@ describe("analyze", () => {
   });
 });
 
+describe("analyze call-index", () => {
+  const table = (buckets, rows) => ({
+    buckets,
+    sessions: [{ model: "claude-opus-5-5", rows }],
+  });
+  const row = (calls, cost) => ({ calls, cost, ctx: 10 });
+
+  it("splits at the bucket after the one ending at 150, across tables", () => {
+    const buckets = [100, 150, 400, 1e9];
+    const a = table(buckets, [row(10, 1), row(10, 2), row(10, 4), row(10, 8)]);
+    const b = table(buckets, [row(10, 1), row(10, 2), row(10, 4), row(10, 8)]);
+    const out = analyze(input({ callIndex: [a, b] })).callIndex;
+    expect(out.mainUSDpastCall150).toBe(24);
+    expect(out.callsPast150).toBe(40);
+    expect(out.usdPerCall_1to150).toBe(0.15);
+    expect(out.usdPerCall_151plus).toBe(0.6);
+  });
+
+  it("refuses tables whose buckets differ", () => {
+    const a = table([50, 150, 1e9], [row(1, 1), row(1, 1), row(1, 1)]);
+    const b = table([100, 150, 1e9], [row(1, 1), row(1, 1), row(1, 1)]);
+    expect(() => analyze(input({ callIndex: [a, b] }))).toThrow(
+      /disagree on buckets/,
+    );
+  });
+
+  it("refuses buckets with no 150-call boundary", () => {
+    const a = table([100, 200, 1e9], [row(1, 1), row(1, 1), row(1, 1)]);
+    expect(() => analyze(input({ callIndex: [a] }))).toThrow(
+      /no 150-call boundary/,
+    );
+  });
+});
+
 describe("parseArgs", () => {
   it("takes repeated call-index tables and an optional CLAUDE.md", () => {
     const parsed = parseArgs([

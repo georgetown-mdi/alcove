@@ -209,6 +209,19 @@ function sessionLength(sessions) {
 
 function callIndex(tables) {
   const B = tables[0].buckets;
+  for (const table of tables) {
+    if (JSON.stringify(table.buckets) !== JSON.stringify(B)) {
+      throw new Error(
+        `call-index tables disagree on buckets: ${JSON.stringify(B)} and ${JSON.stringify(table.buckets)}`,
+      );
+    }
+  }
+  const split = B.findIndex((b, i) => i > 0 && B[i - 1] === 150 && b > 150);
+  if (split < 0) {
+    throw new Error(
+      `call-index buckets ${JSON.stringify(B)} have no 150-call boundary`,
+    );
+  }
   const agg = B.map(() => ({ calls: 0, cost: 0, ctx: 0 }));
   const aggFable = B.map(() => ({ calls: 0, cost: 0, ctx: 0 }));
   let costPast150 = 0;
@@ -223,7 +236,7 @@ function callIndex(tables) {
           A[i].cost += r.cost;
           A[i].ctx += r.ctx;
         }
-        if (i >= 3) costPast150 += r.cost;
+        if (i >= split) costPast150 += r.cost;
       });
     }
   }
@@ -245,8 +258,8 @@ function callIndex(tables) {
       c: 0,
       u: 0,
     });
-  const early = total(agg.slice(0, 3));
-  const late = total(agg.slice(3));
+  const early = total(agg.slice(0, split));
+  const late = total(agg.slice(split));
   out.usdPerCall_1to150 = r2((early.u / early.c) * 1000) / 1000;
   out.usdPerCall_151plus = r2((late.u / late.c) * 1000) / 1000;
   out.callsPast150 = late.c;
