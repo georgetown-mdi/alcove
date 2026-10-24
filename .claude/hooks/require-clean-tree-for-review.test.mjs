@@ -37,7 +37,7 @@ const PANEL = { scriptPath: ".claude/scripts/panel-workflow.mjs" };
 
 // A review round, which must name the ref it reviews and takes the round lock.
 const review = (targetRef, rest = {}) => ({
-  scriptPath: ".claude/scripts/light-review-workflow.mjs",
+  scriptPath: ".claude/scripts/review-round-workflow.mjs",
   args: { targetRef, docs: [], role: null, claims: [], ...rest },
 });
 
@@ -278,19 +278,19 @@ describe("require-clean-tree-for-review hook", () => {
     // scriptPath, workflow, or the name a saved workflow is invoked by.
     const main = track(makeRepo());
     track(addWorktree(main, "feature"));
-    const named = { name: "light-review", args: { targetRef: "feature" } };
+    const named = { name: "review-round", args: { targetRef: "feature" } };
     expect(workflowIn(main, named).status).toBe(0);
     launched(main, named);
     expect(workflowIn(main, named).status).toBe(2);
     expect(
-      workflowIn(main, { name: "light-review", args: { docs: [] } }).stderr,
+      workflowIn(main, { name: "review-round", args: { docs: [] } }).stderr,
     ).toContain("must name the ref it reviews");
   });
 
   it("blocks a review round that names no target ref", () => {
     const main = track(makeRepo());
     const { status, stderr } = workflowIn(main, {
-      scriptPath: ".claude/scripts/light-review-workflow.mjs",
+      scriptPath: ".claude/scripts/review-round-workflow.mjs",
       args: { docs: [] },
     });
     expect(status).toBe(2);
@@ -302,14 +302,14 @@ describe("require-clean-tree-for-review hook", () => {
     track(addWorktree(main, "feature"));
     for (const tool_input of [
       {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: "{not json",
       },
       {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: ["feature"],
       },
-      { scriptPath: ".claude/scripts/light-review-workflow.mjs", args: 7 },
+      { scriptPath: ".claude/scripts/review-round-workflow.mjs", args: 7 },
       review(""),
       review(["feature", 7]),
       review({ ref: "feature" }),
@@ -328,7 +328,7 @@ describe("require-clean-tree-for-review hook", () => {
     const tree = track(addWorktree(main, "feature"));
     dirty(tree);
     const { status } = workflowIn(main, {
-      scriptPath: ".claude/scripts/light-review-workflow.mjs",
+      scriptPath: ".claude/scripts/review-round-workflow.mjs",
       args: JSON.stringify({ targetRef: "feature" }),
     });
     expect(status).toBe(2);

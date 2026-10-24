@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //
 // Step 4 of the retro spend kit: measures over the files cost.mjs and map.mjs
-// wrote to --dir -- the review apparatus (light-review lens and role agents,
+// wrote to --dir -- the review apparatus (review-round lens and role agents,
 // direct role subagents, panel, fix implementers), implementer runs and cost
 // by model, main sessions over and up to 150 calls, owner turns per day and
 // store, the top sessions, method D cost by PR size band, and the harness tax
@@ -27,6 +27,10 @@ const USAGE =
   "Usage: node analyze.mjs --dir DIR [--pricing FILE] [--call-index FILE]... [--claude-md FILE]\n";
 
 const DEFAULT_PRICING = fileURLToPath(new URL("pricing.json", import.meta.url));
+
+// A transcript records the workflow name it ran under, so a retro window can
+// hold review runs under either name.
+const REVIEW_ROUND_WF_NAMES = new Set(["review-round", "light-review"]);
 
 // A rough ratio for English text.
 const BYTES_PER_TOKEN = 3.7;
@@ -64,7 +68,7 @@ const quantile = (arr, p) => {
 
 function review(agents, grand) {
   const lr = agents.filter(
-    (a) => a.kind === "workflow-agent" && a.wfName === "light-review",
+    (a) => a.kind === "workflow-agent" && REVIEW_ROUND_WF_NAMES.has(a.wfName),
   );
   const role = lr.filter(
     (a) =>
@@ -89,7 +93,7 @@ function review(agents, grand) {
   const roleRuns = new Set(role.map((a) => a.session + "/" + a.wf));
   const costs = (list) => sum(list.map((a) => a.cost));
   const out = {
-    lightReviewRuns: lrRuns.size,
+    reviewRoundRuns: lrRuns.size,
     roleRuns: roleRuns.size,
     lensRuns: lrRuns.size - roleRuns.size,
     lensUSD: r2(costs(lens)),

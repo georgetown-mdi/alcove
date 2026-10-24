@@ -100,7 +100,7 @@ describe("record-orchestration-ruleset-read hook", () => {
     for (const command of [
       "ls .claude/orchestration",
       "cat CLAUDE.md",
-      "cat .claude/commands/light-review.md",
+      "cat .claude/commands/review-round.md",
       "cat ruleset.md",
     ]) {
       const root = makeMarkerRoot();

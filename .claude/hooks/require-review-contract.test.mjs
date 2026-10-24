@@ -60,7 +60,7 @@ describe("require-review-contract hook", () => {
     });
     expect(status).toBe(2);
     expect(stderr).toContain("security-reviewer");
-    expect(stderr).toContain("/light-review --role");
+    expect(stderr).toContain("/review-round --role");
   });
 
   it("blocks a direct adversarial-verifier spawn even when the prompt includes claims", () => {

@@ -1,5 +1,5 @@
 ---
-name: light-review
+name: review-round
 description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs one schema-forced Opus reviewer and a Sonnet verifier, both at effort high. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
 ---
 
@@ -17,7 +17,7 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /light-review [--target <ref> ...] [--role <name> --claims <path>] [doc-file ...]
+    /review-round [--target <ref> ...] [--role <name> --claims <path>] [doc-file ...]
 
 - `--target <ref>`: optional and repeatable. The ref to review, once per ref.
   With none, the target is the branch `HEAD` resolves to where you are standing,
@@ -37,7 +37,7 @@ Several targets under one role invocation is a mis-invocation: stop and say so.
 
 Role mode requires the contract. If `--role` is given and `--claims` is missing, its
 file is unreadable, or it yields no claims, stop and say the round belongs to the plain
-`/light-review` lens form or a lens-scoped `general-purpose` reviewer. The requirement
+`/review-round` lens form or a lens-scoped `general-purpose` reviewer. The requirement
 is the orchestration ruleset's, not this command's: quote its refutation-contract bullet
 (`.claude/orchestration/ruleset.md`, Review flow) as the reason -- these two
 roles run only under a named list of claims to
@@ -159,8 +159,8 @@ important to the round, not run long; say in your report which claims you droppe
 
 Invoke the Workflow tool ONCE PER SURVIVING TARGET, all of them in a single
 message so they run concurrently. Each call sets `scriptPath` to the ABSOLUTE
-path `<PRIMARY>/.claude/scripts/light-review-workflow.mjs`, with PRIMARY from Step 1 --
-the bare relative `.claude/scripts/light-review-workflow.mjs` fails the call with
+path `<PRIMARY>/.claude/scripts/review-round-workflow.mjs`, with PRIMARY from Step 1 --
+the bare relative `.claude/scripts/review-round-workflow.mjs` fails the call with
 "script file not found" -- and `args` to
 `{"targetRef": "<ref>", "worktreePath": <TREE, or null when no tree holds the ref>, "docs": [<the DOCS list, possibly empty>], "role": <the role name or null>, "claims": [<CLAIMS, or an empty list in lens mode>]}`.
 
@@ -170,7 +170,7 @@ invoke Workflow at all, so the calls are yours to make from this thread.
 
 The script is checked in and passed by path: do not paste its text into the call, do not
 copy it out to edit it (it branches on the role in `args` itself, and both modes are
-pinned by `.claude/scripts/light-review-script.test.mjs`), and do not spawn the reviewers with the
+pinned by `.claude/scripts/review-round-script.test.mjs`), and do not spawn the reviewers with the
 Agent tool instead -- plain agents cannot have their output format enforced, and the schema
 is the point; a prompt-side "return only JSON" instruction does not hold here.
 

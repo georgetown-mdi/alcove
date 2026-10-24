@@ -2,7 +2,7 @@
 // PostToolUse hook on Workflow: write the in-flight round lock
 // (lib/reviewLock.mjs) for each ref a review round names, once the harness has
 // run the call. require-clean-tree-for-review.mjs refuses the next round
-// against a ref while its lock is young, and light-review's Step 3 deletes it
+// against a ref while its lock is young, and review-round's Step 3 deletes it
 // when the round is booked.
 //
 // Written here rather than in the PreToolUse gate because PostToolUse fires
@@ -28,7 +28,7 @@
 import { eventCwd, eventForTools, workflowArgs } from "./lib/event.mjs";
 import {
   lockPath,
-  namesLightReview,
+  namesReviewRound,
   targetRefs,
   writeLock,
 } from "./lib/reviewLock.mjs";
@@ -49,7 +49,7 @@ function main() {
   const event = eventForTools("Workflow");
   if (event === null) process.exit(0); // unreadable, or another tool
   const toolInput = event.tool_input;
-  if (!namesLightReview(toolInput)) process.exit(0);
+  if (!namesReviewRound(toolInput)) process.exit(0);
   const args = workflowArgs(toolInput);
   const refs = args === null ? null : targetRefs(args);
   // The gate refused a round naming no readable ref before it could run.

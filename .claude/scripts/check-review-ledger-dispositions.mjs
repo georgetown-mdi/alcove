@@ -3,7 +3,7 @@
 // (`.claude/commands/assess-review.md`, Step 4 readiness). Usage is USAGE below.
 // Tests each disposition in a rounds ledger
 // (`scratch/review-rounds/<key>.jsonl`, rows in
-// `.claude/commands/light-review.md`, Step 3) against the PR head, refusing:
+// `.claude/commands/review-round.md`, Step 3) against the PR head, refusing:
 //
 // - a `fixed` entry whose `"commit": "<sha>"` is not contained in the head: not
 //   an ancestor, and no head commit with the same patch identity as

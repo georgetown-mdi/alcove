@@ -141,10 +141,10 @@ with a one-line review-tier recommendation:
 - Docs-only or trivial mechanical change -> no cold review of any kind, lens or
   role; the gates suffice. Expected subagent spend: under ~400k tokens as the
   task notifications report them.
-- Under ~150 changed lines and no security surface -> one /light-review +
+- Under ~150 changed lines and no security surface -> one /review-round +
   /assess-review round. Expected: ~1M.
 - Security surface, protocol or wire format, structural restructure, or a large
-  diff -> the full pipeline: /light-review + /assess-review (at most two
+  diff -> the full pipeline: /review-round + /assess-review (at most two
   rounds, honoring the step-back triggers), then a role-specialized security
   panel before merge. Expected: ~2.5M.
 
@@ -181,7 +181,7 @@ steps above. When the instruction is to orchestrate:
 - **Delegate the reading.** Exploration of the issue's surface goes to a spawn
   that returns a compact digest; your own context holds diff stats,
   `fetch-issues.mjs` output, and agent reports, nothing more -- the same reason
-  light-review keeps the full diff out of the main thread. Context you load
+  review-round keeps the full diff out of the main thread. Context you load
   never unloads, and the orchestrator's own accumulation is the measured top
   cost of a run.
 - **Run the tier yourself.** Size Step 5's bucket from the diff and run exactly

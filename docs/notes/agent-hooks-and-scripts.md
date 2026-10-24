@@ -442,7 +442,7 @@ Nothing catches a false clean, so every state where a target cannot be confirmed
 The gate covers every Workflow call rather than review scripts alone:
 a clean-tree precondition is harmless for any workflow, committing is always available,
 and scoping by script text would fail open on the scriptPath and resume forms.
-A Workflow form naming the light-review script in none of the three fields, a resume for instance, falls back to the caller's-cwd check.
+A Workflow form naming the review-round script in none of the three fields, a resume for instance, falls back to the caller's-cwd check.
 
 ## Sleep-poll guard
 
@@ -587,7 +587,7 @@ while a refusal that fires wrongly stops every spawn in every session at once.
 A claim naming a fixed message, error class or UI state nobody measured cannot be refuted on its merits.
 The role reviewer measures the wording instead of the property, returns REFUTED or COULD-NOT-VERIFY on the wording, and the round is spent:
 three of six refutations in the 2026-09-02 review program were of that kind, one role round each.
-The rule was already prose in [`light-review.md`](../../.claude/commands/light-review.md), and prose does not fail.
+The rule was already prose in [`review-round.md`](../../.claude/commands/review-round.md), and prose does not fail.
 
 ### Why double quotes and nothing else
 

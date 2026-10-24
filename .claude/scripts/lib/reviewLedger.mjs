@@ -1,5 +1,5 @@
 // Reader for a review rounds ledger (`scratch/review-rounds/<key>.jsonl`, rows
-// in `.claude/commands/light-review.md`, Step 3), shared by the scripts that
+// in `.claude/commands/review-round.md`, Step 3), shared by the scripts that
 // check one so neither imports the other.
 
 /**

@@ -8,7 +8,7 @@
 // `args` binding other than `resolveWorkflowArgs(args)`, taking an alias of it
 // included, so every field is read off what that call returns. An `args` in a
 // string, template, comment or prose is not a read. The resolver's own
-// behavior is pinned by .claude/scripts/light-review-script.test.mjs and
+// behavior is pinned by .claude/scripts/review-round-script.test.mjs and
 // .claude/scripts/panel-script.test.mjs. Exit 0 clean, 1 on a finding or
 // when no `resolveWorkflowArgs(args)` call is found at all. Rationale and
 // limits: docs/notes/repo-check-scripts.md.

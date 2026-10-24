@@ -44,7 +44,7 @@ push:
   survives a moved head; `verify-rebase-invariance.mjs`, which decides the same
   question for a head moved by a rebase; and `verify-additive-test-delta.mjs`,
   which decides it for a head that only added lines to test files.
-  `verify-fix-shape.mjs` checks, as `/light-review` books a lens round, that each
+  `verify-fix-shape.mjs` checks, as `/review-round` books a lens round, that each
   edit the round proposes as mechanical finds its old text exactly once at the
   reviewed ref.
   `check-review-ledger-dispositions.mjs` checks, at merge-ready, that a
@@ -60,12 +60,12 @@ push:
   hundred GitHub API calls, so it is asked for explicitly:
   `npm run measure:pr-checks -- [runs]`. With no arguments it prints its usage
   rather than starting a run
-- `*-workflow.mjs`, the Workflow script bodies `/light-review`, `/panel`, and
+- `*-workflow.mjs`, the Workflow script bodies `/review-round`, `/panel`, and
   `/docket` invoke by absolute path. Each is a script BODY, not a module: the
   harness injects `args`, `agent`, `parallel`, and `pipeline`, and takes the
   top-level `return` as the run's result. No ES module parser accepts that, so
   eslint ignores them and the test beside each one compiles it into a function
-  to drive it. The light-review and controversy workflow scripts import and
+  to drive it. The review-round and controversy workflow scripts import and
   require nothing (asserted by their tests), because the harness refuses a
   script that does; work that needs a file or a command runs in a script beside
   it (`verify-fix-shape.mjs` states why).

@@ -1,6 +1,6 @@
 ---
 name: assess-review
-description: Triage a cold code review of one branch -- read that branch's findings file under the primary checkout, judge trajectory and step-back triggers here in the orchestrating session, dispatch the fixes to one implementer pointed at the branch's own worktree, and report what was left plus a security-review readiness call. Takes the branch as an argument and never enters its tree, so several branches can be in triage at once; pairs with light-review, which deposits the findings file.
+description: Triage a cold code review of one branch -- read that branch's findings file under the primary checkout, judge trajectory and step-back triggers here in the orchestrating session, dispatch the fixes to one implementer pointed at the branch's own worktree, and report what was left plus a security-review readiness call. Takes the branch as an argument and never enters its tree, so several branches can be in triage at once; pairs with review-round, which deposits the findings file.
 ---
 
 You are the engineer accountable for the changes, triaging a cold code review
@@ -33,11 +33,11 @@ that branch's worktree; call that absolute path TREE (a branch with no worktree
 has none, and any fix will need one made before it can be written).
 
 The branch's artifact key is its name with every character outside `A-Za-z0-9._-`
-replaced by `_` and any leading dots dropped. light-review has already deposited
+replaced by `_` and any leading dots dropped. review-round has already deposited
 its findings at `PRIMARY/scratch/review-rounds/<key>.findings.md`.
 Read it.
 
-If that file is not there, stop and say so: light-review has not run for this
+If that file is not there, stop and say so: review-round has not run for this
 branch yet. Do not go hunting for it elsewhere, and do not read another branch's.
 
 ## Step 2 -- Assess: trajectory and brittle areas
@@ -46,7 +46,7 @@ Start with the whole, not the parts:
 
 - **Soundness.** Comment on the overall approach and any patterns across the
   findings.
-- **Trajectory.** Read the `## Trajectory` section light-review wrote into the
+- **Trajectory.** Read the `## Trajectory` section review-round wrote into the
   findings file, and the rounds ledger at
   `PRIMARY/scratch/review-rounds/<key>.jsonl` for the rounds before it (fall back
   to reconstructing rounds from `git log staging..<branch>` review-fix commits if
@@ -72,7 +72,7 @@ Start with the whole, not the parts:
   or it raised nothing -- is the session's default recommendation to stop,
   stated when it asks for a cap raise; a branch's first role round is exempt.
   With that ask, state also the size-keyed default recommendations
-  `.claude/commands/light-review.md`, Step 1, gives for the branch's changed
+  `.claude/commands/review-round.md`, Step 1, gives for the branch's changed
   lines. All are
   advisory, with thresholds measured on the 2026-10-09 to 2026-10-23 rounds and
   re-fit at each retro; nothing enforces them.
@@ -265,7 +265,7 @@ table, and a named home). A `limit`
 entry has a `note` beside it -- one phrase saying what the branch is living
 with -- because the entry is the whole record of that finding and an unannotated
 one is treated as an entry nobody wrote down. It also states its surface, as
-`.claude/commands/light-review.md`, Step 3 -- Trajectory, ledger, write, lists:
+`.claude/commands/review-round.md`, Step 3 -- Trajectory, ledger, write, lists:
 `"surface": "internal"`, or a `limitsLine` once the limit is promoted. The check
 holds this only for rounds dated the limit-rule date the check's header names
 or later; a limit in an earlier round stays ledger-only.
@@ -439,7 +439,7 @@ is itself only comments and markdown HOLDS. That last verdict says only that the
 merged range happened to be quiet, so the route does not branch on it: a base
 sync takes a round whatever the verifier reports. Re-run the branch's standing
 refutation contract in full at the merge head
-(`/light-review --role <role> --claims <file> --target <branch>`). The standing
+(`/review-round --role <role> --claims <file> --target <branch>`). The standing
 contract is the union of the claims the branch's role rounds have run -- each
 ledger row records its claims verbatim, so the union survives a lost claims
 file -- and never the last row's delta subset.

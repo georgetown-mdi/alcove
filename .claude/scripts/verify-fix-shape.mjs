@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Fix-shape verifier, run by the /light-review booking step
-// (.claude/commands/light-review.md, Step 3) before it drafts a fix brief:
+// Fix-shape verifier, run by the /review-round booking step
+// (.claude/commands/review-round.md, Step 3) before it drafts a fix brief:
 // decides whether each lens cluster the verifier gave edits for is
 // mechanical, which holds only when every edit's `oldText` occurs exactly once
 // in its file at the target ref.
@@ -12,10 +12,10 @@
 // `git [-C <path>] show <targetRef>:<file>`. One line per cluster carrying
 // edits: `mechanical <name>` or `judgment <name> -- <reason>`.
 //
-// The check lives here rather than in light-review-workflow.mjs because the
+// The check lives here rather than in review-round-workflow.mjs because the
 // Workflow tool refuses at launch a script whose body contains `import(`, so a
 // workflow script cannot read a file or run git; the no-import assertion in
-// .claude/scripts/light-review-script.test.mjs holds that the script has none.
+// .claude/scripts/review-round-script.test.mjs holds that the script has none.
 //
 // Exit codes: 0 every cluster carrying edits is mechanical; 1 at least one is
 // judgment; 2 usage, or a result file that cannot be read as a lens result.
