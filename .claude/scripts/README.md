@@ -64,6 +64,32 @@ push:
   session's lines and the closing list into those either lens flags, which are
   presented, and those both score uncontroversial, which are not. Its arguments
   and result are in `.claude/commands/docket.md`, Build the list.
+- `retro/`, the spend kit a retro runs over the Claude Code transcript stores.
+  `aggregate.mjs` reads one store into per-session usage, owner turns,
+  denials and PR mentions over a window; `cost.mjs` prices the aggregates
+  with `pricing.json` (list rates, whose source and date its `_source`
+  states) into spend by model, store, component and day; `map.mjs` attributes
+  that spend to the window's pull requests; `analyze.mjs` measures the review
+  apparatus, implementers and session length over it. Every input -- store
+  paths, window bounds, PR range, output directory -- is an argument, and
+  each script states its own in its header. The transcript parsing rules are
+  in `aggregate.mjs`'s header, each with a synthetic fixture in
+  `aggregate.test.mjs` built by `transcriptFixtures.mjs`. One window, two
+  stores:
+
+  ```sh
+  node .claude/scripts/retro/aggregate.mjs --store <a> --cut <iso> --end <iso> \
+    --pr-range <lo-hi> --out <dir>/<a>.json --root <a's projects dir>
+  node .claude/scripts/retro/aggregate.mjs --store <b> ... --out <dir>/<b>.json ...
+  node .claude/scripts/retro/cost.mjs --out-dir <dir> <dir>/<a>.json <dir>/<b>.json
+  node .claude/scripts/retro/map.mjs --dir <dir> --prs <prs.json> --pr-range <lo-hi>
+  node .claude/scripts/retro/analyze.mjs --dir <dir>
+  ```
+
+  The rest of a retro's scripts stay with that retro's files under
+  `scratch/`: `R1-orch.mjs`, `R1-extend.mjs`, `R1-callindex.mjs` (the table
+  `analyze.mjs --call-index` reads), `E10-baseline.mjs`, `S1-orch.mjs`,
+  `R1b-usagecheck.mjs`, and the single-question probes beside them
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:
