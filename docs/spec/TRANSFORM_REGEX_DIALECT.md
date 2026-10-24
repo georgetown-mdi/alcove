@@ -77,7 +77,8 @@ The verdict depends on the engine build, so an re2js upgrade that changes a prog
 The same walk refuses a `split_on` delimiter that matches the empty string ([PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect), Operation semantics), read off the program the conformance check already compiled, so it adds no compile and runs inside the walk's budget.
 The refusal's issue path locates the step by key, element, and step index, and its message names the function and the param, echoing nothing the partner wrote.
 An operator's own `standardization` is not walked: its step schema compiles a `split_on` delimiter itself, only within `MAX_TRANSFORM_PATTERN_LENGTH`, leaving one outside the dialect or over that length to the compile at the run, and the `split_on` factory refuses the same delimiter for a step compiled without a parse.
-Terms holding such a delimiter written before this refusal - in a saved web exchange, a pending terms proposal, a signed receipt, or an agreed-terms file - are refused when read, with no migration.
+Terms holding such a delimiter written before this refusal - in a saved web exchange, a signed receipt, or an agreed-terms file - are refused when read, with no migration.
+A pending terms proposal holding one is dropped when read, and the rest of its stored entry loads without it (`managedLocalStateSchema`, `apps/web/src/psi/managed/managedLocalStateShape.ts`).
 
 The mint and accept boundaries bound a second compile cost over the same content.
 `assertTransformsCompile` (`packages/core/src/linkageSatisfiability.ts`) builds every step a document declares - each `standardization` step and each linkage-key element transform - where the terms are authored or minted, so a step whose factory refuses its parameters is refused while the author still holds the document rather than at the first row of an exchange the partner has already accepted.
