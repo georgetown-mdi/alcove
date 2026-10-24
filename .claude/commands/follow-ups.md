@@ -28,11 +28,13 @@ unasked. Keep this pass in messages of its own, apart from any docket item.
 It is the session's last step: the board alone holds the state afterwards.
 
 1. If any branch is still in flight, wind down first as
-   `.claude/commands/wind-down.md` does, without its final hold.
+   `.claude/commands/wind-down.md` does, without its readiness report and final
+   hold.
 2. List every open thread the session turned up -- each potential follow-up
    in PR bodies, review dispositions and agent reports, each confirmed review
    finding not fixed on a branch, each parked Decision item, each run still
-   under way -- so none is left in prose alone. For each potential follow-up,
+   under way -- so none is left in prose alone. Each confirmed finding not
+   fixed on a branch joins the potential follow-ups. For each potential follow-up,
    form your own opinion on whether to
    file it, weighing its benefit to users and the product against its
    implementation and opportunity costs, as `.claude/product-principles.md`
