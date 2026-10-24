@@ -53,6 +53,7 @@ import {
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
+import { NonEmptyRateController } from "@psi/workers/nonEmptyAggregateController";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
@@ -1512,6 +1513,28 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
       )
       .toBeInTheDocument();
     await expect.element(limit).toHaveValue("3");
+  });
+
+  test("the Cleaning tab sweeps coverage once for cleaning it holds, and keeps its step rows mounted", async () => {
+    const compute = vi.spyOn(NonEmptyRateController.prototype, "compute");
+    try {
+      await reachColumns("first_name,last_name\nAlice,Smith\n");
+      await userEvent.click(page.getByRole("button", { name: /Cleaning/ }));
+      await expandFieldCards();
+      await expect
+        .element(page.getByText(/Across your whole file/).first())
+        .toBeInTheDocument();
+      const sweeps = compute.mock.calls.length;
+      const stepRow = page.getByText("Trim whitespace").first().element();
+
+      // Three of the sweep's 500 ms debounce periods with nothing edited: a
+      // screen that restarted the sweep on each render sweeps again within one.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      expect(compute.mock.calls.length).toBe(sweeps);
+      expect(stepRow.isConnected).toBe(true);
+    } finally {
+      compute.mockRestore();
+    }
   });
 
   test("the run writes with the delimiter the file was read by at consent", async () => {

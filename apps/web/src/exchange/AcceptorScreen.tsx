@@ -897,18 +897,25 @@ function AcceptorInvitationScreen({
 
   // The effective { metadata, standardization } the verdict and launch both consume,
   // derived from the columns-step state in one place (see
-  // acceptorColumnsEditorState). Undefined until a file is acquired.
-  const editorState =
-    columnsState !== undefined &&
-    acquired !== undefined &&
-    linkageTerms !== undefined
-      ? acceptorColumnsEditorState(
-          columnsState,
-          linkageTerms,
-          seedRows(acquired),
-          acquired.dateInputFormats,
-        )
-      : undefined;
+  // acceptorColumnsEditorState). Undefined until a file is acquired. Memoized on
+  // its inputs: the coverage sweep restarts on a new standardization, whose result
+  // renders this screen again, and the step editors key their rows by step
+  // identity, so a fresh object each render would sweep without end and remount
+  // every row.
+  const editorState = useMemo(
+    () =>
+      columnsState !== undefined &&
+      acquired !== undefined &&
+      linkageTerms !== undefined
+        ? acceptorColumnsEditorState(
+            columnsState,
+            linkageTerms,
+            seedRows(acquired),
+            acquired.dateInputFormats,
+          )
+        : undefined,
+    [columnsState, acquired, linkageTerms],
+  );
   const verdict =
     editorState !== undefined &&
     acquired !== undefined &&
