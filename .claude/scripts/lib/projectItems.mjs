@@ -322,7 +322,7 @@ export function numericIdFromNodeId(nodeId, expectedProject) {
  * numericIdFromNodeId; anything else is parsed as a base-10 integer. Returns NaN
  * for an unparseable numeric argument so a caller's Number.isInteger check still
  * rejects it. A malformed PVTI_ id throws (a clearer signal than NaN). Shared so
- * fetch-issues.mjs, lint-issues.mjs, and edit-issue.mjs accept the two id forms
+ * fetch-issues.mjs and edit-issue.mjs accept the two id forms
  * identically. Pass `expectedProject` (the project number the caller was given)
  * so a node ID from a different board is rejected rather than silently remapped.
  */
@@ -414,7 +414,8 @@ export function fieldValueInput(field, value) {
  * { id, type, title, body, url, fields }, where fields is the { name -> value }
  * map of populated project-field values (see extractFields). Unresolved IDs come
  * back with type "missing", null content fields, and an empty fields map. Shared
- * by fetch-issues.mjs (read) and lint-issues.mjs (cross-reference resolution) so
+ * by fetch-issues.mjs (read) and edit-issue.mjs (the stored value and the
+ * verifying re-fetch) so
  * the aliased multi-fetch has one implementation. The id/type/title/body/url
  * properties are stable; fields was added later and is purely additive.
  */

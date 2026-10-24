@@ -120,7 +120,7 @@ when it delivers value, stepping back on a repeat hotspot).
 
 When you ask the owner to raise a spent budget, state the default recommendations
 below with the ask. The size thresholds are measured -- the quartiles of branch diff
-size over the rounds of 2026-08-31 to 2026-09-25 -- and re-fit at each retro, so quote
+size over the rounds of 2026-10-09 to 2026-10-23 -- and re-fit at each retro, so quote
 them as measured, not as constants. All are advisory: nothing enforces them, and the
 owner's word settles the round.
 
@@ -128,10 +128,10 @@ owner's word settles the round.
   ledger row's `dispositions` is `limit`, `deferred`, or `narrowed`, or it has none --
   is the session's default recommendation to stop, stated when it asks for a cap
   raise. A branch's first role round is exempt.
-- A diff of 482 changed lines or fewer: recommend a role round only when the lens
+- A diff of 542 changed lines or fewer: recommend a role round only when the lens
   round fixed a major, or the owner names the surface. A diff with adversary-reachable
   surface keeps its role round whatever its size.
-- A diff over 1,089 changed lines: recommend round 4 or later only after a round that
+- A diff over 1,378 changed lines: recommend round 4 or later only after a round that
   fixed a runtime major.
 - Between the two: no size-keyed recommendation.
 

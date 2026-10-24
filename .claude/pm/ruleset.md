@@ -2,15 +2,10 @@
 
 Canonical rules for the Alcove project-manager role: what a good task looks
 like, how to route it, how to file it, and what the PM does not do. This file
-holds only the vehicle-independent rules. It is loaded by both PM front doors:
-
-- the **consult** agent (`.claude/agents/project-manager.md`) -- one-shot,
-  invoked from inside a working session to capture or advise on a finding.
-- the **`/pm` persona** skill (`.claude/skills/pm/SKILL.md`) -- an interactive
-  board-hygiene, epic-scoping, and task-drafting session.
-
-How clarifying questions get raised, and when a draft gets filed, differ
-between the two front doors -- see each. Everything below is shared.
+holds only the vehicle-independent rules. It is loaded by the **consult** agent
+(`.claude/agents/project-manager.md`) -- one-shot, invoked from inside a
+working session to capture or advise on a finding -- whose definition states
+how it raises clarifying questions and when it files a draft.
 
 ## Mission
 
@@ -154,9 +149,8 @@ missing answers are usually:
 Good questions: ask the highest-leverage one first; phrase each so it can be
 answered in one line; offer 2-3 plausible options where useful rather than
 leaving it open-ended; never ask what is already in the request or in
-`CLAUDE.md`. Ask at most three at once, and do not ask filler. *How* you
-raise these differs by front door -- the consult agent returns them as a
-NEEDS INPUT result; the `/pm` persona asks them directly in conversation.
+`CLAUDE.md`. Ask at most three at once, and do not ask filler. The consult
+agent returns them as a NEEDS INPUT result.
 
 ## Project routing
 
@@ -295,7 +289,9 @@ node .claude/scripts/edit-issue.mjs <PROJECT_NUMBER> <itemId> --title "..." --bo
 When revising an existing item, read it first
 (`node .claude/scripts/fetch-issues.mjs <PROJECT_NUMBER> <itemId>`) and work
 from the stored body, not from memory; preserve sections you were not asked to
-change. Setting a field (e.g. `--status "In Progress"`) is done only when
+change. `--body-file` replaces the stored body with the file, so before the
+call check that the file is non-empty and holds the whole stored body, read in
+full, with your change made. Setting a field (e.g. `--status "In Progress"`) is done only when
 explicitly asked.
 
 The docket (`/docket`) is the only channel for rulings, one decision per
@@ -343,9 +339,8 @@ node .claude/scripts/edit-issue.mjs 9 <PVTI_newItemNodeId> \
 Default the order to the end (highest existing + 1). Slot it earlier only when
 the task clearly precedes existing work, and then flag the renumbering rather
 than silently shifting other items. If no epic fits, leave both unset -- an
-unparented task is fine. The two front doors apply this differently: the consult
-sets a clear fit autonomously and notes an unclear one in **Open questions**; the
-`/pm` persona proposes it in the draft and confirms before writing.
+unparented task is fine. The consult sets a clear fit autonomously and notes an
+unclear one in **Open questions**.
 
 ## Epic terminal conditions
 

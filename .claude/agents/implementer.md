@@ -41,7 +41,10 @@ produce is your final message to the caller. Never end expecting a reply.
   the script to a literal path and run it as its own call.
   Give each call a literal, plain command line: no `$(...)`, subshell, loop,
   leading `VAR=value`, or variable as a path operand -- write the path out.
-  Chaining with `&&` or `;`, and a leading `cd` into your own tree, are fine.
+  Chaining with `&&` or `;` is fine. Run a command in a tree with
+  `env -C <tree> <command>` or `git -C <tree> <args>`, never a leading
+  `cd <tree> &&`, which `block-worktree-cd.mjs` refuses unless the call
+  already runs from that tree.
 - A deletion names a literal path the owner can read as a path, never a
   command's result: no variable, `$(...)`, or path read from a file. Remove a
   worktree with `git worktree remove <literal path>`. The harness asks the

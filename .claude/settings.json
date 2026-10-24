@@ -38,7 +38,6 @@
       "Bash(docker info *)",
       "Bash(node .claude/scripts/fetch-issues.mjs *)",
       "Bash(node .claude/scripts/edit-issue.mjs *)",
-      "Bash(node .claude/scripts/lint-issues.mjs *)",
       "Bash(node .claude/scripts/list-epic.mjs *)",
       "Bash(node .claude/scripts/list-issues.mjs *)",
       "Bash(node .claude/scripts/find-rulings.mjs *)",
@@ -229,10 +228,6 @@
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/read-saved-output.mjs\""
-          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-orchestration-ruleset-read.mjs\""

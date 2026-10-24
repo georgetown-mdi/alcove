@@ -212,6 +212,12 @@ export function checkLedger({ rows, head, git }) {
 export const STEP_BACK_PIVOTS = ["re-scope", "panel", "owner"];
 
 /**
+ * The last date, YYYY-MM-DD, capRaiseCheck stands before it is renewed or
+ * deleted (scripts/check-expiry-dates.mjs).
+ */
+export const CAP_RAISE_CHECK_EXPIRES_ON = "2027-03-31";
+
+/**
  * Why the ledger's cap raises are refused, or null where they pass, with the
  * number of raises it read: the second raise needs a step-back record stating
  * the shared-cause answer and the pivot taken.

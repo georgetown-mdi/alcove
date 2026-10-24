@@ -4,8 +4,8 @@ Executables an agent session or the harness runs, on request rather than on a
 push:
 
 - the project-board tooling every board read and write goes through
-  (`fetch-issues.mjs`, `edit-issue.mjs`, `list-issues.mjs`, `list-epic.mjs`,
-  `lint-issues.mjs`), and `lib/projectItems.mjs` under them.
+  (`fetch-issues.mjs`, `edit-issue.mjs`, `list-issues.mjs`, `list-epic.mjs`),
+  and `lib/projectItems.mjs` under them.
   `lib/stubbedBoardRun.mjs` runs one of them as a child process against the
   GraphQL stand-in in `lib/graphqlFetchStub.mjs`, so a suite asserts its exit
   code and output offline

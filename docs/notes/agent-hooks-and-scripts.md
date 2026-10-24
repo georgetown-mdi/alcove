@@ -626,31 +626,3 @@ and one from a different board is refused rather than remapped.
 An edit whose value equals the stored one, ignoring trailing newlines, makes no API call,
 and an edit that runs is re-fetched and compared with what was sent, so an unchanged write cannot report success.
 Iteration and other field types are reported as unsupported rather than guessed at.
-
-## Saved-output readback
-
-[`.claude/hooks/read-saved-output.mjs`](../../.claude/hooks/read-saved-output.mjs)
-
-### Why it exists
-
-A long build, test or log command routinely exceeds the inline result budget.
-The harness then writes the whole output to a file under the session's tool-results directory and renders a short notice plus the first couple of kilobytes.
-A session that acts on the preview alone reasons from the beginning of a run whose verdict is at its end, the failing assertion, the summary line, the exit status,
-and an agent with no next turn cannot read the file after the fact.
-Reading it back at the moment of truncation puts the verdict where the decision is made.
-The readback keeps the end of the file for the same reason; the file stays on disk for a targeted read of the rest.
-
-### Why the match is anchored
-
-An unanchored search matches output that merely contains the notice, which is common:
-printing the hook, grepping the hooks directory or catting a transcript all quote it,
-and the hook must not treat a quoted line as a path to warn about, because quoted text is output, not a file the agent named.
-Only the harness writes that sentence at position zero, so the anchored match is structural rather than lexical.
-
-### What it does not cover
-
-- A change to the notice's wording or framing makes the hook silent rather than noisy.
-  That is the direction to fail in: the session still sees the harness's notice and can read the file itself, while a looser match resumes misfiring on quoted text.
-- What a PostToolUse payload contains for a persisted result is not asserted.
-  Measured on the 2026-08-31 harness with a command printing 60KB, the rendered notice is `Output too large (60.5KB). Full output saved to: <path>` inside a `<persisted-output>` element;
-  the payload's own shape was not observable from inside a session, so a payload that never contains the notice leaves the hook inert rather than wrong.
