@@ -44,6 +44,13 @@ import { fetchItems, toNumericId } from "./lib/projectItems.mjs";
 const LEAD_FIELDS = ["Status", "Epic", "Order"];
 
 async function main() {
+  // Output piped to `head` closes the read end early; exit quietly on the
+  // resulting EPIPE instead of crashing.
+  process.stdout.on("error", (err) => {
+    if (err.code === "EPIPE") process.exit(0);
+    throw err;
+  });
+
   const argv = process.argv.slice(2);
   // Leading option flags, in any order: --json, --out-dir DIR.
   let asJson = false;

@@ -182,10 +182,17 @@ task that already covers the work:
 node .claude/scripts/list-issues.mjs --all <PROJECT_NUMBER>
 ```
 
-This pages through the whole board with no silent truncation -- one line per
+This pages through the whole board -- one line per
 item with its numeric id, node id, status, Order, Epic, and
-title. A raw `gh project item-list --limit N` would instead cap at N and drop
-the rest without warning (board 9 already exceeds one 100-item page), and its
+title -- and checks the pages against the item count the API reports: a run
+that does not add up is retried, then exits 1 rather than printing a partial
+board. Limit: an item that count also omits is missing with exit 0, and
+whether the count includes a just-filed draft is not known (one filed 25
+minutes earlier was absent from full listings on 2026-10-22), so a draft
+filed earlier in the same session is checked by id with `fetch-issues.mjs`,
+not by its absence from this listing. A raw `gh project item-list --limit N`
+would instead cap at N and drop the rest without warning (board 9 already
+exceeds one 100-item page), and its
 JSON omits the numeric id and the custom fields. Add `--json` for a
 machine-readable array. `--all` matters here: the default listing omits Done
 rows, and a Done item that already covers the work is exactly what this check
@@ -299,14 +306,18 @@ distinct non-empty values, no extra round-trip:
 node .claude/scripts/list-issues.mjs --json --all 9   # the `epic` field on each item
 ```
 
-If one fits, create the draft, then read its numeric id back from
-`list-issues.mjs <N> --json` by title -- `item-create --format json` prints the
-body's newlines raw, so its output does not parse -- and set both fields in one
-`edit-issue.mjs` call, choosing the order from the epic's current items:
+If one fits, create the draft with `--format json` added to the create command,
+and read its node id from that output with
+`grep -o '"id":"PVTI_[A-Za-z0-9_-]*"' | cut -d'"' -f4`, which matches only the
+item's own id key, since the body's quotes are escaped -- the output prints the
+body's newlines raw, so it does not parse as JSON, and a listing can lag a
+just-filed draft -- then set both fields in one
+`edit-issue.mjs` call, which takes the node id, choosing the order from the
+epic's current items:
 
 ```sh
 node .claude/scripts/list-epic.mjs 9 "<epic>"   # see the epic's existing orders
-node .claude/scripts/edit-issue.mjs 9 <newItemId> \
+node .claude/scripts/edit-issue.mjs 9 <PVTI_newItemNodeId> \
   --field "Epic" --value "<epic>" \
   --field "Order" --value "<N>"
 ```

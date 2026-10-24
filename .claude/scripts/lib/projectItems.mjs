@@ -490,12 +490,114 @@ export function mapFetchedNode(node, id, projectNumber) {
 export const PAGE_SIZE = 100;
 
 /**
+ * Whole-listing attempts fetchAllItems makes before it reports a board it could
+ * not list completely, and the base of the linear backoff between them. A
+ * board-9 listing takes 10-15 s, so three attempts and both waits stay inside
+ * the 120 s an agent harness allows a foreground command.
+ */
+export const LISTING_MAX_ATTEMPTS = 3;
+export const LISTING_RETRY_BACKOFF_MS = 1_000;
+
+/** A listing run whose pages do not add up to the board the API reports. */
+class IncompleteListingError extends Error {}
+
+/**
  * Default GraphQL runner for fetchAllItems: run the query via fetch and return
- * its `data`. Split out as the injection point so tests can drive fetchAllItems
- * with synthetic pages instead of a live board.
+ * the `{ data, errors }` body. Split out as the injection point so tests can
+ * drive fetchAllItems with synthetic pages instead of a live board.
  */
 async function runQueryViaFetch(query) {
-  return (await graphql(query)).data;
+  return graphql(query);
+}
+
+/**
+ * One pass over the items connection, returning its raw nodes or throwing an
+ * IncompleteListingError naming the first thing that does not add up. Every
+ * page has to agree on `totalCount`, the board's item count as the API reports
+ * it, and the distinct items collected have to equal it. Each page that reports
+ * a next page has to add an item, and the collected items may never pass the
+ * count, so a pass makes at most totalCount + 1 requests.
+ */
+async function fetchListingOnce(
+  projectNumber,
+  runQuery,
+  contentFields,
+  tolerateErrors,
+) {
+  const nodes = [];
+  const pageErrors = [];
+  const seen = new Set();
+  let totalCount;
+  let cursor = null;
+  for (let page = 1; ; page += 1) {
+    // Inline the cursor into the query the same way the other args are inlined;
+    // GitHub's endCursor is an opaque base64 token with no quote/backslash chars
+    // to escape. Omit `after` entirely on the first page.
+    const after = cursor === null ? "" : `, after: "${cursor}"`;
+    const query = `{ organization(login: "${OWNER}") { projectV2(number: ${projectNumber}) { items(first: ${PAGE_SIZE}${after}) { totalCount pageInfo { hasNextPage endCursor } nodes { id ${FIELD_VALUES_FRAGMENT} content { __typename ... on DraftIssue { ${contentFields} } ... on Issue { ${contentFields} } } } } } } }`;
+    const { data, errors } = await runQuery(query);
+    const project = data?.organization?.projectV2;
+    if (!project) {
+      throw new Error(
+        `project ${projectNumber} not found under owner ${OWNER}`,
+      );
+    }
+    const incomplete = (reason) =>
+      new IncompleteListingError(`page ${page} ${reason}`);
+    if (Array.isArray(errors) && errors.length > 0) {
+      if (!tolerateErrors) {
+        throw incomplete(
+          `came back with errors: ${JSON.stringify(errors).slice(0, 300)}`,
+        );
+      }
+      pageErrors.push(...errors);
+    }
+    const conn = project.items;
+    if (
+      !Number.isInteger(conn?.totalCount) ||
+      conn.totalCount < 0 ||
+      !Array.isArray(conn.nodes) ||
+      typeof conn.pageInfo?.hasNextPage !== "boolean"
+    ) {
+      throw incomplete("has no item count, item list or page info");
+    }
+    if (totalCount === undefined) {
+      totalCount = conn.totalCount;
+    } else if (conn.totalCount !== totalCount) {
+      throw incomplete(
+        `reports ${conn.totalCount} items where page 1 reported ${totalCount}`,
+      );
+    }
+    for (const node of conn.nodes) {
+      if (typeof node?.id !== "string") {
+        throw incomplete("holds an item with no id");
+      }
+      if (seen.has(node.id)) {
+        throw incomplete(`repeats item ${node.id} from an earlier page`);
+      }
+      seen.add(node.id);
+      nodes.push(node);
+    }
+    if (nodes.length > totalCount) {
+      throw incomplete(
+        `brings the listing to ${nodes.length} items, past the ${totalCount} the API reports`,
+      );
+    }
+    if (!conn.pageInfo.hasNextPage) break;
+    if (
+      conn.nodes.length === 0 ||
+      typeof conn.pageInfo.endCursor !== "string"
+    ) {
+      throw incomplete("reports a next page but holds no items or no cursor");
+    }
+    cursor = conn.pageInfo.endCursor;
+  }
+  if (nodes.length !== totalCount) {
+    throw new IncompleteListingError(
+      `the pages hold ${nodes.length} of the ${totalCount} items the API reports`,
+    );
+  }
+  return { nodes, errors: pageErrors };
 }
 
 /**
@@ -503,38 +605,74 @@ async function runQueryViaFetch(query) {
  * [{ id, nodeId, title, fields }] where id is the numeric item ID, nodeId is the
  * `PVTI_` global node ID, and fields is the { name -> value } map (see
  * extractFields, which exposes Status / Epic / Order among
- * others). Pages through the items connection with a cursor until hasNextPage is
- * false, so no item is dropped however large the board grows -- the silent
- * truncation a single `gh project item-list --limit N` would cause is impossible
- * here. Shared by list-epic.mjs (filter to one Epic), list-issues.mjs (whole
+ * others). Shared by list-epic.mjs (filter to one Epic), list-issues.mjs (whole
  * board) and find-rulings.mjs, which passes `withBody` to add each item's `body`
- * to the result. `runQuery(query) -> data` is injectable for tests; it defaults
- * to fetch.
+ * to the result.
+ *
+ * The connection can end a listing early with no error reported, so a run is
+ * checked against the item count the API reports for the board (see
+ * fetchListingOnce). A run that
+ * does not add up is retried up to LISTING_MAX_ATTEMPTS times, each retry
+ * noted on stderr, and then throws: the result is either every item the API
+ * counts or an error. A page's `errors` array also fails an attempt, but when
+ * the last attempt's only fault is `errors` and the collected items match the
+ * count, the listing succeeds and each error message is warned once on stderr.
+ * The check cannot see an item the count also omits: a
+ * run whose count is itself short passes, and whether the count includes a
+ * just-filed draft is not known (one filed 25 minutes earlier was absent from
+ * full listings on 2026-10-22), so a just-filed item is read by id
+ * (fetchItems) rather than looked for here.
+ *
+ * `runQuery(query) -> { data, errors }` is injectable for tests and defaults to
+ * fetch; `maxAttempts` and `backoffMs` override the retry budget for tests.
  */
 export async function fetchAllItems(
   projectNumber,
-  { runQuery = runQueryViaFetch, withBody = false } = {},
+  {
+    runQuery = runQueryViaFetch,
+    withBody = false,
+    maxAttempts = LISTING_MAX_ATTEMPTS,
+    backoffMs = LISTING_RETRY_BACKOFF_MS,
+  } = {},
 ) {
   const contentFields = withBody ? "title body" : "title";
-  const nodes = [];
-  let cursor = null;
-  do {
-    // Inline the cursor into the query the same way the other args are inlined;
-    // GitHub's endCursor is an opaque base64 token with no quote/backslash chars
-    // to escape. Omit `after` entirely on the first page.
-    const after = cursor === null ? "" : `, after: "${cursor}"`;
-    const query = `{ organization(login: "${OWNER}") { projectV2(number: ${projectNumber}) { items(first: ${PAGE_SIZE}${after}) { pageInfo { hasNextPage endCursor } nodes { id ${FIELD_VALUES_FRAGMENT} content { __typename ... on DraftIssue { ${contentFields} } ... on Issue { ${contentFields} } } } } } } }`;
-    const data = await runQuery(query);
-    const project = data?.organization?.projectV2;
-    if (!project) {
-      throw new Error(
-        `project ${projectNumber} not found under owner ${OWNER}`,
+  let nodes;
+  for (let attempt = 1; nodes === undefined; attempt += 1) {
+    try {
+      const listing = await fetchListingOnce(
+        projectNumber,
+        runQuery,
+        contentFields,
+        attempt >= maxAttempts,
       );
+      nodes = listing.nodes;
+      const messages = new Set(
+        listing.errors.map((e) => e?.message ?? JSON.stringify(e)),
+      );
+      for (const message of messages) {
+        process.stderr.write(
+          `warning: project ${projectNumber} listing is complete but the API reported an error: ${message}\n`,
+        );
+      }
+    } catch (err) {
+      if (!(err instanceof IncompleteListingError)) throw err;
+      if (attempt >= maxAttempts) {
+        throw new Error(
+          `could not confirm a complete listing of project ${projectNumber} ` +
+            `after ${attempt} attempt${attempt === 1 ? "" : "s"}: ${err.message}. ` +
+            "Run the command again later, or read the items you need by id " +
+            "with fetch-issues.mjs.",
+          { cause: err },
+        );
+      }
+      const backoff = backoffMs * attempt;
+      process.stderr.write(
+        `note: listing attempt ${attempt} of ${maxAttempts} for project ` +
+          `${projectNumber} was incomplete (${err.message}); retrying in ${backoff} ms\n`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoff));
     }
-    const conn = project.items;
-    nodes.push(...conn.nodes);
-    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
-  } while (cursor !== null);
+  }
   return nodes.map((node) => ({
     id: numericIdFromNodeId(node.id),
     nodeId: node.id,
