@@ -22,7 +22,8 @@ describe("lib/agentDefinitions", () => {
 
   it("reads the name and model of each definition's leading frontmatter", () => {
     const dir = agentsDir({
-      "pinned.md": "---\nname: pinned\nmodel: opus\n---\nmodel: haiku\n",
+      "pinned.md":
+        "---\nname: pinned\nmodel: opus\neffort: high\n---\nmodel: haiku\n",
       "unpinned.md": "---\nname: unpinned\n---\nBody.\n",
       "notes.txt": "---\nname: ignored\nmodel: opus\n---\n",
     });
@@ -30,8 +31,8 @@ describe("lib/agentDefinitions", () => {
       a.file.localeCompare(b.file),
     );
     expect(read).toEqual([
-      { file: "pinned.md", name: "pinned", model: "opus" },
-      { file: "unpinned.md", name: "unpinned", model: null },
+      { file: "pinned.md", name: "pinned", model: "opus", effort: "high" },
+      { file: "unpinned.md", name: "unpinned", model: null, effort: null },
     ]);
   });
 

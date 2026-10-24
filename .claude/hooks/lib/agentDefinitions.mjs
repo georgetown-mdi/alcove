@@ -17,8 +17,8 @@ function leadingFrontmatter(text) {
 
 /**
  * Every agent definition in `agentsDir` whose leading frontmatter is closed, as
- * `{file, name, model}`, where `name` and `model` are the last value of each key
- * in that block, or null when it states none. Throws when the directory or a
+ * `{file, name, model, effort}`, where each is the last value of its key in that
+ * block, or null when it states none. Throws when the directory or a
  * file cannot be read; each caller decides how that fails.
  */
 export function agentDefinitions(agentsDir) {
@@ -31,13 +31,16 @@ export function agentDefinitions(agentsDir) {
     if (frontmatter === null) continue;
     let name = null;
     let model = null;
+    let effort = null;
     for (const line of frontmatter.split("\n")) {
       const nameMatch = line.match(/^name:\s*(.+?)\s*$/);
       if (nameMatch) name = nameMatch[1];
       const modelMatch = line.match(/^model:\s*(.+?)\s*$/);
       if (modelMatch) model = modelMatch[1];
+      const effortMatch = line.match(/^effort:\s*(.+?)\s*$/);
+      if (effortMatch) effort = effortMatch[1];
     }
-    definitions.push({ file, name, model });
+    definitions.push({ file, name, model, effort });
   }
   return definitions;
 }

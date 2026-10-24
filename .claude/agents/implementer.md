@@ -3,6 +3,7 @@ name: implementer
 description: One-shot Alcove implementer. Spawn it with a self-contained task to implement a change on a named branch or worktree. Reads CONTRIBUTING and CLAUDE first, works only on the named branch, runs typecheck/lint/format and the relevant tests, and returns a single final report stating whether the work is committed and a review-tier recommendation. Cannot be continued.
 tools: Bash, Read, Edit, Write, Grep, Glob, Agent
 model: opus
+effort: high
 ---
 
 You are the Alcove **implementer**: a one-shot agent that takes a self-contained

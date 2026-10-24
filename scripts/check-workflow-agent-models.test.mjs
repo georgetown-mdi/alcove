@@ -1,11 +1,13 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   agentCallCount,
   agentCalls,
   agentUses,
+  definitionEffortViolations,
   modelViolations,
   pinnedEfforts,
   pinnedModels,
@@ -244,6 +246,61 @@ describe("workflow agent model check", () => {
     expect(violations).toHaveLength(1);
     expect(violations[0].problem).toContain("no literal `model:`");
     expect(violations[0].problem).toContain("no literal `effort:`");
+  });
+
+  describe("agent definition effort", () => {
+    const dirs = [];
+    afterEach(() => {
+      while (dirs.length > 0)
+        rmSync(dirs.pop(), { recursive: true, force: true });
+    });
+    const agentsDir = (files) => {
+      const dir = mkdtempSync(join(tmpdir(), "effort-agents-"));
+      dirs.push(dir);
+      for (const [name, text] of Object.entries(files)) {
+        writeFileSync(join(dir, name), text);
+      }
+      return dir;
+    };
+
+    it("passes on the real agent definitions", () => {
+      expect(
+        definitionEffortViolations(resolve(root, ".claude/agents")),
+      ).toEqual([]);
+    });
+
+    it("accepts every effort the runtime accepts", () => {
+      const files = {};
+      for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
+        files[`${effort}.md`] =
+          `---\nname: a\nmodel: opus\neffort: ${effort}\n---\n`;
+      }
+      expect(definitionEffortViolations(agentsDir(files))).toEqual([]);
+    });
+
+    it("flags a definition with no effort", () => {
+      const dir = agentsDir({ "bare.md": "---\nname: a\nmodel: opus\n---\n" });
+      const violations = definitionEffortViolations(dir);
+      expect(violations).toHaveLength(1);
+      expect(violations[0].problem).toContain(".claude/agents/bare.md");
+      expect(violations[0].problem).toContain("states no `effort:`");
+    });
+
+    it("flags an effort outside the accepted set", () => {
+      const dir = agentsDir({
+        "odd.md": "---\nname: a\nmodel: opus\neffort: ultra\n---\n",
+      });
+      const violations = definitionEffortViolations(dir);
+      expect(violations).toHaveLength(1);
+      expect(violations[0].problem).toContain("effort: ultra");
+    });
+
+    it("does not read an effort from the body", () => {
+      const dir = agentsDir({
+        "body.md": "---\nname: a\nmodel: opus\n---\neffort: high\n",
+      });
+      expect(definitionEffortViolations(dir)).toHaveLength(1);
+    });
   });
 
   it("ignores an agent() call outside a js fence", () => {
