@@ -307,7 +307,7 @@ function consoleControlLines(settings: BilateralSettings): Array<string> {
     settings,
     [
       'Before you start the exchange there, open "How files are handled" in',
-      'that accept flow and turn on "Keep every exchange file". That is the',
+      "that accept flow and choose to keep every exchange file. That is the",
       "same agreement the section above describes, set on the console rather",
       "than on the command line. Without it the exchange stops with an",
       "error when the two sides connect.",

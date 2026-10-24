@@ -160,7 +160,7 @@ describe("the retain-mode precondition a split rendezvous has", () => {
       SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT,
     );
     expect(SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT).toContain(
-      "Keep every exchange file",
+      "keep every exchange file",
     );
   });
 

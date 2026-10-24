@@ -283,8 +283,8 @@ function directDirectoryError(
  */
 export const SPLIT_DIRECTORY_RETAIN_REQUIREMENT =
   "Separate inbound and outbound directories need retain mode: nothing is " +
-  "deleted after it is read, so each side keeps its own folder. Turn on " +
-  '"Keep every exchange file" under "How files are handled", or clear the ' +
+  "deleted after it is read, so each side keeps its own folder. " +
+  'Choose to keep every exchange file under "How files are handled", or clear the ' +
   "outbound directory to use one shared folder.";
 
 /**
@@ -295,8 +295,8 @@ export const SPLIT_DIRECTORY_RETAIN_REQUIREMENT =
  * directions.
  */
 export const SPLIT_DIRECTORY_RETAIN_SUMMARY =
-  "Its separate inbound and outbound directories need retain mode: turn " +
-  '"Keep every exchange file" back on to use this connection.';
+  "Its separate inbound and outbound directories need retain mode: choose " +
+  "to keep every exchange file again to use this connection.";
 
 /**
  * What the console says when a split pair names only its outbound half. It lands

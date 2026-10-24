@@ -694,10 +694,10 @@ describe("accept kit, retain mode", () => {
       .split("done. The rest of this sheet is for situation B")[1]
       .split("B - A FOLDER DOCKER CAN OPEN")[0];
     expect(launcher).toContain('open "How files are handled"');
-    expect(launcher).toContain('turn on "Keep every exchange file"');
+    expect(launcher).toContain("choose to keep every exchange file");
     // An SFTP partner has no launcher branch, so the console instruction is
     // not on that sheet.
-    expect(retainSheet(SFTP)).not.toContain("Keep every exchange file");
+    expect(retainSheet(SFTP)).not.toContain("keep every exchange file");
   });
 
   test("leaves the sheet untouched when retain mode is off", () => {
@@ -707,7 +707,7 @@ describe("accept kit, retain mode", () => {
         RETAIN_HEADING,
         RETAIN_FLAG,
         "retain mode",
-        "Keep every exchange file",
+        "keep every exchange file",
         "permanent transcript",
       ])
         expect(text).not.toContain(marker);
