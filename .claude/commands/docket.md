@@ -58,9 +58,11 @@ Run only when the owner invokes this command; never start the docket unasked.
    standing rulings as step 2 says before it becomes a docket item, and one a
    ruling already decides goes to `/follow-ups` as a defect against that
    ruling. The gathered lines left become docket items, broken out by session;
-   the closing-list lines left go in a closing list, its own final message
-   after the last decision item, each with its score and reason, and the
-   owner's word on each is recorded the same way as a ruling.
+   the closing-list lines left are presented after the last decision item,
+   one line per message in the form Present, one message per item, sets out
+   -- its context, the options and a recommendation, headed "Ratification N
+   of M" -- with its score and both lenses' reasons, and the owner's word on
+   each is recorded the same way as a ruling.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, run
    `node .claude/scripts/find-rulings.mjs <the decision's 2-3 subject words>`
@@ -78,7 +80,8 @@ Run only when the owner invokes this command; never start the docket unasked.
    decision with no board item is filed as a Decision item first (the ruleset's
    "the board is the only queue"), so the item, its board and its epic are
    always known.
-3. Re-verify each item's assumptions against the current repository and
+3. Read each item's whole body, its newest Ruling section first, then
+   re-verify its assumptions against the current repository and
    boards before presenting it: rulings landed since it was filed, pull
    requests merged, and every path it cites still present at
    `origin/staging`. An item a changed assumption answers is dropped; one it
@@ -120,7 +123,9 @@ docket message.
 
 ## Record, do not execute
 
-Record each ruling as the owner gives it, then present the next item. A
+Record each ruling verbatim as the owner gives it, in the session's own
+record -- the docket's rulings file under `scratch/` and the continuation
+brief -- then present the next item. A
 question the owner asks is not a ruling: answer it, say the decision is still
 open, and end the turn; record a ruling only when the owner's words pick an
 option. Execute nothing, and write nothing to the board, until the owner says

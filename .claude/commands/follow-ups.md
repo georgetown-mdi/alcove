@@ -1,6 +1,6 @@
 ---
 name: follow-ups
-description: Decide the session's potential follow-ups with a PM consult, then do the board work in one pass -- filings, updates, the docket's consequences -- then housekeeping, and state any final action item no board item carries.
+description: The session's last step -- decide its potential follow-ups with a PM consult, then do the board work in one pass -- filings, updates, the rulings and their consequences -- then housekeeping, close the continuation brief, and state any final action item only the owner can take.
 ---
 
 The owner's instruction this command stands for:
@@ -25,27 +25,36 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 Run only when the owner invokes this command; never start the board pass
 unasked. Keep this pass in messages of its own, apart from any docket item.
+It is the session's last step: the board alone holds the state afterwards.
 
-1. List every potential follow-up the session turned up -- PR bodies, review
-   dispositions, agent reports. For each, form your own opinion on whether to
+1. If any branch is still in flight, wind down first as
+   `.claude/commands/wind-down.md` does, without its final hold.
+2. List every open thread the session turned up -- each potential follow-up
+   in PR bodies, review dispositions and agent reports, each confirmed review
+   finding not fixed on a branch, each parked Decision item, each run still
+   under way -- so none is left in prose alone. For each potential follow-up,
+   form your own opinion on whether to
    file it, weighing its benefit to users and the product against its
    implementation and opportunity costs, as `.claude/product-principles.md`
    sets out.
-2. Consult the PM once over the whole list, through a `project-manager` spawn
+3. Consult the PM once over the whole list, through a `project-manager` spawn
    that holds the list, your opinion on each, the consequences of the docket's
    rulings, and the owner's instruction above quoted verbatim. The quoted
    instruction is the owner's delegation for the batch: relayed verbatim in
    the spawn prompt, it licenses filing every item you and the PM agree on,
    so the one-autonomous-filing cap in `.claude/pm/ruleset.md`, Filing and
    updating items, does not return agreed drafts to the owner.
-3. File only what you and the PM both agree on, each with an epic and an
+4. File only what you and the PM both agree on, each with an epic and an
    implementation order. Raise a disagreement with the owner rather than
    settling it. One side conceding on evidence the other verified in the
    repository is agreement, not a disagreement to raise. A PM question that
    blocks nothing is carried in the filed item's Open questions and named in
    the report, never put to the owner mid-pass.
-4. In the same pass, update every open item that a filing, the session's work,
-   or a docket ruling affects. `edit-issue.mjs --body-file` replaces the stored
+5. In the same pass, update every open item that a filing, the session's work,
+   or a ruling affects, and write onto its item each ruling the session
+   recorded -- the docket's, and each answer the owner gave mid-work -- in
+   its verbatim text with its consequences, a revised ruling with its
+   revision. `edit-issue.mjs --body-file` replaces the stored
    body with the file, so before each call check that the file is non-empty and
    holds the whole stored body, read in full, with the update added. A
    shortlist action line the session did not take -- a handoff brief not
@@ -54,7 +63,14 @@ unasked. Keep this pass in messages of its own, apart from any docket item.
    owed since <date>: write, schedule or drop.", keeping the date of such a
    line already there, and listed in the report as a docket entry for the next
    session.
-5. Do the relevant housekeeping; retiring a worktree follows the ruleset's
-   Worktrees and checkouts section.
-6. Report in a few lines what was filed and updated, and state any final
-   action item that no board item carries.
+6. Do the relevant housekeeping: retire each finished worktree and each local
+   branch the ruleset lets go, named or `worktree-agent-*`, as its Worktrees
+   and checkouts section allows, and stop each watcher or background process
+   the session started.
+7. Make the continuation brief's first line `Closed out <date -I>: the board
+   alone holds the state.`, so the next `/orchestrate` starts from the board.
+8. Report in a few lines what was filed and updated. For each run still under
+   way, print one sentence the owner can give a new session to watch it and
+   act on its result. State the final action items: only what the owner alone
+   can take and no board item carries, each with the one line the ruleset
+   requires on why the session cannot; with none, say so in one line.

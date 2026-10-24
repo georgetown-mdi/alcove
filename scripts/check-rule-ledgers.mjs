@@ -43,7 +43,6 @@ export const FRONT_DOORS = [
   ".claude/commands/docket.md",
   ".claude/commands/follow-ups.md",
   ".claude/commands/wind-down.md",
-  ".claude/commands/close-out.md",
   ".claude/commands/compact-prep.md",
   ".claude/skills/shortlist-backlog/SKILL.md",
 ];

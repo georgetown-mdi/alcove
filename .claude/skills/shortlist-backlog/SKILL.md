@@ -113,9 +113,9 @@ and reporting, sets out, then record it on the candidate item with
 full, naming the brief's path or the Decision item's id, from a body file you
 checked is non-empty and holds that whole body; a "ruled --" line is no action, but record its board item id or doc path the same way. The next shortlist
 keys off a body citing it, so it does not emit the action again. An action
-line the session does not take becomes a docket entry at close-out (step 2
-of `.claude/commands/close-out.md`), as a listed "owed since" line already
-is. Fetch only the chosen items' bodies yourself
+line the session does not take becomes a docket entry in the follow-ups pass
+(step 5 of `.claude/commands/follow-ups.md`), as a listed "owed since" line
+already is. Fetch only the chosen items' bodies yourself
 (`node .claude/scripts/fetch-issues.mjs <board> <itemId>`) or hand an item
 id straight to /start-issue. Do not re-list the boards in the calling
 session; if the shortlist looks stale or wrong, re-spawn the agent instead.
