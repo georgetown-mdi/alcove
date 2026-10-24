@@ -22,6 +22,15 @@ push:
   commit in a fresh clone -- the workspaces the CLI needs and, on request,
   Docker images -- without touching the checkout it shares with the dev
   container
+- the hand-off commands around a brief: `host-handoff.sh`, the owner's one
+  command on the host, which starts a Claude Code session on the brief's model
+  pointed at the brief and ends saying whether the result file exists, its
+  `--check` reading a brief in the dev container before it is handed out;
+  `wait-handoff-result.mjs`, which the dev container session runs in the
+  background under `timeout` until the result file is written; and
+  `webrtc-capture.mjs`, which a host session runs for a browser step: it
+  prints the capture code the owner pastes into a page's console and
+  summarizes the file the page downloads, or a saved Firefox about:webrtc page
 - `squash-message.mjs`, which drafts the body of the squash message a pull
   request lands as, and `format-squash-message.mjs`, which rewraps a draft
   body, drops the markdown and list markers a commit message does not take,
