@@ -1019,10 +1019,10 @@ either is downloaded.
 
 ### Taking it back from the command line
 
-An exchange handed to the command line can be brought back. The scheduled job was
-abandoned, the machine is going away, or the operator simply wants to run it here
-again: the handed-off exchange's own page offers **Take this exchange back**, and
-it is the only way back -- an old backup file is refused, for the reasons above.
+An exchange handed to the command line by an earlier version can be brought back.
+The scheduled job was abandoned, the machine is going away, or the operator simply
+wants to run it here again: the handed-off exchange's own page offers **Take this
+exchange back**, and it is the only way back -- an old backup file is refused.
 
 Taking it back is one deliberate step with a confirmation, not a quiet reversal,
 because two things have to be true and only the operator knows them:
