@@ -4131,7 +4131,9 @@ describe.skipIf(runningAsRoot)(
   () => {
     // An openssl whose s_client fails its first `failures` runs and then
     // completes, logging each run's arguments; every other subcommand is the
-    // real openssl.
+    // real openssl. Its s_client reads its input to the end, as the real one
+    // does: verify.sh pipes `echo` into it under pipefail, so a stub that
+    // exited unread could fail the pipeline on the writer's SIGPIPE.
     const verifyWithHandshakes = (failures, wait) => {
       const host = fixtureHost();
       const stubDir = join(host.root, "openssl-stub");
@@ -4146,6 +4148,7 @@ describe.skipIf(runningAsRoot)(
         [
           "#!/bin/bash",
           'if [ "$1" = s_client ]; then',
+          "  cat >/dev/null",
           `  printf '%s\\n' "$*" >> '${log}'`,
           `  [ "$(grep -c . '${log}')" -gt ${failures} ] && exit 0`,
           "  exit 1",
@@ -4224,7 +4227,8 @@ describe.skipIf(runningAsRoot)(
         ].join("\n"),
       );
       chmodSync(join(stubDir, "python3"), 0o755);
-      // A front whose TLS handshake completes, so the wait reaches the Binding.
+      // A front whose TLS handshake completes, so the wait reaches the Binding;
+      // it reads its input as the stub in the waiting tests above does.
       const realOpenssl = process.env.PATH.split(":")
         .map((dir) => join(dir, "openssl"))
         .find(existsSync);
@@ -4232,7 +4236,7 @@ describe.skipIf(runningAsRoot)(
         join(stubDir, "openssl"),
         [
           "#!/bin/bash",
-          '[ "$1" = s_client ] && exit 0',
+          'if [ "$1" = s_client ]; then cat >/dev/null; exit 0; fi',
           `exec ${realOpenssl} "$@"`,
           "",
         ].join("\n"),
