@@ -313,8 +313,8 @@ export const USE_BUILT_IN_RULES_STATEMENT =
   "cannot be undone.";
 
 /** What the confirm before expert authoring's Remove all keys states, asked
- * only where the list holds a key {@link editorWithBuiltInKeys} would not put
- * back (`draftHasKeyBuiltInRulesWouldNotRestore`). */
+ * only where the list holds a key that is not a built-in key
+ * (`draftKeysAreBuiltIn`). */
 export const REMOVE_ALL_KEYS_STATEMENT =
   "The keys you added, changed, or loaded from a document are lost. This " +
   "cannot be undone.";

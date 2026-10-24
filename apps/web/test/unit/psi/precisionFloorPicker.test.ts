@@ -13,8 +13,8 @@ import {
   addKey,
   buildAdvancedTerms,
   draftFromTerms,
-  draftHasKeyBuiltInRulesWouldNotRestore,
   draftHasOfferedKeys,
+  draftKeysAreBuiltIn,
   draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   removeKey,
@@ -497,12 +497,12 @@ describe("replacing authored keys with the built-in rules", () => {
   });
 });
 
-describe("a key the built-in rules would not put back", () => {
+describe("Remove all keys asks first", () => {
   const seeded = editorFromCsv("Dana", withSsn);
-  const wouldNotRestore = (editor: InviterEditor) =>
-    draftHasKeyBuiltInRulesWouldNotRestore(editor.draft);
+  const asksFirst = (editor: InviterEditor) =>
+    !draftKeysAreBuiltIn(editor.draft);
 
-  test("is not on the guided list at either floor, reordered, with a key off, or emptied", () => {
+  test("not on the guided list at either floor, reordered, with a key off, or emptied", () => {
     expect(seeded.draft.keys.length).toBeGreaterThan(1);
     for (const guided of [
       seeded,
@@ -511,40 +511,34 @@ describe("a key the built-in rules would not put back", () => {
       editorWithKeyEnabled(seeded, 0, false),
       editorWithAuthoredDraft(seeded, { ...seeded.draft, keys: [] }),
     ])
-      expect(wouldNotRestore(guided)).toBe(false);
+      expect(asksFirst(guided)).toBe(false);
   });
 
-  test("is a key added in expert authoring, until Use the built-in rules replaces the keys", () => {
+  test("over a key added in expert authoring, until Use the built-in rules replaces the keys", () => {
     const authored = editorWithAuthoredDraft(
       seeded,
       addKey(seeded.draft, "first_name"),
     );
-    expect(wouldNotRestore(authored)).toBe(true);
-    expect(wouldNotRestore(editorWithBuiltInKeys(authored, withSsn))).toBe(
-      false,
-    );
+    expect(asksFirst(authored)).toBe(true);
+    expect(asksFirst(editorWithBuiltInKeys(authored, withSsn))).toBe(false);
   });
 
-  test("is a built-in key changed in expert authoring, until the change is undone", () => {
+  test("over a built-in key changed in expert authoring, until the change is undone", () => {
     const name = seeded.draft.keys[0].key.name;
     const renamed = updateKeyAt(seeded.draft, 0, (key) => ({
       ...key,
       name: `${name} (mine)`,
     }));
-    expect(wouldNotRestore(editorWithAuthoredDraft(seeded, renamed))).toBe(
-      true,
-    );
+    expect(asksFirst(editorWithAuthoredDraft(seeded, renamed))).toBe(true);
     const undone = updateKeyAt(renamed, 0, (key) => ({ ...key, name }));
-    expect(wouldNotRestore(editorWithAuthoredDraft(seeded, undone))).toBe(
-      false,
-    );
+    expect(asksFirst(editorWithAuthoredDraft(seeded, undone))).toBe(false);
   });
 
-  test("is a key loaded from a document that differs from the built-in ones, and not one equal to them", () => {
+  test("over a key loaded from a document that differs from the built-in ones, and not one equal to them", () => {
     const terms = buildAdvancedTerms(seeded.draft);
-    expect(
-      wouldNotRestore(editorWithImportedTerms(seeded, withSsn, terms)),
-    ).toBe(false);
+    expect(asksFirst(editorWithImportedTerms(seeded, withSsn, terms))).toBe(
+      false,
+    );
     const rename = (field: string) =>
       field === "last_name" ? "surname" : field;
     const renamed = {
@@ -561,17 +555,17 @@ describe("a key the built-in rules would not put back", () => {
         })),
       })),
     };
-    expect(
-      wouldNotRestore(editorWithImportedTerms(seeded, withSsn, renamed)),
-    ).toBe(true);
+    expect(asksFirst(editorWithImportedTerms(seeded, withSsn, renamed))).toBe(
+      true,
+    );
   });
 
-  test("is any key where the columns supply no built-in key", () => {
+  test("over a key added where the columns supply no built-in key", () => {
     const uncovered = editorFromCsv("Dana", contactsOnly);
     expect(draftOffersBuiltInKeys(uncovered.draft)).toBe(false);
-    expect(wouldNotRestore(uncovered)).toBe(false);
+    expect(asksFirst(uncovered)).toBe(false);
     expect(
-      wouldNotRestore(
+      asksFirst(
         editorWithAuthoredDraft(
           uncovered,
           addKey(uncovered.draft, "email_address"),
@@ -580,9 +574,8 @@ describe("a key the built-in rules would not put back", () => {
     ).toBe(true);
   });
 
-  test("is a built-in key a column edit leaves the columns unable to supply", () => {
+  test("not over a built-in key a column edit leaves the columns unable to supply", () => {
     const authored = editorWithAuthoredDraft(seeded, seeded.draft);
-    expect(wouldNotRestore(authored)).toBe(false);
     const retyped = editorWithColumnType(
       authored,
       withSsn,
@@ -590,10 +583,13 @@ describe("a key the built-in rules would not put back", () => {
       "other",
     ).editor;
     expect(retyped.draft.keys).toStrictEqual(authored.draft.keys);
-    expect(wouldNotRestore(retyped)).toBe(true);
+    expect(draftWithBuiltInKeys(retyped.draft).keys.length).toBeLessThan(
+      retyped.draft.keys.length,
+    );
+    expect(asksFirst(retyped)).toBe(false);
   });
 
-  test("is named in the Remove all keys confirm as lost for good", () => {
+  test("with a statement naming the hand-written keys as lost for good", () => {
     expect(REMOVE_ALL_KEYS_STATEMENT).toBe(
       "The keys you added, changed, or loaded from a document are lost. " +
         "This cannot be undone.",
