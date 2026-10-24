@@ -14,14 +14,17 @@ the resume message is this command, never a continuation brief's path handed to 
 $ARGUMENTS
 
 The text above is the owner's note for the session -- a parked pull request, the session model, anything unusual; an empty line means none.
-Copy it into the continuation brief, so a resume that omits it keeps it.
+Add it to the continuation brief's owner notes, never replacing what is there, so a resume that omits it keeps it.
 
 ## First
 
 1. Read `.claude/orchestration/ruleset.md`.
-2. When a continuation brief exists, read the newest as the session's state:
-   the first line `ls -t scratch/continuation-*.md` prints in the primary checkout, newest by modification time.
-   Keep the session's brief current in a file of that pattern, `scratch/continuation-<date -I>.md`.
+2. When a continuation brief exists, read the newest:
+   the line `ls -t scratch | grep -m1 '^continuation-.*\.md$'` prints in the primary checkout, newest by modification time.
+   A brief whose first line records a clean break is history: start from the board.
+   A brief whose first line records any other close-out is the previous session's state: read it, then keep this session's brief in a new file.
+   Any other brief is this session's own, resumed after a compaction or a rotation: keep writing it.
+   A new brief is `scratch/continuation-<date -I>.md`, with the next letter added (`b`, `c`) when that name is taken.
 3. If you have questions before you start, ask them now and wait for the answers.
 
 ## The work
