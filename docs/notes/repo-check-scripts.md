@@ -745,6 +745,9 @@ Effort decides how deep a reviewer reads: the same lens round replayed on ten br
 So every call pins a literal `effort` beside its `model`, from the values the Workflow runtime accepts (`low`, `medium`, `high`, `xhigh`, `max`).
 A call missing both pins is reported once, naming both.
 
+An agent definition under `.claude/agents/` is held to the same rule in its frontmatter: a spawn by `subagent_type` runs at the session's effort unless the definition states one, so a definition with no `effort:` from that list fails.
+The owner ruled `high` for the definitions on 2026-10-23, after Opus implementer runs cost $4.93 at high against $9.54 at xhigh; the check requires a pin, not that value, so a later ruling can still choose another.
+
 The seats of the `/light-review` lens round, one Opus reviewer at high effort and an Opus consolidator at high, were chosen by the owner on 2026-10-09 after two ten-branch replays. On 2026-10-15 the owner replaced the second seat with a Sonnet verifier at high effort. The round runs one reviewer, so there is nothing to consolidate, and verifying a finding by reading the hunks it names and copying exact edits is a checklist task. The measurement behind keeping the verification: across every lens round in the session ledgers the verdicts were 2276 confirmed, 74 refuted and 166 unverifiable, so about one finding in ten would otherwise reach a fix brief unvetted. The seats are revisited at the next retro.
 
 ### Why the options object is spelled out

@@ -7,7 +7,8 @@
 // passes a literal `model:` from ALLOWED_TIERS and a literal `effort:` from
 // ALLOWED_EFFORTS at the top level of its own inline options object; a spread
 // into that object, a computed or hoisted value, a non-call use of `agent`,
-// and a pinned Fable each fail. The lexer, block reader and file listing are
+// and a pinned Fable each fail. It also fails any .claude/agents/*.md
+// definition whose frontmatter lacks an `effort:` from ALLOWED_EFFORTS. The lexer, block reader and file listing are
 // shared with check-workflow-args-resolve.mjs
 // in scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when
 // no `agent(` call is found at all. Rationale and limits:
@@ -17,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { agentDefinitions } from "../.claude/hooks/lib/agentDefinitions.mjs";
 import {
   SCRIPT_DIR,
   SCRIPT_SUFFIX,
@@ -247,6 +249,26 @@ export function modelViolations(file, source) {
   return violations;
 }
 
+/**
+ * Every agent definition under `agentsDir` whose frontmatter states no
+ * `effort:` from ALLOWED_EFFORTS, as `{file, problem}` pairs.
+ */
+export function definitionEffortViolations(agentsDir) {
+  const violations = [];
+  for (const { file, effort } of agentDefinitions(agentsDir)) {
+    if (effort !== null && ALLOWED_EFFORTS.includes(effort)) continue;
+    const stated =
+      effort === null
+        ? "states no `effort:`"
+        : `states \`effort: ${effort}\`, which is not one of ${ALLOWED_EFFORTS.join(", ")}`;
+    violations.push({
+      file,
+      problem: `.claude/agents/${file}: the definition ${stated} in its frontmatter, so a spawn of it inherits the session's reasoning effort -- pin one of ${ALLOWED_EFFORTS.join(", ")} beside \`model:\``,
+    });
+  }
+  return violations;
+}
+
 /** Count the `agent(` calls a source contains, for the pattern-rot guard. */
 export function agentCallCount(file, source) {
   return codeBlocks(file, source).reduce(
@@ -268,6 +290,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     calls += agentCallCount(file, source);
     violations.push(...modelViolations(file, source));
   }
+  violations.push(
+    ...definitionEffortViolations(resolve(root, ".claude/agents")),
+  );
   if (calls === 0) {
     console.error(
       `${scanned}: no \`agent(\` call was found in any scanned block. If you changed how Workflow scripts call agents, update the pattern in scripts/check-workflow-agent-models.mjs to read the new form.`,

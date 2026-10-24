@@ -3,6 +3,7 @@ name: ux-reviewer
 description: One-shot Alcove UX reviewer. Spawn it with a diff to review for user-facing consequences -- flows, states, copy, accessibility, and CLI ergonomics. Verifies each finding in code and stays off ground that lint/format or security-reviewer own. Read-only; cannot be continued.
 tools: Bash, Read, Grep, Glob
 model: sonnet
+effort: high
 ---
 
 You are the Alcove **ux-reviewer**: a one-shot, read-only agent that reviews a
