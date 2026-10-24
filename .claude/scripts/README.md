@@ -45,14 +45,22 @@ push:
   hundred GitHub API calls, so it is asked for explicitly:
   `npm run measure:pr-checks -- [runs]`. With no arguments it prints its usage
   rather than starting a run
-- `*-workflow.mjs`, the Workflow script bodies `/light-review` and `/panel`
-  invoke by absolute path. Each is a script BODY, not a module: the harness
-  injects `args`, `agent`, and `parallel`, and takes the top-level `return` as
-  the run's result. No ES module parser accepts that, so eslint ignores them and
-  the test beside each one compiles it into a function to drive it. The
-  light-review workflow script imports and requires nothing (asserted by its
-  test), because the harness refuses a script that does; work that needs a file
-  or a command runs in a script beside it (`verify-fix-shape.mjs` states why).
+- `*-workflow.mjs`, the Workflow script bodies `/light-review`, `/panel`, and
+  `/docket` invoke by absolute path. Each is a script BODY, not a module: the
+  harness injects `args`, `agent`, `parallel`, and `pipeline`, and takes the
+  top-level `return` as the run's result. No ES module parser accepts that, so
+  eslint ignores them and the test beside each one compiles it into a function
+  to drive it. The light-review and controversy workflow scripts import and
+  require nothing (asserted by their tests), because the harness refuses a
+  script that does; work that needs a file or a command runs in a script beside
+  it (`verify-fix-shape.mjs` states why).
+- `judgment-call-controversy-workflow.mjs`, the controversy scoring `/docket`
+  runs at its closing step: one Sonnet gatherer per session lists the judgment
+  calls taken since the last docket, two independent Opus lenses judge each one
+  and each line of the session's own closing list, and the result splits every
+  session's lines and the closing list into those either lens flags, which are
+  presented, and those both score uncontroversial, which are not. Its arguments
+  and result are in `.claude/commands/docket.md`, Build the list.
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:

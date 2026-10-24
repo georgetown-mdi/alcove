@@ -27,13 +27,32 @@ Run only when the owner invokes this command; never start the docket unasked.
 1. Collect every open decision the session holds for the owner. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
-   already took. Those go in a closing list, its own final message after the
-   last decision item, with one line per ratification; the owner's word on each
-   line is recorded the same way as a ruling. Leave out each operation too -- a
-   step whose way forward no option changes, such as a run, a check, a filing
-   or a host-side step: do it, or hand it off, as the ruleset's line on why the
-   session cannot do something itself requires. An item is a decision only when
-   its options differ in their effect on users or the product.
+   already took, which the scoring below filters. Leave out each operation
+   too -- a step whose way forward no option changes, such as a run, a check, a
+   filing or a host-side step: do it, or hand it off, as the ruleset's line on
+   why the session cannot do something itself requires. An item is a decision
+   only when its options differ in their effect on users or the product.
+
+   Judgment calls are scored, not walked line by line. Write the session's own
+   closing list, one line per ratification, then invoke the Workflow tool with
+   `scriptPath` set to the ABSOLUTE path of
+   `.claude/scripts/judgment-call-controversy-workflow.mjs` in this repository
+   (`git rev-parse --show-toplevel` gives the root) and `args` set to
+   `{"since": "<when the last docket ran>", "sessions": [{"name": "<session>", "prs": [<its PRs since then>], "sources": [<the files recording its calls>], "notes": "<optional>"}], "closingList": [<the lines>]}`,
+   one `sessions` entry for each session that worked since the last docket.
+   It gathers every judgment call since then and has two independent lenses
+   judge each one and each closing-list line. For each session and for the
+   closing list it returns `presented`, the lines either lens flags, ranked by
+   score with each lens's verdict and reason, and `standing`, the lines both
+   lenses scored uncontroversial; `problems` names any line a lens left
+   unscored, which is presented. A standing line is not presented: record it as
+   standing, the same way as a ruling. A presented line is checked against
+   standing rulings as step 2 says before it becomes a docket item, and one a
+   ruling already decides goes to `/follow-ups` as a defect against that
+   ruling. The gathered lines left become docket items, broken out by session;
+   the closing-list lines left go in a closing list, its own final message
+   after the last decision item, each with its score and reason, and the
+   owner's word on each is recorded the same way as a ruling.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, run
    `node .claude/scripts/find-rulings.mjs <the decision's 2-3 subject words>`
