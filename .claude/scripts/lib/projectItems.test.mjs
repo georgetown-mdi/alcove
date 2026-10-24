@@ -310,7 +310,27 @@ describe("fetchAllItems completeness", () => {
     );
   });
 
-  it("fails a page that came back with errors beside its data", async () => {
+  it("fails a page with errors beside a short count", async () => {
+    const runQuery = scriptedRunQuery([
+      pageBody({
+        nodes: nodes.slice(0, 100),
+        totalCount: 150,
+        hasNextPage: false,
+        endCursor: null,
+        errors: [{ message: "Something went wrong" }],
+      }),
+    ]);
+    await expectIncomplete(
+      runQuery,
+      /the pages hold 100 of the 150 items the API reports/,
+    );
+    expect(runQuery).toHaveBeenCalledTimes(LISTING_MAX_ATTEMPTS);
+    expect(stderr.mock.calls[0][0]).toMatch(
+      /came back with errors: .*Something went wrong/,
+    );
+  });
+
+  it("accepts errors beside a matching count on the last attempt, warning once", async () => {
     const runQuery = scriptedRunQuery([
       pageBody({
         nodes: nodes.slice(0, 100),
@@ -320,10 +340,16 @@ describe("fetchAllItems completeness", () => {
         errors: [{ message: "Something went wrong" }],
       }),
     ]);
-    await expectIncomplete(
-      runQuery,
-      /page 1 came back with errors: .*Something went wrong/,
-    );
+    const result = await fetchAllItems(9, { runQuery, ...FAST });
+
+    expect(result).toHaveLength(100);
+    expect(runQuery).toHaveBeenCalledTimes(LISTING_MAX_ATTEMPTS);
+    const warnings = stderr.mock.calls
+      .map((call) => call[0])
+      .filter((text) => text.startsWith("warning:"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("project 9");
+    expect(warnings[0]).toContain("Something went wrong");
   });
 
   it("fails a page with no item count", async () => {

@@ -518,8 +518,14 @@ async function runQueryViaFetch(query) {
  * a next page has to add an item, and the collected items may never pass the
  * count, so a pass makes at most totalCount + 1 requests.
  */
-async function fetchListingOnce(projectNumber, runQuery, contentFields) {
+async function fetchListingOnce(
+  projectNumber,
+  runQuery,
+  contentFields,
+  tolerateErrors,
+) {
   const nodes = [];
+  const pageErrors = [];
   const seen = new Set();
   let totalCount;
   let cursor = null;
@@ -539,9 +545,12 @@ async function fetchListingOnce(projectNumber, runQuery, contentFields) {
     const incomplete = (reason) =>
       new IncompleteListingError(`page ${page} ${reason}`);
     if (Array.isArray(errors) && errors.length > 0) {
-      throw incomplete(
-        `came back with errors: ${JSON.stringify(errors).slice(0, 300)}`,
-      );
+      if (!tolerateErrors) {
+        throw incomplete(
+          `came back with errors: ${JSON.stringify(errors).slice(0, 300)}`,
+        );
+      }
+      pageErrors.push(...errors);
     }
     const conn = project.items;
     if (
@@ -588,7 +597,7 @@ async function fetchListingOnce(projectNumber, runQuery, contentFields) {
       `the pages hold ${nodes.length} of the ${totalCount} items the API reports`,
     );
   }
-  return nodes;
+  return { nodes, errors: pageErrors };
 }
 
 /**
@@ -605,7 +614,10 @@ async function fetchListingOnce(projectNumber, runQuery, contentFields) {
  * fetchListingOnce). A run that
  * does not add up is retried up to LISTING_MAX_ATTEMPTS times, each retry
  * noted on stderr, and then throws: the result is either every item the API
- * counts or an error. The check cannot see an item the count also omits: a
+ * counts or an error. A page's `errors` array also fails an attempt, but when
+ * the last attempt's only fault is `errors` and the collected items match the
+ * count, the listing succeeds and each error message is warned once on stderr.
+ * The check cannot see an item the count also omits: a
  * run whose count is itself short passes, and whether the count includes a
  * just-filed draft is not known (one filed 25 minutes earlier was absent from
  * full listings on 2026-10-22), so a just-filed item is read by id
@@ -627,7 +639,21 @@ export async function fetchAllItems(
   let nodes;
   for (let attempt = 1; nodes === undefined; attempt += 1) {
     try {
-      nodes = await fetchListingOnce(projectNumber, runQuery, contentFields);
+      const listing = await fetchListingOnce(
+        projectNumber,
+        runQuery,
+        contentFields,
+        attempt >= maxAttempts,
+      );
+      nodes = listing.nodes;
+      const messages = new Set(
+        listing.errors.map((e) => e?.message ?? JSON.stringify(e)),
+      );
+      for (const message of messages) {
+        process.stderr.write(
+          `warning: project ${projectNumber} listing is complete but the API reported an error: ${message}\n`,
+        );
+      }
     } catch (err) {
       if (!(err instanceof IncompleteListingError)) throw err;
       if (attempt >= maxAttempts) {

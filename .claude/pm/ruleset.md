@@ -191,7 +191,8 @@ whether the count includes a just-filed draft is not known (one filed 25
 minutes earlier was absent from full listings on 2026-10-22), so a draft
 filed earlier in the same session is checked by id with `fetch-issues.mjs`,
 not by its absence from this listing. A raw `gh project item-list --limit N`
-would instead cap at N and drop the rest without warning (board 9 already exceeds one 100-item page), and its
+would instead cap at N and drop the rest without warning (board 9 already
+exceeds one 100-item page), and its
 JSON omits the numeric id and the custom fields. Add `--json` for a
 machine-readable array. `--all` matters here: the default listing omits Done
 rows, and a Done item that already covers the work is exactly what this check
@@ -306,9 +307,11 @@ node .claude/scripts/list-issues.mjs --json --all 9   # the `epic` field on each
 ```
 
 If one fits, create the draft with `--format json` added to the create command,
-and read its node id from that output with `grep -o 'PVTI_[A-Za-z0-9_-]*'` --
-the output prints the body's newlines raw, so it does not parse as JSON, and a
-listing can lag a just-filed draft -- then set both fields in one
+and read its node id from that output with
+`grep -o '"id":"PVTI_[A-Za-z0-9_-]*"' | cut -d'"' -f4`, which matches only the
+item's own id key, since the body's quotes are escaped -- the output prints the
+body's newlines raw, so it does not parse as JSON, and a listing can lag a
+just-filed draft -- then set both fields in one
 `edit-issue.mjs` call, which takes the node id, choosing the order from the
 epic's current items:
 

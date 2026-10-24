@@ -14,10 +14,8 @@
 // path as list-epic.mjs (shared fetchAllItems), which checks the pages against
 // the item count the API reports for the board and retries a run that falls
 // short: it prints every item that count covers, or exits 1 naming what did not
-// add up. Limit: an item the count also omits is missing with exit 0. On
-// 2026-10-22 a draft filed 25 minutes earlier was absent from four agreeing
-// full listings, and whether the count includes such a draft is not known, so
-// read a just-filed item by id (fetch-issues.mjs), not from this listing.
+// add up. The completeness check and its limit: fetchAllItems in
+// lib/projectItems.mjs.
 //
 // Usage:
 //   node list-issues.mjs [--json] [--all | --status NAME...] <project-number>
