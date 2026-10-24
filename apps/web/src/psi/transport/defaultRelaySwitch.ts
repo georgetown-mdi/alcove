@@ -23,7 +23,8 @@ export const DEFAULT_RELAY_SWITCH_LABEL = "Use this site's relay server";
 export const DEFAULT_RELAY_OFF_REMEDY =
   "This site's relay server is off in this browser. If a network blocks " +
   "direct connections, or blocks connections to TURN relays, turning on " +
-  `"${DEFAULT_RELAY_SWITCH_LABEL}" on the Relay server page (the relay ` +
+  `the switch to ${DEFAULT_RELAY_SWITCH_LABEL.charAt(0).toLowerCase()}` +
+  `${DEFAULT_RELAY_SWITCH_LABEL.slice(1)} on the Relay server page (the relay ` +
   "settings link on the start page) and trying again may let the exchange " +
   "connect.";
 

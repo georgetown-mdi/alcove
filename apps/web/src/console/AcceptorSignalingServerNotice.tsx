@@ -47,9 +47,9 @@ export function AcceptorSignalingServerNotice({
         )}
         {!unencrypted && onThisComputer && (
           <Text size="sm" c="dimmed">
-            To reach a test server on this machine over ws://, first set its
-            ws:// address under Over WebRTC, run here, when creating an
-            invitation, then open this invitation again.
+            To reach a test server on this machine over ws://, first choose
+            WebRTC when creating an invitation and set the server&apos;s ws://
+            address there, then open this invitation again.
           </Text>
         )}
         <Text size="sm" c="dimmed">
@@ -69,8 +69,8 @@ export function AcceptorSignalingServerNotice({
         <Text size="sm" c="dimmed">
           Starting the exchange also sets this console&apos;s coordination
           server to this one, replacing any server or web app address you set
-          for your own invitations. Set yours again under Over WebRTC, run here,
-          before you next create an invitation.
+          for your own invitations. To use yours again, choose WebRTC when you
+          next create an invitation and set it there.
         </Text>
       </Stack>
     </fieldset>

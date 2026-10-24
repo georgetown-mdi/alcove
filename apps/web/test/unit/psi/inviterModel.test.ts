@@ -1223,7 +1223,7 @@ describe("transport chooser copy by deployment", () => {
     // meets the partner in two folders and cannot run without retain mode.
     expect(copy.filedropLabel).toBe("Over a shared folder, run here");
     expect(copy.filedropDescription).toContain("two shared folders");
-    expect(copy.filedropDescription).toContain("Keep every exchange file");
+    expect(copy.filedropDescription).toContain("keep every exchange file");
     // The single-folder sentence would tell an operator with two mounts to meet
     // their partner in a folder neither side has.
     expect(copy.filedropDescription).not.toContain("the same synced folder");
