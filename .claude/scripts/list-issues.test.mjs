@@ -181,10 +181,18 @@ describe("parkedTrigger", () => {
     expect(parkedTrigger(body)).toBe("board 9 item 123 is Done (2026-10-24)");
   });
 
-  it("reads a Parked until line below the top, trimming a CRLF ending", () => {
-    const body =
-      "## Summary\r\n\r\nText.\r\nParked until: a release exists  \r\n";
+  it("reads a top Parked until line with a CRLF ending", () => {
+    const body = "\r\nParked until: a release exists  \r\n\r\n## Summary\r\n";
     expect(parkedTrigger(body)).toBe("a release exists");
+  });
+
+  it("ignores a Parked until line below the top or in a fenced block", () => {
+    expect(
+      parkedTrigger("## Summary\n\nText.\nParked until: a release exists\n"),
+    ).toBe(null);
+    expect(parkedTrigger("```\nParked until: a release exists\n```\n")).toBe(
+      null,
+    );
   });
 
   it("returns null for a body with no Parked until line", () => {

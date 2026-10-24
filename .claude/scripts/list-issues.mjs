@@ -133,12 +133,15 @@ export function parseArgs(argv) {
 
 /**
  * The trigger a body's `Parked until:` line names, or null when the body has
- * no such line or the line names nothing. The line is matched wherever it sits
- * in the body, so one written below the top still parks the item.
+ * no such line or the line names nothing. Only the body's first non-empty
+ * line is read, so an example line lower down or in a fenced block parks
+ * nothing.
  */
 export function parkedTrigger(body) {
   if (typeof body !== "string") return null;
-  const match = PARKED_LINE.exec(body);
+  const top = body.split(/\r?\n/).find((line) => /\S/.test(line));
+  if (top === undefined) return null;
+  const match = PARKED_LINE.exec(top);
   return match ? match[1] : null;
 }
 
