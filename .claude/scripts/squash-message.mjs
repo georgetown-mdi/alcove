@@ -13,10 +13,15 @@
 // since the CLI's tool-list flags are variadic and would swallow a trailing
 // prompt argument.
 //
+// Asks `claude auth status` first and stops when it reports no login: a Claude
+// Code session withholds its own login token from the tool shells it starts, so
+// `claude -p` there answers "Not logged in". Run the script from a container
+// terminal, such as the VS Code integrated terminal, where the token is present.
+//
 // Exit 0 printed. Exit 2 on a usage error, a one-commit pull request, or a
 // draft the normalizer refuses, which is printed as drafted with the reasons on
-// stderr; 1 or claude's own status when the run fails. Rationale:
-// docs/notes/agent-hooks-and-scripts.md.
+// stderr; 1 when claude is not logged in, or claude's own status when the run
+// fails. Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
@@ -130,6 +135,27 @@ export function claudeArgs() {
   ];
 }
 
+/** What the script says when `claude auth status` reports no login. */
+export const NOT_LOGGED_IN_MESSAGE =
+  "claude is not logged in in this shell. Run this script from a terminal in " +
+  "the container, such as the VS Code integrated terminal.\n";
+
+/**
+ * True only when `claude auth status` printed JSON whose `loggedIn` is false.
+ * Anything else -- no output, other text, a changed format -- is not a clear
+ * answer, so the draft runs and `claude -p` reports a login problem itself.
+ */
+export function reportsNotLoggedIn(stdout) {
+  try {
+    const status = JSON.parse(String(stdout ?? ""));
+    return status !== null && typeof status === "object"
+      ? status.loggedIn === false
+      : false;
+  } catch {
+    return false;
+  }
+}
+
 // CLI entry: only runs when invoked directly, so the test can import the pure
 // functions without spawning anything.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -155,6 +181,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (refused !== null) {
     process.stderr.write(refused);
     process.exit(2);
+  }
+  const auth = spawnSync("claude", ["auth", "status"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  if (!auth.error && reportsNotLoggedIn(auth.stdout)) {
+    process.stderr.write(NOT_LOGGED_IN_MESSAGE);
+    process.exit(1);
   }
   const run = spawnSync("claude", claudeArgs(), {
     cwd: ROOT,
