@@ -35,6 +35,7 @@ export const LEDGER = ".claude/orchestration/ruleset.md";
 
 /** The commands and skills that load the session ledger as their first step. */
 export const FRONT_DOORS = [
+  ".claude/commands/orchestrate.md",
   ".claude/commands/start-issue.md",
   ".claude/commands/light-review.md",
   ".claude/commands/assess-review.md",

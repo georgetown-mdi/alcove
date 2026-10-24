@@ -1,6 +1,6 @@
 ---
 name: docket
-description: Present the session's decision docket to the owner -- every open decision that is not a potential follow-up -- one decision per message, and record each ruling without executing it.
+description: Present the decision docket to the owner -- at most a handful of open decisions that are not potential follow-ups, the session's parked ones and the ripest in the Decision column -- one decision per message, and record each ruling without executing it.
 ---
 
 The owner's instruction this command stands for:
@@ -24,7 +24,10 @@ before proceeding -- its decision rules are the ones this command applies.
 
 Run only when the owner invokes this command; never start the docket unasked.
 
-1. Collect every open decision the session holds for the owner. Leave out each
+1. Collect at most a handful of open decisions: those the session parked, and
+   the ripest of the items already in the Decision column of boards 9 and 10
+   (`node .claude/scripts/list-issues.mjs --status Decision <board>`). The rest
+   stay in the column for a later docket. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
    already took. Those go in a closing list, its own final message after the
@@ -51,10 +54,15 @@ Run only when the owner invokes this command; never start the docket unasked.
    decision with no board item is filed as a Decision item first (the ruleset's
    "the board is the only queue"), so the item, its board and its epic are
    always known.
-3. One decision per item: an item holding two decisions is two items, never
+3. Re-verify each item's assumptions against the current repository and
+   boards before presenting it: rulings landed since it was filed, pull
+   requests merged, and every path it cites still present at
+   `origin/staging`. An item a changed assumption answers is dropped; one it
+   changes is presented with the change stated in its background.
+4. One decision per item: an item holding two decisions is two items, never
    sub-questions under one.
-4. Number the items once, as N of M, and keep that numbering to the end.
-5. Before presenting an item that touches screen copy, a user flow, CLI
+5. Number the items once, as N of M, and keep that numbering to the end.
+6. Before presenting an item that touches screen copy, a user flow, CLI
    ergonomics, or a consent surface, spawn `ux-reviewer` on the code it
    concerns. An item on a security surface has each premise its background
    rests on measured by the session on `origin/staging`, one call per
@@ -93,3 +101,8 @@ question the owner asks is not a ruling: answer it, say the decision is still
 open, and end the turn; record a ruling only when the owner's words pick an
 option. Execute nothing, and write nothing to the board, until the owner says
 so. When no item is left, say so in one line.
+
+When the owner says so, the rulings' consequences -- status moves, each ruling
+recorded in its item's body, epic and order placement -- go to the boards in
+one pass with the filings you and the PM agree on, the pass
+`.claude/commands/follow-ups.md`, Steps, makes.

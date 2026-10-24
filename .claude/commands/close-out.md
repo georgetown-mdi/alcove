@@ -32,17 +32,20 @@ before proceeding -- its Session lifecycle section defines this state.
    ruleset lets go, named or `worktree-agent-*`, as its Worktrees and checkouts
    section allows, and stop each watcher or background process the session
    started.
-4. Without `clean`: write the continuation brief's final state -- the open PRs
-   and their state, the parked Decision items, the potential follow-ups with
+4. Without `clean`: write the continuation brief's final state, its first
+   line `Closed out <date -I>.` -- the open PRs and their state, the parked Decision items, the potential follow-ups with
    your opinion on each, each run still under way and where its result will
-   be, and the next session's first step. Print one sentence the owner gives
-   the next session, naming the brief by path.
+   be, and the next session's first step. The owner starts the next session
+   with `/orchestrate`, which reads the newest brief itself, so print that
+   command and name no brief.
 5. With `clean`: run `/follow-ups` now, the owner's `clean` being its trigger,
    so every thread from step 2 other than the parked Decision items is
    filed, updated or declined on the board.
    Parked Decision items stay on the board for the next session's docket. For
    each run still under way, print one sentence the owner can give a new
-   session to watch it and act on its result.
+   session to watch it and act on its result. Then make the working brief's
+   first line `Closed out <date -I>
+   with a clean break: the board alone holds the state.`
 6. Report the final action items: only what the owner alone can take, each
    with the one line the ruleset requires on why the session cannot. With none,
    say so in one line.
