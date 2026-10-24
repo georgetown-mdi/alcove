@@ -20,11 +20,11 @@ function agent(fields) {
   };
 }
 
-const lightReview = (wf, agentType, cost) =>
+const reviewRound = (wf, agentType, cost, wfName = "review-round") =>
   agent({
     kind: "workflow-agent",
     wf,
-    wfName: "light-review",
+    wfName,
     agentType,
     targetRef: "fix-parser",
     cost,
@@ -59,9 +59,9 @@ function input(extra = {}) {
       session("s2", 20, 10),
     ],
     agents: [
-      lightReview("wf_1", "general-purpose", 2),
-      lightReview("wf_1", "general-purpose", 2),
-      lightReview("wf_2", "security-reviewer", 3),
+      reviewRound("wf_1", "general-purpose", 2, "light-review"),
+      reviewRound("wf_1", "general-purpose", 2, "light-review"),
+      reviewRound("wf_2", "security-reviewer", 3),
       agent({ agentType: "ux-reviewer", cost: 1 }),
       agent({
         agentType: "implementer",
@@ -91,7 +91,7 @@ describe("analyze", () => {
   it("measures the review apparatus and the implementers", () => {
     const out = analyze(input());
     expect(out.review).toMatchObject({
-      lightReviewRuns: 2,
+      reviewRoundRuns: 2,
       roleRuns: 1,
       lensRuns: 1,
       lensUSD: 4,

@@ -1,14 +1,14 @@
-// Workflow script for /light-review, invoked as
-// Workflow({scriptPath: '.claude/scripts/light-review-workflow.mjs', args: {...}}).
+// Workflow script for /review-round, invoked as
+// Workflow({scriptPath: '.claude/scripts/review-round-workflow.mjs', args: {...}}).
 //
 // It is a Workflow script BODY, not a module: the harness injects `args`,
 // `agent`, and `parallel`, and takes the top-level `return` as the run's result.
 // No ES module parser accepts a top-level return, which is why eslint.config.mjs
-// excludes this file; .claude/scripts/light-review-script.test.mjs compiles it as
+// excludes this file; .claude/scripts/review-round-script.test.mjs compiles it as
 // a function body and drives both modes.
 
 export const meta = {
-  name: "light-review",
+  name: "review-round",
   description:
     "One review round over the target ref's diff against staging: one schema-forced lens reviewer plus a verifier, or one schema-forced role reviewer under a refutation contract",
   phases: [{ title: "Review" }, { title: "Verify" }],

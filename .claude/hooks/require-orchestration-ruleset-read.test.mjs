@@ -71,7 +71,7 @@ const spawn = (extra = {}) => ({
 
 const workflow = (extra = {}) => ({
   tool_name: "Workflow",
-  tool_input: { scriptPath: ".claude/scripts/light-review-workflow.mjs" },
+  tool_input: { scriptPath: ".claude/scripts/review-round-workflow.mjs" },
   session_id: SESSION,
   transcript_path: SESSION_TRANSCRIPT,
   ...extra,

@@ -44,14 +44,14 @@ describe("workflow agent model check", () => {
 
   it("scans commands, agent definitions, and skills", () => {
     const files = sourceFiles(root);
-    expect(files).toContain(".claude/commands/light-review.md");
+    expect(files).toContain(".claude/commands/review-round.md");
     expect(files.some((f) => f.startsWith(".claude/agents/"))).toBe(true);
     expect(files.some((f) => f.startsWith(".claude/skills/"))).toBe(true);
   });
 
   it("scans the checked-in Workflow scripts the commands invoke by path", () => {
     const files = workflowScriptFiles(root);
-    expect(files).toContain(".claude/scripts/light-review-workflow.mjs");
+    expect(files).toContain(".claude/scripts/review-round-workflow.mjs");
     expect(files).toContain(".claude/scripts/panel-workflow.mjs");
     expect(files.every((f) => f.endsWith("-workflow.mjs"))).toBe(true);
   });

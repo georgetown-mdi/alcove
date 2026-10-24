@@ -7,7 +7,7 @@
 // Trees inspected: the caller's cwd tree, the whole check for a call naming no
 // `args.targetRef`, and every worktree holding a named target, matched by branch
 // name or by HEAD sha. A target ref no worktree holds passes; one that does not
-// resolve blocks. A call naming the light-review script in scriptPath,
+// resolve blocks. A call naming the review-round script in scriptPath,
 // workflow or `name` must name its targets; any other form gets the cwd check.
 // `scratch/` is gitignored, so a round's own artifacts never dirty a tree.
 //
@@ -15,7 +15,7 @@
 // is younger than ROUND_LOCK_TTL_MS is refused; an older one is stale and
 // ignored. This hook only reads the lock. record-review-round-lock.mjs writes
 // it after the harness has run the call, so a call any hook or permission
-// prompt refused leaves none behind, and light-review's Step 3 deletes it when
+// prompt refused leaves none behind, and review-round's Step 3 deletes it when
 // the round is booked. The lock bounds concurrent rounds, not commits into the
 // target tree.
 //
@@ -35,7 +35,7 @@ import {
   branchName,
   lockAgeMs,
   lockPath,
-  namesLightReview,
+  namesReviewRound,
   ROUND_LOCK_TTL_MS,
   targetRefs,
 } from "./lib/reviewLock.mjs";
@@ -133,7 +133,7 @@ function main() {
     );
   }
   if (refs.length === 0) {
-    if (namesLightReview(toolInput)) {
+    if (namesReviewRound(toolInput)) {
       block(
         "a review round must name the ref it reviews in args.targetRef -- without " +
           "one this gate could only status the caller's own directory, which says " +
@@ -151,7 +151,7 @@ function main() {
     );
   }
   const mainRoot = records[0].path;
-  const locked = namesLightReview(toolInput);
+  const locked = namesReviewRound(toolInput);
 
   for (const ref of refs) {
     const sha = git([

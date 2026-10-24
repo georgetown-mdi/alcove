@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse hook: refuse a direct Agent spawn of `security-reviewer` or
 // `adversarial-verifier`. Those roles run only inside
-// `/light-review --role <name> --claims <file>`, whose Workflow form is what
+// `/review-round --role <name> --claims <file>`, whose Workflow form is what
 // puts the round behind the clean-tree gate and into the branch's rounds
 // ledger.
 //
@@ -16,12 +16,12 @@
 //
 // Dated basis (2026-07-26, harness 2.1.220), not a checkable invariant: a
 // Workflow-internal agent() call raised no Agent PreToolUse event, so the
-// sanctioned /light-review --role path does not reach this hook. Re-verify
+// sanctioned /review-round --role path does not reach this hook. Re-verify
 // after a harness upgrade by re-running the probe -- a throwaway Workflow
 // whose agent() prompt matches require-declared-worktree-isolation's block
 // regex without the isolation flag; if that probe is blocked, internal spawns
 // have become visible and this hook must exempt by spawn origin or it wedges
-// /light-review --role.
+// /review-round --role.
 //
 // Fail-open scaffolding follows block-protected-push.mjs: JSON event on stdin,
 // exit 0 allows, exit 2 blocks and feeds stderr back to Claude. A missed block
@@ -46,11 +46,11 @@ function main() {
 
   process.stderr.write(
     `Blocked by require-review-contract hook: a ${role} round runs only as ` +
-      `/light-review --role ${role} --claims <file> -- the Workflow form is ` +
+      `/review-round --role ${role} --claims <file> -- the Workflow form is ` +
       "what gates it on a clean tree and records it in the branch's rounds " +
       "ledger; a direct Agent spawn does neither. For a question with no " +
       "claims to refute, use a lens-scoped general-purpose reviewer or plain " +
-      "/light-review instead.\n",
+      "/review-round instead.\n",
   );
   process.exit(2);
 }

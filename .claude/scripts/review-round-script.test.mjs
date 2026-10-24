@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { jsBlocks } from "../../scripts/lib/markdownFences.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const COMMAND = ".claude/commands/light-review.md";
-const SCRIPT = ".claude/scripts/light-review-workflow.mjs";
+const COMMAND = ".claude/commands/review-round.md";
+const SCRIPT = ".claude/scripts/review-round-workflow.mjs";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -36,7 +36,7 @@ const SHAPES = [
   { shape: "string", deliver: (args) => JSON.stringify(args) },
 ];
 
-describe("light-review command wiring", () => {
+describe("review-round command wiring", () => {
   it("invokes the script this file tests, and has no script of its own", () => {
     const command = readFileSync(resolve(root, COMMAND), "utf8");
     expect(command).toContain(SCRIPT);
@@ -75,7 +75,7 @@ const roleReply = (claims, summary = "the round") => ({
   summary,
 });
 
-describe.each(SHAPES)("light-review role mode ($shape args)", ({ deliver }) => {
+describe.each(SHAPES)("review-round role mode ($shape args)", ({ deliver }) => {
   const run = runner(deliver);
 
   it("refuses a role that is not one of the two contract roles", async () => {
@@ -332,7 +332,7 @@ const lensRound = (run, verifierClusters) =>
 const UNRESOLVABLE = [[], 42, "text", true, null, undefined];
 
 describe.each(SHAPES)(
-  "light-review argument shape ($shape args)",
+  "review-round argument shape ($shape args)",
   ({ deliver }) => {
     const run = runner(deliver);
 
@@ -376,7 +376,7 @@ async function promptsFor(deliver, overrides) {
 }
 
 describe.each(SHAPES)(
-  "light-review target ref ($shape args)",
+  "review-round target ref ($shape args)",
   ({ deliver }) => {
     const run = runner(deliver);
 
@@ -475,7 +475,7 @@ describe.each(SHAPES)(
   },
 );
 
-describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
+describe.each(SHAPES)("review-round lens mode ($shape args)", ({ deliver }) => {
   const run = runner(deliver);
 
   it("refuses claims handed to it without a role to run them under", async () => {

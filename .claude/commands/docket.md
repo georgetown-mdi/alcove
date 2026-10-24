@@ -90,7 +90,7 @@ Run only when the owner invokes this command; never start the docket unasked.
    ergonomics, or a consent surface, spawn `ux-reviewer` on the code it
    concerns. An item on a security surface has each premise its background
    rests on measured by the session on `origin/staging`, one call per
-   premise: `security-reviewer` runs only as a `/light-review` role round,
+   premise: `security-reviewer` runs only as a `/review-round` role round,
    which needs a branch diff a docket item does not have. The review's
    findings and the measured premises go into the item's background.
    An item on a security surface also takes a `/panel` round, its seats chosen

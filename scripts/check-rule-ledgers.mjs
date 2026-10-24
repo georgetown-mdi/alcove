@@ -37,7 +37,7 @@ export const LEDGER = ".claude/orchestration/ruleset.md";
 export const FRONT_DOORS = [
   ".claude/commands/orchestrate.md",
   ".claude/commands/start-issue.md",
-  ".claude/commands/light-review.md",
+  ".claude/commands/review-round.md",
   ".claude/commands/assess-review.md",
   ".claude/commands/panel.md",
   ".claude/commands/docket.md",

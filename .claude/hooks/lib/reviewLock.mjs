@@ -4,9 +4,9 @@
 // Two hooks share it. require-clean-tree-for-review.mjs (PreToolUse) refuses a
 // round against a ref whose lock is younger than ROUND_LOCK_TTL_MS, and
 // record-review-round-lock.mjs (PostToolUse) writes the lock once the harness
-// has run the call. light-review's Step 3 deletes it when the round is booked.
+// has run the call. review-round's Step 3 deletes it when the round is booked.
 // The lock lives under the primary checkout's `scratch/review-rounds/`, keyed by
-// the transform light-review's Step 1 uses to name the round's artifacts.
+// the transform review-round's Step 1 uses to name the round's artifacts.
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,16 +16,16 @@ export const ROUND_LOCK_TTL_MS = 90 * 60 * 1000;
 
 const ROUNDS_DIR = join("scratch", "review-rounds");
 const LOCK_SUFFIX = ".lock";
-const LIGHT_REVIEW_MARKER = "light-review";
+const REVIEW_ROUND_MARKER = "review-round";
 
 /**
  * Whether this Workflow call is a review round, which is what makes a named
- * target mandatory and puts the call under the in-flight lock: the light-review
+ * target mandatory and puts the call under the in-flight lock: the review-round
  * script named in scriptPath, workflow or `name`.
  */
-export function namesLightReview(toolInput) {
+export function namesReviewRound(toolInput) {
   return [toolInput?.scriptPath, toolInput?.workflow, toolInput?.name].some(
-    (field) => typeof field === "string" && field.includes(LIGHT_REVIEW_MARKER),
+    (field) => typeof field === "string" && field.includes(REVIEW_ROUND_MARKER),
   );
 }
 

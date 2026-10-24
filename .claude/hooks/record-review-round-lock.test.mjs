@@ -33,7 +33,7 @@ function runHook(tool_input, cwd, tool_name = "Workflow") {
 }
 
 const review = (targetRef) => ({
-  scriptPath: ".claude/scripts/light-review-workflow.mjs",
+  scriptPath: ".claude/scripts/review-round-workflow.mjs",
   args: { targetRef, docs: [], role: null, claims: [] },
 });
 
@@ -82,7 +82,7 @@ describe("record-review-round-lock hook", () => {
 
   it("writes the lock for a round named by a saved workflow's name", () => {
     const { main } = repo();
-    const named = { name: "light-review", args: { targetRef: "feature" } };
+    const named = { name: "review-round", args: { targetRef: "feature" } };
     expect(runHook(named, main).status).toBe(0);
     expect(existsSync(lockFor(main, "feature"))).toBe(true);
   });
@@ -99,8 +99,8 @@ describe("record-review-round-lock hook", () => {
         },
         "Workflow",
       ],
-      [{ name: "light-review", args: { docs: [] } }, "Workflow"],
-      [{ name: "light-review", args: "{not json" }, "Workflow"],
+      [{ name: "review-round", args: { docs: [] } }, "Workflow"],
+      [{ name: "review-round", args: "{not json" }, "Workflow"],
       [review(["feature", 7]), "Workflow"],
     ]) {
       const { status } = runHook(tool_input, main, tool_name);

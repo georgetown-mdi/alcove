@@ -52,13 +52,13 @@ function makeRepo() {
   return dir;
 }
 
-// The Workflow call light-review Step 2 makes for a role round.
+// The Workflow call review-round Step 2 makes for a role round.
 function round(cwd, claims, rest = {}) {
   return runHook({
     tool_name: "Workflow",
     cwd,
     tool_input: {
-      scriptPath: ".claude/scripts/light-review-workflow.mjs",
+      scriptPath: ".claude/scripts/review-round-workflow.mjs",
       args: {
         targetRef: "branch",
         docs: [],
@@ -98,7 +98,7 @@ describe("require-measured-claim-literals hook", () => {
       tool_name: "Workflow",
       cwd: dir,
       tool_input: {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: { targetRef: "branch", docs: [], role: null, claims: [] },
       },
     });
@@ -172,7 +172,7 @@ describe("require-measured-claim-literals hook", () => {
       tool_name: "Workflow",
       cwd: dir,
       tool_input: {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: JSON.stringify({
           targetRef: "branch",
           role: "adversarial-verifier",
@@ -207,7 +207,7 @@ describe("require-measured-claim-literals hook", () => {
       tool_name: "Workflow",
       cwd: dir,
       tool_input: {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: 'claims: it reports "nothing measured anywhere"',
       },
     });
@@ -221,7 +221,7 @@ describe("require-measured-claim-literals hook", () => {
       tool_name: "Workflow",
       cwd: dir,
       tool_input: {
-        scriptPath: ".claude/scripts/light-review-workflow.mjs",
+        scriptPath: ".claude/scripts/review-round-workflow.mjs",
         args: {
           targetRef: "branch",
           role: "security-reviewer",
