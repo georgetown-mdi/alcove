@@ -105,18 +105,22 @@ export function allowedRelaysOffered(exchangeFile: ExchangeSpec): boolean {
 /**
  * Whether the page shows the Allowed relays control for a document it is
  * offered for: where the document holds a list, an empty one included, where
- * `text`, the list as typed, is not empty, or where `runsListRelay`, its runs
- * listing a relay for the list to keep or leave out. Hiding it leaves the
- * document's list as it is.
+ * the field's `text`, the list as typed, is not empty or the field was
+ * `edited`, Remove included, so its line's action can take focus after Remove
+ * empties it, or where `runsListRelay`, its runs listing a relay for the list
+ * to keep or leave out. Hiding it leaves the document's list as it is.
  */
 export function allowedRelaysShown(
   exchangeFile: ExchangeSpec,
-  text: string,
+  { text, edited }: { text: string; edited: boolean },
   runsListRelay: boolean,
 ): boolean {
   return (
     allowedRelaysOffered(exchangeFile) &&
-    (allowedRelaysRemovable(exchangeFile) || text !== "" || runsListRelay)
+    (allowedRelaysRemovable(exchangeFile) ||
+      text !== "" ||
+      edited ||
+      runsListRelay)
   );
 }
 

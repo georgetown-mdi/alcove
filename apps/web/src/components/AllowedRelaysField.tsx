@@ -23,7 +23,8 @@ import type { MantineSpacing } from "@mantine/core";
  * actions to change or remove them. A value the field refuses keeps it open.
  * Where the list is `fixed` the line shows it with no action. The caller
  * parses the text (`parseExchangeAllowedRelayLines`) and decides where the
- * field is offered.
+ * field is offered, and keeps it offered once edited: Remove sends focus to
+ * the line's action, which is lost to the page if the field then unmounts.
  */
 export function AllowedRelaysField({
   value,

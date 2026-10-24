@@ -408,6 +408,7 @@ export function InviterScreen() {
     intakeAlert,
     invitation,
     inviterAllowedRelays,
+    allowedRelaysEdited,
     lastSpineStep,
     loadedConfiguration,
     loadedEnforcementRecords,
@@ -621,14 +622,15 @@ export function InviterScreen() {
   const chosenRunMode = transportRunMode(available, transport);
   // The browser exchange's Allowed relays, set in its transport card on the
   // hosted build where the run lists a relay for them to keep or leave out,
-  // or where they hold a list. Creating the invitation commits their parse:
-  // the invitation names only the relays they keep and holds the list, which
-  // the run and a save as a recurring exchange read. Once it exists the field
-  // is fixed on that list.
+  // or where they hold a list or were edited. Creating the invitation commits
+  // their parse: the invitation names only the relays they keep and holds the
+  // list, which the run and a save as a recurring exchange read. Once it
+  // exists the field is fixed on that list.
   const allowedRelaysOffered =
     !isConsoleBuild() &&
     transport === "browser" &&
     (inviterAllowedRelays !== "" ||
+      allowedRelaysEdited ||
       invitation?.allowedRelays !== undefined ||
       runListsRelay(undefined));
   const allowedRelayLines =

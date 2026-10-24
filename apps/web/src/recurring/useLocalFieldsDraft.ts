@@ -81,8 +81,8 @@ export interface LocalFieldsDraft {
    * control is shown only where it does. */
   allowedRelaysOffered: boolean;
   /** Whether the page shows the control: where it is offered and the
-   * document holds a list, the list as typed is not empty, or the runs list a
-   * relay ({@link allowedRelaysShown}). */
+   * document holds a list, the list as typed is not empty or was edited, or
+   * the runs list a relay ({@link allowedRelaysShown}). */
   allowedRelaysShown: boolean;
   /** Whether the stored document allows no relay at all, an empty list,
    * which the empty field would not show. */
@@ -168,6 +168,7 @@ export function useLocalFieldsDraft(
     useState<LocalDocumentFieldValues>(() =>
       localDocumentFieldValuesFrom(record.exchangeFile),
     );
+  const [allowedRelaysEdited, setAllowedRelaysEdited] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -231,17 +232,22 @@ export function useLocalFieldsDraft(
     allowedRelaysOffered: relaysOffered,
     allowedRelaysShown: allowedRelaysShown(
       record.exchangeFile,
-      documentFields.allowedRelays,
+      { text: documentFields.allowedRelays, edited: allowedRelaysEdited },
       runsListRelay,
     ),
     allowsNoRelay: allowsNoRelay(record.exchangeFile),
-    editAllowedRelays: (allowedRelays) => editDocumentFields({ allowedRelays }),
+    editAllowedRelays: (allowedRelays) => {
+      setAllowedRelaysEdited(true);
+      editDocumentFields({ allowedRelays });
+    },
     allowedRelaysRemovable: allowedRelaysRemovable(record.exchangeFile),
     removeAllowedRelays: documentFields.removeAllowedRelays,
-    editRemoveAllowedRelays: (remove) =>
+    editRemoveAllowedRelays: (remove) => {
+      setAllowedRelaysEdited(true);
       editDocumentFields(
         removeAllowedRelaysValues(record.exchangeFile, remove),
-      ),
+      );
+    },
     allowedRelaysError: relaysError,
     documentEdits: localDocumentFieldEdits(record.exchangeFile, documentFields),
     markEdited: () => setSaved(false),

@@ -716,7 +716,16 @@ describe("the review step's allowed relays", () => {
     expect(asked).toEqual([relay]);
   });
 
-  test("are never hidden while they hold a list", () => {
+  test("count as edited from the first change, an emptying one included, and start unedited", () => {
+    expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysEdited).toBe(false);
+    const listed = typed("relay.example.org");
+    expect(listed.allowedRelaysEdited).toBe(true);
+    const emptied = typed("", listed);
+    expect(emptied.acceptorAllowedRelays).toBe("");
+    expect(emptied.allowedRelaysEdited).toBe(true);
+  });
+
+  test("are never hidden while they hold a list or once edited", () => {
     expect(
       acceptOffersAllowedRelays(invitation.endpoint, false, true, () => false),
     ).toBe(true);

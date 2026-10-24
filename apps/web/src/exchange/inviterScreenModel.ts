@@ -208,6 +208,10 @@ export interface InviterScreenState {
    * the invitation commits its parse, which the minted invitation holds as
    * `allowedRelays` for the run and a save as a recurring exchange. */
   inviterAllowedRelays: string;
+  /** Whether the Allowed relays field was edited, Remove included, which
+   * keeps it offered so its line's action can take focus after Remove empties
+   * it. */
+  allowedRelaysEdited: boolean;
   /** How this party's own file is read and its own result file written. Held
    * here rather than beside the file step's controls because a loaded
    * configuration states it: a read that the seal refuses must leave it where
@@ -311,6 +315,7 @@ export const INVITER_SCREEN_INITIAL: InviterScreenState = {
   runDiagnostics: RUN_DIAGNOSTICS_DEFAULT,
   receipts: RECEIPTS_DEFAULT,
   inviterAllowedRelays: "",
+  allowedRelaysEdited: false,
   delimiterChoice: INITIAL_CSV_DELIMITER_CHOICE,
   demoActive: false,
   manageOffer: MANAGE_OFFER_IDLE,
@@ -790,7 +795,11 @@ function applyAction(
     case "receipts-chosen":
       return { ...state, receipts: action.draft };
     case "allowed-relays-changed":
-      return { ...state, inviterAllowedRelays: action.value };
+      return {
+        ...state,
+        inviterAllowedRelays: action.value,
+        allowedRelaysEdited: true,
+      };
     case "delimiter-chosen":
       return { ...state, delimiterChoice: action.choice };
     case "expert-mode-chosen":

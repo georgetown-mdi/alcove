@@ -295,6 +295,7 @@ function AcceptorInvitationScreen({
     acceptorName,
     acquired,
     allowedRelaysChangedAtStart,
+    allowedRelaysEdited,
     columnsSection,
     columnsState,
     committedAllowedRelays,
@@ -1439,7 +1440,7 @@ function AcceptorInvitationScreen({
             {acceptOffersAllowedRelays(
               decode.invitation.endpoint,
               consoleBuild,
-              allowedRelaysFieldText !== "",
+              allowedRelaysFieldText !== "" || allowedRelaysEdited,
               runListsRelay,
             ) && (
               <>
