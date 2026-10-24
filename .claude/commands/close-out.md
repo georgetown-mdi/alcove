@@ -35,8 +35,9 @@ before proceeding -- its Session lifecycle section defines this state.
 4. Without `clean`: write the continuation brief's final state -- the open PRs
    and their state, the parked Decision items, the potential follow-ups with
    your opinion on each, each run still under way and where its result will
-   be, and the next session's first step. Print one sentence the owner gives
-   the next session, naming the brief by path.
+   be, and the next session's first step. The owner starts the next session
+   with `/orchestrate`, which reads the newest brief itself, so print that
+   command and name no brief.
 5. With `clean`: run `/follow-ups` now, the owner's `clean` being its trigger,
    so every thread from step 2 other than the parked Decision items is
    filed, updated or declined on the board.

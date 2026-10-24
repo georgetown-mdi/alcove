@@ -1,6 +1,6 @@
 ---
 name: compact-prep
-description: Prepare for the owner's /compact -- bring the continuation brief current and print the compact argument and the resume prompt, without stopping work in flight or starting new work for it.
+description: Prepare for the owner's /compact -- bring the continuation brief current and print the compact argument and the resume message, without stopping work in flight or starting new work for it.
 ---
 
 The owner's instruction this command stands for:
@@ -12,7 +12,8 @@ The owner's instruction this command stands for:
 
 The bare command is that whole instruction. A note after the command -- a PR
 the owner will merge, a handoff he will run before resuming -- goes into the
-resume prompt.
+resume message. The session also takes these steps unasked when its context
+passes the size `.claude/orchestration/ruleset.md`, Session lifecycle, states.
 
 ## First
 
@@ -29,8 +30,8 @@ before proceeding -- its Session lifecycle section defines this state.
    needs:
    - The argument for `/compact`: the brief's path, the task ids of agents
      still running, and any decision presentation that is open.
-   - The prompt to resume after it: read `.claude/orchestration/ruleset.md`
-     and the brief, then continue working, with what the owner said he will
-     do in between and where its result will be.
+   - The resume message: `/orchestrate`, followed by what the owner said he
+     will do in between and where its result will be. It names no brief:
+     `/orchestrate` reads the newest one itself.
 4. Keep working until the owner compacts; afterwards the session is in the
    Working state again.
