@@ -115,6 +115,22 @@ Delivered by: #N (YYYY-MM-DD)
 
 The session's close-out board pass (`/follow-ups`) writes the line, through `.claude/scripts/edit-issue.mjs`, for each PR merged in its window; the PR's Implements line names the item. A staged item lists each PR, oldest first, as `Delivered by: #N, #M (YYYY-MM-DD)`, dated by the last, and gains the line only when its last stage merges; a partial delivery stays in the item's progress notes. The stages are the item body's numbered split, or the PRs' "Part of" lines in merge order, the last one dating the line. It is a template line, not an enforced rule.
 
+Work a host session delivers has no PR to cite. When a host run's result file shows every acceptance criterion met, the line names that file, dated by the run, and the same pass writes it:
+
+```markdown
+Delivered by: <host result path> (YYYY-MM-DD)
+```
+
+A staged item whose last stage was a host run lists its PRs first and the result path last. Either form puts the item on the backlog shortlist's "Delivered, owner closes" list.
+
+An item that waits on an event outside any session -- another item reaching Done, a release, a pinned dependency's next version -- is parked. On boards 9 and 10 alike, a line of its own at the top of the body says so, whether or not board 10's Waiting status is also set:
+
+```markdown
+Parked until: <trigger> (YYYY-MM-DD)
+```
+
+The trigger is a condition a command or a board read answers yes or no without judgment ("board 9 item N is Done", "`gh release list` names a release"); the date is when the item was parked. A host step or an owner's call is not a trigger: such an item stays a candidate with its action line. The shortlist's default listing (`list-issues.mjs --skip-parked`) leaves a parked item out, and each retrospective re-tests every trigger from `list-issues.mjs --parked <N>` as one of its standing duties: a trigger that fired loses its line and the item is a candidate again; one that cannot be answered yes or no is rewritten or goes to the docket.
+
 ## Style rules
 
 - Titles: imperative mood, under 70 characters. "Add WebRTC reconnect on transient failure", not "WebRTC reconnect would be nice".
@@ -246,7 +262,9 @@ The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
 
 **Create a draft** (substitute `<N>` with `9` or `10`). Pass the body via a
-HEREDOC to preserve formatting:
+HEREDOC to preserve formatting. A create that printed nothing may still have
+filed the draft: look its title up in `node .claude/scripts/list-issues.mjs <N>`
+before running it again, and retry only when no item has that title.
 
 ```sh
 gh project item-create <N> --owner georgetown-mdi \

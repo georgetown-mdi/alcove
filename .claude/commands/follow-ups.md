@@ -45,7 +45,12 @@ unasked. Keep this pass in messages of its own, apart from any docket item.
    blocks nothing is carried in the filed item's Open questions and named in
    the report, never put to the owner mid-pass.
 4. In the same pass, update every open item that a filing, the session's work,
-   or a docket ruling affects.
+   or a docket ruling affects. A shortlist action line the session did not
+   take -- a handoff brief not written, a Decision item not filed -- is
+   written on its item as a dated line, "Brief owed since <date>: write,
+   schedule or drop." or "Decision item owed since <date>: write, schedule or
+   drop.", keeping the date of such a line already there, and listed in the
+   report as a docket entry for the next session.
 5. Do the relevant housekeeping; retiring a worktree follows the ruleset's
    Worktrees and checkouts section.
 6. Report in a few lines what was filed and updated, and state any final

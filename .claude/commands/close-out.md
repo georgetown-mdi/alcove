@@ -27,13 +27,19 @@ before proceeding -- its Session lifecycle section defines this state.
 1. Wind down as `.claude/commands/wind-down.md` does, without its final hold.
 2. List every open thread: each confirmed review finding not fixed on a
    branch, each potential follow-up, each parked Decision item, each run still
-   under way. None is left in prose alone as something for later.
+   under way. None is left in prose alone as something for later. Each
+   shortlist action line the session did not take -- a handoff brief not
+   written, a Decision item not filed -- is a docket entry: "Brief owed since
+   <date>: write, schedule or drop", or "Decision item owed since <date>: ..."
+   for a decision tag, dated by the first shortlist that emitted it or by the
+   line of that form its item already has.
 3. Housekeeping: retire each finished worktree and each local branch the
    ruleset lets go, named or `worktree-agent-*`, as its Worktrees and checkouts
    section allows, and stop each watcher or background process the session
    started.
 4. Without `clean`: write the continuation brief's final state, its first
-   line `Closed out <date -I>.` -- the open PRs and their state, the parked Decision items, the potential follow-ups with
+   line `Closed out <date -I>.` -- the open PRs and their state, the parked
+   Decision items and step 2's docket entries, the potential follow-ups with
    your opinion on each, each run still under way and where its result will
    be, and the next session's first step. The owner starts the next session
    with `/orchestrate`, which reads the newest brief itself, so print that
@@ -41,7 +47,8 @@ before proceeding -- its Session lifecycle section defines this state.
 5. With `clean`: run `/follow-ups` now, the owner's `clean` being its trigger,
    so every thread from step 2 other than the parked Decision items is
    filed, updated or declined on the board.
-   Parked Decision items stay on the board for the next session's docket. For
+   Parked Decision items stay on the board for the next session's docket, and
+   each docket entry from step 2 is written on its item as its dated line. For
    each run still under way, print one sentence the owner can give a new
    session to watch it and act on its result. Then make the working brief's
    first line `Closed out <date -I>
