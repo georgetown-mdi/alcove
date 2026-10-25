@@ -644,8 +644,8 @@ The committed pair is v26.12.1, checked on 2026-10-25. Its
 listed under the Node.js releasers in `nodejs/node`'s README. The key came from
 the `nodejs/release-keys` repository on GitHub and the signature verified as
 `Good signature` in a throwaway `GNUPGHOME`; both hashes also match `sha256sum`
-over the downloaded tarballs. The `linux/amd64` image build passes the committed
-`sha256sum -c`; the `linux/arm64` build has not run at this pair.
+over the downloaded tarballs, and both architectures' image builds passed the
+committed `sha256sum -c` on 2026-10-25.
 `keys.openpgp.org` was not reachable from where the check ran, so this record
 also has one channel.
 
