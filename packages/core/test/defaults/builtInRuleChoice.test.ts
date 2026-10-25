@@ -4,12 +4,14 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   PRECISION_FLOORS,
   builtInRuleChoiceOf,
+  encodeForComparison,
   getDefaultLinkageTerms,
   linkageKeysAtPrecisionFloor,
 } from "../../src/defaults/builtInLinkageTerms";
 import { builtInRuleChoiceStatement } from "../../src/consent/consentFacts";
 import { summarizeInvitation } from "../../src/consent/invitationSummary";
 import { inferMetadata } from "../../src/config/metadata";
+import { linkageKeyFieldNames } from "../../src/config/linkageTermsSchema";
 
 import type {
   LinkageField,
@@ -283,6 +285,108 @@ describe("the consent summary's built-in rule choice", () => {
     );
     expect(builtInRuleChoiceStatement(95)).toBe(
       'The linkage keys are the built-in "broader matching" rules.',
+    );
+  });
+});
+
+const fieldNamesRead = (floor: PrecisionFloor): Array<string> => [
+  ...new Set(keysOf(floor).flatMap(linkageKeyFieldNames)),
+];
+
+const differingCopy = (field: LinkageField): LinkageField =>
+  ({ ...field, constraints: { exclude: ["differs"] } }) as LinkageField;
+
+const withCopyAround = (
+  fields: Array<LinkageField>,
+  name: string,
+  where: "before" | "after",
+): Array<LinkageField> => {
+  const index = fields.findIndex((field) => field.name === name);
+  const copy = differingCopy(fields[index]);
+  return where === "before"
+    ? [...fields.slice(0, index), copy, ...fields.slice(index)]
+    : [...fields.slice(0, index + 1), copy, ...fields.slice(index + 1)];
+};
+
+describe("builtInRuleChoiceOf over every field a floor reads", () => {
+  test.each(PRECISION_FLOORS)(
+    "names no choice at the %i floor for any read field missing or declared twice with a differing copy",
+    (floor) => {
+      const names = fieldNamesRead(floor);
+      expect(names.length).toBeGreaterThan(0);
+      for (const name of names) {
+        expect(
+          builtInRuleChoiceOf(
+            withFields(floor, (fields) =>
+              fields.filter((field) => field.name !== name),
+            ),
+          ),
+        ).toBeUndefined();
+        for (const where of ["before", "after"] as const) {
+          expect(
+            builtInRuleChoiceOf(
+              withFields(floor, (fields) =>
+                withCopyAround(fields, name, where),
+              ),
+            ),
+          ).toBeUndefined();
+        }
+      }
+    },
+  );
+});
+
+describe("the consent summary over terms outside the canonical domain", () => {
+  const baseTerms = () => getDefaultLinkageTerms(undefined);
+
+  const withFieldConstraint = (value: number) => {
+    const terms = baseTerms();
+    const fields = redefined(terms.linkageFields, "ssn", {
+      constraints: { validOnly: value },
+    } as unknown as Partial<LinkageField>);
+    return { ...terms, linkageFields: fields };
+  };
+
+  const withTransformParam = (value: number) => {
+    const terms = baseTerms();
+    const keys = structuredClone(terms.linkageKeys);
+    const step = keys
+      .flatMap((key) => key.elements)
+      .flatMap((element) => element.transform ?? [])
+      .find((candidate) => candidate.params !== undefined);
+    if (step?.params === undefined) throw new Error("no param to replace");
+    step.params.start = value;
+    return { ...terms, linkageKeys: keys };
+  };
+
+  test.each([
+    ["a field constraint of NaN", () => withFieldConstraint(NaN), true],
+    ["a field constraint of 2 ** 60", () => withFieldConstraint(2 ** 60), true],
+    [
+      "a key transform param of 2 ** 60",
+      () => withTransformParam(2 ** 60),
+      true,
+    ],
+    [
+      "all fields removed",
+      () => ({ ...baseTerms(), linkageFields: [] }),
+      false,
+    ],
+  ])("states no built-in choice for %s", (_label, build, incomparable) => {
+    const terms = build();
+    if (incomparable) {
+      expect(
+        encodeForComparison(terms.linkageKeys) === null ||
+          terms.linkageFields.some(
+            (field) => encodeForComparison(field) === null,
+          ),
+      ).toBe(true);
+    }
+    const summary = summarizeInvitation({ linkageTerms: terms });
+    expect("builtInRuleChoice" in summary).toBe(false);
+    expect(summary.linkageKeys).toHaveLength(terms.linkageKeys.length);
+    expect(summary.linkageFields).toHaveLength(
+      terms.linkageFields.length === 0 ? 0 : baseTerms().linkageFields.length,
     );
   });
 });
