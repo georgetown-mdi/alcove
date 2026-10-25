@@ -72,7 +72,11 @@ describe("journal retention", () => {
 
   it("is stated where the docs name it as the retention after the newest entry in a file", () => {
     const retention = days("MaxRetentionSec");
-    for (const doc of ["docs/notes/webrtc-relay-deployment.md", "PRIVACY.md"]) {
+    for (const doc of [
+      "docs/notes/webrtc-relay-deployment.md",
+      "PRIVACY.md",
+      "docs/SERVICE_FACT_SHEET.md",
+    ]) {
       expect(read(doc), doc).toContain(
         `about ${retention} days after the newest entry in its file`,
       );
