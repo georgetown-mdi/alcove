@@ -636,7 +636,7 @@ describe("beginManagedRendezvous: relay", () => {
     expect(acceptorCalls[0].options?.relaysLeftOut).toEqual([]);
   });
 
-  test("a record's run lists the STUN urls this browser's setting names when the run starts, in place of the default", async () => {
+  test("a record's run lists the STUN urls this browser's setting names when the run starts and the invitation's, in place of the default", async () => {
     stubAppLocation();
     const ownStun = "stun:own-stun.example.org:3478";
     const named = { stun: ["stun:partner-relay.example.org:3478"] };
@@ -661,12 +661,11 @@ describe("beginManagedRendezvous: relay", () => {
     await begin("acceptor", generateSharedSecret(), file, { flows });
     stored = ownRelay;
     await begin("acceptor", generateSharedSecret(), file, { flows });
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
 
     expect(await stunListed(0)).toEqual([ownStun, ...named.stun]);
-    expect(await stunListed(1)).toEqual([
-      "stun:stun.l.google.com:19302",
-      ...named.stun,
-    ]);
+    expect(await stunListed(1)).toEqual(named.stun);
+    expect(await stunListed(2)).toEqual(["stun:stun.l.google.com:19302"]);
   });
 
   test("with no own relay the flows get none", async () => {

@@ -31,8 +31,8 @@ import type {
   DefaultRelayBuild,
   DefaultRelaySetting,
 } from "@utils/clientConfig";
+import type { RelayLocator } from "./rendezvous";
 import type { RelayUrls } from "./ownRelaySetting";
-import type { RunRelay } from "./rendezvous";
 
 const log = getLogger("defaultRelay");
 
@@ -193,7 +193,7 @@ export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
 /** What {@link relayWithDefaultForRun} lists once the default relay is added. */
 export interface RelayWithDefault {
   /** The relay the run's peer connection gathers against; none when absent. */
-  relay?: RunRelay;
+  relay?: RelayLocator;
   /** The default relay's WebSocket relay url, where the build names one, the
    * allowed relays keep it and the run's enrollment there confirmed. */
   defaultWebSocketRelay?: string;
@@ -216,7 +216,7 @@ export interface RelayWithDefault {
  */
 export async function relayWithDefaultForRun(
   sharedSecret: string,
-  relay: RunRelay | undefined,
+  relay: RelayLocator | undefined,
   allowedRelays: ReadonlyArray<string> | undefined,
   dependencies: DefaultRelayDependencies = {},
 ): Promise<RelayWithDefault> {
@@ -251,15 +251,7 @@ export async function relayWithDefaultForRun(
   const turn = enrolled && turnKept ? [...others, turnUrl] : others;
   const stun = [...(relay?.stun ?? [])];
   return {
-    ...(turn.length + stun.length > 0 && {
-      relay: {
-        turn,
-        stun,
-        ...(relay?.stunReplacesDefault === true && {
-          stunReplacesDefault: true as const,
-        }),
-      },
-    }),
+    ...(turn.length + stun.length > 0 && { relay: { turn, stun } }),
     ...(enrolled &&
       websocketKept && {
         defaultWebSocketRelay: websocketUrl,

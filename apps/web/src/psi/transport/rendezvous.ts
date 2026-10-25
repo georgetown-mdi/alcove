@@ -126,14 +126,7 @@ export interface RelayLocator {
   stun: ReadonlyArray<string>;
 }
 
-/** The relay one browser run gathers against ({@link buildIceServers}). */
-export interface RunRelay extends RelayLocator {
-  /** Set where `stun` holds STUN urls this browser's user named, which then
-   * take the place of the default STUN server. */
-  stunReplacesDefault?: true;
-}
-
-/** The STUN server a run lists unless this browser's user named their own. */
+/** The STUN server a run lists where its relay names no STUN url. */
 const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
 
 /**
@@ -152,26 +145,24 @@ const RELAY_CREDENTIAL_LABEL = "alcove";
  * the relay key the exchange's shared secret derives. Every relay a browser
  * run lists, its own, the invitation's and the build's default, is keyed from
  * that relay key, so the one credential serves each. The STUN entry is the
- * relay's STUN urls where this browser's user named their own
- * (`stunReplacesDefault`), as a configured list replaces the default on the
- * CLI. Otherwise it is the default STUN server followed by any STUN url the
- * relay names: STUN urls only an invitation names do not take the default's
- * place, since the acceptor did not choose them. Every run so lists a STUN
- * server, and a party whose relay fails still offers a server-reflexive
- * candidate. Nothing minted or derived outlives the returned list.
+ * relay's STUN urls, this browser's own and the invitation's, each once, in
+ * place of the default STUN server, as on the CLI; with none it is the
+ * default alone. A party that cannot reach the STUN servers listed gathers
+ * no server-reflexive candidate the default would have given. Nothing minted
+ * or derived outlives the returned list.
  *
  * @internal
  */
 export async function buildIceServers(
-  relay: RunRelay | undefined,
+  relay: RelayLocator | undefined,
   sharedSecret: string,
   now: Date,
 ): Promise<Array<RTCIceServer>> {
   const stun =
-    relay?.stunReplacesDefault === true && relay.stun.length > 0
+    relay !== undefined && relay.stun.length > 0
       ? [...new Set(relay.stun)]
-      : [...new Set([...DEFAULT_STUN_URLS, ...(relay?.stun ?? [])])];
-  const iceServers: Array<RTCIceServer> = [{ urls: stun }];
+      : DEFAULT_STUN_URLS;
+  const iceServers: Array<RTCIceServer> = [{ urls: [...stun] }];
   if (relay !== undefined && relay.turn.length > 0) {
     const { username, credential } = await mintRelayCredential({
       key: await deriveRelayKey(sharedSecret),
@@ -410,7 +401,7 @@ export async function listenAsInviter(
   endpoint: WebRTCEndpoint,
   options?: {
     signal?: AbortSignal;
-    relay?: RunRelay;
+    relay?: RelayLocator;
     relaysLeftOut?: ReadonlyArray<string>;
     defaultRelayOff?: boolean;
     peerFactory?: PeerFactory;
@@ -676,7 +667,7 @@ export async function dialAsAcceptor(
   endpoint: WebRTCEndpoint,
   options?: {
     signal?: AbortSignal;
-    relay?: RunRelay;
+    relay?: RelayLocator;
     relaysLeftOut?: ReadonlyArray<string>;
     defaultRelayOff?: boolean;
     peerFactory?: PeerFactory;
