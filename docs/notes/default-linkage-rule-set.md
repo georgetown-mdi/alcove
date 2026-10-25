@@ -93,8 +93,8 @@ and fails a key whose elements leave its own set's fields, or name a field a
 derived input cannot supply by semantic type. Zero-setup derives the default set
 and no other, but a set chosen by name is derived through the same filter, so
 the property is held over the registry rather than over the default alone.
-Widening a field set stays possible and stays an explicit decision: its content
-is pinned, so widening it takes the version decision below. What the check
+Widening a field set stays possible and stays an explicit decision, and it
+takes the version decision below. What the check
 covers, and what it cannot see, are in
 [repo-check-scripts.md](repo-check-scripts.md#zero-setup-key-fields).
 
