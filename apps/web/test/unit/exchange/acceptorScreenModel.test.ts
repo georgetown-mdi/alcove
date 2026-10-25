@@ -21,10 +21,10 @@ import type {
   AcceptorScreenAction,
   AcceptorScreenState,
 } from "@exchange/acceptorScreenModel";
+import type { LinkageTerms, RelayLocator } from "@alcove/core";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
 import type { AcceptorAcquiredCsv } from "@exchange/acceptorColumnsModel";
 import type { AlertContent } from "@components/csvIntake";
-import type { LinkageTerms } from "@alcove/core";
 import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
 
 // Headers chosen from inferMetadata's exact-match alias table, as the acceptor
@@ -664,7 +664,25 @@ describe("the review step's allowed relays", () => {
     expect(ACCEPTOR_SCREEN_INITIAL.allowedRelaysChangedAtStart).toBe(false);
   });
 
-  test("are offered on a WebRTC accept where the run lists a relay: in the browser as the browser's run reads, on the console only where the invitation names a TURN server", () => {
+  test("are offered on the console where the invitation names a WebSocket relay, alone or beside a TURN server", () => {
+    const websocket = "wss://ws.relay.example.org/relay";
+    const relays: Array<RelayLocator> = [
+      { websocket },
+      { turn: ["turn:relay.example.org"], websocket },
+      { stun: ["stun:stun.example.org"], websocket },
+    ];
+    for (const relay of relays)
+      expect(
+        acceptOffersAllowedRelays(
+          { channel: "webrtc", host: "127.0.0.1", relay },
+          true,
+          false,
+          () => false,
+        ),
+      ).toBe(true);
+  });
+
+  test("are offered on a WebRTC accept where the run lists a relay: in the browser as the browser's run reads, on the console only where the invitation names a TURN server or WebSocket relay", () => {
     const relayed = {
       ...invitation.endpoint,
       relay: { turn: ["turn:relay.example.org"] },

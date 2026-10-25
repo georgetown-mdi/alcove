@@ -4,10 +4,25 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { sanitizeForDisplay } from "@alcove/core";
 
 import { invitationReach } from "@exchange/invitationReach";
-import { relayNamesTurnServer } from "@exchange/acceptorScreenModel";
 import styles from "@styles/app.module.css";
 
 import type { AcceptedSignalingServer } from "./signalingServerModel";
+
+/** The end of the sentence stating the run uses the partner's relay: the
+ * kinds of relay in it the Allowed relays list can leave out, where it names
+ * any. */
+function allowedRelaysExceptionClause(relay: {
+  turn?: ReadonlyArray<string>;
+  websocket?: string;
+}): string {
+  const kinds = [
+    ...((relay.turn?.length ?? 0) > 0 ? ["its TURN servers"] : []),
+    ...(relay.websocket !== undefined ? ["its WebSocket relay"] : []),
+  ];
+  return kinds.length === 0
+    ? "."
+    : `, unless the Allowed relays below leave out ${kinds.join(" or ")}.`;
+}
 
 /**
  * How a console WebRTC accept connects, shown read-only at the review step:
@@ -55,9 +70,7 @@ export function AcceptorSignalingServerNotice({
         <Text size="sm" c="dimmed">
           {accepted.signalingServer.relay !== undefined
             ? "The run uses the relay your partner named, shown with the terms above" +
-              (relayNamesTurnServer(accepted.signalingServer.relay)
-                ? ", unless the Allowed relays below leave out its TURN servers."
-                : ".")
+              allowedRelaysExceptionClause(accepted.signalingServer.relay)
             : "The run connects directly to your partner's computer, so a network that blocks direct connections on either side stops the exchange from connecting."}
         </Text>
         <Text size="sm" c="dimmed">

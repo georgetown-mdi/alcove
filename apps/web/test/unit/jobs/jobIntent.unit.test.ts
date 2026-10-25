@@ -14,6 +14,7 @@ import {
   runPipeline,
   safeParseExchangeSpec,
   safeParseMetadata,
+  selectRunRelay,
 } from "@alcove/core";
 
 import {
@@ -63,6 +64,7 @@ import {
 
 import type {
   Metadata,
+  RelayLocator,
   Standardization,
   StandardizationStep,
 } from "@alcove/core";
@@ -800,6 +802,61 @@ describe("a webrtc run's allowed relays", () => {
     expect(composedConnection(validWebrtcIntent())).not.toHaveProperty(
       "allowed_relays",
     );
+  });
+
+  describe("leave an accepted invitation's WebSocket relay out of the run the file states", () => {
+    const TURN_URL = "turn:partner.example.net:3478";
+    const WEBSOCKET_URL = "wss://ws.partner.example.net/relay";
+    /** The relays a run of the written file lists and leaves out, read as
+     * the command line reads them. */
+    const runRelays = (
+      allowedRelays: Array<string> | undefined,
+      invitationRelay: RelayLocator,
+    ) => {
+      const document = composeWebrtcConfigDocument(
+        validWebrtcIntent({
+          side: "acceptor",
+          ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+        }),
+        { ...SERVER, invitationRelay },
+      );
+      const parsed = safeParseExchangeSpec(parseYaml(document));
+      expect(parsed.success).toBe(true);
+      const connection = parsed.data?.connection;
+      if (connection?.channel !== "webrtc")
+        throw new Error("the written file is not a webrtc configuration");
+      expect(connection.invitationRelay).toEqual(invitationRelay);
+      expect(connection.allowedRelays).toEqual(allowedRelays);
+      return selectRunRelay(connection);
+    };
+
+    test("an invitation naming only a WebSocket relay", () => {
+      const relay = { websocket: WEBSOCKET_URL };
+      expect(runRelays(["partner.example.net"], relay)).toEqual({
+        websocket: [],
+        websocketLeftOut: [{ source: "invitation", url: WEBSOCKET_URL }],
+      });
+      expect(runRelays([], relay).websocket).toEqual([]);
+      expect(runRelays(["ws.partner.example.net"], relay)).toEqual({
+        websocket: [{ source: "invitation", url: WEBSOCKET_URL }],
+      });
+      expect(runRelays(undefined, relay).websocket).toEqual([
+        { source: "invitation", url: WEBSOCKET_URL },
+      ]);
+    });
+
+    test("an invitation naming a TURN server and a WebSocket relay, the TURN server kept", () => {
+      const selection = runRelays(["partner.example.net"], {
+        turn: [TURN_URL],
+        websocket: WEBSOCKET_URL,
+      });
+      expect(selection.turn).toEqual([{ source: "invitation", url: TURN_URL }]);
+      expect(selection.turnLeftOut).toBeUndefined();
+      expect(selection.websocket).toEqual([]);
+      expect(selection.websocketLeftOut).toEqual([
+        { source: "invitation", url: WEBSOCKET_URL },
+      ]);
+    });
   });
 });
 
