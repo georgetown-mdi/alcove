@@ -286,12 +286,33 @@ function Find-ContainerEngine {
     param([string[]] $Candidates = @('docker', 'podman'))
 
     foreach ($candidate in $Candidates) {
-        if (-not (Get-Command $candidate -ErrorAction SilentlyContinue)) { continue }
-        $version = Invoke-EngineQuiet -Engine $candidate -EngineArgs @('version')
-        if ($version.ExitCode -ne 0) { continue }
+        if (-not (Test-EngineAnswering -Engine $candidate)) { continue }
         return $candidate
     }
     return ''
+}
+
+function Test-EngineAnswering {
+    <#  Whether the engine answers a bare "version", which needs its daemon:
+        a name on PATH whose daemon is stopped answers no. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    return ((Invoke-EngineQuiet -Engine $Engine -EngineArgs @('version')).ExitCode -eq 0)
+}
+
+function Show-EngineStopped {
+    <#  What to say when the engine stopped answering during a run of the
+        checks: whatever they printed is not about the folder, or about this
+        launcher and the image. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    Show-Fail "The container engine ($Engine) stopped answering, so the checks did not finish."
+    if ($Engine -eq 'docker') {
+        Show-Note 'Start Docker Desktop again and wait for the whale icon to stop'
+        Show-Note 'animating, then run this script again.'
+    } else {
+        Show-Note "Start $Engine again, then run this script again."
+    }
 }
 
 function Test-WindowsContainerMode {
@@ -443,13 +464,22 @@ function Invoke-DoctorBattery {
         (a bind mount, or the network-share volume).
 
         Returns a hashtable: Established (whether a verdict was read at all),
-        Overall, Reason. #>
+        Overall, and Failed, the ids of the checks that failed. #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
         [Parameter(Mandatory = $true)][string[]] $BatteryArgs
     )
 
     $run = Invoke-EngineCapture -EngineArgs (@('run', '--rm') + $EngineArgs + @((Get-AlcoveImage)) + $BatteryArgs + @('--json'))
+
+    # Asked before reading what the run printed: an engine stopped mid-run
+    # leaves an exit code and an output that would otherwise be blamed on the
+    # folder or on the launcher.
+    $verdict = Read-DoctorVerdict -Json $run.Output
+    if (($run.ExitCode -ge 125 -or -not $verdict.Ok) -and -not (Test-EngineAnswering)) {
+        Show-EngineStopped
+        return @{ Established = $false }
+    }
 
     # Docker reserves 125 and above for its own failure to start a container,
     # and every verdict code is below it -- so this is "the checks never ran"
@@ -462,7 +492,6 @@ function Invoke-DoctorBattery {
         return @{ Established = $false }
     }
 
-    $verdict = Read-DoctorVerdict -Json $run.Output
     if (-not $verdict.Ok) {
         Show-Fail "The checks did not produce a verdict this launcher can read: $($verdict.Reason)."
         Show-Note 'Use the launcher published with the image you are running.'
@@ -498,15 +527,26 @@ function Invoke-DoctorBattery {
             Show-Info "See $AlcoveTroubleshootingUrl"
         }
     }
-    return @{ Established = $true; Overall = $verdict.Overall }
+    $failed = @()
+    foreach ($check in (Select-DoctorChecks -Verdict $verdict -Status @('fail'))) { $failed += $check.Id }
+    return @{ Established = $true; Overall = $verdict.Overall; Failed = $failed }
 }
 
 function Invoke-DoctorLoop {
     <#  Run a battery until it passes, the operator gives up, or it reports
-        something no retry will change. #>
+        something no retry will change.
+
+        -AskCredentialAfterSignInFailure is for the battery that signs in to
+        the share: after its authentication check fails, a retry offers to
+        take the credentials again first, since signing in with a wrong
+        password is one more failed sign-in against an account that a handful
+        of those lock out. That check also fails for reasons the credentials
+        do not cause, which its ACTION lines name, so an empty user name keeps
+        the credentials given and runs the checks again with them. #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
-        [Parameter(Mandatory = $true)][string[]] $BatteryArgs
+        [Parameter(Mandatory = $true)][string[]] $BatteryArgs,
+        [switch] $AskCredentialAfterSignInFailure
     )
 
     while ($true) {
@@ -515,12 +555,18 @@ function Invoke-DoctorLoop {
         if ($result.Overall -eq 'ok') { return $true }
         if ($result.Overall -eq 'fatal') { return $false }
 
+        $signInFailed = $AskCredentialAfterSignInFailure -and (@($result.Failed) -contains 'authentication')
         Write-Host ''
+        if ($signInFailed) {
+            Show-Note 'If the user name or password was wrong, enter them again.'
+            Show-Note 'Press Enter at Username to keep the ones you gave.'
+        }
         if (-not (Read-YesNo -Prompt 'Run the checks again? [Y/n]' -DefaultYes)) {
             Write-Host ''
             Show-Note 'Stopping without starting the console.'
             return $false
         }
+        if ($signInFailed -and -not (Update-ShareCredential)) { return $false }
     }
 }
 
@@ -726,6 +772,38 @@ function Clear-ShareCredential {
     $script:AlcoveShareCredentialServer = ''
 }
 
+function Read-RetryUsername {
+    <#  The first question of Update-ShareCredential, on its own so that a test
+        can answer it. #>
+
+    return (Read-Host 'Username (press Enter to keep the ones you gave)')
+}
+
+function Update-ShareCredential {
+    <#  The answer for the share the checks are signing in to, after they
+        failed to sign in. An empty user name keeps the answer this run holds.
+        Any other starts a new answer, which replaces that one for the server
+        and the SMB_* variables the probe reads, which New-RendezvousShareMount
+        sets for the run of the checks.
+
+        Returns whether the run has an answer to sign in with: false when a new
+        one was started and not finished. #>
+
+    Show-Head 'Credentials for the file server'
+    $username = Read-RetryUsername
+    if (-not $username) {
+        Show-Info 'Keeping the credentials you gave.'
+        return $true
+    }
+    $credential = Read-ShareCredential -Username $username
+    if (-not $credential) { return $false }
+    $script:AlcoveShareCredential = $credential
+    $env:SMB_USER = $credential.Username
+    $env:SMB_DOMAIN = $credential.Domain
+    $env:SMB_PASS = $credential.Password
+    return $true
+}
+
 function New-RendezvousShareMount {
     <#  Make one network-share volume and check every folder reached through it.
         $SubPath is what the volume mounts; each leg is a folder within it, and
@@ -799,10 +877,15 @@ function New-RendezvousShareMount {
         foreach ($leg in $Legs) {
             Show-Head "Checking $($leg.Label) from inside a container"
             $env:SMB_PATH = Join-SharePath -Parent $SubPath -Child $leg.Path
-            if (-not (Invoke-DoctorLoop -EngineArgs $probeEnvArgs -BatteryArgs @('doctor', 'probe'))) {
+            if (-not (Invoke-DoctorLoop -AskCredentialAfterSignInFailure `
+                        -EngineArgs $probeEnvArgs -BatteryArgs @('doctor', 'probe'))) {
                 return @{ Mounted = $false; VolumeName = '' }
             }
         }
+        # A retry after a failed sign-in may have replaced the answer, and the
+        # volume is made from the one the checks accepted.
+        $credential = $script:AlcoveShareCredential
+        $plainPass = $credential.Password
 
         Show-Head "Creating the network-share volume '$VolumeName'"
         if ($script:AlcoveEngine -ne 'docker') {
