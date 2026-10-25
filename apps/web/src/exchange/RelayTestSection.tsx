@@ -4,6 +4,8 @@ import { Button, Loader } from "@mantine/core";
 
 import { sanitizeForDisplay } from "@alcove/core";
 
+import { InfoButton } from "@components/InfoButton";
+
 import {
   RELAY_TEST_BOUND_MS,
   relayTestResultText,
@@ -20,7 +22,8 @@ import type {
   RelayTestTarget,
 } from "@psi/transport/relayTest";
 
-/** What the test does and proves, shown above the relays it contacts. */
+/** What the test does and proves, behind the info button on the heading
+ * above the relays it contacts. */
 export const RELAY_TEST_INTRO =
   "The test checks that this browser can reach each relay below. It does not check " +
   "that an exchange's traffic will pass through it. Each relay's operator " +
@@ -28,8 +31,7 @@ export const RELAY_TEST_INTRO =
 
 /** Shown in place of the test when there is no relay to test. */
 export const RELAY_TEST_NOTHING_TO_TEST =
-  "No relay is saved in this browser and this site names none, so there is " +
-  "no relay to test. Enter a TURN server url above and save it to test it.";
+  "There is no relay to test. Save a TURN server url above to test it.";
 
 /** Shown when the TURN field differs from the saved setting. */
 export const RELAY_TEST_SAVED_ONLY =
@@ -112,8 +114,13 @@ export function RelayTestSection({
 
   return (
     <>
-      <h2>Test the relays</h2>
-      <p>{RELAY_TEST_INTRO}</p>
+      <InfoButton
+        mt="xl"
+        label="About the relay test"
+        explanation={RELAY_TEST_INTRO}
+      >
+        <h2 className={styles.infoLine}>Test the relays</h2>
+      </InfoButton>
       <ul>
         {targets.map((target) => (
           <li key={target.url}>

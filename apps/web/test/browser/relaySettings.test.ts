@@ -12,7 +12,7 @@ import "@mantine/core/styles.css";
 
 import {
   COORDINATION_SERVER_CLEARED,
-  COORDINATION_SERVER_INTRO,
+  COORDINATION_SERVER_INFO,
   COORDINATION_SERVER_SET,
   COORDINATION_SERVER_UNREADABLE,
   coordinationServerFieldDescription,
@@ -24,11 +24,14 @@ import {
   NO_RELAY_SET,
   RELAY_KEY_NOTICE,
   RELAY_OPERATOR_DISCLOSURE,
-  RELAY_PAGE_COORDINATION_SERVER_NOTE,
+  RELAY_PAGE_INFO,
   RELAY_PAGE_INTRO,
   RelaySettingsScreen,
   STUN_FIELD_DESCRIPTION,
+  STUN_FIELD_INFO,
+  TURN_FIELD_DESCRIPTION,
   WEBSOCKET_RELAY_FIELD_DESCRIPTION,
+  WEBSOCKET_RELAY_FIELD_INFO,
 } from "@exchange/RelaySettingsScreen";
 import {
   DEFAULT_RELAY_SWITCH_LABEL,
@@ -50,6 +53,7 @@ import {
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { RELAY_SETTINGS_GUIDE_URL } from "@exchange/userGuide";
 
 import { CONSOLE_RELAY_POINTER, Lobby } from "@exchange/Lobby";
 
@@ -101,6 +105,16 @@ const stunField = () => page.getByRole("textbox", { name: "STUN server urls" });
 const saveButton = () => page.getByRole("button", { name: "Save" });
 const removeButton = () => page.getByRole("button", { name: "Remove relay" });
 const statusLine = () => page.getByRole("status");
+const infoButton = (name: string) => page.getByRole("button", { name });
+
+/** Open the info button named `name` and wait for its explanation. */
+async function openInfo(name: string, explanation: string): Promise<void> {
+  await userEvent.click(infoButton(name));
+  await expect
+    .element(infoButton(name))
+    .toHaveAttribute("aria-expanded", "true");
+  await expect.element(page.getByText(explanation)).toBeVisible();
+}
 
 /** Mount the screen afresh, as a page load does: it reads storage on mount. */
 async function mountScreen(): Promise<void> {
@@ -121,18 +135,22 @@ afterEach(async () => {
 });
 
 describe("RelaySettingsScreen", () => {
-  test("opens with when a relay is needed and which party sets it up", async () => {
+  test("opens with when a relay is needed and links to the guide", async () => {
     await mountScreen();
 
     expect(RELAY_PAGE_INTRO).toBe(
-      "When a firewall blocks a direct connection to your partner, you can " +
-        "both connect through a TURN relay. If you run the relay, create the " +
-        "invitation so your partner uses it too.",
+      "Use a relay when a firewall blocks a direct connection to your partner.",
     );
     await expect.element(page.getByText(RELAY_PAGE_INTRO)).toBeVisible();
+    await expect
+      .element(page.getByRole("link", { name: /^Learn more about relay/ }))
+      .toHaveAttribute("href", RELAY_SETTINGS_GUIDE_URL);
+    expect(RELAY_SETTINGS_GUIDE_URL).toMatch(
+      /docs\/WEB_APP\.md#relay-settings$/,
+    );
   });
 
-  test("states what the relay's operator learns before anything is saved", async () => {
+  test("its info button says which party sets up the relay and what its operator learns, before anything is saved", async () => {
     await mountScreen();
 
     expect(RELAY_OPERATOR_DISCLOSURE).toBe(
@@ -140,34 +158,42 @@ describe("RelaySettingsScreen", () => {
         "exchange that uses it, even when no traffic is relayed. The relay " +
         "passes only encrypted traffic and cannot read the exchange.",
     );
-    await expect
-      .element(page.getByText(RELAY_OPERATOR_DISCLOSURE))
-      .toBeVisible();
+    expect(RELAY_PAGE_INFO).toContain(
+      "If you run the relay, create the invitation so your partner uses it too.",
+    );
+    expect(RELAY_PAGE_INFO).toContain(RELAY_OPERATOR_DISCLOSURE);
+    await openInfo("About relays", RELAY_PAGE_INFO);
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
 
-  test("the STUN field says what a STUN server learns and that its servers replace the default", async () => {
+  test("the STUN field's info says what a STUN server learns and that its servers replace the default", async () => {
     await mountScreen();
 
     expect(STUN_FIELD_DESCRIPTION).toBe(
-      "One per line. A STUN server finds each browser's public network " +
-        "address, so it learns the network address of each party that uses " +
-        "it. The servers you enter replace the default, Google's public STUN " +
-        "server, in every exchange this browser runs, and invitations you " +
-        "create name them, so your partner contacts them in place of the " +
-        "default too. Servers an invitation you accept names are contacted " +
-        "as well, and also replace the default. For example: " +
-        "stun:stun.example.org:3478",
+      "One per line, for example stun:stun.example.org:3478",
     );
     await expect
       .element(stunField())
       .toHaveAccessibleDescription(STUN_FIELD_DESCRIPTION);
+    expect(STUN_FIELD_INFO).toBe(
+      "A STUN server finds each browser's public network address, so it " +
+        "learns the network address of each party that uses it. The servers " +
+        "you enter replace the default, Google's public STUN server, in " +
+        "every exchange this browser runs, and invitations you create name " +
+        "them, so your partner contacts them in place of the default too. " +
+        "Servers an invitation you accept names are contacted as well, and " +
+        "also replace the default.",
+    );
+    await openInfo("About STUN servers", STUN_FIELD_INFO);
   });
 
-  test("states that an exchange not enrolled at a registrar needs its relay key registered again", async () => {
+  test("the TURN field's info says that an exchange not enrolled at a registrar needs its relay key registered again", async () => {
     await mountScreen();
 
-    await expect.element(page.getByText(RELAY_KEY_NOTICE)).toBeVisible();
+    await expect
+      .element(turnField())
+      .toHaveAccessibleDescription(TURN_FIELD_DESCRIPTION);
+    await openInfo("About TURN servers", RELAY_KEY_NOTICE);
     expect(RELAY_KEY_NOTICE).toContain(
       "A saved exchange enrolled at your relay's registrar",
     );
@@ -248,19 +274,23 @@ describe("RelaySettingsScreen: the WebSocket relay", () => {
   const websocketField = () =>
     page.getByRole("textbox", { name: "WebSocket relay url" });
 
-  test("the field says each exchange connects to the relay, so its operator learns your address", async () => {
+  test("the field's info says each exchange connects to the relay, so its operator learns your address", async () => {
     await mountScreen();
 
     expect(WEBSOCKET_RELAY_FIELD_DESCRIPTION).toBe(
-      "A relay for networks that block connections through a TURN relay. An " +
-        "invitation you send names it. Each exchange connects to it as it " +
-        "starts, so its operator learns your network address, and the " +
-        "exchange passes through it, encrypted, only when no other " +
-        "connection opens. For example: wss://relay.example.org/relay",
+      "For example: wss://relay.example.org/relay",
     );
     await expect
       .element(websocketField())
       .toHaveAccessibleDescription(WEBSOCKET_RELAY_FIELD_DESCRIPTION);
+    expect(WEBSOCKET_RELAY_FIELD_INFO).toBe(
+      "A relay for networks that block connections through a TURN relay. An " +
+        "invitation you send names it. Each exchange connects to it as it " +
+        "starts, so its operator learns your network address, and the " +
+        "exchange passes through it, encrypted, only when no other " +
+        "connection opens.",
+    );
+    await openInfo("About the WebSocket relay", WEBSOCKET_RELAY_FIELD_INFO);
   });
 
   test("a save is kept across a reload, and removing clears it", async () => {
@@ -317,31 +347,27 @@ describe("RelaySettingsScreen: the coordination server", () => {
   const serverStatus = () =>
     page.getByText(/^(Set|Cleared)\. Invitations you create from now on/);
 
-  test("says what the server learns and which server invitations name by default", async () => {
+  test("its info says what the server learns and which server invitations name by default", async () => {
     await mountScreen();
 
-    expect(COORDINATION_SERVER_INTRO).toBe(
+    expect(COORDINATION_SERVER_INFO).toBe(
       "Your browser and your partner's find each other through a " +
         "coordination server. It learns the network address of each party " +
         "that uses it, and none of your data. Invitations you create name " +
-        "this site's coordination server unless you set your own here.",
+        "this site's coordination server unless you set your own here. " +
+        "Invitations you already sent, saved exchanges, and invitations you " +
+        "accept keep the server they name, until you re-invite your partner " +
+        "from a saved exchange you created, which then names the server set " +
+        "here. If this browser cannot read the server set here, a re-invite " +
+        "names the server that exchange already uses.",
     );
     expect(coordinationServerFieldDescription(scheme)).toBe(
-      "Invitations you create from now on name this server, and both your " +
-        "browser and your partner's connect to it. Invitations you already " +
-        "sent, saved exchanges, and invitations you accept keep the server " +
-        "they name, until you re-invite your partner from a saved exchange " +
-        "you created, which then names the server set here. If this browser " +
-        "cannot read the server set here, a re-invite names the server that " +
-        "exchange already uses. For example: " +
-        `${scheme}://signaling.example.org/api/`,
+      `For example: ${scheme}://signaling.example.org/api/`,
     );
-    await expect
-      .element(page.getByText(COORDINATION_SERVER_INTRO))
-      .toBeVisible();
     await expect
       .element(serverField())
       .toHaveAccessibleDescription(coordinationServerFieldDescription(scheme));
+    await openInfo("About the coordination server", COORDINATION_SERVER_INFO);
   });
 
   test("a set address is kept across a reload, and clearing removes it", async () => {
@@ -442,17 +468,6 @@ describe("RelaySettingsScreen: the coordination server", () => {
     await expect.element(serverField()).toHaveValue(`${SERVER}x`);
     expect(unreadableAlert().query()).toBeNull();
   });
-
-  test("the page intro points to this section", async () => {
-    await mountScreen();
-    expect(RELAY_PAGE_COORDINATION_SERVER_NOTE).toBe(
-      "This page also sets the coordination server your invitations use, " +
-        "under Coordination server below.",
-    );
-    await expect
-      .element(page.getByText(RELAY_PAGE_COORDINATION_SERVER_NOTE))
-      .toBeVisible();
-  });
 });
 
 /** What an earlier build stored as this browser's allowed relays, under the
@@ -475,10 +490,11 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
         .getByRole("heading", { name: "Which relays an exchange may use" })
         .query(),
     ).toBeNull();
-    expect(document.body.textContent).toContain(
+    expect(RELAY_PAGE_INFO).toContain(
       "The allowed relays an exchange sets on its review, or a saved " +
         "exchange on its own page, can leave out any of the relays saved here.",
     );
+    await openInfo("About relays", RELAY_PAGE_INFO);
     expect(document.body.textContent).not.toContain(
       "connection.allowed_relays",
     );
@@ -596,7 +612,7 @@ describe("the relay test", () => {
         "not check that an exchange's traffic will pass through it. Each " +
         "relay's operator learns this browser's network address.",
     );
-    await expect.element(page.getByText(RELAY_TEST_INTRO)).toBeVisible();
+    await openInfo("About the relay test", RELAY_TEST_INTRO);
     await expect
       .element(page.getByRole("listitem").filter({ hasText: TURN_URL }))
       .toHaveTextContent(`${TURN_URL} - your relay, over TLS`);
@@ -676,6 +692,9 @@ describe("the relay test", () => {
       createElement(RelaySettingsScreen, { defaultRelay: () => undefined }),
     );
 
+    expect(RELAY_TEST_NOTHING_TO_TEST).toBe(
+      "There is no relay to test. Save a TURN server url above to test it.",
+    );
     await expect
       .element(page.getByText(RELAY_TEST_NOTHING_TO_TEST))
       .toBeVisible();
@@ -761,6 +780,10 @@ describe("the switch for a site relay offered switched off", () => {
     );
 
     await expect.element(siteSwitch()).not.toBeChecked();
+    await openInfo(
+      "About this site's relay server",
+      DEFAULT_RELAY_SWITCH_DESCRIPTION,
+    );
     await expect
       .element(siteSwitch())
       .toHaveAccessibleDescription(DEFAULT_RELAY_SWITCH_DESCRIPTION);

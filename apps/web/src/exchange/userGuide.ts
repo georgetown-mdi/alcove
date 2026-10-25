@@ -17,6 +17,10 @@ export const BUILT_IN_RULES_GUIDE_URL =
 export const ALLOWED_RELAYS_GUIDE_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/docs/WEB_APP.md#allowed-relays";
 
+/** What each setting on the Relay server page does. */
+export const RELAY_SETTINGS_GUIDE_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/WEB_APP.md#relay-settings";
+
 /** The `connection.allowed_relays` key the console writes a run's Allowed
  * relays into. */
 export const CONSOLE_ALLOWED_RELAYS_GUIDE_URL =

@@ -45,6 +45,12 @@
   margin: 1.4rem 0 0.4rem 0;
 }
 
+/* A heading or line an InfoButton follows: the button sits at the top of the
+   row, so the line's top margin moves onto the InfoButton (its mt). */
+.page .infoLine {
+  margin-top: 0;
+}
+
 .page p {
   margin: 0.5rem 0;
   max-width: 68ch;

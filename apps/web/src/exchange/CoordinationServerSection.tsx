@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Alert, Button, Group, TextInput } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
+import { InfoButton } from "@components/InfoButton";
+
 import {
   parseCoordinationServerUrl,
   readCoordinationServerSetting,
@@ -12,28 +14,24 @@ import styles from "@styles/app.module.css";
 
 import type { CoordinationServerRead } from "@psi/transport/coordinationServerSetting";
 
-/** What the coordination server section opens with: what the server is for,
- * what it learns, and which server an invitation names by default. */
-export const COORDINATION_SERVER_INTRO =
+/** The explanation behind the info button on the section's heading: what the
+ * server is for, what it learns, which server an invitation names by default,
+ * and which invitations and exchanges a change here reaches. */
+export const COORDINATION_SERVER_INFO =
   "Your browser and your partner's find each other through a coordination " +
   "server. It learns the network address of each party that uses it, and " +
   "none of your data. Invitations you create name this site's coordination " +
-  "server unless you set your own here.";
+  "server unless you set your own here. Invitations you already sent, saved " +
+  "exchanges, and invitations you accept keep the server they name, until " +
+  "you re-invite your partner from a saved exchange you created, which then " +
+  "names the server set here. If this browser cannot read the server set " +
+  "here, a re-invite names the server that exchange already uses.";
 
 /** The address field's description, its example in the scheme `scheme`. */
 export function coordinationServerFieldDescription(
   scheme: "wss" | "ws",
 ): string {
-  return (
-    "Invitations you create from now on name this server, and both your " +
-    "browser and your partner's connect to it. Invitations you already " +
-    "sent, saved exchanges, and invitations you accept keep the server they " +
-    "name, until you re-invite your partner from a saved exchange you " +
-    "created, which then names the server set here. If this browser cannot " +
-    "read the server set here, a re-invite names the server that exchange " +
-    "already uses. " +
-    `For example: ${scheme}://signaling.example.org/api/`
-  );
+  return `For example: ${scheme}://signaling.example.org/api/`;
 }
 
 /** What the section reports once a server is set. */
@@ -145,10 +143,15 @@ export function CoordinationServerSection({
 
   return (
     <section aria-labelledby="coordination-server-heading">
-      <h2 id="coordination-server-heading">Coordination server</h2>
-      <p className={`${styles.small} ${styles.sub}`}>
-        {COORDINATION_SERVER_INTRO}
-      </p>
+      <InfoButton
+        mt="xl"
+        label="About the coordination server"
+        explanation={COORDINATION_SERVER_INFO}
+      >
+        <h2 id="coordination-server-heading" className={styles.infoLine}>
+          Coordination server
+        </h2>
+      </InfoButton>
       {unreadable && (
         <Alert
           color="yellow"
