@@ -219,10 +219,12 @@ export class ManagedRelayRegistrationError extends Error {
 
 /** The store writes a registration makes: injectable for tests. */
 export interface ManagedRelayRegistrationStore {
-  /** Drops the pending registration and returns the stored record. */
+  /** Drops the pending registration where the record still holds
+   * `confirmedSecret` and names `registrar`, and returns the stored record. */
   clearPending: (
     id: string,
     confirmedSecret: string,
+    registrar: RelayRegistrar,
   ) => Promise<RunnableManagedExchangeRecord>;
 }
 
@@ -272,8 +274,43 @@ export async function retryPendingManagedRelayRegistration(
     env.signal?.throwIfAborted();
     throw new ManagedRelayRegistrationError(registrar, outcome);
   }
-  await store.clearPending(current.id, current.sharedSecret);
+  await store.clearPending(current.id, current.sharedSecret, registrar);
   log.info(relayRegistrationNotice(registrar, outcome));
+}
+
+/** The registration of its rotated relay key a run owes once its rotation is
+ * stored: the parameters of {@link registerRotatedManagedRelayKey}. */
+export interface RotatedManagedRelayKeyRegistration {
+  id: string;
+  registrar: RelayRegistrar;
+  preRotationSecret: string;
+  rotatedSecret: string;
+  maxAgeDays: number | null;
+}
+
+/**
+ * The registration a run owes once its rotation is stored, or `undefined` for
+ * none: at the registrar `rotated` names, the record the rotation write
+ * stored, read inside that write's own transaction, where the run relays
+ * through this browser's own relay ({@link managedRelayRegistrarForRun}).
+ * Enrollment takes no lock, so the registrar the run read when it took the
+ * lock may not be this one; the rotation write set the pending registration
+ * against this one.
+ */
+export function rotatedManagedRelayKeyRegistration(
+  rotated: RunnableManagedExchangeRecord,
+  preRotationSecret: string,
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
+): RotatedManagedRelayKeyRegistration | undefined {
+  const registrar = managedRelayRegistrarForRun(rotated, readOwn);
+  if (registrar === undefined) return undefined;
+  return {
+    id: rotated.id,
+    registrar,
+    preRotationSecret,
+    rotatedSecret: rotated.sharedSecret,
+    maxAgeDays: rotated.tokenMaxAgeDays ?? null,
+  };
 }
 
 /** How {@link registerRotatedManagedRelayKey} runs: injectable for tests. */
@@ -293,8 +330,9 @@ export type RotatedManagedRelayKeyResult =
  * After a run rotated the secret: register the relay key derived from
  * `rotatedSecret`, signed with the key derived from `preRotationSecret`, which
  * the registrar holds. A confirmed registration drops the pending
- * registration the rotation write stored; a failed one leaves it for the next
- * run's retry, and its message names the registrar and the next step.
+ * registration the rotation write stored, unless the record has since been
+ * enrolled at another registrar; a failed one leaves it for the next run's
+ * retry, and its message names the registrar and the next step.
  *
  * `env.cancel`, the run's cancel, ends the retries but reaches no request:
  * the attempt under way when it aborts, or the next one when it aborts
@@ -304,13 +342,7 @@ export type RotatedManagedRelayKeyResult =
  * outcome is not this registration's.
  */
 export async function registerRotatedManagedRelayKey(
-  params: {
-    id: string;
-    registrar: RelayRegistrar;
-    preRotationSecret: string;
-    rotatedSecret: string;
-    maxAgeDays: number | null;
-  },
+  params: RotatedManagedRelayKeyRegistration,
   env: RotatedManagedRelayKeyEnvironment = {},
   store: ManagedRelayRegistrationStore = defaultRegistrationStore,
 ): Promise<RotatedManagedRelayKeyResult> {
@@ -353,7 +385,7 @@ export async function registerRotatedManagedRelayKey(
     };
   log.info(relayRegistrationNotice(registrar, outcome));
   try {
-    await store.clearPending(id, rotatedSecret);
+    await store.clearPending(id, rotatedSecret, registrar);
   } catch (error) {
     log.warn(
       "the registrar confirmed the rotated relay key, and the record still " +
@@ -409,7 +441,11 @@ export async function registerReinvitedManagedRelayKey(
   }
   log.info(relayRegistrationNotice(registrar, outcome));
   try {
-    return await store.clearPending(written.id, written.sharedSecret);
+    return await store.clearPending(
+      written.id,
+      written.sharedSecret,
+      registrar,
+    );
   } catch (error) {
     log.warn(
       "the registrar confirmed the re-invited relay key, and the record " +
@@ -456,9 +492,10 @@ const defaultEnrollmentDeps: ManagedRelayEnrollmentDeps = {
  * Takes no lock. The registrar is stored only where the record still holds
  * the secret whose key the registrar confirmed, so a run rotating the secret
  * while the registrar is asked refuses the enrollment; one that rotates after
- * it is stored leaves its registration pending
- * ({@link persistManagedExchangeRotation} reads the registrar inside its own
- * write).
+ * it is stored leaves its registration pending and registers its rotated key
+ * here ({@link persistManagedExchangeRotation} reads the registrar inside its
+ * own write, and {@link rotatedManagedRelayKeyRegistration} takes it from
+ * there).
  *
  * @throws {Error} if the record is gone or holds a configuration only.
  * @throws {ManagedRelayRegistrarStaleError} if the secret changed while the
@@ -520,8 +557,9 @@ const defaultStopDeps: ManagedRelayRegistrationStopDeps = {
 /**
  * Stop registering a stored exchange's relay key: drop the registrar it was
  * enrolled at and any pending registration. Takes no lock: a run in flight
- * registers its rotated key at the registrar it read, and its rotation write
- * stores no pending registration on a record naming none.
+ * registers its rotated key at the registrar its rotation write read, so a
+ * rotation written after this has landed reads none, sets no pending
+ * registration, and registers nowhere.
  *
  * @throws {Error} if the record is gone or holds a configuration only.
  */

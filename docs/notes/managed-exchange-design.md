@@ -210,18 +210,23 @@ So a scheduled run and an operator-opened tab, or two tabs, on one device cannot
 Only runs take the lock, attended and scheduled, and an import's replace of the stored record.
 A run holds it for minutes and a scheduled window for hours, so every other control that took it -- the exports, the terms writes, relay enrollment, the re-invite -- was out of reach for exactly the stretch an operator is most likely to be on the page.
 Those controls take no lock and stay offered during a run.
-What the lock gave them is kept by the writes themselves: a run reads its terms, its registrar and its secret when it takes the lock, so a terms or registrar write landing mid-run changes the next run, not this one.
+What the lock gave them is kept by the writes themselves: a run reads its terms and its secret when it takes the lock, so a terms write landing mid-run changes the next run, not this one.
+The run still writes after it takes the lock, and each of those writes reads what it covers inside its own transaction rather than trusting the copy the run read.
+Its own terms writes, the `payload.receive` it fills and the partner's change an attended run takes on, are made only over the terms it ran, so an operator's write landing first is the one the next run holds, and the run is neither stopped nor overwrites it.
+Its relay registration goes to the registrar the rotation write read, the one that write set the pending marker for, and a confirmed registration clears the marker only where the record still names that registrar, so an enrollment landing mid-run is never left holding a key nothing will renew.
 
 The writes that replace the secret need more than that, because two of them landing together would each store a secret the other discards.
 So each one compares, inside its own transaction, the stored secret with the one it read -- the run's rotation-in-flight marker and rotation against the secret the run took the lock on, the re-invite against the secret it composed the invitation over -- and refuses without writing where it changed.
 Whichever lands second refuses, and the record holds one secret, the one the side that landed first wrote.
 A run whose marker or rotation refuses stops before the data exchange and records nothing, since the record it would stamp is the re-invite's.
+A re-invite landing after the rotation meets the same rule from the other side: the run's later writes, its last-run stamp and the standing condition it raises, a kept terms proposal, and a scheduled run's backup, are made only over the secret the run stored, so the record keeps what the re-invite left rather than the run's account of an exchange under a secret it no longer holds.
 The import replace keeps the lock as well as comparing.
 A replace landing during a run that then completes would leave the partner on the run's rotated secret and this record on the imported one, the limit below, with no invitation for the partner to accept that would bring the two together again.
-It compares as well, since a re-invite can land between the operator's choice and the replace.
+It compares as well, since a re-invite can land between the reconciliation the resubmitted import runs and the replace.
+The compare reaches no further back: a re-invite landing while the replace question is on screen is not refused, a limit the spec states ([Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy)).
 
 One case neither mechanism reaches: a run that completes while a re-invite lands.
-The partner rotated with the run, and this record holds the re-invite's secret, so the two sides hold different secrets until the partner accepts the new invitation.
+The record keeps what the re-invite wrote, but the partner rotated with the run and this record holds the re-invite's secret, so the two sides hold different secrets until the partner accepts the new invitation.
 That is the state any re-invite puts an exchange in until it is accepted, so it costs no data and no secret; it is stated as a limit in [Single-owner invariant](../spec/MANAGED_EXCHANGE_RECORD.md#single-owner-invariant).
 
 On the scheduled path a runner occupying a window holds the lock almost continuously from the window's open to its close, hours at the intended widths.

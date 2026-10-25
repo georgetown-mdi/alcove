@@ -1064,14 +1064,34 @@ describe("the record's registrar fields", () => {
       applyManagedExchangeRelayRegistrationConfirmed(
         stored,
         generateSharedSecret(),
+        REGISTRAR,
       ),
     ).toBe(stored);
     expect(
       applyManagedExchangeRelayRegistrationConfirmed(
         stored,
         stored.sharedSecret,
+        REGISTRAR,
       ),
     ).not.toHaveProperty("relayRegistrationPendingSince");
+  });
+
+  test("a confirmation at another registrar keeps the pending registration", () => {
+    const stored = record({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
+    });
+    for (const elsewhere of [
+      { ...REGISTRAR, url: "https://other.example.org:8443" },
+      { ...REGISTRAR, exchangeId: "riverbend-q4" },
+    ])
+      expect(
+        applyManagedExchangeRelayRegistrationConfirmed(
+          stored,
+          stored.sharedSecret,
+          elsewhere,
+        ),
+      ).toBe(stored);
   });
 
   test("a configuration-only record holds no registrar", () => {

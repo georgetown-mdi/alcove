@@ -88,6 +88,7 @@ vi.mock("@psi/managed/managedRunDriver", async (importOriginal) => {
         exchange: WITHHELD,
         lastRun: succeededRun(Date.now()),
         lastRunSaved: true,
+        rotatedSecret: "rotated",
       };
     },
   };

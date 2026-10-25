@@ -196,9 +196,11 @@ export type PreviousFolderBackup = { fileName: string } & (
 /** How the backup a scheduled run takes after its rotation turned out. Only
  * `"backed-up"` stamps the backup marker, so every other outcome leaves the
  * exchange asking for a backup. `"superseded"`: the file was written, and the
- * stored secret moved past it before the marker could be stamped. `previous`,
- * on the two outcomes that wrote a file, is what became of the previous
- * automatic backup, absent where there was none to replace. */
+ * stored secret moved past it before the marker could be stamped.
+ * `"secret-changed"`: the stored secret is not the one the run stored, so
+ * nothing was written. `previous`, on the two outcomes that wrote a file, is
+ * what became of the previous automatic backup, absent where there was none
+ * to replace. */
 export type ManagedFolderBackup =
   | {
       kind: "backed-up";
@@ -217,6 +219,7 @@ export type ManagedFolderBackup =
       directoryName: string;
       previous?: PreviousFolderBackup;
     }
+  | { kind: "secret-changed" }
   | { kind: "failed"; error: unknown };
 
 /** Remove the previous automatic backup once `written` has landed, only where
@@ -253,12 +256,17 @@ async function removePreviousFolderBackup(
  * the stored secret instead of being stamped in the step that read it. A write
  * that did not land also removes nothing, so the previous backup stays.
  *
+ * With `runSecret`, the secret the run's rotation stored, nothing is written
+ * where the stored record holds another: a re-invite replaced it during the
+ * run, and the record is the re-invite's.
+ *
  * Never rejects: it runs after a completed run, which nothing here may fail.
  */
 export async function backUpManagedExchangeToFolder(
   id: string,
   deps: ManagedFolderBackupDeps,
   previous?: ManagedFolderBackupLocation,
+  runSecret?: string,
 ): Promise<ManagedFolderBackup> {
   try {
     const record = await deps.readRecord(id);
@@ -269,6 +277,8 @@ export async function backUpManagedExchangeToFolder(
       };
     if (!storedWorkingDirectoryUsable(record.workingDirectoryHandle))
       return { kind: "no-folder" };
+    if (runSecret !== undefined && record.sharedSecret !== runSecret)
+      return { kind: "secret-changed" };
     const runnable = runnableManagedExchangeOrRefuse(record);
     const content = new Blob([backupArtifactBytes(runnable)], {
       type: MANAGED_EXCHANGE_ARTIFACT_MIME,

@@ -872,7 +872,9 @@ window does, since the app keeps waiting for your partner across it. A run that
 connects just before the window closes holds on until its exchange finishes,
 which can be after the window is over. Only runs wait on each other: the
 downloads, the terms and relay controls, and a re-invite all stay available
-while a run is under way.
+while a run is under way. The run uses the terms it started with, and a change
+you make meanwhile is what the exchange holds after it: the run does not write
+over your terms, and after a re-invite it records nothing on the exchange.
 
 ### Moving the exchange to another device
 
@@ -1021,7 +1023,10 @@ it replaces, before it shows you the invitation, and names the exchange id
 beside the WebSocket relay of this browser's relay settings, where they name
 one, so your partner's runs prove to that relay under it. An exchange accepted
 from an invitation that named your partner's relay is enrolled and registers
-the same way: each of its runs lists your relay beside your partner's.
+the same way: each of its runs lists your relay beside your partner's. You can
+enroll, or enroll at another registrar, while a run is under way: the
+registrar the exchange is enrolled at when the run ends holds the run's new
+key, or the exchange shows the registration as pending.
 
 A registration the registrar does not confirm is kept on the exchange and tried
 again before the next run connects. If the registrar still does not confirm, the
@@ -1388,7 +1393,8 @@ the run changes it first, the invitation is refused, nothing is saved, and you
 try again; if the invitation comes first, the run stops before any data is
 exchanged and records nothing. One case is left: a run that finishes while the
 invitation is being made leaves your partner on the run's new secret and this
-page on the invitation's, until your partner accepts the new invitation.
+page on the invitation's, until your partner accepts the new invitation. The
+page shows the exchange as the invitation left it, without that run's outcome.
 
 ### Expiry is its own state, never routed through attack framing
 
@@ -1607,7 +1613,8 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   terms; after Decline, scheduled runs stop the same way until your partner
   goes back to the agreed terms, and the next run you start from this page
   asks about the change again. Apply and Decline stay offered while a run is
-  in progress; that run keeps the terms it started with.
+  in progress; that run keeps the terms it started with, and the exchange
+  holds the applied terms after it.
 
 Where your result file names the linkage key each match was made on and the
 new terms leave you no key to name -- count-only, single-pass, or no result for

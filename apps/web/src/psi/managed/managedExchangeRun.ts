@@ -35,7 +35,9 @@
  *   secret a run authenticates with and rotates is the one the store holds
  *   while no other run can change it. A re-invite takes no lock, so the
  *   marker and rotation writes each refuse where the stored secret is no
- *   longer that one ({@link ManagedExchangeSecretChangedError}).
+ *   longer that one ({@link ManagedExchangeSecretChangedError}), and each
+ *   bookkeeping write is made only while the stored secret is the one the run
+ *   last stored: the one it read, or after the rotation the rotated one.
  *
  * - **Persist-before-success.** A rotation-in-flight marker is written
  *   durably before the key exchange starts, and the rotated secret is written
@@ -133,8 +135,14 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
     current: RunnableManagedExchangeRecord,
   ) => Promise<{ rotatedSecret: string; handshake: THandshake }>;
   /** Begin and complete the data exchange -- reachable only after the durable
-   * persist resolves. Receives the value the handshake produced. */
-  dataExchange: (handshake: THandshake) => Promise<TExchange>;
+   * persist resolves. Receives the value the handshake produced and the record
+   * the rotation write stored, read inside that write's own transaction: the
+   * relay registrar the run registers its rotated key at is that record's, and
+   * the secret every later write compares against is its secret. */
+  dataExchange: (
+    handshake: THandshake,
+    rotated: RunnableManagedExchangeRecord,
+  ) => Promise<TExchange>;
   /** Invoked once, synchronously, at the instant the data exchange begins
    * (after the persist resolves, immediately before {@link dataExchange},
    * with the lock still held). Marks the phase boundary a failure classifier
@@ -163,11 +171,15 @@ export interface ManagedExchangeRunResult<TExchange> {
   /** Whether the store took the success stamp. `false` only when the stamp
    * write threw: the exchange completed and its results stand, but the stored
    * record still holds whatever run it held before this one. A stamp the store
-   * skipped as stale counts as taken. */
+   * skipped as stale, or over a secret a re-invite replaced, counts as taken. */
   lastRunSaved: boolean;
   /** A short plain-words reason the stamp write threw (full storage, aborted
    * write, or an unknown cause); set exactly when `lastRunSaved` is `false`. */
   lastRunNotSavedReason?: string;
+  /** The secret this run's rotation stored. A write made on the run's behalf
+   * after it ends, such as a scheduled run's backup, is made only while the
+   * stored record still holds it. */
+  rotatedSecret: string;
 }
 
 /**
@@ -230,6 +242,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
               record.id,
               managedInputLastRun(error.rejection, now()),
               runStartedAtMs,
+              current.sharedSecret,
             );
           } catch {
             // Swallowed: the ManagedInputError still reaches the runner on the rethrow.
@@ -241,7 +254,10 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       // records itself: the `storage` bookkeeping steers the next handshake
       // failure to the benign tier. Every other failure is the runner's to
       // classify and record.
-      const gate = await runRotationCriticalSection<THandshake>({
+      const gate = await runRotationCriticalSection<
+        THandshake,
+        RunnableManagedExchangeRecord
+      >({
         handshake: () =>
           phases.handshake(
             input,
@@ -277,7 +293,12 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
           // classification, and the storage lastRun the error itself holds,
           // depend on the original propagating.
           try {
-            await recordLastRun(record.id, error.lastRun, runStartedAtMs);
+            await recordLastRun(
+              record.id,
+              error.lastRun,
+              runStartedAtMs,
+              current.sharedSecret,
+            );
           } catch {
             // Swallowed: error.lastRun still reaches the runner on the rethrow.
           }
@@ -290,10 +311,14 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       // before the first peer-visible payload, so a classifier can tell a
       // handshake failure from one that could postdate it.
       phases.onDataExchangeStart?.();
-      const exchange = await phases.dataExchange(gate.handshake);
+      const { rotatedSecret } = gate;
+      const exchange = await phases.dataExchange(
+        gate.handshake,
+        gate.persisted,
+      );
       const lastRun = succeededRun(now());
       try {
-        await recordLastRun(record.id, lastRun, runStartedAtMs);
+        await recordLastRun(record.id, lastRun, runStartedAtMs, rotatedSecret);
       } catch (error) {
         log.warn(
           `managed exchange ${record.id}: the success stamp was not saved (${describeStoreError(error)})`,
@@ -303,9 +328,10 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
           lastRun,
           lastRunSaved: false,
           lastRunNotSavedReason: storeErrorReason(error),
+          rotatedSecret,
         };
       }
-      return { exchange, lastRun, lastRunSaved: true };
+      return { exchange, lastRun, lastRunSaved: true, rotatedSecret };
     },
     phases.lock,
   );
@@ -331,16 +357,17 @@ async function readRecordToRun(
 }
 
 /** The durable, field-scoped rotation write the ordering awaits before the data
- * exchange, over the secret the run read. Split out so the write target is one
- * call site. The pending relay registration is stored only where the record the
- * write reads names a registrar. */
+ * exchange, over the secret the run read, returning the record it stored.
+ * Split out so the write target is one call site. The pending relay
+ * registration is stored only where the record the write reads names a
+ * registrar. */
 async function persistRotation(
   id: string,
   expectedSharedSecret: string,
   writeBack: RotationWriteBack,
   relayRegistrationPendingSince: string,
-): Promise<void> {
-  await persistManagedExchangeRotation(id, expectedSharedSecret, {
+): Promise<RunnableManagedExchangeRecord> {
+  return persistManagedExchangeRotation(id, expectedSharedSecret, {
     sharedSecret: writeBack.sharedSecret,
     expires: writeBack.expires,
     relayRegistrationPendingSince,
@@ -372,6 +399,12 @@ async function recordLastRun(
   id: string,
   lastRun: ManagedExchangeLastRun,
   runStartedAtMs: number,
+  expectedSharedSecret: string,
 ): Promise<void> {
-  await recordManagedExchangeLastRun(id, lastRun, runStartedAtMs);
+  await recordManagedExchangeLastRun(
+    id,
+    lastRun,
+    runStartedAtMs,
+    expectedSharedSecret,
+  );
 }

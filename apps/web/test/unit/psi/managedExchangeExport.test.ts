@@ -556,6 +556,26 @@ describe("backUpManagedExchangeToFolder", () => {
     expect(markIfCurrent).not.toHaveBeenCalled();
   });
 
+  test("a record whose secret a re-invite replaced after the run stored its own writes nothing and stamps nothing", async () => {
+    const folder = fakeFolder();
+    const rec = { ...record(), workingDirectoryHandle: folder.handle };
+    const { deps, markIfCurrent } = folderBackupDeps(
+      rec,
+      fakePermission("granted"),
+    );
+
+    expect(
+      await backUpManagedExchangeToFolder(
+        rec.id,
+        deps,
+        undefined,
+        generateSharedSecret(),
+      ),
+    ).toEqual({ kind: "secret-changed" });
+    expect(folder.files.size).toBe(0);
+    expect(markIfCurrent).not.toHaveBeenCalled();
+  });
+
   test("a write the folder refuses is reported, stamps nothing, and does not reject", async () => {
     const refusal = new Error("the disk is full");
     const folder = fakeFolder({ failWrite: refusal });

@@ -31,15 +31,19 @@ import {
 import {
   clearManagedExchangeTermsProposal,
   getManagedLocalState,
-  recordManagedExchangeTermsProposal,
 } from "@psi/managed/managedLocalState";
+import {
+  clearManagedRunTermsProposal,
+  keepManagedRunTermsProposal,
+  persistManagedExchangeTermsChange,
+  persistManagedRunTermsChange,
+} from "@psi/managed/managedExchangeStore";
 import {
   termsChangeQuestionText,
   termsProposalText,
 } from "@recurring/managedTermsChangeModel";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
-import { persistManagedExchangeTermsChange } from "@psi/managed/managedExchangeStore";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
@@ -49,6 +53,14 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
   ...(await importOriginal<typeof ManagedExchangeStore>()),
   persistManagedExchangeTermsChange: vi.fn(() => Promise.resolve()),
+  persistManagedRunTermsChange: vi.fn(
+    (_expected: unknown, write: { scope: string; adoptedTerms?: unknown }) =>
+      Promise.resolve({
+        exchangeFile: { linkageTerms: write.adoptedTerms ?? {} },
+      }),
+  ),
+  keepManagedRunTermsProposal: vi.fn(() => Promise.resolve(true)),
+  clearManagedRunTermsProposal: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("@psi/managed/managedLocalState", () => ({
   recordManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
@@ -372,45 +384,80 @@ describe("the matched-key column a partner's terms change turns off", () => {
 });
 
 describe("the run's answer to a partner terms change", () => {
-  const persist = vi.mocked(persistManagedExchangeTermsChange);
-  const keep = vi.mocked(recordManagedExchangeTermsProposal);
-  const clear = vi.mocked(clearManagedExchangeTermsProposal);
+  const persist = vi.mocked(persistManagedRunTermsChange);
+  const keep = vi.mocked(keepManagedRunTermsProposal);
+  const clear = vi.mocked(clearManagedRunTermsProposal);
   beforeEach(() => {
     persist.mockClear();
     keep.mockClear();
     clear.mockClear();
   });
 
+  /** What the run compares the stored record with: its rotated secret and
+   * the terms it read when it took the lock. */
+  function expectation() {
+    return {
+      id: "id",
+      sharedSecret: "rotated",
+      linkageTerms: acceptorRecord().exchangeFile.linkageTerms,
+    };
+  }
+
   test("attended, accepting writes the terms the run continues under", async () => {
     const change = changeFor(acceptorRecord());
     const takenOn = vi.fn();
+    const expected = expectation();
     await managedTermsChangeHandler(
-      "id",
+      expected,
       () => Promise.resolve(true),
       takenOn,
     )(change);
-    expect(persist).toHaveBeenCalledWith("id", {
+    expect(persist).toHaveBeenCalledWith(expected, {
       scope: "run",
       adoptedTerms: change.adoptedTerms,
       partnerTerms,
     });
     expect(takenOn).toHaveBeenCalledOnce();
-    expect(clear).toHaveBeenCalledWith("id");
+    expect(clear).toHaveBeenCalledWith(expected);
     expect(keep).not.toHaveBeenCalled();
+    // The run's later terms writes compare against what this one stored.
+    expect(expected.linkageTerms).toEqual(change.adoptedTerms);
   });
 
   test("attended, accepting a change the run cannot continue under applies it", async () => {
     const change = changeFor(acceptorRecord(), false);
-    await managedTermsChangeHandler("id", () => Promise.resolve(true))(change);
-    expect(persist).toHaveBeenCalledWith("id", {
+    const expected = expectation();
+    await managedTermsChangeHandler(expected, () => Promise.resolve(true))(
+      change,
+    );
+    expect(persist).toHaveBeenCalledWith(expected, {
       scope: "apply",
       partnerTerms,
     });
   });
 
+  test("attended, accepting over terms the operator wrote during the run writes nothing and lets the run go on", async () => {
+    persist.mockResolvedValueOnce(undefined);
+    const takenOn = vi.fn();
+    const expected = expectation();
+    const before = expected.linkageTerms;
+
+    await expect(
+      managedTermsChangeHandler(
+        expected,
+        () => Promise.resolve(true),
+        takenOn,
+      )(changeFor(acceptorRecord())),
+    ).resolves.toBeUndefined();
+
+    expect(takenOn).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    expect(expected.linkageTerms).toBe(before);
+  });
+
   test("attended, declining refuses and writes nothing", async () => {
     const change = changeFor(acceptorRecord());
-    const refusal = managedTermsChangeHandler("id", () =>
+    const refusal = managedTermsChangeHandler(expectation(), () =>
       Promise.resolve(false),
     )(change);
     await expect(refusal).rejects.toBeInstanceOf(TermsChangeRefusedError);
@@ -422,11 +469,17 @@ describe("the run's answer to a partner terms change", () => {
   test("unattended, the change is kept for the next visit and the run refused", async () => {
     const change = changeFor(acceptorRecord());
     const at = new Date("2026-09-29T02:00:00.000Z");
+    const expected = expectation();
     await expect(
-      managedTermsChangeHandler("id", undefined, undefined, () => at)(change),
+      managedTermsChangeHandler(
+        expected,
+        undefined,
+        undefined,
+        () => at,
+      )(change),
     ).rejects.toBeInstanceOf(TermsChangeRefusedError);
     expect(keep).toHaveBeenCalledWith(
-      "id",
+      expected,
       managedTermsProposalFor(change, at),
     );
     expect(persist).not.toHaveBeenCalled();
@@ -435,13 +488,24 @@ describe("the run's answer to a partner terms change", () => {
   test("unattended, a change the store does not keep still refuses as a terms change, naming the store failure", async () => {
     keep.mockRejectedValueOnce(new Error("the quota is exhausted"));
     const refusal = managedTermsChangeHandler(
-      "id",
+      expectation(),
       undefined,
     )(changeFor(acceptorRecord()));
     await expect(refusal).rejects.toBeInstanceOf(TermsChangeRefusedError);
     await expect(refusal).rejects.toThrow(TERMS_CHANGE_UNATTENDED_REASON);
     await expect(refusal).rejects.toThrow(
       `${TERMS_CHANGE_NOT_KEPT_REASON}: the quota is exhausted`,
+    );
+  });
+
+  test("unattended, a change not kept over a re-invited exchange refuses saying so", async () => {
+    keep.mockResolvedValueOnce(false);
+    const refusal = managedTermsChangeHandler(
+      expectation(),
+      undefined,
+    )(changeFor(acceptorRecord()));
+    await expect(refusal).rejects.toThrow(
+      `${TERMS_CHANGE_NOT_KEPT_REASON}: a re-invite replaced this exchange's shared secret during the run`,
     );
   });
 });

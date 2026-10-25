@@ -109,8 +109,12 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
     current: RunnableManagedExchangeRecord,
   ) => Promise<ManagedRerunHandshake<THandshake>>;
   /** Run the data exchange -- reachable only after the durable persist resolves.
-   * Receives the handshake's output value. */
-  dataExchange: (handshake: THandshake) => Promise<TExchange>;
+   * Receives the handshake's output value and the record the rotation write
+   * stored ({@link runManagedExchange}). */
+  dataExchange: (
+    handshake: THandshake,
+    rotated: RunnableManagedExchangeRecord,
+  ) => Promise<TExchange>;
 }
 
 /** How a re-run launches, plus the clock. `attendance` is the run path (attended
@@ -206,6 +210,11 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // The record the run used, once the lock is granted; the expiry re-map reads
   // it, since the bound the handshake enforced is that record's.
   let current: RunnableManagedExchangeRecord | undefined;
+  // The secret the run last stored: the one it read under the lock, then the
+  // one its rotation stored once the data exchange began.
+  let storedSecret: string | undefined;
+  // The secret the handshake rotated to, stored once the data exchange began.
+  let rotatedSecret: string | undefined;
 
   // The input guard, the single-writer lock, the persist-before-success rotation,
   // and the data exchange are runManagedExchange's, wired to this record's seams.
@@ -215,6 +224,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       runStartedAtMs,
       acquireInput: (read) => {
         current = read;
+        storedSecret = read.sharedSecret;
         // Checked on the stored copy before the input is read or any connection
         // opens: a lapsed bound means no run happened, so no lastRun is written.
         if (managedExchangeLapsed(read, now()))
@@ -223,10 +233,19 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           throw new ManagedExchangeExpiredError(read.expires as string);
         return seams.acquireInput(read);
       },
-      handshake: seams.handshake,
+      handshake: async (input, markRotationInFlight, read) => {
+        const handshake = await seams.handshake(
+          input,
+          markRotationInFlight,
+          read,
+        );
+        rotatedSecret = handshake.rotatedSecret;
+        return handshake;
+      },
       dataExchange: seams.dataExchange,
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
+        storedSecret = rotatedSecret;
         options.onDataExchangeStart?.();
       },
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
@@ -246,9 +265,15 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
     );
     if (lastRun !== undefined) {
       // Best-effort: a failed write here must never replace the run's own
-      // failure.
+      // failure. Stamped only over the secret the run last stored, so a
+      // re-invite landing during the run keeps the record it left.
       try {
-        await recordManagedExchangeLastRun(record.id, lastRun, runStartedAtMs);
+        await recordManagedExchangeLastRun(
+          record.id,
+          lastRun,
+          runStartedAtMs,
+          storedSecret,
+        );
       } catch {
         // Swallowed: the original failure still reaches the caller on the rethrow.
       }

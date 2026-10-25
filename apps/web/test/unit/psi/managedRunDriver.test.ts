@@ -62,7 +62,7 @@ import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { parkWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
-import { persistManagedExchangePayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
+import { persistManagedRunPayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
 
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
@@ -118,6 +118,10 @@ const markRotationInFlight = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const lockedRead = vi.hoisted((): { record: unknown } => ({
   record: undefined,
 }));
+// The record the stubbed rotation write reads; unset, the in-lock read.
+const rotationRead = vi.hoisted((): { record: object | undefined } => ({
+  record: undefined,
+}));
 
 // The rest of the module stays real: the launch surface's classification reads
 // its benign-outcome check.
@@ -133,7 +137,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
           mark: () => Promise<void>,
           current: unknown,
         ) => Promise<{ handshake: unknown }>;
-        dataExchange: (carried: unknown) => Promise<unknown>;
+        dataExchange: (carried: unknown, rotated: unknown) => Promise<unknown>;
       },
     ) => {
       const current = lockedRead.record ?? record;
@@ -143,7 +147,12 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         markRotationInFlight,
         current,
       );
-      const exchange = await seams.dataExchange(handshake);
+      // The record the rotation write stored: the one read inside the lock,
+      // or the one a case stores mid-run, at the handshake's rotated secret.
+      const exchange = await seams.dataExchange(handshake, {
+        ...((rotationRead.record ?? current) as object),
+        sharedSecret: "next",
+      });
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
@@ -212,7 +221,7 @@ vi.mock(
   "../../../src/psi/managed/managedExchangeStore.js",
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    persistManagedExchangePayloadReceiveFill: vi.fn(() => Promise.resolve()),
+    persistManagedRunPayloadReceiveFill: vi.fn(() => Promise.resolve()),
   }),
 );
 vi.mock("../../../src/psi/managed/managedPreparedExchange.js", () => ({
@@ -437,6 +446,7 @@ function reportCloseOutcome(outcome: PeerCloseOutcome) {
 afterEach(() => {
   vi.clearAllMocks();
   lockedRead.record = undefined;
+  rotationRead.record = undefined;
 });
 
 describe("runManagedExchangeInBrowser", () => {
@@ -647,7 +657,7 @@ describe("runManagedExchangeInBrowser", () => {
     mockedOpen.mockResolvedValue(mc);
     acquireResources();
     const order: Array<string> = [];
-    vi.mocked(persistManagedExchangePayloadReceiveFill).mockImplementationOnce(
+    vi.mocked(persistManagedRunPayloadReceiveFill).mockImplementationOnce(
       () => {
         order.push("recorded");
         return Promise.resolve(RECORD);
@@ -666,15 +676,39 @@ describe("runManagedExchangeInBrowser", () => {
       warnings.push(message);
     });
 
-    expect(
-      vi.mocked(persistManagedExchangePayloadReceiveFill),
-    ).toHaveBeenCalledWith(RECORD.id, ["program", "back\\slash"]);
+    expect(vi.mocked(persistManagedRunPayloadReceiveFill)).toHaveBeenCalledWith(
+      expect.objectContaining({ id: RECORD.id, sharedSecret: "next" }),
+      ["program", "back\\slash"],
+    );
     expect(order).toEqual(["recorded", "noticed"]);
     // Raw: the seat's sink escapes the line once.
     expect(warnings).toEqual([
       payloadReceiveFilledNotice(["program", "back\\slash"]),
     ]);
     expect(warnings[0]).toContain('"back\\slash"');
+  });
+
+  test("a receive list the store keeps the operator's terms over is not noticed, and the run completes", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    vi.mocked(persistManagedRunPayloadReceiveFill).mockResolvedValueOnce(
+      undefined,
+    );
+    mockedRunExchange.mockImplementationOnce(async (...args) => {
+      await args[3].onPayloadReceiveFilled?.(["program"]);
+      return minimalExchangeResult({
+        partnerTerms: getDefaultLinkageTerms("Managed re-run partner"),
+      });
+    });
+    const warnings: Array<string> = [];
+
+    const result = await runDriver(new AbortController().signal, (message) =>
+      warnings.push(message),
+    );
+
+    expect(result.exchange).toBe(OUTPUTS);
+    expect(warnings).toEqual([]);
   });
 
   test("yields its outputs while the close is still draining", async () => {
@@ -2035,6 +2069,35 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       REGISTRAR,
       expect.anything(),
     );
+    expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrar: REGISTRAR,
+        preRotationSecret: RECORD.sharedSecret,
+        rotatedSecret: "next",
+      }),
+      expect.anything(),
+    );
+  });
+
+  test("a registrar enrolled after the run took the lock gets the rotated key's registration, from the record the rotation write stored", async () => {
+    storeOwnRelay();
+    const ENROLLED = enrolled([]);
+    const { relayRegistrar: _none, ...notEnrolled } = ENROLLED;
+    lockedRead.record = {
+      ...notEnrolled,
+      relayRegistrationPendingSince: undefined,
+    };
+    rotationRead.record = ENROLLED;
+    vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
+      kind: "registered",
+    });
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal, undefined, ENROLLED);
+
+    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
     expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
       expect.objectContaining({
         registrar: REGISTRAR,

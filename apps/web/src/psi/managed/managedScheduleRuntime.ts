@@ -405,6 +405,7 @@ async function runUnattendedAttempt(
       attempt.record.id,
       browserFolderBackupDeps(),
       previousBackup,
+      result.rotatedSecret,
     );
   } finally {
     for (const url of created.keys()) window.URL.revokeObjectURL(url);
@@ -542,6 +543,8 @@ async function previousAutomaticBackup(
  * and, where notifications are on, in the notice for this window, as it would
  * have without this step. Every such outcome but the no-folder one also reaches
  * the diagnostic log, as does a `previous` backup the folder would not let go.
+ * With `runSecret`, the secret the run's rotation stored, a record whose
+ * secret a re-invite replaced since is not backed up.
  *
  * Never rejects: the run has rotated and filed its disclosure already.
  */
@@ -549,8 +552,14 @@ export async function backUpUnattendedRun(
   id: string,
   deps: ManagedFolderBackupDeps = browserFolderBackupDeps(),
   previous?: ManagedFolderBackupLocation,
+  runSecret?: string,
 ): Promise<ManagedFolderBackup> {
-  const backup = await backUpManagedExchangeToFolder(id, deps, previous);
+  const backup = await backUpManagedExchangeToFolder(
+    id,
+    deps,
+    previous,
+    runSecret,
+  );
   const replaced = "previous" in backup ? backup.previous : undefined;
   if (replaced?.kind === "remove-failed")
     log.warn(
@@ -583,6 +592,9 @@ export async function backUpUnattendedRun(
       log.warn(
         notBackedUp(`the secret changed after ${backup.fileName} was written`),
       );
+      break;
+    case "secret-changed":
+      log.warn(notBackedUp("the secret changed after the run stored it"));
       break;
     case "failed":
       log.warn(

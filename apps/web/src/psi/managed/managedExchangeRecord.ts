@@ -1251,19 +1251,24 @@ export function applyManagedExchangeRelayRegistrar(
 }
 
 /**
- * Drop the pending relay key registration once the registrar confirmed it
- * holds the key derived from `confirmedSecret`. A record holding another
- * secret, or no pending registration, comes back unchanged, the same object.
+ * Drop the pending relay key registration once `registrar` confirmed it holds
+ * the key derived from `confirmedSecret`. A record holding another secret,
+ * naming another registrar, or holding no pending registration comes back
+ * unchanged, the same object: a registration at one registrar never clears the
+ * one pending at another.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
 export function applyManagedExchangeRelayRegistrationConfirmed(
   record: RunnableManagedExchangeRecord,
   confirmedSecret: string,
+  registrar: RelayRegistrar,
 ): RunnableManagedExchangeRecord {
   if (
     record.sharedSecret !== confirmedSecret ||
-    record.relayRegistrationPendingSince === undefined
+    record.relayRegistrationPendingSince === undefined ||
+    record.relayRegistrar?.url !== registrar.url ||
+    record.relayRegistrar.exchangeId !== registrar.exchangeId
   )
     return record;
   const next: ManagedExchangeRecord = { ...record };

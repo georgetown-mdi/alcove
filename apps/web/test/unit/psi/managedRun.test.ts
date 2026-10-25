@@ -267,6 +267,7 @@ describe("runManagedRerun: a partner who never arrives", () => {
     // leaves both as the store holds them; the no-show stamp is its whole write.
     stubGrantingWebLocks();
     const at = Date.parse("2026-07-14T12:00:00.000Z");
+    storedRecord.value = record({ sharedSecret: HELD_SECRET });
 
     await expect(
       runManagedRerun(
@@ -289,6 +290,8 @@ describe("runManagedRerun: a partner who never arrives", () => {
         "record-under-test",
         { at: new Date(at).toISOString(), outcome: "missed" },
         at,
+        // Stamped only over the secret the run read inside the lock.
+        HELD_SECRET,
       ],
     ]);
   });
@@ -1000,6 +1003,32 @@ describe("runManagedRerun: a store write that fails", () => {
       HELD_SECRET,
     );
   });
+
+  test.each([
+    ["the success stamp", () => Promise.resolve("exchanged")],
+    [
+      "the failure stamp after a dropped exchange",
+      () => Promise.reject(new Error("the partner's connection dropped")),
+    ],
+  ] as const)(
+    "%s is made only over the secret the rotation stored",
+    async (_stamp, dataExchange) => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ sharedSecret: HELD_SECRET });
+      const rotatedSecret = generateSharedSecret();
+
+      await runManagedRerun(storedRecord.value, {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () =>
+          Promise.resolve({ rotatedSecret, handshake: "carried" }),
+        dataExchange,
+      }).catch(() => undefined);
+
+      const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
+      expect(stamps).toHaveLength(1);
+      expect(stamps[0]?.[3]).toBe(rotatedSecret);
+    },
+  );
 
   test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {
     stubGrantingWebLocks();
