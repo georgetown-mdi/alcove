@@ -794,11 +794,14 @@ closure their helper scripts were written against.
 > results for setuid and setgid files, the PAM helper list, the per-component
 > sizes) was measured on an earlier image build. The 2026-09-29 documentation
 > audit had no Docker and could not reach the image registries, so none of it was
-> re-run; a figure here may be out of date. The FIPS variant's attribution list,
-> package count, GPL-3.0/LGPL-3.0 count, image size, comparison between
-> architectures and setuid and setgid inventory were measured on 2026-10-19
-> (UTC) at the base pinned above, on `linux/amd64` (emulated on Docker Desktop on
-> an Apple Silicon Mac) and `linux/arm64` builds without a layer cache.
+> re-run; a figure here may be out of date. The FIPS variant's package count,
+> GPL-3.0/LGPL-3.0 count, image size, comparison between architectures and
+> setuid and setgid inventory were measured on 2026-10-19 (UTC) at the
+> 2023.12.20261016 base, on `linux/amd64` (emulated on Docker Desktop on an Apple
+> Silicon Mac) and `linux/arm64` builds without a layer cache. Its attribution
+> list was regenerated on 2026-10-25 from the `linux/amd64` package query
+> `image_smoke.yaml` took of a build at the base pinned above, and states no
+> comparison between architectures.
 
 ### The OS-layer attribution lists
 
