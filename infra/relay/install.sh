@@ -338,7 +338,8 @@ install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
   "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/stun-binding.py" \
-  "$HERE/websocket-pair.py" "$HERE/render-front.sh" "$LIBEXEC/"
+  "$HERE/websocket-pair.py" "$HERE/websocket-address-limit.py" \
+  "$HERE/render-front.sh" "$LIBEXEC/"
 install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
   "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$HERE/aws/publish-metrics.sh" "$LIBEXEC/aws/"

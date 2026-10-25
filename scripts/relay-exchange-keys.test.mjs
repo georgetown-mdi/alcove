@@ -4078,9 +4078,94 @@ describe.skipIf(runningAsRoot)(
       for (const stream of [result.stdout, result.stderr, probeRuns[0]]) {
         expect(stream).not.toMatch(HEX64);
       }
+      expect(result.stdout).toContain(
+        "UNCLEAR  the front's bound on WebSocket relay sockets for each client address was not probed, since the relay did not pair two sockets",
+      );
+      expect(host.pythonArgv()).not.toContain("websocket-address-limit.py");
       expect(result.stderr).not.toContain("WARNING");
       expect(host.mapping()).toEqual([]);
       expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+    });
+
+    // websocket-address-limit.py is driven in scripts/relay-websocket.test.mjs;
+    // here a python3 answers for both WebSocket probes, websocket-pair.py
+    // passing, and runs every other script on the real python3.
+    const verifyWithLimitProbe = (line, status) => {
+      const host = fixtureHost();
+      const stubDir = join(host.root, "probe-stub");
+      mkdirSync(stubDir);
+      const argv = join(host.root, "limit-argv.log");
+      writeFileSync(argv, "");
+      const realPython = process.env.PATH.split(":")
+        .map((dir) => join(dir, "python3"))
+        .find(existsSync);
+      writeFileSync(
+        join(stubDir, "python3"),
+        [
+          "#!/bin/bash",
+          'case "${2:-}" in',
+          "  */websocket-pair.py) cat >/dev/null; echo paired; exit 0 ;;",
+          "  */websocket-address-limit.py)",
+          `    printf '%s\\n' "$*" >> '${argv}'`,
+          `    printf '%s\\n' '${line}'`,
+          `    exit ${status} ;;`,
+          "esac",
+          `exec ${realPython} "$@"`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "python3"), 0o755);
+      const result = host.verify({
+        PATH: `${stubDir}:${host.env.PATH}`,
+        ALCOVE_RELAY_VERIFY_CONNECT: "127.0.0.2",
+        ALCOVE_RELAY_WEBSOCKET_NAME: "wsrelay.example.",
+      });
+      return {
+        result,
+        runs: readFileSync(argv, "utf8").split("\n").filter(Boolean),
+      };
+    };
+
+    it("asks the front's bound for each client address from the connect target and from 127.0.0.1 once two sockets pair", () => {
+      const { result, runs } = verifyWithLimitProbe("upgraded", 0);
+      expect(result.stdout).toContain(
+        "PASS     two sockets paired at the WebSocket relay through the front",
+      );
+      expect(runs).toEqual([
+        expect.stringMatching(
+          /^-B \S+\/websocket-address-limit\.py 127\.0\.0\.2 443 wsrelay\.example 127\.0\.0\.1$/,
+        ),
+      ]);
+      expect(result.stdout).toContain(
+        "PASS     the front admitted 8 WebSocket relay sockets from one client address and one from another, and closed a ninth from the first",
+      );
+    });
+
+    it.each([
+      [
+        6,
+        "FAIL     the front closed a WebSocket relay socket it should have admitted",
+      ],
+      [
+        7,
+        "FAIL     the front did not close a ninth WebSocket relay socket from one client address",
+      ],
+      [
+        4,
+        "FAIL     the front's WebSocket relay server did not upgrade the per-address probe's sockets",
+      ],
+      [
+        8,
+        "UNCLEAR  could not ask the front's bound on WebSocket relay sockets for each client address",
+      ],
+      [
+        2,
+        "UNCLEAR  could not ask the front's bound on WebSocket relay sockets for each client address",
+      ],
+    ])("reports the per-address probe's exit %i", (status, line) => {
+      const { result } = verifyWithLimitProbe("detail", status);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(line);
     });
   },
 );

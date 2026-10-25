@@ -93,6 +93,13 @@ const TURN = `127.0.0.1:${portOf("TURN_PORT")}`;
 const HOP = `127.0.0.1:${portOf("HOP_PORT")}`;
 const WEBSOCKET_TLS = `127.0.0.1:${portOf("WEBSOCKET_TLS_PORT")}`;
 
+// The front's bound on the WebSocket relay sockets of one client address,
+// keyed on the address set_real_ip_from takes from the PROXY header.
+const WEBSOCKET_ZONE =
+  "limit_conn_zone $binary_remote_addr zone=alcove_websocket_relay:1m;";
+const WEBSOCKET_LIMIT = "limit_conn alcove_websocket_relay 8;";
+const WEBSOCKET_LIMIT_LOG_LEVEL = "limit_conn_log_level info;";
+
 /** A configuration's server blocks, each as its setting lines. */
 const renderedServerBlocks = (text) =>
   text
@@ -113,6 +120,9 @@ describe("render-front.sh", () => {
     expect(renderedServerBlocks(result.stdout)).toHaveLength(3);
     expect(
       settings(result.stdout).some((line) => line.includes(WEBSOCKET_TLS)),
+    ).toBe(false);
+    expect(
+      settings(result.stdout).some((line) => line.startsWith("limit_conn")),
     ).toBe(false);
   });
 
@@ -136,6 +146,12 @@ describe("render-front.sh", () => {
     expect(servers).toHaveLength(4);
     expect(servers[3]).toContain(`listen ${WEBSOCKET_TLS} ssl proxy_protocol;`);
     expect(servers[3]).toContain("proxy_pass 127.0.0.1:9600;");
+    expect(servers[3]).toContain(WEBSOCKET_LIMIT);
+    expect(
+      settings(result.stdout).filter((line) =>
+        line.startsWith("limit_conn_zone "),
+      ),
+    ).toEqual([WEBSOCKET_ZONE]);
     expect(result.stdout).not.toContain("__WEBSOCKET");
   });
 
@@ -546,6 +562,36 @@ describe("front.conf.tmpl", () => {
       false,
     );
     expect(websocket).toContain("proxy_pass 127.0.0.1:__WEBSOCKET_PORT__;");
+  });
+
+  // The relay counts nothing by client address (docs/spec/WEBSOCKET_RELAY.md,
+  // The endpoint), so the front bounds it. $binary_remote_addr is the address
+  // set_real_ip_from in the same server takes from the header from 443;
+  // verify.sh's per-address probe is what shows it applies on the host.
+  it("holds 8 WebSocket relay connections from each client address, keyed on the address the PROXY header names", () => {
+    const servers = serverBlocks();
+    const websocket = servers[3];
+    expect(websocket).toContain("set_real_ip_from 127.0.0.1;");
+    expect(websocket.filter((line) => line.startsWith("limit_conn"))).toEqual([
+      WEBSOCKET_LIMIT,
+      WEBSOCKET_LIMIT_LOG_LEVEL,
+    ]);
+    for (const server of servers.slice(0, 3)) {
+      expect(server.some((line) => line.startsWith("limit_conn"))).toBe(false);
+    }
+    const text = read("front.conf.tmpl");
+    expect(
+      settings(text).filter((line) => line.startsWith("limit_conn_zone ")),
+    ).toEqual([WEBSOCKET_ZONE]);
+    const begin = text.indexOf("\n  # __WEBSOCKET_SERVER_BEGIN__\n");
+    const end = text.indexOf("\n  # __WEBSOCKET_SERVER_END__\n");
+    expect(settings(text.slice(begin, end))).toContain(WEBSOCKET_ZONE);
+    const probeLimit = /^SOCKETS_PER_ADDRESS = (\d+)$/m.exec(
+      read("websocket-address-limit.py"),
+    )[1];
+    expect(WEBSOCKET_LIMIT).toBe(
+      `limit_conn alcove_websocket_relay ${probeLimit};`,
+    );
   });
 
   it("reads the server name on 443 and terminates no TLS there or at the route hop", () => {
