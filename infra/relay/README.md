@@ -826,12 +826,8 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   refuses under that bound, at `warn` (`limit_conn_log_level`): `limiting
   connections by zone "alcove_websocket_relay"`, naming the client's
   address, the one the PROXY header from 443 names, as `client:`.
-  `verify.sh` fails when the ninth socket its per-address probe opens
-  writes no such line in the journal since the probe started, and passes on
-  a line carrying any client address, naming it and, where it differs, the
-  probe's own, since the front counts the address its PROXY header names,
-  which is the probe's only when nothing translates it on the way. That
-  line is not yet measured on the project's relay host.
+  `verify.sh` checks for it (see the verification list below). That line is
+  not yet measured on the project's relay host.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
@@ -959,8 +955,9 @@ stops and disables it where that is unset.
   the first and one from the second must be upgraded, and a ninth from the
   first closed unanswered. The front's journal
   (`journalctl -u alcove-relay-front.service`) must then hold a refusal
-  line naming a client address, written since the probe started, within
-  10 s. The run's key is revoked on exit.
+  line naming a client address, written since the probe started, in one of
+  ten reads a second apart, each bounded at 10 s. The run's key is revoked
+  on exit.
 
 ## Supervision and the container runtime
 
