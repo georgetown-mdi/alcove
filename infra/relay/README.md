@@ -77,10 +77,12 @@ your own environment:
   against the relay itself, started as its unit starts it, behind a TLS
   server the test runs in the front's place, with keys
   `register-exchange.sh` wrote, and `websocket-address-limit.py` against it
-  behind such a server holding a bound for each address of its own. The
-  front's bound for each client address has not yet run on the host, so
-  whether nginx counts the address the PROXY header names there, rather
-  than `127.0.0.1` for every client, is not yet measured.
+  behind such a server holding a bound for each address of its own. On the
+  project's relay host on 2026-10-25, the front's bound counted the address
+  the PROXY header names: 8 sockets from the host's private address and one
+  from `127.0.0.1` were upgraded, a ninth from the private address was
+  closed during the TLS handshake, and with the bound removed that ninth
+  socket was upgraded.
 - [The counts publisher and the alarms](#monitoring) ran on the project's
   relay host on 2026-10-15; [the runbook's block
   command](#when-an-alarm-fires) has not yet run there. The tests drive the
@@ -808,14 +810,17 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   WebSocket relay and the broker on 443 for as long as it does so.
 - **What it logs.** No access log: one line per connection would record which
   client asked for which service. Its error log, warnings and above, goes to
-  the journal. When coturn or a routed service refuses a connection, does
-  not accept it within 5 s, or resets it, the line nginx writes there names
+  the journal. When coturn, a routed service or the WebSocket relay's
+  server refuses a connection, does not accept it within 5 s, or resets it,
+  the line nginx writes there names
   the client's address beside the service's loopback port, which identifies
   the service the client asked for. On the project's relay host, with one
   hop, coturn resetting a connection whose credential or allocation it
   refused, or a probe that sent no server name, an ALPN offer or bytes that
   were not TLS, each wrote such a line (`recv() failed (104: Connection reset
-  by peer) while proxying and reading from upstream`). Which address the
+  by peer) while proxying and reading from upstream`), and so did each socket
+  the WebSocket relay's server refused under its bound for each client
+  address, one line per socket (measured 2026-10-25). Which address the
   TURN server's and the route hop's lines name is not yet measured.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
@@ -911,9 +916,9 @@ stops and disables it where that is unset.
   from 443. It closes a further connection from that address before
   answering it, so that party sees a closed connection, not a `503`. The
   bound writes no line of its own, since it logs a refusal at `info`, below
-  the front's `warn` level, but the 443 server can still write its line for
-  a routed service that resets a connection, naming the client's address
-  ([What it logs](#the-443-front)).
+  the front's `warn` level, but the 443 server writes one line for each
+  refused socket, the reset line naming the client's address and the relay
+  server's loopback port ([What it logs](#the-443-front)).
   `verify.sh` checks the bound from two addresses. The 8 is a working
   value, raised on request. The front's limit on all its connections is
   shared with every other service on 443 ([The 443 front](#the-443-front),
