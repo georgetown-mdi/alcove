@@ -1636,7 +1636,7 @@ describe("diagnostic read never rejects wholesale", () => {
     expect(entry.backedUp).toBe(false);
   });
 
-  test("an unparseable sibling entry is treated as backed up (conservative on doubt)", async () => {
+  test("an unparseable sibling entry is an unreadable marker treated as backed up (conservative on doubt)", async () => {
     const created = await createRunnableExchange(
       newExchange({ label: "Doubtful" }),
     );
@@ -1645,28 +1645,46 @@ describe("diagnostic read never rejects wholesale", () => {
     await rawLocalPut(created.id, { backup: { backedUpAt: "not-an-instant" } });
 
     const [entry] = await listManagedExchangesDiagnostic();
-    expect(entry.backedUp).toBe(true);
+    expect(entry).toEqual({
+      kind: "unreadable",
+      id: created.id,
+      backedUp: true,
+    });
   });
 
-  test("a sibling entry an earlier version marked handed off is one this build does not read", async () => {
+  test("a sibling entry an earlier version marked handed off is unreadable, and discarding it restores the list", async () => {
+    const good = await createRunnableExchange(newExchange({ label: "Good" }));
     const created = await createRunnableExchange(
       newExchange({ label: "Marked by an earlier version" }),
     );
     // The local-state schema rejects a key it does not name, and no current
-    // shape names a handed-off state, so the entry is treated as unparseable: the
-    // strict reads reject on it, and the diagnostic read treats it as backed up.
+    // shape names a handed-off state, so the strict reads reject on the entry.
     await rawLocalPut(created.id, {
       spent: { spentAt: "2026-07-14T13:00:00.000Z", handoff: "command-line" },
     });
 
     await expect(getManagedLocalState(created.id)).rejects.toThrow();
     await expect(listManagedLocalState()).rejects.toThrow();
-    const [entry] = await listManagedExchangesDiagnostic();
-    expect(entry).toEqual({
-      kind: "readable",
-      essentials: expect.objectContaining({ id: created.id }),
+    const entries = await listManagedExchangesDiagnostic();
+    expect(entries.find((entry) => entry.kind === "unreadable")).toEqual({
+      kind: "unreadable",
+      id: created.id,
       backedUp: true,
     });
+    expect(
+      entries.find(
+        (entry) => entry.kind === "readable" && entry.essentials.id === good.id,
+      ),
+    ).toBeDefined();
+
+    await deleteManagedExchange(created.id);
+
+    expect(await rawStored(created.id)).toBeUndefined();
+    expect(await rawLocalStored(created.id)).toBeUndefined();
+    const states = await listManagedLocalState();
+    expect(states.has(created.id)).toBe(false);
+    const recovered = await listManagedExchanges();
+    expect(recovered.map((record) => record.id)).toEqual([good.id]);
   });
 
   test("one unreadable record does not fail the read; it yields an unreadable marker keyed for delete", async () => {

@@ -32,6 +32,7 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { SavedExchanges } from "@recurring/SavedExchanges";
+import { UNREADABLE_RECORD_LABEL } from "@recurring/savedExchangesRecovery";
 
 import { createAppMount } from "./renderApp";
 
@@ -284,11 +285,11 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     ).toBeNull();
   });
 
-  test("an unparseable sibling entry -> the custody note shows (conservative on doubt)", async () => {
+  test("an unparseable sibling entry -> an unreadable row whose custody note shows (conservative on doubt)", async () => {
     // No bad record here: a corrupted sibling entry alone fails the strict local-state
     // read, which routes the surface to read-failed on its own. The diagnostic read
-    // then treats that unparseable sibling conservatively -- backed up on doubt -- so
-    // the good record's delete confirm includes the custody note.
+    // then lists that record as unreadable, backed up on doubt, so its delete
+    // confirm includes the custody note.
     const good = await createRunnableExchange(
       newExchange({ label: "Doubtful partnership" }),
     );
@@ -297,8 +298,9 @@ describe("recovery listing: the delete confirm's custody notes", () => {
 
     app.render(createElement(SavedExchanges));
     await expect
-      .element(page.getByText("Doubtful partnership"))
+      .element(page.getByText(UNREADABLE_RECORD_LABEL))
       .toBeInTheDocument();
+    expect(page.getByText("Doubtful partnership").query()).toBeNull();
 
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect

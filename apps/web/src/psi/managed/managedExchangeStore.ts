@@ -390,10 +390,11 @@ export type ManagedExchangeDiagnosticEntry =
  * never leave the diagnostic extraction. Keyed off the store's own keys rather than
  * the parsed records, so an unreadable entry still yields a key to delete by.
  *
- * The custody is read from the sibling local-state store in the same transaction,
- * and is CONSERVATIVE on doubt: an unparseable sibling entry is treated as backed
- * up (a wrongly-shown custody warning is harmless; a wrongly-suppressed one is
- * not).
+ * The custody is read from the sibling local-state store in the same transaction.
+ * A record whose sibling entry is present but does not parse yields the unreadable
+ * marker, since that entry alone makes the normal list reject, and is
+ * conservative on doubt: it is treated as backed up (a wrongly-shown custody
+ * warning is harmless; a wrongly-suppressed one is not).
  */
 export async function listManagedExchangesDiagnostic(): Promise<
   Array<ManagedExchangeDiagnosticEntry>
@@ -424,7 +425,12 @@ export async function listManagedExchangesDiagnostic(): Promise<
           const entries: Array<ManagedExchangeDiagnosticEntry> = [];
           for (let index = 0; index < keys.length; index += 1) {
             const key = String(keys[index]);
-            const custody = custodyByKey.get(key) ?? { backedUp: false };
+            const sibling = custodyByKey.get(key);
+            if (sibling?.siblingReadable === false) {
+              entries.push({ kind: "unreadable", id: key, backedUp: true });
+              continue;
+            }
+            const custody = { backedUp: sibling?.backedUp ?? false };
             try {
               entries.push({
                 kind: "readable",
@@ -449,8 +455,10 @@ export async function listManagedExchangesDiagnostic(): Promise<
 }
 
 /** What a sibling entry states about one record's custody, for the diagnostic read:
- * whether an exported backup remains with the operator. */
+ * whether the entry parsed, and whether an exported backup remains with the
+ * operator. */
 interface ManagedExchangeDiagnosticCustody {
+  siblingReadable: boolean;
   backedUp: boolean;
 }
 
@@ -467,9 +475,12 @@ function siblingCustodyByKey(
     const key = String(keys[index]);
     try {
       const { backup } = parseManagedLocalState(values[index]);
-      custodyByKey.set(key, { backedUp: backup !== undefined });
+      custodyByKey.set(key, {
+        siblingReadable: true,
+        backedUp: backup !== undefined,
+      });
     } catch {
-      custodyByKey.set(key, { backedUp: true });
+      custodyByKey.set(key, { siblingReadable: false, backedUp: true });
     }
   }
   return custodyByKey;
@@ -1357,9 +1368,9 @@ export type ManagedPairReconcileOutcome =
  *
  * The configuration-only record takes the pair's fields laid over it
  * ({@link applyManagedExchangeCommandLinePair}) -- the document, side, max-age
- * policy, and key pair -- keeping the label, schedule, run bookkeeping,
- * standing condition, and platform grants the pair has no field for, and is
- * marked imported as of `at`; no backup marker is stamped.
+ * policy, key pair, and relay registration -- keeping its id, label, and
+ * standing condition, and is marked imported as of `at`; no backup marker is
+ * stamped.
  *
  * @throws {ZodError} if the completed record is invalid; nothing is written.
  */

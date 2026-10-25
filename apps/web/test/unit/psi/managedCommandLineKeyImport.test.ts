@@ -26,7 +26,6 @@ import {
 } from "@psi/managed/managedExchangeImport";
 import {
   applyManagedExchangeCommandLinePair,
-  applyManagedExchangeRotationInFlight,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
   runnableManagedExchange,
@@ -432,60 +431,41 @@ describe("reading a configuration with its key file", () => {
 });
 
 describe("laying a pair over the stored record it completes", () => {
-  test("the pair's fields replace the stored ones; what it has no field for stays", () => {
-    const stored = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({
-          label: "Riverbend quarterly",
-          expires: "2026-10-01T00:00:00.000Z",
-          tokenMaxAgeDays: 14,
-          schedule: {
-            anchor: "2026-01-06T14:00:00.000Z",
-            intervalDays: 7,
-            windowSeconds: 10_800,
-            nextWindow: "2026-01-13T14:00:00.000Z",
-            consecutiveMisses: 1,
-          },
-          standingCondition: {
-            kind: "auth",
-            since: "2026-07-01T00:00:00.000Z",
-          },
-        }),
-      ),
+  /** A configuration-only record of `newExchange`'s exchange: the only kind a
+   * pair completes. */
+  function configurationOnly(
+    overrides: Partial<NewManagedExchange> = {},
+  ): ManagedExchangeRecord {
+    const record = buildManagedExchangeRecord(
+      newExchange({ ...overrides, sharedSecret: undefined }),
     );
+    expect(runnableManagedExchange(record)).toBe(false);
+    return record;
+  }
+
+  test("the pair's fields complete the record; its id, label, and standing condition stay", () => {
+    const stored = configurationOnly({
+      label: "Riverbend quarterly",
+      tokenMaxAgeDays: 14,
+      standingCondition: {
+        kind: "auth",
+        since: "2026-07-01T00:00:00.000Z",
+      },
+    });
     const imported = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(
-        newExchange({ label: "", sharedSecret: stored.sharedSecret }),
+        newExchange({ label: "", expires: "2026-10-01T00:00:00.000Z" }),
       ),
     );
-    const revived = applyManagedExchangeCommandLinePair(stored, imported);
-    expect(revived.id).toBe(stored.id);
-    expect(revived.label).toBe("Riverbend quarterly");
-    expect(revived.schedule).toEqual(stored.schedule);
-    expect(revived.standingCondition).toEqual(stored.standingCondition);
-    expect(revived.expires).toBeUndefined();
-    expect(revived.tokenMaxAgeDays).toBeUndefined();
-    expect(revived.side).toBe(imported.side);
-  });
-
-  const MARKED_AT = "2026-07-13T09:00:00.000Z";
-
-  test("a pair holding the stored secret keeps the rotation-in-flight marker", () => {
-    const stored = applyManagedExchangeRotationInFlight(
-      runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      MARKED_AT,
-    );
-    const imported = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({ label: "", sharedSecret: stored.sharedSecret }),
-      ),
-    );
-    expect(
-      applyManagedExchangeCommandLinePair(stored, imported)
-        .rotationInFlightSince,
-    ).toBe(MARKED_AT);
+    const completed = applyManagedExchangeCommandLinePair(stored, imported);
+    expect(completed.id).toBe(stored.id);
+    expect(completed.label).toBe("Riverbend quarterly");
+    expect(completed.standingCondition).toEqual(stored.standingCondition);
+    expect(completed.sharedSecret).toBe(imported.sharedSecret);
+    expect(completed.expires).toBe("2026-10-01T00:00:00.000Z");
+    expect(completed.tokenMaxAgeDays).toBeUndefined();
+    expect(completed.side).toBe(imported.side);
+    expect(completed.exchangeFile).toEqual(imported.exchangeFile);
   });
 
   const REGISTRAR = {
@@ -493,148 +473,48 @@ describe("laying a pair over the stored record it completes", () => {
     exchangeId: "riverbend-q3",
   };
 
-  test("laying a pair keeps the enrolled registrar and takes the pair's pending registration", () => {
-    const stored = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(newExchange()),
-    );
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...stored,
-      relayRegistrar: REGISTRAR,
-      relayRegistrationPendingSince: MARKED_AT,
-    });
-    const imported = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({
-          label: "",
-          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-        }),
-      ),
-    );
-    const revived = applyManagedExchangeCommandLinePair(enrolled, imported);
-    expect(revived.relayRegistrar).toEqual(REGISTRAR);
-    expect(revived.relayRegistrationPendingSince).toBe(
-      "2026-09-01T00:00:00.000Z",
-    );
-  });
-
-  test("laying a pair whose pair holds another secret and no pending registration keeps the stored one, whether or not the record names a registrar", () => {
-    const pending = runnableManagedExchangeOrRefuse({
-      ...runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      relayRegistrationPendingSince: MARKED_AT,
-    });
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...pending,
-      relayRegistrar: REGISTRAR,
-    });
-    const noPending = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(newExchange({ label: "" })),
-    );
-    const kept = applyManagedExchangeCommandLinePair(enrolled, noPending);
-    expect(kept.sharedSecret).toBe(noPending.sharedSecret);
-    expect(kept.relayRegistrationPendingSince).toBe(MARKED_AT);
-    expect(
-      applyManagedExchangeCommandLinePair(pending, noPending)
-        .relayRegistrationPendingSince,
-    ).toBe(MARKED_AT);
-  });
-
-  test("laying a pair whose key file states a pending registration drops the stored one's re-invite reason", () => {
-    const reinvited = runnableManagedExchangeOrRefuse({
-      ...runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      relayRegistrar: REGISTRAR,
-      relayRegistrationPendingSince: MARKED_AT,
-      relayRegistrationPendingReason: "reinvite",
-    });
-    const noPending = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(newExchange({ label: "" })),
-    );
-    expect(
-      applyManagedExchangeCommandLinePair(reinvited, noPending)
-        .relayRegistrationPendingReason,
-    ).toBe("reinvite");
-    const pendingPair = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({
-          label: "",
-          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-        }),
-      ),
-    );
-    const revived = applyManagedExchangeCommandLinePair(reinvited, pendingPair);
-    expect(revived.relayRegistrationPendingSince).toBe(
-      "2026-09-01T00:00:00.000Z",
-    );
-    expect(revived).not.toHaveProperty("relayRegistrationPendingReason");
-  });
-
-  test("laying a pair whose pair holds the stored secret keeps the stored pending registration unless the key file states one", () => {
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      relayRegistrar: REGISTRAR,
-      relayRegistrationPendingSince: MARKED_AT,
-    });
-    const samePair = (pendingSince?: string) =>
+  test("the pair's relay registrar and pending registration land on the record, or none", () => {
+    const stored = configurationOnly();
+    const pair = (fields: Partial<NewManagedExchange>) =>
       runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(
-          newExchange({
-            label: "",
-            sharedSecret: enrolled.sharedSecret,
-            ...(pendingSince !== undefined && {
-              relayRegistrationPendingSince: pendingSince,
-            }),
-          }),
-        ),
+        buildManagedExchangeRecord(newExchange({ label: "", ...fields })),
       );
-    expect(
-      applyManagedExchangeCommandLinePair(enrolled, samePair())
-        .relayRegistrationPendingSince,
-    ).toBe(MARKED_AT);
-    expect(
-      applyManagedExchangeCommandLinePair(
-        enrolled,
-        samePair("2026-09-01T00:00:00.000Z"),
-      ).relayRegistrationPendingSince,
-    ).toBe("2026-09-01T00:00:00.000Z");
+
+    const pending = applyManagedExchangeCommandLinePair(
+      stored,
+      pair({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+      }),
+    );
+    expect(pending.relayRegistrar).toEqual(REGISTRAR);
+    expect(pending.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+    expect(pending).not.toHaveProperty("relayRegistrationPendingReason");
+
+    const confirmed = applyManagedExchangeCommandLinePair(
+      stored,
+      pair({ relayRegistrar: REGISTRAR }),
+    );
+    expect(confirmed.relayRegistrar).toEqual(REGISTRAR);
+    expect(confirmed).not.toHaveProperty("relayRegistrationPendingSince");
+
+    const none = applyManagedExchangeCommandLinePair(stored, pair({}));
+    expect(none).not.toHaveProperty("relayRegistrar");
+    expect(none).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
-  test("laying a pair onto a record naming no registrar keeps the key file's pending registration", () => {
+  test("a record holding a secret is refused, so a pair never replaces one", () => {
     const stored = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange()),
     );
     const imported = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({
-          label: "",
-          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-        }),
-      ),
-    );
-    const revived = applyManagedExchangeCommandLinePair(stored, imported);
-    expect(revived.relayRegistrar).toBeUndefined();
-    expect(revived.relayRegistrationPendingSince).toBe(
-      "2026-09-01T00:00:00.000Z",
-    );
-  });
-
-  test("a pair holding another secret drops the rotation-in-flight marker", () => {
-    const stored = applyManagedExchangeRotationInFlight(
-      runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      MARKED_AT,
-    );
-    const imported = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange({ label: "" })),
     );
-    const revived = applyManagedExchangeCommandLinePair(stored, imported);
-    expect(revived.sharedSecret).toBe(imported.sharedSecret);
-    expect(revived).not.toHaveProperty("rotationInFlightSince");
+    expect(() =>
+      applyManagedExchangeCommandLinePair(stored, imported),
+    ).toThrow();
   });
 });
 
@@ -847,10 +727,6 @@ describe("the relay key registration across the command-line files", () => {
     url: "https://relay.example.org:8443",
     exchangeId: "riverbend-q3",
   };
-  const OTHER_REGISTRAR = {
-    url: "https://relay.example.net",
-    exchangeId: "riverbend-other",
-  };
   const PENDING_SINCE = "2026-09-29T12:00:00.000Z";
   const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
   const ownRelay = (): OwnRelayRead => ({
@@ -1022,41 +898,5 @@ describe("the relay key registration across the command-line files", () => {
     expect(error).toBeInstanceOf(ManagedConfigurationRefusedError);
     expect((error as Error).message).toContain(": turn.");
     expect(errorText(error)).not.toContain(credential);
-  });
-
-  test("laying a pair naming a registrar takes its registrar and its marker or none", () => {
-    const stored = runnableManagedExchangeOrRefuse({
-      ...runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(newExchange()),
-      ),
-      relayRegistrar: OTHER_REGISTRAR,
-      relayRegistrationPendingSince: "2026-07-13T09:00:00.000Z",
-      relayRegistrationPendingReason: "reinvite",
-    });
-    const pair = (pendingSince?: string) =>
-      runnableManagedExchangeOrRefuse(
-        buildManagedExchangeRecord(
-          newExchange({
-            label: "",
-            relayRegistrar: REGISTRAR,
-            ...(pendingSince !== undefined && {
-              relayRegistrationPendingSince: pendingSince,
-            }),
-          }),
-        ),
-      );
-
-    const confirmed = applyManagedExchangeCommandLinePair(stored, pair());
-    expect(confirmed.relayRegistrar).toEqual(REGISTRAR);
-    expect(confirmed).not.toHaveProperty("relayRegistrationPendingSince");
-    expect(confirmed).not.toHaveProperty("relayRegistrationPendingReason");
-
-    const pending = applyManagedExchangeCommandLinePair(
-      stored,
-      pair(PENDING_SINCE),
-    );
-    expect(pending.relayRegistrar).toEqual(REGISTRAR);
-    expect(pending.relayRegistrationPendingSince).toBe(PENDING_SINCE);
-    expect(pending).not.toHaveProperty("relayRegistrationPendingReason");
   });
 });

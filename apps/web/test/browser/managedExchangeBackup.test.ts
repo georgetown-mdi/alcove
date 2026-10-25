@@ -753,10 +753,11 @@ describe("a local-state entry this build cannot parse is skipped too", () => {
       label: "Riverbend quarterly",
     });
 
-    // Nothing was written: the stored record stands alone, with no second copy.
-    expect(
-      (await listManagedExchangesDiagnostic()).map((entry) => entry.kind),
-    ).toEqual(["readable"]);
+    // Nothing was written: the stored record stands alone, with no second copy,
+    // listed as unreadable for its entry.
+    expect(await listManagedExchangesDiagnostic()).toEqual([
+      { kind: "unreadable", id: stored.id, backedUp: true },
+    ]);
   });
 });
 

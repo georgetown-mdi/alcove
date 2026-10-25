@@ -27,8 +27,7 @@
  *   second attended Run, or a scheduled attempt is refused or queued for the
  *   whole run rather than for its rotation alone, and cannot double-rotate or
  *   exchange a second time against the partner. The same lock is what both
- *   exports and an import replacing the stored copy take, so none of them
- *   runs while an exchange is in flight.
+ *   exports take, so neither runs while an exchange is in flight.
  *
  * - **A run uses the record as stored when it takes the lock.** The input
  *   guard and the handshake are handed the record read inside the locked

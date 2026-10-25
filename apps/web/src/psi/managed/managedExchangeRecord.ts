@@ -1592,81 +1592,40 @@ export function applyManagedExchangeRotationInFlight(
 }
 
 /**
- * Lay a record read from a command-line `alcove.yaml` and its `.alcove.key`
- * over the stored record it replaces or completes, producing a validated new record: the
- * document, `side`, max-age policy, and key pair come from the pair, an absent
- * `expires` or policy clearing the stored one, and everything the pair has no
- * field for -- the `id`, label, schedule, `lastRun`, standing condition, and
- * platform grants -- stays as stored, so the import clears no condition only
- * the operator, a re-invite, or a delete may clear. A rotation-in-flight
- * marker goes with the stored secret when the pair replaces it. A pair naming
- * a relay registrar replaces the stored one; a pair naming none keeps it. The
- * pending registration follows
- * {@link pendingRelayRegistrationFromCommandLine}. The inputs are not mutated.
+ * Complete a configuration-only record with a record read from a command-line
+ * `alcove.yaml` and its `.alcove.key`, producing a validated new record: the
+ * document, `side`, max-age policy, key pair, relay registrar, and pending
+ * registration come from the pair, an absent policy clearing the stored one.
+ * The `id`, label, and standing condition stay as stored. A
+ * configuration-only record holds no schedule, run bookkeeping, rotation
+ * marker, registrar, or folder grant, so the result holds only what the pair
+ * states of those. The inputs are not mutated.
  *
+ * @throws {Error} if `stored` holds a shared secret.
  * @throws {ZodError} if the result is not a valid record.
  */
 export function applyManagedExchangeCommandLinePair(
   stored: ManagedExchangeRecord,
   imported: RunnableManagedExchangeRecord,
 ): RunnableManagedExchangeRecord {
+  if (stored.sharedSecret !== undefined)
+    throw new Error(
+      "a command-line pair completes only a record that holds a configuration only",
+    );
   const next: ManagedExchangeRecord = {
     ...stored,
     exchangeFile: imported.exchangeFile,
     side: imported.side,
     sharedSecret: imported.sharedSecret,
   };
-  if (imported.expires === undefined) delete next.expires;
-  else next.expires = imported.expires;
+  if (imported.expires !== undefined) next.expires = imported.expires;
   if (imported.tokenMaxAgeDays === undefined) delete next.tokenMaxAgeDays;
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
-  if (imported.sharedSecret !== stored.sharedSecret)
-    delete next.rotationInFlightSince;
   if (imported.relayRegistrar !== undefined)
     next.relayRegistrar = imported.relayRegistrar;
-  setPendingRelayRegistration(
-    next,
-    pendingRelayRegistrationFromCommandLine(next, imported),
-  );
+  if (imported.relayRegistrationPendingSince !== undefined)
+    next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
-}
-
-/**
- * The pending relay registration a command-line pair leaves on `stored`,
- * whose registrar is the one the record keeps. A key file's marker replaces
- * the stored one. Its absence clears the stored one only beside a
- * configuration naming the record's registrar, which the command line then
- * confirmed at; beside one naming none, or another, the stored registrar
- * confirmed nothing, so the stored marker and reason stay.
- */
-function pendingRelayRegistrationFromCommandLine(
-  stored: ManagedExchangeRecord,
-  pair: RunnableManagedExchangeRecord,
-): PendingRelayRegistration | undefined {
-  if (pair.relayRegistrationPendingSince !== undefined)
-    return { since: pair.relayRegistrationPendingSince };
-  if (
-    pair.relayRegistrar !== undefined &&
-    stored.relayRegistrar !== undefined &&
-    sameRelayRegistrar(pair.relayRegistrar, stored.relayRegistrar)
-  )
-    return undefined;
-  if (stored.relayRegistrationPendingSince === undefined) return undefined;
-  return stored.relayRegistrationPendingReason === undefined
-    ? { since: stored.relayRegistrationPendingSince }
-    : {
-        since: stored.relayRegistrationPendingSince,
-        reason: stored.relayRegistrationPendingReason,
-      };
-}
-
-/** Whether two registrars name the one a registration is sent to: the same
- * url origin and the same exchange id. */
-function sameRelayRegistrar(a: RelayRegistrar, b: RelayRegistrar): boolean {
-  return (
-    new URL(a.url).origin === new URL(b.url).origin &&
-    a.exchangeId === b.exchangeId
-  );
 }
 
 /** Apply a `lastRun` bookkeeping entry to a record, producing a validated new

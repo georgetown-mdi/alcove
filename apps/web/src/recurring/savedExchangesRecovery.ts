@@ -7,8 +7,9 @@
  *
  * A readable entry shows its label, its side (or, for a configuration on a
  * channel that names no side, the channel, named as the saved-exchanges list
- * names it), and last-run date; an unreadable entry shows a fixed "Unreadable
- * record" label and no other detail, since nothing about it could be parsed.
+ * names it), and last-run date; an unreadable entry, whose record or sibling
+ * entry does not parse, shows a fixed "Unreadable record" label and no other
+ * detail.
  * Every row holds the stored key the one-step delete-by-key acts on, so an
  * unreadable record is discardable without a successful parse, and whether an
  * exported backup remains, which the delete confirm states and which survives a
