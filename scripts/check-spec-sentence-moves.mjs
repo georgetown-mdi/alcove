@@ -666,7 +666,7 @@ function main(argv, env) {
       : `the units of ${files.join(", ")} differ between the merge base with ${base} and ${headLabel}.`;
   const read =
     listFiles.length > 0
-      ? `Wording changes were read from ${listFiles.join(", ")} at ${headLabel}.`
+      ? `Wording changes were read from ${listFiles.join(", ")} ${head === null ? "in" : "at"} ${headLabel}.`
       : `No file under ${WORDING_CHANGES_DIRECTORY} was added or modified since the merge base, so this branch lists no change; write its list to ${listFile}.`;
   console.error(`${PREFIX} ${compared} ${read}\n`);
   for (const line of failures) console.error(line);
