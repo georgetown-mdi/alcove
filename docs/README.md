@@ -103,3 +103,5 @@ The web application's interface has its own record outside this tree: [`design/w
 ![Component diagram: the core protocol library, the two applications that supply what it leaves abstract, and the external transport boundary](img/architecture.svg)
 
 One library, `packages/core`, holds the protocol; the apps supply what core leaves abstract - the transport channel (`MessageConnection`) and the PSI compute backend (`PsiEngine`). Both apps ship in one Docker image. [DESIGN.md](DESIGN.md) narrates this architecture; the [spec tier](spec/README.md) holds the wire-level detail.
+
+To revise this diagram or add another figure to the docs, follow the `doc-figure` skill ([`.claude/skills/doc-figure/SKILL.md`](../.claude/skills/doc-figure/SKILL.md)).

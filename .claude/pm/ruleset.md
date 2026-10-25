@@ -30,6 +30,11 @@ no-new-behavior items are unaffected: they take the Light tier below and batch
 well, several to one orchestration session; never inflate or merge tasks to
 fill a session.
 
+A figure item, in either tier: a task that adds or revises a figure in the
+docs (an SVG under `docs/img/`) has an acceptance bullet naming the
+`doc-figure` skill (`.claude/skills/doc-figure/SKILL.md`), which holds the
+method.
+
 **Light -- the default.** A task whose expected diff is under roughly 100 lines
 and adds no new behavior: a correction, a sweep, a test pin, a doc or spec line,
 a deferred review finding. Its whole body is under 20 lines -- one summary
