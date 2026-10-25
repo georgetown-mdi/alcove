@@ -292,21 +292,6 @@ the only kind that leaves a version alone. A key's own name is not in that
 class: it travels in the terms document, which the two parties compare whole, so
 two builds spelling a key differently cancel the exchange between them.
 
-The edit that forgets the bump is the one this rule exists for, and nothing
-about a rule written as prose fails when it is forgotten. So the rule is held
-by a check: `npm run check:built-in-set-versions` digests the declared content
-of every set the registry holds -- the fields with their constraints, the keys
-with their elements and their cascade order -- and holds each to the pin
-`scripts/built-in-set-pins.json` records for the version the source declares.
-Content that moved under a recorded version fails, and a bump is asked to record
-the pin it ships. What moves the digest, and what the check cannot see, are in
-[repo-check-scripts.md](repo-check-scripts.md#built-in-rule-set-version-bump).
-
-One name and one version identify one content, which the same check holds over
-the registry: two rule sets may share a set, and a shared set is one declaration
-read twice, but two different contents under one name and version fail rather
-than being pinned to whichever entry the registry lists first.
-
 Two things the versions are not:
 
 - **Not a compatibility negotiation.** Whether two parties' terms agree is

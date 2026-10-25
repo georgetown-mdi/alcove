@@ -1,19 +1,17 @@
 // The built-in linkage rule sets, read out of their source declarations.
 //
-// Two repository checks hold a property of those sets --
-// check-zero-setup-keys.mjs and check-built-in-set-versions.mjs -- and both need
-// the same thing: every set the registry ships, as VALUES rather than as text.
-// Reading them from the source rather than from the built package is by design.
-// The field and key arrays are module-private (`getDefaultLinkageTerms` is the
-// only way out of that module, and it filters), and a check that imported a
-// built dist would pass against a stale build -- the one failure mode a guard
-// over source content cannot afford.
+// check-zero-setup-keys.mjs holds a property of those sets, and needs every set
+// the registry ships as VALUES rather than as text. Reading them from the source
+// rather than from the built package is by design. The field and key arrays are
+// module-private (`getDefaultLinkageTerms` is the only way out of that module,
+// and it filters), and a check that imported a built dist would pass against a
+// stale build -- the one failure mode a guard over source content cannot afford.
 //
 // The registry declaration is the entry point, so a set added to it is covered
-// by both checks with no list to keep in step here. Each entry is followed to
-// the declarations it composes: the name, version, and content of its field set
-// and of its key set, each reported under the declaration it came from so a
-// failure names what to edit.
+// with no list to keep in step here. Each entry is followed to the declarations
+// it composes: the name and content of its field set and of its key set, and a
+// failure is reported under the declaration it came from so it names what to
+// edit.
 //
 // The source is parsed with the TypeScript compiler's own parser and each
 // declaration's initializer evaluated as a literal, so a comment, a reflow, or
@@ -21,9 +19,8 @@
 // ordering does. An initializer that is not a plain literal -- a spread, a
 // computed key, a call other than the freezing wrappers below -- is refused by
 // name rather than guessed at: a reader that quietly returned a partial value
-// would hand both checks a content they would then pin.
+// would hand the check a content it would then pass.
 
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -308,11 +305,7 @@ function propertyAt(properties, key, where) {
 /** Which content declaration each half of a rule set takes its rules from. */
 const HALF_CONTENT = { fieldSet: "linkageFields", keySet: "linkageKeys" };
 
-/** The entry property holding a key set's precision bands, where it has any. */
-const BANDS_KEY = "ruleBands";
-
-/** One registry entry: its two halves, each with its content and the
- * declarations the entry composed it from. */
+/** One registry entry: its two halves, each with its name and content. */
 function readRuleSet(element, index, constants, read) {
   const declaration =
     declarationName(element) ?? `${REGISTRY_DECLARATION}[${index}]`;
@@ -331,28 +324,14 @@ function readRuleSet(element, index, constants, read) {
       constants,
       where,
     );
-    const nameNode = propertyAt(identity, "name", where);
-    const versionNode = propertyAt(identity, "version", where);
-    const contentNode = propertyAt(entry, contentKey, `\`${declaration}\``);
     halves[role] = {
       role,
-      name: literalValue(nameNode, read),
-      version: literalValue(versionNode, read),
-      content: literalValue(contentNode, read),
-      declarations: {
-        name: declarationName(nameNode) ?? `${declaration}.${role} name`,
-        version:
-          declarationName(versionNode) ?? `${declaration}.${role} version`,
-        content: declarationName(contentNode) ?? `${declaration}.${contentKey}`,
-      },
+      name: literalValue(propertyAt(identity, "name", where), read),
+      content: literalValue(
+        propertyAt(entry, contentKey, `\`${declaration}\``),
+        read,
+      ),
     };
-  }
-  // A key set's bands are part of what its version names, so they are read
-  // with it where the entry declares them.
-  const bandsNode = entry.get(BANDS_KEY);
-  if (bandsNode !== undefined) {
-    halves.keySet.bands = literalValue(bandsNode, read);
-    halves.keySet.declarations.content += ` and ${declarationName(bandsNode) ?? `${declaration}.${BANDS_KEY}`}`;
   }
   return { declaration, index, ...halves };
 }
@@ -399,7 +378,7 @@ function registryElements(constants) {
 /**
  * The rule sets a source file's registry declares, as `{ruleSets, unreadable}`.
  * Each entry is `{declaration, index, fieldSet, keySet}`, and each half is
- * `{role, name, version, content, declarations}`. An entry with any unreadable
+ * `{role, name, content}`. An entry with any unreadable
  * declaration is left out and its reason is in `unreadable`.
  */
 export function readRuleSets(source) {
@@ -461,79 +440,4 @@ export function readRuleSetsFrom(root) {
     };
   }
   return readRuleSets(source);
-}
-
-/**
- * `value` with every object's keys in a fixed order, so the digest below moves
- * on content and on array ordering but not on the order two properties happen to
- * be written in. Array order is preserved: for a key set it is cascade order,
- * which is matching behavior.
- */
-export function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, canonicalize(value[key])]),
-    );
-  }
-  return value;
-}
-
-/** The pin that identifies a set's content: sha256 over its canonicalized form. */
-export function contentDigest(content) {
-  const canonical = JSON.stringify(canonicalize(content));
-  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
-}
-
-/**
- * Every named set the registry declares, one per half of each entry, with its
- * content digested. Two entries built over one field set declare that set
- * twice, which is sharing rather than a conflict as long as both name the same
- * content -- {@link identityConflicts} is what decides that.
- */
-export function declaredSets(ruleSets) {
-  return ruleSets.flatMap((ruleSet) =>
-    Object.keys(HALF_CONTENT).map((role) => {
-      const { content, bands } = ruleSet[role];
-      return {
-        ...ruleSet[role],
-        entry: ruleSet.declaration,
-        digest: contentDigest(
-          bands === undefined ? content : { keys: content, bands },
-        ),
-      };
-    }),
-  );
-}
-
-/**
- * The reasons two of `sets` claim one identity: a name and version under which
- * the registry declares two different contents. A name and version identify a
- * fixed content -- that is what a citation of them asserts, what the recorded
- * validation attaches to, and what a pin records one digest for -- so two
- * contents under one identity leave a citation resolving to whichever entry is
- * first and a pin covering only one of them. Reported as `{kind, set, message}`
- * beside the pin violations, and empty where every repeated identity names the
- * same content, which is one set shared by two entries.
- */
-export function identityConflicts(sets) {
-  const first = new Map();
-  const conflicts = [];
-  for (const set of sets) {
-    const identity = `${set.name} ${set.version}`;
-    const seen = first.get(identity);
-    if (seen === undefined) {
-      first.set(identity, set);
-      continue;
-    }
-    if (seen.digest === set.digest) continue;
-    conflicts.push({
-      kind: "identity",
-      set: set.name,
-      message: `${REGISTRY_DECLARATION} declares "${set.name}" ${set.version} over two different contents (\`${seen.declarations.content}\` and \`${set.declarations.content}\`). A name and version identify one content, so a citation of them would resolve to whichever entry comes first and ${RULE_SET_SOURCE} would ship the other under a name nothing holds it to. Give the second set its own name, or draw both entries from the one declaration.`,
-    });
-  }
-  return conflicts;
 }
