@@ -2,10 +2,14 @@
 
 A hand-off brief moves steps the dev container cannot take -- ones that need Docker, the open internet, a cloud account, another machine, or the owner's hands -- to a Claude Code session on the host. That session reads `CLAUDE.md` but not `.claude/orchestration/ruleset.md`, so everything it works under travels in the brief.
 
+A hand-off asks the owner for as little as it can. The owner's part is the launch and the few steps only his hands can take -- a sign-in, a password, a physical click -- and the host session or a script does everything else. A brief whose owner part is more than a few actions is redesigned before it goes out: the 2026-10-24 Windows lab hand-off had the owner typing and pasting for hours, with about 29 owner actions left when he stopped it.
+
 To write one: copy the Template below into `scratch/handoffs/<YYYY-MM-DD>-<slug>.md`, fill every `<...>`, and keep every section, writing "none" where one does not apply. Copy the Contract and the Host rules unchanged. Check it with `bash .claude/scripts/host-handoff.sh --check scratch/handoffs/<YYYY-MM-DD>-<slug>.md`, then give the owner only the launch line in its For the owner section. A worktree-isolated agent cannot write `scratch/`: it writes the brief under `/tmp` and its caller copies it in.
 
 Filling it:
 
+- Owner actions. The Owner actions section lists every action the owner takes during the run, one numbered line each, and each line names why only he can take it; it says "none" when the run needs nothing from him. The launch and the closing /exit are not listed. A step the host session can take itself -- running a command, reading its output, copying a file, cleaning up -- is not an owner action: it is a step the session runs. Past the bound, the brief is redesigned so a script or the host session does the work; where the work must run in a session only the owner can reach, such as his desktop on a VM, his one action is to start a driver there -- a Claude Code session he signs in to, or a scheduled task -- that takes the steps.
+- Owner action bound. `host-handoff.sh --check` refuses a brief whose Owner actions section lists more than 5 actions, printing the count and the bound. 5 is a working value, chosen arbitrarily until the owner sets one, and raised when he asks (`OWNER_ACTION_BOUND` in the script). The check counts only the actions the brief lists: a host session that asks the owner for more mid-run is not caught by it, and the Contract forbids that.
 - Paths. `<repo>` is the host folder the dev container mounts at `/workspace`. Every path the host session uses is relative to `<repo>` or absolute on the host (`~/...`, `mktemp -d`); never `/workspace/...`, which exists only in the container. The orchestrator reads the same result file at `/workspace/scratch/handoffs/...`.
 - Model and effort. The host command, `.claude/scripts/host-handoff.sh`, starts the session on the model the Brief's Model line names in backticks, at the effort its Effort line names in backticks (low, medium, high, xhigh, or max). Keep `claude-sonnet-5-5` at `high` effort unless the run needs another, and say why.
 - Build. A step needing built code or an image runs `.claude/scripts/host-build.sh` (its `--help` lists the options) rather than hand-listed `npm run build` commands: the CLI runs only once every workspace it depends on is built, in order, and the script holds that order. A branch the container has not pushed is fetched from the host checkout with `--from "$PWD"`, run from `<repo>`.
@@ -29,7 +33,7 @@ Filling it:
 - Browser UDP block. Chrome 155's UDP-block flag did not block UDP in the 2026-10-15 run, so a step that needs a browser without UDP applies a firewall rule or a container block, or gathers relay-only on one browser (`snippet --relay-only`). A step that applies a real block also records where the relay-only connection's time goes (allocation, DTLS, data channel), which the capture's timeline shows: the run measured 12 s relay-only against 1.7 s direct.
 - SSM waits. A wait loop that polls a host over SSM bounds each call (`timeout <seconds>` on the `aws ssm` command): the 2026-10-15 reboot script's SSM check blocked for the whole outage, so it measured no outage and ran to its 840 s cap.
 - Relay test key. A brief that needs a relay test key enrolls it at the project registrar over HTTPS without a token (`POST /exchanges/<id>` with `"maxAgeDays": null`; the row lapses after 70 minutes) and stays under the limits for one client address: 20 enrollments per 600 s and 10 unlapsed rows (`infra/relay/README.md`, The registrar, Enrollment without a token). The test id does not start with `alcove-verify-`: that prefix is reserved and a token-free enrollment of it is refused 400. It never registers a test key through SSM: piping the key into an interactive SSM session fails with EOF.
-- Steps. Each step gives the exact command, then `Expected:` (what output means it worked) and `Record:` (the values the result file needs). A step the owner performs is one action, with the exact names and values and what he sees when it worked.
+- Steps. Each step gives the exact command, then `Expected:` (what output means it worked) and `Record:` (the values the result file needs). A step the owner performs is one action from Owner actions, named by its number, with the exact names and values and what he sees when it worked.
 
 ## Template
 
@@ -41,8 +45,12 @@ Agent-written, a proposal until the owner ratifies it. Read `CLAUDE.md` first; y
 ## For the owner
 
 1. On <the Mac | ...>, in your alcove checkout -- the folder the dev container mounts at `/workspace` -- run `bash .claude/scripts/host-handoff.sh scratch/handoffs/<YYYY-MM-DD>-<slug>.md`.
-2. <What it will ask of you, step by step, or "It needs nothing from you.">
+2. <"It asks you, one at a time, for the <N> actions under Owner actions below." | "It needs nothing from you.">
 3. It is done when it says `Hand-off done`; close it with /exit. The dev container session reads the result itself.
+
+## Owner actions
+
+<"none", or one numbered line per action only the owner's hands can take during the run, each naming why only he can, for example `1. Sign in to Claude Code on the Windows VM -- the account's password is his alone.`>
 
 ## Contract
 
@@ -50,7 +58,7 @@ Agent-written, a proposal until the owner ratifies it. Read `CLAUDE.md` first; y
 - No report. Do not summarize the work in the conversation.
 - Write the result file named below: for each step, what ran and its outcome, and any value the orchestrator needs. The orchestrator reads that file; the owner does not carry context back.
 - End state. However the run ends -- its last step, a stop on a product defect, a failed check -- run the Clean up step, then write the result file in one write, as the last action: the orchestrator is waiting on that file and reads it as soon as it appears. Then send the one line `Hand-off done: <result file path>` and nothing more.
-- When the owner must act, give one step per message and wait for him to finish it before the next.
+- Ask the owner only for the actions Owner actions lists, one per message, naming its number, and wait for him to finish it before the next. Take every other step yourself.
 - Never use the question tool (AskUserQuestion). Anything the owner must answer goes in prose, one step at a time.
 
 ## Host rules
