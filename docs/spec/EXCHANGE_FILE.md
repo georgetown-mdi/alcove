@@ -751,7 +751,7 @@ are the ordering authority for that path, and it is fail-closed at each step:
    uses, so on a filesystem without it the write fails after the pre-flight,
    leaving no secret on disk.
    The `--invitation` value is never `@`-resolved into `argv`; its `@`-file form
-   (`--invitation @code.txt`) is read at decode time, keeping the code out of
+   (`--invitation '@code.txt'`) is read at decode time, keeping the code out of
    shell history and the process argument list.
 
 The owner-only on-disk write discipline the key file is written under -- the

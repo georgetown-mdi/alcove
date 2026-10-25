@@ -33,7 +33,7 @@ Before a first SFTP exchange against a server you do not administer yourself, wo
 
 Two parties, Agency A and Agency B, set up an exchange once and then run it on a schedule. Agency A invites; Agency B accepts. Each party needs an input CSV, and both need a place to exchange files: a directory on an SFTP server both can reach, or a folder both have mounted (a network share or a shared folder).
 
-The commands below use an installed `alcove`. With the container image, run each one as `docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest` followed by the same arguments (see [Running the CLI](DEPLOYMENT.md#running-the-cli)).
+The commands below use an installed `alcove`. With the container image, run each one as `docker run -it --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest` followed by the same arguments (see [Running the CLI](DEPLOYMENT.md#running-the-cli)).
 
 ### 1. Each party: make a directory for this partner
 

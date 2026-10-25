@@ -230,32 +230,30 @@ function releasePageUrl(version: string | undefined): string {
     : `${ALCOVE_RELEASES_URL}/tag/v${version}`;
 }
 
+/** The working-folder mount every `docker run` line opens with. The whole
+ * value sits inside one pair of double quotes, braces included: Windows
+ * PowerShell 5.1 splits `"$PWD":/work` into two arguments and refuses
+ * `"$PWD:/work"` as a variable reference, while this form reaches docker as
+ * one argument there and in bash and POSIX sh. Every line runs under those
+ * shells in `.github/workflows/windows_resolution.yaml` and the unit tests. */
+const WORK_FOLDER_MOUNT = `-v "\${PWD}:${WORK_MOUNT}"`;
+
 /** The accept command, unindented; each caller indents it to its own step.
  * The CSV positional is part of the primary form: it is what makes the
  * consent display list the columns the partner would send, rather than
  * deferring that list to the exchange run. */
 function acceptCommand(version: string | undefined): string {
   return (
-    `docker run --rm -it -v "$PWD":${WORK_MOUNT} ` +
+    `docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
     `${imageReference(version)} accept ${INVITATION_PLACEHOLDER} your-file.csv`
   );
 }
 
-/** The accept command as a partner types it in Windows PowerShell 5.1, where
- * an unquoted `@name` parses as splatting and a mount quoted only around the
- * folder does not reach docker as one argument. Runs under that shell in
- * `.github/workflows/windows_resolution.yaml`. */
-function powershellAcceptCommand(version: string | undefined): string {
-  return (
-    `docker run --rm -it -v "C:\\Users\\you\\exchange:${WORK_MOUNT}" ` +
-    `${imageReference(version)} accept '@invitation.txt' your-file.csv`
-  );
-}
-
-/** What the partner substitutes in the accept command, then the two shell
- * notes: keeping the code out of the history, and the Windows PowerShell
- * form. Shared by every body's accept step. */
-function acceptSubstitutionLines(version: string | undefined): Array<string> {
+/** What the partner substitutes in the accept command, then how to keep the
+ * code out of the shell history, where the `@` file name is single-quoted
+ * because Windows PowerShell parses a bare `@name` as splatting. Shared by
+ * every body's accept step. */
+function acceptSubstitutionLines(): Array<string> {
   return [
     `   Replace ${INVITATION_PLACEHOLDER} with the invitation your`,
     "   partner sent (the long block of letters and numbers, not the web",
@@ -267,15 +265,6 @@ function acceptSubstitutionLines(version: string | undefined): Array<string> {
     "   To keep the invitation out of your command history, save it into",
     "   a file named invitation.txt next to your CSV and write",
     "   '@invitation.txt', single quotes included, in its place.",
-    "",
-    "   In Windows PowerShell, change every command on this sheet in two",
-    "   ways: use the folder's full path in place of $PWD, and put the",
-    "   whole of each -v value inside one pair of quotes. With the",
-    "   invitation in a file, the accept command becomes:",
-    "",
-    `     ${powershellAcceptCommand(version)}`,
-    "",
-    "   with C:\\Users\\you\\exchange replaced by your folder's full path.",
     "",
   ];
 }
@@ -611,9 +600,9 @@ function splitRepointStepOpening(named: boolean): Array<string> {
       ];
 }
 
-/** The accept step both filedrop bodies open on: run accept, then the three
- * caveats a reader needs before the next step (what to substitute, keeping the
- * code out of the shell history, and the Windows path form). */
+/** The accept step both filedrop bodies open on: run accept, then the two
+ * caveats a reader needs before the next step (what to substitute, and keeping
+ * the code out of the shell history). */
 function filedropAcceptStep(version: string | undefined): Array<string> {
   return [
     "1. Accept the invitation. This prints the terms, asks you to confirm,",
@@ -621,7 +610,7 @@ function filedropAcceptStep(version: string | undefined): Array<string> {
     "",
     `     ${acceptCommand(version)}`,
     "",
-    ...acceptSubstitutionLines(version),
+    ...acceptSubstitutionLines(),
   ];
 }
 
@@ -739,9 +728,9 @@ function filedropSplitBody(
     `   the one you READ your partner's files out of at ${INBOUND_SYNC_MOUNT}, and the`,
     `   one you WRITE your own into at ${OUTBOUND_SYNC_MOUNT}:`,
     "",
-    `     docker run --rm -v "$PWD":${WORK_MOUNT} ` +
-      `-v "/path/to/the/folder/you/read":${INBOUND_SYNC_MOUNT} ` +
-      `-v "/path/to/the/folder/you/write":${OUTBOUND_SYNC_MOUNT} ` +
+    `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
+      `-v "/path/to/the/folder/you/read:${INBOUND_SYNC_MOUNT}" ` +
+      `-v "/path/to/the/folder/you/write:${OUTBOUND_SYNC_MOUNT}" ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
@@ -795,8 +784,8 @@ function filedropBody(
     "",
     "   Then mount your shared folder there when you run the exchange:",
     "",
-    `     docker run --rm -v "$PWD":${WORK_MOUNT} ` +
-      `-v "/path/to/your/shared/folder":${SYNC_MOUNT} ` +
+    `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
+      `-v "/path/to/your/shared/folder:${SYNC_MOUNT}" ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
@@ -825,7 +814,7 @@ function sftpBody(
     "",
     `     ${acceptCommand(version)}`,
     "",
-    ...acceptSubstitutionLines(version),
+    ...acceptSubstitutionLines(),
     "2. Fill in your credentials. Accepting wrote alcove.yaml with the",
     "   server and directory taken from the invitation; two things are yours",
     "   to supply, because an invitation never contains credentials:",
@@ -856,12 +845,12 @@ function sftpBody(
     "3. Run the exchange. Docker sees only what you mount, so the command",
     "   also mounts the folder holding your credential file, read-only:",
     "",
-    `     docker run --rm -it -v "$PWD":${WORK_MOUNT} ` +
-      `-v "/your/secrets":/run/secrets:ro ` +
+    `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
+      `-v "/your/secrets:/run/secrets:ro" ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
-    '   Replace "/your/secrets" with the folder that holds your credential',
+    "   Replace /your/secrets with the folder that holds your credential",
     "   file, and your-file.csv with your CSV file's name. The matched",
     "   records are written as alcove-results-<time>.csv inside the ./results",
     "   folder, created if missing. You and your partner each run your own",

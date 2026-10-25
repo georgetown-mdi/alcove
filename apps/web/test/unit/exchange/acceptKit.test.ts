@@ -1,4 +1,8 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { Readable } from "node:stream";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 
 import { describe, expect, test } from "vitest";
 
@@ -94,16 +98,16 @@ const ENDPOINTS = [
 function plainExchangeCommand(endpoint: AcceptKitEndpoint): string {
   if (endpoint.channel !== "filedrop")
     return (
-      '     docker run --rm -it -v "$PWD":/work -v "/your/secrets":' +
-      "/run/secrets:ro ghcr.io/georgetown-mdi/alcove:1.4.2 exchange " +
+      '     docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:' +
+      '/run/secrets:ro" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange ' +
       "your-file.csv ./results"
     );
   return endpoint.split === true
-    ? '     docker run --rm -v "$PWD":/work -v "/path/to/the/folder/you/read":' +
-        '/sync-in -v "/path/to/the/folder/you/write":/sync-out ' +
+    ? '     docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:' +
+        '/sync-in" -v "/path/to/the/folder/you/write:/sync-out" ' +
         "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results"
-    : '     docker run --rm -v "$PWD":/work -v "/path/to/your/shared/folder":' +
-        "/sync ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv " +
+    : '     docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:' +
+        '/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ' +
         "./results";
 }
 
@@ -352,12 +356,13 @@ describe("accept kit, filedrop routing", () => {
     const text = sheet(FILEDROP);
     expect(text).toContain("B. A folder that syncs on this PC");
     expect(text).toContain(
-      `docker run --rm -it -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:1.4.2 ` +
+      'docker run --rm -it -v "${PWD}:/work" ' +
+        "ghcr.io/georgetown-mdi/alcove:1.4.2 " +
         `accept ${INVITATION_PLACEHOLDER} your-file.csv`,
     );
     expect(text).toContain(
-      'docker run --rm -v "$PWD":/work -v "/path/to/your/shared/folder":' +
-        "/sync ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv " +
+      'docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:' +
+        '/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ' +
         "./results",
     );
   });
@@ -367,13 +372,15 @@ describe("accept kit, sftp configuration section", () => {
   test("names the placeholder field, the credential, and the @ convention", () => {
     const text = sheet(SFTP);
     expect(text).toContain(
-      `docker run --rm -it -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:1.4.2 ` +
+      'docker run --rm -it -v "${PWD}:/work" ' +
+        "ghcr.io/georgetown-mdi/alcove:1.4.2 " +
         `accept ${INVITATION_PLACEHOLDER} your-file.csv`,
     );
     // The exchange command has the read-only secrets mount, and the
     // credential fill-in section precedes it: the sheet is read top to bottom.
     expect(text).toContain(
-      'docker run --rm -it -v "$PWD":/work -v "/your/secrets":/run/secrets:ro ' +
+      'docker run --rm -it -v "${PWD}:/work" ' +
+        '-v "/your/secrets:/run/secrets:ro" ' +
         "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results",
     );
     expect(text.indexOf("username: REPLACE_WITH_SSH_USERNAME")).toBeLessThan(
@@ -546,8 +553,8 @@ describe("accept kit, a split filedrop rendezvous", () => {
     const text = retainSheet(FILEDROP_SPLIT);
     expect(text).toContain("inbound_path: /sync-in");
     expect(text).toContain("outbound_path: /sync-out");
-    expect(text).toContain('-v "/path/to/the/folder/you/read":/sync-in');
-    expect(text).toContain('-v "/path/to/the/folder/you/write":/sync-out');
+    expect(text).toContain('-v "/path/to/the/folder/you/read:/sync-in"');
+    expect(text).toContain('-v "/path/to/the/folder/you/write:/sync-out"');
     // The launcher provisions a pair, so route A hands the reader to it and
     // tells it which folder is which rather than sending them away.
     expect(text).toContain(RELEASES_URL);
@@ -973,7 +980,7 @@ describe("accept kit invariants", () => {
       expect(text).not.toContain("/app");
       expect(text).not.toContain("alcove.yaml.tmp");
       // The mount points the partner types are present and fixed.
-      expect(text).toContain('-v "$PWD":/work');
+      expect(text).toContain('-v "${PWD}:/work"');
     }
   });
 
@@ -986,30 +993,58 @@ describe("accept kit invariants", () => {
   });
 });
 
-describe("accept kit, Windows PowerShell lines", () => {
+describe("accept kit, the commands as each shell runs them", () => {
   /** The file the Windows PowerShell 5.1 suite runs line by line
    * (`support/maintainer-notes/AcceptSheet.Tests.ps1`); `npx vitest run -u`
    * rewrites it from the generator. */
-  const POWERSHELL_LINES_FILE =
-    "../../../../../support/maintainer-notes/accept-sheet-powershell-lines.txt";
+  const COMMANDS_FILE =
+    "../../../../../support/maintainer-notes/accept-sheet-commands.txt";
 
-  /** The sheet's commands written for Windows PowerShell: the ones naming a
-   * Windows folder. */
-  function powershellLines(text: string): Array<string> {
+  /** The value the tip tells the reader to write in the placeholder's place;
+   * the PowerShell suite runs the same substitution. */
+  const INVITATION_FILE_ARGUMENT = "'@invitation.txt'";
+
+  function dockerRunLines(text: string): Array<string> {
     return text
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.startsWith("docker run ") && line.includes(":\\"));
+      .filter((line) => line.startsWith("docker run "));
   }
 
-  test("every sheet gives the PowerShell accept command", () => {
-    for (const endpoint of ENDPOINTS)
-      expect(powershellLines(sheet(endpoint))).toEqual([
-        "docker run --rm -it -v " +
-          '"C:\\Users\\you\\exchange:/work" ' +
-          "ghcr.io/georgetown-mdi/alcove:1.4.2 accept '@invitation.txt' " +
-          "your-file.csv",
-      ]);
+  /** Every `docker run` line any sheet gives, across every channel shape and
+   * every file-handling mode, each once. */
+  function everyDockerRunLine(): Array<string> {
+    const sheets = ENDPOINTS.flatMap((endpoint) => [
+      sheet(endpoint),
+      retainSheet(endpoint),
+      locklessSheet(endpoint),
+    ]);
+    return [...new Set(sheets.flatMap(dockerRunLines))];
+  }
+
+  /** The words of a command after `docker`, each with one pair of surrounding
+   * quotes removed and `${PWD}` replaced by `folder`: what the reader means
+   * docker to receive. A quoted value holding a space splits here and fails
+   * the comparison rather than passing it. */
+  function intendedArguments(line: string, folder: string): Array<string> {
+    const [program, ...words] = line.split(" ");
+    expect(program).toBe("docker");
+    return words.map((word) =>
+      word.replace(/^"(.*)"$|^'(.*)'$/, "$1$2").replace("${PWD}", folder),
+    );
+  }
+
+  test("every sheet's commands mount the working folder in the one form", () => {
+    const lines = everyDockerRunLine();
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line).toContain(' -v "${PWD}:/work" ');
+      // Every mount value sits inside one pair of double quotes.
+      const words = line.split(" ");
+      words.forEach((word, index) => {
+        if (word === "-v") expect(words[index + 1]).toMatch(/^"[^"]+"$/);
+      });
+    }
   });
 
   test("quotes the @ file name in the tip too", () => {
@@ -1021,13 +1056,54 @@ describe("accept kit, Windows PowerShell lines", () => {
   });
 
   test("matches the lines the Windows CI suite runs", async () => {
-    const lines = new Set(
-      ENDPOINTS.flatMap((endpoint) => powershellLines(sheet(endpoint))),
-    );
-    await expect(`${[...lines].join("\n")}\n`).toMatchFileSnapshot(
-      POWERSHELL_LINES_FILE,
+    await expect(`${everyDockerRunLine().join("\n")}\n`).toMatchFileSnapshot(
+      COMMANDS_FILE,
     );
   });
+
+  test.each(["bash", "sh"])(
+    "%s hands docker each word as one argument, from a folder with a space",
+    (shell) => {
+      const folder = realpathSync(
+        mkdtempSync(join(tmpdir(), "alcove accept sheet ")),
+      );
+      try {
+        const lines = everyDockerRunLine();
+        const acceptLine = lines.find((line) =>
+          line.includes(` accept ${INVITATION_PLACEHOLDER} `),
+        );
+        expect(acceptLine).toBeDefined();
+        const commands = [
+          ...lines,
+          (acceptLine ?? "").replace(
+            INVITATION_PLACEHOLDER,
+            INVITATION_FILE_ARGUMENT,
+          ),
+        ];
+        for (const command of commands) {
+          // A docker stand-in printing each argument it receives in brackets,
+          // so an empty or space-edged one stays visible.
+          const script =
+            "docker() { for argument in \"$@\"; do printf '[%s]\\n' " +
+            `"$argument"; done; }; ${command}`;
+          const run = spawnSync(shell, ["-c", script], {
+            cwd: folder,
+            env: { ...process.env, PWD: folder },
+            encoding: "utf8",
+          });
+          expect(run.status, run.stderr).toBe(0);
+          const received = run.stdout
+            .split("\n")
+            .filter((line) => line.length > 0)
+            .map((line) => line.replace(/^\[(.*)\]$/, "$1"));
+          expect(received).toEqual(intendedArguments(command, folder));
+          expect(received).toContain(`${folder}:/work`);
+        }
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("accept kit filename", () => {
