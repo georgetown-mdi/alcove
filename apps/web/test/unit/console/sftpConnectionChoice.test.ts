@@ -81,7 +81,7 @@ describe("splitDirectoryRetainProblem", () => {
     // block holds the form's own requirement, so both name the same control.
     const problem = splitDirectoryRetainProblem(split, false);
     expect(problem).toBe(SPLIT_DIRECTORY_RETAIN_REQUIREMENT);
-    expect(problem).toContain("Keep every exchange file");
+    expect(problem).toContain("keep every exchange file");
   });
 
   test("retain mode back on clears the block", () => {

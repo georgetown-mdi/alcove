@@ -284,9 +284,9 @@ describe("failureFor", () => {
       expect(DEFAULT_RELAY_OFF_REMEDY).toBe(
         "This site's relay server is off in this browser. If a network " +
           "blocks direct connections, or blocks connections to TURN relays, " +
-          'turning on "Use this site\'s relay server" on the Relay server ' +
-          "page (the relay settings link on the start page) and trying " +
-          "again may let the exchange connect.",
+          "turning on the switch to use this site's relay server on the " +
+          "Relay server page (the relay settings link on the start page) " +
+          "and trying again may let the exchange connect.",
       );
     });
 

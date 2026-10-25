@@ -421,7 +421,7 @@ describe("sftpFormError (split inbound/outbound directories)", () => {
     const error = sftpFormError(splitForm(), false);
     expect(error?.field).toBe("outboundDirectory");
     expect(error?.message).toBe(SPLIT_DIRECTORY_RETAIN_REQUIREMENT);
-    expect(error?.message).toContain("Keep every exchange file");
+    expect(error?.message).toContain("keep every exchange file");
   });
 
   test("retain mode is read ONLY for a split; a shared directory is unaffected", () => {
