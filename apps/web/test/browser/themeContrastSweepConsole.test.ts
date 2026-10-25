@@ -14,7 +14,6 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { Lobby } from "@exchange/Lobby";
 import { NotFound } from "@components/NotFound";
 import { RecoveredExchangePanel } from "@exchange/RecoveredExchangePanel";
-import { RelaySettingsScreen } from "@exchange/RelaySettingsScreen";
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 
 import { acceptToken, declaredRoutes } from "./routeStates";
@@ -25,8 +24,8 @@ import type { RouteState } from "./routeStates";
 
 // The contrast sweep (contrastSweep.ts) over the console profile's route
 // states, in both schemes: the console's own cards render on the exchange
-// screens in place of the hosted ones. The `/saved` routes redirect to `/` on
-// the console, so they have no state here.
+// screens in place of the hosted ones. The `/saved` routes and `/relay`
+// redirect on the console, so they have no state here.
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -139,12 +138,6 @@ const CONSOLE_ROUTE_STATES: ReadonlyArray<RouteState> = [
     node: () => Promise.resolve(createElement(DirectExchangeScreen)),
   },
   {
-    route: "/relay",
-    state: "no relay set",
-    heading: /./,
-    node: () => Promise.resolve(createElement(RelaySettingsScreen)),
-  },
-  {
     route: "(not found)",
     state: "an address no route matches",
     heading: "Page not found",
@@ -180,7 +173,10 @@ describe("console route contrast sweep (WCAG 2.1 AA)", () => {
     const swept = new Set(CONSOLE_ROUTE_STATES.map(({ route }) => route));
     expect(
       declaredRoutes().filter(
-        (route) => !route.startsWith("/saved") && !swept.has(route),
+        (route) =>
+          !route.startsWith("/saved") &&
+          route !== "/relay" &&
+          !swept.has(route),
       ),
     ).toEqual([]);
   });

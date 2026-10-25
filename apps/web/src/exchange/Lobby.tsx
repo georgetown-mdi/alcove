@@ -45,6 +45,17 @@ export const DEMO_SITE_LINK_REFUSAL =
   "here. Open the link itself in your browser to accept it there.";
 
 /**
+ * The console start page's relay pointer: where a console sets a relay.
+ *
+ * @internal exported for testing
+ */
+export const CONSOLE_RELAY_POINTER =
+  "If using peer-to-peer, some workplace networks may block the connection. " +
+  "Your IT team can give you a relay server address. To use it, create an " +
+  "invitation, choose Over WebRTC, run here on its review step, and choose " +
+  "Set a relay.";
+
+/**
  * The quick path's screen: two primary actions side by side -- invite a partner to a
  * one-off exchange, or paste an invitation you were sent -- then the first-visit
  * help, the how-it-works explanation, and the restore and relay pointers. It has its
@@ -299,15 +310,21 @@ export function Lobby() {
               page.
             </p>
           ))}
-        <p className={`${styles.sub} ${styles.small}`}>
-          {isConsoleBuild()
-            ? "If using peer-to-peer, some workplace networks may block the connection. Your IT team can give you a relay server address to enter in "
-            : "If you can't connect to your partner, your IT team can give you a relay server address to enter in "}
-          <Anchor inherit component={Link} to="/relay">
-            relay settings
-          </Anchor>
-          .
-        </p>
+        {isConsoleBuild() ? (
+          <p className={`${styles.sub} ${styles.small}`}>
+            {CONSOLE_RELAY_POINTER}
+          </p>
+        ) : (
+          <p className={`${styles.sub} ${styles.small}`}>
+            {
+              "If you can't connect to your partner, your IT team can give you a relay server address to enter in "
+            }
+            <Anchor inherit component={Link} to="/relay">
+              relay settings
+            </Anchor>
+            .
+          </p>
+        )}
       </main>
     </AppPage>
   );

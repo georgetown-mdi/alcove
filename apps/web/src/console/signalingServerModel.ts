@@ -252,7 +252,7 @@ export function ownRelayDraft(relay: JobOwnRelay | undefined): OwnRelayDraft {
 
 /** The coordination server form's relay line where no relay is set. */
 export const NO_RELAY_SUMMARY =
-  "Relay: none, so the exchange connects directly.";
+  "Relay: none. A network that blocks direct connections on either side stops the exchange.";
 
 /** The coordination server form's relay line where `relay` is set: its urls,
  * then its registrar and exchange id where it names one, each escaped. */

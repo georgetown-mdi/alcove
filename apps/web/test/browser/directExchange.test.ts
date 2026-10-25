@@ -1970,9 +1970,9 @@ describe("console lobby copy and sample data", () => {
         }),
       )
       .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("link", { name: "relay settings" }))
-      .toHaveAttribute("href", "/relay");
+    expect(page.getByRole("link", { name: "relay settings" }).query()).toBe(
+      null,
+    );
   });
 
   test("asks the console to write the samples, and offers the download when it cannot", async () => {
