@@ -463,7 +463,7 @@ describe("a backup reconciles against the exchange it holds", () => {
       sharedSecret: generateSharedSecret(),
     });
     const deps = recordingDeps(
-      { kind: "replace", id: stored.id },
+      { kind: "replace", id: stored.id, sharedSecret: stored.sharedSecret },
       { kind: "replaced", record: stored },
     );
 
@@ -476,6 +476,7 @@ describe("a backup reconciles against the exchange it holds", () => {
     });
     expect(deps.replace).toHaveBeenCalledWith(
       stored.id,
+      stored.sharedSecret,
       "2026-07-14T12:00:00.000Z",
       expect.anything(),
       "backup",
@@ -488,7 +489,7 @@ describe("a backup reconciles against the exchange it holds", () => {
   test("a replace a run or a change refuses installs nothing and says which", async () => {
     for (const reason of ["run-in-flight", "changed"] as const) {
       const deps = recordingDeps(
-        { kind: "replace", id: "listed-id" },
+        { kind: "replace", id: "listed-id", sharedSecret: "listed-secret" },
         { kind: reason },
       );
       await expect(

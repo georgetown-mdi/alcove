@@ -26,14 +26,16 @@
  *   a record is in flight at a time in a browser profile: a second tab, a
  *   second attended Run, or a scheduled attempt is refused or queued for the
  *   whole run rather than for its rotation alone, and cannot double-rotate or
- *   exchange a second time against the partner. The same lock is what both
- *   exports take, so neither runs while an exchange is in flight.
+ *   exchange a second time against the partner. Only runs and an import
+ *   replace take this lock.
  *
  * - **A run uses the record as stored when it takes the lock.** The input
  *   guard and the handshake are handed the record read inside the locked
  *   window, never the copy a caller loaded before requesting the lock, so the
  *   secret a run authenticates with and rotates is the one the store holds
- *   while no other run can change it.
+ *   while no other run can change it. A re-invite takes no lock, so the
+ *   marker and rotation writes each refuse where the stored secret is no
+ *   longer that one ({@link ManagedExchangeSecretChangedError}).
  *
  * - **Persist-before-success.** A rotation-in-flight marker is written
  *   durably before the key exchange starts, and the rotated secret is written
@@ -47,18 +49,19 @@
 
 import { getLogger } from "@alcove/core";
 
+import {
+  ManagedExchangeSecretChangedError,
+  getManagedExchange,
+  markManagedExchangeRotationInFlight,
+  persistManagedExchangeRotation,
+  recordManagedExchangeLastRun,
+} from "./managedExchangeStore";
 import { ManagedInputError, managedInputLastRun } from "./managedInputGuard";
 import {
   RotationPersistError,
   runRotationCriticalSection,
   succeededRun,
 } from "./managedRunRotate";
-import {
-  getManagedExchange,
-  markManagedExchangeRotationInFlight,
-  persistManagedExchangeRotation,
-  recordManagedExchangeLastRun,
-} from "./managedExchangeStore";
 import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
@@ -196,6 +199,9 @@ export interface ManagedExchangeRunResult<TExchange> {
  * @throws {RotationPersistError} if the rotation write fails; the `storage`
  *   `lastRun` is recorded best-effort first -- a bookkeeping-write failure
  *   never replaces this error.
+ * @throws {ManagedExchangeSecretChangedError} if a re-invite replaced the
+ *   stored secret before the marker or rotation write; nothing is written or
+ *   recorded, and the data exchange did not begin.
  */
 export async function runManagedExchange<TInput, THandshake, TExchange>(
   phases: ManagedExchangeRunPhases<TInput, THandshake, TExchange>,
@@ -242,6 +248,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
             () =>
               markManagedExchangeRotationInFlight(
                 record.id,
+                current.sharedSecret,
                 new Date(now()).toISOString(),
               ),
             current,
@@ -249,14 +256,20 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
         persist: (writeBack: RotationWriteBack) =>
           persistRotation(
             record.id,
+            current.sharedSecret,
             writeBack,
-            current.relayRegistrar !== undefined
-              ? new Date(now()).toISOString()
-              : undefined,
+            new Date(now()).toISOString(),
           ),
         tokenMaxAgeDays: current.tokenMaxAgeDays,
         now,
       }).catch(async (error: unknown) => {
+        // A re-invite replaced the secret this run began from: the record is
+        // the re-invite's, so this run stamps nothing on it.
+        if (
+          error instanceof RotationPersistError &&
+          error.cause instanceof ManagedExchangeSecretChangedError
+        )
+          throw error.cause;
         if (error instanceof RotationPersistError) {
           // Best-effort: the storage subsystem that just failed the rotation
           // persist may fail this write too, and a second storage rejection must
@@ -318,18 +331,19 @@ async function readRecordToRun(
 }
 
 /** The durable, field-scoped rotation write the ordering awaits before the data
- * exchange. Split out so the write target is one call site. */
+ * exchange, over the secret the run read. Split out so the write target is one
+ * call site. The pending relay registration is stored only where the record the
+ * write reads names a registrar. */
 async function persistRotation(
   id: string,
+  expectedSharedSecret: string,
   writeBack: RotationWriteBack,
-  relayRegistrationPendingSince: string | undefined,
+  relayRegistrationPendingSince: string,
 ): Promise<void> {
-  await persistManagedExchangeRotation(id, {
+  await persistManagedExchangeRotation(id, expectedSharedSecret, {
     sharedSecret: writeBack.sharedSecret,
     expires: writeBack.expires,
-    ...(relayRegistrationPendingSince !== undefined && {
-      relayRegistrationPendingSince,
-    }),
+    relayRegistrationPendingSince,
   });
 }
 

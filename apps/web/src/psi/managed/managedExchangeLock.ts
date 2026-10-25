@@ -1,10 +1,11 @@
 /**
  * The run+rotate single-writer lock of a managed (recurring) exchange. A module
  * of its own because both the run ({@link ./managedExchangeRun.ts}) and the
- * store's secret-touching writes ({@link ./managedExchangeStore.ts}) take it, and
- * the run imports the store. A same-profile liveness guard, auto-released with
- * its holder; a second device or profile is guarded by export semantics instead
- * (docs/notes/managed-exchange-design.md).
+ * store's import replace ({@link ./managedExchangeStore.ts}) take it, and the
+ * run imports the store. Every other write to the record runs unlocked, and a
+ * secret write compares the secret it replaces instead. A same-profile
+ * liveness guard, auto-released with its holder; a second device or profile is
+ * guarded by export semantics instead (docs/notes/managed-exchange-design.md).
  */
 
 /** Namespace prefix keeping the lock name clear of other same-origin locks. */
@@ -18,8 +19,8 @@ export function managedExchangeLockName(id: string): string {
 /**
  * Whether any same-origin context, this one included, holds the run+rotate lock
  * for `id`. A point-in-time reading with no change event, so a surface polls it.
- * Gate presentation on it, never a write: a write that must not cross a run takes
- * the lock itself.
+ * Gate presentation on it, never a write: a secret write compares the secret it
+ * replaces inside its own transaction.
  */
 export async function managedExchangeRunLockHeld(id: string): Promise<boolean> {
   const name = managedExchangeLockName(id);
@@ -29,8 +30,8 @@ export async function managedExchangeRunLockHeld(id: string): Promise<boolean> {
 
 /**
  * Raised on the `ifAvailable` path when another same-origin context holds the
- * lock: a run, or a store write taking it for its step. The runner treats both
- * as "a run is already in progress on this device".
+ * lock: a run, or an import replace taking it for its step. The runner treats
+ * both as "a run is already in progress on this device".
  */
 export class ManagedExchangeLockUnavailableError extends Error {
   constructor(id: string) {

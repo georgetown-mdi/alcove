@@ -107,7 +107,11 @@ describe("a pair whose secret no stored record holds", () => {
     });
     expect(
       decideCommandLinePairTarget([stored], runnable(), { into: stored.id }),
-    ).toEqual({ kind: "replace", id: stored.id });
+    ).toEqual({
+      kind: "replace",
+      id: stored.id,
+      sharedSecret: stored.sharedSecret,
+    });
   });
 
   test("names every qualifying record, less those declined", () => {

@@ -88,13 +88,15 @@ interface ManagedReinviteResult {
  *
  * The rotation is persisted before the result is returned, so a persist failure
  * aborts the re-invite rather than handing the operator an invitation the record
- * cannot back. Only the inviter side reaches this; the composer throws for an
- * acceptor.
+ * cannot back. The write replaces the secret `record` holds, and refuses where
+ * the stored record holds another. Only the inviter side reaches this; the
+ * composer throws for an acceptor.
  *
  * @throws {Error} if the record is not the inviter side.
  * @throws {ZodError} if the assembled token fails validation at encode, or the
  *   rotation is invalid.
- * @throws {ManagedExchangeLockUnavailableError} if a run of the record holds the lock.
+ * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
+ *   the one `record` holds: a run rotated it since `record` was read.
  * @throws {ManagedReinviteWithheldError} if the record holds a standing compromise.
  */
 export async function reinviteManagedExchange(
@@ -110,6 +112,7 @@ export async function reinviteManagedExchange(
   });
   const persisted = await deps.persistRotation(
     record.id,
+    record.sharedSecret,
     reinvite.rotation,
     deps.registerRelayKey,
   );

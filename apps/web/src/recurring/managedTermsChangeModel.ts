@@ -1,4 +1,3 @@
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedTermsProposalNotStoredError } from "@psi/managed/managedTermsProposal";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
@@ -69,12 +68,10 @@ export function termsProposalText(
 
 /**
  * What the panel says when applying or declining a kept proposal did not
- * complete: a run in flight holds the exchange, the change shown is no longer
- * the stored one, or the write failed.
+ * complete: the change shown is not the stored one, or the write
+ * failed.
  */
 export function termsProposalFailureText(error: unknown): string {
-  if (error instanceof ManagedExchangeLockUnavailableError)
-    return "A run of this exchange is in progress. Apply the change once it finishes.";
   if (error instanceof ManagedTermsProposalNotStoredError)
     return (
       "This change was already applied, declined, or replaced by a newer " +

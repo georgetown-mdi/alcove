@@ -37,7 +37,6 @@ import {
   TERMS_UPDATE_APPLIED_TEXT,
   TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_APPLIED_TEXT,
-  TERMS_UPDATE_WITHHELD_TEXT,
 } from "@recurring/managedTermsUpdateModel";
 import { ACCEPT_TERMS_CHANGE_LABEL } from "@recurring/managedTermsChangeModel";
 
@@ -47,9 +46,13 @@ import {
 } from "../utils/cliTermsUpdateFixture";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
+import { holdRunLockElsewhere } from "./runLockReadings";
 
+import type {
+  NewManagedExchange,
+  RunnableManagedExchangeRecord,
+} from "@psi/managed/managedExchangeRecord";
 import type { Metadata } from "@alcove/core";
-import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
 
@@ -60,26 +63,30 @@ const METADATA: Metadata = [
   { name: "county", type: "other", role: "ignored", isPayload: false },
 ];
 
+function savedExchange(): NewManagedExchange {
+  return {
+    label: "Riverbend quarterly",
+    exchangeFile: composeManagedExchangeFile({
+      connection: {
+        channel: "webrtc",
+        host: "signaling.example.org",
+        port: 3000,
+        path: "/api/",
+      },
+      linkageTerms: getDefaultLinkageTerms(
+        "County Health Dept",
+        inferMetadata(LINKAGE_COLUMNS, []),
+      ),
+      metadata: METADATA,
+    }),
+    side: "inviter",
+    sharedSecret: "A".repeat(43),
+  };
+}
+
 function savedRecord(): RunnableManagedExchangeRecord {
   return runnableManagedExchangeOrRefuse(
-    buildManagedExchangeRecord({
-      label: "Riverbend quarterly",
-      exchangeFile: composeManagedExchangeFile({
-        connection: {
-          channel: "webrtc",
-          host: "signaling.example.org",
-          port: 3000,
-          path: "/api/",
-        },
-        linkageTerms: getDefaultLinkageTerms(
-          "County Health Dept",
-          inferMetadata(LINKAGE_COLUMNS, []),
-        ),
-        metadata: METADATA,
-      }),
-      side: "inviter",
-      sharedSecret: "A".repeat(43),
-    }),
+    buildManagedExchangeRecord(savedExchange()),
   );
 }
 
@@ -92,42 +99,51 @@ afterEach(async () => {
 
 function renderSection(
   record: RunnableManagedExchangeRecord,
-  runInFlight: boolean,
   onChanged: () => void = () => undefined,
 ): void {
-  app.render(
-    createElement(ManagedTermsUpdate, { record, runInFlight, onChanged }),
-  );
+  app.render(createElement(ManagedTermsUpdate, { record, onChanged }));
 }
 
 describe("changing a saved exchange's terms", () => {
-  test("withholds the terms update and the column save while a run is in flight", async () => {
-    const record = savedRecord();
-    renderSection(record, true);
+  beforeEach(clearManagedExchanges);
+  afterEach(clearManagedExchanges);
 
-    await expect
-      .element(page.getByText(TERMS_UPDATE_WITHHELD_TEXT["run-in-flight"]))
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("button", { name: MAKE_TERMS_UPDATE_LABEL }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }))
-      .not.toBeInTheDocument();
-    await userEvent.click(page.getByRole("checkbox", { name: "county" }));
-    await expect
-      .element(page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }))
-      .toBeDisabled();
+  test("makes a terms update and saves the column choice while a run holds the lock", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(savedExchange()),
+    );
+    const release = await holdRunLockElsewhere(record.id);
+    try {
+      const onChanged = vi.fn();
+      renderSection(record, onChanged);
 
-    renderSection(record, false);
-    await expect
-      .element(page.getByRole("button", { name: MAKE_TERMS_UPDATE_LABEL }))
-      .toBeInTheDocument();
+      await userEvent.click(
+        page.getByRole("button", { name: MAKE_TERMS_UPDATE_LABEL }),
+      );
+      await expect
+        .element(page.getByRole("button", { name: "Show full update" }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole("textbox", { name: TERMS_UPDATE_INPUT_LABEL }))
+        .toBeEnabled();
+
+      await userEvent.click(page.getByRole("checkbox", { name: "county" }));
+      await userEvent.click(
+        page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }),
+      );
+      await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+      expect(
+        (await getManagedExchange(record.id))?.exchangeFile.linkageTerms.payload
+          ?.send,
+      ).toEqual([{ name: "notes" }, { name: "county" }]);
+    } finally {
+      release();
+    }
   });
 
   test("starts the column choice again when the stored columns change", async () => {
     const record = savedRecord();
-    renderSection(record, false);
+    renderSection(record);
 
     const notes = page.getByRole("checkbox", { name: "notes" });
     const county = page.getByRole("checkbox", { name: "county" });
@@ -140,7 +156,6 @@ describe("changing a saved exchange's terms", () => {
       runnableManagedExchangeOrRefuse(
         applyManagedExchangeSentColumns(record, ["notes", "county"]),
       ),
-      false,
     );
     await expect.element(notes).toBeChecked();
     await expect.element(county).toBeChecked();
@@ -182,7 +197,7 @@ describe("the record identifier's send choice", () => {
       }),
     );
     const onChanged = vi.fn();
-    renderSection(record, false, onChanged);
+    renderSection(record, onChanged);
 
     const identifier = page.getByRole("checkbox", { name: "record_id" });
     await expect.element(identifier).toBeChecked();
@@ -248,7 +263,7 @@ describe("applying a partner's terms update", () => {
   test("shows the change an update from the command line makes and saves it on Accept", async () => {
     const record = await storedAgencyB();
     const onChanged = vi.fn();
-    renderSection(record, false, onChanged);
+    renderSection(record, onChanged);
 
     await userEvent.fill(
       page.getByLabelText(TERMS_UPDATE_INPUT_LABEL),
@@ -276,9 +291,41 @@ describe("applying a partner's terms update", () => {
     ).toEqual(["notes", "county"]);
   });
 
+  test("reads and applies an update while a run holds the lock", async () => {
+    const record = await storedAgencyB();
+    const release = await holdRunLockElsewhere(record.id);
+    try {
+      const onChanged = vi.fn();
+      renderSection(record, onChanged);
+
+      await userEvent.fill(
+        page.getByLabelText(TERMS_UPDATE_INPUT_LABEL),
+        CLI_TERMS_UPDATE,
+      );
+      await userEvent.click(
+        page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }),
+      );
+      await userEvent.click(
+        page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }),
+      );
+
+      await expect
+        .element(page.getByText(TERMS_UPDATE_APPLIED_TEXT))
+        .toBeInTheDocument();
+      expect(onChanged).toHaveBeenCalledOnce();
+      expect(
+        (
+          await getManagedExchange(record.id)
+        )?.exchangeFile.linkageTerms.payload?.receive?.map(({ name }) => name),
+      ).toEqual(["notes", "county"]);
+    } finally {
+      release();
+    }
+  });
+
   test("hides the change and Accept once the pasted text is edited", async () => {
     const record = await storedAgencyB();
-    renderSection(record, false);
+    renderSection(record);
     const input = page.getByLabelText(TERMS_UPDATE_INPUT_LABEL);
 
     await userEvent.fill(input, CLI_TERMS_UPDATE);
@@ -308,7 +355,7 @@ describe("applying a partner's terms update", () => {
       "ManagedTermsUpdateNotAppliedError: the terms update was not applied to this exchange: format",
     );
     const record = await storedAgencyB();
-    renderSection(record, false);
+    renderSection(record);
 
     await userEvent.fill(
       page.getByLabelText(TERMS_UPDATE_INPUT_LABEL),

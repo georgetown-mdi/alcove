@@ -5,10 +5,6 @@ import { Alert, Anchor, Button } from "@mantine/core";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
-import {
-  ManagedExchangeLockUnavailableError,
-  withManagedExchangeLock,
-} from "@psi/managed/managedExchangeLock";
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 import { getManagedExchange } from "@psi/managed/managedExchangeStore";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -19,7 +15,7 @@ import styles from "@styles/app.module.css";
 import {
   CLI_BUILT_IN_STUN_URI,
   EXPORT_LEAVES_ACCOUNTING_NOTE,
-  RUN_IN_FLIGHT_EXPORT_REASON,
+  RUN_IN_FLIGHT_EXPORT_NOTE,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
   runElsewhereNotice,
@@ -46,16 +42,12 @@ const KEY_FILE_SECURITY_DOC_URL =
 export function ManagedCronExportPanel({
   record,
   runInFlight,
-  onRunLockRefused,
 }: {
   record: RunnableManagedExchangeRecord;
   /** Whether a run of this exchange is in flight in any context this browser profile
    * can see -- the host's own run, a second tab's, or the scheduled runtime's. The
-   * download is withheld while it is ({@link RUN_IN_FLIGHT_EXPORT_REASON}). */
+   * download stays offered, with a note ({@link RUN_IN_FLIGHT_EXPORT_NOTE}). */
   runInFlight: boolean;
-  /** Report that the export's own lock refused a run the poll had not yet read,
-   * so {@link runInFlight} reads true until the next poll reading. */
-  onRunLockRefused: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,23 +66,16 @@ export function ManagedCronExportPanel({
       ? invitationRegistrarExportLine(state.composed.connection)
       : undefined;
 
-  // Downloading mid-run only produces files the run is about to make out of date.
   function downloadFiles() {
-    if (busy || runInFlight) return;
+    if (busy) return;
     setBusy(true);
     setFailed(false);
     void exportManagedCronFiles(record.id, {
-      withLock: (id, step) =>
-        withManagedExchangeLock(id, step, { ifAvailable: true }),
       readRecord: getManagedExchange,
       download: triggerBlobDownload,
       readOwn: () => ownRelay,
     })
-      .catch((error: unknown) => {
-        if (error instanceof ManagedExchangeLockUnavailableError)
-          onRunLockRefused();
-        else setFailed(true);
-      })
+      .catch(() => setFailed(true))
       .finally(() => setBusy(false));
   }
 
@@ -176,17 +161,12 @@ export function ManagedCronExportPanel({
                     again.
                   </Alert>
                 )}
-                <Button
-                  mt="sm"
-                  onClick={downloadFiles}
-                  loading={busy}
-                  disabled={runInFlight}
-                >
+                <Button mt="sm" onClick={downloadFiles} loading={busy}>
                   Download {state.composed.config.fileName} and{" "}
                   {state.composed.key.fileName}
                 </Button>
                 {runInFlight && (
-                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
+                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_NOTE}</p>
                 )}
               </li>
               {state.lines.kind === "withheld" ? (

@@ -14,7 +14,6 @@ import {
   managedRecoveryReducer,
   managedReinviteFailureAt,
   managedReinviteInFlight,
-  managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "@recurring/managedRunRecoveryModel";
 import {
@@ -311,9 +310,8 @@ describe("the re-invite mint", () => {
     expect(managedReinviteInFlight(started)).toBe(true);
     for (const outcome of [
       { type: "reinvite-composed", reinvite: REINVITE },
-      { type: "reinvite-held-by-run" },
-      { type: "reinvite-refused-by-run" },
       { type: "reinvite-withheld" },
+      { type: "reinvite-failed", cause: "secret-changed" },
       { type: "reinvite-failed", cause: "other" },
     ] satisfies ReadonlyArray<ManagedRecoveryAction>)
       expect(managedReinviteInFlight(fold([outcome], started))).toBe(false);
@@ -377,34 +375,17 @@ describe("the re-invite mint", () => {
     ).toBeUndefined();
   });
 
-  test("a run holds the mint by the polled reading or by the mint's own refusal", () => {
-    expect(managedRunHoldsReinvite(MANAGED_RECOVERY_INITIAL, true)).toBe(true);
-    expect(managedRunHoldsReinvite(MANAGED_RECOVERY_INITIAL, false)).toBe(
-      false,
-    );
-    const refused = fold([
+  test("a mint refused because a run rotated the secret says the exchange ran and to try again", () => {
+    const failed = fold([
       { type: "reinvite-started", site: "recovery" },
-      { type: "reinvite-refused-by-run" },
+      { type: "reinvite-failed", cause: "secret-changed" },
     ]);
-    expect(managedRunHoldsReinvite(refused, false)).toBe(true);
-    expect(
-      managedRunHoldsReinvite(fold([{ type: "run-started" }], refused), false),
-    ).toBe(true);
-    expect(
-      managedRunHoldsReinvite(
-        fold([{ type: "reinvite-started", site: "recovery" }], refused),
-        false,
-      ),
-    ).toBe(false);
-  });
-
-  test("a recheck that found a run leaves no refusal and no failure", () => {
-    const held = fold([
-      { type: "reinvite-started", site: "recovery" },
-      { type: "reinvite-held-by-run" },
-    ]);
-    expect(managedRunHoldsReinvite(held, false)).toBe(false);
-    expect(managedReinviteFailureAt(held, "recovery")).toBeUndefined();
+    expect(managedReinviteFailureAt(failed, "recovery")).toEqual({
+      title: "Could not create a fresh invitation",
+      message:
+        "This exchange ran while the invitation was being made, so nothing " +
+        "was saved and no invitation was made. Try again.",
+    });
   });
 
   test("a run start leaves a mint in flight running", () => {

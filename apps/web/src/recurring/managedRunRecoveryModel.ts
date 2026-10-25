@@ -25,16 +25,17 @@ export type ManagedReinviteSite = "recovery" | "detail";
 
 /** Why a mint failed. `saved-server-refused`: this browser's coordination
  * server setting cannot be read, so the re-invite names the server the
- * exchange saved, and that address fails the validation a run applies. */
-export type ManagedReinviteFailureCause = "saved-server-refused" | "other";
+ * exchange saved, and that address fails the validation a run applies.
+ * `secret-changed`: a run rotated the secret after this page read it, so the
+ * store refused the mint's write over a secret it did not hold. */
+export type ManagedReinviteFailureCause =
+  "saved-server-refused" | "secret-changed" | "other";
 
-/** The mint's last request. `refused-by-run` is the mint's own write meeting a
- * run's lock, which the poll's last reading was too old to see. */
+/** The mint's last request. */
 export type ManagedReinviteRequest =
   | { kind: "idle" }
   | { kind: "minting" }
-  | { kind: "failed"; cause: ManagedReinviteFailureCause }
-  | { kind: "refused-by-run" };
+  | { kind: "failed"; cause: ManagedReinviteFailureCause };
 
 /** The alert a failed mint shows beside the control that asked for it. */
 export interface ManagedReinviteFailureAlert {
@@ -53,6 +54,12 @@ export const MANAGED_REINVITE_FAILURE_ALERTS: Readonly<
       "coordination server address this exchange saved cannot be used. Set " +
       "your coordination server again or clear it in relay settings first, " +
       "then try again.",
+  },
+  "secret-changed": {
+    title: "Could not create a fresh invitation",
+    message:
+      "This exchange ran while the invitation was being made, so nothing " +
+      "was saved and no invitation was made. Try again.",
   },
   other: {
     title: "Could not create a fresh invitation",
@@ -136,17 +143,14 @@ export type ManagedRecoveryAction =
   | { type: "standing-clear-failed" }
   | { type: "reinvite-started"; site: ManagedReinviteSite }
   | { type: "reinvite-composed"; reinvite: ManagedReinvite }
-  /** The recheck before the mint found a run; the in-flight reading states it. */
-  | { type: "reinvite-held-by-run" }
-  | { type: "reinvite-refused-by-run" }
   /** The store refused the mint over a compromise answer this page had not read. */
   | { type: "reinvite-withheld" }
   | { type: "reinvite-failed"; cause: ManagedReinviteFailureCause };
 
 /** The recovery's reducer. A run start drops the last run's grant, its composed
  * re-invite, a failed mint and an unsaved compromise answer; it keeps the store's
- * withhold, the failure an answer was given at, a run's refusal of the mint, and
- * the standing condition's clearance. */
+ * withhold, the failure an answer was given at, and the standing condition's
+ * clearance. */
 export function managedRecoveryReducer(
   state: ManagedRecoveryState,
   action: ManagedRecoveryAction,
@@ -250,16 +254,6 @@ export function managedRecoveryReducer(
           composed: action.reinvite,
         },
       };
-    case "reinvite-held-by-run":
-      return {
-        ...state,
-        reinvite: { ...state.reinvite, request: { kind: "idle" } },
-      };
-    case "reinvite-refused-by-run":
-      return {
-        ...state,
-        reinvite: { ...state.reinvite, request: { kind: "refused-by-run" } },
-      };
     case "reinvite-withheld":
       return {
         ...state,
@@ -312,15 +306,6 @@ export function managedReinviteInFlight(
   recovery: ManagedRecoveryState,
 ): boolean {
   return recovery.reinvite.request.kind === "minting";
-}
-
-/** Whether a run holds the mint back: the polled reading, or the mint's own
- * refusal. The refusal states the reason; it disables nothing. */
-export function managedRunHoldsReinvite(
-  recovery: ManagedRecoveryState,
-  runInFlight: boolean,
-): boolean {
-  return runInFlight || recovery.reinvite.request.kind === "refused-by-run";
 }
 
 /** The mint's failed alert at `site`, or `undefined` where none shows: it shows

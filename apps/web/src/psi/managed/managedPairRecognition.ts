@@ -42,8 +42,9 @@ export interface ManagedPairImportOptions {
  *
  * - `"complete"` -- lay the pair over the configuration-only record the
  *   operator chose.
- * - `"replace"` -- replace the runnable record the operator chose, a write
- *   the store makes under that record's run lock, outside this decision.
+ * - `"replace"` -- replace the runnable record the operator chose, over the
+ *   `sharedSecret` it holds here, a write the store makes under that record's
+ *   run lock, outside this decision.
  * - `"stored-copy"` -- `copies` may be its exchange; nothing lands until the
  *   operator answers.
  * - `"chosen-copy-changed"` -- the record the operator chose can no longer
@@ -52,7 +53,7 @@ export interface ManagedPairImportOptions {
  */
 export type ManagedPairTarget =
   | { kind: "complete"; into: ManagedExchangeRecord }
-  | { kind: "replace"; id: string }
+  | { kind: "replace"; id: string; sharedSecret: string }
   | { kind: "stored-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
   | { kind: "chosen-copy-changed" }
   | { kind: "no-match" };
@@ -91,8 +92,8 @@ export function decideCommandLinePairTarget(
       ({ id }) => id === options.into,
     );
     if (chosen === undefined) return { kind: "chosen-copy-changed" };
-    return storedCopyState(chosen) === "runs-here"
-      ? { kind: "replace", id: chosen.id }
+    return runnableManagedExchange(chosen)
+      ? { kind: "replace", id: chosen.id, sharedSecret: chosen.sharedSecret }
       : { kind: "complete", into: chosen };
   }
   const copies = findRecordsByTermsAndSide(

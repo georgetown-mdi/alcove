@@ -11,6 +11,7 @@ import {
   MANAGED_EXCHANGE_LOCAL_STORE_NAME,
   MANAGED_EXCHANGE_RESULTS_STORE_NAME,
   MANAGED_EXCHANGE_STORE_NAME,
+  ManagedExchangeSecretChangedError,
   clearManagedExchangeStandingCondition,
   clearManagedExchanges,
   createManagedExchange,
@@ -19,7 +20,9 @@ import {
   listManagedExchanges,
   listManagedExchangesDiagnostic,
   listReadableManagedExchanges,
+  markManagedExchangeRotationInFlight,
   openManagedExchangeDatabase,
+  persistManagedExchangeReinvite,
   persistManagedExchangeRotation,
   persistManagedExchangeScheduleAdvance,
   putManagedExchange,
@@ -511,10 +514,14 @@ describe("field-scoped rotation write", () => {
       newExchange({ label: "Riverbend quarterly" }),
     );
     const rotatedSecret = generateSharedSecret();
-    const rotated = await persistManagedExchangeRotation(created.id, {
-      sharedSecret: rotatedSecret,
-      expires: "2026-10-06T14:00:00.000Z",
-    });
+    const rotated = await persistManagedExchangeRotation(
+      created.id,
+      created.sharedSecret,
+      {
+        sharedSecret: rotatedSecret,
+        expires: "2026-10-06T14:00:00.000Z",
+      },
+    );
     expect(rotated.sharedSecret).toBe(rotatedSecret);
     expect(rotated.expires).toBe("2026-10-06T14:00:00.000Z");
     expect(rotated.label).toBe("Riverbend quarterly");
@@ -529,10 +536,14 @@ describe("field-scoped rotation write", () => {
       newExchange({ expires: "2026-04-06T14:00:00.000Z" }),
     );
     const rotatedSecret = generateSharedSecret();
-    const rotated = await persistManagedExchangeRotation(created.id, {
-      sharedSecret: rotatedSecret,
-      expires: null,
-    });
+    const rotated = await persistManagedExchangeRotation(
+      created.id,
+      created.sharedSecret,
+      {
+        sharedSecret: rotatedSecret,
+        expires: null,
+      },
+    );
     expect(rotated.expires).toBeUndefined();
     expect((await getManagedExchange(created.id))?.expires).toBeUndefined();
   });
@@ -548,10 +559,14 @@ describe("field-scoped rotation write", () => {
       label: "edited after create",
     });
     const rotatedSecret = generateSharedSecret();
-    const rotated = await persistManagedExchangeRotation(created.id, {
-      sharedSecret: rotatedSecret,
-      expires: null,
-    });
+    const rotated = await persistManagedExchangeRotation(
+      created.id,
+      created.sharedSecret,
+      {
+        sharedSecret: rotatedSecret,
+        expires: null,
+      },
+    );
     expect(rotated.sharedSecret).toBe(rotatedSecret);
     expect(rotated.label).toBe("edited after create");
   });
@@ -559,7 +574,7 @@ describe("field-scoped rotation write", () => {
   test("a malformed rotated secret aborts and writes nothing", async () => {
     const created = await createRunnableExchange(newExchange());
     await expect(
-      persistManagedExchangeRotation(created.id, {
+      persistManagedExchangeRotation(created.id, created.sharedSecret, {
         sharedSecret: "not-a-secret",
         expires: null,
       }),
@@ -576,7 +591,7 @@ describe("field-scoped rotation write", () => {
       newExchange({ sharedSecret: undefined }),
     );
     await expect(
-      persistManagedExchangeRotation(created.id, {
+      persistManagedExchangeRotation(created.id, generateSharedSecret(), {
         sharedSecret: generateSharedSecret(),
         expires: null,
       }),
@@ -588,11 +603,83 @@ describe("field-scoped rotation write", () => {
 
   test("rotating a missing id rejects", async () => {
     await expect(
-      persistManagedExchangeRotation("no-such-id", {
+      persistManagedExchangeRotation("no-such-id", generateSharedSecret(), {
         sharedSecret: generateSharedSecret(),
         expires: null,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("the secret writes compare the secret they replace", () => {
+  // A run's rotation and a re-invite each name the secret their operation began
+  // from, and the write refuses where the record read inside its transaction
+  // holds another. Whichever lands second refuses, so the record holds the
+  // secret of the one that landed first and nothing of the other.
+  const reinviteRotation = (sharedSecret: string) => ({
+    sharedSecret,
+    expires: null,
+    signalingServer: { host: "signaling.example.org" },
+  });
+
+  test("a rotation over a secret a re-invite replaced refuses and writes nothing", async () => {
+    const created = await createRunnableExchange(newExchange());
+    const reinvited = generateSharedSecret();
+    await persistManagedExchangeReinvite(
+      created.id,
+      created.sharedSecret,
+      reinviteRotation(reinvited),
+    );
+    const before = await getManagedExchange(created.id);
+
+    await expect(
+      persistManagedExchangeRotation(created.id, created.sharedSecret, {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      }),
+    ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
+    expect(await getManagedExchange(created.id)).toEqual(before);
+    expect(before?.sharedSecret).toBe(reinvited);
+  });
+
+  test("a re-invite over a secret a rotation replaced refuses and writes nothing", async () => {
+    const created = await createRunnableExchange(newExchange());
+    const rotated = generateSharedSecret();
+    await persistManagedExchangeRotation(created.id, created.sharedSecret, {
+      sharedSecret: rotated,
+      expires: null,
+    });
+    const before = await getManagedExchange(created.id);
+
+    await expect(
+      persistManagedExchangeReinvite(
+        created.id,
+        created.sharedSecret,
+        reinviteRotation(generateSharedSecret()),
+      ),
+    ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
+    expect(await getManagedExchange(created.id)).toEqual(before);
+    expect(before?.sharedSecret).toBe(rotated);
+  });
+
+  test("the rotation-in-flight marker over a changed secret refuses and writes nothing", async () => {
+    const created = await createRunnableExchange(newExchange());
+    await persistManagedExchangeReinvite(
+      created.id,
+      created.sharedSecret,
+      reinviteRotation(generateSharedSecret()),
+    );
+    const before = await getManagedExchange(created.id);
+
+    await expect(
+      markManagedExchangeRotationInFlight(
+        created.id,
+        created.sharedSecret,
+        new Date().toISOString(),
+      ),
+    ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
+    expect(await getManagedExchange(created.id)).toEqual(before);
+    expect(before).not.toHaveProperty("rotationInFlightSince");
   });
 });
 
@@ -618,7 +705,7 @@ describe("field-scoped lastRun write", () => {
   test("recording an outcome cannot revert a concurrent rotation write", async () => {
     const created = await createRunnableExchange(newExchange());
     const rotatedSecret = generateSharedSecret();
-    await persistManagedExchangeRotation(created.id, {
+    await persistManagedExchangeRotation(created.id, created.sharedSecret, {
       sharedSecret: rotatedSecret,
       expires: null,
     });
@@ -693,7 +780,10 @@ describe("field-scoped compromise response write", () => {
   test("answering cannot revert a concurrent rotation write", async () => {
     const id = await withFailedHandshake();
     const rotatedSecret = generateSharedSecret();
-    await persistManagedExchangeRotation(id, {
+    const stored = await getManagedExchange(id);
+    if (stored?.sharedSecret === undefined)
+      throw new Error("the fixture holds no secret");
+    await persistManagedExchangeRotation(id, stored.sharedSecret, {
       sharedSecret: rotatedSecret,
       expires: null,
     });
@@ -806,7 +896,7 @@ describe("atomic schedule advance", () => {
   test("advancing cannot revert a concurrent rotation write", async () => {
     const created = await createRunnableExchange(newExchange({ schedule }));
     const rotatedSecret = generateSharedSecret();
-    await persistManagedExchangeRotation(created.id, {
+    await persistManagedExchangeRotation(created.id, created.sharedSecret, {
       sharedSecret: rotatedSecret,
       expires: null,
     });

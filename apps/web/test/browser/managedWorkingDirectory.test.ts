@@ -265,13 +265,18 @@ describe("the backup a scheduled run takes after its rotation", () => {
   /** A stored exchange holding `folder` as its working folder, rotated once
    * the way a completed run rotates it, which clears any backup marker. */
   async function rotatedExchangeIn(folder: FileSystemDirectoryHandle) {
+    const sharedSecret = generateSharedSecret();
     const created = await createManagedExchange(
-      newExchange({ workingDirectoryHandle: folder }),
+      newExchange({ workingDirectoryHandle: folder, sharedSecret }),
     );
-    const rotated = await persistManagedExchangeRotation(created.id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = await persistManagedExchangeRotation(
+      created.id,
+      sharedSecret,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+    );
     return { created, rotated };
   }
 
@@ -334,10 +339,14 @@ describe("the backup a scheduled run takes after its rotation", () => {
     const previous = automaticBackupOnMarker(
       (await getManagedLocalState(rotated.id))?.backup,
     );
-    const next = await persistManagedExchangeRotation(rotated.id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const next = await persistManagedExchangeRotation(
+      rotated.id,
+      rotated.sharedSecret,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+    );
     const second = await backUpUnattendedRun(
       rotated.id,
       {

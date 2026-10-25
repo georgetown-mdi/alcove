@@ -3,9 +3,9 @@
  * the blob download, and the local sibling-state writes. No export writes
  * anything but the backup marker: the stored exchange stays runnable here.
  *
- * - A BACKUP export, under the run's own lock, reads the current record,
- *   serializes it, and stamps the backup marker in one atomic store step,
- *   then downloads exactly those bytes. A run in flight refuses it.
+ * - A BACKUP export reads the current record, serializes it, and stamps the
+ *   backup marker in one atomic store step, then downloads exactly those
+ *   bytes.
  * - A FOLDER backup, which a scheduled run takes after its rotation, writes
  *   the same bytes into the granted working folder under a name holding the
  *   exchange's label, stamps the marker after the write lands, only while the
@@ -14,16 +14,15 @@
  * - A COMMAND-LINE export downloads the CLI's own two files
  *   ({@link composeManagedCronExport}) instead of the artifact and writes
  *   nothing: no backup marker, since what it downloads is not the artifact.
- *   It reads and downloads under the run's own lock, so a run in flight
- *   refuses it.
  *
- * The run lock keeps both downloads from holding a secret a run in flight is
- * about to rotate. The backup composes what it downloads INSIDE the
- * read-and-mark step: the marker can never attest bytes nothing produced.
+ * Neither download takes the run lock, so one taken while a run is in flight
+ * can hold the secret that run replaces; the run's rotation clears the backup
+ * marker, and its completion offers the updated backup. The backup composes
+ * what it downloads INSIDE the read-and-mark step: the marker can never attest
+ * bytes nothing produced.
  *
- * The boundaries (the run lock, read-and-mark, the non-marking read by id,
- * the download) are injected so the intents are testable without a real
- * download or database.
+ * The boundaries (read-and-mark, the non-marking read by id, the download) are
+ * injected so the intents are testable without a real download or database.
  */
 
 import { exchangeLabelFileFragment } from "../parkedResults";
@@ -73,9 +72,6 @@ export function managedBackupFileName(label: string, at: Date): string {
 /** The platform boundaries a backup export drives, injected so the intent stays
  * pure and testable. */
 export interface ManagedExportDeps {
-  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it,
-   * so the backup never holds a secret a run in flight is about to rotate. */
-  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
   /** Read the current stored record for `id`, run `composeExport` on it, and stamp
    * its backup marker as of `backedUpAt`, saved as the location `composeExport`
    * returns, in one atomic step, returning the record read. `composeExport`
@@ -116,8 +112,8 @@ interface ManagedBackupResult {
 }
 
 /**
- * Export a record as a BACKUP: under the record's run+rotate lock, one clock
- * read, then the store's read-serialize-and-mark by id, then the download of
+ * Export a record as a BACKUP: one clock read, then the store's
+ * read-serialize-and-mark by id, then the download of
  * exactly those bytes. Reading by id (not a caller-held record) keeps a stale
  * tab or pre-rotation snapshot from being what the export serializes, or what
  * its file name states. A step that resolves without serializing fails the
@@ -127,19 +123,10 @@ interface ManagedBackupResult {
  * Returns the mark instant, the file name, and the record read, so the host
  * renders the same instant it persisted.
  *
- * @throws {ManagedExchangeLockUnavailableError} if a run of the record holds
- *   the lock; nothing is read, marked, or downloaded.
  * @throws {Error} if no record with `id` exists.
  * @throws {ZodError} if the stored record or its sibling entry is invalid.
  */
 export async function exportManagedBackup(
-  id: string,
-  deps: ManagedExportDeps,
-): Promise<ManagedBackupResult> {
-  return deps.withLock(id, () => readMarkAndDownload(id, deps));
-}
-
-async function readMarkAndDownload(
   id: string,
   deps: ManagedExportDeps,
 ): Promise<ManagedBackupResult> {
@@ -330,16 +317,13 @@ export async function backUpManagedExchangeToFolder(
   }
 }
 
-/** The platform boundaries the command-line export drives: the record's run+rotate
- * lock, a NON-STAMPING read of the record by id (this export marks no backup
- * marker -- see the module header) and a download that takes each composed file's
- * own media type -- the two files land as the YAML and JSON documents the CLI
- * opens, not as one artifact blob. No store write is among them, so the export
- * cannot change the stored record. */
+/** The platform boundaries the command-line export drives: a NON-STAMPING read
+ * of the record by id (this export marks no backup marker -- see the module
+ * header) and a download that takes each composed file's own media type -- the
+ * two files land as the YAML and JSON documents the CLI opens, not as one
+ * artifact blob. No store write is among them, so the export cannot change the
+ * stored record. */
 export interface ManagedCronExportDeps {
-  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it,
-   * so the key file never holds a secret a run in flight is about to rotate. */
-  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
   /** Read the current stored record for `id`, or `undefined` when none is stored.
    * Read at export time and never from a caller-held record, so a stale tab
    * composes the files the store's record has or none at all. */
@@ -352,9 +336,9 @@ export interface ManagedCronExportDeps {
 }
 
 /**
- * Export the CLI's two files: under the record's run+rotate lock, read the
- * current record by id, compose them from exactly that read, and download each
- * under its own name. Returns what the two downloads held.
+ * Export the CLI's two files: read the current record by id, compose them from
+ * exactly that read, and download each under its own name. Returns what the
+ * two downloads held.
  *
  * Nothing is written: no backup marker, since the two files are not the
  * artifact this app's backup import accepts, and nothing else, so the stored
@@ -364,8 +348,6 @@ export interface ManagedCronExportDeps {
  * record this app could not have composed); a refusal throws before any
  * download.
  *
- * @throws {ManagedExchangeLockUnavailableError} if a run of the record holds
- *   the lock; nothing is read or downloaded.
  * @throws {Error} if no record with `id` exists, or if the record is one
  *   the command-line export refuses ({@link composeManagedCronExport}).
  * @throws {ZodError} if the stored record is invalid.
@@ -374,16 +356,14 @@ export async function exportManagedCronFiles(
   id: string,
   deps: ManagedCronExportDeps,
 ): Promise<ManagedCronExport> {
-  return deps.withLock(id, async () => {
-    const stored = await deps.readRecord(id);
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const composed = composeManagedCronExport(
-      runnableManagedExchangeOrRefuse(stored),
-      deps.readOwn,
-    );
-    for (const file of [composed.config, composed.key])
-      deps.download(file.fileName, file.text, file.mimeType);
-    return composed;
-  });
+  const stored = await deps.readRecord(id);
+  if (stored === undefined)
+    throw new Error(`no managed exchange with id ${id}`);
+  const composed = composeManagedCronExport(
+    runnableManagedExchangeOrRefuse(stored),
+    deps.readOwn,
+  );
+  for (const file of [composed.config, composed.key])
+    deps.download(file.fileName, file.text, file.mimeType);
+  return composed;
 }

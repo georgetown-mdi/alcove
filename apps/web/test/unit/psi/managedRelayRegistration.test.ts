@@ -39,7 +39,6 @@ import {
   rerunFailureLastRun,
   runManagedRerun,
 } from "@psi/managed/managedRun";
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { persistManagedExchangeRotation } from "@psi/managed/managedExchangeStore";
 
 import type {
@@ -244,10 +243,11 @@ describe("which runs register", () => {
 describe("the rotation write", () => {
   test("stores the pending registration beside the rotated secret on a record that names a registrar, whether or not the run registers", async () => {
     stubGrantingWebLocks();
-    storedRecord.value = record({ relayRegistrar: REGISTRAR });
+    const stored = record({ relayRegistrar: REGISTRAR });
+    storedRecord.value = stored;
     const rotatedSecret = generateSharedSecret();
     await runManagedRerun(
-      storedRecord.value,
+      stored,
       {
         acquireInput: () => Promise.resolve("rows"),
         handshake: () =>
@@ -258,6 +258,7 @@ describe("the rotation write", () => {
     );
     expect(persistManagedExchangeRotation).toHaveBeenCalledWith(
       "record-under-test",
+      stored.sharedSecret,
       {
         sharedSecret: rotatedSecret,
         expires: null,
@@ -287,28 +288,38 @@ describe("the rotation write", () => {
       { now: () => NOW.getTime() },
     );
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
+      .calls[0]?.[2];
     expect(rotation).toHaveProperty(
       "relayRegistrationPendingSince",
       NOW.toISOString(),
     );
   });
 
-  test("stores none on an exchange that names no registrar", async () => {
+  test("stores it where an enrollment landed while the run was in flight", async () => {
     stubGrantingWebLocks();
-    storedRecord.value = record({});
-    await runManagedRerun(storedRecord.value, {
-      acquireInput: () => Promise.resolve("rows"),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
-    });
+    const atStart = record();
+    storedRecord.value = atStart;
+    const rotatedSecret = generateSharedSecret();
+    await runManagedRerun(
+      atStart,
+      {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () =>
+          Promise.resolve({ rotatedSecret, handshake: "carried" }),
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { now: () => NOW.getTime() },
+    );
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
-    expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
+      .calls[0]?.[2];
+    const enrolledMidRun = applyManagedExchangeRelayRegistrar(
+      atStart,
+      REGISTRAR,
+      atStart.sharedSecret,
+    );
+    const rotated = applyManagedExchangeRotation(enrolledMidRun, rotation);
+    expect(rotated.sharedSecret).toBe(rotatedSecret);
+    expect(rotated.relayRegistrationPendingSince).toBe(NOW.toISOString());
   });
 
   test("keeps a re-invite's reason beside the marker it sets, since no rotation recovers the key the registrar holds", () => {
@@ -326,21 +337,28 @@ describe("the rotation write", () => {
     expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
   });
 
-  test("stores none on a record that names no registrar", async () => {
+  test("stores none where the record the write reads names no registrar", async () => {
     stubGrantingWebLocks();
-    storedRecord.value = record();
-    await runManagedRerun(storedRecord.value, {
-      acquireInput: () => Promise.resolve("rows"),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
-    });
+    const stored = record();
+    storedRecord.value = stored;
+    await runManagedRerun(
+      stored,
+      {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () =>
+          Promise.resolve({
+            rotatedSecret: generateSharedSecret(),
+            handshake: "carried",
+          }),
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { now: () => NOW.getTime() },
+    );
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
-    expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
+      .calls[0]?.[2];
+    expect(applyManagedExchangeRotation(stored, rotation)).not.toHaveProperty(
+      "relayRegistrationPendingSince",
+    );
   });
 
   test("a rotation sets the pending registration it is given", () => {
@@ -843,35 +861,15 @@ describe("a cancelled run's registration", () => {
 });
 
 describe("stopping registration", () => {
-  test("drops the registrar under the run lock", async () => {
-    const steps: Array<string> = [];
+  test("drops the registrar of the record it names", async () => {
+    const removed: Array<string> = [];
     await stopManagedRelayRegistration("record-under-test", {
-      withLock: async <T>(_id: string, step: () => Promise<T>) => {
-        steps.push("locked");
-        const result = await step();
-        steps.push("released");
-        return result;
-      },
       removeRegistrar: (id) => {
-        steps.push(`removed ${id}`);
+        removed.push(id);
         return Promise.resolve(record());
       },
     });
-    expect(steps).toEqual(["locked", "removed record-under-test", "released"]);
-  });
-
-  test("is refused, and writes nothing, while a run holds the exchange", async () => {
-    const removeRegistrar = vi.fn(() => Promise.resolve(record()));
-    await expect(
-      stopManagedRelayRegistration("record-under-test", {
-        withLock: () =>
-          Promise.reject(
-            new ManagedExchangeLockUnavailableError("record-under-test"),
-          ),
-        removeRegistrar,
-      }),
-    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
-    expect(removeRegistrar).not.toHaveBeenCalled();
+    expect(removed).toEqual(["record-under-test"]);
   });
 });
 
@@ -939,16 +937,10 @@ describe("enrollment", () => {
   ) {
     const registrar = fakeRegistrar(answers);
     const persisted: Array<Array<unknown>> = [];
-    let locked = 0;
     return {
       registrar,
       persisted,
-      lockCount: () => locked,
       deps: {
-        withLock: <T>(_id: string, step: () => Promise<T>) => {
-          locked++;
-          return step();
-        },
         getRecord: () => Promise.resolve(current),
         persistRegistrar: (
           id: string,
@@ -980,7 +972,6 @@ describe("enrollment", () => {
       run.deps,
     );
 
-    expect(run.lockCount()).toBe(1);
     expect(run.registrar.sent).toHaveLength(1);
     expect(run.registrar.sent[0]?.method).toBe("POST");
     expect(run.registrar.sent[0]?.authorization).toBe(`Bearer ${OWNER_TOKEN}`);

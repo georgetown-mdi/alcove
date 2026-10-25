@@ -25,14 +25,15 @@ import {
   runManagedRerun,
 } from "@psi/managed/managedRun";
 import {
-  ManagedInputError,
-  managedInputFailureKind,
-} from "@psi/managed/managedInputGuard";
-import {
+  ManagedExchangeSecretChangedError,
   markManagedExchangeRotationInFlight,
   persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
+import {
+  ManagedInputError,
+  managedInputFailureKind,
+} from "@psi/managed/managedInputGuard";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
@@ -303,7 +304,7 @@ describe("runManagedRerun: the record a run uses", () => {
     storedRecord.value = heldCopy;
     const rotatedSecret = generateSharedSecret();
     vi.mocked(persistManagedExchangeRotation).mockImplementationOnce(
-      (_id, rotation) => {
+      (_id, _expected, rotation) => {
         const rotated = runnableManagedExchangeOrRefuse({
           ...heldCopy,
           sharedSecret: rotation.sharedSecret,
@@ -949,6 +950,55 @@ describe("runManagedRerun: a store write that fails", () => {
       outcome: "failed",
       failureKind: "storage",
     });
+  });
+
+  test.each([
+    ["the rotation-in-flight marker", markManagedExchangeRotationInFlight],
+    ["the rotation persist", persistManagedExchangeRotation],
+  ] as const)(
+    "%s refused over a secret a re-invite replaced: the run stops before the data exchange and stamps nothing",
+    async (_write, refusing) => {
+      stubGrantingWebLocks();
+      const changed = new ManagedExchangeSecretChangedError(
+        "record-under-test",
+      );
+      vi.mocked(refusing).mockRejectedValueOnce(changed);
+      let dataExchangeRan = false;
+
+      const error = await runManagedRerun(record(), {
+        ...completingSeams(),
+        dataExchange: () => {
+          dataExchangeRan = true;
+          return Promise.resolve("exchanged");
+        },
+      }).then(
+        () => undefined,
+        (reason: unknown) => reason,
+      );
+
+      expect(error).toBe(changed);
+      expect(dataExchangeRan).toBe(false);
+      expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
+      expect(benignRerunOutcome(error, false)).toBe("reinvited");
+      expect(
+        rerunFailureLastRun(error, Date.now(), false, false),
+      ).toBeUndefined();
+    },
+  );
+
+  test("both secret writes name the secret the run read inside the lock", async () => {
+    stubGrantingWebLocks();
+    const stored = record({ sharedSecret: HELD_SECRET });
+    storedRecord.value = stored;
+
+    await runManagedRerun(stored, completingSeams());
+
+    expect(
+      vi.mocked(markManagedExchangeRotationInFlight).mock.calls[0]?.[1],
+    ).toBe(HELD_SECRET);
+    expect(vi.mocked(persistManagedExchangeRotation).mock.calls[0]?.[1]).toBe(
+      HELD_SECRET,
+    );
   });
 
   test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {

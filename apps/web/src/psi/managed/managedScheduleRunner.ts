@@ -73,6 +73,7 @@ import {
 import { ManagedExchangeExpiredError } from "./managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "./managedExchangeRun";
+import { ManagedExchangeSecretChangedError } from "./managedExchangeStore";
 import { ManagedInputError } from "./managedInputGuard";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
 import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
@@ -634,8 +635,10 @@ interface ManagedScheduleWindowVerdict {
  * ({@link ./managedRunDriver.ts}); a partner who never arrives raises
  * {@link PartnerNoShowError} instead. A {@link RotationPersistError} is raised
  * only after that handshake has yielded the rotated secret
- * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`). Any failure
- * past the data-exchange phase boundary postdates both.
+ * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`). A
+ * {@link ManagedExchangeSecretChangedError} is raised by the marker write the
+ * run makes once the partner has connected, or by that rotation write. Any
+ * failure past the data-exchange phase boundary postdates all of them.
  *
  * Every other failure the mapper classifies -- a lapsed bound, a stored copy
  * the run cannot use, an unusable input, a terms
@@ -650,6 +653,7 @@ function attemptProvesContact(
   return (
     dataExchangeStarted ||
     error instanceof RotationPersistError ||
+    error instanceof ManagedExchangeSecretChangedError ||
     isTrustBoundaryFailure(classifyFailure(error))
   );
 }
@@ -672,7 +676,9 @@ function attemptProvesContact(
  * failure -- a lapsed bound, a stored copy the run cannot use, a
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
- * failed rotation persist, or a handshake that failed closed -- reproduces
+ * failed rotation persist, a secret a re-invite replaced, whose fresh secret
+ * the partner holds only once they accept the invitation, or a handshake that
+ * failed closed -- reproduces
  * identically on the next attempt, so it ends the window's occupancy where it
  * happened. Such a refusal counts no partner miss on its own, but a window
  * that already found the partner absent still folds to `"missed"` (see
@@ -722,6 +728,7 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedSignalingEndpointRefusedError ||
     error instanceof ManagedInputError ||
     error instanceof LinkageTermsUnsatisfiableError ||
+    error instanceof ManagedExchangeSecretChangedError ||
     (error instanceof ManagedRelayRegistrationError &&
       error.outcome.kind !== "unavailable")
   )

@@ -23,7 +23,6 @@ import {
   managedReinviteRecoveryCopy,
   managedRunReinvites,
 } from "./managedRunLaunchModel";
-import { REINVITE_RUN_IN_FLIGHT_REASON } from "./managedReinviteGate";
 import { STANDING_CONDITION_CLEAR_LABEL } from "./managedStandingConditionModel";
 
 import type { Ref } from "react";
@@ -40,8 +39,6 @@ interface FailureRecoveryProps {
   record: ManagedExchangeRecord;
   confirmationGated: boolean;
   reinviting: boolean;
-  runInFlight: boolean;
-  runHoldsReinvite: boolean;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
   onResolveConfirmation: (
@@ -62,8 +59,6 @@ export function FailureRecovery({
   record,
   confirmationGated,
   reinviting,
-  runInFlight,
-  runHoldsReinvite,
   reinviteFailure,
   onReinvite,
   onResolveConfirmation,
@@ -77,8 +72,6 @@ export function FailureRecovery({
         <ReinviteRecovery
           record={record}
           reinviting={reinviting}
-          runInFlight={runInFlight}
-          runHoldsReinvite={runHoldsReinvite}
           reinviteFailure={reinviteFailure}
           onReinvite={onReinvite}
         />
@@ -97,8 +90,6 @@ export function FailureRecovery({
       <ReinviteRecovery
         record={record}
         reinviting={reinviting}
-        runInFlight={runInFlight}
-        runHoldsReinvite={runHoldsReinvite}
         reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
       />
@@ -189,8 +180,6 @@ interface StandingConditionSectionProps {
   clearing: boolean;
   clearFailed: boolean;
   reinviting: boolean;
-  runInFlight: boolean;
-  runHoldsReinvite: boolean;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   /** Whether the live failure above holds the re-invite: it offers the mint itself,
    * or it holds the gate deciding whether one happens. Either way this section shows
@@ -229,8 +218,6 @@ export function StandingConditionSection({
   clearing,
   clearFailed,
   reinviting,
-  runInFlight,
-  runHoldsReinvite,
   reinviteFailure,
   reinviteHeldByFailure,
   onReinvite,
@@ -244,8 +231,6 @@ export function StandingConditionSection({
       <ReinviteRecovery
         record={record}
         reinviting={reinviting}
-        runInFlight={runInFlight}
-        runHoldsReinvite={runHoldsReinvite}
         reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
       />
@@ -277,8 +262,6 @@ export function StandingConditionSection({
             <ReinviteRecovery
               record={record}
               reinviting={reinviting}
-              runInFlight={runInFlight}
-              runHoldsReinvite={runHoldsReinvite}
               reinviteFailure={reinviteFailure}
               onReinvite={onReinvite}
             />
@@ -301,14 +284,6 @@ export function StandingConditionSection({
 interface ReinviteRecoveryProps {
   record: ManagedExchangeRecord;
   reinviting: boolean;
-  /** Whether a run of this exchange is under way anywhere this browser profile
-   * can see. The mint replaces the secret that run is connecting on, so the
-   * control waits it out. */
-  runInFlight: boolean;
-  /** That same reading, or the mint write's own refusal when a run held the lock
-   * at it. It states the reason; it does not disable the control, which the
-   * reading gives back when the run ends. */
-  runHoldsReinvite: boolean;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
 }
@@ -323,8 +298,6 @@ interface ReinviteRecoveryProps {
 function ReinviteRecovery({
   record,
   reinviting,
-  runInFlight,
-  runHoldsReinvite,
   reinviteFailure,
   onReinvite,
 }: ReinviteRecoveryProps) {
@@ -349,17 +322,9 @@ function ReinviteRecovery({
               {reinviteFailure.message}
             </Alert>
           )}
-          <Button
-            mt="sm"
-            onClick={onReinvite}
-            loading={reinviting}
-            disabled={runInFlight}
-          >
+          <Button mt="sm" onClick={onReinvite} loading={reinviting}>
             Create a fresh invitation
           </Button>
-          {runHoldsReinvite && (
-            <p className={styles.small}>{REINVITE_RUN_IN_FLIGHT_REASON}</p>
-          )}
         </>
       )}
     </div>

@@ -11,7 +11,7 @@ import { useHashTarget } from "@components/useHashTarget";
 
 import {
   EXPORT_LEAVES_ACCOUNTING_NOTE,
-  RUN_IN_FLIGHT_EXPORT_REASON,
+  RUN_IN_FLIGHT_EXPORT_NOTE,
   runElsewhereNotice,
 } from "./managedCronExportModel";
 import {
@@ -44,9 +44,9 @@ interface BackupPanelProps {
   marker: ManagedBackupMarker | undefined;
   busy: boolean;
   failed: boolean;
-  /** Whether a run of this exchange is in flight in any context. The download is
-   * withheld while it is, as the command-line export's is: the run changes the
-   * secret the file would hold ({@link RUN_IN_FLIGHT_EXPORT_REASON}). */
+  /** Whether a run of this exchange is in flight in any context. The download
+   * stays offered, with a note, as the command-line export's does: the run
+   * replaces the secret the file holds ({@link RUN_IN_FLIGHT_EXPORT_NOTE}). */
   runInFlight: boolean;
   /** Whether this copy has a schedule on, which the notice beside the download
    * names. */
@@ -109,17 +109,11 @@ export function BackupPanel({
           Nothing changed here; try again.
         </Alert>
       )}
-      <Button
-        mt="sm"
-        variant="default"
-        onClick={onBackUp}
-        loading={busy}
-        disabled={runInFlight}
-      >
+      <Button mt="sm" variant="default" onClick={onBackUp} loading={busy}>
         Download a backup
       </Button>
       {runInFlight && (
-        <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
+        <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_NOTE}</p>
       )}
     </div>
   );

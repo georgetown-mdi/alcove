@@ -104,13 +104,10 @@ import {
   projectedResultSizeWarning,
 } from "./parkedResultsModel";
 import {
-  REINVITE_COMPROMISE_REASON,
-  REINVITE_RUN_IN_FLIGHT_REASON,
-} from "./managedReinviteGate";
-import {
   REPEATED_MISS_TITLE,
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
+import { REINVITE_COMPROMISE_REASON } from "./managedReinviteGate";
 
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
@@ -176,8 +173,6 @@ export function ManagedExchangeDetail({
   onRelayRegistrationChanged,
   canReinvite,
   compromiseResponse,
-  runInFlight,
-  runHoldsReinvite,
   reinviting,
   reinviteFailure,
 }: {
@@ -257,14 +252,6 @@ export function ManagedExchangeDetail({
    * {@link ./ManagedRunRecovery.tsx}). The terms re-invite is withheld under one: it
    * mints a fresh secret on the channel they flagged. */
   compromiseResponse: boolean;
-  /** Whether a run of this exchange is under way anywhere this browser profile can
-   * see. The terms re-invite waits it out: the mint replaces the secret the run is
-   * connecting on. */
-  runInFlight: boolean;
-  /** That same reading, or the mint write's own refusal when a run held the lock at
-   * it. It states the reason; it does not disable the control, which the reading
-   * gives back when the run ends (see {@link ./ManagedRunRecovery.tsx}). */
-  runHoldsReinvite: boolean;
   /** Whether a re-invite is in flight, so the terms button shows loading. Shared
    * with the run surface's own re-invite state (see {@link ./ManagedRunSurface.tsx}),
    * so an in-flight re-invite displays the same on a healthy exchange as on a failed one. */
@@ -311,22 +298,15 @@ export function ManagedExchangeDetail({
         onReinviteToChangeTerms={onReinviteToChangeTerms}
         canReinvite={canReinvite}
         compromiseResponse={compromiseResponse}
-        runInFlight={runInFlight}
-        runHoldsReinvite={runHoldsReinvite}
         reinviting={reinviting}
         reinviteFailure={reinviteFailure}
       />
       {runnableManagedExchange(record) && (
-        <ManagedTermsUpdate
-          record={record}
-          runInFlight={runInFlight}
-          onChanged={onTermsChanged}
-        />
+        <ManagedTermsUpdate record={record} onChanged={onTermsChanged} />
       )}
       {runnableManagedExchange(record) && relayRegistrationShown && (
         <ManagedRelayRegistration
           record={record}
-          runInFlight={runInFlight}
           onChanged={onRelayRegistrationChanged}
         />
       )}
@@ -399,17 +379,14 @@ export function ConfigRowItem({ row }: { row: ConfigRow }) {
  * invitation; the acceptor is told the terms cannot change by re-invite, and
  * that other terms mean a new exchange from the partner. It is withheld while a compromise
  * response stands -- minting would put a fresh secret on a channel the operator
- * has flagged -- and while a run is in flight, whose secret the mint replaces
- * ({@link ./managedReinviteGate.ts} holds both reasons, shared with the failure
- * recovery's own control).
+ * has flagged ({@link ./managedReinviteGate.ts} holds the reason, shared with the
+ * failure recovery).
  */
 function ConfigurationView({
   record,
   onReinviteToChangeTerms,
   canReinvite,
   compromiseResponse,
-  runInFlight,
-  runHoldsReinvite,
   reinviting,
   reinviteFailure,
 }: {
@@ -417,8 +394,6 @@ function ConfigurationView({
   onReinviteToChangeTerms: () => void;
   canReinvite: boolean;
   compromiseResponse: boolean;
-  runInFlight: boolean;
-  runHoldsReinvite: boolean;
   reinviting: boolean;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
 }) {
@@ -466,16 +441,12 @@ function ConfigurationView({
             variant="default"
             onClick={onReinviteToChangeTerms}
             loading={reinviting}
-            disabled={compromiseResponse || runInFlight}
+            disabled={compromiseResponse}
           >
             Re-invite with the same terms
           </Button>
-          {compromiseResponse ? (
+          {compromiseResponse && (
             <p className={styles.small}>{REINVITE_COMPROMISE_REASON}</p>
-          ) : (
-            runHoldsReinvite && (
-              <p className={styles.small}>{REINVITE_RUN_IN_FLIGHT_REASON}</p>
-            )
           )}
         </>
       ) : (

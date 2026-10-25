@@ -28,10 +28,6 @@ import {
   persistManagedExchangeSentColumns,
   persistManagedExchangeTermsChange,
 } from "./managedExchangeStore";
-import {
-  managedExchangeRunLockHeld,
-  withManagedExchangeLock,
-} from "./managedExchangeLock";
 import { clearManagedExchangeTermsProposal } from "./managedLocalState";
 import { managedExchangeLapsed } from "./managedExpiry";
 
@@ -49,12 +45,9 @@ import type {
 
 /**
  * Save which of the exchange's offered columns it sends
- * (`applyManagedExchangeSentColumns`). Held under the run lock without
- * waiting: a run of this exchange in flight refuses the save rather than
- * having its terms rewritten under it.
+ * (`applyManagedExchangeSentColumns`). Takes no lock: a run in flight runs the
+ * terms it read when it took its lock, and the next run states the saved set.
  *
- * @throws {ManagedExchangeLockUnavailableError} while a run holds the lock;
- *   nothing is written.
  * @throws {UsageError} where the exchange offers no such choice.
  * @throws {ZodError} if the resulting record is invalid; nothing is written.
  */
@@ -62,28 +55,21 @@ export async function saveManagedSentColumns(
   id: string,
   sent: ReadonlyArray<string>,
 ): Promise<ManagedExchangeRecord> {
-  return withManagedExchangeLock(
-    id,
-    () => persistManagedExchangeSentColumns(id, sent),
-    { ifAvailable: true },
-  );
+  return persistManagedExchangeSentColumns(id, sent);
 }
 
 /** Why a terms update is not made from an exchange. */
-export type ManagedTermsUpdateRefusal =
-  "lapsed" | "no-identity" | "run-in-flight";
+export type ManagedTermsUpdateRefusal = "lapsed" | "no-identity";
 
 /**
  * Why a terms update cannot be made from `record` at `now`, or null where it
- * can: a lapsed secret cannot authenticate one; terms naming no identity for
- * this party (`unnamedPartyIdentity`) leave the partner's apply no way to tell
- * the update from its own; and a run in flight is about to replace the secret
- * the update would be made under.
+ * can: a lapsed secret cannot authenticate one, and terms naming no identity
+ * for this party (`unnamedPartyIdentity`) leave the partner's apply no way to
+ * tell the update from its own.
  */
 export function managedTermsUpdateRefusal(
   record: ManagedExchangeRecord,
   now: number,
-  runInFlight: boolean,
 ): ManagedTermsUpdateRefusal | null {
   if (managedExchangeLapsed(record, now)) return "lapsed";
   if (
@@ -91,7 +77,6 @@ export function managedTermsUpdateRefusal(
     undefined
   )
     return "no-identity";
-  if (runInFlight) return "run-in-flight";
   return null;
 }
 
@@ -108,19 +93,14 @@ export class ManagedTermsUpdateRefusedError extends Error {
  * `alcove update` prints for a configuration holding the same terms and
  * metadata under the same shared secret, since both compose it through
  * core's `termsUpdateFor`. Refused as {@link managedTermsUpdateRefusal}
- * decides at the time of the call, with a run in flight read from the run
- * lock.
+ * decides at the time of the call.
  *
  * @throws {ManagedTermsUpdateRefusedError} where it is refused.
  */
 export async function makeManagedTermsUpdate(
   record: RunnableManagedExchangeRecord,
 ): Promise<string> {
-  const refusal = managedTermsUpdateRefusal(
-    record,
-    Date.now(),
-    await managedExchangeRunLockHeld(record.id),
-  );
+  const refusal = managedTermsUpdateRefusal(record, Date.now());
   if (refusal !== null) throw new ManagedTermsUpdateRefusedError(refusal);
   const { linkageTerms, metadata } = record.exchangeFile;
   return encodeTermsUpdate(
@@ -186,13 +166,12 @@ export interface ManagedTermsUpdateReading {
 async function checkedTermsUpdate(
   record: RunnableManagedExchangeRecord,
   encoded: string,
-  runInFlight: boolean,
 ): Promise<{
   update: TermsUpdate;
   delta: TermsDelta;
   matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
 }> {
-  const refusal = managedTermsUpdateRefusal(record, Date.now(), runInFlight);
+  const refusal = managedTermsUpdateRefusal(record, Date.now());
   if (refusal !== null) throw new ManagedTermsUpdateNotAppliedError(refusal);
   let update: TermsUpdate;
   try {
@@ -251,10 +230,10 @@ async function checkedTermsUpdate(
 
 /**
  * Read a partner's terms update for `record`, as `alcove apply` checks one:
- * refused as {@link managedTermsUpdateRefusal} decides, with a run in flight
- * read from the run lock; decoded under the record's shared secret; refused
- * where it names this party's own identity, the exchange cannot hold its
- * terms, or a run under them would refuse. Nothing is written.
+ * refused as {@link managedTermsUpdateRefusal} decides; decoded under the
+ * record's shared secret; refused where it names this party's own identity,
+ * the exchange cannot hold its terms, or a run under them would refuse.
+ * Nothing is written.
  *
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
  */
@@ -266,7 +245,6 @@ export async function readManagedTermsUpdate(
   const { update, delta, matchingKeyTurnedOff } = await checkedTermsUpdate(
     record,
     encoded,
-    await managedExchangeRunLockHeld(record.id),
   );
   return {
     encoded,
@@ -280,10 +258,11 @@ export async function readManagedTermsUpdate(
  * Apply the partner's terms update `shown` holds to the stored exchange
  * (the `update` scope of `applyManagedExchangeTermsChange`), then drop any
  * terms change a scheduled run kept, which this answers. The stored record is
- * read and checked again under the lock, and applied only where the change is
- * still the one shown, the matched-key column it turns off included.
+ * read and checked again, and applied only where the change is still the one
+ * shown, the matched-key column it turns off included. Takes no lock: a run in
+ * flight runs the terms it read when it took its lock, and one that rotated
+ * the secret since the update was read refuses it here as `partnership`.
  *
- * @throws {ManagedExchangeLockUnavailableError} while a run holds the lock.
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
  * @throws {ZodError} if the resulting record is invalid.
  */
@@ -291,26 +270,20 @@ export async function applyManagedTermsUpdate(
   id: string,
   shown: ManagedTermsUpdateReading,
 ): Promise<ManagedExchangeRecord> {
-  return withManagedExchangeLock(
-    id,
-    async () => {
-      const stored = await getManagedExchange(id);
-      if (stored === undefined || !runnableManagedExchange(stored))
-        throw new ManagedTermsUpdateNotAppliedError("changed");
-      const current = await checkedTermsUpdate(stored, shown.encoded, false);
-      if (
-        JSON.stringify(current.delta) !== JSON.stringify(shown.delta) ||
-        current.matchingKeyTurnedOff !== shown.matchingKeyTurnedOff
-      )
-        throw new ManagedTermsUpdateNotAppliedError("changed");
-      const applied = await persistManagedExchangeTermsChange(id, {
-        scope: "update",
-        update: current.update,
-      });
-      // Best-effort: a proposal left behind is one the operator can decline.
-      await clearManagedExchangeTermsProposal(id).catch(() => undefined);
-      return applied;
-    },
-    { ifAvailable: true },
-  );
+  const stored = await getManagedExchange(id);
+  if (stored === undefined || !runnableManagedExchange(stored))
+    throw new ManagedTermsUpdateNotAppliedError("changed");
+  const current = await checkedTermsUpdate(stored, shown.encoded);
+  if (
+    JSON.stringify(current.delta) !== JSON.stringify(shown.delta) ||
+    current.matchingKeyTurnedOff !== shown.matchingKeyTurnedOff
+  )
+    throw new ManagedTermsUpdateNotAppliedError("changed");
+  const applied = await persistManagedExchangeTermsChange(id, {
+    scope: "update",
+    update: current.update,
+  });
+  // Best-effort: a proposal left behind is one the operator can decline.
+  await clearManagedExchangeTermsProposal(id).catch(() => undefined);
+  return applied;
 }

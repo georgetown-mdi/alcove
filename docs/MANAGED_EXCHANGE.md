@@ -870,7 +870,9 @@ tab, or a run you start while a scheduled one is under way, waits or is told a
 run is already in progress. During a scheduled window that lasts as long as the
 window does, since the app keeps waiting for your partner across it. A run that
 connects just before the window closes holds on until its exchange finishes,
-which can be after the window is over.
+which can be after the window is over. Only runs wait on each other: the
+downloads, the terms and relay controls, and a re-invite all stay available
+while a run is under way.
 
 ### Moving the exchange to another device
 
@@ -905,15 +907,11 @@ entry that keeps its run history and accounting of disclosures (see [Eviction
 recovery is the import flow](#eviction-recovery-is-the-import-flow)).
 
 Both downloads -- the backup and the [command-line
-files](#exporting-to-the-command-line) -- are withheld while this tab is
-running the exchange, and while a run in any other context holds the
-[single-writer lock](#when-a-run-is-already-in-progress), which is how a second
-tab's run or a scheduled one reaches them: a file downloaded during a run would
-hold the secret that run is about to replace. The page names the run as the
-reason beside each, and both return when the run ends and releases its lock.
-If a run starts after the page last checked, the download is refused in the
-same words, nothing is downloaded and nothing changes here, and the reason goes
-at the page's next check once the run is over.
+files](#exporting-to-the-command-line) -- stay available while a run of the
+exchange is under way, in this tab, another tab, or on its schedule. A file
+downloaded then holds the secret that run is about to replace, so the page says
+so beside both and asks you to download again once the run ends; the run's
+change of secret also puts the backup state back to asking for a backup.
 
 **The file is a credential.** It holds the exchange's shared secret in plain
 text, like the command line's `.alcove.key` (see [Key file
@@ -958,8 +956,9 @@ A cron line for an installed `alcove` is shown too.
 
 **The export only writes files.** Downloading them changes nothing here: the
 exchange stays on this page, runnable, with its schedule and backup state as
-they were. The download is withheld while a run of the exchange is in progress,
-since that run is about to change the secret the key file would hold.
+they were. The download stays available while a run of the exchange is in
+progress, with a note that the run is about to change the secret the key file
+holds, so you download again once it ends.
 
 What changes the exchange is running it. Every run, here or from those files,
 replaces the shared secret, and each copy knows only the secret its own last
@@ -1383,11 +1382,13 @@ rather than offering the invitation: the gate is asked once per failure, and no
 control creates an invitation while one of them is unanswered.
 
 While a run of this exchange is under way anywhere in the browser profile --
-this tab, another tab, or its schedule -- the same two controls create no
-invitation either, and say so. This lifts on its own once the run finishes,
-whatever it finished with, with nothing to answer. A run that started since the
-page last checked is caught when you click: creating the invitation is refused
-in the same words.
+this tab, another tab, or its schedule -- the same two controls still create an
+invitation. The new invitation and the run cannot both change the secret: if
+the run changes it first, the invitation is refused, nothing is saved, and you
+try again; if the invitation comes first, the run stops before any data is
+exchanged and records nothing. One case is left: a run that finishes while the
+invitation is being made leaves your partner on the run's new secret and this
+page on the invitation's, until your partner accepts the new invitation.
 
 ### Expiry is its own state, never routed through attack framing
 
@@ -1536,8 +1537,8 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   checkbox. Unticking the record identifier stops sending it, and it stays
   your record identifier. Columns used to match are listed but change only
   with the linkage terms. **Save columns** changes the stored exchange: the next run
-  sends the chosen columns and states them in its terms. It is refused while a
-  run of the exchange is in progress.
+  sends the chosen columns and states them in its terms. A run already in
+  progress keeps the columns it started with.
 - **Send a terms update.** **Make a terms update** makes the same update
   `alcove update` prints for a configuration holding these terms: your linkage
   terms and the names of the columns you send, authenticated under the
@@ -1570,8 +1571,9 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   refused update changes nothing.
 
 Making and applying an update are not offered once the exchange's secret has
-expired, where its terms name no identity for you, or while a run of the
-exchange is in progress. A partner who has not applied your update meets the
+expired, or where its terms name no identity for you. An update made while a
+run is in progress is made under the secret that run replaces, so once the run
+finishes your partner's apply refuses it and you make a new one. A partner who has not applied your update meets the
 change at their next run, as in [When your partner's terms
 change](#when-your-partners-terms-change): an attended run asks them, and a
 scheduled one stops and keeps the change for them to apply.
@@ -1604,8 +1606,8 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   leaves the exchange as it was. After Apply, the next run exchanges under the new
   terms; after Decline, scheduled runs stop the same way until your partner
   goes back to the agreed terms, and the next run you start from this page
-  asks about the change again. Apply and Decline are not offered while a run
-  of the exchange is in progress.
+  asks about the change again. Apply and Decline stay offered while a run is
+  in progress; that run keeps the terms it started with.
 
 Where your result file names the linkage key each match was made on and the
 new terms leave you no key to name -- count-only, single-pass, or no result for

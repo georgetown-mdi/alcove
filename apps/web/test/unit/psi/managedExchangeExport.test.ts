@@ -16,7 +16,6 @@ import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { importManagedExchangeArtifact } from "@psi/managed/managedExchangeArtifact";
 
 import {
@@ -44,7 +43,7 @@ import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 // reads the record fresh rather than trusting a caller's copy. The backup
 // export serializes and marks atomically (readAndMark), so what it serializes
 // is what the marker attests; the command-line export takes a plain read and
-// has no store write to call at all. Both take the run lock.
+// has no store write to call at all. Neither takes the run lock.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -77,14 +76,6 @@ function backupDeps(rec: ManagedExchangeRecord): ManagedExportDeps & {
     downloaded,
     savedAs,
     order,
-    withLock: async (_id, step) => {
-      order.push("lock");
-      try {
-        return await step();
-      } finally {
-        order.push("unlock");
-      }
-    },
     // The atomic read-compose-and-mark: hands the fresh record to the export's own
     // composition, then marks it saved where the composition says, as the store's
     // step does. It is the only write among these deps, and it writes the marker.
@@ -202,27 +193,11 @@ describe("exportManagedBackup", () => {
     ]);
   });
 
-  test("reads, marks, then downloads, all inside the run lock", async () => {
+  test("reads and marks, then downloads", async () => {
     const rec = record();
     const deps = backupDeps(rec);
     await exportManagedBackup(rec.id, deps);
-    expect(deps.order).toEqual(["lock", "readAndMark", "download", "unlock"]);
-  });
-
-  test("a run holding the lock refuses the backup before any read, mark, or download", async () => {
-    const rec = record();
-    const deps = {
-      ...backupDeps(rec),
-      withLock: (id: string) =>
-        Promise.reject(new ManagedExchangeLockUnavailableError(id)),
-    };
-
-    await expect(exportManagedBackup(rec.id, deps)).rejects.toBeInstanceOf(
-      ManagedExchangeLockUnavailableError,
-    );
-    expect(deps.readAndMark).not.toHaveBeenCalled();
-    expect(deps.savedAs).toEqual([]);
-    expect(deps.downloaded).toEqual([]);
+    expect(deps.order).toEqual(["readAndMark", "download"]);
   });
 });
 
@@ -290,14 +265,6 @@ describe("exportManagedCronFiles", () => {
     return {
       downloaded,
       order,
-      withLock: async (_id, step) => {
-        order.push("lock");
-        try {
-          return await step();
-        } finally {
-          order.push("unlock");
-        }
-      },
       // The plain read this export takes: the deps hold no store write, so
       // nothing in this export can mark, spend, or otherwise change the record.
       readRecord: vi.fn((_id: string) => {
@@ -363,32 +330,11 @@ describe("exportManagedCronFiles", () => {
     expect(deps.downloaded[0].content).toBe(composed.config.text);
   });
 
-  test("reads, then downloads, all inside the run lock", async () => {
+  test("reads, then downloads both files", async () => {
     const rec = record();
     const deps = cronDeps(rec);
     await exportManagedCronFiles(rec.id, deps);
-    expect(deps.order).toEqual([
-      "lock",
-      "read",
-      "download",
-      "download",
-      "unlock",
-    ]);
-  });
-
-  test("a run holding the lock refuses the export before any read or download", async () => {
-    const rec = record();
-    const deps = {
-      ...cronDeps(rec),
-      withLock: (id: string) =>
-        Promise.reject(new ManagedExchangeLockUnavailableError(id)),
-    };
-
-    await expect(exportManagedCronFiles(rec.id, deps)).rejects.toBeInstanceOf(
-      ManagedExchangeLockUnavailableError,
-    );
-    expect(deps.readRecord).not.toHaveBeenCalled();
-    expect(deps.downloaded).toEqual([]);
+    expect(deps.order).toEqual(["read", "download", "download"]);
   });
 
   test("a record gone from the store downloads nothing", async () => {

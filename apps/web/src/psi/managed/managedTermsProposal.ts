@@ -12,7 +12,6 @@ import {
   recordManagedExchangeTermsProposal,
 } from "./managedLocalState";
 import { persistManagedExchangeTermsChange } from "./managedExchangeStore";
-import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
   ManagedExchangeRecord,
@@ -111,13 +110,10 @@ export async function keepManagedTermsProposal(
 /**
  * Apply the partner terms of the proposal stored for the exchange
  * (the `apply` scope of `applyManagedExchangeTermsChange`), then drop it. `shownProposedAt` is the `proposedAt` of the
- * proposal the operator reviewed; the stored one is read under the lock and
- * applied only where it is that proposal. Held under the run lock without
- * waiting: a run of this exchange in flight refuses the apply, rather than
- * having its terms rewritten under it.
+ * proposal the operator reviewed; the stored one is read again and applied
+ * only where it is that proposal. Takes no lock: a run in flight runs the terms
+ * it read when it took its lock, and the next run holds the applied ones.
  *
- * @throws {ManagedExchangeLockUnavailableError} while a run of this exchange
- *   holds the lock; nothing is written.
  * @throws {ManagedTermsProposalNotStoredError} where no proposal, or another
  *   one, is stored; nothing is written.
  * @throws {UsageError} where the stored terms cannot take the partner's.
@@ -127,21 +123,15 @@ export async function applyManagedTermsProposal(
   id: string,
   shownProposedAt: string,
 ): Promise<ManagedExchangeRecord> {
-  return withManagedExchangeLock(
-    id,
-    async () => {
-      const stored = (await getManagedLocalState(id))?.termsProposal;
-      if (stored?.proposedAt !== shownProposedAt)
-        throw new ManagedTermsProposalNotStoredError();
-      const applied = await persistManagedExchangeTermsChange(id, {
-        scope: "apply",
-        partnerTerms: stored.partnerTerms,
-      });
-      await clearManagedExchangeTermsProposal(id);
-      return applied;
-    },
-    { ifAvailable: true },
-  );
+  const stored = (await getManagedLocalState(id))?.termsProposal;
+  if (stored?.proposedAt !== shownProposedAt)
+    throw new ManagedTermsProposalNotStoredError();
+  const applied = await persistManagedExchangeTermsChange(id, {
+    scope: "apply",
+    partnerTerms: stored.partnerTerms,
+  });
+  await clearManagedExchangeTermsProposal(id);
+  return applied;
 }
 
 /** Decline a kept proposal: drop it and leave the stored exchange as it is. */

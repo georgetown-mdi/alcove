@@ -823,7 +823,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
   test("a copy rotated past the backup is named; keep imports nothing, add puts it beside", async () => {
     const listed = await createRunnableExchange(newExchange());
     const bytes = backupOf(listed);
-    await persistManagedExchangeRotation(listed.id, {
+    await persistManagedExchangeRotation(listed.id, listed.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -861,7 +861,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
   test("two copies with the backup's terms are named together; one confirm adds it beside both", async () => {
     const listed = await createRunnableExchange(newExchange());
     const bytes = backupOf(listed);
-    await persistManagedExchangeRotation(listed.id, {
+    await persistManagedExchangeRotation(listed.id, listed.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });

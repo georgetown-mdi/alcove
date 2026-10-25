@@ -45,6 +45,10 @@ import {
   runManagedExchange,
 } from "./managedExchangeRun";
 import {
+  ManagedExchangeSecretChangedError,
+  recordManagedExchangeLastRun,
+} from "./managedExchangeStore";
+import {
   ManagedInputError,
   managedInputFailureKind,
 } from "./managedInputGuard";
@@ -52,7 +56,6 @@ import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
 import { ManagedTermsChangeTakenOnError } from "./managedTermsProposal";
-import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 
 import type { RoundSetLimitError } from "@alcove/core";
 
@@ -340,6 +343,9 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * - {@link ManagedTermsChangeTakenOnError}: unrecorded -- the operator took on
  *   the partner's changed terms, which the stored exchange now holds, so
  *   nothing failed that a later visit has to answer.
+ * - {@link ManagedExchangeSecretChangedError}: unrecorded -- a re-invite
+ *   replaced the secret the run began from and dropped the run bookkeeping,
+ *   so the record is the re-invite's.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.
@@ -389,7 +395,8 @@ export function rerunFailureLastRun(
     error instanceof ManagedInputError ||
     error instanceof RotationPersistError ||
     error instanceof ManagedRelayRegistrationError ||
-    error instanceof ManagedTermsChangeTakenOnError
+    error instanceof ManagedTermsChangeTakenOnError ||
+    error instanceof ManagedExchangeSecretChangedError
   )
     return undefined;
   if (error instanceof ManagedExchangeNotRunnableError)
@@ -436,8 +443,10 @@ export function rerunFailureLastRun(
  * after the terms exchange, `"partner-set-too-large"` and
  * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
  * at the terms exchange, `"partner-protocol-refusal"` at any point after the
- * handshake, and `"relay-registration"` before connecting, once the registrar
- * did not confirm a pending registration. */
+ * handshake, `"relay-registration"` before connecting, once the registrar
+ * did not confirm a pending registration, and `"reinvited"` after the partner
+ * connected and before the data exchange, once a re-invite replaced the
+ * secret the run began from. */
 type BenignRerunOutcome =
   | "expired"
   | "custody-unreadable"
@@ -450,7 +459,8 @@ type BenignRerunOutcome =
   | "partner-refused-set"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
-  | "relay-registration";
+  | "relay-registration"
+  | "reinvited";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
  * for a failure that is not one of these states (a handshake failure, a storage
@@ -516,6 +526,11 @@ export function benignRerunOutcome(
   if (isPartnerProtocolRefusal(error)) return "partner-protocol-refusal";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
+  if (
+    error instanceof ManagedExchangeSecretChangedError &&
+    !dataExchangeStarted
+  )
+    return "reinvited";
   return undefined;
 }
 

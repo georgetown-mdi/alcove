@@ -15,16 +15,13 @@ import {
   listManagedExchangesDiagnostic,
   markManagedBackupIfCurrent,
   openManagedExchangeDatabase,
+  persistManagedExchangeReinvite,
   persistManagedExchangeRotation,
   putManagedExchange,
   readRecordAndMarkBackedUp,
   recordManagedExchangeLastRun,
   replaceManagedExchangeFromImport,
 } from "@psi/managed/managedExchangeStore";
-import {
-  ManagedExchangeLockUnavailableError,
-  withManagedExchangeLock,
-} from "@psi/managed/managedExchangeLock";
 import {
   ManagedImportChosenCopyError,
   ManagedImportLiveCopyError,
@@ -56,6 +53,7 @@ import { exportManagedBackup } from "@psi/managed/managedExchangeExport";
 import { failedRun } from "@psi/managed/managedRunRotate";
 import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { savedExchangeRows } from "@recurring/savedExchangesModel";
+import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import { disclosureRecord } from "../utils/disclosureFixtures";
 
@@ -65,10 +63,6 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedExportDeps } from "@psi/managed/managedExchangeExport";
 import type { WebRTCExchangeLocator } from "@alcove/core";
-
-/** The run lock the page's backup export takes, refusing while a run holds it. */
-const runLock: ManagedExportDeps["withLock"] = (id, step) =>
-  withManagedExchangeLock(id, step, { ifAvailable: true });
 
 /** A stored record narrowed to the runnable shape these fixtures all have: every
  * record here is created with a shared secret, and the export, hand-off, and run
@@ -224,7 +218,7 @@ describe("the import marker is the restore evidence the desync tiering reads", (
 
     // A successful run rotates the secret, clearing the import (and backup) marker in
     // the same cross-store transaction.
-    await persistManagedExchangeRotation(record.id, {
+    await persistManagedExchangeRotation(record.id, record.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -298,7 +292,6 @@ describe("the export binds the marker to the bytes it serialized", () => {
     const downloaded: Array<string> = [];
     return {
       downloaded,
-      withLock: runLock,
       readAndMark: readRecordAndMarkBackedUp,
       download: (_fileName, content) => downloaded.push(content),
       now: () => new Date(),
@@ -311,7 +304,7 @@ describe("the export binds the marker to the bytes it serialized", () => {
     // Simulate a run: the rotation persist advances the stored secret (and clears any
     // marker) exactly as runManagedExchange's persist-before-success write does.
     const rotated = generateSharedSecret();
-    await persistManagedExchangeRotation(record.id, {
+    await persistManagedExchangeRotation(record.id, record.sharedSecret, {
       sharedSecret: rotated,
       expires: null,
     });
@@ -349,7 +342,7 @@ describe("the export binds the marker to the bytes it serialized", () => {
 
     // A run rotates and persists, THEN the data exchange fails: the rotation cleared
     // the marker in its own transaction, and a failed lastRun does not restore it.
-    await persistManagedExchangeRotation(record.id, {
+    await persistManagedExchangeRotation(record.id, record.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -377,7 +370,7 @@ describe("the export binds the marker to the bytes it serialized", () => {
     const record = await createRunnableExchange(newExchange());
     // Another context rotates the secret (and clears the marker).
     const rotated = generateSharedSecret();
-    await persistManagedExchangeRotation(record.id, {
+    await persistManagedExchangeRotation(record.id, record.sharedSecret, {
       sharedSecret: rotated,
       expires: null,
     });
@@ -414,7 +407,7 @@ describe("the export binds the marker to the bytes it serialized", () => {
     ).toBe(record.sharedSecret);
   });
 
-  test("a backup export under a run's held lock reads, marks, and downloads nothing", async () => {
+  test("a backup export while a run holds the lock marks the secret it read, and the run's rotation clears that marker", async () => {
     const record = await createRunnableExchange(newExchange());
     const deps = exportDeps();
     let release: () => void = () => undefined;
@@ -428,10 +421,16 @@ describe("the export binds the marker to the bytes it serialized", () => {
       });
     });
     try {
-      await expect(exportManagedBackup(record.id, deps)).rejects.toBeInstanceOf(
-        ManagedExchangeLockUnavailableError,
-      );
-      expect(deps.downloaded).toEqual([]);
+      await exportManagedBackup(record.id, deps);
+      expect(
+        importManagedExchangeArtifact(deps.downloaded[0]).record.sharedSecret,
+      ).toBe(record.sharedSecret);
+      expect((await getManagedLocalState(record.id))?.backup).toBeDefined();
+
+      await persistManagedExchangeRotation(record.id, record.sharedSecret, {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      });
       expect(await getManagedLocalState(record.id)).toBeUndefined();
     } finally {
       release();
@@ -448,7 +447,6 @@ describe("a backup restores the exchange it holds", () => {
     const deps = {
       downloaded: [] as Array<string>,
       fileNames: [] as Array<string>,
-      withLock: runLock,
       readAndMark: readRecordAndMarkBackedUp,
       download: (fileName: string, content: string) => {
         deps.fileNames.push(fileName);
@@ -512,7 +510,7 @@ describe("a backup reconciles per exchange, whatever else is listed", () => {
   test("a live copy rotated past the backup is named, and nothing is written", async () => {
     const live = await createRunnableExchange(newExchange());
     const bytes = backupOf(live);
-    await persistManagedExchangeRotation(live.id, {
+    await persistManagedExchangeRotation(live.id, live.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -529,7 +527,7 @@ describe("a backup reconciles per exchange, whatever else is listed", () => {
   test("confirmed, the backup installs beside the copy it named", async () => {
     const live = await createRunnableExchange(newExchange());
     const bytes = backupOf(live);
-    await persistManagedExchangeRotation(live.id, {
+    await persistManagedExchangeRotation(live.id, live.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -724,7 +722,7 @@ describe("a backup replaces the saved copy it is chosen for", () => {
     const older = serializeManagedExchangeArtifact(
       encodeManagedExchangeArtifact(live),
     );
-    await persistManagedExchangeRotation(live.id, {
+    await persistManagedExchangeRotation(live.id, live.sharedSecret, {
       sharedSecret: generateSharedSecret(),
       expires: null,
     });
@@ -796,12 +794,40 @@ describe("a backup replaces the saved copy it is chosen for", () => {
     expect(
       await replaceManagedExchangeFromImport(
         stale.id,
+        stale.sharedSecret,
         new Date().toISOString(),
         elsewhere,
         "backup",
       ),
     ).toEqual({ kind: "changed" });
     expect(await getManagedExchange(stale.id)).toEqual(stale);
+  });
+
+  test("the store's replace re-checks the secret it writes over inside its transaction", async () => {
+    // The secret the chosen copy held when the import decided to replace it: a
+    // re-invite landing since stored another, and the replace writes nothing.
+    const { stale, newer } = await staleCopyAndNewerBackup();
+    const reinvited = generateSharedSecret();
+    await persistManagedExchangeReinvite(stale.id, stale.sharedSecret, {
+      sharedSecret: reinvited,
+      expires: null,
+      signalingServer: { host: "signaling.example.org" },
+    });
+    const before = await getManagedExchange(stale.id);
+
+    expect(
+      await replaceManagedExchangeFromImport(
+        stale.id,
+        stale.sharedSecret,
+        new Date().toISOString(),
+        newer,
+        "backup",
+      ),
+    ).toEqual({ kind: "changed" });
+    expect(await getManagedExchange(stale.id)).toEqual(before);
+    expect(await getManagedExchange(stale.id)).toMatchObject({
+      sharedSecret: reinvited,
+    });
   });
 });
 

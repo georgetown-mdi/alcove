@@ -16,22 +16,22 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import { MANAGED_BACKUP_SECTION_ID } from "@recurring/managedSectionIds";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
-import { RUN_IN_FLIGHT_EXPORT_REASON } from "@recurring/managedCronExportModel";
+import { RUN_IN_FLIGHT_EXPORT_NOTE } from "@recurring/managedCronExportModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { disclosureToggle, openDisclosure } from "./collapsePanels";
-import { holdRunLockElsewhere, pauseLockReadings } from "./runLockReadings";
 import { captureDownloads } from "./captureDownloads";
+import { holdRunLockElsewhere } from "./runLockReadings";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
 // Both exports -- the backup and the command-line files -- follow one rule while a
-// run of the exchange is in flight: the surface withholds them while its poll sees
-// the run, and each takes the run's own lock, so a click the poll did not hold back
-// is refused there. Either file taken mid-run would hold a secret the run is about
-// to rotate. This runs in Chromium because both take the real browser lock and poll.
+// run of the exchange is in flight: each stays offered and downloads, with a note
+// beside it that the run replaces the secret the file holds. Neither takes the
+// run's lock. This runs in Chromium because the run is a real browser lock and
+// the note follows the surface's real poll of it.
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -75,9 +75,9 @@ const cliDownloadButton = () =>
 const backupButton = () =>
   page.getByRole("button", { name: "Download a backup" });
 
-/** How many places show the run-in-progress reason: one beside each export. */
-const reasonsShown = () =>
-  page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).elements().length;
+/** How many places show the run-in-progress note: one beside each export. */
+const notesShown = () =>
+  page.getByText(RUN_IN_FLIGHT_EXPORT_NOTE).elements().length;
 
 // An assertion on a state the run lock's 400 ms poll produces takes no timeout of
 // its own: an un-timed `expect.element` or `expect.poll` polls for what is left of
@@ -94,7 +94,7 @@ afterEach(async () => {
 });
 
 describe("a run held in another context", () => {
-  test("withholds both downloads with the reason beside each, and returns them", async () => {
+  test("keeps both downloads offered, with the note beside each until the run ends", async () => {
     const created = await createManagedExchange(newExchange());
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await expect.element(exportToggle()).toBeInTheDocument();
@@ -102,60 +102,49 @@ describe("a run held in another context", () => {
     // the panel's open transition ends.
     await openDisclosure(EXPORT_PANEL);
     await expect.element(cliDownloadButton()).toBeEnabled();
-    await expect.element(backupButton()).toBeEnabled();
+    expect(notesShown()).toBe(0);
 
     const release = await holdRunLockElsewhere(created.id);
     try {
-      await expect.element(backupButton()).toBeDisabled();
-      await expect.element(cliDownloadButton()).toBeDisabled();
-      await expect.poll(reasonsShown).toBe(2);
+      await expect.poll(notesShown).toBe(2);
+      await expect.element(backupButton()).toBeEnabled();
+      await expect.element(cliDownloadButton()).toBeEnabled();
     } finally {
       release();
     }
 
-    await expect.element(backupButton()).toBeEnabled();
-    await expect.element(cliDownloadButton()).toBeEnabled();
-    await expect.poll(reasonsShown).toBe(0);
+    await expect.poll(notesShown).toBe(0);
   });
-});
 
-describe("a backup the run lock refuses at the click", () => {
-  // The surface's readings are the best-effort half and can miss a run -- the poll's
-  // interval, a query this browser will not answer. What is measured here is the
-  // half that cannot: the backup takes the run+rotate lock itself.
-
-  test("downloads and marks nothing, shows the reason with no failure, and clears it on the next reading", async () => {
+  test("downloads both while the run holds the lock, and marks the backup", async () => {
     const created = await createManagedExchange(newExchange());
     const before = await getManagedExchange(created.id);
-    const readings = pauseLockReadings(created.id);
     const release = await holdRunLockElsewhere(created.id);
     const downloads = captureDownloads();
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await expect.element(backupButton()).toBeEnabled();
-      expect(reasonsShown()).toBe(0);
+      await expect.poll(notesShown).toBe(2);
 
       await backupButton().click();
-
-      // Beside both exports: the refusal is the run-in-progress reading they
-      // share, and the collapsed command-line panel still holds its reason.
-      await expect.poll(reasonsShown).toBe(2);
-      expect(page.getByText("Could not save the backup").query()).toBe(null);
+      await expect.poll(() => downloads.captured.length).toBe(1);
+      await openDisclosure(EXPORT_PANEL);
+      await cliDownloadButton().click();
+      await expect.poll(() => downloads.captured.length).toBe(3);
       await downloads.settled();
-      expect(downloads.captured).toEqual([]);
-      expect(await getManagedExchange(created.id)).toEqual(before);
-      expect(await getManagedLocalState(created.id)).toBeUndefined();
 
-      // The run's hold ends before the poll reads again. The next reading finds
-      // the lock free, so the reason goes with no other click or change.
-      release();
-      readings.resume();
-      await expect.poll(reasonsShown).toBe(0);
-      await expect.element(backupButton()).toBeEnabled();
+      expect(downloads.captured.map(({ fileName }) => fileName)).toEqual([
+        expect.stringMatching(/^alcove-backup-/),
+        "alcove.yaml",
+        ".alcove.key",
+      ]);
+      expect(downloads.captured[0].text).toContain(created.sharedSecret);
+      expect(downloads.captured[2].text).toContain(created.sharedSecret);
+      expect(page.getByText("Could not save the backup").query()).toBe(null);
+      expect(await getManagedExchange(created.id)).toEqual(before);
+      expect((await getManagedLocalState(created.id))?.backup).toBeDefined();
     } finally {
       downloads.restore();
       release();
-      readings.restore();
     }
   });
 });

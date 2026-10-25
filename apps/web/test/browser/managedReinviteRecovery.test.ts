@@ -17,10 +17,7 @@ import {
   retryPendingManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import {
-  ManagedExchangeLockUnavailableError,
-  withManagedExchangeLock,
-} from "@psi/managed/managedExchangeLock";
-import {
+  ManagedExchangeSecretChangedError,
   ManagedReinviteWithheldError,
   clearManagedExchangeStandingCondition,
   clearManagedExchanges,
@@ -44,6 +41,7 @@ import { failedRun } from "@psi/managed/managedRunRotate";
 import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { relayRegistrationPendingLine } from "@recurring/savedExchangesModel";
+import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 
 import { expectConsole } from "./expectedConsole";
 
@@ -55,8 +53,17 @@ import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 // and hands back the rotated record -- so a post-re-invite run derives the rendezvous
 // from the fresh secret, and neither the stale benign tier nor a false unexplained tier
 // can show after the operator has recovered. Two states refuse the rotation: a standing
-// compromise response, which only the operator's acknowledgement lifts, and a run
-// holding the record's run+rotate lock, which ends with that run.
+// compromise response, which only the operator's acknowledgement lifts, and a stored
+// secret other than the one the re-invite was composed over, which a run's rotation
+// leaves.
+
+/** The secret the stored record holds, which a re-invite writes over. */
+async function storedSecret(id: string): Promise<string> {
+  const stored = await getManagedExchange(id);
+  if (stored?.sharedSecret === undefined)
+    throw new Error("the fixture holds no secret");
+  return stored.sharedSecret;
+}
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -101,11 +108,15 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
     );
     await markManagedExchangeImported(record.id, new Date().toISOString());
 
-    const rotated = await persistManagedExchangeReinvite(record.id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const rotated = await persistManagedExchangeReinvite(
+      record.id,
+      await storedSecret(record.id),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+    );
 
     // The failure is consumed and the import marker cleared: the next read tiers as
     // "no failure to show", not the stale benign tier and not a false unexplained.
@@ -129,11 +140,15 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
       Date.now(),
     );
 
-    await persistManagedExchangeReinvite(record.id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    await persistManagedExchangeReinvite(
+      record.id,
+      await storedSecret(record.id),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+    );
 
     const stored = await getManagedExchange(record.id);
     const local = await getManagedLocalState(record.id);
@@ -148,7 +163,7 @@ describe("persistManagedExchangeReinvite drops the consumed failure", () => {
       newExchange({ sharedSecret: undefined }),
     );
     await expect(
-      persistManagedExchangeReinvite(record.id, {
+      persistManagedExchangeReinvite(record.id, generateSharedSecret(), {
         sharedSecret: generateSharedSecret(),
         expires: null,
         signalingServer: { host: "signaling.example.org" },
@@ -217,7 +232,7 @@ describe("a re-invite while a compromise response stands", () => {
     const before = await getManagedExchange(id);
 
     await expect(
-      persistManagedExchangeReinvite(id, {
+      persistManagedExchangeReinvite(id, await storedSecret(id), {
         sharedSecret: generateSharedSecret(),
         expires: null,
         signalingServer: { host: "signaling.example.org" },
@@ -237,11 +252,15 @@ describe("a re-invite while a compromise response stands", () => {
     const stale = (await getManagedExchange(id))?.sharedSecret;
 
     await clearManagedExchangeStandingCondition(id);
-    const rotated = await persistManagedExchangeReinvite(id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const rotated = await persistManagedExchangeReinvite(
+      id,
+      await storedSecret(id),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+    );
 
     expect(rotated.sharedSecret).not.toBe(stale);
     const stored = await getManagedExchange(id);
@@ -250,54 +269,104 @@ describe("a re-invite while a compromise response stands", () => {
   });
 });
 
-describe("a re-invite while a run holds the run+rotate lock", () => {
-  test("is refused on the lock, leaving the secret the run is connecting on", async () => {
-    // Neither rotation write compares against the secret it replaces, so a mint
-    // landing beside the run's own rotation would discard one of the two. Excluded
-    // on the lock, exactly as both exports are.
-    const record = await createManagedExchange(newExchange());
-    let granted!: () => void;
-    const holding = new Promise<void>((resolve) => {
-      granted = resolve;
-    });
-    let release!: () => void;
-    const released = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const run = withManagedExchangeLock(record.id, async () => {
-      granted();
-      await released;
-    });
-    await holding;
+describe("a re-invite and a run's rotation of one exchange", () => {
+  // Neither takes a lock against the other. Each writes over the secret its
+  // operation began from and refuses where the record read inside its
+  // transaction holds another, so whichever writes second refuses and the
+  // record holds one consistent secret.
 
-    try {
-      await expect(
-        persistManagedExchangeReinvite(record.id, {
-          sharedSecret: generateSharedSecret(),
-          expires: null,
-          signalingServer: { host: "signaling.example.org" },
-        }),
-      ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
-      expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
-        record.sharedSecret,
-      );
-    } finally {
-      // Released even if the assertions throw, so a failing test cannot strand the
-      // exclusive lock for the rest of the page's life.
-      release();
-      await run;
-    }
-
-    // The refusal consumed nothing: the same mint goes through once the lock is free.
-    const rotated = await persistManagedExchangeReinvite(record.id, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
-    expect(rotated.sharedSecret).not.toBe(record.sharedSecret);
-    expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
-      rotated.sharedSecret,
+  test("a re-invite landing while a run rotates: the run's rotation refuses, and the record holds the re-invite's secret", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
     );
+    let reinvited: string | undefined;
+    let exchanged = false;
+
+    const outcome = await runManagedExchange({
+      record,
+      runStartedAtMs: Date.now(),
+      acquireInput: () => Promise.resolve(undefined),
+      handshake: async (_input, markRotationInFlight) => {
+        // The partner connected and the key exchange produced the next secret;
+        // the operator's re-invite lands before the run writes it.
+        await markRotationInFlight();
+        reinvited = (await reinviteManagedExchange(record)).record.sharedSecret;
+        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+      },
+      dataExchange: () => {
+        exchanged = true;
+        return Promise.resolve("exchanged");
+      },
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(ManagedExchangeSecretChangedError);
+    expect(exchanged).toBe(false);
+    const stored = await getManagedExchange(record.id);
+    expect(stored?.sharedSecret).toBe(reinvited);
+    expect(stored?.sharedSecret).not.toBe(record.sharedSecret);
+    expect(stored).not.toHaveProperty("rotationInFlightSince");
+    expect(stored).not.toHaveProperty("lastRun");
+  });
+
+  test("a re-invite landing before the run's marker: the run stops before the key exchange", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    let keyExchange = false;
+
+    const outcome = await runManagedExchange({
+      record,
+      runStartedAtMs: Date.now(),
+      acquireInput: () => Promise.resolve(undefined),
+      handshake: async (_input, markRotationInFlight) => {
+        await reinviteManagedExchange(record);
+        await markRotationInFlight();
+        keyExchange = true;
+        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+      },
+      dataExchange: () => Promise.resolve("exchanged"),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(ManagedExchangeSecretChangedError);
+    expect(keyExchange).toBe(false);
+    const stored = await getManagedExchange(record.id);
+    expect(stored).not.toHaveProperty("rotationInFlightSince");
+    expect(stored).not.toHaveProperty("lastRun");
+  });
+
+  test("a rotation landing while a re-invite completes: the re-invite refuses, and the record holds the run's secret", async () => {
+    // The page composed its re-invite over the copy it read, and a run rotated
+    // the stored secret before the re-invite wrote.
+    const pageCopy = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    const rotatedSecret = generateSharedSecret();
+    await runManagedExchange({
+      record: pageCopy,
+      runStartedAtMs: Date.now(),
+      acquireInput: () => Promise.resolve(undefined),
+      handshake: async (_input, markRotationInFlight) => {
+        await markRotationInFlight();
+        return { rotatedSecret, handshake: "carried" };
+      },
+      dataExchange: () => Promise.resolve("exchanged"),
+    });
+    const afterRun = await getManagedExchange(pageCopy.id);
+
+    await expect(reinviteManagedExchange(pageCopy)).rejects.toBeInstanceOf(
+      ManagedExchangeSecretChangedError,
+    );
+
+    const stored = await getManagedExchange(pageCopy.id);
+    expect(stored).toEqual(afterRun);
+    expect(stored?.sharedSecret).toBe(rotatedSecret);
+    expect(stored?.lastRun?.outcome).toBe("succeeded");
   });
 });
 
@@ -345,6 +414,7 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
 
     const rotated = await persistManagedExchangeReinvite(
       enrolled.id,
+      enrolled.sharedSecret,
       {
         sharedSecret: generateSharedSecret(),
         expires: null,
@@ -389,6 +459,7 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
 
     const rotated = await persistManagedExchangeReinvite(
       enrolled.id,
+      enrolled.sharedSecret,
       {
         sharedSecret: generateSharedSecret(),
         expires: null,
@@ -429,6 +500,7 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
     let asked = false;
     const rotated = await persistManagedExchangeReinvite(
       created.id,
+      await storedSecret(created.id),
       {
         sharedSecret: generateSharedSecret(),
         expires: null,

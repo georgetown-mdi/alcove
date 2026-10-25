@@ -58,13 +58,12 @@ export function TermsChangeQuestion({
 
 /**
  * The partner terms change a scheduled run refused and kept, with Apply and
- * Decline. Both are withheld while a run holds the exchange.
+ * Decline, offered whether or not a run is in flight.
  */
 export function TermsProposalPanel({
   proposal,
   matchingKeyTurnedOff,
   busy,
-  disabled,
   failure,
   onApply,
   onDecline,
@@ -74,7 +73,6 @@ export function TermsProposalPanel({
    * where it does not. */
   matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined;
   busy: boolean;
-  disabled: boolean;
   /** What went wrong with the last Apply or Decline, when one did not
    * complete. */
   failure: string | undefined;
@@ -91,14 +89,10 @@ export function TermsProposalPanel({
         escaped={false}
       />
       <Group mt="md">
-        <Button loading={busy} disabled={disabled} onClick={onApply}>
+        <Button loading={busy} onClick={onApply}>
           {APPLY_TERMS_PROPOSAL_LABEL}
         </Button>
-        <Button
-          variant="default"
-          disabled={disabled || busy}
-          onClick={onDecline}
-        >
+        <Button variant="default" disabled={busy} onClick={onDecline}>
           {DECLINE_TERMS_CHANGE_LABEL}
         </Button>
       </Group>

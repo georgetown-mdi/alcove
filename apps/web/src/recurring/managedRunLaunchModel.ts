@@ -155,6 +155,7 @@ export interface ManagedRunFailure {
     | "saved-address-refused"
     | "custody-unreadable"
     | "already-running"
+    | "reinvited"
     | "missed"
     | "storage"
     | "partial-rotation"
@@ -227,15 +228,31 @@ const RECORDED_CUSTODY_UNREADABLE_FAILURE: ManagedRunFailure = {
   recovery: "none",
 };
 
-/** The benign "already running elsewhere" state: another tab or a scheduled run holds
- * the single-writer lock. Not a failure of this run. */
+/** The benign "already running elsewhere" state: a scheduled attempt or another
+ * window's run holds the single-writer lock, which only runs take apart from an
+ * import replace's moment. Not a failure of this run. */
 const ALREADY_RUNNING_FAILURE: ManagedRunFailure = {
   kind: "already-running",
   title: "This exchange is already running",
   message:
-    "A run for this exchange is already in progress in another tab or a " +
-    "scheduled run on this device. Wait for it to finish, then try again.",
+    "A scheduled run of this exchange, or a run in another window or tab on " +
+    "this device, is already in progress, so this run did not start. Run it " +
+    "again once that run ends.",
   recovery: "wait",
+};
+
+/** The benign state of a run a re-invite overtook: the fresh invitation's write
+ * replaced the secret this run began from, so the run's own marker or rotation
+ * write refused before the data exchange, and nothing of the run was recorded. */
+const REINVITED_FAILURE: ManagedRunFailure = {
+  kind: "reinvited",
+  title: "A new invitation replaced this run's shared secret",
+  message:
+    "A new invitation for this exchange was made while this run was " +
+    "connecting, so the run stopped before any data was exchanged and " +
+    "nothing from it was saved. Your next run uses the new invitation, so " +
+    "it connects once your partner has accepted it.",
+  recovery: "none",
 };
 
 /** The benign no-show state: the run spent its whole wait on the partner's runner
@@ -967,6 +984,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "partner-refused-set": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
+  reinvited: "withheld",
   missed: "withheld",
   storage: "withheld",
   "partial-rotation": "withheld",
@@ -1075,6 +1093,7 @@ function classifyLaunchState(
   if (benign === "expired" && error instanceof ManagedExchangeExpiredError)
     return expiredFailure(error.expires);
   if (benign === "already-running") return ALREADY_RUNNING_FAILURE;
+  if (benign === "reinvited") return REINVITED_FAILURE;
   if (benign === "custody-unreadable") return NOT_RUNNABLE_FAILURE;
   if (benign === "input") return inputFailure(error);
   if (benign === "terms-shortfall") return shortfallFailure(error);

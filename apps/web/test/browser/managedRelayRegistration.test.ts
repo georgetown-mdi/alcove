@@ -78,7 +78,6 @@ function renderSection(record: RunnableManagedExchangeRecord): void {
   app.render(
     createElement(ManagedRelayRegistration, {
       record,
-      runInFlight: false,
       onChanged: () => undefined,
     }),
   );

@@ -18,7 +18,7 @@ import {
   createManagedExchange,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
-import { RUN_IN_FLIGHT_EXPORT_REASON } from "@recurring/managedCronExportModel";
+import { RUN_IN_FLIGHT_EXPORT_NOTE } from "@recurring/managedCronExportModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runResultsFileName } from "@psi/parkedResults";
 
@@ -344,9 +344,8 @@ describe("an attended run whose surface is torn down during the folder write", (
 
 describe("the completion screen while the folder write is under way", () => {
   // The run released its lock before its outputs reached the screen (the
-  // stubbed driver here takes none), so the updated backup gates on the lock
-  // alone, and the run-in-progress reason it shows while the lock is held is
-  // another run's.
+  // stubbed driver here takes none), so the run-in-progress note beside the
+  // updated backup reads the lock alone, and a lock held then is another run's.
   const updatedBackup = () =>
     page.getByRole("button", { name: "Download updated backup" });
 
@@ -379,7 +378,7 @@ describe("the completion screen while the folder write is under way", () => {
     const downloads = captureDownloads();
     try {
       await expect.element(updatedBackup()).toBeEnabled();
-      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_NOTE).query()).toBe(null);
       await updatedBackup().click();
       await expect.poll(() => downloads.captured.length).toBe(1);
       await downloads.settled();
@@ -390,21 +389,25 @@ describe("the completion screen while the folder write is under way", () => {
     }
   });
 
-  test("with the lock held elsewhere, withholds it with the run-in-progress reason, and returns it once free", async () => {
+  test("with the lock held elsewhere, offers it beside the run-in-progress note, which goes once the lock is free", async () => {
     const { id, releaseWrite } = await holdFolderWrite();
     const releaseLock = await holdRunLockElsewhere(id);
+    const downloads = captureDownloads();
     try {
-      await expect.element(updatedBackup()).toBeDisabled();
       await expect
-        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
+        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_NOTE))
         .toBeInTheDocument();
+      await expect.element(updatedBackup()).toBeEnabled();
+      await updatedBackup().click();
+      await expect.poll(() => downloads.captured.length).toBe(1);
+      await downloads.settled();
     } finally {
+      downloads.restore();
       releaseLock();
     }
     try {
-      await expect.element(updatedBackup()).toBeEnabled();
       await expect
-        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
+        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_NOTE))
         .not.toBeInTheDocument();
     } finally {
       releaseWrite();

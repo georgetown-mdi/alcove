@@ -26,21 +26,17 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
+  persistManagedExchangeRotation,
   recordManagedExchangeCompromiseResponse,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
 import { failedRun, missedRun } from "@psi/managed/managedRunRotate";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
-import { REINVITE_RUN_IN_FLIGHT_REASON } from "@recurring/managedReinviteGate";
 import { STANDING_CONDITION_CLEAR_LABEL } from "@recurring/managedStandingConditionModel";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
-import {
-  filterLockFromReadings,
-  holdRunLockElsewhere,
-  stalePollUntilClick,
-} from "./runLockReadings";
 import { expectConsole } from "./expectedConsole";
+import { holdRunLockElsewhere } from "./runLockReadings";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -1407,18 +1403,12 @@ describe("a live gate answered where no condition stands", () => {
 });
 
 describe("a re-invite control while a run is in flight", () => {
-  test("both wait the run out and come back when it ends", async () => {
-    expectConsole(
-      "error",
-      "PartnerNoShowError: timed out waiting for the other party",
-    );
-    // A re-invite replaces the secret the run in progress is connecting on, so
-    // neither control is live for the length of it -- and both return whatever the
-    // run turned out to be.
-    let release: () => void = () => undefined;
-    driver.held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+  // A re-invite takes no lock: its write refuses where a run's rotation landed
+  // first, and a run's rotation refuses where the re-invite landed first, so
+  // neither control waits a run out.
+
+  /** A record with a failed run on file, so both re-invite controls show. */
+  async function failedExchange(): Promise<string> {
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
@@ -1428,8 +1418,21 @@ describe("a re-invite control while a run is in flight", () => {
       failedRun(failedAt, "failed", "storage"),
       failedAt,
     );
+    return created.id;
+  }
 
-    app.render(createElement(ManagedRunSurface, { id: created.id }));
+  test("both stay offered for the length of this page's own run", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
+    let release: () => void = () => undefined;
+    driver.held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const id = await failedExchange();
+
+    app.render(createElement(ManagedRunSurface, { id }));
     const recovery = page.getByRole("button", {
       name: "Create a fresh invitation",
     });
@@ -1441,136 +1444,69 @@ describe("a re-invite control while a run is in flight", () => {
 
     const runButton = page.getByRole("button", { name: "Run exchange" });
     await runButton.click();
-    await expect.element(recovery).toBeDisabled();
-    await expect.element(terms).toBeDisabled();
-    expect(app.container.textContent).toContain(REINVITE_RUN_IN_FLIGHT_REASON);
-
-    release();
-    // The run control is disabled for the length of a run, so its return to
-    // enabled is the run's classification having rendered.
-    await expect.element(runButton).toBeEnabled();
-    await flushPendingUpdates();
-
+    await expect.element(runButton).toBeDisabled();
     await expect.element(recovery).toBeEnabled();
     await expect.element(terms).toBeEnabled();
-    expect(app.container.textContent).not.toContain(
-      REINVITE_RUN_IN_FLIGHT_REASON,
-    );
+
+    release();
+    await expect.element(runButton).toBeEnabled();
+    await flushPendingUpdates();
   });
 
-  test("a run taken since the last reading is caught at the click", async () => {
-    // The reading behind the controls is a poll, so a run can take the lock while a
-    // button is still enabled from the last reading. The handler's re-read at the
-    // click catches that run and names it, ahead of the write's own refusal.
-    const created = await createManagedExchange(
-      newExchange({ workingDirectoryHandle: await workingFolder() }),
-    );
-    const failedAt = Date.now() - 120_000;
-    await recordManagedExchangeLastRun(
-      created.id,
-      failedRun(failedAt, "failed", "storage"),
-      failedAt,
-    );
-    const secretBefore = (await getManagedExchange(created.id))?.sharedSecret;
-    let restorePoll: (() => void) | undefined;
-    let release: (() => void) | undefined;
+  test("mints while a run in another context holds the lock", async () => {
+    const id = await failedExchange();
+    const secretBefore = (await getManagedExchange(id))?.sharedSecret;
+    const release = await holdRunLockElsewhere(id);
     try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
+      app.render(createElement(ManagedRunSurface, { id }));
       const recovery = page.getByRole("button", {
         name: "Create a fresh invitation",
       });
       await expect.element(recovery).toBeEnabled();
-
-      restorePoll = stalePollUntilClick(created.id);
-      release = await holdRunLockElsewhere(created.id);
-      // Still enabled: the poll's readings do not see this run, which is the state
-      // the click-time re-read exists for.
-      await expect.element(recovery).toBeEnabled();
-      await recovery.click();
-
-      // Nothing minted, and the run is named as the reason rather than the operator
-      // being left with a control that silently did nothing.
-      expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
-        secretBefore,
-      );
-      expect(app.container.textContent).toContain(
-        REINVITE_RUN_IN_FLIGHT_REASON,
-      );
-
-      release();
-      release = undefined;
-      // The control is intact once the run releases: the withheld click consumed
-      // nothing.
-      await expect.element(recovery).toBeEnabled();
       await recovery.click();
       await vi.waitFor(async () => {
-        expect((await getManagedExchange(created.id))?.sharedSecret).not.toBe(
+        expect((await getManagedExchange(id))?.sharedSecret).not.toBe(
           secretBefore,
         );
       });
     } finally {
-      release?.();
-      restorePoll?.();
+      release();
     }
   });
 
-  test("a run the click's re-read never saw is refused by the mint's write", async () => {
-    // The re-read is a reading, not an exclusion: a run can take the lock in the
-    // moment after it. The write takes that same lock, so what stands between the
-    // fresh secret and the one the run is connecting on is the write's own refusal
-    // rather than any reading the page took.
-    const created = await createManagedExchange(
-      newExchange({ workingDirectoryHandle: await workingFolder() }),
-    );
-    const failedAt = Date.now() - 120_000;
-    await recordManagedExchangeLastRun(
-      created.id,
-      failedRun(failedAt, "failed", "storage"),
-      failedAt,
-    );
-    const secretBefore = (await getManagedExchange(created.id))?.sharedSecret;
-    let readings: ReturnType<typeof filterLockFromReadings> | undefined;
-    let release: (() => void) | undefined;
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      const recovery = page.getByRole("button", {
-        name: "Create a fresh invitation",
-      });
-      await expect.element(recovery).toBeEnabled();
+  test("a mint a run's rotation overtook says the exchange ran, and the next try goes through", async () => {
+    const id = await failedExchange();
+    app.render(createElement(ManagedRunSurface, { id }));
+    const recovery = page.getByRole("button", {
+      name: "Create a fresh invitation",
+    });
+    await expect.element(recovery).toBeEnabled();
 
-      // Hidden from every reading this page takes -- the poll and the click's own
-      // re-read alike -- while the run really holds the lock.
-      readings = filterLockFromReadings(created.id);
-      release = await holdRunLockElsewhere(created.id);
-      await expect.element(recovery).toBeEnabled();
-      await recovery.click();
+    // A run in another context rotates the secret after this page read it.
+    const pageSecret = (await getManagedExchange(id))?.sharedSecret;
+    if (pageSecret === undefined)
+      throw new Error("the fixture holds no secret");
+    const rotated = generateSharedSecret();
+    await persistManagedExchangeRotation(id, pageSecret, {
+      sharedSecret: rotated,
+      expires: null,
+    });
 
-      // Nothing minted, and the run is named as the reason rather than the operator
-      // being left with a control that silently did nothing.
-      await vi.waitFor(() => {
-        expect(app.container.textContent).toContain(
-          REINVITE_RUN_IN_FLIGHT_REASON,
-        );
-      });
-      expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
-        secretBefore,
-      );
+    await recovery.click();
+    await expect
+      .element(
+        page.getByText(
+          "This exchange ran while the invitation was being made, so " +
+            "nothing was saved and no invitation was made. Try again.",
+        ),
+      )
+      .toBeInTheDocument();
+    expect((await getManagedExchange(id))?.sharedSecret).toBe(rotated);
 
-      release();
-      release = undefined;
-      readings.restore();
-      readings = undefined;
-      // The refusal consumed nothing: the mint goes through once the run is over.
-      await expect.element(recovery).toBeEnabled();
-      await recovery.click();
-      await vi.waitFor(async () => {
-        expect((await getManagedExchange(created.id))?.sharedSecret).not.toBe(
-          secretBefore,
-        );
-      });
-    } finally {
-      release?.();
-      readings?.restore();
-    }
+    await expect.element(recovery).toBeEnabled();
+    await recovery.click();
+    await vi.waitFor(async () => {
+      expect((await getManagedExchange(id))?.sharedSecret).not.toBe(rotated);
+    });
   });
 });
