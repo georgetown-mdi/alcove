@@ -148,7 +148,9 @@ function twoIdentifierEditor(): ReturnType<typeof editorFromCsv> {
 }
 
 function ledgerValue(editor: ReturnType<typeof editorFromCsv>, label: string) {
-  const row = inviterLedgerRows(editor).find((entry) => entry.label === label);
+  const row = inviterLedgerRows(editor, "browser").find(
+    (entry) => entry.label === label,
+  );
   if (row === undefined) throw new Error(`no ledger row labeled ${label}`);
   return row;
 }
@@ -248,7 +250,7 @@ describe("spine derivation from the read file", () => {
   });
 
   test("before a file is read, every ledger row is the placeholder", () => {
-    for (const row of inviterLedgerRows(undefined)) {
+    for (const row of inviterLedgerRows(undefined, "browser")) {
       expect(row.value).toBeUndefined();
       expect(row.muted).toBeUndefined();
     }
@@ -261,15 +263,16 @@ describe("spine derivation from the read file", () => {
     const marked = (rows: ReturnType<typeof inviterLedgerRows>) =>
       rows.filter((row) => row.shareBar === true).map((row) => row.label);
     const subset = ["You will send", "Matched on", "Expires"];
-    expect(marked(inviterLedgerRows(undefined))).toEqual(subset);
-    expect(marked(inviterLedgerRows(editorFromCsv("Dana", csv)))).toEqual(
-      subset,
-    );
+    expect(marked(inviterLedgerRows(undefined, "browser"))).toEqual(subset);
+    expect(
+      marked(inviterLedgerRows(editorFromCsv("Dana", csv), "browser")),
+    ).toEqual(subset);
     // Settled (outcome present): the labels hold, so the subset does too.
     expect(
       marked(
         inviterLedgerRows(
           editorFromCsv("Dana", csv),
+          "browser",
           "2026-07-08T19:32:00.000Z",
           { kind: "matched", matchedRecordCount: 3 },
         ),
@@ -493,7 +496,7 @@ describe("review and create", () => {
       seededSending("Dana Okafor", csv, "program_code"),
       86400,
     );
-    const rows = answersRows(editor, csv);
+    const rows = answersRows(editor, csv, "browser");
     const byLabel = new Map(rows.map((row) => [row.label, row]));
     expect(byLabel.get("Your name or agency")?.value).toBe("Dana Okafor");
     expect(byLabel.get("Your name or agency")?.changeTarget).toBe("file");
@@ -516,16 +519,20 @@ describe("review and create", () => {
 
   test("a run that makes no invitation restates no duration", () => {
     const editor = editorFromCsv("Dana Okafor", csv);
-    const labels = answersRows(editor, csv, { makesInvitation: false }).map(
-      (row) => row.label,
-    );
+    const labels = answersRows(editor, csv, "browser", {
+      makesInvitation: false,
+    }).map((row) => row.label);
     expect(labels).not.toContain("Invitation duration");
     expect(labels).toContain("Results go to");
   });
 
   test("a minted expiry replaces the relative lifetime in the ledger", () => {
     const editor = editorFromCsv("Dana", csv);
-    const rows = inviterLedgerRows(editor, "2026-07-08T19:32:00.000Z");
+    const rows = inviterLedgerRows(
+      editor,
+      "browser",
+      "2026-07-08T19:32:00.000Z",
+    );
     const expires = rows.find((row) => row.label === "Expires");
     expect(expires?.value).toContain("July 8, 2026");
   });
@@ -950,48 +957,62 @@ describe("transport choice", () => {
     return row;
   }
 
-  test("defaults to browser and reflects in the ledger and answers", () => {
+  test("an unpicked transport leaves the editor unset", () => {
+    expect(editorFromCsv("Dana", csv).transport).toBeUndefined();
+  });
+
+  test.each([
+    {
+      transport: "browser",
+      ledger: "Browser",
+      answer: "Live, in this browser",
+      cli: false,
+    },
+    {
+      transport: "sftp",
+      ledger: "SFTP (command-line tool)",
+      answer: "SFTP (command-line tool)",
+      cli: true,
+    },
+    {
+      transport: "filedrop",
+      ledger: "Shared folder (command-line tool)",
+      answer: "Shared folder (command-line tool)",
+      cli: true,
+    },
+    {
+      transport: "webrtc",
+      ledger: "WebRTC (command-line tool)",
+      answer: "WebRTC (command-line tool)",
+      cli: false,
+    },
+  ] satisfies Array<{
+    transport: Transport;
+    ledger: string;
+    answer: string;
+    cli: boolean;
+  }>)(
+    "choosing $transport names it in the ledger and answers",
+    ({ transport, ledger, answer, cli }) => {
+      const editor = editorWithTransport(editorFromCsv("Dana", csv), transport);
+      expect(editor.transport).toBe(transport);
+      expect(isCliTransport(transport)).toBe(cli);
+      expect(transportRow(inviterLedgerRows(editor, transport)).value).toBe(
+        ledger,
+      );
+      expect(transportRow(answersRows(editor, csv, transport)).value).toBe(
+        answer,
+      );
+    },
+  );
+
+  test("the rows name the transport they are given over an unset editor", () => {
     const editor = editorFromCsv("Dana", csv);
-    expect(editor.transport).toBeUndefined();
-    expect(isCliTransport(editor.transport ?? "browser")).toBe(false);
-    expect(transportRow(inviterLedgerRows(editor)).value).toBe("Browser");
-    expect(transportRow(answersRows(editor, csv)).value).toBe(
-      "Live, in this browser",
-    );
-  });
-
-  test("choosing SFTP reflects the CLI transport in both surfaces", () => {
-    const editor = editorWithTransport(editorFromCsv("Dana", csv), "sftp");
-    expect(editor.transport).toBe("sftp");
-    expect(isCliTransport("sftp")).toBe(true);
-    expect(transportRow(inviterLedgerRows(editor)).value).toBe(
-      "SFTP (command-line tool)",
-    );
-    expect(transportRow(answersRows(editor, csv)).value).toBe(
-      "SFTP (command-line tool)",
-    );
-  });
-
-  test("choosing WebRTC on the console reflects it and saves no file", () => {
-    const editor = editorWithTransport(editorFromCsv("Dana", csv), "webrtc");
-    expect(isCliTransport("webrtc")).toBe(false);
-    expect(transportRow(inviterLedgerRows(editor)).value).toBe(
-      "WebRTC (command-line tool)",
-    );
-    expect(transportRow(answersRows(editor, csv)).value).toBe(
-      "WebRTC (command-line tool)",
-    );
-  });
-
-  test("choosing a shared directory reflects the CLI transport", () => {
-    const editor = editorWithTransport(editorFromCsv("Dana", csv), "filedrop");
-    expect(editor.transport).toBe("filedrop");
-    expect(isCliTransport("filedrop")).toBe(true);
-    expect(transportRow(inviterLedgerRows(editor)).value).toBe(
+    expect(transportRow(inviterLedgerRows(editor, "filedrop")).value).toBe(
       "Shared folder (command-line tool)",
     );
-    expect(transportRow(answersRows(editor, csv)).value).toBe(
-      "Shared folder (command-line tool)",
+    expect(transportRow(answersRows(editor, csv, "sftp")).value).toBe(
+      "SFTP (command-line tool)",
     );
   });
 
@@ -1278,11 +1299,12 @@ describe("transport chooser copy by deployment", () => {
 
 describe("after the exchange completes", () => {
   function outcomeRow(
-    outcome: Parameters<typeof inviterLedgerRows>[2],
+    outcome: Parameters<typeof inviterLedgerRows>[3],
     label: string,
   ) {
     const rows = inviterLedgerRows(
       editorFromCsv("Dana", csv),
+      "browser",
       "2026-07-08T19:32:00.000Z",
       outcome,
     );

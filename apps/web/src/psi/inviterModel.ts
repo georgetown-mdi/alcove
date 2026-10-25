@@ -45,6 +45,8 @@ import type { FieldValueCoverage } from "./workers/nonEmptyAggregate";
 
 import type { AcquiredCsv, InviterEditor } from "./inviterEditor";
 
+import type { Transport } from "./transportChooser";
+
 /** One quiet fact for the Customize menu; `target` is the tab the
  * fact's label opens. `tone` colors the fact only when the surface needs
  * attention (a failing cleaning pipeline); never conveyed by color alone. */
@@ -450,11 +452,13 @@ interface AnswersRow {
 
 /** The check-your-answers table: the full proposal restated before the point
  * of no return, each row's Change link navigating to the spine step or
- * Customize tab that owns the term. `makesInvitation` false is a run that
- * makes no invitation, which has no duration to restate. */
+ * Customize tab that owns the term. `transport` is the one the chooser shows
+ * as selected. `makesInvitation` false is a run that makes no invitation,
+ * which has no duration to restate. */
 export function answersRows(
   editor: InviterEditor,
   csv: AcquiredCsv,
+  transport: Transport,
   { makesInvitation = true }: { makesInvitation?: boolean } = {},
 ): Array<AnswersRow> {
   const sent = disclosedColumnNames(editor.draft.metadata);
@@ -513,7 +517,7 @@ export function answersRows(
     },
     {
       label: "How it runs",
-      value: TRANSPORT_ANSWER_LABELS[editor.transport ?? "browser"],
+      value: TRANSPORT_ANSWER_LABELS[transport],
       setAbove: true,
     },
   ];
