@@ -42,8 +42,11 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type {
+  ManagedPairReconcileOutcome,
+  ManagedReplaceOutcome,
+} from "@psi/managed/managedExchangeStore";
 import type { ManagedPairImportDeps } from "@psi/managed/managedExchangeImport";
-import type { ManagedPairReconcileOutcome } from "@psi/managed/managedExchangeStore";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The key leg of the command-line import: an alcove.yaml read with the
@@ -505,7 +508,7 @@ describe("laying a pair over the stored record it completes", () => {
     expect(none).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
-  test("a record holding a secret is refused, so a pair never replaces one", () => {
+  test("a record holding a secret is refused: completing takes a configuration only", () => {
     const stored = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange()),
     );
@@ -521,15 +524,18 @@ describe("laying a pair over the stored record it completes", () => {
 /** Injected boundaries for the pair import, recording what it wrote. */
 function recordingDeps(
   reconciled: ManagedPairReconcileOutcome = { kind: "no-match" },
+  replaced: ManagedReplaceOutcome = { kind: "changed" },
 ): ManagedPairImportDeps & {
   installed: Array<ManagedExchangeRecord>;
   reconcile: ReturnType<typeof vi.fn>;
+  replace: ReturnType<typeof vi.fn>;
   markImported: ReturnType<typeof vi.fn>;
 } {
   const installed: Array<ManagedExchangeRecord> = [];
   return {
     installed,
     reconcile: vi.fn(() => Promise.resolve(reconciled)),
+    replace: vi.fn(() => Promise.resolve(replaced)),
     install: (record) => {
       installed.push(record);
       return Promise.resolve(record);
@@ -620,6 +626,48 @@ describe("importing a configuration with its key file", () => {
       importManagedCommandLinePair(configuration, key, deps, { into: "gone" }),
     );
     expect(error).toBeInstanceOf(ManagedImportChosenCopyError);
+    expect(deps.installed).toHaveLength(0);
+  });
+
+  test("a chosen exchange that runs here is replaced in place, installing nothing", async () => {
+    const { configuration, key, record } = exportedPair();
+    const deps = recordingDeps(
+      { kind: "replace", id: record.id },
+      { kind: "replaced", record },
+    );
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      deps,
+      { into: record.id },
+    );
+    expect(deps.replace).toHaveBeenCalledWith(
+      record.id,
+      "2026-07-14T12:00:00.000Z",
+      expect.objectContaining({ sharedSecret: record.sharedSecret }),
+      "command-line",
+    );
+    expect(result.record).toBe(record);
+    expect(deps.installed).toHaveLength(0);
+    expect(deps.markImported).not.toHaveBeenCalled();
+  });
+
+  test("a replace a run holds off is refused as a run in progress", async () => {
+    const { configuration, key, record } = exportedPair();
+    const deps = recordingDeps(
+      { kind: "replace", id: record.id },
+      { kind: "run-in-flight" },
+    );
+    const error = await rejectionOf(() =>
+      importManagedCommandLinePair(configuration, key, deps, {
+        into: record.id,
+      }),
+    );
+    expect(error).toBeInstanceOf(ManagedImportChosenCopyError);
+    expect((error as ManagedImportChosenCopyError).reason).toBe(
+      "run-in-flight",
+    );
+    expect(errorText(error)).not.toContain(record.sharedSecret);
     expect(deps.installed).toHaveLength(0);
   });
 

@@ -16,8 +16,13 @@ import {
 import { unfiledDisclosureKey } from "../unfiledDisclosure";
 
 import {
+  ManagedExchangeLockUnavailableError,
+  withManagedExchangeLock,
+} from "./managedExchangeLock";
+import {
   applyManagedExchangeCommandLinePair,
   applyManagedExchangeCompromiseResponse,
+  applyManagedExchangeImportReplace,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
   applyManagedExchangePayloadReceiveFill,
@@ -39,11 +44,13 @@ import {
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
 } from "./managedExchangeRecord";
+import {
+  findRecordsByTermsAndSide,
+  sameAgreedTermsAndSide,
+} from "./managedLiveCopyMatch";
 import { decideCommandLinePairTarget } from "./managedPairRecognition";
-import { findRecordsByTermsAndSide } from "./managedLiveCopyMatch";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 import { parseManagedLocalState } from "./managedLocalStateShape";
-import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type { RelayRegistrar } from "@alcove/core";
 
@@ -60,6 +67,7 @@ import type {
   ManagedExchangeReinviteRotation,
   ManagedExchangeRotation,
   ManagedExchangeScheduleAdvance,
+  ManagedImportSource,
   ManagedTermsChangeWrite,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
@@ -69,6 +77,7 @@ import type {
   ManagedPairTarget,
   ManagedStoredCopy,
 } from "./managedPairRecognition";
+import type { ManagedLocalState } from "./managedLocalStateShape";
 
 /** The IndexedDB database name, under the app's origin. */
 export const MANAGED_EXCHANGE_DB_NAME = "alcove-managed-exchanges";
@@ -362,13 +371,16 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * without requiring a successful parse. Both also hold whether the sibling
  * local-state store states a backup (`backedUp`), so the delete confirm's custody
  * note shows on the recovery path exactly as on the normal list. A boolean
- * suffices for the backup marker, whose timestamp is never shown here.
+ * suffices for the backup marker, whose timestamp is never shown here. A
+ * readable entry whose sibling entry does not parse holds `stateUnreadable`:
+ * its page cannot load, so nothing it holds can be exported first.
  */
 export type ManagedExchangeDiagnosticEntry =
   | {
       kind: "readable";
       essentials: ManagedExchangeDiagnosticEssentials;
       backedUp: boolean;
+      stateUnreadable?: true;
     }
   | {
       kind: "unreadable";
@@ -391,10 +403,11 @@ export type ManagedExchangeDiagnosticEntry =
  * the parsed records, so an unreadable entry still yields a key to delete by.
  *
  * The custody is read from the sibling local-state store in the same transaction.
- * A record whose sibling entry is present but does not parse yields the unreadable
- * marker, since that entry alone makes the normal list reject, and is
- * conservative on doubt: it is treated as backed up (a wrongly-shown custody
- * warning is harmless; a wrongly-suppressed one is not).
+ * A record whose sibling entry is present but does not parse yields its
+ * essentials marked `stateUnreadable` where the record itself parses, and the
+ * unreadable marker where it does not, and is conservative on doubt: it is
+ * treated as backed up (a wrongly-shown custody warning is harmless; a
+ * wrongly-suppressed one is not).
  */
 export async function listManagedExchangesDiagnostic(): Promise<
   Array<ManagedExchangeDiagnosticEntry>
@@ -426,11 +439,10 @@ export async function listManagedExchangesDiagnostic(): Promise<
           for (let index = 0; index < keys.length; index += 1) {
             const key = String(keys[index]);
             const sibling = custodyByKey.get(key);
-            if (sibling?.siblingReadable === false) {
-              entries.push({ kind: "unreadable", id: key, backedUp: true });
-              continue;
-            }
-            const custody = { backedUp: sibling?.backedUp ?? false };
+            const custody =
+              sibling?.siblingReadable === false
+                ? { backedUp: true, stateUnreadable: true as const }
+                : { backedUp: sibling?.backedUp ?? false };
             try {
               entries.push({
                 kind: "readable",
@@ -440,7 +452,11 @@ export async function listManagedExchangesDiagnostic(): Promise<
             } catch {
               // The parse failed, so the record's own `id` is untrusted; the store
               // key is the delete target instead, and the only field shown.
-              entries.push({ kind: "unreadable", id: key, ...custody });
+              entries.push({
+                kind: "unreadable",
+                id: key,
+                backedUp: custody.backedUp,
+              });
             }
           }
           resolve(entries);
@@ -1280,24 +1296,35 @@ export async function persistManagedExchangeWorkingDirectory(
  *
  * - `"held"` -- a stored record holds the artifact's secret already: it is the
  *   same exchange. The caller refuses the import, naming that record's
- *   `label`.
+ *   `label`, and whether its sibling entry does not parse
+ *   (`stateUnreadable`), which keeps its page from loading.
  * - `"live-copy"` -- no stored record holds the artifact's secret, and one or
  *   more have its agreed terms and side not yet acknowledged
  *   ({@link findRecordsByTermsAndSide}), listed in `copies`. The caller names
- *   them all and imports only on the operator's word, passing every `id` back
- *   in `besideIds`.
+ *   them all and imports only on the operator's word: one `id` back as `into`
+ *   to replace it, or every `id` in `besideIds` to install beside them.
+ * - `"replace"` -- the record `into` names still has the artifact's agreed
+ *   terms and side, so the caller replaces it
+ *   ({@link replaceManagedExchangeFromImport}).
+ * - `"chosen-copy-changed"` -- the record `into` names is gone or no longer has
+ *   the artifact's agreed terms and side.
  * - `"no-match"` -- nothing above applies, so the caller installs a fresh record.
  */
 export type ManagedBackupReconcileOutcome =
-  | { kind: "held"; label: string }
+  | { kind: "held"; label: string; stateUnreadable?: true }
   | {
       kind: "live-copy";
       copies: ReadonlyArray<{ id: string; label: string }>;
     }
+  | { kind: "replace"; id: string }
+  | { kind: "chosen-copy-changed" }
   | { kind: "no-match" };
 
-/** What a backup import asks of the reconciliation beyond the artifact itself. */
+/** What a backup import asks of the reconciliation beyond the artifact itself:
+ * the operator's answer to a `"live-copy"` outcome. */
 export interface ManagedBackupImportOptions {
+  /** The stored record the operator chose to replace with the backup. */
+  into?: string;
   /** The stored records the operator confirmed installing beside, which the
    * terms-and-side rule then passes over. */
   besideIds?: ReadonlyArray<string>;
@@ -1311,8 +1338,9 @@ export interface ManagedBackupImportOptions {
  * (`"held"`): a second copy of one secret splits at the first rotation either
  * side makes. Otherwise the stored records with the artifact's agreed terms and
  * side, other than those in `besideIds`, are named together for the operator to
- * decide on ({@link findRecordsByTermsAndSide}): a secret may have rotated past
- * the artifact's.
+ * decide on ({@link findRecordsByTermsAndSide}): either secret may have rotated
+ * past the other. An `into` answer is checked against the same rule here, and
+ * nothing is written: the replace is its own write.
  *
  * Each stored record is parsed on its own, and an entry this build cannot parse is
  * SKIPPED rather than failing the reconciliation: one invalid record must not block
@@ -1330,11 +1358,7 @@ export async function reconcileManagedBackupImport(
     "backup",
     options,
   );
-  if (
-    outcome.kind === "completed" ||
-    outcome.kind === "stored-copy" ||
-    outcome.kind === "chosen-copy-changed"
-  )
+  if (outcome.kind === "completed" || outcome.kind === "stored-copy")
     throw new Error(
       `a backup reconciliation reported ${outcome.kind}, which only a command-line pair import reaches`,
     );
@@ -1348,29 +1372,30 @@ export async function reconcileManagedBackupImport(
  *
  * - `"completed"` -- the configuration-only record the operator chose took
  *   the pair, holding the completed record.
- * - `"stored-copy"` and `"chosen-copy-changed"` -- as
+ * - `"replace"`, `"stored-copy"`, and `"chosen-copy-changed"` -- as
  *   {@link ManagedPairTarget} states; nothing is written.
  */
 export type ManagedPairReconcileOutcome =
   | Exclude<ManagedBackupReconcileOutcome, { kind: "live-copy" }>
   | { kind: "completed"; record: ManagedExchangeRecord }
-  | { kind: "stored-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
-  | { kind: "chosen-copy-changed" };
+  | { kind: "stored-copy"; copies: ReadonlyArray<ManagedStoredCopy> };
 
 /**
  * Reconcile a record read from a command-line `alcove.yaml` and its
  * `.alcove.key` against the store, in the transaction the backup import's
  * {@link reconcileManagedBackupImport} uses. A stored record holding the same
  * `sharedSecret`, compared in memory, is the same exchange and refuses exactly
- * as it does there. Where none holds it, the configuration-only records with
- * its agreed terms and side are looked for, and the pair lands in one only as
- * `options.into` names it ({@link decideCommandLinePairTarget}).
+ * as it does there. Where none holds it, the records with its agreed terms and
+ * side are looked for, and the pair lands in one only as `options.into` names
+ * it ({@link decideCommandLinePairTarget}).
  *
- * The configuration-only record takes the pair's fields laid over it
+ * A configuration-only record takes the pair's fields laid over it here
  * ({@link applyManagedExchangeCommandLinePair}) -- the document, side, max-age
  * policy, key pair, and relay registration -- keeping its id, label, and
  * standing condition, and is marked imported as of `at`; no backup marker is
- * stamped.
+ * stamped. A record that runs here is replaced by the caller instead
+ * (`"replace"`, {@link replaceManagedExchangeFromImport}), under its run lock,
+ * which a configuration-only record needs no part of.
  *
  * @throws {ZodError} if the completed record is invalid; nothing is written.
  */
@@ -1393,12 +1418,9 @@ export async function reconcileManagedCommandLinePair(
   return outcome;
 }
 
-/** Which import a reconciliation serves: the app's backup artifact, or a
- * command-line configuration with its key file. */
-type ManagedImportSource = "backup" | "command-line";
-
 /** The reconciliation both imports run, differing by `source` only where
- * {@link reconcileManagedCommandLinePair} states. */
+ * {@link reconcileManagedCommandLinePair} states. A held record's sibling entry
+ * is read only to report whether it parses. */
 async function reconcileImportedSecret(
   reconstructed: ManagedExchangeRecord,
   at: string,
@@ -1424,30 +1446,30 @@ async function reconcileImportedSecret(
       let failure: unknown;
       readRecords.onsuccess = () => {
         try {
-          let held: string | undefined;
+          let held: ManagedExchangeRecord | undefined;
           const others: Array<ManagedExchangeRecord> = [];
           for (const raw of readRecords.result) {
             const parsed = safeParseManagedExchangeRecord(raw);
             if (!parsed.success) continue;
             if (parsed.data.sharedSecret === reconstructed.sharedSecret)
-              held ??= parsed.data.label;
+              held ??= parsed.data;
             else others.push(parsed.data);
           }
           if (held !== undefined) {
-            outcome = { kind: "held", label: held };
+            const { label } = held;
+            outcome = { kind: "held", label };
+            const readHeldLocal = local.get(held.id);
+            readHeldLocal.onsuccess = () => {
+              if (
+                readHeldLocal.result !== undefined &&
+                parsedSiblingEntry(readHeldLocal.result) === undefined
+              )
+                outcome = { kind: "held", label, stateUnreadable: true };
+            };
             return;
           }
           if (source === "backup") {
-            const liveCopies = findRecordsByTermsAndSide(
-              others,
-              reconstructed,
-              options.besideIds,
-            );
-            if (liveCopies.length > 0)
-              outcome = {
-                kind: "live-copy",
-                copies: liveCopies.map(({ id, label }) => ({ id, label })),
-              };
+            outcome = decideBackupTarget(others, reconstructed, options);
             return;
           }
           const imported = runnableManagedExchangeOrRefuse(reconstructed);
@@ -1475,6 +1497,167 @@ async function reconcileImportedSecret(
           transaction.abort();
         }
       };
+      transaction.oncomplete = () => resolve(outcome);
+      transaction.onerror = () => reject(failure ?? transaction.error);
+      transaction.onabort = () => reject(failure ?? transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Where a backup lands once no stored record holds its secret: the record
+ * `options.into` chose, provided it still has the backup's agreed terms and
+ * side, or else the question naming every such record not in
+ * `options.besideIds`. */
+function decideBackupTarget(
+  records: ReadonlyArray<ManagedExchangeRecord>,
+  imported: ManagedExchangeRecord,
+  options: ManagedBackupImportOptions,
+): ManagedBackupReconcileOutcome {
+  if (options.into !== undefined) {
+    const chosen = findRecordsByTermsAndSide(records, imported).find(
+      ({ id }) => id === options.into,
+    );
+    return chosen === undefined
+      ? { kind: "chosen-copy-changed" }
+      : { kind: "replace", id: chosen.id };
+  }
+  const liveCopies = findRecordsByTermsAndSide(
+    records,
+    imported,
+    options.besideIds,
+  );
+  return liveCopies.length > 0
+    ? {
+        kind: "live-copy",
+        copies: liveCopies.map(({ id, label }) => ({ id, label })),
+      }
+    : { kind: "no-match" };
+}
+
+/** A stored sibling entry as parsed, or `undefined` where there is none or it
+ * does not parse. */
+function parsedSiblingEntry(raw: unknown): ManagedLocalState | undefined {
+  if (raw === undefined) return undefined;
+  try {
+    return parseManagedLocalState(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * How {@link replaceManagedExchangeFromImport} ended. `"replaced"` is the one
+ * outcome that writes, holding the record that runs here from then on. The
+ * refusals write nothing:
+ *
+ * - `"run-in-flight"` -- another context holds the record's run+rotate lock,
+ *   so a replace landing beside a run would overwrite the secret it rotates.
+ * - `"changed"` -- the record is gone, or no longer has the import's agreed
+ *   terms and side, since the operator chose it.
+ */
+export type ManagedReplaceOutcome =
+  | { kind: "replaced"; record: RunnableManagedExchangeRecord }
+  | { kind: "run-in-flight" }
+  | { kind: "changed" };
+
+/**
+ * Replace the stored record `id`, which the operator chose, with an imported
+ * one ({@link applyManagedExchangeImportReplace}), keeping its `id`, so its
+ * accounting of disclosures, any parked results, and any unfiled-run note --
+ * all kept under that id -- stay with it.
+ *
+ * The sibling entry is written in the same transaction: the import marker as
+ * of `at`, and from a backup the backup marker too, since the file just
+ * imported is a backup of the secret it installs. A pending terms proposal is
+ * kept; every other marker is dropped with the replaced secret, and an entry
+ * this build cannot parse is dropped whole.
+ *
+ * The step takes the record's run+rotate lock ({@link ./managedExchangeLock.ts})
+ * with `ifAvailable` before its transaction opens, as the re-invite's rotation
+ * write does, so a run holding it refuses the replace rather than having its
+ * secret replaced mid-exchange. The read, the check that the record still has
+ * the import's agreed terms and side, and both writes are one transaction; the
+ * secret the record holds is not compared.
+ *
+ * @throws {Error} if `imported` holds no secret; nothing is written.
+ * @throws {ZodError} if the stored record or the result is invalid; the
+ *   transaction aborts and nothing is written.
+ */
+export async function replaceManagedExchangeFromImport(
+  id: string,
+  at: string,
+  imported: ManagedExchangeRecord,
+  source: ManagedImportSource,
+): Promise<ManagedReplaceOutcome> {
+  try {
+    return await withManagedExchangeLock(
+      id,
+      () => replaceStoredCopy(id, at, imported, source),
+      { ifAvailable: true },
+    );
+  } catch (error) {
+    if (error instanceof ManagedExchangeLockUnavailableError)
+      return { kind: "run-in-flight" };
+    throw error;
+  }
+}
+
+/** The replace itself, run under the record's run+rotate lock. */
+async function replaceStoredCopy(
+  id: string,
+  at: string,
+  imported: ManagedExchangeRecord,
+  source: ManagedImportSource,
+): Promise<ManagedReplaceOutcome> {
+  const runnable = runnableManagedExchangeOrRefuse(imported);
+  const db = await openManagedExchangeDatabase();
+  try {
+    return await new Promise<ManagedReplaceOutcome>((resolve, reject) => {
+      const transaction = db.transaction(
+        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+        "readwrite",
+        { durability: "strict" },
+      );
+      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
+      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      const read = records.get(id);
+      const readLocal = local.get(id);
+      let outcome: ManagedReplaceOutcome = { kind: "changed" };
+      let failure: unknown;
+      const applyWhenReady = () => {
+        if (read.readyState !== "done" || readLocal.readyState !== "done")
+          return;
+        try {
+          if (read.result === undefined) return;
+          const stored = parseManagedExchangeRecord(read.result);
+          if (!sameAgreedTermsAndSide(stored, runnable)) return;
+          const replaced = applyManagedExchangeImportReplace(
+            stored,
+            runnable,
+            source,
+          );
+          const termsProposal = parsedSiblingEntry(
+            readLocal.result,
+          )?.termsProposal;
+          records.put(replaced);
+          local.put(
+            parseManagedLocalState({
+              ...(termsProposal !== undefined ? { termsProposal } : {}),
+              ...(source === "backup" ? { backup: { backedUpAt: at } } : {}),
+              imported: { importedAt: at },
+            }),
+            id,
+          );
+          outcome = { kind: "replaced", record: replaced };
+        } catch (error) {
+          failure = error;
+          transaction.abort();
+        }
+      };
+      read.onsuccess = applyWhenReady;
+      readLocal.onsuccess = applyWhenReady;
       transaction.oncomplete = () => resolve(outcome);
       transaction.onerror = () => reject(failure ?? transaction.error);
       transaction.onabort = () => reject(failure ?? transaction.error);

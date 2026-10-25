@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  MANAGED_EXCHANGE_LOCAL_STORE_NAME,
   MANAGED_EXCHANGE_STORE_NAME,
   clearManagedExchanges,
   createManagedExchange,
@@ -34,6 +35,7 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
+import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import type {
   ManagedExchangeRecord,
@@ -224,6 +226,35 @@ describe("a stored exchange holding the pair's secret", () => {
     expect(await getManagedLocalState(live.id)).toBeUndefined();
   });
 
+  test("one whose sibling entry does not parse refuses, naming its unreadable state", async () => {
+    const live = await createRunnableExchange(newExchange());
+    const { configuration, key } = pairOf(live);
+    const db = await openManagedExchangeDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(
+          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
+          "readwrite",
+        );
+        transaction
+          .objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME)
+          .put({ backup: { backedUpAt: "not-an-instant" } }, live.id);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally {
+      db.close();
+    }
+
+    await expect(
+      importManagedCommandLinePair(configuration, key),
+    ).rejects.toMatchObject({
+      name: "ManagedImportAlreadyHeldError",
+      stateUnreadable: true,
+    });
+    expect(await listManagedExchanges()).toEqual([live]);
+  });
+
   test("the backup import refuses a live match on the same rule", async () => {
     const live = await createRunnableExchange(newExchange());
     const outcome = await reconcileManagedCommandLinePair(
@@ -276,7 +307,7 @@ describe("a stored record of the pair's terms and side that its secret misses", 
     return error as ManagedImportStoredCopyError;
   }
 
-  test("a configuration-only record is offered, a live one is not, and nothing is written", async () => {
+  test("a configuration-only record and a live one are each offered, and nothing is written", async () => {
     const live = await createRunnableExchange(newExchange({ schedule }));
     await markManagedExchangeBackedUp(live.id, "2026-07-10T09:00:00.000Z");
     const configured = await configurationOnly();
@@ -285,14 +316,17 @@ describe("a stored record of the pair's terms and side that its secret misses", 
 
     const offer = await storedCopyOffer(configuration, key);
 
-    expect(offer.copies).toEqual([
-      {
-        id: configured.id,
-        label: configured.label,
-        state: "configuration-only",
-      },
-    ]);
-    expect(offer.copies.map(({ id }) => id)).not.toContain(live.id);
+    expect(offer.copies).toEqual(
+      expect.arrayContaining([
+        { id: live.id, label: live.label, state: "runs-here" },
+        {
+          id: configured.id,
+          label: configured.label,
+          state: "configuration-only",
+        },
+      ]),
+    );
+    expect(offer.copies).toHaveLength(2);
     expect(await listManagedExchanges()).toEqual(storedBefore);
     expect(await getManagedLocalState(live.id)).toEqual({
       backup: { backedUpAt: "2026-07-10T09:00:00.000Z" },
@@ -339,6 +373,63 @@ describe("a stored record of the pair's terms and side that its secret misses", 
 
     expect(error).toBeInstanceOf(ManagedImportChosenCopyError);
     expect(await listManagedExchanges()).toEqual([]);
+    expect(await everywhereStored(sharedSecret)).toEqual([]);
+  });
+
+  test("taken into a live record, it replaces that record in place, keeping its schedule", async () => {
+    const live = await createRunnableExchange(newExchange({ schedule }));
+    await markManagedExchangeBackedUp(live.id, "2026-07-10T09:00:00.000Z");
+    const { configuration, key, sharedSecret } = rotatedPairOf(live);
+    await storedCopyOffer(configuration, key);
+
+    const { record } = await importManagedCommandLinePair(
+      configuration,
+      key,
+      undefined,
+      { into: live.id },
+    );
+
+    expect(record.id).toBe(live.id);
+    expect(runnableManagedExchange(record)).toBe(true);
+    const stored = await listManagedExchanges();
+    expect(stored).toEqual([record]);
+    expect(record.sharedSecret).toBe(sharedSecret);
+    expect(record.label).toBe(live.label);
+    expect(record.schedule).toEqual(live.schedule);
+    // The backup marker belonged to the replaced secret: no backup holds this one.
+    const local = await getManagedLocalState(live.id);
+    expect(local?.backup).toBeUndefined();
+    expect(local?.imported?.importedAt).toEqual(expect.any(String));
+    expect(await everywhereStored(sharedSecret)).toEqual([
+      `${MANAGED_EXCHANGE_STORE_NAME}[${live.id}].sharedSecret`,
+    ]);
+
+    // The same files again are the same exchange now, so nothing changes.
+    await expect(
+      importManagedCommandLinePair(configuration, key),
+    ).rejects.toBeInstanceOf(ManagedImportAlreadyHeldError);
+    expect(await listManagedExchanges()).toEqual(stored);
+  });
+
+  test("a live record whose run holds its lock refuses the replace, writing nothing", async () => {
+    const live = await createRunnableExchange(newExchange({ schedule }));
+    const { configuration, key, sharedSecret } = rotatedPairOf(live);
+
+    let error: unknown;
+    await withManagedExchangeLock(live.id, async () => {
+      error = await importManagedCommandLinePair(
+        configuration,
+        key,
+        undefined,
+        { into: live.id },
+      ).catch((caught: unknown) => caught);
+    });
+
+    expect(error).toBeInstanceOf(ManagedImportChosenCopyError);
+    expect((error as ManagedImportChosenCopyError).reason).toBe(
+      "run-in-flight",
+    );
+    expect(await listManagedExchanges()).toEqual([live]);
     expect(await everywhereStored(sharedSecret)).toEqual([]);
   });
 });

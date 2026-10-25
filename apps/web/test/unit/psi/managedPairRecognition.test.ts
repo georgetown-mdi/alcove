@@ -96,24 +96,37 @@ describe("a pair whose secret no stored record holds", () => {
       });
   });
 
-  test("a runnable record with equal terms and side is not offered", () => {
-    expect(decideCommandLinePairTarget([runnable()], runnable())).toEqual({
-      kind: "no-match",
+  test("a runnable record with equal terms and side is offered, then replaced under the store's lock", () => {
+    const stored = runnable();
+
+    expect(decideCommandLinePairTarget([stored], runnable())).toEqual({
+      kind: "stored-copy",
+      copies: [
+        { id: stored.id, label: "Riverbend quarterly", state: "runs-here" },
+      ],
     });
+    expect(
+      decideCommandLinePairTarget([stored], runnable(), { into: stored.id }),
+    ).toEqual({ kind: "replace", id: stored.id });
   });
 
   test("names every qualifying record, less those declined", () => {
     const first = configurationOnly();
     const second = configurationOnly();
-    const records = [first, runnable(), second];
+    const live = runnable();
+    const records = [first, live, second];
 
     expect(decideCommandLinePairTarget(records, runnable())).toMatchObject({
       kind: "stored-copy",
-      copies: [{ id: first.id }, { id: second.id }],
+      copies: [
+        { id: first.id, state: "configuration-only" },
+        { id: live.id, state: "runs-here" },
+        { id: second.id, state: "configuration-only" },
+      ],
     });
     expect(
       decideCommandLinePairTarget(records, runnable(), {
-        besideIds: [first.id],
+        besideIds: [first.id, live.id],
       }),
     ).toMatchObject({ kind: "stored-copy", copies: [{ id: second.id }] });
   });
@@ -123,8 +136,8 @@ describe("a pair whose secret no stored record holds", () => {
 
     for (const records of [
       [],
-      [runnableManagedExchangeOrRefuse({ ...runnable(), id: stored.id })],
       [{ ...configurationOnly("acceptor"), id: stored.id }],
+      [{ ...onOtherTerms(configurationOnly()), id: stored.id }],
     ])
       expect(
         decideCommandLinePairTarget(records, runnable(), { into: stored.id }),

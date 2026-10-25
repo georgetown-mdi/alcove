@@ -16,19 +16,27 @@ import {
   markManagedBackupIfCurrent,
   openManagedExchangeDatabase,
   persistManagedExchangeRotation,
+  putManagedExchange,
   readRecordAndMarkBackedUp,
   recordManagedExchangeLastRun,
+  replaceManagedExchangeFromImport,
 } from "@psi/managed/managedExchangeStore";
 import {
   ManagedExchangeLockUnavailableError,
   withManagedExchangeLock,
 } from "@psi/managed/managedExchangeLock";
 import {
+  ManagedImportChosenCopyError,
   ManagedImportLiveCopyError,
   importManagedExchange,
 } from "@psi/managed/managedExchangeImport";
 import {
+  appendDisclosureRecordToStore,
+  readDisclosureAccounting,
+} from "@psi/disclosureAccountingStore";
+import {
   composeManagedExchangeFile,
+  runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -48,6 +56,8 @@ import { exportManagedBackup } from "@psi/managed/managedExchangeExport";
 import { failedRun } from "@psi/managed/managedRunRotate";
 import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { savedExchangeRows } from "@recurring/savedExchangesModel";
+
+import { disclosureRecord } from "../utils/disclosureFixtures";
 
 import type {
   NewManagedExchange,
@@ -594,6 +604,175 @@ describe("a backup reconciles per exchange, whatever else is listed", () => {
   });
 });
 
+describe("a backup replaces the saved copy it is chosen for", () => {
+  const RAN_HERE = "2026-07-01T09:00:00.000Z";
+  const RAN_ELSEWHERE = "2026-07-08T09:00:00.000Z";
+
+  /** A saved copy that last ran here, holding an accounting entry, and a
+   * backup of the same exchange that ran on another device since: its secret
+   * rotated there, and its last run is the later one. */
+  async function staleCopyAndNewerBackup(): Promise<{
+    stale: RunnableManagedExchangeRecord;
+    newer: RunnableManagedExchangeRecord;
+    bytes: string;
+  }> {
+    const created = await createRunnableExchange(newExchange());
+    await recordManagedExchangeLastRun(
+      created.id,
+      { at: RAN_HERE, outcome: "succeeded" },
+      Date.parse(RAN_HERE),
+    );
+    await appendDisclosureRecordToStore(created.id, await disclosureRecord());
+    const ran = await getManagedExchange(created.id);
+    if (ran === undefined) throw new Error("the saved copy was not stored");
+    const stale = runnableManagedExchangeOrRefuse(ran);
+    const newer = runnableManagedExchangeOrRefuse({
+      ...stale,
+      sharedSecret: generateSharedSecret(),
+      lastRun: { at: RAN_ELSEWHERE, outcome: "succeeded" },
+      recentRuns: [
+        { at: RAN_ELSEWHERE, outcome: "succeeded" },
+        { at: RAN_HERE, outcome: "succeeded" },
+      ],
+    });
+    return {
+      stale,
+      newer,
+      bytes: serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(newer),
+      ),
+    };
+  }
+
+  test("a stale copy is replaced in place: one entry, runnable, its history and accounting kept", async () => {
+    const { stale, newer, bytes } = await staleCopyAndNewerBackup();
+    const accountingBefore = await readDisclosureAccounting(stale.id);
+
+    await expect(importManagedExchange(bytes)).rejects.toMatchObject({
+      name: "ManagedImportLiveCopyError",
+      copies: [{ id: stale.id, label: stale.label }],
+    });
+    const { record } = await importManagedExchange(bytes, undefined, {
+      into: stale.id,
+    });
+
+    expect(record.id).toBe(stale.id);
+    expect(record.sharedSecret).toBe(newer.sharedSecret);
+    expect(runnableManagedExchange(record)).toBe(true);
+    expect(await listManagedExchanges()).toEqual([record]);
+    expect(record.lastRun?.at).toBe(RAN_ELSEWHERE);
+    expect(record.recentRuns?.map(({ at }) => at)).toEqual([
+      RAN_ELSEWHERE,
+      RAN_HERE,
+    ]);
+    expect(await readDisclosureAccounting(stale.id)).toEqual(accountingBefore);
+    const local = await getManagedLocalState(stale.id);
+    expect(local?.backup).toBeDefined();
+    expect(local?.imported).toBeDefined();
+  });
+
+  test("the same backup imported again is refused as held, and nothing changes", async () => {
+    const { stale, bytes } = await staleCopyAndNewerBackup();
+    await importManagedExchange(bytes, undefined, { into: stale.id });
+    const after = await listManagedExchanges();
+
+    await expect(importManagedExchange(bytes)).rejects.toMatchObject({
+      name: "ManagedImportAlreadyHeldError",
+      label: stale.label,
+    });
+    await expect(
+      importManagedExchange(bytes, undefined, { into: stale.id }),
+    ).rejects.toMatchObject({ name: "ManagedImportAlreadyHeldError" });
+    expect(await listManagedExchanges()).toEqual(after);
+  });
+
+  test("an older backup is asked about exactly as a newer one, since the record cannot order them", async () => {
+    const { stale: live, bytes: newer } = await staleCopyAndNewerBackup();
+    // A backup taken before the saved copy rotated here: the older one.
+    const older = serializeManagedExchangeArtifact(
+      encodeManagedExchangeArtifact(live),
+    );
+    await persistManagedExchangeRotation(live.id, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+    });
+    const kept = await getManagedExchange(live.id);
+
+    const olderAsked = await importManagedExchange(older).catch(
+      (error: unknown) => error,
+    );
+    const newerAsked = await importManagedExchange(newer).catch(
+      (error: unknown) => error,
+    );
+    expect(olderAsked).toBeInstanceOf(ManagedImportLiveCopyError);
+    expect(newerAsked).toBeInstanceOf(ManagedImportLiveCopyError);
+    expect((olderAsked as ManagedImportLiveCopyError).copies).toEqual(
+      (newerAsked as ManagedImportLiveCopyError).copies,
+    );
+
+    // Keeping the saved copy is answering nothing: it stands as it was.
+    expect(await getManagedExchange(live.id)).toEqual(kept);
+    expect(await getManagedLocalState(live.id)).toBeUndefined();
+  });
+
+  test("a replace while the exchange's run holds its lock writes nothing", async () => {
+    const { stale, bytes } = await staleCopyAndNewerBackup();
+
+    let refusal: unknown;
+    await withManagedExchangeLock(stale.id, async () => {
+      refusal = await importManagedExchange(bytes, undefined, {
+        into: stale.id,
+      }).catch((error: unknown) => error);
+    });
+
+    expect(refusal).toBeInstanceOf(ManagedImportChosenCopyError);
+    expect((refusal as ManagedImportChosenCopyError).reason).toBe(
+      "run-in-flight",
+    );
+    expect(await listManagedExchanges()).toEqual([stale]);
+    expect(await getManagedLocalState(stale.id)).toBeUndefined();
+  });
+
+  test("a chosen copy deleted or moved to other terms since is refused as changed", async () => {
+    const { stale, bytes } = await staleCopyAndNewerBackup();
+    await putManagedExchange({ ...stale, side: "acceptor" });
+
+    await expect(
+      importManagedExchange(bytes, undefined, { into: stale.id }),
+    ).rejects.toMatchObject({
+      name: "ManagedImportChosenCopyError",
+      reason: "changed",
+    });
+
+    await deleteManagedExchange(stale.id);
+    await expect(
+      importManagedExchange(bytes, undefined, { into: stale.id }),
+    ).rejects.toMatchObject({
+      name: "ManagedImportChosenCopyError",
+      reason: "changed",
+    });
+    expect(await listManagedExchanges()).toEqual([]);
+  });
+
+  test("the store's replace re-checks terms and side inside its transaction", async () => {
+    const { stale, newer } = await staleCopyAndNewerBackup();
+    const elsewhere = runnableManagedExchangeOrRefuse({
+      ...newer,
+      side: "acceptor",
+    });
+
+    expect(
+      await replaceManagedExchangeFromImport(
+        stale.id,
+        new Date().toISOString(),
+        elsewhere,
+        "backup",
+      ),
+    ).toEqual({ kind: "changed" });
+    expect(await getManagedExchange(stale.id)).toEqual(stale);
+  });
+});
+
 /** Plant an invalid record under `id`, keeping every other field of `fields`, so a
  * test stages the record an app upgrade left unreadable. Bypasses the validating
  * write, as no supported path stores one. */
@@ -739,9 +918,9 @@ describe("a local-state entry this build cannot parse is skipped too", () => {
     await expect(listManagedLocalState()).rejects.toThrow();
   });
 
-  test("a record holding the artifact's secret refuses as held, whatever its entry holds", async () => {
-    // The entry decides nothing: the record holds the secret, so it is the same
-    // exchange, and the import refuses as it does for any record holding it.
+  test("a record holding the artifact's secret refuses as held, naming its unreadable state", async () => {
+    // The entry does not decide the refusal: the record holds the secret, so it
+    // is the same exchange. It decides the copy, since that page cannot open.
     const stored = await createRunnableExchange(newExchange());
     const bytes = serializeManagedExchangeArtifact(
       encodeManagedExchangeArtifact(stored),
@@ -751,13 +930,36 @@ describe("a local-state entry this build cannot parse is skipped too", () => {
     await expect(importManagedExchange(bytes)).rejects.toMatchObject({
       name: "ManagedImportAlreadyHeldError",
       label: "Riverbend quarterly",
+      stateUnreadable: true,
     });
 
     // Nothing was written: the stored record stands alone, with no second copy,
-    // listed as unreadable for its entry.
+    // listed with its essentials and its state marked unreadable.
     expect(await listManagedExchangesDiagnostic()).toEqual([
-      { kind: "unreadable", id: stored.id, backedUp: true },
+      {
+        kind: "readable",
+        essentials: {
+          id: stored.id,
+          label: "Riverbend quarterly",
+          side: "inviter",
+        },
+        backedUp: true,
+        stateUnreadable: true,
+      },
     ]);
+  });
+
+  test("a record holding the artifact's secret beside a readable entry refuses as plainly held", async () => {
+    const stored = await createRunnableExchange(newExchange());
+    const bytes = serializeManagedExchangeArtifact(
+      encodeManagedExchangeArtifact(stored),
+    );
+    await markManagedExchangeBackedUp(stored.id, new Date().toISOString());
+
+    await expect(importManagedExchange(bytes)).rejects.toMatchObject({
+      name: "ManagedImportAlreadyHeldError",
+      stateUnreadable: false,
+    });
   });
 });
 

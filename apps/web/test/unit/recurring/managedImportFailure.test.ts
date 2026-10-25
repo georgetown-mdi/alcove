@@ -10,14 +10,17 @@ import { stringify as stringifyYaml } from "yaml";
 import { readManagedCommandLineConfiguration } from "@psi/managed/managedCommandLineImport";
 
 import {
-  CHOSEN_COPY_IMPORT_REASON,
+  LIVE_COPY_IMPORT_CONFIRM,
   OUTDATED_IMPORT_REASON,
   UNREADABLE_IMPORT_REASON,
   UNRECOGNIZED_IMPORT_REASON,
   alreadyHeldBackupImportReason,
+  alreadyHeldImportReason,
+  chosenCopyImportReason,
   importFailureReason,
   liveCopyImportReason,
-  liveCopyOpenLabel,
+  liveCopyKeepLabel,
+  liveCopyReplaceLabel,
   storedCopyImportReason,
   storedCopyTakeLabel,
 } from "@recurring/managedImportFailure";
@@ -273,11 +276,16 @@ describe("what a backup import says about an exchange already listed", () => {
     expect(liveCopyImportReason([""])).toMatch(/^An exchange in the list /);
   });
 
-  test("the possible live copy states nothing was imported and both ways on", () => {
+  test("the possible live copy states nothing was imported and the three ways on", () => {
     const reason = liveCopyImportReason(["Riverbend quarterly"]);
     expect(reason).toContain("Nothing was imported.");
-    expect(reason).toContain("open it from the list");
-    expect(reason).toContain("add this backup beside it");
+    expect(reason).toMatch(/this backup is the newer one: replace the saved/);
+    expect(reason).toMatch(
+      /run history and accounting of disclosures are kept/,
+    );
+    expect(reason).toMatch(/older than the saved copy, keep the saved copy/);
+    expect(reason).toMatch(/add the backup as a new exchange/);
+    expect(reason).not.toMatch(/open it from the list/i);
   });
 
   test("several possible live copies are named in one reason", () => {
@@ -287,21 +295,42 @@ describe("what a backup import says about an exchange already listed", () => {
       '"Riverbend quarterly", "Weekly", and 1 with no name',
     );
     expect(reason).toContain("Nothing was imported.");
-    expect(reason).toContain("add this backup beside them");
+    expect(reason).toMatch(/replace that saved copy with it/);
+    expect(reason).toMatch(/keep the saved copies/);
     expect(liveCopyImportReason(["", ""])).toMatch(
       /^2 exchanges in the list have /,
     );
   });
 
-  test("one open button for one copy, one per copy for several", () => {
-    expect(liveCopyOpenLabel(["Riverbend quarterly"], 0)).toBe(
-      "Open the listed exchange",
+  test("one replace button for one copy, one per copy for several, then keep and add", () => {
+    expect(liveCopyReplaceLabel(["Riverbend quarterly"], 0)).toBe(
+      "Replace the saved copy",
     );
-    expect(liveCopyOpenLabel(["Riverbend quarterly", ""], 0)).toBe(
-      'Open "Riverbend quarterly"',
+    expect(liveCopyReplaceLabel(["Riverbend quarterly", ""], 0)).toBe(
+      'Replace "Riverbend quarterly"',
     );
-    expect(liveCopyOpenLabel(["Riverbend quarterly", ""], 1)).toBe(
-      "Open listed exchange 2",
+    expect(liveCopyReplaceLabel(["Riverbend quarterly", ""], 1)).toBe(
+      "Replace listed exchange 2",
+    );
+    expect(liveCopyKeepLabel(1)).toBe("Keep the saved copy");
+    expect(liveCopyKeepLabel(2)).toBe("Keep the saved copies");
+    expect(LIVE_COPY_IMPORT_CONFIRM).toBe("Add as a new exchange");
+    expect(LIVE_COPY_IMPORT_CONFIRM).not.toMatch(/separate/i);
+  });
+
+  test("a held exchange whose saved state cannot be read is named, with removal as the way on", () => {
+    expect(alreadyHeldBackupImportReason("Riverbend quarterly", true)).toBe(
+      '"Riverbend quarterly" is in this browser with this backup\'s secret, ' +
+        "but part of its saved state cannot be read, so it cannot be opened. " +
+        "Remove it from the list, then import this backup again.",
+    );
+    expect(alreadyHeldImportReason("", true)).toBe(
+      "That exchange is in this browser with the secret this .alcove.key " +
+        "holds, but part of its saved state cannot be read, so it cannot be " +
+        "opened. Remove it from the list, then import these files again.",
+    );
+    expect(alreadyHeldBackupImportReason("Riverbend quarterly")).toMatch(
+      /Open it from the list/,
     );
   });
 
@@ -358,10 +387,44 @@ describe("what a pair import says about a stored exchange it may belong to", () 
     ).toBe('Complete "Riverbend"');
   });
 
-  test("a chosen exchange that could not take the files says what to do", () => {
-    expect(CHOSEN_COPY_IMPORT_REASON).toMatch(
+  test("one that runs here is offered for replacing, with keep as the other answer", () => {
+    const copies = [{ id: "a", label: "", state: "runs-here" }] as const;
+    const reason = storedCopyImportReason(copies);
+    expect(reason).toMatch(/^An exchange in the list runs in this browser/);
+    expect(reason).toMatch(/replace the saved copy with them/);
+    expect(reason).toMatch(
+      /run history and accounting of disclosures are kept/,
+    );
+    expect(reason).toMatch(/keep the saved copy/);
+    expect(reason).toMatch(/add these files as a new one/);
+    expect(storedCopyTakeLabel(copies, 0)).toBe("Replace the saved copy");
+
+    const mixed = [
+      { id: "a", label: "Riverbend", state: "runs-here" },
+      { id: "b", label: "", state: "configuration-only" },
+      { id: "c", label: "", state: "runs-here" },
+    ] as const;
+    expect(storedCopyImportReason(mixed)).toMatch(/Replace one that runs here/);
+    expect(storedCopyTakeLabel(mixed, 0)).toBe('Replace "Riverbend"');
+    expect(storedCopyTakeLabel(mixed, 1)).toBe("Complete listed exchange 2");
+    expect(storedCopyTakeLabel(mixed, 2)).toBe("Replace listed exchange 3");
+  });
+
+  test("a chosen exchange that could not take the import says what to do", () => {
+    expect(chosenCopyImportReason("changed", "files")).toMatch(
       /changed since you chose it.*Import the files again/,
     );
-    expect(CHOSEN_COPY_IMPORT_REASON).not.toMatch(/taken back/);
+    expect(chosenCopyImportReason("changed", "backup")).toMatch(
+      /Import the backup again/,
+    );
+    expect(chosenCopyImportReason("run-in-flight", "backup")).toMatch(
+      /running right now.*When the run finishes, import the backup again/,
+    );
+    expect(chosenCopyImportReason("run-in-flight", "files")).toMatch(
+      /import the files again/,
+    );
+    expect(chosenCopyImportReason("changed", "files")).not.toMatch(
+      /taken back/,
+    );
   });
 });

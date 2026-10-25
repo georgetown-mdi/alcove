@@ -16,9 +16,9 @@ import { runnableManagedExchange } from "./managedExchangeRecord";
 
 import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
-/** Why a stored record can take a pair its secret does not match: it holds a
- * configuration only. A runnable record runs here already and is not one. */
-export type ManagedStoredCopyState = "configuration-only";
+/** What a stored record a pair may land in holds: a configuration only, which
+ * the pair completes, or a secret of its own, which the pair replaces. */
+export type ManagedStoredCopyState = "configuration-only" | "runs-here";
 
 /** A stored record a pair import names for the operator to take the pair
  * into, with its label (empty when the operator named nothing). */
@@ -42,6 +42,8 @@ export interface ManagedPairImportOptions {
  *
  * - `"complete"` -- lay the pair over the configuration-only record the
  *   operator chose.
+ * - `"replace"` -- replace the runnable record the operator chose, a write
+ *   the store makes under that record's run lock, outside this decision.
  * - `"stored-copy"` -- `copies` may be its exchange; nothing lands until the
  *   operator answers.
  * - `"chosen-copy-changed"` -- the record the operator chose can no longer
@@ -50,45 +52,50 @@ export interface ManagedPairImportOptions {
  */
 export type ManagedPairTarget =
   | { kind: "complete"; into: ManagedExchangeRecord }
+  | { kind: "replace"; id: string }
   | { kind: "stored-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
   | { kind: "chosen-copy-changed" }
   | { kind: "no-match" };
 
+/** Which {@link ManagedStoredCopyState} `record` is in. */
+function storedCopyState(
+  record: ManagedExchangeRecord,
+): ManagedStoredCopyState {
+  return runnableManagedExchange(record) ? "runs-here" : "configuration-only";
+}
+
 /**
  * Decide where `imported` lands among `records`, the stored records none of
- * which holds its secret, in store order. Only a configuration-only record can
- * take a pair. `options.into` lands the pair in the record the operator chose,
- * provided it still qualifies, and without it every qualifying record not in
- * `options.besideIds` is named.
+ * which holds its secret, in store order. `options.into` lands the pair in the
+ * record the operator chose, provided it still has the pair's agreed terms and
+ * side, and without it every such record not in `options.besideIds` is named.
  */
 export function decideCommandLinePairTarget(
   records: Iterable<ManagedExchangeRecord>,
   imported: ManagedExchangeRecord,
   options: ManagedPairImportOptions = {},
 ): ManagedPairTarget {
-  const candidates: Array<ManagedExchangeRecord> = [];
-  for (const record of records)
-    if (!runnableManagedExchange(record)) candidates.push(record);
   if (options.into !== undefined) {
-    const chosen = findRecordsByTermsAndSide(candidates, imported).find(
+    const chosen = findRecordsByTermsAndSide(records, imported).find(
       ({ id }) => id === options.into,
     );
-    return chosen === undefined
-      ? { kind: "chosen-copy-changed" }
+    if (chosen === undefined) return { kind: "chosen-copy-changed" };
+    return storedCopyState(chosen) === "runs-here"
+      ? { kind: "replace", id: chosen.id }
       : { kind: "complete", into: chosen };
   }
   const copies = findRecordsByTermsAndSide(
-    candidates,
+    records,
     imported,
     options.besideIds,
   );
   if (copies.length === 0) return { kind: "no-match" };
   return {
     kind: "stored-copy",
-    copies: copies.map(({ id, label }) => ({
-      id,
-      label,
-      state: "configuration-only",
+    copies: copies.map((record) => ({
+      id: record.id,
+      label: record.label,
+      state: storedCopyState(record),
     })),
   };
 }

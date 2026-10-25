@@ -7,9 +7,10 @@
  *
  * A readable entry shows its label, its side (or, for a configuration on a
  * channel that names no side, the channel, named as the saved-exchanges list
- * names it), and last-run date; an unreadable entry, whose record or sibling
- * entry does not parse, shows a fixed "Unreadable record" label and no other
- * detail.
+ * names it), and last-run date, and where only its sibling entry does not
+ * parse, a note that part of its saved state cannot be read; an unreadable
+ * entry, whose record does not parse, shows a fixed "Unreadable record" label
+ * and no other detail. Neither of those two can be opened.
  * Every row holds the stored key the one-step delete-by-key acts on, so an
  * unreadable record is discardable without a successful parse, and whether an
  * exported backup remains, which the delete confirm states and which survives a
@@ -28,6 +29,10 @@ import type { ManagedExchangeDiagnosticEntry } from "@psi/managed/managedExchang
  * parsed, so it displays as an unreadable record rather than an empty or guessed
  * name. */
 export const UNREADABLE_RECORD_LABEL = "Unreadable record";
+
+/** The note a row shows when its record parses and its sibling entry does
+ * not, so its page cannot load. */
+export const STATE_UNREADABLE_NOTE = "Part of its saved state cannot be read";
 
 /** One row in the read-failed recovery listing: the stored key the delete acts on,
  * a display label (the operator's label, "(unnamed exchange)" when empty, or
@@ -54,6 +59,9 @@ export interface RecoveryRow {
   lastRunAt?: string;
   /** Whether the entry could not be parsed. */
   unreadable: boolean;
+  /** Whether the record parsed and its sibling entry did not
+   * ({@link STATE_UNREADABLE_NOTE}). */
+  stateUnreadable: boolean;
   /** Whether an exported backup remains under the operator's custody, so the delete
    * confirm states the custody note. Survives record unreadability. */
   backedUp: boolean;
@@ -73,6 +81,7 @@ export function recoveryRow(
       label: UNREADABLE_RECORD_LABEL,
       deleteLabel: "",
       unreadable: true,
+      stateUnreadable: false,
       backedUp: entry.backedUp,
     };
   const { essentials } = entry;
@@ -85,6 +94,7 @@ export function recoveryRow(
       ? { lastRunAt: dateLabel(new Date(essentials.lastRunAt)) }
       : {}),
     unreadable: false,
+    stateUnreadable: entry.stateUnreadable === true,
     backedUp: entry.backedUp,
   };
 }

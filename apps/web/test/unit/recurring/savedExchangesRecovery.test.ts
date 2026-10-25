@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  STATE_UNREADABLE_NOTE,
   UNREADABLE_RECORD_LABEL,
   recoveryRow,
   recoveryRows,
@@ -21,6 +22,7 @@ function readable(
     elsewhereChannel: "sftp" | "filedrop";
     lastRunAt: string;
     backedUp: boolean;
+    stateUnreadable: true;
   }> = {},
 ): ManagedExchangeDiagnosticEntry {
   // An explicit `side: undefined` stands for a configuration whose channel
@@ -29,6 +31,7 @@ function readable(
   return {
     kind: "readable",
     backedUp: overrides.backedUp ?? false,
+    ...(overrides.stateUnreadable === true ? { stateUnreadable: true } : {}),
     essentials: {
       id: overrides.id ?? "abc",
       label: overrides.label ?? "Riverbend quarterly",
@@ -106,6 +109,28 @@ describe("recoveryRow", () => {
     expect(row.sideLabel).toBeUndefined();
     expect(row.lastRunAt).toBeUndefined();
     expect(row.unreadable).toBe(true);
+  });
+
+  test("a readable entry whose saved state cannot be read keeps its essentials and says so", () => {
+    const row = recoveryRow(
+      readable({
+        lastRunAt: "2026-07-10T09:00:00.000Z",
+        stateUnreadable: true,
+      }),
+    );
+    expect(row.label).toBe("Riverbend quarterly");
+    expect(row.sideLabel).toBe("You sent the invitation");
+    expect(row.lastRunAt).toBeDefined();
+    expect(row.unreadable).toBe(false);
+    expect(row.stateUnreadable).toBe(true);
+    expect(STATE_UNREADABLE_NOTE).toBe(
+      "Part of its saved state cannot be read",
+    );
+    expect(recoveryRow(readable()).stateUnreadable).toBe(false);
+    expect(
+      recoveryRow({ kind: "unreadable", id: "bad-key", backedUp: true })
+        .stateUnreadable,
+    ).toBe(false);
   });
 
   test("an unreadable entry with a live backup marker threads its custody state through", () => {

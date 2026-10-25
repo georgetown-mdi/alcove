@@ -1628,6 +1628,106 @@ export function applyManagedExchangeCommandLinePair(
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
+/** Which import a record came from: the app's backup file, or a command-line
+ * `alcove.yaml` with its `.alcove.key`. */
+export type ManagedImportSource = "backup" | "command-line";
+
+/**
+ * The record an import replaces `stored` with, keeping `stored`'s entry
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Replacing a saved copy"):
+ *
+ * - From the import: the document, `side`, secret, `expires`, max-age policy,
+ *   and relay registration, each absent where the import states none, and
+ *   from a backup also its schedule.
+ * - From `stored`: the `id`, label, and working-folder grant, and from a pair
+ *   import also the schedule, which a pair has no field for.
+ * - Merged: `lastRun` is the newer of the two, and the run list holds both
+ *   copies' entries, newest first.
+ * - The standing condition: `stored`'s where one stands, so the replace clears
+ *   none, else the import's.
+ *
+ * The rotation-in-flight marker is dropped: it belongs to the replaced
+ * secret's key exchange. The inputs are not mutated.
+ *
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyManagedExchangeImportReplace(
+  stored: ManagedExchangeRecord,
+  imported: RunnableManagedExchangeRecord,
+  source: ManagedImportSource,
+): RunnableManagedExchangeRecord {
+  const schedule = source === "backup" ? imported.schedule : stored.schedule;
+  const lastRun = newerLastRun(stored.lastRun, imported.lastRun);
+  const recentRuns = mergedRecentRuns(stored, imported);
+  const next: ManagedExchangeRecord = {
+    schemaVersion: stored.schemaVersion,
+    id: stored.id,
+    label: stored.label,
+    exchangeFile: imported.exchangeFile,
+    side: imported.side,
+    sharedSecret: imported.sharedSecret,
+    standingCondition:
+      raisedStandingCondition(stored) ?? imported.standingCondition,
+    ...(stored.workingDirectoryHandle !== undefined
+      ? { workingDirectoryHandle: stored.workingDirectoryHandle }
+      : {}),
+    ...(imported.expires !== undefined ? { expires: imported.expires } : {}),
+    ...(imported.tokenMaxAgeDays !== undefined
+      ? { tokenMaxAgeDays: imported.tokenMaxAgeDays }
+      : {}),
+    ...(schedule !== undefined ? { schedule } : {}),
+    ...(lastRun !== undefined ? { lastRun } : {}),
+    ...(recentRuns.length > 0 ? { recentRuns } : {}),
+    ...(imported.relayRegistrar !== undefined
+      ? { relayRegistrar: imported.relayRegistrar }
+      : {}),
+    ...(imported.relayRegistrationPendingSince !== undefined
+      ? {
+          relayRegistrationPendingSince: imported.relayRegistrationPendingSince,
+        }
+      : {}),
+    ...(imported.relayRegistrationPendingReason !== undefined
+      ? {
+          relayRegistrationPendingReason:
+            imported.relayRegistrationPendingReason,
+        }
+      : {}),
+  };
+  return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/** The later of two `lastRun` entries by parsed instant, `stored` on a tie. */
+function newerLastRun(
+  stored: ManagedExchangeLastRun | undefined,
+  imported: ManagedExchangeLastRun | undefined,
+): ManagedExchangeLastRun | undefined {
+  if (stored === undefined) return imported;
+  if (imported === undefined) return stored;
+  return Date.parse(imported.at) > Date.parse(stored.at) ? imported : stored;
+}
+
+/** Both records' run lists in one, newest first, an entry the two share kept
+ * once, at most {@link MAX_RECENT_RUNS}. An entry the schema refuses is left
+ * out, as {@link withRecordedRun} leaves it out. */
+function mergedRecentRuns(
+  stored: ManagedExchangeRecord,
+  imported: ManagedExchangeRecord,
+): Array<ManagedExchangeLastRun> {
+  const merged: Array<ManagedExchangeLastRun> = [];
+  const seen = new Set<string>();
+  for (const run of [...recentRunsOf(stored), ...recentRunsOf(imported)]) {
+    const parsed = lastRunSchema.safeParse(run);
+    if (!parsed.success) continue;
+    const key = JSON.stringify(parsed.data);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(parsed.data);
+  }
+  return merged
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, MAX_RECENT_RUNS);
+}
+
 /** Apply a `lastRun` bookkeeping entry to a record, producing a validated new
  * record with only `lastRun` changed. The document and the secret remain
  * untouched. Separate from a rotation write so the run outcome is recorded

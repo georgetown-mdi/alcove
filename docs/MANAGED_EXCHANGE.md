@@ -898,9 +898,11 @@ reports, and the notice a missed scheduled window raises between visits, each
 say that if the exchange was run elsewhere, importing it again here makes it
 runnable, ahead of any suggestion to re-invite.
 
-Importing the newer files over the copy still in the list adds a second entry
-beside it rather than replacing it. Remove the older entry once the imported
-one has run.
+Importing the newer backup back here stops to ask about the copy still in the
+list, which has the same terms and side and an older secret: choose to replace
+it, and the saved copy takes the backup's secret and terms in place, as one
+entry that keeps its run history and accounting of disclosures (see [Eviction
+recovery is the import flow](#eviction-recovery-is-the-import-flow)).
 
 Both downloads -- the backup and the [command-line
 files](#exporting-to-the-command-line) -- are withheld while this tab is
@@ -969,8 +971,9 @@ then fails to connect to the partner ([Desync detection and
 recovery](#desync-detection-and-recovery)). Importing the newer `alcove.yaml`
 and `.alcove.key` ([Bringing a command-line configuration
 back](#bringing-a-command-line-configuration-back)) brings the current secret
-back here, as a second entry beside the copy still in the list; remove the older
-entry once the imported one has run.
+back here: the import asks about the copy still in the list, and chosen, it
+replaces that copy in place, keeping its run history, schedule, and accounting
+of disclosures as one entry.
 
 Two things do not travel with the files:
 
@@ -1095,13 +1098,15 @@ no longer connect to your partner. What the pair import takes and refuses:
 - **One copy of an exchange.** An exchange is recognized by its shared secret. If
   this browser already holds the exchange the key file belongs to, nothing is
   imported and the refusal names it.
-- **A configuration you already have.** A configuration imported alone holds no
-  secret, so when one in the list has the same terms and the same side as the
-  files, the import stops and names it. You can complete it with the files, add
-  them as a new exchange instead, or cancel. Nothing is taken in without your
-  answer. A copy in the list that still runs here is not asked about: a key
-  file the command line has rotated since matches no secret here, and the files
-  land as a second entry beside it.
+- **An exchange you already have.** When no exchange here holds the key file's
+  secret and one in the list has the same terms and the same side as the
+  files, the import stops and names it. A configuration imported alone holds
+  no secret: you can complete it with the files. A copy that runs here holds
+  an older or a different secret -- the command line rotates the secret on
+  each run -- and you can replace it with the files, which keeps its run
+  history, schedule, and accounting of disclosures as one entry, or keep it.
+  Either way you can add the files as a new exchange instead. Nothing is taken
+  in without your answer.
 
 The secret is kept only in this browser's stored copy of the exchange, as for an
 exchange set up here; the import marks the exchange as restored, and it reads as
@@ -1967,14 +1972,33 @@ happens depends on that one exchange (the rules:
 
 - **Not in this browser**: it is added as a new entry.
 - **Already running here with the backup's secret**: nothing is imported, and
-  the refusal names the entry to open instead.
+  the refusal names the entry to open instead. Where part of that entry's saved
+  state cannot be read, so its page cannot open, the refusal says so: remove it
+  from the list, then import the backup again.
 
-An exchange that has run since the backup was taken has a newer secret than the
-file, so the secret no longer finds it. When listed exchanges have the same
-agreed terms and the same side as the backup, the import stops and names them
-all at once: open an entry if it is the same exchange -- a second copy falls
-behind the first time either one runs -- or add the backup beside them if it is
-a separate exchange with the same terms. Nothing is imported until you choose.
+A secret changes on every run, so a backup and the saved copy of the same
+exchange hold different secrets once either has run since the other, and the
+secret no longer finds the copy. When listed exchanges have the same agreed
+terms and the same side as the backup, the import stops and names them all at
+once, with three answers:
+
+- **Replace the saved copy**, when the exchange ran on another device since the
+  saved copy last ran here, so the backup is the newer. The saved copy takes the
+  backup's secret, terms, and schedule in place: it stays one entry, under its
+  label and working folder, and keeps its run history and [accounting of
+  disclosures](#the-accounting-of-disclosures). A replace waits for no run: while
+  a run of that exchange is in progress, it is refused and nothing changes.
+- **Keep the saved copy**, when the backup is the older: nothing is imported.
+- **Add as a new exchange**, when the backup is a separate exchange with the same
+  terms.
+
+Nothing in the files says which copy is the newer, so the import cannot choose
+for you (the rule:
+[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy)).
+Replacing a copy with an older backup leaves it holding a secret your partner
+has moved past, and its next run fails to connect; import the newer backup or
+re-invite. Importing the same backup again after a replace is refused as
+already here.
 
 **A refused file says why it was refused.** The artifact's schema
 rejects an unknown key and an unknown version outright (see
@@ -2008,7 +2032,9 @@ secret, the working-folder grant, the schedule, the run bookkeeping, its
 [accounting of disclosures](#the-accounting-of-disclosures), and any [results a
 scheduled run kept](#where-a-scheduled-runs-results-go) -- which is why the
 confirm says to download those results and export the accounting first if they
-must be kept.
+must be kept. An exchange whose page cannot open, because part of its saved
+state cannot be read, cannot have its accounting exported, so its confirm says
+the accounting cannot be read and is removed with the exchange.
 Removal is local and unilateral -- it does not notify the partner, whose own
 copy stands until they remove it or the partnership is re-established by
 re-invite -- and it is not secret expiry: an inactivity limit (when set) caps how long

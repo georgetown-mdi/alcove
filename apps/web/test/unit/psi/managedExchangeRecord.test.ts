@@ -22,6 +22,7 @@ import {
   MAX_SCHEDULE_INTERVAL_DAYS,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
+  applyManagedExchangeImportReplace,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
   applyManagedExchangePayloadReceiveFill,
@@ -2433,5 +2434,170 @@ describe("the rotation-in-flight marker", () => {
         rotationInFlightSince: MARKED_AT,
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("applyManagedExchangeImportReplace", () => {
+  const otherSchedule: ManagedExchangeSchedule = {
+    ...schedule,
+    intervalDays: 14,
+  };
+
+  function ran(
+    record: ManagedExchangeRecord,
+    at: string,
+    entry: Partial<ManagedExchangeLastRun> = {},
+  ): RunnableManagedExchangeRecord {
+    return runnableManagedExchangeOrRefuse(
+      applyManagedExchangeLastRun(
+        record,
+        { at, outcome: "succeeded", ...entry },
+        Date.parse(at),
+        Date.parse("2026-12-31T00:00:00.000Z"),
+      ),
+    );
+  }
+
+  test("takes the import's secret and terms, and keeps the stored id, label, and folder grant", () => {
+    const handle = {} as FileSystemDirectoryHandle;
+    const stored = {
+      ...runnableRecord({ label: "Kept label", schedule }),
+      workingDirectoryHandle: handle,
+    };
+    const imported = runnableRecord({
+      label: "Backup label",
+      schedule: otherSchedule,
+      tokenMaxAgeDays: 30,
+    });
+
+    const replaced = applyManagedExchangeImportReplace(
+      stored,
+      imported,
+      "backup",
+    );
+    expect(replaced.id).toBe(stored.id);
+    expect(replaced.label).toBe("Kept label");
+    expect(replaced.workingDirectoryHandle).toBe(handle);
+    expect(replaced.sharedSecret).toBe(imported.sharedSecret);
+    expect(replaced.exchangeFile).toEqual(imported.exchangeFile);
+    expect(replaced.tokenMaxAgeDays).toBe(30);
+    expect(replaced.schedule).toEqual(otherSchedule);
+  });
+
+  test("a pair import keeps the stored schedule, which a pair has no field for", () => {
+    const stored = runnableRecord({ schedule });
+    const replaced = applyManagedExchangeImportReplace(
+      stored,
+      runnableRecord(),
+      "command-line",
+    );
+    expect(replaced.schedule).toEqual(schedule);
+  });
+
+  test("keeps the newer last run and both copies' run lists, newest first, a shared entry once", () => {
+    const shared = "2026-07-01T09:00:00.000Z";
+    const stored = ran(
+      ran(buildManagedExchangeRecord(newExchange({ schedule })), shared),
+      "2026-07-03T09:00:00.000Z",
+    );
+    const imported = ran(
+      ran(buildManagedExchangeRecord(newExchange({ schedule })), shared),
+      "2026-07-08T09:00:00.000Z",
+      { outcome: "failed", failureKind: "transport" },
+    );
+
+    const replaced = applyManagedExchangeImportReplace(
+      stored,
+      imported,
+      "backup",
+    );
+    expect(replaced.lastRun?.at).toBe("2026-07-08T09:00:00.000Z");
+    expect(recentRunsOf(replaced).map(({ at }) => at)).toEqual([
+      "2026-07-08T09:00:00.000Z",
+      "2026-07-03T09:00:00.000Z",
+      shared,
+    ]);
+    expect(
+      applyManagedExchangeImportReplace(imported, stored, "backup").lastRun?.at,
+    ).toBe("2026-07-08T09:00:00.000Z");
+  });
+
+  test("the merged run list holds at most the bound", () => {
+    let stored: ManagedExchangeRecord = buildManagedExchangeRecord(
+      newExchange({ schedule }),
+    );
+    let imported: ManagedExchangeRecord = buildManagedExchangeRecord(
+      newExchange({ schedule }),
+    );
+    for (let day = 1; day <= MAX_RECENT_RUNS; day += 1) {
+      stored = ran(stored, new Date(Date.UTC(2026, 5, day, 9)).toISOString());
+      imported = ran(
+        imported,
+        new Date(Date.UTC(2026, 6, day, 9)).toISOString(),
+      );
+    }
+    const replaced = applyManagedExchangeImportReplace(
+      stored,
+      runnableManagedExchangeOrRefuse(imported),
+      "backup",
+    );
+    expect(recentRunsOf(replaced)).toHaveLength(MAX_RECENT_RUNS);
+    expect(recentRunsOf(replaced)).toEqual(recentRunsOf(imported));
+  });
+
+  test("a condition standing on the stored copy stays, so the replace clears none", () => {
+    const raisedAt = "2026-07-14T12:00:00.000Z";
+    const stored = ran(
+      buildManagedExchangeRecord(newExchange({ schedule })),
+      raisedAt,
+      { outcome: "failed", failureKind: "auth" },
+    );
+    const replaced = applyManagedExchangeImportReplace(
+      stored,
+      runnableRecord(),
+      "backup",
+    );
+    expect(replaced.standingCondition).toEqual({
+      since: raisedAt,
+      kind: "auth",
+    });
+
+    const importedRaised = ran(
+      buildManagedExchangeRecord(newExchange({ schedule })),
+      raisedAt,
+      { outcome: "failed", failureKind: "auth" },
+    );
+    expect(
+      applyManagedExchangeImportReplace(
+        runnableRecord(),
+        importedRaised,
+        "backup",
+      ).standingCondition,
+    ).toEqual(importedRaised.standingCondition);
+    expect(
+      applyManagedExchangeImportReplace(
+        runnableRecord(),
+        runnableRecord(),
+        "backup",
+      ).standingCondition,
+    ).toEqual(NO_STANDING_CONDITION);
+  });
+
+  test("drops the stored rotation-in-flight marker, which belongs to the replaced secret", () => {
+    const stored = applyManagedExchangeRotationInFlight(
+      runnableRecord(),
+      "2026-07-13T09:00:00.000Z",
+    );
+    expect(
+      applyManagedExchangeImportReplace(stored, runnableRecord(), "backup"),
+    ).not.toHaveProperty("rotationInFlightSince");
+  });
+
+  test("does not change its inputs", () => {
+    const stored = runnableRecord({ schedule });
+    const imported = runnableRecord();
+    const before = structuredClone([stored, imported]);
+    applyManagedExchangeImportReplace(stored, imported, "backup");
+    expect([stored, imported]).toEqual(before);
   });
 });
