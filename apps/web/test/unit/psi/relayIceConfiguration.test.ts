@@ -25,17 +25,14 @@ import { relayWithDefaultForRun } from "../../../src/psi/transport/defaultRelay.
 
 import type { WebRTCEndpoint, enrollRelayKeyWithinWait } from "@alcove/core";
 
-import type {
-  RelayLocator,
-  RunRelay,
-} from "../../../src/psi/transport/rendezvous.js";
 import type { OwnRelayRead } from "../../../src/psi/transport/ownRelaySetting.js";
 import type Peer from "peerjs";
 import type { PeerOptions } from "peerjs";
+import type { RelayLocator } from "../../../src/psi/transport/rendezvous.js";
 
 // The ICE configuration the browser's peer connection is built with: the
-// default STUN server unless this browser's user named STUN urls of their own,
-// and with a relay its urls, the TURN entry holding a credential minted for
+// default STUN server unless this browser's own relay setting or the
+// invitation names a STUN url, and with a relay its urls, the TURN entry holding a credential minted for
 // this run from the exchange's shared secret.
 
 const DEFAULT_STUN_ENTRY = { urls: ["stun:stun.l.google.com:19302"] };
@@ -128,7 +125,7 @@ describe("buildIceServers", () => {
     ]);
   });
 
-  test("with TURN and STUN urls lists the relay's STUN urls after the default server", async () => {
+  test("with TURN and STUN urls lists the relay's STUN urls in place of the default server", async () => {
     const relay: RelayLocator = {
       turn: RELAY.turn,
       stun: ["stun:stun.example.org:3478"],
@@ -139,37 +136,22 @@ describe("buildIceServers", () => {
       NOW,
     );
     expect(iceServers).toHaveLength(2);
-    expect(iceServers[0]).toEqual({
-      urls: [...DEFAULT_STUN_ENTRY.urls, "stun:stun.example.org:3478"],
-    });
+    expect(iceServers[0]).toEqual({ urls: ["stun:stun.example.org:3478"] });
     expect(iceServers[1].urls).toEqual(RELAY.turn);
   });
 
-  test("the relay's STUN urls join the default server, which is listed once", async () => {
+  test("lists each of the relay's STUN urls once, the default server only where the relay names it", async () => {
     const relay: RelayLocator = {
       turn: [],
-      stun: ["stun:stun.example.org:3478", ...DEFAULT_STUN_ENTRY.urls],
+      stun: [
+        "stun:stun.example.org:3478",
+        ...DEFAULT_STUN_ENTRY.urls,
+        "stun:stun.example.org:3478",
+      ],
     };
     expect(await buildIceServers(relay, generateSharedSecret(), NOW)).toEqual([
-      { urls: [...DEFAULT_STUN_ENTRY.urls, "stun:stun.example.org:3478"] },
+      { urls: ["stun:stun.example.org:3478", ...DEFAULT_STUN_ENTRY.urls] },
     ]);
-  });
-
-  test("STUN urls this browser's user named replace the default server", async () => {
-    const relay: RunRelay = {
-      turn: [],
-      stun: ["stun:own-stun.example.org:3478"],
-      stunReplacesDefault: true,
-    };
-    expect(await buildIceServers(relay, generateSharedSecret(), NOW)).toEqual([
-      { urls: ["stun:own-stun.example.org:3478"] },
-    ]);
-  });
-
-  test("a relay marked as replacing the default but naming no STUN url keeps the default server", async () => {
-    const relay: RunRelay = { ...RELAY, stunReplacesDefault: true };
-    const [stun] = await buildIceServers(relay, generateSharedSecret(), NOW);
-    expect(stun).toEqual(DEFAULT_STUN_ENTRY);
   });
 
   test("the credential expires one lifetime after the run starts", async () => {
@@ -319,19 +301,27 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
     expect(urls).toEqual([...OWN.stun, ...OWN.turn]);
   });
 
-  test("lists STUN urls only the invitation names after the default server, not in its place", async () => {
+  test("lists STUN urls only the invitation names in place of the default server", async () => {
     stubWindow();
     const config = await dialConfig(
       { ...endpoint, relay: { stun: NAMED.stun } },
       () => ({ kind: "none" }),
       generateSharedSecret(),
     );
-    expect(config.iceServers).toEqual([
-      { urls: [...DEFAULT_STUN_ENTRY.urls, ...NAMED.stun] },
-    ]);
+    expect(config.iceServers).toEqual([{ urls: NAMED.stun }]);
   });
 
-  test("lists the invitation's STUN urls after the default server beside a TURN-only own relay", async () => {
+  test("lists this browser's own STUN urls and the invitation's once each", async () => {
+    stubWindow();
+    const config = await dialConfig(
+      { ...endpoint, relay: { stun: [...NAMED.stun, ...OWN.stun] } },
+      () => ({ kind: "set", relay: { turn: [], stun: OWN.stun } }),
+      generateSharedSecret(),
+    );
+    expect(config.iceServers).toEqual([{ urls: [...OWN.stun, ...NAMED.stun] }]);
+  });
+
+  test("lists the invitation's STUN urls in place of the default server beside a TURN-only own relay", async () => {
     stubWindow();
     const config = await dialConfig(
       { ...endpoint, relay: NAMED },
@@ -339,12 +329,7 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
       generateSharedSecret(),
     );
     const urls = config.iceServers?.flatMap((server) => server.urls);
-    expect(urls).toEqual([
-      ...DEFAULT_STUN_ENTRY.urls,
-      ...NAMED.stun,
-      ...OWN.turn,
-      ...NAMED.turn,
-    ]);
+    expect(urls).toEqual([...NAMED.stun, ...OWN.turn, ...NAMED.turn]);
   });
 
   test("with neither is built with the unchanged configuration", async () => {
@@ -421,7 +406,7 @@ describe("the ICE list of a build naming a default relay", () => {
   );
 
   async function iceList(
-    invitationRelay: { turn?: Array<string> } | undefined,
+    invitationRelay: { turn?: Array<string>; stun?: Array<string> } | undefined,
     own: OwnRelayRead,
     setting: typeof DEFAULT_RELAY | undefined,
     enroll: typeof enrollRelayKeyWithinWait = registered,
@@ -506,6 +491,24 @@ describe("the ICE list of a build naming a default relay", () => {
       { urls: [ownStun] },
       {
         urls: [...OWN.turn, DEFAULT_RELAY.turnUrl],
+        username: expected.username,
+        credential: expected.credential,
+      },
+    ]);
+  });
+
+  test("lists the invitation's STUN urls in place of the default server, beside the invitation's relay and the default relay", async () => {
+    const invitationStun = "stun:partner-stun.example.net:3478";
+    const { servers, secret } = await iceList(
+      { ...NAMED, stun: [invitationStun] },
+      { kind: "none" },
+      DEFAULT_RELAY,
+    );
+    const expected = await mintRunRelayCredential(secret, NOW);
+    expect(servers).toEqual([
+      { urls: [invitationStun] },
+      {
+        urls: [...NAMED.turn, DEFAULT_RELAY.turnUrl],
         username: expected.username,
         credential: expected.credential,
       },

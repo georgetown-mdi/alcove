@@ -151,12 +151,8 @@ describe("relayWithDefaultForRun", () => {
     });
   });
 
-  test("keeps own STUN urls replacing the default STUN server whether or not the enrollment confirms", async () => {
-    const own = {
-      ...OWN,
-      stun: ["stun:own-stun.example.org:3478"],
-      stunReplacesDefault: true as const,
-    };
+  test("keeps the relay's STUN urls whether or not the enrollment confirms", async () => {
+    const own = { ...OWN, stun: ["stun:own-stun.example.org:3478"] };
     for (const enrollment of [
       ENROLLED,
       { kind: "failed", detail: "HTTP 409" } as const,
@@ -173,7 +169,6 @@ describe("relayWithDefaultForRun", () => {
             ? [...own.turn, DEFAULT_RELAY.turnUrl]
             : own.turn,
         stun: own.stun,
-        stunReplacesDefault: true,
       });
     }
   });

@@ -154,9 +154,9 @@ describe("RelaySettingsScreen", () => {
         "address, so it learns the network address of each party that uses " +
         "it. The servers you enter replace the default, Google's public STUN " +
         "server, in every exchange this browser runs, and invitations you " +
-        "create name them, so your partner contacts them too. Servers an " +
-        "invitation you accept names are contacted as well, and your partner " +
-        "follows their own setting. For example: " +
+        "create name them, so your partner contacts them in place of the " +
+        "default too. Servers an invitation you accept names are contacted " +
+        "as well, and also replace the default. For example: " +
         "stun:stun.example.org:3478",
     );
     await expect

@@ -147,7 +147,6 @@ describe("parseRelayUrlLines", () => {
 
 describe("relayForRun", () => {
   const NO_RESTRICTION = undefined;
-  const REPLACES_DEFAULT = { stunReplacesDefault: true } as const;
 
   const invitation: RelayLocator = {
     turn: ["turns:partner-relay.example.org:443"],
@@ -164,7 +163,6 @@ describe("relayForRun", () => {
     ).toEqual({
       turn: [...OWN.turn, ...named.turn],
       stun: [...OWN.stun, ...named.stun],
-      ...REPLACES_DEFAULT,
     });
   });
 
@@ -177,7 +175,6 @@ describe("relayForRun", () => {
     ).toEqual({
       turn: [...OWN.turn, ...invitation.turn],
       stun: OWN.stun,
-      ...REPLACES_DEFAULT,
     });
     expect(
       relayForRun(
@@ -191,17 +188,16 @@ describe("relayForRun", () => {
     ).toEqual({
       turn: OWN.turn,
       stun: [...OWN.stun, "stun:partner-relay.example.org:3478"],
-      ...REPLACES_DEFAULT,
     });
   });
 
   test("lists a url both name once", () => {
     expect(
       relayForRun(OWN, NO_RESTRICTION, () => ({ kind: "set", relay: OWN })),
-    ).toEqual({ ...OWN, ...REPLACES_DEFAULT });
+    ).toEqual(OWN);
   });
 
-  test("marks STUN urls as replacing the default only where the own setting names some", () => {
+  test("lists the invitation's STUN urls where the own setting names none", () => {
     const named = { stun: ["stun:partner-relay.example.org:3478"] };
     expect(
       relayForRun(named, NO_RESTRICTION, () => ({ kind: "none" })),
@@ -229,7 +225,7 @@ describe("relayForRun", () => {
         kind: "set",
         relay: OWN,
       })),
-    ).toEqual({ ...OWN, ...REPLACES_DEFAULT });
+    ).toEqual(OWN);
   });
 
   test("lists only the TURN urls the allowed relays keep, and every STUN url", () => {
@@ -245,7 +241,6 @@ describe("relayForRun", () => {
     ).toEqual({
       turn: OWN.turn,
       stun: [...OWN.stun, ...named.stun],
-      ...REPLACES_DEFAULT,
     });
   });
 

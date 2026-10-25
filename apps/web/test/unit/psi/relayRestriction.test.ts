@@ -88,12 +88,10 @@ describe("the relays a browser run lists under its allowed relays", () => {
     ).toEqual({
       turn: [PARTNER_URL],
       stun: ["stun:own.example.org:3478"],
-      stunReplacesDefault: true,
     });
     expect(relayForRun({ turn: [PARTNER_URL] }, undefined, readOwn)).toEqual({
       turn: [OWN_URL, PARTNER_URL],
       stun: ["stun:own.example.org:3478"],
-      stunReplacesDefault: true,
     });
   });
 
@@ -146,7 +144,6 @@ describe("relayPlanForRun", () => {
       relay: {
         turn: [OWN_URL, SITE.turnUrl],
         stun: ["stun:own.example.org:3478"],
-        stunReplacesDefault: true,
       },
       relaysLeftOut: [PARTNER_URL],
       websocketRelays: [],
@@ -172,7 +169,6 @@ describe("relayPlanForRun", () => {
       relay: {
         turn: [OWN_URL, PARTNER_URL],
         stun: ["stun:own.example.org:3478"],
-        stunReplacesDefault: true,
       },
       relaysLeftOut: [],
       websocketRelays: [],
@@ -190,7 +186,6 @@ describe("relayPlanForRun", () => {
     expect(plan.relay).toEqual({
       turn: [],
       stun: ["stun:own.example.org:3478"],
-      stunReplacesDefault: true,
     });
     expect(plan.relaysLeftOut).toEqual([OWN_URL]);
   });
@@ -214,7 +209,6 @@ describe("relayPlanForRun", () => {
       relay: {
         turn: [],
         stun: ["stun:own.example.org:3478"],
-        stunReplacesDefault: true,
       },
       relaysLeftOut: [OWN_URL, PARTNER_URL],
       websocketRelays: [],

@@ -21,7 +21,7 @@ import {
   webSocketRelayUrlSchema,
 } from "@alcove/core";
 
-import type { RelayLocator, RunRelay } from "./rendezvous";
+import type { RelayLocator } from "./rendezvous";
 
 const log = getLogger("ownRelaySetting");
 
@@ -224,18 +224,17 @@ export interface RelayUrls {
  * The relay a run's peer connection gathers against: every relay it may use,
  * this browser's own and the invitation's. Its TURN urls are this browser's
  * own followed by the invitation's, each listed once, less every one
- * `allowedRelays` leaves out, and its STUN urls likewise, none left out.
- * Where this browser's own setting names STUN urls they replace the default
- * STUN server (`stunReplacesDefault`); an invitation's do not. With neither
- * it is none. A stored setting this build cannot read adds nothing, and is
- * logged. The command line lists the urls the same way (`selectRunRelay` in
- * core).
+ * `allowedRelays` leaves out, and its STUN urls likewise, none left out;
+ * any STUN url listed replaces the default STUN server
+ * (`buildIceServers`). With neither it is none. A stored setting this
+ * build cannot read adds nothing, and is logged. The command line lists the
+ * urls the same way (`selectRunRelay` in core).
  */
 export function relayForRun(
   invitationRelay: RelayUrls | undefined,
   allowedRelays: ReadonlyArray<string> | undefined,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
-): RunRelay | undefined {
+): RelayLocator | undefined {
   const own = readOwn();
   if (own.kind === "unreadable")
     log.warn(
@@ -250,12 +249,7 @@ export function relayForRun(
     ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
   ];
   if (turn.length + stun.length === 0) return undefined;
-  return {
-    turn,
-    stun,
-    ...(ownRelay !== undefined &&
-      ownRelay.stun.length > 0 && { stunReplacesDefault: true as const }),
-  };
+  return { turn, stun };
 }
 
 /**
