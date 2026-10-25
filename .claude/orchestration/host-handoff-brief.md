@@ -7,7 +7,7 @@ To write one: copy the Template below into `scratch/handoffs/<YYYY-MM-DD>-<slug>
 Filling it:
 
 - Paths. `<repo>` is the host folder the dev container mounts at `/workspace`. Every path the host session uses is relative to `<repo>` or absolute on the host (`~/...`, `mktemp -d`); never `/workspace/...`, which exists only in the container. The orchestrator reads the same result file at `/workspace/scratch/handoffs/...`.
-- Model. The host command, `.claude/scripts/host-handoff.sh`, starts the session on the model the Brief's Model line names in backticks. Keep `claude-opus-5-5` unless the run needs another, and say why.
+- Model and effort. The host command, `.claude/scripts/host-handoff.sh`, starts the session on the model the Brief's Model line names in backticks, at the effort its Effort line names in backticks (low, medium, high, xhigh, or max). Keep `claude-sonnet-5-5` at `high` effort unless the run needs another, and say why.
 - Build. A step needing built code or an image runs `.claude/scripts/host-build.sh` (its `--help` lists the options) rather than hand-listed `npm run build` commands: the CLI runs only once every workspace it depends on is built, in order, and the script holds that order. A branch the container has not pushed is fetched from the host checkout with `--from "$PWD"`, run from `<repo>`.
 - Credentials. Name each account a step uses and its identity check, run first: `AWS_PROFILE=<profile> aws sts get-caller-identity` for AWS, `gh auth status` for GitHub, the tool's own check otherwise. Session credentials expire, so the check comes before the work rather than at its first failure.
 - Live values. The brief asserts no state that can change before the run -- a token's permissions, a deploy run in flight, a branch's distance from `main`, a unit's state on the relay host. Step 0 reads each with a command and records it, the value the steps assume being that line's Expected, so a difference stops the run before its first change. A GitHub token's scopes are in `gh auth status`; runs in flight in `gh run list --workflow <file> --branch <branch> --limit 3 --json databaseId,status,headSha`; a branch's distance under Branch installs. A permission no read shows -- a Cloudflare token's, for which `/user/tokens/verify` says only `active` -- is written as the refusal the step would get and how the step resumes once the owner fixes it.
@@ -69,7 +69,8 @@ Agent-written, a proposal until the owner ratifies it. Read `CLAUDE.md` first; y
 - Goal: <one sentence>
 - Host: <where the steps run. If that is not the machine holding `<repo>`, where artifacts land there and the step that copies them back>
 - Result file: `scratch/handoffs/<YYYY-MM-DD>-<slug>.result.md`; artifacts in `scratch/handoffs/<YYYY-MM-DD>-<slug>-artifacts/`
-- Model: `claude-opus-5-5`<, or the model the run needs, and why>
+- Model: `claude-sonnet-5-5`<, or the model the run needs, and why>
+- Effort: `high`<, or the level the run needs (low, medium, xhigh, max), and why>
 - Commit: <the ref to build, and the sha expected: "this sha or later" for a moving branch>
 - Build: `timeout <seconds> bash .claude/scripts/host-build.sh --ref <ref> --dir ~/alcove-<slug> <--image FILE=TAG ...> > "<artifacts>/build.log" 2>&1`, or "none"
 - Credentials: <account, profile and the identity-check command for each, or "none">

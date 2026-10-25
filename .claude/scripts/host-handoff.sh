@@ -6,8 +6,9 @@
 #   bash .claude/scripts/host-handoff.sh scratch/handoffs/<YYYY-MM-DD>-<slug>.md
 #
 # It starts `claude` in that checkout on the model the brief's Model line names
-# (DEFAULT_MODEL when it names none), with an opening prompt that points the
-# session at the brief. The brief's Contract states the session's rules, its end
+# (DEFAULT_MODEL, Sonnet, when it names none) at the effort its Effort line names
+# (DEFAULT_EFFORT, high, when it names none), with an opening prompt that points
+# the session at the brief. The brief's Contract states the session's rules, its end
 # state among them, so the prompt does not restate them. When the session ends,
 # the last line says whether the result file the dev container waits on exists.
 #
@@ -20,7 +21,8 @@
 
 set -euo pipefail
 
-DEFAULT_MODEL="claude-opus-5-5"
+DEFAULT_MODEL="claude-sonnet-5-5"
+DEFAULT_EFFORT="high"
 
 usage() {
   cat <<'EOF'
@@ -30,13 +32,15 @@ Starts a Claude Code session in this checkout that runs a host hand-off brief
 and ends when the brief's result file is written.
 
   <brief>      the brief: scratch/handoffs/<YYYY-MM-DD>-<slug>.md
-  --check      read the brief and print the model, the result file and the
-               command a launch runs, without starting a session
+  --check      read the brief and print the model, the effort, the result file
+               and the command a launch runs, without starting a session
   -h, --help   print this help
 
 The session runs on the model the brief's Model line names in backticks, or
-claude-opus-5-5 when the brief has no Model line. Run it on the machine with
-the checkout the dev container mounts at /workspace.
+claude-sonnet-5-5 when the brief has no Model line, at the effort the brief's
+Effort line names in backticks (low, medium, high, xhigh or max), or high when
+the brief has no Effort line. Run it on the machine with the checkout the dev
+container mounts at /workspace.
 EOF
 }
 
@@ -119,6 +123,15 @@ if grep -q '^- Model:' "$brief"; then
     fail "$brief_rel's Model line names no model in backticks; write it as '- Model: \`$DEFAULT_MODEL\`'."
 fi
 
+effort="$DEFAULT_EFFORT"
+if grep -q '^- Effort:' "$brief"; then
+  effort="$(backticked_field "Effort")"
+  case "$effort" in
+    low | medium | high | xhigh | max) ;;
+    *) fail "$brief_rel's Effort line names no effort level in backticks; write it as '- Effort: \`$DEFAULT_EFFORT\`', using low, medium, high, xhigh, or max." ;;
+  esac
+fi
+
 prompt="Read $brief_rel and follow it. Its Contract and Host rules bind this session."
 
 if [ -e "$repo/$result" ]; then
@@ -128,8 +141,9 @@ fi
 if [ "$check_only" -eq 1 ]; then
   say "brief: $brief_rel"
   say "model: $model"
+  say "effort: $effort"
   say "result file: $result"
-  say "a launch runs, in $repo: claude --model $model '$prompt'"
+  say "a launch runs, in $repo: claude --model $model --effort $effort '$prompt'"
   exit 0
 fi
 
@@ -137,7 +151,7 @@ command -v claude >/dev/null 2>&1 ||
   fail "claude is not on PATH; run this on the machine where you run Claude Code."
 
 cd "$repo"
-claude --model "$model" "$prompt" || true
+claude --model "$model" --effort "$effort" "$prompt" || true
 
 if [ -s "$result" ]; then
   say "done: $result is written, and the dev container reads it from there."

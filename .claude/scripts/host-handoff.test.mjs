@@ -64,6 +64,7 @@ function briefText({
   sections = ["## Contract", "## Host rules", "## Brief", "## Steps"],
   result = `\`scratch/handoffs/${SLUG}.result.md\`; artifacts in \`scratch/handoffs/${SLUG}-artifacts/\``,
   model,
+  effort,
 } = {}) {
   const lines = ["# Host hand-off: relay check", ""];
   for (const section of sections) {
@@ -72,6 +73,7 @@ function briefText({
       lines.push("- Goal: check the relay.");
       if (result !== null) lines.push(`- Result file: ${result}`);
       if (model !== undefined) lines.push(`- Model: ${model}`);
+      if (effort !== undefined) lines.push(`- Effort: ${effort}`);
       lines.push("");
     }
   }
@@ -125,7 +127,7 @@ function run(fixture, args, { cwd = fixture.root, env = {}, path } = {}) {
 const PROMPT = `Read scratch/handoffs/${SLUG}.md and follow it. Its Contract and Host rules bind this session.`;
 
 describe("host-handoff.sh launch", () => {
-  it("starts claude in the checkout on claude-opus-5-5 with the brief's prompt, and exits 0 once the result is written", () => {
+  it("starts claude in the checkout on claude-sonnet-5-5 at high effort with the brief's prompt, and exits 0 once the result is written", () => {
     const fixture = checkout();
     const { status, stdout, stderr } = run(
       fixture,
@@ -139,7 +141,9 @@ describe("host-handoff.sh launch", () => {
     expect(fixture.claudeCall()).toEqual([
       fixture.root,
       "--model",
-      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "--effort",
+      "high",
       PROMPT,
     ]);
     expect(stdout.trim().split("\n")).toEqual([
@@ -150,14 +154,31 @@ describe("host-handoff.sh launch", () => {
   it("takes the model the brief's Model line names", () => {
     const fixture = checkout({
       brief: briefText({
-        model: "`claude-sonnet-5-5`, since the run only reads logs",
+        model: "`claude-opus-5-5`, since the run needs a long plan",
       }),
     });
     run(fixture, [`scratch/handoffs/${SLUG}.md`]);
-    expect(fixture.claudeCall().slice(1, 3)).toEqual([
+    expect(fixture.claudeCall().slice(1, 5)).toEqual([
       "--model",
-      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "--effort",
+      "high",
     ]);
+  });
+
+  it("takes the effort the brief's Effort line names", () => {
+    for (const level of ["low", "medium", "high", "xhigh", "max"]) {
+      const fixture = checkout({
+        brief: briefText({ effort: `\`${level}\`, since the run needs it` }),
+      });
+      run(fixture, [`scratch/handoffs/${SLUG}.md`]);
+      expect(fixture.claudeCall().slice(1, 5), level).toEqual([
+        "--model",
+        "claude-sonnet-5-5",
+        "--effort",
+        level,
+      ]);
+    }
   });
 
   it("finds the checkout from its own path when run elsewhere with the brief's full path", () => {
@@ -167,7 +188,9 @@ describe("host-handoff.sh launch", () => {
     expect(fixture.claudeCall()).toEqual([
       fixture.root,
       "--model",
-      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "--effort",
+      "high",
       PROMPT,
     ]);
   });
@@ -192,7 +215,7 @@ describe("host-handoff.sh launch", () => {
 });
 
 describe("host-handoff.sh --check", () => {
-  it("prints the model, the result file and the launch command without starting claude", () => {
+  it("prints the model, the effort, the result file and the launch command without starting claude", () => {
     const fixture = checkout();
     const { status, stdout } = run(fixture, [
       "--check",
@@ -200,11 +223,27 @@ describe("host-handoff.sh --check", () => {
     ]);
     expect(status).toBe(0);
     expect(fixture.claudeCall()).toBeNull();
-    expect(stdout).toContain("host-handoff: model: claude-opus-5-5");
+    expect(stdout).toContain("host-handoff: model: claude-sonnet-5-5");
+    expect(stdout).toContain("host-handoff: effort: high");
     expect(stdout).toContain(
       `host-handoff: result file: scratch/handoffs/${SLUG}.result.md`,
     );
-    expect(stdout).toContain(`claude --model claude-opus-5-5 '${PROMPT}'`);
+    expect(stdout).toContain(
+      `claude --model claude-sonnet-5-5 --effort high '${PROMPT}'`,
+    );
+  });
+
+  it("prints the effort the brief's Effort line names", () => {
+    const fixture = checkout({ brief: briefText({ effort: "`xhigh`" }) });
+    const { status, stdout } = run(fixture, [
+      "--check",
+      `scratch/handoffs/${SLUG}.md`,
+    ]);
+    expect(status).toBe(0);
+    expect(stdout).toContain("host-handoff: effort: xhigh");
+    expect(stdout).toContain(
+      `claude --model claude-sonnet-5-5 --effort xhigh '${PROMPT}'`,
+    );
   });
 });
 
@@ -258,6 +297,22 @@ describe("host-handoff.sh refusals", () => {
       ]);
       expect(status, model).toBe(1);
       expect(stderr, model).toContain("Model line names no model");
+    }
+  });
+
+  it("refuses an Effort line with no accepted level in backticks", () => {
+    for (const effort of ["high", "`extreme`", "`High`", "`two words`", "``"]) {
+      const fixture = checkout({ brief: briefText({ effort }) });
+      for (const args of [["--check"], []]) {
+        const { status, stderr } = run(fixture, [
+          ...args,
+          `scratch/handoffs/${SLUG}.md`,
+        ]);
+        expect(status, effort).toBe(1);
+        expect(stderr, effort).toContain("Effort line names no effort level");
+        expect(stderr, effort).toContain("low, medium, high, xhigh, or max");
+      }
+      expect(fixture.claudeCall(), effort).toBeNull();
     }
   });
 
@@ -320,7 +375,8 @@ describe("host-handoff.sh and the brief template", () => {
     ]);
     expect(stderr).toBe("");
     expect(status).toBe(0);
-    expect(stdout).toContain("host-handoff: model: claude-opus-5-5");
+    expect(stdout).toContain("host-handoff: model: claude-sonnet-5-5");
+    expect(stdout).toContain("host-handoff: effort: high");
   });
 
   it("refuses a result file whose name is not the brief's own", () => {
@@ -347,5 +403,7 @@ describe("host-handoff.sh --help", () => {
     const { status, stdout } = run(fixture, ["--help"]);
     expect(status).toBe(0);
     expect(stdout).toContain("Usage: bash .claude/scripts/host-handoff.sh");
+    expect(stdout).toContain("claude-sonnet-5-5");
+    expect(stdout).toContain("or high when");
   });
 });
