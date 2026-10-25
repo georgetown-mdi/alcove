@@ -211,12 +211,12 @@ it pins beyond that, and the second OS-package inventory that comes with it.
 
 | Pin | Value | How it is held |
 | --- | --- | --- |
-| Release snapshot | `--releasever=2023.12.20261016` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
+| Release snapshot | `--releasever=2023.12.20261026` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
 | Provider package and version | `openssl-fips-provider-certified` at `3.2.2-1.amzn2023` | `rpm -qf` on the installed `fips.so`, asserted in the build |
 | Module version string | `3.2.2-799901ad7ab41d45` | `openssl list -providers` read back, asserted in the build |
-| Base image | `public.ecr.aws/amazonlinux/amazonlinux@sha256:c07ab0773eddf9449c0994a87d8148300db98bdf8d8dad672a9dc26321c104fc`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `x64` | `fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
-| Node runtime tarball, `arm64` | `fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5` | as above |
+| Base image | `public.ecr.aws/amazonlinux/amazonlinux@sha256:8272aee6146a36222baaf71d72ab6799770957414ac63b1e940cec58c9197188`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Node runtime tarball, `x64` | `6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Node runtime tarball, `arm64` | `42aa04922591ee5d4dbc7740d452621acf28508239daa512f5ee8c47ee224fdb` | as above |
 
 All three certificate pins are build `ARG`s, so what the assertions catch is a
 package layer that drifts under the committed values rather than an operator who
@@ -315,12 +315,13 @@ coupled: a base far newer than the pinned snapshot can put that snapshot's
 packages in conflict with what the base already holds. The digest in the table
 above closes that. It is the multi-arch index digest, which is what a
 multi-platform build can resolve -- a platform-specific manifest digest names one
-architecture and fails on the other -- and it was resolved on 2026-10-19 (UTC)
+architecture and fails on the other -- and it was resolved on 2026-10-25 (UTC)
 with `docker buildx imagetools inspect public.ecr.aws/amazonlinux/amazonlinux:2023`,
-both of whose per-arch manifests were created on 2026-10-16. The rootfs at that
-digest reports `system-release` version `2023.12.20261016` on `amd64` and
-`arm64` alike, which is the release `AL2023_RELEASEVER` names, so the base and
-the packages are the same snapshot rather than two compatible ones.
+the digest ECR Public's `2023.12.20261026.1` tag also names. `2023.12.20261026`
+is the release `AL2023_RELEASEVER` names, so the base and the packages are the
+same snapshot rather than two compatible ones. The `system-release` version the
+rootfs at that digest reports has not been read by hand on either architecture;
+the build's assertion below compares it on each architecture a build runs.
 
 The digest names Amazon's own registry, ECR Public, rather than Docker Hub's
 `amazonlinux:2023`. The two registries publish the same releases under
@@ -372,11 +373,10 @@ Ed25519, and that Node's key generation for them throws
 (package `3.2.2-1.amzn2023`). In that build Node's linked OpenSSL is 3.5.7
 (`process.versions.openssl`) and the image's own `openssl` library and command
 are 3.5.8, two components that are both right for what each names. The
-`x86_64` build was not measured. That build ran Node v26.7.0. The v26.12.0
-the image pins reports linked OpenSSL 3.5.9 (`process.versions.openssl`) beside
-an `openssl` library of 3.5.8, read on 2026-10-19 in `linux/amd64` and
-`linux/arm64` builds at the pins above. The X25519 and Ed25519 reading has not
-been re-taken on that build.
+`x86_64` build was not measured. That build ran Node v26.7.0. The v26.12.1
+the image pins links OpenSSL 3.5.9 (nodejs.org release index); the linked and
+library versions have not been read in a build at the pins above, and the
+X25519 and Ed25519 reading has not been re-taken on that build.
 
 ## What certificate 5438 attests
 
@@ -907,7 +907,7 @@ re-measurement builds with `--no-cache` or it measures the cache.
   resolves against whatever the Alpine mirror holds at build time, so its list
   can go stale with nothing in this repository changing, and the remedy is to
   regenerate it. The FIPS variant has no such exposure: its dnf transactions pin
-  `--releasever=2023.12.20261016`.
+  `--releasever=2023.12.20261026`.
 - The drift check fails on a package added or removed and on a license string
   that moved; a version that moved it reports without failing. That install
   resolves its dependency versions against the live index, which moves patch

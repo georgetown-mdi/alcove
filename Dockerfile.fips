@@ -15,14 +15,14 @@
 # The per-architecture sha256 the tarball is checked against is committed below
 # and covers this release's bytes only, so a Node bump moves this version and
 # both of those hashes together.
-ARG NODE_VERSION=v26.12.0
+ARG NODE_VERSION=v26.12.1
 
 # The Amazon Linux release snapshot every dnf transaction below resolves
 # against. AWS retains superseded NVRs -- both certified provider packages are
 # still served by every snapshot since they first appeared -- so pinning the
 # snapshot as well as the package NVR is what makes the provider layer
 # reproducible rather than a function of the build date.
-ARG AL2023_RELEASEVER=2023.12.20261016
+ARG AL2023_RELEASEVER=2023.12.20261026
 
 # CMVP certificate 5438. The package and version pin which build is installed;
 # the module version string is what the module itself reports. Many NVRs share
@@ -40,7 +40,7 @@ ARG FIPS_MODULE_VERSION=3.2.2-799901ad7ab41d45
 # assertion in the stage below holds rather than this comment. Where the digest
 # was resolved, and the checklist a bump of it works through, are in
 # docs/spec/DEPENDENCY_PINS.md.
-FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:c07ab0773eddf9449c0994a87d8148300db98bdf8d8dad672a9dc26321c104fc AS nodebase
+FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:8272aee6146a36222baaf71d72ab6799770957414ac63b1e940cec58c9197188 AS nodebase
 ARG NODE_VERSION
 ARG AL2023_RELEASEVER
 # The coupling the digest above is pinned for, asserted rather than described:
@@ -73,8 +73,8 @@ RUN dnf -y --releasever=${AL2023_RELEASEVER} install tar gzip xz findutils libat
 RUN set -eux; \
   arch="$(uname -m)"; \
   case "$arch" in \
-  x86_64) node_arch=x64; node_sha256=fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded ;; \
-  aarch64) node_arch=arm64; node_sha256=fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5 ;; \
+  x86_64) node_arch=x64; node_sha256=6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd ;; \
+  aarch64) node_arch=arm64; node_sha256=42aa04922591ee5d4dbc7740d452621acf28508239daa512f5ee8c47ee224fdb ;; \
   *) echo "unsupported architecture $arch" >&2; exit 1 ;; \
   esac; \
   cd /tmp; \
