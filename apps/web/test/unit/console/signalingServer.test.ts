@@ -415,7 +415,7 @@ describe("the relay set for the console's own invitations", () => {
 
   test("is shown on the form as one line naming its urls and registrar, escaped", () => {
     expect(NO_RELAY_SUMMARY).toBe(
-      "Relay: none, so the exchange connects directly.",
+      "Relay: none. A network that blocks direct connections on either side stops the exchange.",
     );
     expect(ownRelaySummary({ turn: OWN_RELAY.turn })).toBe(
       "Relay: turns:relay.example.org:443?transport=tcp.",

@@ -17,13 +17,13 @@ import {
   readDefaultRelaySwitch,
   writeDefaultRelaySwitch,
 } from "@psi/transport/defaultRelaySwitch";
-import { defaultRelayBuild, isConsoleBuild } from "@utils/clientConfig";
 import {
   parseRelayUrlLines,
   parseWebSocketRelayUrl,
   readOwnRelaySetting,
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
+import { defaultRelayBuild } from "@utils/clientConfig";
 import { defaultRelayInUse } from "@psi/transport/defaultRelay";
 import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
@@ -144,14 +144,12 @@ type SaveStatus =
   | { kind: "failed" };
 
 /**
- * The relay settings page: this browser's own TURN and STUN urls and, on the
- * hosted app, its WebSocket relay url, kept in browser storage for this site,
- * a test of the relays a browser run lists that the user starts, and what the
- * relay's operator learns. The hosted app and a console each hold their own; a
- * console runs no exchange over a WebSocket relay, so it offers no WebSocket
- * relay field. On the hosted app the page also sets the coordination server
- * the invitations this browser creates name ({@link CoordinationServerSection});
- * a console mints no browser invitation, so it offers none. The relays an
+ * The relay settings page of the hosted app: this browser's own TURN and STUN
+ * urls and its WebSocket relay url, kept in browser storage for this site, a
+ * test of the relays a browser run lists that the user starts, and what the
+ * relay's operator learns. The page also sets the coordination server the
+ * invitations this browser creates name ({@link CoordinationServerSection}).
+ * A console build has no such page: its route redirects. The relays an
  * exchange may use are that exchange's own, set
  * where it is authored, so none is set here. Where the build offers its
  * default relay switched off, the page has the switch that turns it on in
@@ -167,7 +165,6 @@ export function RelaySettingsScreen({
    * unset. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
 }) {
-  const consoleBuild = isConsoleBuild();
   const [offersSwitch] = useState(() => build().kind === "opt-in");
   const [switchOn, setSwitchOn] = useState(readDefaultRelaySwitch);
   const [switchNotSaved, setSwitchNotSaved] = useState(false);
@@ -192,9 +189,7 @@ export function RelaySettingsScreen({
 
   const turnLines = parseRelayUrlLines(turnText, "turn");
   const stunLines = parseRelayUrlLines(stunText, "stun");
-  const websocketEntry = parseWebSocketRelayUrl(
-    consoleBuild ? "" : websocketText,
-  );
+  const websocketEntry = parseWebSocketRelayUrl(websocketText);
   const turnError = attempted ? fieldError(turnLines) : undefined;
   const stunError = attempted ? fieldError(stunLines) : undefined;
   const websocketError =
@@ -267,15 +262,13 @@ export function RelaySettingsScreen({
     <WorkShell>
       <h1>Relay server</h1>
       <p className={`${styles.small} ${styles.sub}`}>{RELAY_PAGE_INTRO}</p>
-      {!consoleBuild && (
-        <p className={`${styles.small} ${styles.sub}`}>
-          {RELAY_PAGE_COORDINATION_SERVER_NOTE}
-        </p>
-      )}
       <p className={`${styles.small} ${styles.sub}`}>
-        {consoleBuild
-          ? "Exchanges run from this console follow the command-line configuration: its connection.allowed_relays key decides which relays an exchange may use, and a WebRTC invitation you accept that names a TURN server sets it in the Allowed relays field on its first step."
-          : "The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of the relays saved here."}{" "}
+        {RELAY_PAGE_COORDINATION_SERVER_NOTE}
+      </p>
+      <p className={`${styles.small} ${styles.sub}`}>
+        {
+          "The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of the relays saved here."
+        }{" "}
         {RELAY_KEY_NOTICE}
       </p>
 
@@ -330,19 +323,17 @@ export function RelaySettingsScreen({
             setStatus({ kind: "idle" });
           }}
         />
-        {!consoleBuild && (
-          <TextInput
-            label="WebSocket relay url"
-            description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
-            value={websocketText}
-            error={websocketError}
-            errorProps={{ role: "alert" }}
-            onChange={(event) => {
-              setWebsocketText(event.currentTarget.value);
-              setStatus({ kind: "idle" });
-            }}
-          />
-        )}
+        <TextInput
+          label="WebSocket relay url"
+          description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
+          value={websocketText}
+          error={websocketError}
+          errorProps={{ role: "alert" }}
+          onChange={(event) => {
+            setWebsocketText(event.currentTarget.value);
+            setStatus({ kind: "idle" });
+          }}
+        />
       </Stack>
 
       <div className={styles.workFoot}>
@@ -371,7 +362,7 @@ export function RelaySettingsScreen({
       <h2>What the relay&apos;s operator learns</h2>
       <p>{RELAY_OPERATOR_DISCLOSURE}</p>
 
-      {!consoleBuild && <CoordinationServerSection />}
+      <CoordinationServerSection />
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">

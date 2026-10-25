@@ -2,13 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 
 import { Route as RelayRoute } from "../../../src/routes/relay.tsx";
 
-// The relay settings page sets the coordination server on the hosted build
-// only, so the page's description names it there and not on a console build.
-const clientConfig = vi.hoisted(() => ({ consoleBuild: false }));
+// The relay settings page is the hosted build's alone (a console build
+// redirects its route), and it sets the coordination server, so the page's
+// description names it.
 vi.mock("@utils/clientConfig", async (importOriginal) =>
   (await import("../../utils/clientConfigMock")).clientConfigMock(
     importOriginal,
-    { isConsoleBuild: () => clientConfig.consoleBuild },
   ),
 );
 
@@ -23,17 +22,9 @@ async function description(): Promise<unknown> {
 }
 
 describe("the relay settings route's description", () => {
-  test("names the coordination server on the hosted build", async () => {
-    clientConfig.consoleBuild = false;
+  test("names the relays and the coordination server", async () => {
     expect(await description()).toBe(
       "Set the relays and the coordination server your side of an exchange uses.",
-    );
-  });
-
-  test("names only the relays on a console build", async () => {
-    clientConfig.consoleBuild = true;
-    expect(await description()).toBe(
-      "Set the relays your side of an exchange uses.",
     );
   });
 });

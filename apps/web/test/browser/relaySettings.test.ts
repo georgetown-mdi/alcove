@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
-import { createElement } from "react";
+import { Suspense, createElement } from "react";
+
+import { isRedirect } from "@tanstack/react-router";
 
 import "@mantine/core/styles.css";
 
@@ -49,6 +51,10 @@ import {
   writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
 
+import { CONSOLE_RELAY_POINTER, Lobby } from "@exchange/Lobby";
+
+import { Route as RelayRoute } from "../../src/routes/relay.tsx";
+
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
 import type {
@@ -56,11 +62,15 @@ import type {
   RelayTestTarget,
 } from "@psi/transport/relayTest";
 
-vi.mock("@tanstack/react-router", async () =>
-  (await import("./moduleMocks")).reactRouterMock(),
-);
+// The route module's createFileRoute and redirect stay real, so the /relay
+// route's own beforeLoad is what the route tests below run.
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...(await import("./moduleMocks")).reactRouterMock(),
+}));
 
-// Each test picks the build: the screen reads isConsoleBuild() as it renders.
+// Each test picks the build: the route and the start page read
+// isConsoleBuild() as they load and render.
 const build = vi.hoisted(() => ({ console: false }));
 vi.mock("@utils/clientConfig", async (importOriginal) => {
   const { clientConfigMock, consoleClientConfigMock } =
@@ -293,12 +303,6 @@ describe("RelaySettingsScreen: the WebSocket relay", () => {
     expect(page.getByRole("alert").all()).toHaveLength(1);
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
-
-  test("the console build offers no WebSocket relay field", async () => {
-    build.console = true;
-    await mountScreen();
-    expect(websocketField().query()).toBeNull();
-  });
 });
 
 describe("RelaySettingsScreen: the coordination server", () => {
@@ -439,7 +443,7 @@ describe("RelaySettingsScreen: the coordination server", () => {
     expect(unreadableAlert().query()).toBeNull();
   });
 
-  test("the page intro points to this section on the hosted app, not the console", async () => {
+  test("the page intro points to this section", async () => {
     await mountScreen();
     expect(RELAY_PAGE_COORDINATION_SERVER_NOTE).toBe(
       "This page also sets the coordination server your invitations use, " +
@@ -448,18 +452,6 @@ describe("RelaySettingsScreen: the coordination server", () => {
     await expect
       .element(page.getByText(RELAY_PAGE_COORDINATION_SERVER_NOTE))
       .toBeVisible();
-
-    build.console = true;
-    await mountScreen();
-    expect(page.getByText(RELAY_PAGE_COORDINATION_SERVER_NOTE).query()).toBe(
-      null,
-    );
-  });
-
-  test("the console build offers no coordination server field", async () => {
-    build.console = true;
-    await mountScreen();
-    expect(serverField().query()).toBeNull();
   });
 });
 
@@ -489,23 +481,6 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
     );
     expect(document.body.textContent).not.toContain(
       "connection.allowed_relays",
-    );
-  });
-
-  test("the console build shows no Allowed relays field and names the configuration key and the accept step that set them", async () => {
-    build.console = true;
-    await mountScreen();
-
-    expect(
-      page.getByRole("textbox", { name: "Allowed relays" }).query(),
-    ).toBeNull();
-    expect(document.body.textContent).not.toContain("allowed relays");
-    expect(document.body.textContent).toContain(
-      "Exchanges run from this console follow the command-line " +
-        "configuration: its connection.allowed_relays key decides which relays " +
-        "an exchange may use, and a WebRTC invitation you accept that names a " +
-        "TURN server sets it in the Allowed relays field on its first step. " +
-        "Each exchange signs in",
     );
   });
 
@@ -925,5 +900,75 @@ describe("the switch for a site relay offered switched off", () => {
     app.render(createElement(RelaySettingsScreen, { build: () => offer }));
     await expect.element(turnField()).toBeInTheDocument();
     expect(siteSwitch().query()).toBeNull();
+  });
+});
+
+/** What the /relay route's beforeLoad throws, or undefined where it returns. */
+function relayRouteBeforeLoadThrown(): unknown {
+  const { beforeLoad } = RelayRoute.options as {
+    beforeLoad?: (context: unknown) => unknown;
+  };
+  if (beforeLoad === undefined) throw new Error("route declares no beforeLoad");
+  try {
+    beforeLoad({});
+  } catch (thrown) {
+    return thrown;
+  }
+  return undefined;
+}
+
+describe("the /relay route", () => {
+  test("on the console, opens the invitation flow, whose review step sets the relay", () => {
+    build.console = true;
+
+    const thrown = relayRouteBeforeLoadThrown();
+
+    expect(isRedirect(thrown)).toBe(true);
+    expect((thrown as { options: unknown }).options).toMatchObject({
+      to: "/exchange",
+      replace: true,
+    });
+  });
+
+  test("on the hosted app, renders the relay settings page with its relay test", async () => {
+    writeOwnRelaySetting({ turn: [TURN_URL], stun: [] });
+
+    expect(relayRouteBeforeLoadThrown()).toBeUndefined();
+    const component = RelayRoute.options.component;
+    if (component === undefined) throw new Error("route declares no component");
+    app.render(
+      createElement(Suspense, { fallback: null }, createElement(component)),
+    );
+
+    await expect
+      .element(page.getByRole("heading", { level: 1, name: "Relay server" }))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Test these relays" }))
+      .toBeVisible();
+  });
+
+  test("the console start page links to no relay page and says where a relay is set", async () => {
+    build.console = true;
+    app.render(createElement(Lobby));
+
+    await expect.element(page.getByText(CONSOLE_RELAY_POINTER)).toBeVisible();
+    expect(CONSOLE_RELAY_POINTER).toBe(
+      "If using peer-to-peer, some workplace networks may block the " +
+        "connection. Your IT team can give you a relay server address. To " +
+        "use it, create an invitation, choose Over WebRTC, run here on its " +
+        "review step, and choose Set a relay.",
+    );
+    expect(document.querySelector('a[href="/relay"]')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/relay settings/i);
+  });
+
+  test("the hosted start page links to relay settings", async () => {
+    app.render(createElement(Lobby));
+
+    await expect
+      .element(page.getByRole("link", { name: "relay settings" }))
+      .toHaveAttribute("href", "/relay");
+    expect(page.getByText(CONSOLE_RELAY_POINTER).query()).toBeNull();
   });
 });
