@@ -38,8 +38,6 @@ import type {
 } from "@recurring/managedRunSurfaceModel";
 import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
-import type { ManagedHandoffState } from "@recurring/managedRunHandoffModel";
-import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { RunOutputs } from "@psi/runOutputs";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -424,32 +422,10 @@ describe("the run's input", () => {
   });
 });
 
-const MIGRATION_DISPATCH: ManagedMigrationDispatch = {
-  backedUpAt: FINISHED_AT,
-  fileName: "alcove-backup-Riverbend-quarterly-2026-10-07T120000Z.json",
-  record: RUNNABLE_LOAD.record,
-  confirm: () => Promise.resolve(),
-};
-
-const AWAITING_CONFIRM: ManagedHandoffState = {
-  ...MANAGED_HANDOFF_INITIAL,
-  migration: {
-    kind: "awaiting-confirm",
-    dispatch: MIGRATION_DISPATCH,
-    refusal: undefined,
-  },
-};
-
-const MIGRATED: ManagedHandoffState = {
-  ...MANAGED_HANDOFF_INITIAL,
-  migration: { kind: "migrated" },
-};
-
 describe("the surface's view", () => {
   const base: ManagedSurfaceViewInputs = {
     load: RUNNABLE_LOAD,
     run: MANAGED_RUN_INITIAL,
-    handoff: MANAGED_HANDOFF_INITIAL,
   };
   const finished = fold([{ type: "run-started" }, completed]);
 
@@ -480,7 +456,6 @@ describe("the surface's view", () => {
           ...base,
           load,
           run: finished,
-          handoff: AWAITING_CONFIRM,
         }),
       ).toBe(load.kind);
   });
@@ -499,17 +474,8 @@ describe("the surface's view", () => {
     ).toBe("configuration");
   });
 
-  test("a run's outputs outrank a hand-off, from the moment they arrive", () => {
-    expect(
-      managedSurfaceView({
-        ...base,
-        run: finished,
-        handoff: AWAITING_CONFIRM,
-      }),
-    ).toBe("complete");
-    expect(
-      managedSurfaceView({ ...base, run: finished, handoff: MIGRATED }),
-    ).toBe("complete");
+  test("a run's outputs show their own view, from the moment they arrive", () => {
+    expect(managedSurfaceView({ ...base, run: finished })).toBe("complete");
   });
 
   test("a failed or running run stays on the run controls", () => {
@@ -522,13 +488,6 @@ describe("the surface's view", () => {
         run: fold([{ type: "run-started" }, failedRun(1)]),
       }),
     ).toBe("run");
-  });
-
-  test("a migration shows its own view, migrated or awaiting confirmation", () => {
-    expect(managedSurfaceView({ ...base, handoff: MIGRATED })).toBe("migrated");
-    expect(managedSurfaceView({ ...base, handoff: AWAITING_CONFIRM })).toBe(
-      "confirm-move",
-    );
   });
 });
 
@@ -737,7 +696,7 @@ describe("the surface's reducer and the exports", () => {
     load: RUNNABLE_LOAD,
   };
 
-  test("starts with no export and no hand-off", () => {
+  test("starts with no export", () => {
     expect(MANAGED_RUN_SURFACE_INITIAL.handoff).toBe(MANAGED_HANDOFF_INITIAL);
   });
 
@@ -750,42 +709,25 @@ describe("the surface's reducer and the exports", () => {
     expect(exported.handoff.export).toEqual({ kind: "idle" });
   });
 
-  test("a dispatched migration marks the loaded record and awaits confirmation", () => {
-    const dispatched = foldSurface(
-      [
-        { type: "export-started" },
-        {
-          type: "migration-dispatched",
-          dispatch: MIGRATION_DISPATCH,
-          marker: MARKER,
-        },
-      ],
+  test("a backup export leaves the surface on the run controls", () => {
+    const exported = foldSurface(
+      [{ type: "export-started" }, { type: "backup-exported", marker: MARKER }],
       loadedVisit,
     );
-    expect(dispatched.load).toEqual({ ...RUNNABLE_LOAD, backupMarker: MARKER });
-    expect(dispatched.handoff).toEqual(AWAITING_CONFIRM);
-    expect(managedSurfaceView(dispatched)).toBe("confirm-move");
+    expect(managedSurfaceView(exported)).toBe("run");
   });
 
   test("an export event leaves the load, the run and the recovery as they were", () => {
     for (const action of [
       { type: "export-started" },
+      { type: "export-finished" },
       { type: "export-failed" },
-      { type: "migration-confirmed" },
     ] satisfies ReadonlyArray<ManagedRunSurfaceAction>) {
       const next = managedRunSurfaceReducer(failedVisit, action);
       expect(next.load).toBe(failedVisit.load);
       expect(next.run).toBe(failedVisit.run);
       expect(next.recovery).toBe(failedVisit.recovery);
     }
-  });
-
-  test("an export event that changes nothing returns the same state", () => {
-    expect(
-      managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
-        type: "migration-kept",
-      }),
-    ).toBe(MANAGED_RUN_SURFACE_INITIAL);
   });
 });
 
@@ -1066,27 +1008,6 @@ const ROUTING: {
     action: { type: "backup-exported", marker: MARKER },
     owns: ["load", "handoff"],
   },
-  "migration-dispatched": {
-    action: {
-      type: "migration-dispatched",
-      dispatch: MIGRATION_DISPATCH,
-      marker: MARKER,
-    },
-    owns: ["load", "handoff"],
-  },
-  "migration-confirm-started": {
-    action: { type: "migration-confirm-started" },
-    owns: ["handoff"],
-  },
-  "migration-confirmed": {
-    action: { type: "migration-confirmed" },
-    owns: ["handoff"],
-  },
-  "migration-refused": {
-    action: { type: "migration-refused", refusal: "superseded" },
-    owns: ["handoff"],
-  },
-  "migration-kept": { action: { type: "migration-kept" }, owns: ["handoff"] },
   "terms-proposal-started": {
     action: { type: "terms-proposal-started" },
     owns: ["termsProposal"],
@@ -1110,7 +1031,7 @@ describe("the surface's reducer slices", () => {
     reads: foldSurface([
       { type: "accounting-read", read: { kind: "unavailable" } },
     ]).reads,
-    handoff: AWAITING_CONFIRM,
+    handoff: { export: { kind: "failed" } },
     termsProposal: { kind: "busy" },
   };
   const slices = Object.keys(everySliceHeld) as ReadonlyArray<SurfaceSlice>;

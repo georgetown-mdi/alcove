@@ -1127,21 +1127,20 @@ Two boundaries the occupancy holds:
   than the failure's kind.
 
 Within those, an attempt is re-made only for a partner who never arrived and for
-a failure with no determinate local cause. A lapsed `expires`, a copy an export
-handed off, a hand-off state the run could not read, an unusable input, a
+a failure with no determinate local cause. A lapsed `expires`, a copy an earlier
+version's export handed off, a hand-off state the run could not read, an unusable input, a
 shortfall against the standing terms, a refused disclosure, a failed rotation
 persist, and a handshake that failed closed each reproduce identically on the
 next attempt, so each ends the window's occupancy where it happened.
 
-The hand-off is the one of them a window can meet after starting cleanly, and it
-is why the spent state is read per attempt rather than per tick: the runner's own
-skip below reads it once when the wake begins, while the run path re-reads it
-inside the [run+rotate lock](#the-secret-is-a-linear-resource) at the start of
-every attempt. A hand-off confirmed while a window is open therefore refuses that
-attempt outright rather than being re-attempted until the window closes; the
-refusal itself is non-retryable and counts no partner miss, but a window that
-already found the partner absent before it still folds to `"missed"` under the
-table below.
+The spent state is read twice: the runner's own skip below reads it once when the
+wake begins, and the run path re-reads it inside the [run+rotate
+lock](#the-secret-is-a-linear-resource) at the start of every attempt. No current
+path writes that state; it is left only on a record an earlier version wrote. An
+attempt that finds it refuses outright rather than being re-attempted until the
+window closes; the refusal itself is non-retryable and counts no partner miss, but
+a window that already found the partner absent before it still folds to
+`"missed"` under the table below.
 
 The record itself is read on that same per-attempt cadence, and each attempt
 runs the record that read returns -- its secret, input handle, document, and
@@ -1207,7 +1206,7 @@ Three records are passed over rather than attempted, each leaving its window
 with no disposition at all -- the wake that finds the window elapsed counts it
 exactly as one this runtime slept through:
 
-- One this device has handed off (its local `spent` state), by either export.
+- One whose local `spent` state marks this device's copy handed off.
 - One with no persisted `workingDirectoryHandle`, which has no unattended read
   of the input at all.
 - One whose runtime stopped while the window was still open.
@@ -1378,10 +1377,10 @@ side of the send the run stopped on; the accounting does. And the cancel does no
 discard what the transport already holds buffered: the teardown's close flushes
 rather than drops, so a cancel does not mean nothing further leaves the device.
 The lock guards one browser profile; across devices the guard is **migration,
-not sync**. Nothing synchronizes a record between two devices, and the migration
-export spends the source copy, so the copy imported on the new device is the one
-that runs. The spend is written once the operator confirms the file is saved,
-never at the download, and a run that finds its copy spent refuses before it
+not sync**. Nothing synchronizes a record between two devices, and no export
+spends the source copy: a run of an exported copy elsewhere rotates the secret,
+and this browser's copy, still holding the older one, runs again only once the
+newer files are imported here. A run that finds its copy spent refuses before it
 connects (see [the spent
 state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
 The rationale for both guards is [Single-device
@@ -1816,11 +1815,14 @@ device's pending decision on a partner's changed terms. The four:
   "backup needed". "Taken since the last rotation" is enforced **structurally**, not
   re-derived from `lastRun`, by the write-side rules below -- which also settle which
   export the state is about:
-  - **A marking export binds the marker to the bytes it serialized.** The backup and
-    migration exports read the current record, serialize the bytes they will download,
-    and stamp the marker in one atomic store step (a cross-store
-    read-serialize-and-mark), then download exactly those bytes, so the marker can only
-    ever attest the secret the file holds. A stale tab or a stale in-memory record
+  - **A marking export binds the marker to the bytes it serialized.** The backup
+    export reads the current record, serializes the bytes it will download,
+    and stamps the marker in one atomic store step (a cross-store
+    read-serialize-and-mark), then downloads exactly those bytes, so the marker can only
+    ever attest the secret the file holds. It takes the record's [run+rotate
+    lock](#the-secret-is-a-linear-resource) with `ifAvailable` around that step and
+    the download, and a run holding the lock refuses it before anything is read, so
+    the file never holds a secret a run in flight is about to rotate. A stale tab or a stale in-memory record
     cannot mark a secret it did not serialize. Serializing inside the step is what binds
     the marker to bytes that exist: a step that resolved without serializing would leave
     a marker attesting bytes nothing produced, so it fails the export instead.
@@ -1876,9 +1878,9 @@ device's pending decision on a partner's changed terms. The four:
     "backed up" about a copy the first run there replaces, and the backup surfaces
     that read the marker send the operator to the backup file, not to it. The pair
     import stamps no backup marker for the same reason. The export takes a plain
-    read of the record by `id` and leaves the
-    marker -- present or absent -- exactly where it stood, whether the hand-off is
-    confirmed or dismissed. The two exports are named apart where they are offered, so
+    read of the record by `id`, under the run+rotate lock taken with `ifAvailable`
+    as the backup export's is, and leaves the
+    marker -- present or absent -- exactly where it stood. The two exports are named apart where they are offered, so
     the operator chooses between "a file this browser restores from" and "the files
     the command line runs from" rather than between two downloads.
   - **Rotation clears the marker.** The persist-before-success rotation write clears
@@ -1894,11 +1896,13 @@ device's pending decision on a partner's changed terms. The four:
   granted persist cannot suppress the actionable "backup needed" state (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
 - **The spent state** (`spentAt`, an ISO 8601 UTC instant, and an optional
-  `handoff` discriminator) records that an export handed this device's copy off.
-  Two exports write it, and the discriminator is which one did:
-  - the **migration export** ("take over on another device"), which writes
+  `handoff` discriminator) records that this device's copy was handed off. No
+  current path writes it: each export leaves the stored record runnable here, and
+  the state is left only on a record an earlier version's export wrote. The
+  discriminator is which export did:
+  - the **migration export** ("take over on another device"), which wrote
     `spentAt` alone, so an absent `handoff` means a migration spend;
-  - the **command-line export**'s confirmed hand-off, which writes
+  - the **command-line export**'s confirmed hand-off, which wrote
     `handoff: "command-line"` beside it.
 
   Either way it transitions the source to a visible spent state -- no Run
@@ -1916,59 +1920,15 @@ device's pending decision on a partner's changed terms. The four:
   the operator's behalf: the refusal is the whole response, with no override on the
   run path. Taking a handed-off exchange back is a deliberate act on that record's
   own surface (see [Taking a command-line hand-off
-  back](#taking-a-command-line-hand-off-back)). A spend confirmed after a surface
-  loaded, or between two attempts at one scheduled window, therefore stops the runs
-  that follow it.
+  back](#taking-a-command-line-hand-off-back)).
 
-  The spend is **operator-attested, not dispatch-anchored**: a download dispatch
-  (`anchor.click()`) gives no landing signal, so a cancelled or failed save must not
-  spend the source. Each export downloads its files, then writes the spent state only
-  after the operator confirms they are saved; a dismissed dialog leaves the source
-  live and recoverable. The migration also marks the source backed-up on dispatch, so
-  a migration-spent copy has a current artifact by construction; the command-line
-  export marks nothing, so a copy spent that way holds whatever backup state it
-  already had. The attestation is checked rather than taken on its word, and the
-  check and the write are **one atomic store step** (a cross-store
-  check-and-spend), as the backup marker's are. Inside a single transaction
-  spanning the record and sibling stores, the confirmation reads the record by
-  `id`, compares the `sharedSecret` the files it downloaded hold, and writes the
-  spent state only while the two match. A rotation -- whose own write
-  spans the same two stores -- therefore lands either before that step, which then
-  reads the rotated secret and refuses, or after a spend that was decided against
-  the secret those files hold; it cannot land between the check and the write.
-  So a rotation that persisted between the download and the attestation -- a run
-  in any context, or a re-invite -- refuses the spend instead of recording one,
-  since what would be handed over is a copy the partnership has already moved
-  past. A record gone from the store refuses on its own terms: there is no live
-  copy left to spend, and none to download again either. Those two refusals are
-  reported apart and say different things.
-
-  **A run in flight is excluded rather than checked.** That transaction decides a
-  rotation that has already landed; a run still in flight has landed nothing for it
-  to read -- the secret has not rotated yet, so the check would pass, and that run's
-  own persist would then supersede the copy just handed over. So the spend takes the
-  record's [run+rotate lock](#the-secret-is-a-linear-resource) with `ifAvailable`
-  before it opens the transaction at all, and refuses while a run holds it, reporting
-  a refusal of its own. The exclusion runs both ways from one lock: both run paths
-  take it with `ifAvailable` too, so a run that begins while the spend holds it is
-  refused rather than queued -- the attended Run as the exchange being busy, the
-  scheduled path by deferring the attempt as `"unattempted"` -- and any later run
-  re-reads the spent state that spend wrote as its first act inside the lock, which
-  is the refusal above. Waiting for the spend would reach that same refusal later.
-  Spend and run are therefore mutually excluded rather than observing each other,
-  and neither order leaves a handed-over copy behind a rotation.
-
-  Stated limit: that exclusion is the Web Locks lock's, so it binds the contexts of
-  one browser profile on one machine -- which is the whole scenario, both hand-off
-  surfaces and both run paths of a record being that profile's, the record itself
-  being origin-local to it. What it does not cover is what no lock could: a copy held
-  under another profile, browser, or machine, which can only have got there through
-  an export the operator took. Bounding that is migration-not-sync and operator
-  cooperation (see [Single-owner invariant](#single-owner-invariant)), not this step.
-  The spent state has no secret material and no epoch.
+  A migration-spent copy was marked backed up when its file was downloaded, so it
+  has a current artifact by construction; a copy spent by a command-line hand-off
+  holds whatever backup state it already had. The spent state has no secret
+  material and no epoch.
 
   **Revive by import is the migration spend's recovery, and only its.** The
-  migration export downloads the artifact that clears its own spend (a
+  migration export downloaded the artifact that clears its own spend (a
   **revive-in-place**: an import whose secret matches the spent record's updates
   that record's fields, keeps its `id` and its working-folder grant, clears the
   spent state,
@@ -2280,8 +2240,8 @@ it is the only check there is beyond terms and side.
 **The write rules.**
 
 - **A run in flight excludes it**, on the [run+rotate
-  lock](#the-secret-is-a-linear-resource) taken with `ifAvailable`, exactly as the
-  spend is excluded: the run re-reads the spent state as its first act inside that
+  lock](#the-secret-is-a-linear-resource) taken with `ifAvailable`, exactly as
+  both exports are: the run re-reads the spent state as its first act inside that
   lock, and the re-take is a write against that state. A run holding the lock is
   reported rather than waited out.
 - **The read, the key application, and the spent-state clear are one transaction**

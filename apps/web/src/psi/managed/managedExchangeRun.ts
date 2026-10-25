@@ -26,16 +26,16 @@
  *   a record is in flight at a time in a browser profile: a second tab, a
  *   second attended Run, or a scheduled attempt is refused or queued for the
  *   whole run rather than for its rotation alone, and cannot double-rotate or
- *   exchange a second time against the partner. The same lock is what a
- *   hand-off spend takes, so a spend is refused while an exchange is in
+ *   exchange a second time against the partner. The same lock is what both
+ *   exports and a re-take take, so neither runs while an exchange is in
  *   flight.
  *
  * - **A handed-off copy does not run.** The locked window's first act is to
- *   re-read the record's sibling spent state and refuse a copy an export has
- *   handed off, before the input is read and before any connection -- a read
- *   per run, not a surface's mount-time reading, so a hand-off confirmed
- *   after a surface loaded stops the runs that follow it. A reading that
- *   fails refuses the run under its own `custody-unreadable` kind: an
+ *   re-read the record's sibling spent state and refuse a copy an earlier
+ *   version's export handed off, before the input is read and before any
+ *   connection -- a read per run, not a surface's mount-time reading. No
+ *   current path writes that state. A reading that fails refuses the run
+ *   under its own `custody-unreadable` kind: an
  *   unreadable local record, neither a hand-off nor a rotation this device
  *   failed to save.
  *
@@ -86,9 +86,9 @@ const log = getLogger("managedExchangeRun");
 
 /**
  * Raised when a run finds this device's copy of the record handed off: an
- * export spent it, so the secret it would rotate belongs to whoever the
- * hand-off gave it to. Refusing is the whole response; recovery is a
- * re-invite. Raised inside the run+rotate lock before the input is read, so
+ * earlier version's export spent it, so the secret it would rotate belongs to
+ * whoever the hand-off gave it to. Refusing is the whole response; recovery is
+ * a re-invite. Raised inside the run+rotate lock before the input is read, so
  * a refused run has touched neither the operator's file nor the network.
  */
 export class ManagedExchangeSpentError extends Error {
@@ -261,9 +261,9 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
   return await withManagedExchangeLock(
     record.id,
     async () => {
-      // A copy an export handed off is refused before anything else this window
-      // does: the sibling state is read here rather than trusted from whatever a
-      // caller loaded, so a hand-off confirmed since that load stops this run.
+      // A copy an earlier version's export handed off is refused before anything
+      // else this window does: the sibling state is read here rather than trusted
+      // from whatever a caller loaded.
       await refuseHandedOffCopy(record.id, now, runStartedAtMs);
       const current = await readRecordToRun(record.id);
       // The input guard runs before the handshake opens any connection. A benign

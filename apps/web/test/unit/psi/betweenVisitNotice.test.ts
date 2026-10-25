@@ -146,8 +146,27 @@ describe("betweenVisitNotice: the missed window", () => {
     });
 
     expect(notice?.kind).toBe("missed");
-    expect(notice?.body).toContain("No action is needed");
+    expect(notice?.body).toContain("Otherwise no action is needed");
     expect(notice?.body).toContain("next window opens");
+  });
+
+  test("one miss names the import a copy run elsewhere needs, ahead of the all-clear", () => {
+    const body = betweenVisitNotice({
+      record: record({
+        schedule: schedule({ consecutiveMisses: 1 }),
+        lastRun: { at: RUN_AT, outcome: "missed" },
+      }),
+      local: undefined,
+      caughtUpMisses: 0,
+      disposition: "missed",
+      now: NOW,
+    })?.body;
+
+    expect(body).toContain(
+      "If you ran this exchange elsewhere, import it again here to make it " +
+        "runnable. Otherwise no action is needed; the next window runs as " +
+        "scheduled.",
+    );
   });
 
   test("the escalation threshold turns the copy into the coordination prompt", () => {
@@ -169,7 +188,8 @@ describe("betweenVisitNotice: the missed window", () => {
         "most likely because your schedule and your partner's open " +
         "different windows. Compare the next window in UTC, the repeat, and " +
         "the window length under Run schedule on this exchange's page with " +
-        "your partner's, and check this device's clock.",
+        "your partner's, and check this device's clock. If you ran this " +
+        "exchange elsewhere, import it again here to make it runnable.",
     );
   });
 

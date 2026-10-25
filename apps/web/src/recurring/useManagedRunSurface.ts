@@ -5,25 +5,24 @@ import { getLogger } from "@alcove/core";
 import { triggerBlobDownload } from "@components/blobDownload";
 
 import {
-  ManagedHandoffRefusedError,
-  dispatchManagedMigration,
-  exportManagedBackup,
-} from "@psi/managed/managedExchangeExport";
-import {
   ManagedReinviteWithheldError,
   clearManagedExchangeStandingCondition,
   getManagedExchange,
   persistManagedExchangeWorkingDirectory,
   readRecordAndMarkBackedUp,
   recordManagedExchangeCompromiseResponse,
-  spendManagedExchangeIfCurrent,
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
 import { clearParkedResults } from "@psi/parkedResultsStore";
+import { exportManagedBackup } from "@psi/managed/managedExchangeExport";
 import { fileUnfiledDisclosures } from "@psi/unfiledDisclosureStore";
 import { resetDisclosureAccounting } from "@psi/disclosureAccountingStore";
 import { routeConfirmationReply } from "@psi/managed/managedFailureConfirmation";
 
+import {
+  ManagedExchangeLockUnavailableError,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
 import {
   matchingKeyTurnedOffBy,
   matchingKeyTurnedOffByWrite,
@@ -31,7 +30,6 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import { MANAGED_EXCHANGE_ARTIFACT_MIME } from "@psi/managed/managedExchangeArtifact";
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 
@@ -79,10 +77,6 @@ import {
   managedCompromiseResponseActive,
   managedReinviteInFlight,
 } from "./managedRunRecoveryModel";
-import {
-  managedMigrationAwaitingConfirm,
-  managedMigrationStale,
-} from "./managedRunHandoffModel";
 import { useManagedSurfaceReads } from "./useManagedSurfaceReads";
 
 import type {
@@ -109,6 +103,13 @@ export interface ManagedRunSurfaceHost {
   /** Whether a run of this exchange is in flight anywhere this browser profile
    * can see (see {@link useManagedRunInFlight}). */
   runInFlight: boolean;
+  /** Whether the run lock reads as held, apart from this surface's own run state:
+   * a finished run's completion screen gates on it, since that run released the
+   * lock before its outputs reached the screen. */
+  runLockHeld: boolean;
+  /** Report that an export taking the run lock found it held, so
+   * {@link runInFlight} reads true until the next poll reading. */
+  runLockRefused: () => void;
   /** The input file the operator chose, on a browser that cannot grant a folder. */
   reselected: File | undefined;
   /** Choose the input file for the next run. */
@@ -125,10 +126,6 @@ export interface ManagedRunSurfaceHost {
   liveFailure: ReturnType<typeof managedRunLiveFailure>;
   /** What the run finished with, once it has. */
   runCompletion: ReturnType<typeof managedRunCompletion>;
-  /** The migration download awaiting the operator's attestation. */
-  migrationDispatch: ReturnType<typeof managedMigrationAwaitingConfirm>;
-  /** Whether the migration file the operator saved is out of date. */
-  staleMigration: boolean;
   /** Whether the record's compromise response is in force. */
   compromiseResponse: boolean;
   /** Whether a re-invite is being minted. */
@@ -137,14 +134,8 @@ export interface ManagedRunSurfaceHost {
   completion: ReturnType<typeof managedRerunCompletion>;
   /** Start a run. */
   run: () => void;
-  /** Download a backup, leaving this copy live. */
+  /** Download a backup. */
   backUp: () => void;
-  /** Download the migration file and await the operator's attestation. */
-  migrate: () => void;
-  /** Spend this copy once the operator attests the migration file is saved. */
-  confirmMigration: () => void;
-  /** Keep this copy after a migration download. */
-  keepMigrationOnDevice: () => void;
   /** Download the backup a finished run made current. */
   downloadUpdatedBackup: () => void;
   /** Mint a fresh invitation, from the recovery or the detail section. */
@@ -187,7 +178,7 @@ export interface ManagedRunSurfaceHost {
 /**
  * The attended run surface's state and commands for managed exchange `id`: the
  * record load, the store reads beside it, the run with its reload-and-classify on
- * failure, and every recovery, hand-off and export the surface offers. Owns the
+ * failure, and every recovery and export the surface offers. Owns the
  * run's lifecycle too -- the unload prompt for the whole run, the abort on unmount,
  * and the revocation of each run's object URLs.
  */
@@ -199,7 +190,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   );
   const { load, run: runState, recovery, reads, handoff } = surfaceState;
   const exportBusy = handoff.export.kind === "busy";
-  const migrationDispatch = managedMigrationAwaitingConfirm(handoff);
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -220,15 +210,17 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   const outputs = runCompletion?.outputs;
   const finishedAt = runCompletion?.finishedAt;
   const liveFailure = managedRunLiveFailure(runState);
-  // Every hand-off affordance on this surface, plus the re-invite mint below, reads
-  // one in-flight signal, which sees a run started anywhere in this browser profile
+  // Every export on this surface, plus the re-invite mint below, reads one
+  // in-flight signal, which sees a run started anywhere in this browser profile
   // -- here, in a second tab, or by the scheduled runtime -- not just the one this
-  // surface started.
-  const { inFlight: runInFlight, recheckLock } = useManagedRunInFlight(
-    id,
-    running,
-  );
-  const staleMigration = managedMigrationStale(handoff);
+  // surface started. The completion screen's updated backup reads the lock alone:
+  // its run released the lock before the outputs were shown.
+  const {
+    inFlight: runInFlight,
+    lockHeld: runLockHeld,
+    recheckLock,
+    lockRefused: runLockRefused,
+  } = useManagedRunInFlight(id, running);
   // How many runs this visit has started, so each failure gets a number of its own.
   const runsStarted = useRef(0);
   // The compromise response is the record's own, written at whichever gate the
@@ -548,23 +540,30 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   const downloadArtifact = (fileName: string, content: string) =>
     triggerBlobDownload(fileName, content, MANAGED_EXCHANGE_ARTIFACT_MIME);
 
-  // The two artifact exports read the record fresh from the store and mark it in one
-  // atomic step (readRecordAndMarkBackedUp), so a mount-time React snapshot -- with a
-  // pre-rotation secret -- is never what an export serializes or the marker attests.
+  // The backup reads the record fresh from the store and marks it in one atomic step
+  // (readRecordAndMarkBackedUp), so a mount-time React snapshot -- with a
+  // pre-rotation secret -- is never what it serializes or the marker attests. It
+  // takes the run's own lock, so a run in flight refuses it rather than leaving a
+  // file holding the secret that run is about to rotate.
   const exportDeps = {
+    withLock: <T>(lockedId: string, step: () => Promise<T>) =>
+      withManagedExchangeLock(lockedId, step, { ifAvailable: true }),
     readAndMark: readRecordAndMarkBackedUp,
     download: downloadArtifact,
     now: () => new Date(),
   };
 
-  // A backup export leaves the source live; a migration export hands the secret off
-  // and spends this device's copy -- but only once the operator attests the file is
-  // saved (a dismissed save leaves the source live). Both read the current record and
-  // mark backed-up atomically, so the source displays green after a backup and a spent
-  // copy holds a current artifact -- the ordering managedExchangeExport.test.ts
-  // drives, marking before a spend is possible and refusing a superseded artifact.
+  // A run-lock refusal is the run-in-progress state, not a failed export: it ends
+  // the export idle and shows the reason until the next poll reading.
+  function settleRefusedExport(error: unknown) {
+    if (error instanceof ManagedExchangeLockUnavailableError) {
+      runLockRefused();
+      dispatchSurface({ type: "export-finished" });
+    } else dispatchSurface({ type: "export-failed" });
+  }
+
   function backUp() {
-    if (record === undefined || exportBusy) return;
+    if (record === undefined || exportBusy || runInFlight) return;
     dispatchSurface({ type: "export-started" });
     void exportManagedBackup(record.id, exportDeps).then(
       (result) =>
@@ -572,59 +571,8 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
           type: "backup-exported",
           marker: downloadedMarker(result),
         }),
-      () => dispatchSurface({ type: "export-failed" }),
+      settleRefusedExport,
     );
-  }
-
-  // Dispatching mid-run only manufactures an artifact the confirmation will refuse:
-  // the run rotates past it before the operator can attest to it.
-  function migrate() {
-    if (record === undefined || exportBusy || runInFlight) return;
-    dispatchSurface({ type: "export-started" });
-    void dispatchManagedMigration(record.id, {
-      ...exportDeps,
-      spendIfCurrent: spendManagedExchangeIfCurrent,
-    }).then(
-      (dispatch) =>
-        dispatchSurface({
-          type: "migration-dispatched",
-          dispatch,
-          marker: downloadedMarker(dispatch),
-        }),
-      () => dispatchSurface({ type: "export-failed" }),
-    );
-  }
-
-  // The operator attested the downloaded migration file is saved: spend the source
-  // (this device's copy transitions to the spent load state on the next visit). The
-  // spend itself refuses a run in flight and an artifact the record has rotated
-  // past, so this classifies those refusals rather than guarding against them.
-  function confirmMigration() {
-    const dispatch = migrationDispatch;
-    if (dispatch === undefined || exportBusy || runInFlight || staleMigration)
-      return;
-    dispatchSurface({ type: "migration-confirm-started" });
-    void (async () => {
-      try {
-        // The gate above renders from a poll, so a run started since the last
-        // reading is still news here; re-reading also puts the reason on screen.
-        // A run this reading still misses is refused by the spend itself, which
-        // takes the run's own lock.
-        if (await recheckLock()) {
-          dispatchSurface({ type: "export-finished" });
-          return;
-        }
-        await dispatch.confirm(new Date());
-        dispatchSurface({ type: "migration-confirmed" });
-      } catch (error) {
-        if (error instanceof ManagedHandoffRefusedError)
-          dispatchSurface({
-            type: "migration-refused",
-            refusal: error.refusal,
-          });
-        else dispatchSurface({ type: "export-failed" });
-      }
-    })();
   }
 
   // The run just rotated the secret, so the previous backup is stale; the completion
@@ -643,12 +591,15 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   // Drive the completion surface's refreshed backup with the shared busy/failure
   // state, so a failed export shows without claiming the backup was taken.
   function downloadUpdatedBackup() {
-    if (completion.backupHook === undefined || exportBusy) return;
+    if (completion.backupHook === undefined || exportBusy || runLockHeld)
+      return;
     dispatchSurface({ type: "export-started" });
-    void completion.backupHook.downloadUpdatedBackup().then(
-      () => dispatchSurface({ type: "export-finished" }),
-      () => dispatchSurface({ type: "export-failed" }),
-    );
+    void completion.backupHook
+      .downloadUpdatedBackup()
+      .then(
+        () => dispatchSurface({ type: "export-finished" }),
+        settleRefusedExport,
+      );
   }
 
   // Fast re-invite: compose a fresh invitation from the record's OWN document (terms
@@ -904,11 +855,11 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   return {
     state: surfaceState,
     runInFlight,
+    runLockHeld,
+    runLockRefused,
     running,
     liveFailure,
     runCompletion,
-    migrationDispatch,
-    staleMigration,
     compromiseResponse,
     reinviting,
     reselected,
@@ -919,9 +870,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     completion,
     run,
     backUp,
-    migrate,
-    confirmMigration,
-    keepMigrationOnDevice: () => dispatchSurface({ type: "migration-kept" }),
     downloadUpdatedBackup,
     reinviteNow,
     resolveConfirmation,

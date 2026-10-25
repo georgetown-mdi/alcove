@@ -680,6 +680,50 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/only replaces/i);
   });
 
+  test("the no-show copy names the import a copy run elsewhere needs", () => {
+    // A run elsewhere rotates the secret the rendezvous derives from, so this
+    // copy meets no one: the same no-show, with a remedy of its own.
+    const failure = classifyAgainstOneRecord(
+      new PartnerNoShowError("timed out waiting for the other party"),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("missed");
+    expect(failure.message).toContain(
+      "run this exchange again when they are ready. If you ran this exchange " +
+        "elsewhere, import it again here to make it runnable. If they were " +
+        "running their side",
+    );
+    expect(failure.message.indexOf("import it again")).toBeLessThan(
+      failure.message.indexOf("re-invite"),
+    );
+    expect(failure.message).not.toMatch(/hand(ed)? off|another device/i);
+  });
+
+  test("a recorded no-show read as a launch failure names the import before the re-invite", () => {
+    // A scheduled run's "missed" stamp still standing after an attended run whose
+    // own bookkeeping did not land: the transport copy, not the no-show's, since
+    // that stamp is not this run's.
+    const recorded = managedRunTierFailure(
+      "missed",
+      record({
+        lastRun: { at: "2026-07-14T09:00:00.000Z", outcome: "missed" },
+      }),
+      undefined,
+    );
+    if (!("message" in recorded))
+      throw new Error("expected the transport alert state");
+    expect(recorded.kind).toBe("transport");
+    expect(recorded.message).toBe(
+      "This run could not be completed - usually a temporary connection " +
+        "problem rather than an issue with your data. If you ran this " +
+        "exchange elsewhere, import it again here to make it runnable. " +
+        "Otherwise try again; if it keeps failing, re-invite your partner.",
+    );
+  });
+
   test("a live no-show against a standing missed outcome keeps the no-show state", () => {
     // The repeat case: the run before this one also ended with nobody there, so
     // the record has a missed outcome of its own and the live error agrees

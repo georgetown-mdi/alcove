@@ -16,7 +16,7 @@ import "@mantine/core/styles.css";
 import {
   CLI_BUILT_IN_STUN_URI,
   RUN_IN_FLIGHT_EXPORT_REASON,
-  commandLineExportNotice,
+  runElsewhereNotice,
 } from "@recurring/managedCronExportModel";
 import {
   clearManagedExchanges,
@@ -27,18 +27,15 @@ import {
   getManagedLocalState,
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
-import {
-  managedExchangeLockName,
-  withManagedExchangeLock,
-} from "@psi/managed/managedExchangeLock";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
+import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { disclosureToggle, openDisclosure } from "./collapsePanels";
+import { holdRunLockElsewhere, pauseLockReadings } from "./runLockReadings";
 import { captureDownloads } from "./captureDownloads";
-import { filterLockFromReadings } from "./runLockReadings";
 
 import type { DownloadCapture } from "./captureDownloads";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -114,6 +111,10 @@ const EXPORT_PANEL = "Run this from the command line";
 // A pattern for the label, since a refused export's toggle also names its
 // collapsed summary.
 const exportToggle = () => disclosureToggle(new RegExp(`^${EXPORT_PANEL}`));
+
+/** How many places show the run-in-progress reason: one beside each export. */
+const reasonsShown = () =>
+  page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).elements().length;
 
 /** Open the collapsed export panel on a freshly rendered run surface, through
  * the helper that waits out its open transition: the download button inside it
@@ -338,34 +339,25 @@ describe("the export leaves this browser's copy as it was", () => {
 
 describe("a run the panel's poll has not yet read", () => {
   test("refuses the download on the run's own lock, and the record is unchanged", async () => {
-    // The poll is kept from ever seeing the held lock, so the refusal shown can
-    // only come from the export taking the lock itself.
+    // The poll's readings are held unanswered and never show the held lock, so
+    // the refusal shown can only come from the export taking the lock itself.
     const created = await createManagedExchange(newExchange());
     const before = await getManagedExchange(created.id);
-    const readings = filterLockFromReadings(created.id);
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await new Promise<void>((granted) => {
-      void navigator.locks.request(managedExchangeLockName(created.id), () => {
-        granted();
-        return held;
-      });
-    });
+    const readings = pauseLockReadings(created.id);
+    const release = await holdRunLockElsewhere(created.id);
     const downloads = captureDownloads();
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
       await openExportPanel();
-      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+      expect(reasonsShown()).toBe(0);
 
       await page
         .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
         .click();
 
-      await expect
-        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
-        .toBeInTheDocument();
+      // One beside each export: the refusal is the run-in-progress reading
+      // both share.
+      await expect.poll(reasonsShown).toBe(2);
       expect(
         page.getByText("Could not export the command-line files").query(),
       ).toBe(null);
@@ -379,19 +371,52 @@ describe("a run the panel's poll has not yet read", () => {
       readings.restore();
     }
   });
+
+  test("clears the refusal's reason on the next reading after a short hold", async () => {
+    const created = await createManagedExchange(newExchange());
+    const readings = pauseLockReadings(created.id);
+    const release = await holdRunLockElsewhere(created.id);
+    try {
+      app.render(createElement(ManagedRunSurface, { id: created.id }));
+      await openExportPanel();
+      await page
+        .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
+        .click();
+      await expect.poll(reasonsShown).toBe(2);
+
+      // The hold ends before the poll reads again, so no reading ever sees it:
+      // the next one finds the lock free and takes the reason away.
+      release();
+      readings.resume();
+      await expect.poll(reasonsShown).toBe(0);
+      await expect
+        .element(
+          page.getByRole("button", {
+            name: "Download alcove.yaml and .alcove.key",
+          }),
+        )
+        .toBeEnabled();
+    } finally {
+      release();
+      readings.restore();
+    }
+  });
 });
 
-describe("the notice beside the export", () => {
+describe("the notice beside each export", () => {
   const SCHEDULE_CLAUSE = "turn off its schedule here";
+
+  /** How many places show `notice`: the backup panel and the command-line
+   * panel each show it once. */
+  const noticesShown = (notice: string) =>
+    page.getByText(notice, { exact: true }).elements().length;
 
   test("says to import it again, with no schedule clause where no schedule is on", async () => {
     const created = await createManagedExchange(newExchange());
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await openExportPanel();
 
-    await expect
-      .element(page.getByText(commandLineExportNotice(false), { exact: true }))
-      .toBeInTheDocument();
+    await expect.poll(() => noticesShown(runElsewhereNotice(false))).toBe(2);
     expect(app.container.textContent).not.toContain(SCHEDULE_CLAUSE);
   });
 
@@ -410,10 +435,8 @@ describe("the notice beside the export", () => {
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await openExportPanel();
 
-    await expect
-      .element(page.getByText(commandLineExportNotice(true), { exact: true }))
-      .toBeInTheDocument();
-    expect(commandLineExportNotice(true)).toContain(SCHEDULE_CLAUSE);
+    await expect.poll(() => noticesShown(runElsewhereNotice(true))).toBe(2);
+    expect(runElsewhereNotice(true)).toContain(SCHEDULE_CLAUSE);
   });
 });
 
@@ -486,59 +509,6 @@ describe("the export leaves the backup indicator exactly where it was", () => {
         ),
       )
       .toBeInTheDocument();
-  });
-});
-
-describe("a device migration's spent surface", () => {
-  // The "Handed off to another device" surface a confirmation leaves on screen is
-  // session state. What a LATER VISIT shows is read back from the sibling store,
-  // so a remount is the only way to see the copy the operator actually lives with.
-
-  /** Mount the run surface again from nothing, as a later visit does: the surface
-   * re-reads the record and its sibling state rather than keeping what the
-   * confirmation put in React state. The unmount waits out the work the spend
-   * left scheduled, which a synchronous one would tear down mid-render. */
-  async function remount(id: string): Promise<void> {
-    await flushPendingUpdates();
-    app.unmount();
-    app.render(createElement(ManagedRunSurface, { id }));
-  }
-
-  test("a device migration remounts into the migration copy", async () => {
-    // A migration writes no hand-off discriminator, and its spent copy points at
-    // the import that revives it.
-    const created = await createManagedExchange(newExchange());
-    const downloads = captureDownloads();
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await page
-        .getByRole("button", { name: "Move to another device" })
-        .click();
-      await page
-        .getByRole("button", {
-          name: "I saved the file; hand off this exchange",
-        })
-        .click();
-      await expect
-        .element(page.getByText("Handed off to another device"))
-        .toBeInTheDocument();
-      expect(
-        (await getManagedLocalState(created.id))?.spent?.handoff,
-      ).toBeUndefined();
-
-      await remount(created.id);
-
-      await expect
-        .element(
-          page.getByText("to take over on another device", { exact: false }),
-        )
-        .toBeInTheDocument();
-      await expect
-        .element(page.getByText("Import the backup", { exact: false }))
-        .toBeInTheDocument();
-    } finally {
-      downloads.restore();
-    }
   });
 });
 

@@ -15,6 +15,11 @@ import styles from "@styles/app.module.css";
 import { useHashTarget } from "@components/useHashTarget";
 
 import {
+  EXPORT_LEAVES_ACCOUNTING_NOTE,
+  RUN_IN_FLIGHT_EXPORT_REASON,
+  runElsewhereNotice,
+} from "./managedCronExportModel";
+import {
   RETAKE_ACTION_LABEL,
   RETAKE_CONFIRM_LABEL,
   RETAKE_KEY_FILE_NOTE,
@@ -31,7 +36,6 @@ import {
 import { MANAGED_BACKUP_SECTION_ID } from "./managedSectionIds";
 import { MANAGED_RUN_HANDED_OFF_ATTESTATION } from "./managedRunLaunchModel";
 import { ParkedResultsView } from "./ManagedExchangeDetail";
-import { RUN_IN_FLIGHT_HANDOFF_REASON } from "./managedHandoffGate";
 import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 import { managedImportFileChoice } from "./managedImportFiles";
 
@@ -61,18 +65,19 @@ interface BackupPanelProps {
   marker: ManagedBackupMarker | undefined;
   busy: boolean;
   failed: boolean;
-  /** Whether a run of this exchange is in flight in any context. Only the migration
-   * is withheld while it is: a backup leaves the source live, so taking one across a
-   * rotation costs the operator nothing. */
+  /** Whether a run of this exchange is in flight in any context. The download is
+   * withheld while it is, as the command-line export's is: the run changes the
+   * secret the file would hold ({@link RUN_IN_FLIGHT_EXPORT_REASON}). */
   runInFlight: boolean;
+  /** Whether this copy has a schedule on, which the notice beside the download
+   * names. */
+  scheduleOn: boolean;
   onBackUp: () => void;
-  onMigrate: () => void;
 }
 
 /** The pre-run backup panel: the derived backup state ("backed up as of <date>" or
- * the actionable "Back up this exchange") plus the two export intents that download
- * the artifact this browser restores from. A backup export leaves this exchange live;
- * a migration export hands it off to another device, spending this copy. Both are
+ * the actionable "Back up this exchange") and the download of the artifact this
+ * browser restores from, which leaves this exchange runnable here. The state is
  * named against the command-line export below, whose two files bring back no secret
  * (its `alcove.yaml` imports as a configuration only), so the state this panel shows
  * is about the restorable file alone.
@@ -83,8 +88,8 @@ export function BackupPanel({
   busy,
   failed,
   runInFlight,
+  scheduleOn,
   onBackUp,
-  onMigrate,
 }: BackupPanelProps) {
   const state = deriveManagedBackupState(marker);
   const sectionRef = useHashTarget<HTMLDivElement>(MANAGED_BACKUP_SECTION_ID);
@@ -95,20 +100,26 @@ export function BackupPanel({
       tabIndex={-1}
       ref={sectionRef}
     >
-      {state.kind === "backed-up" ? (
-        <p className={`${styles.small} ${styles.statusLineOk}`}>
-          Backed up as of {dateLabel(new Date(state.backedUpAt))}
-          {backupLocationClause(state.savedAs)}.
-        </p>
-      ) : (
-        <p className={styles.calloutLead}>Back up this exchange.</p>
-      )}
+      {/* A live region present from the first render, so the line a download
+          puts here is announced: the download has no other feedback. */}
+      <div role="status">
+        {state.kind === "backed-up" ? (
+          <p className={`${styles.small} ${styles.statusLineOk}`}>
+            Backed up as of {dateLabel(new Date(state.backedUpAt))}
+            {backupLocationClause(state.savedAs)}.
+          </p>
+        ) : (
+          <p className={styles.calloutLead}>Back up this exchange.</p>
+        )}
+      </div>
       <p className={styles.small}>
         The backup file is the one this browser restores from: import it here to
         bring this exchange back. It holds this exchange&apos;s secret in plain
         text - keep it somewhere only you can read, and never send it over an
         unencrypted channel.
       </p>
+      <p className={styles.small}>{runElsewhereNotice(scheduleOn)}</p>
+      <p className={styles.small}>{EXPORT_LEAVES_ACCOUNTING_NOTE}</p>
       {failed && (
         <Alert
           role="alert"
@@ -119,19 +130,17 @@ export function BackupPanel({
           Nothing changed here; try again.
         </Alert>
       )}
-      <Button mt="sm" variant="default" onClick={onBackUp} loading={busy}>
-        Download a backup
-      </Button>{" "}
       <Button
         mt="sm"
-        variant="subtle"
-        onClick={onMigrate}
-        disabled={busy || runInFlight}
+        variant="default"
+        onClick={onBackUp}
+        loading={busy}
+        disabled={runInFlight}
       >
-        Move to another device
+        Download a backup
       </Button>
       {runInFlight && (
-        <p className={styles.small}>{RUN_IN_FLIGHT_HANDOFF_REASON}</p>
+        <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
       )}
     </div>
   );
@@ -205,9 +214,8 @@ export function SpentSurface({
       <>
         <h1 tabIndex={-1}>This exchange was handed off</h1>
         <p className={styles.sub}>
-          This browser&apos;s copy of this exchange was handed off, so it no
-          longer runs here. It runs where you handed it over to - the device you
-          moved it to, or the machine running it from the command line.
+          This browser&apos;s copy of this exchange does not run here. If you
+          ran this exchange elsewhere, import it again here to make it runnable.
         </p>
         {refused}
         {parked}

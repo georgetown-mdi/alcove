@@ -13,7 +13,6 @@ import { PARKED_RESULTS_VERSION, runResultsFileName } from "@psi/parkedResults";
 import {
   clearManagedExchanges,
   createManagedExchange,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   composeManagedExchangeFile,
@@ -24,6 +23,7 @@ import { readParkedResults } from "@psi/parkedResultsStore";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -189,14 +189,11 @@ describe("a re-read of the parked results", () => {
 describe("a copy a hand-off spent", () => {
   async function spendNewExchange(): Promise<string> {
     const created = await createRunnableExchange(newExchange());
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-03-02T10:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-03-02T10:00:00.000Z",
+      "command-line",
+    );
     return created.id;
   }
 

@@ -43,7 +43,6 @@ import type {
 } from "./managedSurfaceReadsModel";
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
-import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -227,7 +226,7 @@ export type ManagedTermsProposalAction =
   | { type: "terms-proposal-settled" };
 
 /** The surface's state: the record load, the attended run, the failure recovery,
- * the store reads beside the record, the exports and hand-offs, and the answer to
+ * the store reads beside the record, the backup exports, and the answer to
  * a terms proposal. */
 export interface ManagedRunSurfaceState {
   load: ManagedLoadState;
@@ -259,13 +258,10 @@ export type ManagedRecordWriteAction =
 
 /** An export that marked the record backed up, the marker landing on the loaded
  * record with the export's outcome. */
-export type ManagedBackupExportAction =
-  | { type: "backup-exported"; marker: ManagedBackupMarker }
-  | {
-      type: "migration-dispatched";
-      dispatch: ManagedMigrationDispatch;
-      marker: ManagedBackupMarker;
-    };
+export type ManagedBackupExportAction = {
+  type: "backup-exported";
+  marker: ManagedBackupMarker;
+};
 
 /** Every event the surface reports. */
 export type ManagedRunSurfaceAction =
@@ -362,7 +358,6 @@ export function managedRunSurfaceReducer(
     case "failure-cleared":
       return withRun(state, managedRunReducer(state.run, action));
     case "backup-exported":
-    case "migration-dispatched":
       return {
         ...state,
         load: managedLoadReducer(state.load, {
@@ -390,10 +385,6 @@ export function managedRunSurfaceReducer(
     case "export-started":
     case "export-finished":
     case "export-failed":
-    case "migration-confirm-started":
-    case "migration-confirmed":
-    case "migration-refused":
-    case "migration-kept":
       return withHandoff(state, managedHandoffReducer(state.handoff, action));
     case "accounting-read":
     case "unfiled-disclosures-read":
@@ -474,28 +465,21 @@ export function managedRunInputSource(
 /** Which of the surface's views the main column shows: the load's own page short
  * of a runnable record, else one of the runnable record's views. */
 export type ManagedSurfaceView =
-  | Exclude<ManagedLoadState["kind"], "runnable">
-  | "complete"
-  | "migrated"
-  | "confirm-move"
-  | "run";
+  Exclude<ManagedLoadState["kind"], "runnable"> | "complete" | "run";
 
 /** What {@link managedSurfaceView} chooses from. */
 export type ManagedSurfaceViewInputs = Pick<
   ManagedRunSurfaceState,
-  "load" | "run" | "handoff"
+  "load" | "run"
 >;
 
 /** The view the main column shows, the first that applies in this order: the
- * load's own page short of a runnable record, a finished run, a hand-off, then
- * the run controls. */
+ * load's own page short of a runnable record, a finished run, then the run
+ * controls. */
 export function managedSurfaceView(
   inputs: ManagedSurfaceViewInputs,
 ): ManagedSurfaceView {
   if (inputs.load.kind !== "runnable") return inputs.load.kind;
   if (managedRunCompletion(inputs.run) !== undefined) return "complete";
-  if (inputs.handoff.migration.kind === "migrated") return "migrated";
-  if (inputs.handoff.migration.kind === "awaiting-confirm")
-    return "confirm-move";
   return "run";
 }

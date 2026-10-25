@@ -92,6 +92,12 @@ export function repeatedMissCoordination(
   };
 }
 
+/** The import remedy each no-show surface names: a run elsewhere replaced the
+ * secret the rendezvous derives from, so this browser's copy meets no one until
+ * it is imported again. */
+export const RAN_ELSEWHERE_IMPORT_REMEDY =
+  "If you ran this exchange elsewhere, import it again here to make it runnable.";
+
 /** The title over the benign input failure tier. */
 export const INPUT_FAILURE_TITLE = "Your input file could not be used";
 

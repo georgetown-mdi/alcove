@@ -11,7 +11,6 @@ import {
   getManagedExchange,
   openManagedExchangeDatabase,
   recordManagedExchangeLastRun,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   ManagedExchangeCustodyUnreadableError,
@@ -36,6 +35,8 @@ import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
 import { waitFor } from "../utils/waitFor";
+
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -688,19 +689,15 @@ describe("runManagedExchange: persist-before-success end to end", () => {
   });
 
   test("a run refuses a copy a hand-off spent, rotating nothing", async () => {
-    // The escalation this closes: the spend and the run were only ever observed
-    // by the surfaces, so a run started in another context after a hand-off still
-    // rotated past the copy the operator had just handed over. The record and the
-    // sibling spent state here are the real ones the hand-off writes.
+    // The run path reads the spent state itself rather than trusting a surface's
+    // reading. The sibling spent state is the one an earlier version's hand-off
+    // left.
     const created = await createRunnableExchange(newExchange());
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     let inputRead = false;
     const refusedAt = Date.parse("2026-07-14T12:00:00.000Z");
 
@@ -811,13 +808,7 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
       dataExchange: () => Promise.resolve("done"),
     });
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        rotatedSecret,
-        "2026-07-14T09:00:00.000Z",
-      ),
-    ).toBe("spent");
+    await seedSpentState(created.id, "2026-07-14T09:00:00.000Z");
 
     await expect(
       runManagedExchange({
@@ -945,29 +936,6 @@ describe("the lock spans the payload exchange", () => {
       parked.release();
       await parked.settled;
     }
-  });
-
-  test("a hand-off spend is refused while the payload exchange is in flight", async () => {
-    const created = await createRunnableExchange(newExchange());
-    const parked = await runParkedInItsExchange(created.id);
-
-    try {
-      // The spend is handed the secret this run already persisted, so nothing
-      // but the lock can refuse it: a "superseded" answer would mean the
-      // currency check did the work instead.
-      expect(
-        await spendManagedExchangeIfCurrent(
-          created.id,
-          parked.rotatedSecret,
-          "2026-07-14T09:00:00.000Z",
-        ),
-      ).toBe("run-in-flight");
-    } finally {
-      parked.release();
-      await parked.settled;
-    }
-    // Nothing was handed over: the copy is still this device's to run.
-    expect(await getManagedLocalState(created.id)).toBeUndefined();
   });
 
   test("the lock is free once the success stamp resolves", async () => {

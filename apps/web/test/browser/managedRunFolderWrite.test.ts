@@ -18,11 +18,14 @@ import {
   createManagedExchange,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
+import { RUN_IN_FLIGHT_EXPORT_REASON } from "@recurring/managedCronExportModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runResultsFileName } from "@psi/parkedResults";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
+import { holdRunLockElsewhere } from "./runLockReadings";
 
 import type * as WorkingDirectory from "@psi/managed/managedWorkingDirectory";
 
@@ -336,6 +339,72 @@ describe("an attended run whose surface is torn down during the folder write", (
 
     expect(await stub.written).toMatchObject({ kind: "write-failed" });
     expect(consoleError).not.toHaveBeenCalled();
+  });
+});
+
+describe("the completion screen while the folder write is under way", () => {
+  // The run released its lock before its outputs reached the screen (the
+  // stubbed driver here takes none), so the updated backup gates on the lock
+  // alone, and never shows the run-in-progress reason beside a finished run.
+  const updatedBackup = () =>
+    page.getByRole("button", { name: "Download updated backup" });
+
+  async function holdFolderWrite(): Promise<{
+    id: string;
+    releaseWrite: () => void;
+  }> {
+    let release: () => void = () => undefined;
+    stub.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      stub.started = resolve;
+    });
+    const folder = await opfsFolder("attended-write-held");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await runToCompletion();
+    await started;
+    await expect
+      .element(page.getByText("Writing the results to", { exact: false }))
+      .toBeInTheDocument();
+    return { id: created.id, releaseWrite: release };
+  }
+
+  test("with the lock free, offers the updated backup and downloads it", async () => {
+    const { releaseWrite } = await holdFolderWrite();
+    const downloads = captureDownloads();
+    try {
+      await expect.element(updatedBackup()).toBeEnabled();
+      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+      await updatedBackup().click();
+      await expect.poll(() => downloads.captured.length).toBe(1);
+      await downloads.settled();
+    } finally {
+      downloads.restore();
+      releaseWrite();
+      await stub.written;
+    }
+  });
+
+  test("with the lock held elsewhere, withholds it without the reason, and returns it once free", async () => {
+    const { id, releaseWrite } = await holdFolderWrite();
+    const releaseLock = await holdRunLockElsewhere(id);
+    try {
+      await expect.element(updatedBackup()).toBeDisabled();
+      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+    } finally {
+      releaseLock();
+    }
+    try {
+      await expect.element(updatedBackup()).toBeEnabled();
+      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+    } finally {
+      releaseWrite();
+      await stub.written;
+    }
   });
 });
 

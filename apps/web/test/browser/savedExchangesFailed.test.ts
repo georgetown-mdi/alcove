@@ -14,7 +14,6 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   openManagedExchangeDatabase,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import { SavedExchanges, SavedExchangesHome } from "@recurring/SavedExchanges";
 import {
@@ -28,6 +27,7 @@ import {
 import { RETAKE_ACTION_LABEL } from "@recurring/managedRetakeModel";
 
 import { createAppMount } from "./renderApp";
+import { seedSpentState } from "./seedSpentState";
 
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -146,12 +146,7 @@ describe("importing a backup of an exchange handed off from here", () => {
     const bytes = serializeManagedExchangeArtifact(
       encodeManagedExchangeArtifact(record),
     );
-    await spendManagedExchangeIfCurrent(
-      record.id,
-      record.sharedSecret,
-      new Date().toISOString(),
-      "command-line",
-    );
+    await seedSpentState(record.id, new Date().toISOString(), "command-line");
     return bytes;
   }
 

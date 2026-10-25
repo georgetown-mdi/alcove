@@ -40,6 +40,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
@@ -415,7 +416,7 @@ function missNotice(
     return {
       kind: "repeated-misses",
       title: REPEATED_MISS_TITLE,
-      body: `${name}: ${coordination.line}`,
+      body: `${name}: ${coordination.line} ${RAN_ELSEWHERE_IMPORT_REMEDY}`,
       tag: noticeTag(record.id, "repeated-misses"),
     };
   const next = instantLabel(schedule.nextWindow);
@@ -425,7 +426,8 @@ function missNotice(
     body:
       `${name} missed a scheduled run window.` +
       (next === undefined ? "" : ` The next window opens ${next}.`) +
-      ` No action is needed; the next window runs as scheduled.`,
+      ` ${RAN_ELSEWHERE_IMPORT_REMEDY} Otherwise no action is needed; the ` +
+      `next window runs as scheduled.`,
     tag: noticeTag(record.id, `missed:${schedule.nextWindow}`),
   };
 }

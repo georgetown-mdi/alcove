@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Alert, Anchor, Button } from "@mantine/core";
 
@@ -18,10 +18,11 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
+  EXPORT_LEAVES_ACCOUNTING_NOTE,
   RUN_IN_FLIGHT_EXPORT_REASON,
-  commandLineExportNotice,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
+  runElsewhereNotice,
 } from "./managedCronExportModel";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 
@@ -45,23 +46,20 @@ const KEY_FILE_SECURITY_DOC_URL =
 export function ManagedCronExportPanel({
   record,
   runInFlight,
+  onRunLockRefused,
 }: {
   record: RunnableManagedExchangeRecord;
   /** Whether a run of this exchange is in flight in any context this browser profile
    * can see -- the host's own run, a second tab's, or the scheduled runtime's. The
    * download is withheld while it is ({@link RUN_IN_FLIGHT_EXPORT_REASON}). */
   runInFlight: boolean;
+  /** Report that the export's own lock refused a run the poll had not yet read,
+   * so {@link runInFlight} reads true until the next poll reading. */
+  onRunLockRefused: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  // The export's own lock refused a run the poll had not yet read. Shown as the
-  // run-in-progress state until the poll's reading moves or the next click.
-  const [lockRefused, setLockRefused] = useState(false);
-  useEffect(() => {
-    setLockRefused(false);
-  }, [runInFlight]);
-  const runWithholds = runInFlight || lockRefused;
   // One read of the relay settings serves the panel and the download, so the
   // files name the TURN urls the panel composed with.
   const { ownRelay, state } = useMemo(() => {
@@ -81,7 +79,6 @@ export function ManagedCronExportPanel({
     if (busy || runInFlight) return;
     setBusy(true);
     setFailed(false);
-    setLockRefused(false);
     void exportManagedCronFiles(record.id, {
       withLock: (id, step) =>
         withManagedExchangeLock(id, step, { ifAvailable: true }),
@@ -91,7 +88,7 @@ export function ManagedCronExportPanel({
     })
       .catch((error: unknown) => {
         if (error instanceof ManagedExchangeLockUnavailableError)
-          setLockRefused(true);
+          onRunLockRefused();
         else setFailed(true);
       })
       .finally(() => setBusy(false));
@@ -130,7 +127,7 @@ export function ManagedCronExportPanel({
               not change the backup state above.
             </p>
             <p className={styles.calloutLead}>
-              {commandLineExportNotice(state.fromAgreedSchedule)}
+              {runElsewhereNotice(state.fromAgreedSchedule)}
             </p>
             <ol className={styles.handoffSteps}>
               <li>
@@ -166,6 +163,7 @@ export function ManagedCronExportPanel({
                   </Anchor>
                   .
                 </p>
+                <p className={styles.small}>{EXPORT_LEAVES_ACCOUNTING_NOTE}</p>
                 {failed && (
                   <Alert
                     role="alert"
@@ -187,7 +185,7 @@ export function ManagedCronExportPanel({
                   Download {state.composed.config.fileName} and{" "}
                   {state.composed.key.fileName}
                 </Button>
-                {runWithholds && (
+                {runInFlight && (
                   <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
                 )}
               </li>

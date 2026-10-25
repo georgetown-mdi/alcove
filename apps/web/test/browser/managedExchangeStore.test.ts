@@ -26,7 +26,6 @@ import {
   recordManagedExchangeCompromiseResponse,
   recordManagedExchangeLastRun,
   requestPersistentStorage,
-  spendManagedExchangeIfCurrent,
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
 import {
@@ -68,6 +67,7 @@ import {
   disclosureRecord,
   neighbouringRecordVersion,
 } from "../utils/disclosureFixtures";
+import { seedSpentState } from "./seedSpentState";
 
 import type { ExchangeRecord, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -1096,11 +1096,7 @@ describe("one-step delete leaves nothing behind", () => {
     // entry as well as the record -- the two stores the browser holds an exchange
     // in.
     await markManagedExchangeBackedUp(created.id, "2026-02-01T14:05:00.000Z");
-    await spendManagedExchangeIfCurrent(
-      created.id,
-      created.sharedSecret,
-      "2026-02-02T09:00:00.000Z",
-    );
+    await seedSpentState(created.id, "2026-02-02T09:00:00.000Z");
     // And file a run's disclosure, so the delete must clear the accounting too --
     // otherwise the delete strands cleartext partner and agreement metadata under
     // an id nothing shows.
@@ -1654,14 +1650,11 @@ describe("diagnostic read never rejects wholesale", () => {
     const created = await createRunnableExchange(
       newExchange({ label: "Handed off" }),
     );
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T13:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T13:00:00.000Z",
+      "command-line",
+    );
 
     const [entry] = await listManagedExchangesDiagnostic();
     // The whole spent state, not a boolean: the delete confirm states what the

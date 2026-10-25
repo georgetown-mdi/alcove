@@ -174,8 +174,8 @@ export interface ManagedScheduleTickSeams {
    * cannot be read does not connect. */
   readRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
   /** Each record's local sibling state, read once per tick. Its `spent` marker
-   * keeps a handed-off copy from being attempted: a migration export sets it so
-   * neither the operator nor the schedule runs the record again. This read is
+   * keeps a handed-off copy from being attempted. No current path writes it; it is
+   * left only on a record an earlier version's export spent. This read is
    * the cheap pre-filter, not the guarantee -- the run path re-reads the marker
    * inside the run+rotate lock on every attempt ({@link ./managedExchangeRun.ts}).
    * Read per entry for the reason {@link listRecords} is: a record whose sibling

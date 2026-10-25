@@ -16,7 +16,6 @@ import {
   getManagedExchange,
   listManagedExchanges,
   persistManagedExchangeRotation,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 
 import {
@@ -51,6 +50,7 @@ import { composeManagedCronExport } from "@psi/managed/managedCronExport";
 import styles from "@styles/app.module.css";
 
 import { createAppMount } from "./renderApp";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeSchedule,
@@ -600,9 +600,8 @@ describe("saved list route: delete is a fully supported, always-available action
     const created = await createRunnableExchange(
       newExchange({ label: "Handed off to cron" }),
     );
-    await spendManagedExchangeIfCurrent(
+    await seedSpentState(
       created.id,
-      created.sharedSecret,
       "2026-07-12T09:00:00.000Z",
       "command-line",
     );
@@ -638,11 +637,7 @@ describe("saved list route: delete is a fully supported, always-available action
       newExchange({ label: "Migrated partnership" }),
     );
     await markManagedExchangeBackedUp(created.id, "2026-07-12T08:00:00.000Z");
-    await spendManagedExchangeIfCurrent(
-      created.id,
-      created.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-    );
+    await seedSpentState(created.id, "2026-07-12T09:00:00.000Z");
 
     app.render(createElement(SavedExchanges));
 
@@ -664,11 +659,7 @@ describe("saved list route: delete is a fully supported, always-available action
     const created = await createRunnableExchange(
       newExchange({ label: "Handed off partnership" }),
     );
-    await spendManagedExchangeIfCurrent(
-      created.id,
-      created.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-    );
+    await seedSpentState(created.id, "2026-07-12T09:00:00.000Z");
 
     app.render(createElement(SavedExchanges));
 
@@ -693,9 +684,8 @@ describe("saved list route: delete is a fully supported, always-available action
     const created = await createRunnableExchange(
       newExchange({ label: "Handed off partnership" }),
     );
-    await spendManagedExchangeIfCurrent(
+    await seedSpentState(
       created.id,
-      created.sharedSecret,
       "2026-07-12T09:00:00.000Z",
       "command-line",
     );
@@ -888,12 +878,7 @@ describe("saved list route: a populated list imports a command-line configuratio
     const backup = serializeManagedExchangeArtifact(
       encodeManagedExchangeArtifact(record),
     );
-    await spendManagedExchangeIfCurrent(
-      record.id,
-      record.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-      "command-line",
-    );
+    await seedSpentState(record.id, "2026-07-12T09:00:00.000Z", "command-line");
     app.render(createElement(SavedExchanges));
     await expect
       .element(page.getByRole("button", { name: "Import a file" }))
@@ -1043,11 +1028,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
   test("a moved row restores from its own backup in place", async () => {
     const moved = await createRunnableExchange(newExchange());
     const bytes = backupOf(moved);
-    await spendManagedExchangeIfCurrent(
-      moved.id,
-      moved.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-    );
+    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
     await createRunnableExchange(
       newExchange({ label: "Another partnership", side: "acceptor" }),
     );
@@ -1067,11 +1048,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
   test("a moved row restores in place beside an exchange with its terms and side, naming it", async () => {
     const moved = await createRunnableExchange(newExchange());
     const bytes = backupOf(moved);
-    await spendManagedExchangeIfCurrent(
-      moved.id,
-      moved.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-    );
+    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
     const unrelated = await createRunnableExchange(
       newExchange({ label: "Riverbend again" }),
     );
@@ -1108,11 +1085,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
 
   test("a moved row's restore refuses another exchange's backup", async () => {
     const moved = await createRunnableExchange(newExchange());
-    await spendManagedExchangeIfCurrent(
-      moved.id,
-      moved.sharedSecret,
-      "2026-07-12T09:00:00.000Z",
-    );
+    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
     const other = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(
         newExchange({ label: "Another partnership", side: "acceptor" }),

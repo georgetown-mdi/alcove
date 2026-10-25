@@ -18,7 +18,6 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   composeManagedExchangeFile,
@@ -30,6 +29,7 @@ import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
 import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -45,12 +45,9 @@ async function createRunnableExchange(
   return runnableManagedExchangeOrRefuse(await createManagedExchange(fields));
 }
 
-// The run surface's hand-off confirm, rendered against real Chromium (the record
-// and its sibling stores are the real IndexedDB ones). What is pinned here is the
-// custody the confirm states before this device gives up its copy: the artifact
-// holds the secret, and it does NOT hold the accounting of disclosures, which
-// stays behind with the device -- so the operator is told to export it first, the
-// same warning the delete confirm states.
+// The run surface over a copy handed off to the command line, rendered against
+// real Chromium (the record and its sibling stores are the real IndexedDB ones):
+// the re-take on its own surface, and a run refused after the hand-off arrived.
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -75,22 +72,6 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
       recordRead.rejects
         ? Promise.reject(new Error("the stored record could not be read"))
         : readRecord(id),
-  };
-});
-
-// The dispatch is stubbed to the state it leaves the surface in, so the confirm is
-// reached without a real artifact download in the runner. The export itself, and
-// the spend it defers until the operator confirms, are covered against the real
-// store in managedExchangeBackup.test.ts.
-vi.mock("@psi/managed/managedExchangeExport", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    dispatchManagedMigration: () =>
-      Promise.resolve({
-        backedUpAt: new Date("2026-07-10T09:00:00.000Z"),
-        confirm: () => Promise.resolve(),
-      }),
   };
 });
 
@@ -130,40 +111,6 @@ afterEach(async () => {
   await clearManagedExchanges();
 });
 
-describe("the hand-off confirm states what does not travel", () => {
-  test("the confirm says the accounting stays behind, and to export it first", async () => {
-    const created = await createRunnableExchange(newExchange());
-
-    app.render(createElement(ManagedRunSurface, { id: created.id }));
-
-    await expect
-      .element(page.getByRole("button", { name: "Move to another device" }))
-      .toBeInTheDocument();
-    await page.getByRole("button", { name: "Move to another device" }).click();
-
-    await expect
-      .element(page.getByText("Confirm the move"))
-      .toBeInTheDocument();
-    // The artifact's own custody line still stands, and the accounting's is beside
-    // it: the exchange moves, its account of what it disclosed does not.
-    await expect
-      .element(
-        page.getByText("Keep the file somewhere only you can read", {
-          exact: false,
-        }),
-      )
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText("does not travel in the backup file", { exact: false }),
-      )
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByText("export the accounting as CSV", { exact: false }))
-      .toBeInTheDocument();
-  });
-});
-
 describe("the re-take on a spent copy's own surface", () => {
   // The route back the import refusal points at, reachable while the listing is
   // non-empty -- which is exactly where the import affordance is not. The store
@@ -175,14 +122,11 @@ describe("the re-take on a spent copy's own surface", () => {
     const created = await createRunnableExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await expect
       .element(page.getByText("This exchange was handed off", { exact: true }))
@@ -249,14 +193,11 @@ describe("a run pressed after the hand-off arrived", () => {
     const runButton = page.getByRole("button", { name: "Run exchange" });
     await expect.element(runButton).toBeEnabled();
 
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     await runButton.click();
 
     // The state the refusal left, on this render rather than the next load: the
@@ -311,14 +252,11 @@ describe("a run pressed after the hand-off arrived", () => {
     const runButton = page.getByRole("button", { name: "Run exchange" });
     await expect.element(runButton).toBeEnabled();
 
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     recordRead.rejects = true;
     await runButton.click();
 
@@ -332,9 +270,19 @@ describe("a run pressed after the hand-off arrived", () => {
         page.getByText(MANAGED_RUN_HANDED_OFF_ATTESTATION, { exact: true }),
       )
       .toBeInTheDocument();
-    // Neither hand-off is named on evidence the surface does not hold.
+    // Neither hand-off is named on evidence the surface does not hold; the copy
+    // names the import that makes a copy run here again.
     expect(app.container.textContent).not.toContain("Import the backup");
     expect(app.container.textContent).not.toContain("alcove.yaml");
+    await expect
+      .element(
+        page.getByText(
+          "If you ran this exchange elsewhere, import it again here to make " +
+            "it runnable.",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
 
     // The refusal really is what put that surface up: the run reached the store
     // and recorded the hand-off it met.

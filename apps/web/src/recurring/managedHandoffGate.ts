@@ -1,75 +1,13 @@
 /**
- * The reasons the device migration gives when it will not move this browser's copy
- * of the shared secret: the one that holds a confirmation back before it spends the
- * copy, and the two an attempted confirmation is refused with; and the two an import
- * meets afterwards -- when the copy is already gone, and when this browser cannot
- * read whether it is.
- *
- * The migration's "I saved the file" hands that copy to a new owner. A run rotates
- * the secret at its handshake, before any data is exchanged (see
- * `managedRunDriver.ts`), so a copy handed over across a run is one the rotation
- * supersedes: its first run meets a partner that has moved on, and nothing short of
- * a re-invite recovers the pair. There are two ways to be on the wrong side of that
- * rotation, and they call for different remedies -- wait, or download again -- so
- * they say different things.
- *
- * The remedy names a control on the screen showing it: the migration's confirmation
- * is a whole screen that replaces the one stating "Move to another device". A record
- * that is gone from this browser has no remedy of that shape -- there is nothing
- * left here to download -- so that refusal says so instead.
+ * The reasons an import meets when it would revive a copy this browser handed
+ * off -- when the copy is already gone, and when this browser cannot read whether
+ * it is -- and the heading a take-back held by a run is shown under.
  */
 
 import type { ManagedSpentHandoff } from "@psi/managed/managedLocalState";
 
-/** The heading the run-in-flight reason is shown under. */
+/** The heading a take-back held by a run in flight is shown under. */
 export const RUN_IN_FLIGHT_HANDOFF_TITLE = "Wait for this run to finish";
-
-/**
- * A run of this exchange is under way, so there is no point starting or finishing a
- * hand-off: the secret it would hand over is about to change. Names the contexts a
- * run can be under way in, because the operator looking at this screen may not be
- * the one who started it.
- */
-export const RUN_IN_FLIGHT_HANDOFF_REASON =
-  "This exchange is running right now - in this browser, in another tab, or on " +
-  "its schedule. A run changes its shared secret as soon as it connects to your " +
-  "partner, so a copy handed over now can already be out of date. When it " +
-  "finishes, choose hand off again.";
-
-/** The heading the superseded reason is shown under. It names the state rather
- * than the remedy. */
-export const SUPERSEDED_HANDOFF_TITLE = "That copy is out of date";
-
-/**
- * The superseded refusal: the exchange's secret moved between the download and the
- * attestation, so what was downloaded does not hold the current secret, and the way
- * to a fresh copy is out of the confirmation screen first. It names both things
- * that move the secret rather than only the run, so the sentence is not false to
- * an operator who knows nothing ran.
- */
-export const SUPERSEDED_HANDOFF_REASON =
-  "This exchange's secret has changed since you downloaded it - a run changes " +
-  "it, and so does creating a fresh invitation - so what you downloaded would " +
-  "not work for whoever received it. Nothing was handed over. " +
-  'Choose "Keep it on this device", then move it again to download a copy ' +
-  "that works.";
-
-/** The heading the record-gone reason is shown under. */
-export const RECORD_GONE_HANDOFF_TITLE = "This exchange is no longer here";
-
-/**
- * The other way a confirmation is refused: the record is no longer in this browser
- * at all -- deleted, or cleared with the browser's storage -- while the downloaded
- * file sat waiting for the attestation. There is no download to offer for a record
- * that is not there: the superseded refusal's "download it again" is exactly the
- * sentence this case must not state.
- */
-export const RECORD_GONE_HANDOFF_REASON =
-  "This exchange is no longer in this browser - it was deleted, or cleared " +
-  "along with the browser's storage - so there was no copy here to hand over " +
-  "and nothing was written. What you already downloaded is all that is left of " +
-  "it: keep those files if you still need this exchange, and set it up again " +
-  "with your partner if you do not have them.";
 
 /** The heading the refused-import reason is shown under, at the import affordance. */
 export const HANDED_OFF_IMPORT_TITLE = "That exchange was handed off";
